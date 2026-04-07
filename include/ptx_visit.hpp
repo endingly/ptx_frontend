@@ -51,7 +51,8 @@ struct LambdaVisitor : Visitor<Op, Err> {
                                   bool relaxed) override {
     // english: By default, we wrap the raw Id into an Op and delegate to visit—this only works if Op can be constructed from Id.
     // For special handling, subclasses can override this method.
-    return fn_(Op::from_value(id), ts, is_dst, relaxed);
+    return fn_(Op::from_value(RegOrImmediate<typename Op::id_type>::Reg(id)),
+               ts, is_dst, relaxed);
   }
 };
 
@@ -91,7 +92,7 @@ struct LambdaVisitorMap : VisitorMap<From, To, Err> {
   expected<To, Err> visit(From args, std::optional<VisitTypeSpace> ts,
                           bool is_dst, bool relaxed) override {
     // From 需要提供 map_id() 方法（见 ParsedOperand 的实现）
-    return args.map_id(
+    return args.template map_id<typename To::id_type, Err>(
         [&](typename From::id_type id) -> expected<typename To::id_type, Err> {
           return fn_(id, ts, is_dst, relaxed);
         });

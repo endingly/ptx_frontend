@@ -12,6 +12,7 @@
 namespace ptx_frontend {
 
 using tl::expected;
+using tl::unexpected;
 
 enum class ScalarType : uint8_t {
   U8,
@@ -737,7 +738,7 @@ struct Dp2aData {
 enum class CpAsyncCpSize { Bytes4, Bytes8, Bytes16 };
 struct CpAsyncDetails {
   CpAsyncCacheOperator caching;
-  StateSpace space;
+  StateSpace space;  // dst space
   CpAsyncCpSize cp_size;
   std::optional<uint64_t> src_size;
 };
@@ -927,9 +928,13 @@ struct InstrCvt {
   Op dst, src;
   Opt<Op> src2;
 };
+struct CvtPackDetails {
+  ScalarType from;  // source type (e.g., S32)
+  ScalarType to;    // destination element type (e.g., S16)
+};
 template <OperandLike Op>
 struct InstrCvtPack {
-  ScalarType data;
+  CvtPackDetails data;
   Op dst /*u32*/, src1 /*s32*/, src2 /*s32*/, src3 /*b32*/;
 };
 template <OperandLike Op>

@@ -31,7 +31,8 @@ struct Visitor {
       bool relaxed_type_check) = 0;
 };
 
-// 便利包装：允许直接传 lambda / FnMut 等价物
+// A convenient wrapper that allows directly passing a lambda / FnMut equivalent.
+// The lambda is expected to handle both full operands and pure symbolic references (labels/function names) by accepting an optional VisitTypeSpace and flags for destination operand and relaxed type checking.
 template <OperandLike Op, typename Err, typename Fn>
   requires std::invocable<Fn, const Op&, std::optional<VisitTypeSpace>, bool,
                           bool>
@@ -44,12 +45,12 @@ struct LambdaVisitor : Visitor<Op, Err> {
     return fn_(args, ts, is_dst, relaxed);
   }
 
-  // ident 默认委托给 visit（与 Rust 的 FnMut blanket impl 一致）
+  // ident by default delegates to visit
   expected<void, Err> visit_ident(const typename Op::id_type& id,
                                   std::optional<VisitTypeSpace> ts, bool is_dst,
                                   bool relaxed) override {
-    // 将裸 Id 包装成 Op 再转发——仅当 Op 支持从 Id 构造时有效
-    // 如需特殊处理，子类覆盖此方法即可
+    // english: By default, we wrap the raw Id into an Op and delegate to visit—this only works if Op can be constructed from Id.
+    // For special handling, subclasses can override this method.
     return fn_(Op::from_value(id), ts, is_dst, relaxed);
   }
 };
@@ -58,21 +59,6 @@ template <OperandLike Op, typename Err, typename Fn>
 auto make_visitor(Fn&& fn) {
   return LambdaVisitor<Op, Err, std::decay_t<Fn>>(std::forward<Fn>(fn));
 }
-
-// ---- 14.2  VisitorMut (mutable) -----------------------------------------
-
-template <OperandLike Op, typename Err>
-struct VisitorMut {
-  virtual ~VisitorMut() = default;
-
-  virtual expected<void, Err> visit(Op& args,
-                                    std::optional<VisitTypeSpace> type_space,
-                                    bool is_dst, bool relaxed_type_check) = 0;
-
-  virtual expected<void, Err> visit_ident(
-      typename Op::id_type& args, std::optional<VisitTypeSpace> type_space,
-      bool is_dst, bool relaxed_type_check) = 0;
-};
 
 // ---- 14.3  VisitorMap (consume old Op, produce new Op) -------------------------
 
@@ -85,7 +71,7 @@ struct VisitorMap {
                                   bool is_dst, bool relaxed_type_check) = 0;
 
   virtual expected<typename To::id_type, Err> visit_ident(
-      typename From::id_type args,  // by value：消费
+      typename From::id_type args,  // by value：consume
       std::optional<VisitTypeSpace> type_space, bool is_dst,
       bool relaxed_type_check) = 0;
 };

@@ -12,6 +12,7 @@
 namespace ptx_frontend {
 
 using tl::expected;
+using tl::unexpected;
 
 enum class ScalarType : uint8_t {
   U8,
@@ -248,7 +249,6 @@ struct ParsedOperand {
   template <typename T>
     requires utils::is_one_of<T, RegOffset, VecMemberIdx, RegOrImmediate<Id>,
                               ImmediateValue, VecPack>
-
   static ParsedOperand from_value(T v) {
     ParsedOperand p;
     if constexpr (std::is_same_v<T, VecPack>) {
@@ -738,7 +738,7 @@ struct Dp2aData {
 enum class CpAsyncCpSize { Bytes4, Bytes8, Bytes16 };
 struct CpAsyncDetails {
   CpAsyncCacheOperator caching;
-  StateSpace space;
+  StateSpace space;  // dst space
   CpAsyncCpSize cp_size;
   std::optional<uint64_t> src_size;
 };
@@ -799,77 +799,77 @@ concept OperandLike = requires {
 template <OperandLike Op>
 using Opt = std::optional<Op>;  // models Option<T> arguments
 
-template <typename Op>
+template <OperandLike Op>
 struct InstrAbs {
   TypeFtz data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrActivemask {
   Op dst;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrAdd {
   ArithDetails data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrAddExtended {
   CarryDetails data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSubExtended {
   CarryDetails data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMadExtended {
   MadCarryDetails data;
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrAnd {
   ScalarType data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrAtom {
   AtomDetails data;
   Op dst, src1 /*addr*/, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrAtomCas {
   AtomCasDetails data;
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrBarWarp {
   Op src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrBar {
   BarData data;
   Op src1;
   Opt<Op> src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrBarRed {
   BarRedData data;
   Op dst1, src_barrier, src_predicate, src_negate_predicate;
   Opt<Op> src_threadcount;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrBfe {
   ScalarType data;
   Op dst, src1, src2 /*u32*/, src3 /*u32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrBfi {
   ScalarType data;
   Op dst, src1, src2, src3 /*u32*/, src4 /*u32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrBmsk {
   BmskMode data;
   Op dst, src_a, src_b;
@@ -881,14 +881,14 @@ struct InstrBra {
   Id src;
 };
 
-template <typename Op>
+template <OperandLike Op>
 struct InstrBrev {
   ScalarType data;
   Op dst, src;
 };
 
 // Call has its own args struct
-template <typename Op>
+template <OperandLike Op>
 struct InstrCall {
   CallDetails data;
   CallArgs<typename Op::id_type /* if Op = ParsedOperand<Id> */> arguments;
@@ -896,84 +896,88 @@ struct InstrCall {
 // NOTE: In C++ without Rust's associated types, you may need to pass Id as
 // a second template parameter for Call. See usage note below.
 
-template <typename Op>
+template <OperandLike Op>
 struct InstrClz {
   ScalarType data;
   Op dst /*u32*/, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrCos {
   FlushToZero data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrCpAsync {
   CpAsyncDetails data;
   Op src_to /*shared*/, src_from /*global*/;
 };
 struct InstrCpAsyncCommitGroup {};
-template <typename Op>
+template <OperandLike Op>
 struct InstrCpAsyncWaitGroup {
   Op src_group;
 };
 struct InstrCpAsyncWaitAll {};
-template <typename Op>
+template <OperandLike Op>
 struct InstrCreatePolicyFractional {
   CreatePolicyFractionalDetails data;
   Op dst_policy;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrCvt {
   CvtDetails data;
   Op dst, src;
   Opt<Op> src2;
 };
-template <typename Op>
+struct CvtPackDetails {
+  ScalarType from;  // source type (e.g., S32)
+  ScalarType to;    // destination element type (e.g., S16)
+};
+template <OperandLike Op>
 struct InstrCvtPack {
-  ScalarType data;
+  CvtPackDetails data;
   Op dst /*u32*/, src1 /*s32*/, src2 /*s32*/, src3 /*b32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrCvta {
   CvtaDetails data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrDiv {
   DivDetails data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrDp4a {
   Dp4aDetails data;
   Op dst /*b32*/, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrEx2 {
   TypeFtz data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrFma {
   ArithFloat data;
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrLd {
   LdDetails data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrLg2 {
   FlushToZero data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMad {
   MadDetails data;
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMax {
   MinMaxDetails data;
   Op dst, src1, src2;
@@ -981,60 +985,60 @@ struct InstrMax {
 struct InstrMembar {
   MemScope data;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMin {
   MinMaxDetails data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMov {
   MovDetails data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMul {
   MulDetails data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMul24 {
   Mul24Details data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrNanosleep {
   Op src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrNeg {
   TypeFtz data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrNot {
   ScalarType data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrOr {
   ScalarType data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrPopc {
   ScalarType data;
   Op dst /*u32*/, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrPrmt {
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrRcp {
   RcpData data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrRem {
   ScalarType data;
   Op dst, src1, src2;
@@ -1042,104 +1046,104 @@ struct InstrRem {
 struct InstrRet {
   RetData data;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrRsqrt {
   TypeFtz data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSelp {
   ScalarType data;
   Op dst, src1, src2, src3 /*pred*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSet {
   SetData data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSetBool {
   SetBoolData data;
   Op dst, src1, src2, src3 /*pred*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSetp {
   SetpData data;
   Op dst1 /*pred*/;
   Opt<Op> dst2 /*pred*/;
   Op src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSetpBool {
   SetpBoolData data;
   Op dst1;
   Opt<Op> dst2;
   Op src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrShflSync {
   ShflSyncDetails data;
   Op dst;
   Opt<Op> dst_pred;
   Op src, src_lane, src_opts, src_membermask;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrShf {
   ShfDetails data;
   Op dst, src_a, src_b, src_c;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrShl {
   ScalarType data;
   Op dst, src1, src2 /*u32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrShr {
   ShrData data;
   Op dst, src1, src2 /*u32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSin {
   FlushToZero data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSqrt {
   RcpData data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSt {
   StData data;
   Op src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSub {
   ArithDetails data;
   Op dst, src1, src2;
 };
 struct InstrTrap {};
-template <typename Op>
+template <OperandLike Op>
 struct InstrXor {
   ScalarType data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrTanh {
   ScalarType data;
   Op dst, src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrVote {
   VoteDetails data;
   Op dst, src1 /*pred*/, src2 /*u32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrReduxSync {
   ReduxSyncData data;
   Op dst, src, src_membermask /*u32*/;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrLdMatrix {
   LdMatrixDetails data;
   Op dst, src;
@@ -1147,27 +1151,27 @@ struct InstrLdMatrix {
 struct InstrGridDepControl {
   GridDepControlAction data;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrMma {
   MmaDetails data;
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrCopysign {
   ScalarType data;
   Op dst, src1, src2;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrPrefetch {
   PrefetchData data;
   Op src;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrSad {
   ScalarType data;
   Op dst, src1, src2, src3;
 };
-template <typename Op>
+template <OperandLike Op>
 struct InstrDp2a {
   Dp2aData data;
   Op dst, src1, src2, src3;
@@ -1233,7 +1237,7 @@ using MultiVariable =
 // § 11  Statement<Op>  ←  ast.rs::Statement
 // ============================================================
 
-template <typename Op>
+template <OperandLike Op>
 struct Statement {
   using IdType = typename Op::id_type;  // for IdentLike constraint on Label
 
@@ -1301,7 +1305,7 @@ struct MethodDeclaration {
   std::optional<Ident> shared_mem;
 };
 
-template <typename Op>
+template <OperandLike Op>
 struct Function {
   MethodDeclaration func_directive;
   std::vector<TuningDirective> tuning;

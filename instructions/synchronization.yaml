@@ -1,0 +1,662 @@
+# PTX ISA 9.2 — Synchronization Instructions
+# Ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions
+
+###############################################################################
+# bar / barrier
+###############################################################################
+- opcode: "bar.sync"
+  doc: "PTX ISA §9.7.11.1"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "barname", kind: reg_or_imm, note: "barrier name 0..15" }
+        - {
+            name: "numthreads",
+            kind: optional_reg_or_imm,
+            note: "thread count",
+          }
+      cpp_struct: "InstrBarSync"
+
+- opcode: "bar.arrive"
+  doc: "PTX ISA §9.7.11.1"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "barname", kind: reg_or_imm }
+        - { name: "numthreads", kind: reg_or_imm }
+      cpp_struct: "InstrBarArrive"
+
+- opcode: "bar.red"
+  doc: "PTX ISA §9.7.11.1"
+  variants:
+    - modifiers:
+        redop:
+          kind: required
+          type: BarRedOp
+          values:
+            - { token: ".popc", cpp: "BarRedOp::Popc" }
+            - { token: ".and", cpp: "BarRedOp::And" }
+            - { token: ".or", cpp: "BarRedOp::Or" }
+        pred:
+          kind: fixed
+          fixed_value: ".pred"
+      args:
+        - { name: "dst", kind: reg, note: "destination pred (popc→u32)" }
+        - { name: "barname", kind: reg_or_imm }
+        - { name: "numthreads", kind: optional_reg_or_imm }
+        - { name: "src", kind: pred }
+      cpp_struct: "InstrBarRed"
+
+- opcode: "bar.warp.sync"
+  doc: "PTX ISA §9.7.11.1"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "membermask", kind: reg_or_imm, note: "32-bit thread mask" }
+      cpp_struct: "InstrBarWarpSync"
+
+- opcode: "barrier.sync"
+  doc: "PTX ISA §9.7.11.2"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "barname", kind: reg_or_imm }
+        - { name: "numthreads", kind: optional_reg_or_imm }
+      cpp_struct: "InstrBarrierSync"
+
+- opcode: "barrier.sync.aligned"
+  doc: "PTX ISA §9.7.11.2"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "barname", kind: reg_or_imm }
+        - { name: "numthreads", kind: optional_reg_or_imm }
+      cpp_struct: "InstrBarrierSync"
+      emit_note: "aligned = true"
+
+- opcode: "barrier.arrive"
+  doc: "PTX ISA §9.7.11.2"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "barname", kind: reg_or_imm }
+        - { name: "numthreads", kind: optional_reg_or_imm }
+      cpp_struct: "InstrBarrierArrive"
+
+- opcode: "barrier.arrive.aligned"
+  doc: "PTX ISA §9.7.11.2"
+  variants:
+    - modifiers: {}
+      args:
+        - { name: "barname", kind: reg_or_imm }
+        - { name: "numthreads", kind: optional_reg_or_imm }
+      cpp_struct: "InstrBarrierArrive"
+      emit_note: "aligned = true"
+
+- opcode: "barrier.cluster.arrive"
+  doc: "PTX ISA §9.7.11.3"
+  variants:
+    - modifiers:
+        aligned:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".aligned", cpp: "true" }
+      args: []
+      cpp_struct: "InstrBarrierClusterArrive"
+
+- opcode: "barrier.cluster.wait"
+  doc: "PTX ISA §9.7.11.3"
+  variants:
+    - modifiers:
+        aligned:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".aligned", cpp: "true" }
+      args: []
+      cpp_struct: "InstrBarrierClusterWait"
+
+###############################################################################
+# membar
+###############################################################################
+- opcode: "membar"
+  doc: "PTX ISA §9.7.11.4"
+  variants:
+    - modifiers:
+        level:
+          kind: required
+          type: MembarLevel
+          values:
+            - { token: ".cta", cpp: "MembarLevel::Cta" }
+            - { token: ".gl", cpp: "MembarLevel::Gl" }
+            - { token: ".sys", cpp: "MembarLevel::Sys" }
+            - { token: ".cluster", cpp: "MembarLevel::Cluster" }
+      args: []
+      cpp_struct: "InstrMembar"
+
+###############################################################################
+# fence
+###############################################################################
+- opcode: "fence"
+  doc: "PTX ISA §9.7.11.5"
+  variants:
+    - description: "fence acquire/release"
+      modifiers:
+        qualifier:
+          kind: required
+          type: FenceOp
+          values:
+            - { token: ".acquire", cpp: "FenceOp::Acquire" }
+            - { token: ".release", cpp: "FenceOp::Release" }
+            - { token: ".acq_rel", cpp: "FenceOp::AcqRel" }
+            - { token: ".sc", cpp: "FenceOp::Sc" }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cta", cpp: "MemScope::Cta" }
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+            - { token: ".gpu", cpp: "MemScope::Gpu" }
+            - { token: ".sys", cpp: "MemScope::Sys" }
+      args: []
+      cpp_struct: "InstrFence"
+
+    - description: "fence.proxy"
+      modifiers:
+        proxy:
+          kind: fixed
+          fixed_value: ".proxy"
+        kind:
+          kind: required
+          type: FenceProxyKind
+          values:
+            - { token: ".alias", cpp: "FenceProxyKind::Alias" }
+            - { token: ".async", cpp: "FenceProxyKind::Async" }
+            - { token: ".async.global", cpp: "FenceProxyKind::AsyncGlobal" }
+            - { token: ".async.shared", cpp: "FenceProxyKind::AsyncShared" }
+            - {
+                token: ".async.shared::cta",
+                cpp: "FenceProxyKind::AsyncSharedCta",
+              }
+      args: []
+      cpp_struct: "InstrFenceProxy"
+
+###############################################################################
+# atom
+###############################################################################
+- opcode: "atom"
+  doc: "PTX ISA §9.7.11.6"
+  variants:
+    - description: "atom (default/weak)"
+      modifiers:
+        qualifier:
+          kind: optional
+          type: AtomQualifier
+          values:
+            - { token: ".weak", cpp: "AtomQualifier::Weak" }
+            - { token: ".relaxed", cpp: "AtomQualifier::Relaxed" }
+            - { token: ".acquire", cpp: "AtomQualifier::Acquire" }
+            - { token: ".release", cpp: "AtomQualifier::Release" }
+            - { token: ".acq_rel", cpp: "AtomQualifier::AcqRel" }
+        scope:
+          kind: optional
+          type: MemScope
+          values:
+            - { token: ".cta", cpp: "MemScope::Cta" }
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+            - { token: ".gpu", cpp: "MemScope::Gpu" }
+            - { token: ".sys", cpp: "MemScope::Sys" }
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        op:
+          kind: required
+          type: AtomOp
+          values:
+            - { token: ".and", cpp: "AtomOp::And" }
+            - { token: ".or", cpp: "AtomOp::Or" }
+            - { token: ".xor", cpp: "AtomOp::Xor" }
+            - { token: ".cas", cpp: "AtomOp::Cas" }
+            - { token: ".exch", cpp: "AtomOp::Exch" }
+            - { token: ".add", cpp: "AtomOp::Add" }
+            - { token: ".inc", cpp: "AtomOp::Inc" }
+            - { token: ".dec", cpp: "AtomOp::Dec" }
+            - { token: ".min", cpp: "AtomOp::Min" }
+            - { token: ".max", cpp: "AtomOp::Max" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".b128", cpp: "ScalarType::B128" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg, note: "old value; omit for .red" }
+        - { name: "addr", kind: addr }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: optional_reg_or_imm, note: "only for .cas" }
+      cpp_struct: "InstrAtom"
+
+###############################################################################
+# red
+###############################################################################
+- opcode: "red"
+  doc: "PTX ISA §9.7.11.7"
+  variants:
+    - modifiers:
+        qualifier:
+          kind: optional
+          type: AtomQualifier
+          values:
+            - { token: ".weak", cpp: "AtomQualifier::Weak" }
+            - { token: ".relaxed", cpp: "AtomQualifier::Relaxed" }
+            - { token: ".release", cpp: "AtomQualifier::Release" }
+            - { token: ".acq_rel", cpp: "AtomQualifier::AcqRel" }
+        scope:
+          kind: optional
+          type: MemScope
+          values:
+            - { token: ".cta", cpp: "MemScope::Cta" }
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+            - { token: ".gpu", cpp: "MemScope::Gpu" }
+            - { token: ".sys", cpp: "MemScope::Sys" }
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        op:
+          kind: required
+          type: AtomOp
+          values:
+            - { token: ".and", cpp: "AtomOp::And" }
+            - { token: ".or", cpp: "AtomOp::Or" }
+            - { token: ".xor", cpp: "AtomOp::Xor" }
+            - { token: ".add", cpp: "AtomOp::Add" }
+            - { token: ".inc", cpp: "AtomOp::Inc" }
+            - { token: ".dec", cpp: "AtomOp::Dec" }
+            - { token: ".min", cpp: "AtomOp::Min" }
+            - { token: ".max", cpp: "AtomOp::Max" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "addr", kind: addr }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrRed"
+
+###############################################################################
+# vote (legacy warp-level)
+###############################################################################
+- opcode: "vote"
+  doc: "PTX ISA §9.7.11.8"
+  variants:
+    - modifiers:
+        uni:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".uni", cpp: "true" }
+        mode:
+          kind: required
+          type: VoteMode
+          values:
+            - { token: ".all", cpp: "VoteMode::All" }
+            - { token: ".any", cpp: "VoteMode::Any" }
+            - { token: ".uni", cpp: "VoteMode::Uni" }
+            - { token: ".ballot", cpp: "VoteMode::Ballot" }
+        pred:
+          kind: fixed
+          fixed_value: ".pred"
+      args:
+        - {
+            name: "dst",
+            kind: reg,
+            note: "pred for all/any/uni, b32 for ballot",
+          }
+        - { name: "src", kind: pred }
+      cpp_struct: "InstrVote"
+
+###############################################################################
+# vote.sync
+###############################################################################
+- opcode: "vote.sync"
+  doc: "PTX ISA §9.7.11.8"
+  variants:
+    - modifiers:
+        mode:
+          kind: required
+          type: VoteMode
+          values:
+            - { token: ".all", cpp: "VoteMode::All" }
+            - { token: ".any", cpp: "VoteMode::Any" }
+            - { token: ".uni", cpp: "VoteMode::Uni" }
+            - { token: ".ballot", cpp: "VoteMode::Ballot" }
+        pred:
+          kind: fixed
+          fixed_value: ".pred"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: pred }
+        - { name: "membermask", kind: reg_or_imm }
+      cpp_struct: "InstrVoteSync"
+
+###############################################################################
+# match.sync
+###############################################################################
+- opcode: "match.sync"
+  doc: "PTX ISA §9.7.11.9"
+  variants:
+    - modifiers:
+        mode:
+          kind: required
+          type: MatchSyncMode
+          values:
+            - { token: ".any", cpp: "MatchSyncMode::Any" }
+            - { token: ".all", cpp: "MatchSyncMode::All" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+        - { name: "membermask", kind: reg_or_imm }
+      cpp_struct: "InstrMatchSync"
+
+###############################################################################
+# activemask
+###############################################################################
+- opcode: "activemask"
+  doc: "PTX ISA §9.7.11.10"
+  variants:
+    - modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "dst", kind: reg }
+      cpp_struct: "InstrActivemask"
+
+###############################################################################
+# redux.sync
+###############################################################################
+- opcode: "redux.sync"
+  doc: "PTX ISA §9.7.11.11"
+  variants:
+    - modifiers:
+        op:
+          kind: required
+          type: ReduxSyncOp
+          values:
+            - { token: ".add", cpp: "ReduxSyncOp::Add" }
+            - { token: ".min", cpp: "ReduxSyncOp::Min" }
+            - { token: ".max", cpp: "ReduxSyncOp::Max" }
+            - { token: ".and", cpp: "ReduxSyncOp::And" }
+            - { token: ".or", cpp: "ReduxSyncOp::Or" }
+            - { token: ".xor", cpp: "ReduxSyncOp::Xor" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+        - { name: "membermask", kind: reg_or_imm }
+      cpp_struct: "InstrReduxSync"
+
+###############################################################################
+# elect.sync
+###############################################################################
+- opcode: "elect.sync"
+  doc: "PTX ISA §9.7.11.12"
+  variants:
+    - modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "dst", kind: pred }
+        - { name: "rx", kind: reg, note: "b32 out (elected thread)" }
+        - { name: "membermask", kind: reg_or_imm }
+      cpp_struct: "InstrElectSync"
+
+###############################################################################
+# cp.async.bulk  (TMA family)
+###############################################################################
+- opcode: "cp.async.bulk"
+  doc: "PTX ISA §9.7.11.13"
+  variants:
+    - description: "cp.async.bulk shared←global"
+      modifiers:
+        dst_space:
+          kind: fixed
+          fixed_value: ".shared::cluster"
+        src_space:
+          kind: fixed
+          fixed_value: ".global"
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - {
+                token: ".mbarrier::complete_tx::bytes",
+                cpp: "CpBulkCM::MbarComplTx",
+              }
+            - {
+                token: ".multicast::cluster::mbarrier::complete_tx::bytes",
+                cpp: "CpBulkCM::MulticastMbarComplTx",
+              }
+      args:
+        - { name: "dst_addr", kind: addr }
+        - { name: "src_addr", kind: addr }
+        - { name: "size", kind: reg_or_imm }
+        - { name: "mbar_ptr", kind: addr }
+        - { name: "dst_mcast", kind: optional_reg, note: "only for multicast" }
+      cpp_struct: "InstrCpAsyncBulk"
+
+    - description: "cp.async.bulk global←shared (write-back)"
+      modifiers:
+        dst_space:
+          kind: fixed
+          fixed_value: ".global"
+        src_space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - { token: ".bulk_group", cpp: "CpBulkCM::BulkGroup" }
+      args:
+        - { name: "dst_addr", kind: addr }
+        - { name: "src_addr", kind: addr }
+        - { name: "size", kind: reg_or_imm }
+      cpp_struct: "InstrCpAsyncBulk"
+
+    - description: "cp.async.bulk shared←shared (cluster)"
+      modifiers:
+        dst_space:
+          kind: fixed
+          fixed_value: ".shared::cluster"
+        src_space:
+          kind: fixed
+          fixed_value: ".shared::cta"
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - {
+                token: ".mbarrier::complete_tx::bytes",
+                cpp: "CpBulkCM::MbarComplTx",
+              }
+      args:
+        - { name: "dst_addr", kind: addr }
+        - { name: "src_addr", kind: addr }
+        - { name: "size", kind: reg_or_imm }
+        - { name: "mbar_ptr", kind: addr }
+      cpp_struct: "InstrCpAsyncBulk"
+
+- opcode: "cp.async.bulk.commit_group"
+  doc: "PTX ISA §9.7.11.14"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrCpAsyncBulkCommitGroup"
+
+- opcode: "cp.async.bulk.wait_group"
+  doc: "PTX ISA §9.7.11.15"
+  variants:
+    - modifiers:
+        read:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".read", cpp: "true" }
+      args:
+        - { name: "n", kind: imm }
+      cpp_struct: "InstrCpAsyncBulkWaitGroup"
+
+###############################################################################
+# mbarrier
+###############################################################################
+- opcode: "mbarrier.init"
+  doc: "PTX ISA §9.7.11.17"
+  variants:
+    - modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "addr", kind: addr }
+        - { name: "count", kind: reg_or_imm }
+      cpp_struct: "InstrMbarrierInit"
+
+- opcode: "mbarrier.inval"
+  doc: "PTX ISA §9.7.11.17"
+  variants:
+    - modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "addr", kind: addr }
+      cpp_struct: "InstrMbarrierInval"
+
+- opcode: "mbarrier.arrive"
+  doc: "PTX ISA §9.7.11.18"
+  variants:
+    - description: "mbarrier.arrive (returns token)"
+      modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "state", kind: reg, note: "u64 out" }
+        - { name: "addr", kind: addr }
+        - { name: "count", kind: optional_reg_or_imm }
+      cpp_struct: "InstrMbarrierArrive"
+
+    - description: "mbarrier.arrive.noComplete"
+      modifiers:
+        no_complete:
+          kind: fixed
+          fixed_value: ".noComplete"
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "state", kind: reg }
+        - { name: "addr", kind: addr }
+        - { name: "count", kind: reg_or_imm }
+      cpp_struct: "InstrMbarrierArriveNoComplete"
+
+- opcode: "mbarrier.arrive.expect_tx"
+  doc: "PTX ISA §9.7.11.18"
+  variants:
+    - modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "state", kind: reg }
+        - { name: "addr", kind: addr }
+        - { name: "tx_cnt", kind: reg_or_imm }
+      cpp_struct: "InstrMbarrierArriveExpectTx"
+
+- opcode: "mbarrier.test_wait"
+  doc: "PTX ISA §9.7.11.19"
+  variants:
+    - modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "waitcomplete", kind: pred, note: "pred out" }
+        - { name: "addr", kind: addr }
+        - { name: "state", kind: reg }
+      cpp_struct: "InstrMbarrierTestWait"
+
+- opcode: "mbarrier.try_wait"
+  doc: "PTX ISA §9.7.11.19"
+  variants:
+    - modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "waitcomplete", kind: pred }
+        - { name: "addr", kind: addr }
+        - { name: "state", kind: reg }
+        - { name: "suspendtimeout", kind: optional_reg_or_imm }
+      cpp_struct: "InstrMbarrierTryWait"
+
+- opcode: "mbarrier.pending_count"
+  doc: "PTX ISA §9.7.11.20"
+  variants:
+    - modifiers:
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "count", kind: reg }
+        - { name: "state", kind: reg }
+      cpp_struct: "InstrMbarrierPendingCount"

@@ -1,0 +1,107 @@
+# PTX ISA 9.2 — Control Flow Instructions
+
+###############################################################################
+# bra
+###############################################################################
+- opcode: "bra"
+  doc: "PTX ISA §9.7.10.1"
+  variants:
+    - modifiers:
+        uni:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".uni", cpp: "true" }
+      args:
+        - { name: "target", kind: label }
+      cpp_struct: "InstrBra"
+
+###############################################################################
+# brx.idx
+###############################################################################
+- opcode: "brx.idx"
+  doc: "PTX ISA §9.7.10.2"
+  variants:
+    - modifiers:
+        uni:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".uni", cpp: "true" }
+      args:
+        - { name: "index", kind: reg }
+        - { name: "target", kind: label }
+      cpp_struct: "InstrBrxIdx"
+
+###############################################################################
+# call
+###############################################################################
+- opcode: "call"
+  doc: "PTX ISA §9.7.10.3"
+  variants:
+    - description: "call (uni) with optional return list"
+      modifiers:
+        uni:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".uni", cpp: "true" }
+      args:
+        - {
+            name: "ret_param_list",
+            kind: optional_reg_list,
+            note: "( ret1, ret2, ... )",
+          }
+        - { name: "func", kind: label_or_reg }
+        - {
+            name: "param_list",
+            kind: optional_reg_list,
+            note: "( p1, p2, ... )",
+          }
+      cpp_struct: "InstrCall"
+
+###############################################################################
+# ret
+###############################################################################
+- opcode: "ret"
+  doc: "PTX ISA §9.7.10.4"
+  variants:
+    - modifiers:
+        uni:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".uni", cpp: "true" }
+      args: []
+      cpp_struct: "InstrRet"
+
+###############################################################################
+# exit / trap
+###############################################################################
+- opcode: "exit"
+  doc: "PTX ISA §9.7.10.5"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrExit"
+
+- opcode: "trap"
+  doc: "PTX ISA §9.7.10.6"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrTrap"
+
+###############################################################################
+# nanosleep
+###############################################################################
+- opcode: "nanosleep"
+  doc: "PTX ISA §9.7.10.7"
+  variants:
+    - modifiers:
+        u32:
+          kind: fixed
+          fixed_value: ".u32"
+      args:
+        - { name: "ns", kind: reg_or_imm, note: "nanoseconds, u32" }
+      cpp_struct: "InstrNanosleep"

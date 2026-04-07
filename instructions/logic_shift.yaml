@@ -1,0 +1,196 @@
+# PTX ISA 9.2 — Logic and Shift Instructions
+
+- opcode: "and"
+  doc: "PTX ISA §9.7.5.1"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrAnd"
+
+- opcode: "or"
+  doc: "PTX ISA §9.7.5.2"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrOr"
+
+- opcode: "xor"
+  doc: "PTX ISA §9.7.5.3"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrXor"
+
+- opcode: "not"
+  doc: "PTX ISA §9.7.5.4"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrNot"
+
+- opcode: "cnot"
+  doc: "PTX ISA §9.7.5.5"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrCnot"
+
+- opcode: "lop3"
+  doc: "PTX ISA §9.7.5.6"
+  variants:
+    - description: "lop3.b32 (3-input logic)"
+      modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+        - { name: "immLut", kind: imm, note: "8-bit LUT immediate" }
+      cpp_struct: "InstrLop3"
+
+- opcode: "shl"
+  doc: "PTX ISA §9.7.5.7"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm, note: "shift amount u32" }
+      cpp_struct: "InstrShl"
+
+- opcode: "shr"
+  doc: "PTX ISA §9.7.5.8"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm, note: "shift amount u32" }
+      cpp_struct: "InstrShr"
+      emit_note: "kind = Arithmetic if signed else Logical"
+
+- opcode: "shf"
+  doc: "PTX ISA §9.7.5.9"
+  variants:
+    - modifiers:
+        dir:
+          kind: required
+          type: ShiftDirection
+          values:
+            - { token: ".l", cpp: "ShiftDirection::Left" }
+            - { token: ".r", cpp: "ShiftDirection::Right" }
+        mode:
+          kind: required
+          type: FunnelShiftMode
+          values:
+            - { token: ".clamp", cpp: "FunnelShiftMode::Clamp" }
+            - { token: ".wrap", cpp: "FunnelShiftMode::Wrap" }
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src_a", kind: reg_or_imm }
+        - { name: "src_b", kind: reg_or_imm }
+        - { name: "src_c", kind: reg_or_imm }
+      cpp_struct: "InstrShf"
+
+- opcode: "prmt"
+  doc: "PTX ISA §9.7.5.10"
+  variants:
+    - description: "prmt.b32 (default mode)"
+      modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+        mode:
+          kind: optional
+          type: PrmtMode
+          values:
+            - { token: ".f4e", cpp: "PrmtMode::F4e" }
+            - { token: ".b4e", cpp: "PrmtMode::B4e" }
+            - { token: ".rc8", cpp: "PrmtMode::Rc8" }
+            - { token: ".ecl", cpp: "PrmtMode::Ecl" }
+            - { token: ".ecr", cpp: "PrmtMode::Ecr" }
+            - { token: ".rc16", cpp: "PrmtMode::Rc16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrPrmt"

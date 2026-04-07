@@ -1,0 +1,300 @@
+# PTX ISA 9.2 — Miscellaneous Instructions
+
+###############################################################################
+# brkpt / pmevent / griddepcontrol
+###############################################################################
+- opcode: "brkpt"
+  doc: "PTX ISA §9.7.12.1"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrBrkpt"
+
+- opcode: "pmevent"
+  doc: "PTX ISA §9.7.12.2"
+  variants:
+    - modifiers:
+        a:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".a", cpp: "true" }
+      args:
+        - { name: "target", kind: reg_or_imm }
+      cpp_struct: "InstrPmevent"
+
+- opcode: "griddepcontrol.launch_dependents"
+  doc: "PTX ISA §9.7.12.3"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrGridDepControlLaunchDependents"
+
+- opcode: "griddepcontrol.wait"
+  doc: "PTX ISA §9.7.12.3"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrGridDepControlWait"
+
+###############################################################################
+# Special registers read via mov
+# These are not standalone instructions but operands parsed in mov contexts
+###############################################################################
+- opcode: "setmaxnreg"
+  doc: "PTX ISA §9.7.12.4"
+  variants:
+    - modifiers:
+        mode:
+          kind: required
+          type: SetMaxNregMode
+          values:
+            - { token: ".inc", cpp: "SetMaxNregMode::Inc" }
+            - { token: ".dec", cpp: "SetMaxNregMode::Dec" }
+        u32:
+          kind: fixed
+          fixed_value: ".u32"
+      args:
+        - { name: "nreg", kind: imm }
+      cpp_struct: "InstrSetMaxNreg"
+
+###############################################################################
+# Texture (legacy)
+# tex / tld4 / txq / suld / sust / sured / suq
+###############################################################################
+- opcode: "tex"
+  doc: "PTX ISA §9.7.7.1"
+  variants:
+    - description: "tex.geom.v4.dtype.ctype"
+      modifiers:
+        geom:
+          kind: required
+          type: TexGeom
+          values:
+            - { token: ".1d", cpp: "TexGeom::D1" }
+            - { token: ".2d", cpp: "TexGeom::D2" }
+            - { token: ".3d", cpp: "TexGeom::D3" }
+            - { token: ".a1d", cpp: "TexGeom::A1d" }
+            - { token: ".a2d", cpp: "TexGeom::A2d" }
+            - { token: ".cube", cpp: "TexGeom::Cube" }
+        v4:
+          kind: fixed
+          fixed_value: ".v4"
+        dtype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+        ctype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg_list }
+        - { name: "tex_obj", kind: reg }
+        - { name: "coords", kind: reg_list }
+      cpp_struct: "InstrTex"
+
+- opcode: "tld4"
+  doc: "PTX ISA §9.7.7.2"
+  variants:
+    - modifiers:
+        comp:
+          kind: required
+          type: TexComponent
+          values:
+            - { token: ".r", cpp: "TexComponent::R" }
+            - { token: ".g", cpp: "TexComponent::G" }
+            - { token: ".b", cpp: "TexComponent::B" }
+            - { token: ".a", cpp: "TexComponent::A" }
+        geom:
+          kind: required
+          type: TexGeom
+          values:
+            - { token: ".2d", cpp: "TexGeom::D2" }
+        v4:
+          kind: fixed
+          fixed_value: ".v4"
+        dtype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+        ctype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg_list }
+        - { name: "tex_obj", kind: reg }
+        - { name: "coords", kind: reg_list }
+      cpp_struct: "InstrTld4"
+
+###############################################################################
+# cp.reduce.async.bulk / cp.reduce.async.bulk.tensor
+###############################################################################
+- opcode: "cp.reduce.async.bulk"
+  doc: "PTX ISA §9.7.11.13"
+  variants:
+    - modifiers:
+        dst_space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        src_space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+        op:
+          kind: required
+          type: AtomOp
+          values:
+            - { token: ".and", cpp: "AtomOp::And" }
+            - { token: ".or", cpp: "AtomOp::Or" }
+            - { token: ".xor", cpp: "AtomOp::Xor" }
+            - { token: ".add", cpp: "AtomOp::Add" }
+            - { token: ".min", cpp: "AtomOp::Min" }
+            - { token: ".max", cpp: "AtomOp::Max" }
+            - { token: ".inc", cpp: "AtomOp::Inc" }
+            - { token: ".dec", cpp: "AtomOp::Dec" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - { token: ".bulk_group", cpp: "CpBulkCM::BulkGroup" }
+      args:
+        - { name: "dst_addr", kind: addr }
+        - { name: "src_addr", kind: addr }
+        - { name: "size", kind: reg_or_imm }
+      cpp_struct: "InstrCpReduceAsyncBulk"
+
+- opcode: "cp.reduce.async.bulk.tensor"
+  doc: "PTX ISA §9.7.11.16"
+  variants:
+    - modifiers:
+        dst_space:
+          kind: fixed
+          fixed_value: ".global"
+        src_space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        dim:
+          kind: required
+          type: TmaDim
+          values:
+            - { token: ".1d", cpp: "TmaDim::D1" }
+            - { token: ".2d", cpp: "TmaDim::D2" }
+            - { token: ".3d", cpp: "TmaDim::D3" }
+            - { token: ".4d", cpp: "TmaDim::D4" }
+            - { token: ".5d", cpp: "TmaDim::D5" }
+        op:
+          kind: required
+          type: AtomOp
+          values:
+            - { token: ".add", cpp: "AtomOp::Add" }
+            - { token: ".min", cpp: "AtomOp::Min" }
+            - { token: ".max", cpp: "AtomOp::Max" }
+            - { token: ".and", cpp: "AtomOp::And" }
+            - { token: ".or", cpp: "AtomOp::Or" }
+            - { token: ".xor", cpp: "AtomOp::Xor" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - { token: ".bulk_group", cpp: "CpBulkCM::BulkGroup" }
+      args:
+        - { name: "tensor_map", kind: reg }
+        - { name: "coords", kind: reg_list }
+        - { name: "src_smem", kind: addr }
+      cpp_struct: "InstrCpReduceAsyncBulkTensor"
+
+###############################################################################
+# isspacep / addspace
+###############################################################################
+- opcode: "isspacep"
+  doc: "PTX ISA §9.7.8.12"
+  variants:
+    - modifiers:
+        space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".const", cpp: "StateSpace::Const" }
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".param", cpp: "StateSpace::Param" }
+      args:
+        - { name: "dst", kind: pred }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrIsSpacep"
+
+###############################################################################
+# stacksave / stackrestore
+###############################################################################
+- opcode: "stacksave"
+  doc: "PTX ISA §9.7.8.13"
+  variants:
+    - modifiers:
+        size:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+      args:
+        - { name: "dst", kind: reg }
+      cpp_struct: "InstrStacksave"
+
+- opcode: "stackrestore"
+  doc: "PTX ISA §9.7.8.13"
+  variants:
+    - modifiers:
+        size:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+      args:
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrStackrestore"

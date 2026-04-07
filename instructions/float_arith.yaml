@@ -1,0 +1,386 @@
+# PTX ISA 9.2 — Floating-Point Arithmetic Instructions
+
+###############################################################################
+# fma
+###############################################################################
+- opcode: "fma"
+  doc: "PTX ISA §9.7.2.1"
+  variants:
+    - description: "fma.f32"
+      modifiers:
+        rnd:
+          kind: required
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrFma"
+
+    - description: "fma.f64"
+      modifiers:
+        rnd:
+          kind: required
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        type:
+          kind: fixed
+          fixed_value: ".f64"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrFma"
+
+    - description: "fma half-precision / bf16"
+      modifiers:
+        rnd:
+          kind: required
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrFma"
+
+###############################################################################
+# rcp
+###############################################################################
+- opcode: "rcp"
+  doc: "PTX ISA §9.7.2.2"
+  variants:
+    - description: "rcp.approx"
+      modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrRcp"
+      emit_note: "RcpKind::Approx"
+
+    - description: "rcp.rnd.f32"
+      modifiers:
+        rnd:
+          kind: required
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrRcp"
+      emit_note: "RcpKind::Compliant(rnd)"
+
+###############################################################################
+# sqrt / rsqrt
+###############################################################################
+- opcode: "sqrt"
+  doc: "PTX ISA §9.7.2.3"
+  variants:
+    - description: "sqrt.approx.f32"
+      modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrSqrt"
+      emit_note: "RcpKind::Approx"
+
+    - description: "sqrt.rnd"
+      modifiers:
+        rnd:
+          kind: required
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrSqrt"
+
+- opcode: "rsqrt"
+  doc: "PTX ISA §9.7.2.4"
+  variants:
+    - description: "rsqrt.approx.f32"
+      modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrRsqrt"
+
+    - description: "rsqrt.approx.f64"
+      modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f64"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrRsqrt"
+
+###############################################################################
+# sin / cos / lg2 / ex2
+###############################################################################
+- opcode: "sin"
+  doc: "PTX ISA §9.7.2.5"
+  variants:
+    - modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrSin"
+
+- opcode: "cos"
+  doc: "PTX ISA §9.7.2.6"
+  variants:
+    - modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrCos"
+
+- opcode: "lg2"
+  doc: "PTX ISA §9.7.2.7"
+  variants:
+    - modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrLg2"
+
+- opcode: "ex2"
+  doc: "PTX ISA §9.7.2.8"
+  variants:
+    - description: "ex2.approx.f32"
+      modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrEx2"
+
+    - description: "ex2.approx half-precision"
+      modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrEx2"
+
+###############################################################################
+# tanh / copysign
+###############################################################################
+- opcode: "tanh"
+  doc: "PTX ISA §9.7.2.9"
+  variants:
+    - modifiers:
+        approx:
+          kind: fixed
+          fixed_value: ".approx"
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrTanh"
+
+- opcode: "copysign"
+  doc: "PTX ISA §9.7.2.10"
+  variants:
+    - modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg }
+        - { name: "src2", kind: reg }
+      cpp_struct: "InstrCopysign"

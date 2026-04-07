@@ -1,0 +1,27 @@
+# PTX ISA 9.2 — Warp-Level Shuffle Instructions
+
+###############################################################################
+# shfl.sync
+###############################################################################
+- opcode: "shfl.sync"
+  doc: "PTX ISA §9.7.9.1"
+  variants:
+    - modifiers:
+        mode:
+          kind: required
+          type: ShflMode
+          values:
+            - { token: ".up", cpp: "ShflMode::Up" }
+            - { token: ".down", cpp: "ShflMode::Down" }
+            - { token: ".bfly", cpp: "ShflMode::Bfly" }
+            - { token: ".idx", cpp: "ShflMode::Idx" }
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "pred_out", kind: optional_pred }
+        - { name: "src", kind: reg }
+        - { name: "src_b", kind: reg_or_imm }
+        - { name: "membermask", kind: reg_or_imm }
+      cpp_struct: "InstrShflSync"

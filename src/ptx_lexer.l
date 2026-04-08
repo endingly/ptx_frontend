@@ -306,10 +306,12 @@ STRING      \"[^\"]*\"
 ".cta"          { TOK(DotCta); }
 ".cluster"      { TOK(DotCluster); }
 ".gpu"          { TOK(DotGpu); }
+".gl"           { TOK(DotGl); }
 ".sys"          { TOK(DotSys); }
 
  /* State spaces (as modifiers, e.g. ld.global) */
 ".generic"      { TOK(DotGeneric); }
+".to"           { TOK(DotTo); }
 
  /* ld/st cache operators */
 ".ca"           { TOK(DotCa); }
@@ -335,6 +337,7 @@ STRING      \"[^\"]*\"
 ".min"          { TOK(DotMin); }
 ".max"          { TOK(DotMax); }
 ".cas"          { TOK(DotCas); }
+".popc"         { TOK(DotPopc); }
 
  /* Mul / mad modes */
 ".hi"           { TOK(DotHi); }

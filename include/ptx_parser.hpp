@@ -4,6 +4,20 @@
 #include "ptx_ir.hpp"
 #include "ptx_lexer.hpp"
 
+/* 
+Module
+ ├── .version  .target  .address_size    (module header)
+ └── Directive*
+      ├── .extern / .visible / .weak  +  (Variable | Function)
+      └── Function
+           ├── MethodDeclaration         (.entry / .func + params)
+           ├── TuningDirective*          (.maxnreg / .maxntid / ...)
+           └── Statement*
+                ├── Label                (ident:)
+                ├── Variable             (.reg .b32 %r<4>;)
+                └── Instruction          (@pred  opcode  operands;)
+*/
+
 namespace ptx_frontend {
 
 struct ParseError {

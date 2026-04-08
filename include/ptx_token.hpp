@@ -225,10 +225,12 @@ enum class TokenKind : uint16_t {
   DotCta,
   DotCluster,
   DotGpu,
+  DotGl,
   DotSys,
 
   // State spaces (as modifiers)
   DotGeneric,
+  DotTo,
 
   // Cache operators
   DotCa,
@@ -290,6 +292,7 @@ enum class TokenKind : uint16_t {
   DotIdx,
   DotWarp,
   DotRed,
+  DotPopc,
 
   // ldmatrix / mma
   DotM8n8,

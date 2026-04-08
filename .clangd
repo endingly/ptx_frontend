@@ -1,0 +1,20 @@
+CompileFlags:
+  CompilationDatabase: out/build/linux-gcc-11
+
+  # 剥除 GCC 的模块相关 flag——clangd 用 Clang 前端，不认识这些
+  Remove:
+    - -fmodules-ts
+    - -fmodule-only
+    - -fmodule-mapper=*
+    - -fdeps-format=*
+    - -fdeps-file=*
+    - -fdeps-target=*
+
+  Add:
+    - -std=c++23
+
+Index:
+  Background: Build
+
+Diagnostics:
+  UnusedIncludes: None

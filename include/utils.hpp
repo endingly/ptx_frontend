@@ -1,9 +1,0 @@
-#pragma once
-#include <type_traits>
-
-namespace ptx_frontend::utils {
-
-template <typename T, typename... Ts>
-inline constexpr bool is_one_of = (std::is_same_v<T, Ts> || ...);
-
-};

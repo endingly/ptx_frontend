@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.28.0)
+cmake_minimum_required(VERSION 4.3)
 
 project(ptx_frontend VERSION 0.0.1 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Flex target
 include(FindFLEX)
@@ -20,8 +20,19 @@ FLEX_TARGET(
     COMPILE_FLAGS "--header-file=${PTX_LEXER_HDR} -w"
 )
 
-aux_source_directory(src ptx_frontend_srcs)
-add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS})
+add_library(ptx_frontend)
+# simple cpp files
+target_sources(
+    ptx_frontend PRIVATE ${FLEX_ptx_lexer_OUTPUTS}
+)
+file(GLOB_RECURSE PTX_FRONTEND_MPP src/*.mpp)
+target_sources(
+    ptx_frontend 
+    PUBLIC
+    FILE_SET CXX_MODULES
+    BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src
+    FILES ${PTX_FRONTEND_MPP}
+)
 target_include_directories(ptx_frontend PUBLIC include ${PTX_GEN_DIR})
 target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
 

@@ -1,0 +1,5 @@
+export module ptx_ir;
+
+export import :base_defs;
+export import :details;
+export import :instr;

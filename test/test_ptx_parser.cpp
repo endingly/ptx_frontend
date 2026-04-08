@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ptx_ir.hpp"
+#include "ptx_ir/instr.hpp"
 #include "ptx_parser.hpp"
 
 using namespace ptx_frontend;

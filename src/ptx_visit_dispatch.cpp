@@ -1,5 +1,5 @@
 #include "ptx_visit_dispatch.hpp"
-#include "ptx_ir.hpp"
+#include "ptx_ir/details.hpp"
 
 namespace ptx_frontend {
 

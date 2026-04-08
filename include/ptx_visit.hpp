@@ -1,5 +1,5 @@
 #pragma once
-#include "ptx_ir.hpp"
+#include "ptx_ir/base.hpp"
 
 namespace ptx_frontend {
 

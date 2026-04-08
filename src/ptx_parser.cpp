@@ -2,7 +2,7 @@
  * ptx_parser.cpp  —  Recursive-descent parser for NVIDIA PTX ISA
  *
  * Input  : PTX source text (string_view)
- * Output : ptx_frontend::Module  (defined in ptx_ir.hpp)
+ * Output : ptx_frontend::Module  (defined in ptx_ir/instr.hpp)
  *
  * All string_view values in the returned AST borrow from the
  * original source — the caller keeps it alive.

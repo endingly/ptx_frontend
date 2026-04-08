@@ -1,7 +1,7 @@
 #pragma once
 #include <expected.hpp>
 #include <string>
-#include "ptx_ir.hpp"
+#include "ptx_ir/instr.hpp"
 #include "ptx_lexer.hpp"
 
 /* 

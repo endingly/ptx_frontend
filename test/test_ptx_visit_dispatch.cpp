@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <utility>
 #include <variant>
-#include "ptx_ir.hpp"
+#include "ptx_ir/instr.hpp"
 #include "ptx_visit_dispatch.hpp"
 
 TEST(PtxVisitDispatch, VisitInstrAdd) {
@@ -2323,7 +2323,7 @@ TEST(PtxVisitDispatch, MapInstrReduxSync) {
 TEST(PtxVisitDispatch, VisitInstrLdMatrix) {
   using namespace ptx_frontend;
   InstrLdMatrix<ParsedOp> instr{
-      .data = LdMatrixDetails{.shape = MatrixShape::M8N8,
+      .data = LdMatrixDetails{.shape = LdStMatrixShape::M8N8,
                               .number = MatrixNumber::X1,
                               .transpose = false,
                               .state_space = StateSpace::Shared,
@@ -2348,7 +2348,7 @@ TEST(PtxVisitDispatch, VisitInstrLdMatrix) {
 TEST(PtxVisitDispatch, MapInstrLdMatrix) {
   using namespace ptx_frontend;
   InstrLdMatrix<ParsedOp> instr{
-      .data = LdMatrixDetails{.shape = MatrixShape::M8N8,
+      .data = LdMatrixDetails{.shape = LdStMatrixShape::M8N8,
                               .number = MatrixNumber::X1,
                               .transpose = false,
                               .state_space = StateSpace::Shared,
@@ -2399,10 +2399,12 @@ TEST(PtxVisitDispatch, MapInstrGridDepControl) {
 TEST(PtxVisitDispatch, VisitInstrMma) {
   using namespace ptx_frontend;
   InstrMma<ParsedOp> instr{
-      .data = MmaDetails{.alayout = MatrixLayout::RowMajor,
+      .data = MmaDetails{.shape = MmaShape::M16N8K16,
+                         .alayout = MatrixLayout::RowMajor,
                          .blayout = MatrixLayout::ColMajor,
-                         .cd_type_scalar = ScalarType::F32,
-                         .ab_type_scalar = ScalarType::F16},
+                         .dtype = ScalarType::F32,
+                         .atype = ScalarType::F16,
+                         .btype = ScalarType::F16},
       .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d")),
       .src1 = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("a")),
       .src2 = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("b")),
@@ -2427,10 +2429,12 @@ TEST(PtxVisitDispatch, VisitInstrMma) {
 TEST(PtxVisitDispatch, MapInstrMma) {
   using namespace ptx_frontend;
   InstrMma<ParsedOp> instr{
-      .data = MmaDetails{.alayout = MatrixLayout::RowMajor,
+      .data = MmaDetails{.shape = MmaShape::M16N8K16,
+                         .alayout = MatrixLayout::RowMajor,
                          .blayout = MatrixLayout::ColMajor,
-                         .cd_type_scalar = ScalarType::F32,
-                         .ab_type_scalar = ScalarType::F16},
+                         .dtype = ScalarType::F32,
+                         .atype = ScalarType::F16,
+                         .btype = ScalarType::F16},
       .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d")),
       .src1 = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("a")),
       .src2 = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("b")),
@@ -2737,4 +2741,2138 @@ TEST(PtxVisitDispatch, MapInstruction) {
   EXPECT_EQ(get_id(result.dst), "d2");
   EXPECT_EQ(get_id(result.src1), "a2");
   EXPECT_EQ(get_id(result.src2), "b2");
+}
+
+// ── InstrMovMatrix ─────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMovMatrix) {
+  using namespace ptx_frontend;
+
+  InstrMovMatrix<ParsedOp> instr{
+      .data = MovMatrixDetails{MatrixNumber::X1, /*transpose=*/true},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+  };
+
+  std::vector<std::pair<Ident, bool>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool is_dst,
+          bool) -> expected<void, std::string> {
+        EXPECT_EQ(ts->space, StateSpace::Shared);
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), is_dst});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "dst");
+  EXPECT_TRUE(visited[0].second);
+  EXPECT_EQ(visited[1].first, "src");
+  EXPECT_FALSE(visited[1].second);
+}
+
+TEST(PtxVisitDispatch, MapInstrMovMatrix) {
+  using namespace ptx_frontend;
+
+  InstrMovMatrix<ParsedOp> instr{
+      .data = MovMatrixDetails{MatrixNumber::X1, false},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "d")
+          return Ident{"d2"};
+        if (id == "s")
+          return Ident{"s2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->dst), "d2");
+  EXPECT_EQ(get_id(r->src), "s2");
+  EXPECT_EQ(r->data.transpose, false);
+}
+
+// ── InstrCpAsyncBulk ───────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrCpAsyncBulk) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulk<ParsedOp> instr{
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+      .size = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("sz")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 3u);
+  EXPECT_EQ(visited[0].first, "dst");
+  EXPECT_EQ(visited[0].second, StateSpace::SharedCluster);
+  EXPECT_EQ(visited[1].first, "src");
+  EXPECT_EQ(visited[1].second, StateSpace::Global);
+  EXPECT_EQ(visited[2].first, "sz");
+  EXPECT_EQ(visited[2].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrCpAsyncBulk) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulk<ParsedOp> instr{
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+      .size = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("sz")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "dst")
+          return Ident{"dst2"};
+        if (id == "src")
+          return Ident{"src2"};
+        if (id == "sz")
+          return Ident{"sz2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->dst), "dst2");
+  EXPECT_EQ(get_id(r->src), "src2");
+  EXPECT_EQ(get_id(r->size), "sz2");
+}
+
+// ── InstrCpAsyncBulkTensor ─────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrCpAsyncBulkTensor_ToShared) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkTensor<ParsedOp> instr{
+      .data =
+          CpAsyncBulkTensorDetails{TensorDim::D2,
+                                   CpAsyncBulkTensorDir::GlobalToSharedCluster},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .tensormap = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tmap")),
+      .coords = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cx")),
+                 ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cy"))},
+      .offsets = std::nullopt,
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // dst, tmap, cx, cy
+  ASSERT_EQ(ids.size(), 4u);
+  EXPECT_EQ(ids[0], "dst");
+  EXPECT_EQ(ids[1], "tmap");
+  EXPECT_EQ(ids[2], "cx");
+  EXPECT_EQ(ids[3], "cy");
+}
+
+TEST(PtxVisitDispatch, VisitInstrCpAsyncBulkTensor_WithOffsets) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkTensor<ParsedOp> instr{
+      .data =
+          CpAsyncBulkTensorDetails{TensorDim::D2,
+                                   CpAsyncBulkTensorDir::GlobalToSharedCluster},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .tensormap = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tmap")),
+      .coords = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cx")),
+                 ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cy"))},
+      .offsets =
+          std::vector<ParsedOp>{
+              ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ox")),
+              ParsedOp::from_value(RegOrImmediate<Ident>::Reg("oy")),
+          },
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // dst, tmap, cx, cy, ox, oy
+  ASSERT_EQ(ids.size(), 6u);
+  EXPECT_EQ(ids[4], "ox");
+  EXPECT_EQ(ids[5], "oy");
+}
+
+TEST(PtxVisitDispatch, MapInstrCpAsyncBulkTensor) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkTensor<ParsedOp> instr{
+      .data =
+          CpAsyncBulkTensorDetails{TensorDim::D1,
+                                   CpAsyncBulkTensorDir::GlobalToSharedCluster},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .tensormap = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tmap")),
+      .coords = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cx"))},
+      .offsets = std::nullopt,
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "dst")
+          return Ident{"r_dst"};
+        if (id == "tmap")
+          return Ident{"r_tmap"};
+        if (id == "cx")
+          return Ident{"r_cx"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::string(
+        std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value));
+  };
+  EXPECT_EQ(get_id(r->dst), "r_dst");
+  EXPECT_EQ(get_id(r->tensormap), "r_tmap");
+  ASSERT_EQ(r->coords.size(), 1u);
+  EXPECT_EQ(get_id(r->coords[0]), "r_cx");
+  EXPECT_FALSE(r->offsets.has_value());
+}
+
+// ── InstrCpAsyncBulkCommitGroup ────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrCpAsyncBulkCommitGroup) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkCommitGroup instr{};
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr<ParsedOp, std::string>(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrCpAsyncBulkCommitGroup) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkCommitGroup instr{};
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+}
+
+// ── InstrCpAsyncBulkWaitGroup ──────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrCpAsyncBulkWaitGroup) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkWaitGroup<ParsedOp> instr{
+      .n = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("n")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        EXPECT_EQ(ts->space, StateSpace::Reg);
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 1u);
+  EXPECT_EQ(ids[0], "n");
+}
+
+TEST(PtxVisitDispatch, MapInstrCpAsyncBulkWaitGroup) {
+  using namespace ptx_frontend;
+
+  InstrCpAsyncBulkWaitGroup<ParsedOp> instr{
+      .n = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("n")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "n")
+          return Ident{"n2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->n), "n2");
+}
+
+// ── InstrTensormapReplace ──────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTensormapReplace) {
+  using namespace ptx_frontend;
+
+  InstrTensormapReplace<ParsedOp> instr{
+      .data = TensormapReplaceDetails{TensormapReplaceField::GlobalAddress},
+      .tmap_ptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tmap")),
+      .new_val = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("val")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "tmap");
+  EXPECT_EQ(visited[0].second, StateSpace::Global);
+  EXPECT_EQ(visited[1].first, "val");
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrTensormapReplace) {
+  using namespace ptx_frontend;
+
+  InstrTensormapReplace<ParsedOp> instr{
+      .data = TensormapReplaceDetails{TensormapReplaceField::SwizzlingMode},
+      .tmap_ptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tmap")),
+      .new_val = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("val")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tmap")
+          return Ident{"tmap2"};
+        if (id == "val")
+          return Ident{"val2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->tmap_ptr), "tmap2");
+  EXPECT_EQ(get_id(r->new_val), "val2");
+  EXPECT_EQ(r->data.field, TensormapReplaceField::SwizzlingMode);
+}
+
+// ── InstrTensormapCpFenceProxy ─────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTensormapCpFenceProxy) {
+  using namespace ptx_frontend;
+
+  InstrTensormapCpFenceProxy<ParsedOp> instr{
+      .data =
+          TensormapCpFenceProxyDetails{AtomSemantics::Acquire, MemScope::Sys},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 1u);
+  EXPECT_EQ(visited[0].first, "addr");
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+}
+
+TEST(PtxVisitDispatch, MapInstrTensormapCpFenceProxy) {
+  using namespace ptx_frontend;
+
+  InstrTensormapCpFenceProxy<ParsedOp> instr{
+      .data =
+          TensormapCpFenceProxyDetails{AtomSemantics::Acquire, MemScope::Gpu},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "addr")
+          return Ident{"addr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "addr2");
+  EXPECT_EQ(r->data.scope, MemScope::Gpu);
+}
+
+// ── InstrPrefetchu ─────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrPrefetchu) {
+  using namespace ptx_frontend;
+
+  InstrPrefetchu<ParsedOp> instr{
+      .level = CacheLevel::L1,
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 1u);
+  EXPECT_EQ(visited[0].first, "addr");
+  EXPECT_EQ(visited[0].second, StateSpace::Generic);
+}
+
+TEST(PtxVisitDispatch, MapInstrPrefetchu) {
+  using namespace ptx_frontend;
+
+  InstrPrefetchu<ParsedOp> instr{
+      .level = CacheLevel::L2,
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "addr")
+          return Ident{"addr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "addr2");
+  EXPECT_EQ(r->level, CacheLevel::L2);
+}
+
+// ── InstrClusterLaunchControl ──────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrClusterLaunchControl_TryCancel) {
+  using namespace ptx_frontend;
+
+  // TryCancel — no dst
+  InstrClusterLaunchControl<ParsedOp> instr{
+      .data = ClusterLaunchControlDetails{CLCOp::TryCancel},
+      .dst = std::nullopt,
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 1u);
+  EXPECT_EQ(ids[0], "addr");
+}
+
+TEST(PtxVisitDispatch, VisitInstrClusterLaunchControl_QueryCancel) {
+  using namespace ptx_frontend;
+
+  // QueryCancel — has pred dst
+  InstrClusterLaunchControl<ParsedOp> instr{
+      .data = ClusterLaunchControlDetails{CLCOp::QueryCancel},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("pred")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  std::vector<std::pair<Ident, bool>> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool is_dst,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back({std::get<Ident>(roi.value), is_dst});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 2u);
+  EXPECT_EQ(ids[0].first, "pred");
+  EXPECT_TRUE(ids[0].second);  // is_dst
+  EXPECT_EQ(ids[1].first, "addr");
+  EXPECT_FALSE(ids[1].second);
+}
+
+TEST(PtxVisitDispatch, MapInstrClusterLaunchControl_NoDst) {
+  using namespace ptx_frontend;
+
+  InstrClusterLaunchControl<ParsedOp> instr{
+      .data = ClusterLaunchControlDetails{CLCOp::TryCancel},
+      .dst = std::nullopt,
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "addr")
+          return Ident{"addr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_FALSE(r->dst.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "addr2");
+}
+
+TEST(PtxVisitDispatch, MapInstrClusterLaunchControl_WithDst) {
+  using namespace ptx_frontend;
+
+  InstrClusterLaunchControl<ParsedOp> instr{
+      .data = ClusterLaunchControlDetails{CLCOp::QueryCancel},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("pred")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "pred")
+          return Ident{"pred2"};
+        if (id == "addr")
+          return Ident{"addr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  ASSERT_TRUE(r->dst.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(*r->dst), "pred2");
+  EXPECT_EQ(get_id(r->addr), "addr2");
+}
+
+// ── InstrFence ─────────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrFence) {
+  using namespace ptx_frontend;
+
+  InstrFence<ParsedOp> instr{
+      .data =
+          FenceDetails{FenceScAcqRel{FenceSemantics::AcqRel, MemScope::Gpu}},
+  };
+
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrFence) {
+  using namespace ptx_frontend;
+
+  InstrFence<ParsedOp> instr{
+      .data = FenceDetails{FenceProxyAlias{}},
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_TRUE(std::holds_alternative<FenceProxyAlias>(r->data));
+}
+
+// ── InstrRed ───────────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrRed) {
+  using namespace ptx_frontend;
+
+  InstrRed<ParsedOp> instr{
+      .data =
+          RedDetails{AtomSemantics::Relaxed, MemScope::Gpu, StateSpace::Global,
+                     AtomicOp::Add, make_scalar(ScalarType::U32)},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "addr");
+  EXPECT_EQ(visited[0].second, StateSpace::Global);
+  EXPECT_EQ(visited[1].first, "src");
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrRed) {
+  using namespace ptx_frontend;
+
+  InstrRed<ParsedOp> instr{
+      .data =
+          RedDetails{AtomSemantics::Relaxed, MemScope::Sys, StateSpace::Global,
+                     AtomicOp::Add, make_scalar(ScalarType::U32)},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "addr")
+          return Ident{"addr2"};
+        if (id == "src")
+          return Ident{"src2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "addr2");
+  EXPECT_EQ(get_id(r->src), "src2");
+}
+
+// ── InstrMbarrierInit ──────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierInit) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierInit<ParsedOp> instr{
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "bar");
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+  EXPECT_EQ(visited[1].first, "cnt");
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierInit) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierInit<ParsedOp> instr{
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "bar")
+          return Ident{"bar2"};
+        if (id == "cnt")
+          return Ident{"cnt2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "bar2");
+  EXPECT_EQ(get_id(r->count), "cnt2");
+}
+
+// ── InstrMbarrierInval ─────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierInval) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierInval<ParsedOp> instr{
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 1u);
+  EXPECT_EQ(visited[0].first, "bar");
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierInval) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierInval<ParsedOp> instr{
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "bar")
+          return Ident{"bar2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "bar2");
+}
+
+// ── InstrMbarrierArrive ────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierArrive_Simple) {
+  using namespace ptx_frontend;
+
+  // arrive_drop: no token, no count
+  InstrMbarrierArrive<ParsedOp> instr{
+      .data = MbarrierArriveDetails{true, false, std::nullopt},
+      .token = std::nullopt,
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .count = std::nullopt,
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 1u);
+  EXPECT_EQ(ids[0], "bar");
+}
+
+TEST(PtxVisitDispatch, VisitInstrMbarrierArrive_WithTokenAndCount) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierArrive<ParsedOp> instr{
+      .data = MbarrierArriveDetails{false, false, std::nullopt},
+      .token = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tok")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // token, addr, count
+  ASSERT_EQ(ids.size(), 3u);
+  EXPECT_EQ(ids[0], "tok");
+  EXPECT_EQ(ids[1], "bar");
+  EXPECT_EQ(ids[2], "cnt");
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierArrive) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierArrive<ParsedOp> instr{
+      .data = MbarrierArriveDetails{false, false, std::nullopt},
+      .token = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tok")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .count = std::nullopt,
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tok")
+          return Ident{"tok2"};
+        if (id == "bar")
+          return Ident{"bar2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  ASSERT_TRUE(r->token.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(*r->token), "tok2");
+  EXPECT_EQ(get_id(r->addr), "bar2");
+  EXPECT_FALSE(r->count.has_value());
+}
+
+// ── InstrMbarrierTestWait ──────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierTestWait) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierTestWait<ParsedOp> instr{
+      .data = MbarrierTestWaitDetails{false},
+      .done = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("done")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .token_or_parity =
+          ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tok")),
+  };
+
+  std::vector<std::pair<Ident, bool>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool is_dst,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), is_dst});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 3u);
+  EXPECT_EQ(visited[0].first, "done");
+  EXPECT_TRUE(visited[0].second);  // is_dst
+  EXPECT_EQ(visited[1].first, "bar");
+  EXPECT_FALSE(visited[1].second);
+  EXPECT_EQ(visited[2].first, "tok");
+  EXPECT_FALSE(visited[2].second);
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierTestWait) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierTestWait<ParsedOp> instr{
+      .data = MbarrierTestWaitDetails{true},
+      .done = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("done")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .token_or_parity =
+          ParsedOp::from_value(RegOrImmediate<Ident>::Reg("par")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "done")
+          return Ident{"done2"};
+        if (id == "bar")
+          return Ident{"bar2"};
+        if (id == "par")
+          return Ident{"par2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->done), "done2");
+  EXPECT_EQ(get_id(r->addr), "bar2");
+  EXPECT_EQ(get_id(r->token_or_parity), "par2");
+  EXPECT_TRUE(r->data.parity);
+}
+
+// ── InstrMbarrierTryWait ───────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierTryWait_NoTimeout) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierTryWait<ParsedOp> instr{
+      .data = MbarrierTryWaitDetails{false, false},
+      .done = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("done")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .token_or_parity =
+          ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tok")),
+      .timeout_ns = std::nullopt,
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 3u);
+  EXPECT_EQ(ids[0], "done");
+  EXPECT_EQ(ids[1], "bar");
+  EXPECT_EQ(ids[2], "tok");
+}
+
+TEST(PtxVisitDispatch, VisitInstrMbarrierTryWait_WithTimeout) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierTryWait<ParsedOp> instr{
+      .data = MbarrierTryWaitDetails{false, true},
+      .done = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("done")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .token_or_parity =
+          ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tok")),
+      .timeout_ns = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ns")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 4u);
+  EXPECT_EQ(ids[3], "ns");
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierTryWait) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierTryWait<ParsedOp> instr{
+      .data = MbarrierTryWaitDetails{false, true},
+      .done = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("done")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .token_or_parity =
+          ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tok")),
+      .timeout_ns = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ns")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "done")
+          return Ident{"done2"};
+        if (id == "bar")
+          return Ident{"bar2"};
+        if (id == "tok")
+          return Ident{"tok2"};
+        if (id == "ns")
+          return Ident{"ns2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->done), "done2");
+  EXPECT_EQ(get_id(r->addr), "bar2");
+  EXPECT_EQ(get_id(r->token_or_parity), "tok2");
+  ASSERT_TRUE(r->timeout_ns.has_value());
+  EXPECT_EQ(get_id(*r->timeout_ns), "ns2");
+}
+
+// ── InstrMbarrierExpectTx ──────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierExpectTx) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierExpectTx<ParsedOp> instr{
+      .data = MbarrierExpectTxDetails{MemScope::Cta},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .tx_count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "bar");
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+  EXPECT_EQ(visited[1].first, "cnt");
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierExpectTx) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierExpectTx<ParsedOp> instr{
+      .data = MbarrierExpectTxDetails{MemScope::Cluster},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .tx_count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "bar")
+          return Ident{"bar2"};
+        if (id == "cnt")
+          return Ident{"cnt2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "bar2");
+  EXPECT_EQ(get_id(r->tx_count), "cnt2");
+  EXPECT_EQ(r->data.scope, MemScope::Cluster);
+}
+
+// ── InstrMbarrierCompleteTx ────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrMbarrierCompleteTx) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierCompleteTx<ParsedOp> instr{
+      .data = MbarrierCompleteTxDetails{MemScope::Cta},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .tx_count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrMbarrierCompleteTx) {
+  using namespace ptx_frontend;
+
+  InstrMbarrierCompleteTx<ParsedOp> instr{
+      .data = MbarrierCompleteTxDetails{MemScope::Cta},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("bar")),
+      .tx_count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "bar")
+          return Ident{"bar2"};
+        if (id == "cnt")
+          return Ident{"cnt2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "bar2");
+  EXPECT_EQ(get_id(r->tx_count), "cnt2");
+}
+
+// ── InstrStMatrix ──────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrStMatrix) {
+  using namespace ptx_frontend;
+
+  InstrStMatrix<ParsedOp> instr{
+      .data = StMatrixDetails{LdStMatrixShape::M16N8, MatrixNumber::X2, false},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+      .srcs = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s0")),
+               ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s1"))},
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // addr (Shared), s0 (Reg), s1 (Reg)
+  ASSERT_EQ(visited.size(), 3u);
+  EXPECT_EQ(visited[0].first, "addr");
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+  EXPECT_EQ(visited[1].first, "s0");
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+  EXPECT_EQ(visited[2].first, "s1");
+  EXPECT_EQ(visited[2].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrStMatrix) {
+  using namespace ptx_frontend;
+
+  InstrStMatrix<ParsedOp> instr{
+      .data = StMatrixDetails{LdStMatrixShape::M8N8, MatrixNumber::X1, false},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+      .srcs = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s0"))},
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "addr")
+          return Ident{"addr2"};
+        if (id == "s0")
+          return Ident{"s0_2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "addr2");
+  ASSERT_EQ(r->srcs.size(), 1u);
+  EXPECT_EQ(get_id(r->srcs[0]), "s0_2");
+}
+
+// ── InstrWgmmaMmaAsync ─────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrWgmmaMmaAsync) {
+  using namespace ptx_frontend;
+
+  InstrWgmmaMmaAsync<ParsedOp> instr{
+      .data =
+          WgmmaMmaAsyncDetails{
+              .shape = WgmmaShape::M64N8K16,
+              .blayout = MatrixLayout::ColMajor,
+              .dtype = ScalarType::F32,
+              .atype = ScalarType::F16,
+              .btype = ScalarType::F16,
+              .a_source = WgmmaInput::Register,
+              .scale_d = true,
+              .flush_to_zero = std::nullopt,
+              .saturate = false,
+          },
+      .d_srcs = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d0")),
+                 ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d1"))},
+      .a = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("a")),
+      .b = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("b")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // d0, d1, a, b
+  ASSERT_EQ(ids.size(), 4u);
+  EXPECT_EQ(ids[0], "d0");
+  EXPECT_EQ(ids[1], "d1");
+  EXPECT_EQ(ids[2], "a");
+  EXPECT_EQ(ids[3], "b");
+}
+
+TEST(PtxVisitDispatch, MapInstrWgmmaMmaAsync) {
+  using namespace ptx_frontend;
+
+  InstrWgmmaMmaAsync<ParsedOp> instr{
+      .data =
+          WgmmaMmaAsyncDetails{
+              .shape = WgmmaShape::M64N8K16,
+              .blayout = MatrixLayout::ColMajor,
+              .dtype = ScalarType::F32,
+              .atype = ScalarType::F16,
+              .btype = ScalarType::F16,
+              .a_source = WgmmaInput::Register,
+              .scale_d = false,
+              .flush_to_zero = std::nullopt,
+              .saturate = false,
+          },
+      .d_srcs = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d0"))},
+      .a = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("a")),
+      .b = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("b")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "d0")
+          return Ident{"d0_2"};
+        if (id == "a")
+          return Ident{"a2"};
+        if (id == "b")
+          return Ident{"b2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  ASSERT_EQ(r->d_srcs.size(), 1u);
+  EXPECT_EQ(get_id(r->d_srcs[0]), "d0_2");
+  EXPECT_EQ(get_id(r->a), "a2");
+  EXPECT_EQ(get_id(r->b), "b2");
+}
+
+// ── InstrTcgen05Alloc ──────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Alloc) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Alloc<ParsedOp> instr{
+      .data = Tcgen05AllocDetails{Tcgen05CtaGroup::Cta1},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .ncols = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ncols")),
+  };
+
+  std::vector<std::pair<Ident, bool>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool is_dst,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), is_dst});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "tptr");
+  EXPECT_TRUE(visited[0].second);  // is_dst
+  EXPECT_EQ(visited[1].first, "ncols");
+  EXPECT_FALSE(visited[1].second);
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Alloc) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Alloc<ParsedOp> instr{
+      .data = Tcgen05AllocDetails{Tcgen05CtaGroup::Cta2},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .ncols = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ncols")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tptr")
+          return Ident{"tptr2"};
+        if (id == "ncols")
+          return Ident{"ncols2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->tptr), "tptr2");
+  EXPECT_EQ(get_id(r->ncols), "ncols2");
+  EXPECT_EQ(r->data.cta_group, Tcgen05CtaGroup::Cta2);
+}
+
+// ── InstrTcgen05Dealloc ────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Dealloc) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Dealloc<ParsedOp> instr{
+      .data = Tcgen05DeallocDetails{},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .ncols = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ncols")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(ids.size(), 2u);
+  EXPECT_EQ(ids[0], "tptr");
+  EXPECT_EQ(ids[1], "ncols");
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Dealloc) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Dealloc<ParsedOp> instr{
+      .data = Tcgen05DeallocDetails{},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .ncols = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("ncols")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tptr")
+          return Ident{"tptr2"};
+        if (id == "ncols")
+          return Ident{"ncols2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->tptr), "tptr2");
+  EXPECT_EQ(get_id(r->ncols), "ncols2");
+}
+
+// ── InstrTcgen05Ld ─────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Ld_NoOffset) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Ld<ParsedOp> instr{
+      .data = Tcgen05LdStDetails{Tcgen05Shape::Shape16x64b, false, false, false,
+                                 ScalarType::B32},
+      .dsts = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d0")),
+               ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d1"))},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .offset = std::nullopt,
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // d0 (Reg), d1 (Reg), tptr (Tmem)
+  ASSERT_EQ(visited.size(), 3u);
+  EXPECT_EQ(visited[0].second, StateSpace::Reg);
+  EXPECT_EQ(visited[2].first, "tptr");
+  EXPECT_EQ(visited[2].second, StateSpace::Tmem);
+}
+
+TEST(PtxVisitDispatch, VisitInstrTcgen05Ld_WithOffset) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Ld<ParsedOp> instr{
+      .data = Tcgen05LdStDetails{Tcgen05Shape::Shape32x32b, false, false, true,
+                                 ScalarType::B32},
+      .dsts = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d0"))},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .offset = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("off")),
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // d0, tptr, off
+  ASSERT_EQ(ids.size(), 3u);
+  EXPECT_EQ(ids[2], "off");
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Ld) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Ld<ParsedOp> instr{
+      .data = Tcgen05LdStDetails{Tcgen05Shape::Shape16x64b, false, false, false,
+                                 ScalarType::B16},
+      .dsts = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d0"))},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .offset = std::nullopt,
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "d0")
+          return Ident{"d0_2"};
+        if (id == "tptr")
+          return Ident{"tptr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  ASSERT_EQ(r->dsts.size(), 1u);
+  EXPECT_EQ(get_id(r->dsts[0]), "d0_2");
+  EXPECT_EQ(get_id(r->tptr), "tptr2");
+  EXPECT_FALSE(r->offset.has_value());
+}
+
+// ── InstrTcgen05St ─────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05St) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05St<ParsedOp> instr{
+      .data = Tcgen05LdStDetails{Tcgen05Shape::Shape16x64b, false, false, false,
+                                 ScalarType::B32},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .offset = std::nullopt,
+      .srcs = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s0")),
+               ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s1"))},
+  };
+
+  std::vector<Ident> ids;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        ids.push_back(std::get<Ident>(roi.value));
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  // tptr, s0, s1
+  ASSERT_EQ(ids.size(), 3u);
+  EXPECT_EQ(ids[0], "tptr");
+  EXPECT_EQ(ids[1], "s0");
+  EXPECT_EQ(ids[2], "s1");
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05St) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05St<ParsedOp> instr{
+      .data = Tcgen05LdStDetails{Tcgen05Shape::Shape16x64b, false, false, false,
+                                 ScalarType::B32},
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .offset = std::nullopt,
+      .srcs = {ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s0"))},
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tptr")
+          return Ident{"tptr2"};
+        if (id == "s0")
+          return Ident{"s0_2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->tptr), "tptr2");
+  EXPECT_FALSE(r->offset.has_value());
+  ASSERT_EQ(r->srcs.size(), 1u);
+  EXPECT_EQ(get_id(r->srcs[0]), "s0_2");
+}
+
+// ── InstrTcgen05Wait ───────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Wait) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Wait<ParsedOp> instr{.data =
+                                       Tcgen05WaitDetails{Tcgen05WaitKind::Ld}};
+
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Wait) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Wait<ParsedOp> instr{.data =
+                                       Tcgen05WaitDetails{Tcgen05WaitKind::St}};
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_EQ(r->data.kind, Tcgen05WaitKind::St);
+}
+
+// ── InstrTcgen05Shift ──────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Shift) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Shift<ParsedOp> instr{
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 1u);
+  EXPECT_EQ(visited[0].first, "tptr");
+  EXPECT_EQ(visited[0].second, StateSpace::Tmem);
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Shift) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Shift<ParsedOp> instr{
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tptr")
+          return Ident{"tptr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->tptr), "tptr2");
+}
+
+// ── InstrTcgen05CommitArrival ──────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05CommitArrival) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05CommitArrival<ParsedOp> instr{
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .mbar = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("mbar")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "tptr");
+  EXPECT_EQ(visited[0].second, StateSpace::Tmem);
+  EXPECT_EQ(visited[1].first, "mbar");
+  EXPECT_EQ(visited[1].second, StateSpace::Shared);
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05CommitArrival) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05CommitArrival<ParsedOp> instr{
+      .tptr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("tptr")),
+      .mbar = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("mbar")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "tptr")
+          return Ident{"tptr2"};
+        if (id == "mbar")
+          return Ident{"mbar2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->tptr), "tptr2");
+  EXPECT_EQ(get_id(r->mbar), "mbar2");
+}
+
+// ── InstrTcgen05Relinquish ─────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Relinquish) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Relinquish<ParsedOp> instr{};
+
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Relinquish) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Relinquish<ParsedOp> instr{};
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+}
+
+// ── InstrTcgen05Fence ──────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Fence) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Fence<ParsedOp> instr{
+      .data = Tcgen05FenceDetails{Tcgen05FenceKind::BeforeThreadSync},
+  };
+
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Fence) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Fence<ParsedOp> instr{
+      .data = Tcgen05FenceDetails{Tcgen05FenceKind::AfterThreadSync},
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_EQ(r->data.kind, Tcgen05FenceKind::AfterThreadSync);
+}
+
+// ── InstrTcgen05Cp ─────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05Cp) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Cp<ParsedOp> instr{
+      .data =
+          Tcgen05CpDetails{Tcgen05CpShape::Shape128x, Tcgen05CpDir::SmemToTmem},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 3u);
+  EXPECT_EQ(visited[0].first, "dst");
+  EXPECT_EQ(visited[0].second, StateSpace::Tmem);
+  EXPECT_EQ(visited[1].first, "src");
+  EXPECT_EQ(visited[1].second, StateSpace::Shared);
+  EXPECT_EQ(visited[2].first, "cnt");
+  EXPECT_EQ(visited[2].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05Cp) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05Cp<ParsedOp> instr{
+      .data =
+          Tcgen05CpDetails{Tcgen05CpShape::Shape128x, Tcgen05CpDir::SmemToTmem},
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "dst")
+          return Ident{"dst2"};
+        if (id == "src")
+          return Ident{"src2"};
+        if (id == "cnt")
+          return Ident{"cnt2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->dst), "dst2");
+  EXPECT_EQ(get_id(r->src), "src2");
+  EXPECT_EQ(get_id(r->count), "cnt2");
+}
+
+// ── InstrTcgen05MbarrierExpectTx ───────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrTcgen05MbarrierExpectTx) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05MbarrierExpectTx<ParsedOp> instr{
+      .mbar = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("mbar")),
+      .tx_count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "mbar");
+  EXPECT_EQ(visited[0].second, StateSpace::Shared);
+  EXPECT_EQ(visited[1].first, "cnt");
+  EXPECT_EQ(visited[1].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrTcgen05MbarrierExpectTx) {
+  using namespace ptx_frontend;
+
+  InstrTcgen05MbarrierExpectTx<ParsedOp> instr{
+      .mbar = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("mbar")),
+      .tx_count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "mbar")
+          return Ident{"mbar2"};
+        if (id == "cnt")
+          return Ident{"cnt2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->mbar), "mbar2");
+  EXPECT_EQ(get_id(r->tx_count), "cnt2");
+}
+
+// ── InstrClusterBarrier ────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrClusterBarrier) {
+  using namespace ptx_frontend;
+
+  InstrClusterBarrier<ParsedOp> instr{
+      .data = ClusterBarrierDetails{ClusterBarrierOp::Arrive, true},
+  };
+
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrClusterBarrier) {
+  using namespace ptx_frontend;
+
+  InstrClusterBarrier<ParsedOp> instr{
+      .data = ClusterBarrierDetails{ClusterBarrierOp::Wait, false},
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_EQ(r->data.op, ClusterBarrierOp::Wait);
+  EXPECT_FALSE(r->data.aligned);
+}
+
+// ── InstrSetMaxNReg ────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrSetMaxNReg) {
+  using namespace ptx_frontend;
+
+  InstrSetMaxNReg<ParsedOp> instr{
+      .data = SetMaxNRegDetails{SetMaxNRegOp::Inc},
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 1u);
+  EXPECT_EQ(visited[0].first, "cnt");
+  EXPECT_EQ(visited[0].second, StateSpace::Reg);
+}
+
+TEST(PtxVisitDispatch, MapInstrSetMaxNReg) {
+  using namespace ptx_frontend;
+
+  InstrSetMaxNReg<ParsedOp> instr{
+      .data = SetMaxNRegDetails{SetMaxNRegOp::Dec},
+      .count = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("cnt")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "cnt")
+          return Ident{"cnt2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->count), "cnt2");
+  EXPECT_EQ(r->data.op, SetMaxNRegOp::Dec);
+}
+
+// ── InstrGetCtaRank ────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrGetCtaRank) {
+  using namespace ptx_frontend;
+
+  InstrGetCtaRank<ParsedOp> instr{
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  std::vector<std::pair<Ident, bool>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool is_dst,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), is_dst});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "dst");
+  EXPECT_TRUE(visited[0].second);
+  EXPECT_EQ(visited[1].first, "addr");
+  EXPECT_FALSE(visited[1].second);
+}
+
+TEST(PtxVisitDispatch, MapInstrGetCtaRank) {
+  using namespace ptx_frontend;
+
+  InstrGetCtaRank<ParsedOp> instr{
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "dst")
+          return Ident{"dst2"};
+        if (id == "addr")
+          return Ident{"addr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->dst), "dst2");
+  EXPECT_EQ(get_id(r->addr), "addr2");
+}
+
+// ── InstrElectSync ─────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrElectSync) {
+  using namespace ptx_frontend;
+
+  InstrElectSync<ParsedOp> instr{
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("pred")),
+      .membermask = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("mask")),
+  };
+
+  std::vector<std::pair<Ident, bool>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace>, bool is_dst,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), is_dst});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 2u);
+  EXPECT_EQ(visited[0].first, "pred");
+  EXPECT_TRUE(visited[0].second);
+  EXPECT_EQ(visited[1].first, "mask");
+  EXPECT_FALSE(visited[1].second);
+}
+
+TEST(PtxVisitDispatch, MapInstrElectSync) {
+  using namespace ptx_frontend;
+
+  InstrElectSync<ParsedOp> instr{
+      .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("pred")),
+      .membermask = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("mask")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "pred")
+          return Ident{"pred2"};
+        if (id == "mask")
+          return Ident{"mask2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->dst), "pred2");
+  EXPECT_EQ(get_id(r->membermask), "mask2");
+}
+
+// ── InstrDiscard ───────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrDiscard) {
+  using namespace ptx_frontend;
+
+  InstrDiscard<ParsedOp> instr{
+      .data = DiscardDetails{StateSpace::Global},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  std::vector<std::pair<Ident, StateSpace>> visited;
+  auto v = make_visitor<ParsedOp, std::string>(
+      [&](const ParsedOp& op, std::optional<VisitTypeSpace> ts, bool,
+          bool) -> expected<void, std::string> {
+        auto& roi = std::get<RegOrImmediate<Ident>>(op.value);
+        visited.push_back({std::get<Ident>(roi.value), ts->space});
+        return {};
+      });
+
+  auto r = visit_instr(instr, v);
+  EXPECT_TRUE(r.has_value());
+  ASSERT_EQ(visited.size(), 1u);
+  EXPECT_EQ(visited[0].first, "addr");
+  EXPECT_EQ(visited[0].second, StateSpace::Global);
+}
+
+TEST(PtxVisitDispatch, MapInstrDiscard) {
+  using namespace ptx_frontend;
+
+  InstrDiscard<ParsedOp> instr{
+      .data = DiscardDetails{StateSpace::Local},
+      .addr = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("addr")),
+  };
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident id, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        if (id == "addr")
+          return Ident{"addr2"};
+        return tl::unexpected<std::string>("unknown");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
+  auto get_id = [](const ParsedOp& op) {
+    return std::get<Ident>(std::get<RegOrImmediate<Ident>>(op.value).value);
+  };
+  EXPECT_EQ(get_id(r->addr), "addr2");
+  EXPECT_EQ(r->data.space, StateSpace::Local);
+}
+
+// ── InstrBrkpt ─────────────────────────────────────────────────────────────
+TEST(PtxVisitDispatch, VisitInstrBrkpt) {
+  using namespace ptx_frontend;
+
+  InstrBrkpt instr{};
+
+  auto v = make_visitor<ParsedOp, std::string>(
+      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<void, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = visit_instr<ParsedOp, std::string>(instr, v);
+  EXPECT_TRUE(r.has_value());
+}
+
+TEST(PtxVisitDispatch, MapInstrBrkpt) {
+  using namespace ptx_frontend;
+
+  InstrBrkpt instr{};
+
+  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
+      [](Ident, std::optional<VisitTypeSpace>, bool,
+         bool) -> expected<Ident, std::string> {
+        return tl::unexpected<std::string>("should not be called");
+      });
+
+  auto r = map_instr(instr, vm);
+  ASSERT_TRUE(r.has_value());
 }

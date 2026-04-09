@@ -452,3 +452,152 @@ TEST(Parser, InvalidInstrReturnsError) {
   }
   // alternatively: EXPECT_FALSE(result.has_value());
 }
+
+// ============================================================
+// Fence instruction parser tests
+// ============================================================
+
+// Helper: unwrap InstrFence data variant
+template <typename T>
+static const T& fence_as(const std::vector<Instruction<ParsedOp>>& v) {
+  return std::get<T>(as<InstrFence<ParsedOp>>(v, 0).data);
+}
+
+// ── fence.sc / fence.acq_rel ─────────────────────────────────────────────────
+
+TEST(ParserFence, ScCta) {
+  auto instrs = parse_instrs("fence.sc.cta;");
+  ASSERT_EQ(instrs.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<InstrFence<ParsedOp>>(instrs[0]));
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  EXPECT_EQ(d.scope, MemScope::Cta);
+}
+
+TEST(ParserFence, ScCluster) {
+  auto instrs = parse_instrs("fence.sc.cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  EXPECT_EQ(d.scope, MemScope::Cluster);
+}
+
+TEST(ParserFence, ScGpu) {
+  auto instrs = parse_instrs("fence.sc.gpu;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  EXPECT_EQ(d.scope, MemScope::Gpu);
+}
+
+TEST(ParserFence, ScSys) {
+  auto instrs = parse_instrs("fence.sc.sys;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  EXPECT_EQ(d.scope, MemScope::Sys);
+}
+
+TEST(ParserFence, AcqRelGpu) {
+  auto instrs = parse_instrs("fence.acq_rel.gpu;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::AcqRel);
+  EXPECT_EQ(d.scope, MemScope::Gpu);
+}
+
+TEST(ParserFence, AcqRelCta) {
+  auto instrs = parse_instrs("fence.acq_rel.cta;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::AcqRel);
+  EXPECT_EQ(d.scope, MemScope::Cta);
+}
+
+TEST(ParserFence, AcqRelSys) {
+  auto instrs = parse_instrs("fence.acq_rel.sys;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::AcqRel);
+  EXPECT_EQ(d.scope, MemScope::Sys);
+}
+
+// ── fence.proxy.alias ─────────────────────────────────────────────────────────
+
+TEST(ParserFence, ProxyAlias) {
+  auto instrs = parse_instrs("fence.proxy.alias;");
+  ASSERT_EQ(instrs.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<InstrFence<ParsedOp>>(instrs[0]));
+  EXPECT_TRUE(std::holds_alternative<FenceProxyAlias>(
+      as<InstrFence<ParsedOp>>(instrs, 0).data));
+}
+
+// ── fence.proxy.tensormap::generic ───────────────────────────────────────────
+
+TEST(ParserFence, ProxyTensormapCta) {
+  auto instrs = parse_instrs("fence.proxy.tensormap::generic.cta;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyTensormap>(instrs);
+  EXPECT_EQ(d.scope, MemScope::Cta);
+}
+
+TEST(ParserFence, ProxyTensormapGpu) {
+  auto instrs = parse_instrs("fence.proxy.tensormap::generic.gpu;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyTensormap>(instrs);
+  EXPECT_EQ(d.scope, MemScope::Gpu);
+}
+
+// ── error path ─────────────────────────────────────────────────────────────────
+
+TEST(ParserFence, ErrorMissingSemOrProxy) {
+  // fence 后既不是 .sc / .acq_rel 也不是 .proxy → 解析失败
+  auto result = parse_module(make_func("fence.cta;"));
+  EXPECT_GT(result->invalid_directives, 0u);
+}
+
+TEST(ParserFence, ErrorMissingScope) {
+  // fence.sc 后无 scope → 解析失败
+  auto result = parse_module(make_func("fence.sc;"));
+  EXPECT_GT(result->invalid_directives, 0u);
+}
+
+TEST(ParserFence, ErrorProxyUnknownKind) {
+  // fence.proxy.xxx → 解析失败
+  auto result = parse_module(make_func("fence.proxy.unknown;"));
+  EXPECT_GT(result->invalid_directives, 0u);
+}
+
+// ── predicated fence ───────────────────────────────────────────────
+
+TEST(ParserFence, Predicated) {
+  auto instrs = parse_instrs(R"(
+    .reg .pred %p<1>;
+    @%p0 fence.sc.gpu;
+  )");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceScAcqRel>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  EXPECT_EQ(d.scope, MemScope::Gpu);
+}
+
+// ── multiple fences in sequence ────────────────────────────────────────────────────────────
+
+TEST(ParserFence, MultipleInSequence) {
+  auto instrs = parse_instrs(R"(
+    fence.sc.cta;
+    fence.acq_rel.gpu;
+    fence.proxy.alias;
+  )");
+  ASSERT_EQ(instrs.size(), 3u);
+
+  EXPECT_EQ(fence_as<FenceScAcqRel>({instrs[0]}).sem, FenceSemantics::Sc);
+  // note: we have to re-unwrap the second one since it's a different instruction object
+  auto& d1 =
+      std::get<FenceScAcqRel>(std::get<InstrFence<ParsedOp>>(instrs[1]).data);
+  EXPECT_EQ(d1.sem, FenceSemantics::AcqRel);
+  EXPECT_EQ(d1.scope, MemScope::Gpu);
+
+  EXPECT_TRUE(std::holds_alternative<FenceProxyAlias>(
+      std::get<InstrFence<ParsedOp>>(instrs[2]).data));
+}

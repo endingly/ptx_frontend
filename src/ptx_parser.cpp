@@ -1731,6 +1731,36 @@ struct Parser {
     return InstrCvta<ParsedOp>{CvtaDetails{ss, dir}, dst, src};
   }
 
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_fence() {
+    // ── fence.proxy.* ────────────────────────────────────────────────
+    if (match(TokenKind::DotProxy)) {
+      // fence.proxy.alias
+      if (match(TokenKind::DotAlias)) {
+        return InstrFence<ParsedOp>{FenceDetails{FenceProxyAlias{}}};
+      }
+      // fence.proxy.tensormap::generic.<scope>
+      // ".tensormap::generic" is lexed as a single DotIdent token
+      if (check(TokenKind::DotIdent)) {
+        lex.consume();  // eat .tensormap::generic (or other ::  compound)
+        auto scope = TRY(parse_mem_scope());
+        return InstrFence<ParsedOp>{FenceDetails{FenceProxyTensormap{scope}}};
+      }
+      return err_tok("fence proxy kind (.alias / .tensormap::generic)");
+    }
+
+    // ── fence.sc.<scope> / fence.acq_rel.<scope> ─────────────────────
+    FenceSemantics sem;
+    if (match(TokenKind::DotSc))
+      sem = FenceSemantics::Sc;
+    else if (match(TokenKind::DotAcqRel))
+      sem = FenceSemantics::AcqRel;
+    else
+      return err_tok("fence semantics (.sc / .acq_rel)");
+
+    auto scope = TRY(parse_mem_scope());
+    return InstrFence<ParsedOp>{FenceDetails{FenceScAcqRel{sem, scope}}};
+  }
+
   // ============================================================
   // §9  Instruction dispatch (after consuming the opcode token)
   // ============================================================
@@ -1738,96 +1768,60 @@ struct Parser {
   tl::expected<Instruction<ParsedOp>, ParseError> parse_instruction(
       TokenKind opcode) {
     switch (opcode) {
-      // data movement
-      case TokenKind::Mov:
-        return parse_instr_mov();
-      case TokenKind::Ld:
-        return parse_instr_ld();
-      case TokenKind::St:
-        return parse_instr_st();
-      case TokenKind::Cvt:
-        return parse_instr_cvt();
-      case TokenKind::Cvta:
-        return parse_instr_cvta();
+        // data movement
+        // clang-format off
+      case TokenKind::Mov:  return parse_instr_mov();
+      case TokenKind::Ld:   return parse_instr_ld();
+      case TokenKind::St:   return parse_instr_st();
+      case TokenKind::Cvt:  return parse_instr_cvt();
+      case TokenKind::Cvta: return parse_instr_cvta();
       // arithmetic
-      case TokenKind::Add:
-        return parse_instr_add();
-      case TokenKind::Sub:
-        return parse_instr_sub();
-      case TokenKind::Mul:
-        return parse_instr_mul();
-      case TokenKind::Mad:
-        return parse_instr_mad();
-      case TokenKind::Fma:
-        return parse_instr_fma();
-      case TokenKind::Div:
-        return parse_instr_div();
-      case TokenKind::Rem:
-        return parse_instr_rem();
-      case TokenKind::Abs:
-        return parse_instr_abs();
-      case TokenKind::Neg:
-        return parse_instr_neg();
-      case TokenKind::Min:
-        return parse_instr_min();
-      case TokenKind::Max:
-        return parse_instr_max();
-      case TokenKind::Sad:
-        return parse_instr_sad();
-      case TokenKind::Popc:
-        return parse_instr_popc();
-      case TokenKind::Clz:
-        return parse_instr_clz();
-      case TokenKind::Brev:
-        return parse_instr_brev();
+      case TokenKind::Add:  return parse_instr_add();
+      case TokenKind::Sub:  return parse_instr_sub();
+      case TokenKind::Mul:  return parse_instr_mul();
+      case TokenKind::Mad:  return parse_instr_mad();
+      case TokenKind::Fma:  return parse_instr_fma();
+      case TokenKind::Div:  return parse_instr_div();
+      case TokenKind::Rem:  return parse_instr_rem();
+      case TokenKind::Abs:  return parse_instr_abs();
+      case TokenKind::Neg:  return parse_instr_neg();
+      case TokenKind::Min:  return parse_instr_min();
+      case TokenKind::Max:  return parse_instr_max();
+      case TokenKind::Sad:  return parse_instr_sad();
+      case TokenKind::Popc: return parse_instr_popc();
+      case TokenKind::Clz:  return parse_instr_clz();
+      case TokenKind::Brev: return parse_instr_brev();
       // logic
-      case TokenKind::And:
-        return parse_instr_logic(TokenKind::And);
-      case TokenKind::Or:
-        return parse_instr_logic(TokenKind::Or);
-      case TokenKind::Xor:
-        return parse_instr_logic(TokenKind::Xor);
-      case TokenKind::Not:
-        return parse_instr_not();
-      case TokenKind::Shl:
-        return parse_instr_shl();
-      case TokenKind::Shr:
-        return parse_instr_shr();
+      case TokenKind::And:  return parse_instr_logic(TokenKind::And);
+      case TokenKind::Or:   return parse_instr_logic(TokenKind::Or);
+      case TokenKind::Xor:  return parse_instr_logic(TokenKind::Xor);
+      case TokenKind::Not:  return parse_instr_not();
+      case TokenKind::Shl:  return parse_instr_shl();
+      case TokenKind::Shr:  return parse_instr_shr();
       // compare / select
-      case TokenKind::Setp:
-        return parse_instr_setp();
-      case TokenKind::Selp:
-        return parse_instr_selp();
+      case TokenKind::Setp: return parse_instr_setp();
+      case TokenKind::Selp: return parse_instr_selp();
       // control
-      case TokenKind::Bra:
-        return parse_instr_bra();
-      case TokenKind::Call:
-        return parse_instr_call();
-      case TokenKind::Ret:
-        return parse_instr_ret();
-      case TokenKind::Trap:
-        return parse_instr_trap();
+      case TokenKind::Bra:  return parse_instr_bra();
+      case TokenKind::Call: return parse_instr_call();
+      case TokenKind::Ret:  return parse_instr_ret();
+      case TokenKind::Trap: return parse_instr_trap();
       // sync / mem
       case TokenKind::Bar:
-      case TokenKind::Barrier:
-        return parse_instr_bar();
-      case TokenKind::Membar:
-        return parse_instr_membar();
-      case TokenKind::Atom:
-        return parse_instr_atom();
+      case TokenKind::Barrier: return parse_instr_bar();
+      case TokenKind::Membar:  return parse_instr_membar();
+      case TokenKind::Atom:    return parse_instr_atom();
       // warp / vote
-      case TokenKind::Vote:
-        return parse_instr_vote();
-      case TokenKind::Shfl:
-        return parse_instr_shfl();
-      case TokenKind::Activemask:
-        return parse_instr_activemask();
-      // cvta
-      // (already above)
+      case TokenKind::Vote:       return parse_instr_vote();
+      case TokenKind::Shfl:       return parse_instr_shfl();
+      case TokenKind::Activemask: return parse_instr_activemask();
+      // ptx 9.2 new instructions
+      case TokenKind::Fence:       return parse_instr_fence();
       default:
         return err("unimplemented opcode (token " +
                    std::to_string((int)opcode) + ")");
     }
+    // clang-format on
   }
 
   // ============================================================
@@ -1885,6 +1879,22 @@ struct Parser {
       case TokenKind::Vote:
       case TokenKind::Shfl:
       case TokenKind::Activemask:
+      case TokenKind::Fence:
+      case TokenKind::Red:
+      case TokenKind::Mbarrier:
+      case TokenKind::Stmatrix:
+      case TokenKind::Wgmma:
+      case TokenKind::Tcgen05:
+      case TokenKind::Setmaxnreg:
+      case TokenKind::Getctarank:
+      case TokenKind::Elect:
+      case TokenKind::Discard:
+      case TokenKind::Brkpt:
+      case TokenKind::Movmatrix:
+      case TokenKind::Tensormap:
+      case TokenKind::Prefetchu:
+      case TokenKind::Clusterlaunchcontrol:
+      case TokenKind::Cp:  // cp.async.bulk.* (Cp already handled in lexer)
         return true;
       default:
         return false;

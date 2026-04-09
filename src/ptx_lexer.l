@@ -267,8 +267,27 @@ STRING      \"[^\"]*\"
 
  /* Warp/matrix */
 "ldmatrix"       { TOK(Ldmatrix); }
+"stmatrix"       { TOK(Stmatrix); }
 "mma"            { TOK(Mma); }
+"wgmma"          { TOK(Wgmma); }
+"tcgen05"        { TOK(Tcgen05); }
 "griddepcontrol" { TOK(Griddepcontrol); }
+"movmatrix"      { TOK(Movmatrix); }
+
+ /* Synchronisation / fence / mbarrier */
+"fence"                  { TOK(Fence); }
+"red"                    { TOK(Red); }
+"mbarrier"               { TOK(Mbarrier); }
+"tensormap"              { TOK(Tensormap); }
+"prefetchu"              { TOK(Prefetchu); }
+"clusterlaunchcontrol"   { TOK(Clusterlaunchcontrol); }
+
+ /* Misc PTX 9.2 */
+"setmaxnreg"     { TOK(Setmaxnreg); }
+"getctarank"     { TOK(Getctarank); }
+"elect"          { TOK(Elect); }
+"discard"        { TOK(Discard); }
+"brkpt"          { TOK(Brkpt); }
 
  /* ── Instruction modifier keywords (dot-tokens) ────────────────────────
     These must appear BEFORE the catch-all {DOT_IDENT} rule so that Flex
@@ -435,6 +454,89 @@ STRING      \"[^\"]*\"
 
  /* fractional (createpolicy) */
 ".fractional"   { TOK(DotFractional); }
+
+ /* ── PTX 9.2 dot-modifiers ─────────────────────────────────────────── */
+
+ /* wgmma / tcgen05 */
+".mma_async"       { TOK(DotMmaAsync); }
+".scale_d"         { TOK(DotScaleD); }
+
+ /* mbarrier sub-ops */
+".arrive_drop"     { TOK(DotArriveDrop); }
+".arrive"          { TOK(DotArrive); }
+".drop"            { TOK(DotDrop); }
+".init"            { TOK(DotInit); }
+".inval"           { TOK(DotInval); }
+".expect_tx"       { TOK(DotExpectTx); }
+".complete_tx"     { TOK(DotCompleteTx); }
+".test_wait"       { TOK(DotTestWait); }
+".try_wait"        { TOK(DotTryWait); }
+".parity"          { TOK(DotParity); }
+".no_complete"     { TOK(DotNoComplete); }
+
+ /* fence */
+".proxy"           { TOK(DotProxy); }
+".sc"              { TOK(DotSc); }
+".alias"           { TOK(DotAlias); }
+
+ /* tcgen05 sub-ops */
+".alloc"           { TOK(DotAlloc); }
+".dealloc"         { TOK(DotDealloc); }
+".commit_arrival"  { TOK(DotCommitArrival); }
+".relinquish"      { TOK(DotRelinquish); }
+".pack"            { TOK(DotPack); }
+".offset"          { TOK(DotOffset); }
+
+ /* tcgen05 cta group */
+".cta1"            { TOK(DotCta1); }
+".cta2"            { TOK(DotCta2); }
+
+ /* cluster launch control */
+".try_cancel"      { TOK(DotTryCancel); }
+".query_cancel"    { TOK(DotQueryCancel); }
+
+ /* cp.async.bulk */
+".bulk_group"      { TOK(DotBulkGroup); }
+".bulk"            { TOK(DotBulk); }
+".async"           { TOK(DotAsync); }
+".commit_group"    { TOK(DotCommitGroup); }
+".wait_group"      { TOK(DotWaitGroup); }
+
+ /* tensormap sub-ops */
+".replace"         { TOK(DotReplace); }
+".cp_fenceproxy"   { TOK(DotCpFenceproxy); }
+
+ /* tcgen05 shapes (数字开头，必须在 DOT_IDENT 之前显式列出) */
+".16x64b"          { TOK(DotShape16x64b);   }
+".16x128b"         { TOK(DotShape16x128b);  }
+".16x256b"         { TOK(DotShape16x256b);  }
+".32x32b"          { TOK(DotShape32x32b);   }
+".32x64b"          { TOK(DotShape32x64b);   }
+".32x128b"         { TOK(DotShape32x128b);  }
+".16x32bx2"        { TOK(DotShape16x32bx2); }
+".128x"            { TOK(DotShape128x);     }
+".4x256b"          { TOK(DotShape4x256b);   }
+
+ /* ── tcgen05 .kind::* 和其他含 :: 的复合 dot-token → DotIdent ─────── */
+".kind::mxf8f6f4"     { TOK(DotIdent); }
+".kind::mxf4nvf4"     { TOK(DotIdent); }
+".kind::mxf4"         { TOK(DotIdent); }
+".kind::f16bf16"      { TOK(DotIdent); }
+".kind::tf32"         { TOK(DotIdent); }
+".kind::i8"           { TOK(DotIdent); }
+".kind::b1"           { TOK(DotIdent); }
+".mbarrier::complete_tx::bytes"                         { TOK(DotIdent); }
+".multicast::cluster::mbarrier::complete_tx::bytes"     { TOK(DotIdent); }
+".b8x16.b6x16_p32"    { TOK(DotIdent); }
+".b8x16.b4x16_p64"    { TOK(DotIdent); }
+".b6x16_p32"          { TOK(DotIdent); }
+".b4x16_p64"          { TOK(DotIdent); }
+".collector::b0::smem" { TOK(DotIdent); }
+".scale::2,1"         { TOK(DotIdent); }
+".scale::1,2"         { TOK(DotIdent); }
+".neg::a"             { TOK(DotIdent); }
+".neg::b"             { TOK(DotIdent); }
+".tensormap::generic" { TOK(DotIdent); }
 
  /* ── catch-all: any other dot-prefixed word → DotIdent ──────────────── */
 {DOT_IDENT}     { TOK(DotIdent); }

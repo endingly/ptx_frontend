@@ -320,6 +320,87 @@ enum class TokenKind : uint16_t {
   DotNc,
   DotNoftz,
   DotFractional,
+
+  // ── PTX 9.2 new opcodes ────────────────────────────────────────────
+  Stmatrix,
+  Wgmma,
+  Tcgen05,
+  Fence,
+  Red,
+  Mbarrier,
+  Setmaxnreg,
+  Getctarank,
+  Elect,
+  Discard,
+  Brkpt,
+  Movmatrix,
+  Tensormap,
+  Prefetchu,
+  Clusterlaunchcontrol,
+
+  // ── PTX 9.2 dot-modifiers ───────────────────────────────────────────
+
+  // wgmma / tcgen05
+  DotMmaAsync,
+  DotScaleD,
+
+  // mbarrier sub-ops
+  DotArrive,
+  DotArriveDrop,
+  DotDrop,
+  DotInit,
+  DotInval,
+  DotExpectTx,
+  DotCompleteTx,
+  DotTestWait,
+  DotTryWait,
+  DotParity,
+  DotNoComplete,
+
+  // fence
+  DotProxy,
+  DotSc,
+  DotAlias,
+
+  // tcgen05 sub-ops
+  DotAlloc,
+  DotDealloc,
+  DotCommitArrival,
+  DotRelinquish,
+  DotFence,
+  DotShift,
+  DotPack,
+  DotOffset,
+
+  // tcgen05 cta group
+  DotCta1,
+  DotCta2,
+
+  // cluster launch control
+  DotTryCancel,
+  DotQueryCancel,
+
+  // cp.async.bulk
+  DotBulk,
+  DotAsync,
+  DotCommitGroup,
+  DotWaitGroup,
+  DotBulkGroup,
+
+  // tensormap sub-ops
+  DotReplace,
+  DotCpFenceproxy,
+
+  // tcgen05 ld/st shapes (start with num, DOT_IDENT does not match)
+  DotShape16x64b,
+  DotShape16x128b,
+  DotShape16x256b,
+  DotShape32x32b,
+  DotShape32x64b,
+  DotShape32x128b,
+  DotShape16x32bx2,
+  DotShape128x,
+  DotShape4x256b,
 };
 
 /**

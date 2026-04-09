@@ -1,7 +1,12 @@
-#pragma once
-#include "ptx_ir/base.hpp"
+export module ptx_visit:defs;
+import std;
+import ptx_ir;
 
-namespace ptx_frontend {
+using std::expected;
+using std::size_t;
+using std::unexpected;
+
+export namespace ptx_frontend {
 
 // ============================================================
 // § 14  Visitor / VisitorMut / VisitorMap  ←  ast.rs

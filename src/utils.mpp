@@ -1,7 +1,5 @@
-module;
-#include <type_traits>
 export module utils;
-
+import std;
 export namespace ptx_frontend::utils {
 
 template <typename T, typename... Ts>

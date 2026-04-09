@@ -1,8 +1,11 @@
+// import std;
+import ptx_ir;
+import ptx_visit;
+// import gtest;
 #include <gtest/gtest.h>
-#include <utility>
-#include <variant>
-#include "ptx_ir/instr.hpp"
-#include "ptx_visit_dispatch.hpp"
+
+// using std::expected;
+// using std::unexpected;
 
 TEST(PtxVisitDispatch, VisitInstrAdd) {
   using namespace ptx_frontend;
@@ -45,7 +48,7 @@ TEST(PtxVisitDispatch, VisitInstrAdd) {
       if (flag.first) {
         return {};
       } else {
-        return tl::unexpected("Unexpected operand: " + flag.second);
+        return unexpected("Unexpected operand: " + flag.second);
       }
     }
 
@@ -54,7 +57,7 @@ TEST(PtxVisitDispatch, VisitInstrAdd) {
                                             bool is_dst,
                                             bool relaxed) override {
       // This should not be called for this test
-      return tl::unexpected("visit_ident should not be called");
+      return unexpected("visit_ident should not be called");
     }
   } visitor;
 
@@ -101,7 +104,7 @@ TEST(PtxVisitDispatch, MapInstrCreatePolicyFractional) {
         // 模拟重命名
         if (id == "policy")
           return Ident{"policy_renamed"};
-        return tl::unexpected<std::string>("unknown id");
+        return unexpected<std::string>("unknown id");
       });
 
   auto r = map_instr(instr, vm);
@@ -190,7 +193,7 @@ TEST(PtxVisitDispatch, MapInstrCvt) {
           return Ident{"dst2"};
         if (id == "src")
           return Ident{"src2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -246,7 +249,7 @@ TEST(PtxVisitDispatch, MapInstrCvta) {
           return Ident{"dst_r"};
         if (id == "src")
           return Ident{"src_r"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -374,7 +377,7 @@ TEST(PtxVisitDispatch, MapInstrDp4a) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -502,7 +505,7 @@ TEST(PtxVisitDispatch, MapInstrFma) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm2);
@@ -575,7 +578,7 @@ TEST(PtxVisitDispatch, MapInstrLd) {
           return Ident{"dst2"};
         if (id == "ptr")
           return Ident{"ptr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -662,7 +665,7 @@ TEST(PtxVisitDispatch, MapInstrMad) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -745,7 +748,7 @@ TEST(PtxVisitDispatch, MapInstrMembar) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -845,7 +848,7 @@ TEST(PtxVisitDispatch, MapInstrMul) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -913,7 +916,7 @@ TEST(PtxVisitDispatch, MapInstrNanosleep) {
          bool) -> expected<Ident, std::string> {
         if (id == "d")
           return Ident{"d2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1009,7 +1012,7 @@ TEST(PtxVisitDispatch, MapInstrOr) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1058,7 +1061,7 @@ TEST(PtxVisitDispatch, MapInstrPopc) {
           return Ident{"d2"};
         if (id == "a")
           return Ident{"a2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1114,7 +1117,7 @@ TEST(PtxVisitDispatch, MapInstrPrmt) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1168,7 +1171,7 @@ TEST(PtxVisitDispatch, MapInstrRcp) {
           return Ident{"d2"};
         if (id == "a")
           return Ident{"a2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1221,7 +1224,7 @@ TEST(PtxVisitDispatch, MapInstrRem) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1292,7 +1295,7 @@ TEST(PtxVisitDispatch, MapInstrRsqrt) {
           return Ident{"d2"};
         if (id == "a")
           return Ident{"a2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1349,7 +1352,7 @@ TEST(PtxVisitDispatch, MapInstrSelp) {
           return Ident{"b2"};
         if (id == "p")
           return Ident{"p2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1409,7 +1412,7 @@ TEST(PtxVisitDispatch, MapInstrSet) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1485,7 +1488,7 @@ TEST(PtxVisitDispatch, MapInstrSetBool) {
           return Ident{"b2"};
         if (id == "p")
           return Ident{"p2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1548,7 +1551,7 @@ TEST(PtxVisitDispatch, MapInstrSetp) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1620,7 +1623,7 @@ TEST(PtxVisitDispatch, MapInstrSetpBool) {
           return Ident{"b2"};
         if (id == "q")
           return Ident{"q2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1699,7 +1702,7 @@ TEST(PtxVisitDispatch, MapInstrShflSync) {
           return Ident{"opts2"};
         if (id == "mask")
           return Ident{"mask2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm2);
   ASSERT_TRUE(r.has_value());
@@ -1763,7 +1766,7 @@ TEST(PtxVisitDispatch, MapInstrShf) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1817,7 +1820,7 @@ TEST(PtxVisitDispatch, MapInstrShl) {
           return Ident{"a2"};
         if (id == "n")
           return Ident{"n2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1872,7 +1875,7 @@ TEST(PtxVisitDispatch, MapInstrShr) {
           return Ident{"a2"};
         if (id == "n")
           return Ident{"n2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1920,7 +1923,7 @@ TEST(PtxVisitDispatch, MapInstrSin) {
           return Ident{"d2"};
         if (id == "a")
           return Ident{"a2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -1971,7 +1974,7 @@ TEST(PtxVisitDispatch, MapInstrSqrt) {
           return Ident{"d2"};
         if (id == "a")
           return Ident{"a2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2024,7 +2027,7 @@ TEST(PtxVisitDispatch, MapInstrSt) {
           return Ident{"addr2"};
         if (id == "val")
           return Ident{"val2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2076,7 +2079,7 @@ TEST(PtxVisitDispatch, MapInstrSub) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2149,7 +2152,7 @@ TEST(PtxVisitDispatch, MapInstrXor) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2197,7 +2200,7 @@ TEST(PtxVisitDispatch, MapInstrTanh) {
           return Ident{"d2"};
         if (id == "a")
           return Ident{"a2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2250,7 +2253,7 @@ TEST(PtxVisitDispatch, MapInstrVote) {
           return Ident{"p2"};
         if (id == "mask")
           return Ident{"mask2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2307,7 +2310,7 @@ TEST(PtxVisitDispatch, MapInstrReduxSync) {
           return Ident{"a2"};
         if (id == "mask")
           return Ident{"mask2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2363,7 +2366,7 @@ TEST(PtxVisitDispatch, MapInstrLdMatrix) {
           return Ident{"d2"};
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2451,7 +2454,7 @@ TEST(PtxVisitDispatch, MapInstrMma) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2505,7 +2508,7 @@ TEST(PtxVisitDispatch, MapInstrCopysign) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2550,7 +2553,7 @@ TEST(PtxVisitDispatch, MapInstrPrefetch) {
          bool) -> expected<Ident, std::string> {
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2606,7 +2609,7 @@ TEST(PtxVisitDispatch, MapInstrSad) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2669,7 +2672,7 @@ TEST(PtxVisitDispatch, MapInstrDp2a) {
           return Ident{"b2"};
         if (id == "c")
           return Ident{"c2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instr(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2728,7 +2731,7 @@ TEST(PtxVisitDispatch, MapInstruction) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
   auto r = map_instruction(instr, vm);
   ASSERT_TRUE(r.has_value());
@@ -2788,7 +2791,7 @@ TEST(PtxVisitDispatch, MapInstrMovMatrix) {
           return Ident{"d2"};
         if (id == "s")
           return Ident{"s2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -2849,7 +2852,7 @@ TEST(PtxVisitDispatch, MapInstrCpAsyncBulk) {
           return Ident{"src2"};
         if (id == "sz")
           return Ident{"sz2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -2953,7 +2956,7 @@ TEST(PtxVisitDispatch, MapInstrCpAsyncBulkTensor) {
           return Ident{"r_tmap"};
         if (id == "cx")
           return Ident{"r_cx"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -2977,7 +2980,7 @@ TEST(PtxVisitDispatch, VisitInstrCpAsyncBulkCommitGroup) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr<ParsedOp, std::string>(instr, v);
@@ -2991,7 +2994,7 @@ TEST(PtxVisitDispatch, MapInstrCpAsyncBulkCommitGroup) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);
@@ -3034,7 +3037,7 @@ TEST(PtxVisitDispatch, MapInstrCpAsyncBulkWaitGroup) {
          bool) -> expected<Ident, std::string> {
         if (id == "n")
           return Ident{"n2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3089,7 +3092,7 @@ TEST(PtxVisitDispatch, MapInstrTensormapReplace) {
           return Ident{"tmap2"};
         if (id == "val")
           return Ident{"val2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3142,7 +3145,7 @@ TEST(PtxVisitDispatch, MapInstrTensormapCpFenceProxy) {
          bool) -> expected<Ident, std::string> {
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3192,7 +3195,7 @@ TEST(PtxVisitDispatch, MapInstrPrefetchu) {
          bool) -> expected<Ident, std::string> {
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3272,7 +3275,7 @@ TEST(PtxVisitDispatch, MapInstrClusterLaunchControl_NoDst) {
          bool) -> expected<Ident, std::string> {
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3300,7 +3303,7 @@ TEST(PtxVisitDispatch, MapInstrClusterLaunchControl_WithDst) {
           return Ident{"pred2"};
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3325,7 +3328,7 @@ TEST(PtxVisitDispatch, VisitInstrFence) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr(instr, v);
@@ -3342,7 +3345,7 @@ TEST(PtxVisitDispatch, MapInstrFence) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);
@@ -3398,7 +3401,7 @@ TEST(PtxVisitDispatch, MapInstrRed) {
           return Ident{"addr2"};
         if (id == "src")
           return Ident{"src2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3452,7 +3455,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierInit) {
           return Ident{"bar2"};
         if (id == "cnt")
           return Ident{"cnt2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3500,7 +3503,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierInval) {
          bool) -> expected<Ident, std::string> {
         if (id == "bar")
           return Ident{"bar2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3583,7 +3586,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierArrive) {
           return Ident{"tok2"};
         if (id == "bar")
           return Ident{"bar2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3649,7 +3652,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierTestWait) {
           return Ident{"bar2"};
         if (id == "par")
           return Ident{"par2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3743,7 +3746,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierTryWait) {
           return Ident{"tok2"};
         if (id == "ns")
           return Ident{"ns2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3802,7 +3805,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierExpectTx) {
           return Ident{"bar2"};
         if (id == "cnt")
           return Ident{"cnt2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3857,7 +3860,7 @@ TEST(PtxVisitDispatch, MapInstrMbarrierCompleteTx) {
           return Ident{"bar2"};
         if (id == "cnt")
           return Ident{"cnt2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -3917,7 +3920,7 @@ TEST(PtxVisitDispatch, MapInstrStMatrix) {
           return Ident{"addr2"};
         if (id == "s0")
           return Ident{"s0_2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4002,7 +4005,7 @@ TEST(PtxVisitDispatch, MapInstrWgmmaMmaAsync) {
           return Ident{"a2"};
         if (id == "b")
           return Ident{"b2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4060,7 +4063,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Alloc) {
           return Ident{"tptr2"};
         if (id == "ncols")
           return Ident{"ncols2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4115,7 +4118,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Dealloc) {
           return Ident{"tptr2"};
         if (id == "ncols")
           return Ident{"ncols2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4203,7 +4206,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Ld) {
           return Ident{"d0_2"};
         if (id == "tptr")
           return Ident{"tptr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4266,7 +4269,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05St) {
           return Ident{"tptr2"};
         if (id == "s0")
           return Ident{"s0_2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4290,7 +4293,7 @@ TEST(PtxVisitDispatch, VisitInstrTcgen05Wait) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr(instr, v);
@@ -4306,7 +4309,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Wait) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);
@@ -4350,7 +4353,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Shift) {
          bool) -> expected<Ident, std::string> {
         if (id == "tptr")
           return Ident{"tptr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4403,7 +4406,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05CommitArrival) {
           return Ident{"tptr2"};
         if (id == "mbar")
           return Ident{"mbar2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4424,7 +4427,7 @@ TEST(PtxVisitDispatch, VisitInstrTcgen05Relinquish) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr(instr, v);
@@ -4439,7 +4442,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Relinquish) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);
@@ -4457,7 +4460,7 @@ TEST(PtxVisitDispatch, VisitInstrTcgen05Fence) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr(instr, v);
@@ -4474,7 +4477,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Fence) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);
@@ -4534,7 +4537,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05Cp) {
           return Ident{"src2"};
         if (id == "cnt")
           return Ident{"cnt2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4589,7 +4592,7 @@ TEST(PtxVisitDispatch, MapInstrTcgen05MbarrierExpectTx) {
           return Ident{"mbar2"};
         if (id == "cnt")
           return Ident{"cnt2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4612,7 +4615,7 @@ TEST(PtxVisitDispatch, VisitInstrClusterBarrier) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr(instr, v);
@@ -4629,7 +4632,7 @@ TEST(PtxVisitDispatch, MapInstrClusterBarrier) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);
@@ -4676,7 +4679,7 @@ TEST(PtxVisitDispatch, MapInstrSetMaxNReg) {
          bool) -> expected<Ident, std::string> {
         if (id == "cnt")
           return Ident{"cnt2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4730,7 +4733,7 @@ TEST(PtxVisitDispatch, MapInstrGetCtaRank) {
           return Ident{"dst2"};
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4784,7 +4787,7 @@ TEST(PtxVisitDispatch, MapInstrElectSync) {
           return Ident{"pred2"};
         if (id == "mask")
           return Ident{"mask2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4834,7 +4837,7 @@ TEST(PtxVisitDispatch, MapInstrDiscard) {
          bool) -> expected<Ident, std::string> {
         if (id == "addr")
           return Ident{"addr2"};
-        return tl::unexpected<std::string>("unknown");
+        return unexpected<std::string>("unknown");
       });
 
   auto r = map_instr(instr, vm);
@@ -4855,7 +4858,7 @@ TEST(PtxVisitDispatch, VisitInstrBrkpt) {
   auto v = make_visitor<ParsedOp, std::string>(
       [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = visit_instr<ParsedOp, std::string>(instr, v);
@@ -4870,7 +4873,7 @@ TEST(PtxVisitDispatch, MapInstrBrkpt) {
   auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
       [](Ident, std::optional<VisitTypeSpace>, bool,
          bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
+        return unexpected<std::string>("should not be called");
       });
 
   auto r = map_instr(instr, vm);

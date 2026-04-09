@@ -1,6 +1,8 @@
+// import std;
+import ptx_parser;
+import ptx_ir;
+// import gtest;
 #include <gtest/gtest.h>
-#include "ptx_ir/instr.hpp"
-#include "ptx_parser.hpp"
 
 using namespace ptx_frontend;
 

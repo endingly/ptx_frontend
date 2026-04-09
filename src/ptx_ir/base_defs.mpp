@@ -1,18 +1,15 @@
-module;
-#include <cstdint>
-#include <cstring>
-#include <expected>
-#include <optional>
-#include <string_view>
-#include <variant>
-#include <vector>
 export module ptx_ir:base_defs;
+import std;
 import utils;
 
-export namespace ptx_frontend {
-
 using std::expected;
+using std::size_t;
+using std::uint32_t, std::int32_t;
+using std::uint64_t, std::int64_t;
+using std::uint8_t;
 using std::unexpected;
+
+export namespace ptx_frontend {
 
 enum class ScalarType : uint8_t {
   U8,

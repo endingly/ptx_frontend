@@ -1,12 +1,13 @@
-module;
-#include <optional>
-#include <string_view>
-#include <variant>
-#include <cstdint>
-#include <vector>
 export module ptx_ir:details;
-
+import std;
 import :base_defs;
+
+using std::expected;
+using std::size_t;
+using std::uint32_t, std::int32_t;
+using std::uint64_t, std::int64_t;
+using std::uint8_t;
+using std::unexpected;
 
 export namespace ptx_frontend {
 

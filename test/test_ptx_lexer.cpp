@@ -1,6 +1,13 @@
+// #include <cstdint>
+// #include <expected>
+// #include <optional>
+// #include <string_view>
+// #include <variant>
+// #include <vector>
+import std;
+import ptx_lexer;
 #include <gtest/gtest.h>
-#include <string_view>
-#include "ptx_lexer.hpp"
+#include "ptx_token.hpp"
 
 using namespace ptx_frontend;
 

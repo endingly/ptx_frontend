@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: out/build/linux-gcc-11
+  CompilationDatabase: out/build/linux-gcc-15
 
   # 剥除 GCC 的模块相关 flag——clangd 用 Clang 前端，不认识这些
   Remove:
@@ -18,3 +18,6 @@ Index:
 
 Diagnostics:
   UnusedIncludes: None
+  Suppress:
+    - "module_not_found"
+    - "ast_file_version_too_old"

@@ -20,9 +20,13 @@ FLEX_TARGET(
     COMPILE_FLAGS "--header-file=${PTX_LEXER_HDR} -w"
 )
 
-aux_source_directory(src ptx_frontend_srcs)
+file(GLOB_RECURSE ptx_frontend_srcs src/*.cpp)
 add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS})
-target_include_directories(ptx_frontend PUBLIC include ${PTX_GEN_DIR})
+target_include_directories(
+    ptx_frontend 
+    PUBLIC include ${PTX_GEN_DIR}
+    PRIVATE dependencies
+)
 target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
 
 # # target ptx_frontend_test

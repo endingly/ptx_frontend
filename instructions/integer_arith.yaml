@@ -4,10 +4,19 @@
 ###############################################################################
 # add
 ###############################################################################
+# constraints schema:
+#   min_ptx_version: X.Y           # min PTX ISA version
+#   min_sm: NN                     # min SM architecture (universal sm_NN+)
+###############################################################################
 - opcode: "add"
   doc: "PTX ISA §9.7.1.1"
   variants:
-    - description: "add integer (no sat)"
+    # ── Integer: universal non sat ──────────────────────────────────────────────────
+    # add.sat.s32 from PTX 1.0, so S32 is also in this group
+    - description: "add integer no-sat (universal)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         type:
           kind: required
@@ -17,6 +26,8 @@
             - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -24,7 +35,52 @@
       cpp_struct: "InstrAdd"
       emit_note: "ArithInteger{ saturate=false }"
 
-    - description: "add integer with optional sat"
+    # ── Integer: add.sat.s32 (universal) ─────────────────────────────────────
+    # signed 32-bit saturating add supported from PTX 1.0, all SM
+    - description: "add.sat.s32 (universal)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        sat:
+          kind: fixed
+          fixed_value: ".sat"
+        type:
+          kind: fixed
+          fixed_value: ".s32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrAdd"
+      emit_note: "ArithInteger{ saturate=true }"
+
+    # ── Integer: SIMD no-sat (sm_90+) ─────────────────────────────────────────
+    # add.u16x2 / add.s16x2 (no sat) introduced in PTX 8.0, requires sm_90+
+    - description: "add SIMD no-sat (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
+      modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
+            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrAdd"
+      emit_note: "ArithInteger{ saturate=false }"
+
+    # ── Integer: packed optional sat (sm_120f family) ──────────────────────────
+    # add{.sat}.u8x4 / add{.sat}.s8x4 introduced in PTX 9.2, requires sm_120f family
+    - description: "add packed optional-sat (sm_120f family)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
       modifiers:
         sat:
           kind: optional
@@ -35,11 +91,7 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
             - { token: ".u8x4", cpp: "ScalarType::U8x4" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
             - { token: ".s8x4", cpp: "ScalarType::S8x4" }
       args:
         - { name: "dst", kind: reg }
@@ -47,10 +99,37 @@
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
 
-    ###############################################################################
-    # add (float variants)
-    ###############################################################################
+    # ── Integer: SIMD sat + u32 sat (sm_120f family) ────────────────────────────
+    # add.sat.u16x2 / add.sat.s16x2 / add.sat.u32 introduced in PTX 9.2, requires sm_120f family
+    # Note: u16x2/s16x2 no-sat versions are in sm_90+ variants; here sat is mandatory
+    - description: "add SIMD sat / add.sat.u32 (sm_120f family)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        sat:
+          kind: fixed
+          fixed_value: ".sat"
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
+            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrAdd"
+      emit_note:
+        "ArithInteger{ saturate=true }"
+
+        # ── add.f32 ──────────────────────────────────────────────────────────────
     - description: "add.f32"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         rnd:
           kind: optional
@@ -58,8 +137,8 @@
           values:
             - { token: ".rn", cpp: "RoundingMode::NearestEven" }
             - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf", min_sm: 20 }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf", min_sm: 20 }
         ftz:
           kind: optional
           type: bool
@@ -80,7 +159,12 @@
       cpp_struct: "InstrAdd"
       emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
 
+    # ── add.f64 ──────────────────────────────────────────────────────────────
+    # ftz / sat not supported; sm_13+ required; .rm/.rp inherit variant min_sm
     - description: "add.f64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 13
       modifiers:
         rnd:
           kind: optional
@@ -98,8 +182,14 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
+      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
 
+    # ── add.f32x2 ────────────────────────────────────────────────────────────
+    # sat not supported (absent = disallowed); sm_100+, PTX 8.6
     - description: "add.f32x2"
+      constraints:
+        min_ptx_version: 8.6
+        min_sm: 100
       modifiers:
         rnd:
           kind: optional
@@ -122,8 +212,14 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
+      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
 
-    - description: "add half-precision"
+    # ── add half-precision (f16 / f16x2) ─────────────────────────────────────
+    # rnd: .rn only; ftz / sat legal
+    - description: "add half-precision (f16, f16x2)"
+      constraints:
+        min_ptx_version: 6.0
+        min_sm: 53
       modifiers:
         rnd:
           kind: optional
@@ -151,8 +247,14 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
+      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
 
+    # ── add bf16 / bf16x2 ────────────────────────────────────────────────────
+    # ftz / sat not supported; rnd: .rn only
     - description: "add bf16/bf16x2"
+      constraints:
+        min_ptx_version: 7.0
+        min_sm: 80
       modifiers:
         rnd:
           kind: optional
@@ -170,6 +272,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
+      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
 
 ###############################################################################
 # sub

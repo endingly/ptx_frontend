@@ -361,6 +361,13 @@ enum class TokenKind : uint16_t {
   DotProxy,
   DotSc,
   DotAlias,
+  DotOpRestrict,                 // .op_restrict
+  DotAsyncGlobal,                // .async.global
+  DotAsyncSharedCta,             // .async.shared::cta
+  DotAsyncSharedCluster,         // .async.shared::cluster
+  DotAsyncGeneric,               // .async::generic
+  DotSyncRestrictSharedCta,      // .sync_restrict::shared::cta
+  DotSyncRestrictSharedCluster,  // .sync_restrict::shared::cluster
 
   // tcgen05 sub-ops
   DotAlloc,

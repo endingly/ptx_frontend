@@ -123,7 +123,8 @@
 - opcode: "membar"
   doc: "PTX ISA §9.7.11.4"
   variants:
-    - modifiers:
+    - description: "membar level"
+      modifiers:
         level:
           kind: required
           type: MembarLevel
@@ -132,8 +133,31 @@
             - { token: ".gl", cpp: "MembarLevel::Gl" }
             - { token: ".sys", cpp: "MembarLevel::Sys" }
             - { token: ".cluster", cpp: "MembarLevel::Cluster" }
+        args: []
+        cpp_struct: "InstrMembar"
+
+    - description: "membar.proxy.proxykind"
+      modifiers:
+        proxy:
+          kind: fixed
+          fixed_value: ".proxy"
+        kind:
+          kind: required
+          type: FenceProxyKind
+          values:
+            - { token: ".alias", cpp: "FenceProxyKind::Alias" }
+            - { token: ".async", cpp: "FenceProxyKind::Async" }
+            - { token: ".async.global", cpp: "FenceProxyKind::AsyncGlobal" }
+            - {
+                token: ".async.shared::cta",
+                cpp: "FenceProxyKind::AsyncSharedCta",
+              }
+            - {
+                token: ".async.shared::cluster",
+                cpp: "FenceProxyKind::AsyncSharedCluster",
+              }
       args: []
-      cpp_struct: "InstrMembar"
+      cpp_struct: "InstrMembarProxy"
 
 ###############################################################################
 # fence
@@ -144,13 +168,13 @@
     - description: "fence acquire/release"
       modifiers:
         qualifier:
-          kind: required
-          type: FenceOp
+          kind: optional
+          type: FenceSemantics
           values:
-            - { token: ".acquire", cpp: "FenceOp::Acquire" }
-            - { token: ".release", cpp: "FenceOp::Release" }
-            - { token: ".acq_rel", cpp: "FenceOp::AcqRel" }
-            - { token: ".sc", cpp: "FenceOp::Sc" }
+            - { token: ".acquire", cpp: "FenceSemantics::Acquire" }
+            - { token: ".release", cpp: "FenceSemantics::Release" }
+            - { token: ".acq_rel", cpp: "FenceSemantics::AcqRel" }
+            - { token: ".sc", cpp: "FenceSemantics::Sc" }
         scope:
           kind: required
           type: MemScope
@@ -161,6 +185,52 @@
             - { token: ".sys", cpp: "MemScope::Sys" }
       args: []
       cpp_struct: "InstrFence"
+
+    - description: "fence.sem.sync_restrict::shared::{cta,cluster}.scope"
+      modifiers:
+        sem:
+          kind: required
+          type: FenceSemantics
+          values:
+            - { token: ".acquire", cpp: "FenceSemantics::Acquire" }
+            - { token: ".release", cpp: "FenceSemantics::Release" }
+        sync_restrict:
+          kind: required
+          type: FenceSyncRestrict
+          values:
+            - {
+                token: ".sync_restrict::shared::cluster",
+                cpp: "FenceSyncRestrict::SharedCluster",
+              }
+            - {
+                token: ".sync_restrict::shared::cta",
+                cpp: "FenceSyncRestrict::SharedCta",
+              }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+      args: []
+      cpp_struct: "InstrFenceSyncRestrict"
+
+    - description: "fence.op_restrict.sem.scope"
+      modifiers:
+        op_restrict:
+          kind: fixed
+          fixed_value: ".op_restrict"
+        sem:
+          kind: required
+          type: FenceSemantics
+          values:
+            - { token: ".release", cpp: "FenceSemantics::Release" }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+      args: []
+      cpp_struct: "InstrFenceOpRestrict"
 
     - description: "fence.proxy"
       modifiers:
@@ -179,8 +249,73 @@
                 token: ".async.shared::cta",
                 cpp: "FenceProxyKind::AsyncSharedCta",
               }
+            - {
+                token: ".async.shared::cluster",
+                cpp: "FenceProxyKind::AsyncSharedCluster",
+              }
       args: []
       cpp_struct: "InstrFenceProxy"
+
+    - description: "fence.proxy.tensormap::generic.sem.scope — uni-directional"
+      modifiers:
+        proxy:
+          kind: fixed
+          fixed_value: ".proxy"
+        to_from:
+          kind: fixed
+          fixed_value: ".tensormap::generic"
+        sem:
+          kind: required
+          type: FenceSemantics
+          values:
+            - { token: ".release", cpp: "FenceSemantics::Release" }
+            - { token: ".acquire", cpp: "FenceSemantics::Acquire" }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cta", cpp: "MemScope::Cta" }
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+            - { token: ".gpu", cpp: "MemScope::Gpu" }
+            - { token: ".sys", cpp: "MemScope::Sys" }
+      args:
+        - { name: "addr", kind: optional_addr, note: "only for .acquire" }
+        - { name: "size", kind: optional_reg_or_imm, note: "only for .acquire" }
+      cpp_struct: "InstrFenceProxyTensormap"
+
+    - description: "fence.proxy.async::generic.sem.sync_restrict..."
+      modifiers:
+        proxy:
+          kind: fixed
+          fixed_value: ".proxy"
+        async_generic:
+          kind: fixed
+          fixed_value: ".async::generic"
+        sem:
+          kind: required
+          type: FenceSemantics
+          values:
+            - { token: ".acquire", cpp: "FenceSemantics::Acquire" }
+            - { token: ".release", cpp: "FenceSemantics::Release" }
+        sync_restrict:
+          kind: required
+          type: FenceSyncRestrict
+          values:
+            - {
+                token: ".sync_restrict::shared::cluster",
+                cpp: "FenceSyncRestrict::SharedCluster",
+              }
+            - {
+                token: ".sync_restrict::shared::cta",
+                cpp: "FenceSyncRestrict::SharedCta",
+              }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+      args: []
+      cpp_struct: "InstrFenceProxyAsyncGeneric"
 
 ###############################################################################
 # atom

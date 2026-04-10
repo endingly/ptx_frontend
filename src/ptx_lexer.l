@@ -475,9 +475,18 @@ STRING      \"[^\"]*\"
 ".no_complete"     { TOK(DotNoComplete); }
 
  /* fence */
-".proxy"           { TOK(DotProxy); }
-".sc"              { TOK(DotSc); }
-".alias"           { TOK(DotAlias); }
+".proxy"                       { TOK(DotProxy); }
+".sc"                          { TOK(DotSc); }
+".alias"                       { TOK(DotAlias); }
+".op_restrict"                 { TOK(DotOpRestrict); }
+ /* proxy kind multi-token — must appear before .async short rules */
+".async.global"                { TOK(DotAsyncGlobal); }
+".async.shared::cta"           { TOK(DotAsyncSharedCta); }
+".async.shared::cluster"       { TOK(DotAsyncSharedCluster); }
+".async::generic"              { TOK(DotAsyncGeneric); }
+ /* sync_restrict multi-token */
+".sync_restrict::shared::cta"     { TOK(DotSyncRestrictSharedCta); }
+".sync_restrict::shared::cluster" { TOK(DotSyncRestrictSharedCluster); }
 
  /* tcgen05 sub-ops */
 ".alloc"           { TOK(DotAlloc); }

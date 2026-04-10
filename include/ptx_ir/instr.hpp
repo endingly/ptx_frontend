@@ -1,5 +1,6 @@
 #pragma once
 #include <numeric>
+#include <optional>
 #include "ptx_ir/details.hpp"
 
 namespace ptx_frontend {
@@ -393,7 +394,10 @@ struct InstrDp2a {
 // fence
 template <OperandLike Op>
 struct InstrFence {
-  FenceDetails data; /* non operand */
+  FenceDetails data;
+  // present only for fence.proxy.tensormap::generic.acquire.scope [addr], size
+  std::optional<Op> addr;
+  std::optional<Op> size;
 };
 
 // red

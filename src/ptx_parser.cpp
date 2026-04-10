@@ -1732,33 +1732,106 @@ struct Parser {
   }
 
   tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_fence() {
-    // ── fence.proxy.* ────────────────────────────────────────────────
+    // ── fence.proxy.* ────────────────────────────────────────────────────
     if (match(TokenKind::DotProxy)) {
-      // fence.proxy.alias
-      if (match(TokenKind::DotAlias)) {
-        return InstrFence<ParsedOp>{FenceDetails{FenceProxyAlias{}}};
-      }
-      // fence.proxy.tensormap::generic.<scope>
-      // ".tensormap::generic" is lexed as a single DotIdent token
-      if (check(TokenKind::DotIdent)) {
-        lex.consume();  // eat .tensormap::generic (or other ::  compound)
+      // fence.proxy.async::generic.sem.sync_restrict.scope — uni-dir
+      if (match(TokenKind::DotAsyncGeneric)) {
+        FenceSemantics sem;
+        if (match(TokenKind::DotAcquire))
+          sem = FenceSemantics::Acquire;
+        else if (match(TokenKind::DotRelease))
+          sem = FenceSemantics::Release;
+        else
+          return err_tok(
+              "fence proxy async::generic sem (.acquire / .release)");
+        FenceSyncRestrictSpace rspace;
+        if (match(TokenKind::DotSyncRestrictSharedCta))
+          rspace = FenceSyncRestrictSpace::SharedCta;
+        else if (match(TokenKind::DotSyncRestrictSharedCluster))
+          rspace = FenceSyncRestrictSpace::SharedCluster;
+        else
+          return err_tok("fence proxy async::generic sync_restrict");
         auto scope = TRY(parse_mem_scope());
-        return InstrFence<ParsedOp>{FenceDetails{FenceProxyTensormap{scope}}};
+        return InstrFence<ParsedOp>{
+            FenceDetails{FenceProxyAsyncGeneric{sem, rspace, scope}}};
       }
-      return err_tok("fence proxy kind (.alias / .tensormap::generic)");
+
+      // fence.proxy.tensormap::generic.sem.scope — uni-dir
+      // ".tensormap::generic" as DotIdent by lexer
+      if (check(TokenKind::DotIdent)) {
+        lex.consume();  // eat .tensormap::generic
+        FenceSemantics sem;
+        if (match(TokenKind::DotAcquire))
+          sem = FenceSemantics::Acquire;
+        else if (match(TokenKind::DotRelease))
+          sem = FenceSemantics::Release;
+        else
+          return err_tok("fence proxy tensormap sem (.acquire / .release)");
+        auto scope = TRY(parse_mem_scope());
+        return InstrFence<ParsedOp>{
+            FenceDetails{FenceProxyTensormapUnidir{sem, scope}}};
+      }
+
+      // fence.proxy.proxykind — bi-dir (non sem / scope)
+      FenceProxyKind kind;
+      if (match(TokenKind::DotAlias))
+        kind = FenceProxyKind::Alias;
+      else if (match(TokenKind::DotAsyncGlobal))
+        kind = FenceProxyKind::AsyncGlobal;
+      else if (match(TokenKind::DotAsyncSharedCta))
+        kind = FenceProxyKind::AsyncSharedCta;
+      else if (match(TokenKind::DotAsyncSharedCluster))
+        kind = FenceProxyKind::AsyncSharedCluster;
+      else if (match(TokenKind::DotAsync))
+        kind = FenceProxyKind::Async;
+      else
+        return err_tok(
+            "fence proxy kind (.alias/.async/.async.global/"
+            ".async.shared::cta/.async.shared::cluster)");
+      return InstrFence<ParsedOp>{FenceDetails{FenceProxyBidir{kind}}};
     }
 
-    // ── fence.sc.<scope> / fence.acq_rel.<scope> ─────────────────────
-    FenceSemantics sem;
+    // ── fence.op_restrict.release.<scope> ───────────────────────────────
+    if (match(TokenKind::DotOpRestrict)) {
+      if (!match(TokenKind::DotRelease))
+        return err_tok("fence op_restrict sem (.release)");
+      auto scope = TRY(parse_mem_scope());
+      return InstrFence<ParsedOp>{FenceDetails{FenceOpRestrict{scope}}};
+    }
+
+    // ── fence{.sem}.scope  /  fence.sem.sync_restrict.scope ─────────────
+    std::optional<FenceSemantics> sem;
     if (match(TokenKind::DotSc))
       sem = FenceSemantics::Sc;
     else if (match(TokenKind::DotAcqRel))
       sem = FenceSemantics::AcqRel;
-    else
-      return err_tok("fence semantics (.sc / .acq_rel)");
+    else if (match(TokenKind::DotAcquire))
+      sem = FenceSemantics::Acquire;
+    else if (match(TokenKind::DotRelease))
+      sem = FenceSemantics::Release;
+    // sem == nullopt → fence.scope form (omitting sem), valid
 
+    // sync_restrict only appears under .acquire / .release
+    if (sem == FenceSemantics::Acquire || sem == FenceSemantics::Release) {
+      FenceSyncRestrictSpace rspace;
+      bool has_sr = false;
+      if (match(TokenKind::DotSyncRestrictSharedCta)) {
+        rspace = FenceSyncRestrictSpace::SharedCta;
+        has_sr = true;
+      } else if (match(TokenKind::DotSyncRestrictSharedCluster)) {
+        rspace = FenceSyncRestrictSpace::SharedCluster;
+        has_sr = true;
+      }
+      if (has_sr) {
+        auto scope = TRY(parse_mem_scope());
+        return InstrFence<ParsedOp>{
+            FenceDetails{FenceSyncRestrict{*sem, rspace, scope}}};
+      }
+    }
+
+    // simple fence{.sem}.scope
     auto scope = TRY(parse_mem_scope());
-    return InstrFence<ParsedOp>{FenceDetails{FenceScAcqRel{sem, scope}}};
+    return InstrFence<ParsedOp>{FenceDetails{FenceThread{sem, scope}}};
   }
 
   // ============================================================

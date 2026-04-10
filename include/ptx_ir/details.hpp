@@ -446,24 +446,62 @@ struct CallArgs {
   bool is_external = false;  // see ZLUDA hack comment
 };
 
-enum class FenceSemantics { Sc, AcqRel };
+enum class FenceSemantics { Sc, AcqRel, Acquire, Release };
 
 // fence.sc.cta / fence.acq_rel.gpu .eg
-struct FenceScAcqRel {
+struct FenceThread {
+  std::optional<FenceSemantics> sem;
+  MemScope scope;
+};
+
+// fence.acquire/release.sync_restrict::shared::{cta,cluster}.scope
+enum class FenceSyncRestrictSpace { SharedCta, SharedCluster };
+
+struct FenceSyncRestrict {
+  FenceSemantics sem;  // .acquire or .release
+  FenceSyncRestrictSpace restrict_space;
+  MemScope scope;  // only .cluster
+};
+
+// fence.proxy.tensormap::generic.sem.scope — one proxy
+// fence.proxy.tensormap::generic.acquire.scope [addr], size — acquire with address operand
+struct FenceProxyTensormapUnidir {
+  FenceSemantics sem;  // .release or .acquire
+  MemScope scope;
+  // .acquire with [addr], size as InstrFence operands
+};
+
+// fence.op_restrict.release.scope
+// .op_restrict = { .mbarrier_init } (only for mbarrier.init)
+struct FenceOpRestrict {
+  MemScope scope;
+};
+
+// fence.proxy.proxykind — double proxy，non sem/scope operand
+// .proxykind = { .alias, .async, .async.global,
+//                .async.shared::cta, .async.shared::cluster }
+enum class FenceProxyKind {
+  Alias,
+  Async,
+  AsyncGlobal,
+  AsyncSharedCta,
+  AsyncSharedCluster,
+};
+
+struct FenceProxyBidir {
+  FenceProxyKind kind;
+};
+
+// fence.proxy.async::generic.sem.sync_restrict::shared::{cta,cluster}.scope
+struct FenceProxyAsyncGeneric {
   FenceSemantics sem;
+  FenceSyncRestrictSpace restrict_space;
   MemScope scope;
 };
 
-// fence.proxy.tensormap::generic.cta
-struct FenceProxyTensormap {
-  MemScope scope;
-};
-
-// fence.proxy.alias (non scope, non operand)
-struct FenceProxyAlias {};
-
-using FenceDetails =
-    std::variant<FenceScAcqRel, FenceProxyTensormap, FenceProxyAlias>;
+using FenceDetails = std::variant<FenceThread, FenceSyncRestrict,
+                                  FenceOpRestrict, FenceProxyTensormapUnidir,
+                                  FenceProxyBidir, FenceProxyAsyncGeneric>;
 
 struct RedDetails {
   AtomSemantics semantics;

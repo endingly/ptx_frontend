@@ -457,118 +457,181 @@ TEST(Parser, InvalidInstrReturnsError) {
 // Fence instruction parser tests
 // ============================================================
 
-// Helper: unwrap InstrFence data variant
 template <typename T>
 static const T& fence_as(const std::vector<Instruction<ParsedOp>>& v) {
   return std::get<T>(as<InstrFence<ParsedOp>>(v, 0).data);
 }
 
-// ── fence.sc / fence.acq_rel ─────────────────────────────────────────────────
+// ── fence{.sem}.scope — thread fence ─────────────────────────────────────────
+
+TEST(ParserFence, ScopeOnly) {
+  // fence.cta; — sem 省略，合法
+  auto instrs = parse_instrs("fence.cta;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_FALSE(d.sem.has_value());
+  EXPECT_EQ(d.scope, MemScope::Cta);
+}
 
 TEST(ParserFence, ScCta) {
   auto instrs = parse_instrs("fence.sc.cta;");
   ASSERT_EQ(instrs.size(), 1u);
-  ASSERT_TRUE(std::holds_alternative<InstrFence<ParsedOp>>(instrs[0]));
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  auto& d = fence_as<FenceThread>(instrs);
+  ASSERT_TRUE(d.sem.has_value());
+  EXPECT_EQ(*d.sem, FenceSemantics::Sc);
   EXPECT_EQ(d.scope, MemScope::Cta);
-}
-
-TEST(ParserFence, ScCluster) {
-  auto instrs = parse_instrs("fence.sc.cluster;");
-  ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::Sc);
-  EXPECT_EQ(d.scope, MemScope::Cluster);
 }
 
 TEST(ParserFence, ScGpu) {
   auto instrs = parse_instrs("fence.sc.gpu;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_EQ(*d.sem, FenceSemantics::Sc);
   EXPECT_EQ(d.scope, MemScope::Gpu);
 }
 
 TEST(ParserFence, ScSys) {
   auto instrs = parse_instrs("fence.sc.sys;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_EQ(*d.sem, FenceSemantics::Sc);
   EXPECT_EQ(d.scope, MemScope::Sys);
 }
 
 TEST(ParserFence, AcqRelGpu) {
   auto instrs = parse_instrs("fence.acq_rel.gpu;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::AcqRel);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_EQ(*d.sem, FenceSemantics::AcqRel);
   EXPECT_EQ(d.scope, MemScope::Gpu);
 }
 
-TEST(ParserFence, AcqRelCta) {
-  auto instrs = parse_instrs("fence.acq_rel.cta;");
+TEST(ParserFence, AcquireCta) {
+  auto instrs = parse_instrs("fence.acquire.cta;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::AcqRel);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_EQ(*d.sem, FenceSemantics::Acquire);
   EXPECT_EQ(d.scope, MemScope::Cta);
 }
 
-TEST(ParserFence, AcqRelSys) {
-  auto instrs = parse_instrs("fence.acq_rel.sys;");
+TEST(ParserFence, ReleaseSys) {
+  auto instrs = parse_instrs("fence.release.sys;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::AcqRel);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_EQ(*d.sem, FenceSemantics::Release);
   EXPECT_EQ(d.scope, MemScope::Sys);
 }
 
-// ── fence.proxy.alias ─────────────────────────────────────────────────────────
+// ── fence.sem.sync_restrict ───────────────────────────────────────────────────
+
+TEST(ParserFence, SyncRestrictAcquireSharedCluster) {
+  auto instrs =
+      parse_instrs("fence.acquire.sync_restrict::shared::cluster.cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceSyncRestrict>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Acquire);
+  EXPECT_EQ(d.restrict_space, FenceSyncRestrictSpace::SharedCluster);
+  EXPECT_EQ(d.scope, MemScope::Cluster);
+}
+
+TEST(ParserFence, SyncRestrictReleaseSharedCta) {
+  auto instrs =
+      parse_instrs("fence.release.sync_restrict::shared::cta.cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceSyncRestrict>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Release);
+  EXPECT_EQ(d.restrict_space, FenceSyncRestrictSpace::SharedCta);
+  EXPECT_EQ(d.scope, MemScope::Cluster);
+}
+
+// ── fence.op_restrict ──────────────────────────────────────────────────────────
+
+TEST(ParserFence, OpRestrictReleaseCluster) {
+  auto instrs = parse_instrs("fence.op_restrict.release.cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceOpRestrict>(instrs);
+  EXPECT_EQ(d.scope, MemScope::Cluster);
+}
+
+// ── fence.proxy bi-directional ────────────────────────────────────────────────
 
 TEST(ParserFence, ProxyAlias) {
   auto instrs = parse_instrs("fence.proxy.alias;");
   ASSERT_EQ(instrs.size(), 1u);
-  ASSERT_TRUE(std::holds_alternative<InstrFence<ParsedOp>>(instrs[0]));
-  EXPECT_TRUE(std::holds_alternative<FenceProxyAlias>(
-      as<InstrFence<ParsedOp>>(instrs, 0).data));
+  auto& d = fence_as<FenceProxyBidir>(instrs);
+  EXPECT_EQ(d.kind, FenceProxyKind::Alias);
 }
 
-// ── fence.proxy.tensormap::generic ───────────────────────────────────────────
-
-TEST(ParserFence, ProxyTensormapCta) {
-  auto instrs = parse_instrs("fence.proxy.tensormap::generic.cta;");
+TEST(ParserFence, ProxyAsync) {
+  auto instrs = parse_instrs("fence.proxy.async;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceProxyTensormap>(instrs);
+  auto& d = fence_as<FenceProxyBidir>(instrs);
+  EXPECT_EQ(d.kind, FenceProxyKind::Async);
+}
+
+TEST(ParserFence, ProxyAsyncGlobal) {
+  auto instrs = parse_instrs("fence.proxy.async.global;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyBidir>(instrs);
+  EXPECT_EQ(d.kind, FenceProxyKind::AsyncGlobal);
+}
+
+TEST(ParserFence, ProxyAsyncSharedCta) {
+  auto instrs = parse_instrs("fence.proxy.async.shared::cta;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyBidir>(instrs);
+  EXPECT_EQ(d.kind, FenceProxyKind::AsyncSharedCta);
+}
+
+TEST(ParserFence, ProxyAsyncSharedCluster) {
+  auto instrs = parse_instrs("fence.proxy.async.shared::cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyBidir>(instrs);
+  EXPECT_EQ(d.kind, FenceProxyKind::AsyncSharedCluster);
+}
+
+// ── fence.proxy.tensormap::generic uni-directional ────────────────────────────
+
+TEST(ParserFence, ProxyTensormapReleaseCta) {
+  auto instrs = parse_instrs("fence.proxy.tensormap::generic.release.cta;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyTensormapUnidir>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Release);
   EXPECT_EQ(d.scope, MemScope::Cta);
 }
 
-TEST(ParserFence, ProxyTensormapGpu) {
-  auto instrs = parse_instrs("fence.proxy.tensormap::generic.gpu;");
+TEST(ParserFence, ProxyTensormapAcquireGpu) {
+  auto instrs = parse_instrs("fence.proxy.tensormap::generic.acquire.gpu;");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceProxyTensormap>(instrs);
+  auto& d = fence_as<FenceProxyTensormapUnidir>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Acquire);
   EXPECT_EQ(d.scope, MemScope::Gpu);
 }
 
-// ── error path ─────────────────────────────────────────────────────────────────
+// ── fence.proxy.async::generic uni-directional ────────────────────────────────
 
-TEST(ParserFence, ErrorMissingSemOrProxy) {
-  // fence 后既不是 .sc / .acq_rel 也不是 .proxy → 解析失败
-  auto result = parse_module(make_func("fence.cta;"));
-  EXPECT_GT(result->invalid_directives, 0u);
+TEST(ParserFence, ProxyAsyncGenericAcquireSharedCluster) {
+  auto instrs = parse_instrs(
+      "fence.proxy.async::generic.acquire.sync_restrict::shared::cluster."
+      "cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyAsyncGeneric>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Acquire);
+  EXPECT_EQ(d.restrict_space, FenceSyncRestrictSpace::SharedCluster);
+  EXPECT_EQ(d.scope, MemScope::Cluster);
 }
 
-TEST(ParserFence, ErrorMissingScope) {
-  // fence.sc 后无 scope → 解析失败
-  auto result = parse_module(make_func("fence.sc;"));
-  EXPECT_GT(result->invalid_directives, 0u);
+TEST(ParserFence, ProxyAsyncGenericReleaseSharedCta) {
+  auto instrs = parse_instrs(
+      "fence.proxy.async::generic.release.sync_restrict::shared::cta.cluster;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& d = fence_as<FenceProxyAsyncGeneric>(instrs);
+  EXPECT_EQ(d.sem, FenceSemantics::Release);
+  EXPECT_EQ(d.restrict_space, FenceSyncRestrictSpace::SharedCta);
+  EXPECT_EQ(d.scope, MemScope::Cluster);
 }
 
-TEST(ParserFence, ErrorProxyUnknownKind) {
-  // fence.proxy.xxx → 解析失败
-  auto result = parse_module(make_func("fence.proxy.unknown;"));
-  EXPECT_GT(result->invalid_directives, 0u);
-}
-
-// ── predicated fence ───────────────────────────────────────────────
+// ── predicated fence ──────────────────────────────────────────────────────────
 
 TEST(ParserFence, Predicated) {
   auto instrs = parse_instrs(R"(
@@ -576,12 +639,34 @@ TEST(ParserFence, Predicated) {
     @%p0 fence.sc.gpu;
   )");
   ASSERT_EQ(instrs.size(), 1u);
-  auto& d = fence_as<FenceScAcqRel>(instrs);
-  EXPECT_EQ(d.sem, FenceSemantics::Sc);
+  auto& d = fence_as<FenceThread>(instrs);
+  EXPECT_EQ(*d.sem, FenceSemantics::Sc);
   EXPECT_EQ(d.scope, MemScope::Gpu);
 }
 
-// ── multiple fences in sequence ────────────────────────────────────────────────────────────
+TEST(ParserFence, ErrorMissingScopeWithoutTypeChecker) {
+  auto result = parse_module(make_func("fence.op_restrict.release.cta;"));
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->invalid_directives, 0u);
+}
+
+// ── error path ────────────────────────────────────────────────────────────────
+
+TEST(ParserFence, ErrorMissingScope) {
+  // fence.sc 后无 scope → 解析失败
+  auto result = parse_module(make_func("fence.sc;"));
+  ASSERT_TRUE(result.has_value());
+  EXPECT_GT(result->invalid_directives, 0u);
+}
+
+TEST(ParserFence, ErrorProxyUnknownKind) {
+  // fence.proxy.unknown → 解析失败
+  auto result = parse_module(make_func("fence.proxy.unknown;"));
+  ASSERT_TRUE(result.has_value());
+  EXPECT_GT(result->invalid_directives, 0u);
+}
+
+// ── multiple fences in sequence ───────────────────────────────────────────────
 
 TEST(ParserFence, MultipleInSequence) {
   auto instrs = parse_instrs(R"(
@@ -591,13 +676,17 @@ TEST(ParserFence, MultipleInSequence) {
   )");
   ASSERT_EQ(instrs.size(), 3u);
 
-  EXPECT_EQ(fence_as<FenceScAcqRel>({instrs[0]}).sem, FenceSemantics::Sc);
-  // note: we have to re-unwrap the second one since it's a different instruction object
+  auto& d0 =
+      std::get<FenceThread>(std::get<InstrFence<ParsedOp>>(instrs[0]).data);
+  EXPECT_EQ(*d0.sem, FenceSemantics::Sc);
+  EXPECT_EQ(d0.scope, MemScope::Cta);
+
   auto& d1 =
-      std::get<FenceScAcqRel>(std::get<InstrFence<ParsedOp>>(instrs[1]).data);
-  EXPECT_EQ(d1.sem, FenceSemantics::AcqRel);
+      std::get<FenceThread>(std::get<InstrFence<ParsedOp>>(instrs[1]).data);
+  EXPECT_EQ(*d1.sem, FenceSemantics::AcqRel);
   EXPECT_EQ(d1.scope, MemScope::Gpu);
 
-  EXPECT_TRUE(std::holds_alternative<FenceProxyAlias>(
-      std::get<InstrFence<ParsedOp>>(instrs[2]).data));
+  auto& d2 =
+      std::get<FenceProxyBidir>(std::get<InstrFence<ParsedOp>>(instrs[2]).data);
+  EXPECT_EQ(d2.kind, FenceProxyKind::Alias);
 }

@@ -177,7 +177,7 @@
 - opcode: "sub"
   doc: "PTX ISA §9.7.1.2"
   variants:
-    - description: "sub integer"
+    - description: "sub integer (no sat)"
       modifiers:
         type:
           kind: required
@@ -187,29 +187,35 @@
             - { token: ".u32", cpp: "ScalarType::U32" }
             - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrSub"
+      emit_note: "ArithInteger{ saturate=false }"
 
-    - description: "sub.sat.s32"
+    - description: "sub integer with optional sat"
       modifiers:
         sat:
-          kind: fixed
-          fixed_value: ".sat"
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
         type:
-          kind: fixed
-          fixed_value: ".s32"
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u8x4", cpp: "ScalarType::U8x4" }
+            - { token: ".s8x4", cpp: "ScalarType::S8x4" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrSub"
 
-    - description: "sub float"
+    - description: "sub.f32"
       modifiers:
         rnd:
           kind: optional
@@ -230,13 +236,97 @@
           values:
             - { token: ".sat", cpp: "true" }
         type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrSub"
+
+    - description: "sub.f32x2"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32x2"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrSub"
+
+    - description: "sub.f64"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        type:
+          kind: fixed
+          fixed_value: ".f64"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrSub"
+
+    - description: "sub half-precision"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        type:
           kind: required
           type: ScalarType
           values:
             - { token: ".f16", cpp: "ScalarType::F16" }
             - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrSub"
+
+    - description: "sub bf16/bf16x2"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
             - { token: ".bf16", cpp: "ScalarType::BF16" }
             - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
       args:
@@ -295,7 +385,7 @@
       cpp_struct: "InstrMul"
       emit_note: "MulIntControl::Wide"
 
-    - description: "mul float"
+    - description: "mul.f32"
       modifiers:
         rnd:
           kind: optional
@@ -316,13 +406,97 @@
           values:
             - { token: ".sat", cpp: "true" }
         type:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMul"
+
+    - description: "mul.f32x2"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32x2"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMul"
+
+    - description: "mul.f64"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        type:
+          kind: fixed
+          fixed_value: ".f64"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMul"
+
+    - description: "mul half-precision"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        type:
           kind: required
           type: ScalarType
           values:
             - { token: ".f16", cpp: "ScalarType::F16" }
             - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMul"
+
+    - description: "mul bf16/bf16x2"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
             - { token: ".bf16", cpp: "ScalarType::BF16" }
             - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
       args:

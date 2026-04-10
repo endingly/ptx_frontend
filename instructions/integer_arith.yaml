@@ -14,12 +14,9 @@
           type: ScalarType
           values:
             - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
             - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
-            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -27,7 +24,7 @@
       cpp_struct: "InstrAdd"
       emit_note: "ArithInteger{ saturate=false }"
 
-    - description: "add.s32 with optional sat"
+    - description: "add integer with optional sat"
       modifiers:
         sat:
           kind: optional
@@ -35,8 +32,15 @@
           values:
             - { token: ".sat", cpp: "true" }
         type:
-          kind: fixed
-          fixed_value: ".s32"
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
+            - { token: ".u8x4", cpp: "ScalarType::U8x4" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
+            - { token: ".s8x4", cpp: "ScalarType::S8x4" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -89,6 +93,30 @@
         type:
           kind: fixed
           fixed_value: ".f64"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrAdd"
+
+    - description: "add.f32x2"
+      modifiers:
+        rnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        type:
+          kind: fixed
+          fixed_value: ".f32x2"
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }

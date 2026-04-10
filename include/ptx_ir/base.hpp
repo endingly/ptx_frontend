@@ -15,11 +15,13 @@ using tl::unexpected;
 
 enum class ScalarType : uint8_t {
   U8,
+  U8x4,
   U16,
   U16x2,
   U32,
   U64,
   S8,
+  S8x4,
   S16,
   S16x2,
   S32,
@@ -32,6 +34,7 @@ enum class ScalarType : uint8_t {
   F16,
   F16x2,
   F32,
+  F32x2,
   F64,
   BF16,
   BF16x2,
@@ -48,12 +51,14 @@ enum class ScalarKind { Bit, Unsigned, Signed, Float, Pred };
 inline ScalarKind scalar_kind(ScalarType t) {
   switch (t) {
     case ScalarType::U8:
+    case ScalarType::U8x4:
     case ScalarType::U16:
     case ScalarType::U16x2:
     case ScalarType::U32:
     case ScalarType::U64:
       return ScalarKind::Unsigned;
     case ScalarType::S8:
+    case ScalarType::S8x4:
     case ScalarType::S16:
     case ScalarType::S16x2:
     case ScalarType::S32:
@@ -68,6 +73,7 @@ inline ScalarKind scalar_kind(ScalarType t) {
     case ScalarType::F16:
     case ScalarType::F16x2:
     case ScalarType::F32:
+    case ScalarType::F32x2:
     case ScalarType::F64:
     case ScalarType::BF16:
     case ScalarType::BF16x2:
@@ -109,11 +115,14 @@ inline uint8_t scalar_size_of(ScalarType t) {
     case ScalarType::F16x2:
     case ScalarType::BF16x2:
     case ScalarType::TF32:
+    case ScalarType::U8x4:
+    case ScalarType::S8x4:
       return 4;
     case ScalarType::U64:
     case ScalarType::S64:
     case ScalarType::B64:
     case ScalarType::F64:
+    case ScalarType::F32x2:
       return 8;
     case ScalarType::B128:
       return 16;

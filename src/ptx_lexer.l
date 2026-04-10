@@ -152,24 +152,27 @@ STRING      \"[^\"]*\"
 
  /* ── Scalar type tokens ───────────────────────────────────────────────── */
  /* Unsigned */
+".u8x4"         { TOK(DotU8x4); } 
 ".u8"           { TOK(DotU8); }
-".u16"          { TOK(DotU16); }
 ".u16x2"        { TOK(DotU16x2); }
+".u16"          { TOK(DotU16); }
 ".u32"          { TOK(DotU32); }
 ".u64"          { TOK(DotU64); }
  /* Signed */
+".s8x4"         { TOK(DotS8x4); } 
 ".s8"           { TOK(DotS8); }
-".s16"          { TOK(DotS16); }
 ".s16x2"        { TOK(DotS16x2); }
+".s16"          { TOK(DotS16); }
 ".s32"          { TOK(DotS32); }
 ".s64"          { TOK(DotS64); }
  /* Float */
-".f16"          { TOK(DotF16); }
 ".f16x2"        { TOK(DotF16x2); }
+".f16"          { TOK(DotF16); }
+".f32x2"        { TOK(DotF32x2); }
 ".f32"          { TOK(DotF32); }
 ".f64"          { TOK(DotF64); }
-".bf16"         { TOK(DotBF16); }
 ".bf16x2"       { TOK(DotBF16x2); }
+".bf16"         { TOK(DotBF16); }
  /* Float8 packed */
 ".e4m3x2"       { TOK(DotE4m3x2); }
 ".e5m2x2"       { TOK(DotE5m2x2); }

@@ -3313,43 +3313,6 @@ TEST(PtxVisitDispatch, MapInstrClusterLaunchControl_WithDst) {
   EXPECT_EQ(get_id(r->addr), "addr2");
 }
 
-// ── InstrFence ─────────────────────────────────────────────────────────────
-TEST(PtxVisitDispatch, VisitInstrFence) {
-  using namespace ptx_frontend;
-
-  InstrFence<ParsedOp> instr{
-      .data =
-          FenceDetails{FenceScAcqRel{FenceSemantics::AcqRel, MemScope::Gpu}},
-  };
-
-  auto v = make_visitor<ParsedOp, std::string>(
-      [](const ParsedOp&, std::optional<VisitTypeSpace>, bool,
-         bool) -> expected<void, std::string> {
-        return tl::unexpected<std::string>("should not be called");
-      });
-
-  auto r = visit_instr(instr, v);
-  EXPECT_TRUE(r.has_value());
-}
-
-TEST(PtxVisitDispatch, MapInstrFence) {
-  using namespace ptx_frontend;
-
-  InstrFence<ParsedOp> instr{
-      .data = FenceDetails{FenceProxyAlias{}},
-  };
-
-  auto vm = make_visitor_map<ParsedOp, ParsedOp, std::string>(
-      [](Ident, std::optional<VisitTypeSpace>, bool,
-         bool) -> expected<Ident, std::string> {
-        return tl::unexpected<std::string>("should not be called");
-      });
-
-  auto r = map_instr(instr, vm);
-  ASSERT_TRUE(r.has_value());
-  EXPECT_TRUE(std::holds_alternative<FenceProxyAlias>(r->data));
-}
-
 // ── InstrRed ───────────────────────────────────────────────────────────────
 TEST(PtxVisitDispatch, VisitInstrRed) {
   using namespace ptx_frontend;

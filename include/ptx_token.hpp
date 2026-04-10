@@ -93,11 +93,13 @@ enum class TokenKind : uint16_t {
 
   // ── Scalar types ─────────────────────────────────────────────
   DotU8,
+  DotU8x4,
   DotU16,
   DotU16x2,
   DotU32,
   DotU64,
   DotS8,
+  DotS8x4,
   DotS16,
   DotS16x2,
   DotS32,
@@ -105,6 +107,7 @@ enum class TokenKind : uint16_t {
   DotF16,
   DotF16x2,
   DotF32,
+  DotF32x2,
   DotF64,
   DotBF16,
   DotBF16x2,

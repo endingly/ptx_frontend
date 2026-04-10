@@ -195,6 +195,31 @@ TEST(Parser, AddIntSat) {
   EXPECT_TRUE(ai.saturate);
 }
 
+TEST(Parser, AddU8x4NoSat) {
+  auto instrs = parse_instrs("add.u8x4 %r2, %r0, %r1;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& ai = std::get<ArithInteger>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
+  EXPECT_EQ(ai.type_, ScalarType::U8x4);
+  EXPECT_FALSE(ai.saturate);
+}
+
+TEST(Parser, AddS8x4Sat) {
+  auto instrs = parse_instrs("add.sat.s8x4 %r2, %r0, %r1;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& ai = std::get<ArithInteger>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
+  EXPECT_EQ(ai.type_, ScalarType::S8x4);
+  EXPECT_TRUE(ai.saturate);
+}
+
+TEST(Parser, AddF32x2RnFtz) {
+  auto instrs = parse_instrs("add.rn.ftz.f32x2 %f2, %f0, %f1;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& af = std::get<ArithFloat>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
+  EXPECT_EQ(af.type_, ScalarType::F32x2);
+  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
+  EXPECT_EQ(af.flush_to_zero, std::optional<bool>{true});
+}
+
 TEST(Parser, SubS32) {
   auto instrs = parse_instrs("sub.s32 %r2, %r0, %r1;");
   ASSERT_EQ(instrs.size(), 1u);

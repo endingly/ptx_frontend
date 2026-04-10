@@ -146,6 +146,12 @@ struct Parser {
         return ScalarType::E4m3x2;
       case TokenKind::DotE5m2x2:
         return ScalarType::E5m2x2;
+      case TokenKind::DotU8x4:
+        return ScalarType::U8x4;
+      case TokenKind::DotS8x4:
+        return ScalarType::S8x4;
+      case TokenKind::DotF32x2:
+        return ScalarType::F32x2;
       default:
         return std::nullopt;
     }

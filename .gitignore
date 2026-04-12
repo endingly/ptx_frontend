@@ -3,3 +3,4 @@ build
 .vscode
 bin
 out
+__pycache__

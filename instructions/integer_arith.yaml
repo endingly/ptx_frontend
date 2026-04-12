@@ -98,6 +98,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
+      emit_note: "ArithInteger{ saturate=true }"
 
     # ── Integer: SIMD sat + u32 sat (sm_120f family) ────────────────────────────
     # add.sat.u16x2 / add.sat.s16x2 / add.sat.u32 introduced in PTX 9.2, requires sm_120f family

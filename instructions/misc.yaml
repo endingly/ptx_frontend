@@ -199,7 +199,7 @@
             - { token: ".max", cpp: "AtomOp::Max" }
             - { token: ".inc", cpp: "AtomOp::Inc" }
             - { token: ".dec", cpp: "AtomOp::Dec" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -260,7 +260,7 @@
             - { token: ".and", cpp: "AtomOp::And" }
             - { token: ".or", cpp: "AtomOp::Or" }
             - { token: ".xor", cpp: "AtomOp::Xor" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:

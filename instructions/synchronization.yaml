@@ -431,7 +431,7 @@
             - { token: ".dec", cpp: "AtomOp::Dec" }
             - { token: ".min", cpp: "AtomOp::Min" }
             - { token: ".max", cpp: "AtomOp::Max" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -501,7 +501,7 @@
             - { token: ".dec", cpp: "AtomOp::Dec" }
             - { token: ".min", cpp: "AtomOp::Min" }
             - { token: ".max", cpp: "AtomOp::Max" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -602,7 +602,7 @@
           values:
             - { token: ".any", cpp: "MatchSyncMode::Any" }
             - { token: ".all", cpp: "MatchSyncMode::All" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -653,7 +653,7 @@
             - { token: ".and", cpp: "ReduxSyncOp::And" }
             - { token: ".or", cpp: "ReduxSyncOp::Or" }
             - { token: ".xor", cpp: "ReduxSyncOp::Xor" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:

@@ -1,8 +1,10 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 #include "ptx_ir/instr.hpp"
+#include "symbol_resolver.hpp"
 
 namespace ptx_frontend {
 
@@ -16,15 +18,17 @@ struct TypeError {
   // TODO: source location
 };
 
-// symboltable item: for ".reg .f32 %f<8>;" like
+// Legacy lightweight symbol table used by the standalone TypeChecker
+// (before the full SymbolTable / ResolvedModule pipeline is integrated).
+// Kept for backward-compatibility with existing tests.
 struct RegDecl {
   ScalarType type;   // reg type, e.g. F32
   StateSpace space;  // state space, e.g. Reg
 };
-using SymbolTable = std::unordered_map<std::string, RegDecl>;
+using LegacySymbolTable = std::unordered_map<std::string, RegDecl>;
 
 class TypeChecker {
-  const SymbolTable& sym_;
+  const LegacySymbolTable& sym_;
   const CompileTarget& target_;
   std::vector<TypeError> errors_;
 
@@ -32,7 +36,7 @@ class TypeChecker {
   void require_sm(uint32_t min_v, std::string_view ctx);
   void require_ptx(float min_v, std::string_view ctx);
 
-  // operand type check via SymbolTable
+  // operand type check via LegacySymbolTable
   void check_operand(const ParsedOp& op, ScalarType expected);
   void check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
 
@@ -40,7 +44,7 @@ class TypeChecker {
   void check_add_float(const InstrAdd<ParsedOp>& i);
 
  public:
-  TypeChecker(const SymbolTable& sym, const CompileTarget& target)
+  TypeChecker(const LegacySymbolTable& sym, const CompileTarget& target)
       : sym_(sym), target_(target) {}
 
   void check_add(const InstrAdd<ParsedOp>& i);

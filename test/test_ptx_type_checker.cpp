@@ -8,9 +8,9 @@ using namespace ptx_frontend;
 // ── test helpers ─────────────────────────────────────────────────────────────
 
 // Build a minimal SymbolTable with named registers.
-static SymbolTable make_sym(
+static LegacySymbolTable make_sym(
     std::initializer_list<std::pair<std::string, ScalarType>> entries) {
-  SymbolTable sym;
+  LegacySymbolTable sym;
   for (auto& [name, type] : entries)
     sym[name] = RegDecl{type, StateSpace::Reg};
   return sym;
@@ -30,7 +30,7 @@ static InstrAdd<ParsedOp> make_add(ArithDetails data, std::string_view dst,
 }
 
 // Run TypeChecker::check_add and return the collected errors.
-static std::vector<TypeError> check_add(const SymbolTable& sym,
+static std::vector<TypeError> check_add(const LegacySymbolTable& sym,
                                         const CompileTarget& target,
                                         const InstrAdd<ParsedOp>& instr) {
   TypeChecker tc{sym, target};
@@ -238,7 +238,7 @@ TEST(TypeCheckerAdd, OperandTypeMismatch_Error) {
 }
 
 TEST(TypeCheckerAdd, UndefinedRegister_Error) {
-  SymbolTable sym;  // empty — no registers declared
+  LegacySymbolTable sym;  // empty — no registers declared
   CompileTarget target{80, 8.0f};
   auto instr = make_add(ArithInteger{ScalarType::U32, false}, "d", "a", "b");
   auto errs = check_add(sym, target, instr);

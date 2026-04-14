@@ -603,8 +603,13 @@ expected<InstrCall<To>, Err> map_instr(InstrCall<From> instr,
   new_args.is_external = instr.arguments.is_external;
 
   for (size_t i = 0; i < instr.arguments.return_arguments.size(); ++i) {
-    Type t = instr.data.return_arguments[i].first;
-    VisitTypeSpace ts{&t, instr.data.return_arguments[i].second};
+    // CallDetails::return_arguments may be unpopulated (e.g. when the parser
+    // has no type information at the call site); guard against out-of-bounds.
+    std::optional<VisitTypeSpace> ts;
+    if (i < instr.data.return_arguments.size()) {
+      Type t = instr.data.return_arguments[i].first;
+      ts = VisitTypeSpace{&t, instr.data.return_arguments[i].second};
+    }
     auto r = v.visit_ident(std::move(instr.arguments.return_arguments[i]), ts,
                            true, false);
     if (!r)
@@ -621,8 +626,12 @@ expected<InstrCall<To>, Err> map_instr(InstrCall<From> instr,
   }
 
   for (size_t i = 0; i < instr.arguments.input_arguments.size(); ++i) {
-    Type t = instr.data.input_arguments[i].first;
-    VisitTypeSpace ts{&t, instr.data.input_arguments[i].second};
+    // Same guard for input_arguments.
+    std::optional<VisitTypeSpace> ts;
+    if (i < instr.data.input_arguments.size()) {
+      Type t = instr.data.input_arguments[i].first;
+      ts = VisitTypeSpace{&t, instr.data.input_arguments[i].second};
+    }
     auto r = v.visit(std::move(instr.arguments.input_arguments[i]), ts, false,
                      false);
     if (!r)

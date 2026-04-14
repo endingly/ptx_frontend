@@ -9,7 +9,7 @@ def _parse_modifier(name: str, mod_def: dict) -> Modifier:
     kind = ModifierKind(mod_def["kind"])
     values: list[ModifierValue] = []
     type_name: str | None = mod_def.get("type")  # optional field
-    fixed_value: str | None = None
+    fixed_value: ModifierValue | None = None
 
     if kind == ModifierKind.Fixed:
         fixed_value = mod_def["fixed_value"]
@@ -32,9 +32,12 @@ def _parse_variant(raw: dict) -> VariantModel:
     constraints = raw.get("constraints", {})
     variant.min_ptx_version = float(constraints.get("min_ptx_version", 0))
     variant.min_sm_version = int(constraints.get("min_sm", 0))
+    variant.emit_note = raw.get("emit_note", "")
 
     for mod_name, mod_def in raw.get("modifiers", {}).items():
-        variant.modifiers.append(_parse_modifier(mod_name, mod_def))
+        tmp_modifier = _parse_modifier(mod_name, mod_def)
+        tmp_modifier.emit_note = variant.emit_note
+        variant.modifiers.append(tmp_modifier)
 
     for arg in raw.get("args", []):
         variant.arguments.append(
@@ -42,7 +45,7 @@ def _parse_variant(raw: dict) -> VariantModel:
         )
 
     variant.cpp_struct_name = raw.get("cpp_struct", "")
-    variant.emit_note = raw.get("emit_note", "")
+
     return variant
 
 

@@ -338,6 +338,21 @@ concept OperandLike = requires {
 // ============================================================
 
 // .pragma maxnreg etc.
+
+/*
+code example:
+```ptx
+.func my_kernel() 
+  .maxnreg 64
+  .maxntid 32,4,1
+  .reqntid 16,16,1
+  .minnctapersm 2
+  .noreturn
+{
+  // function body
+}
+```
+*/
 struct TuningMaxNReg {
   uint32_t n;
 };

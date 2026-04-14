@@ -18,7 +18,7 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -29,11 +29,11 @@
             - { token: ".u32", cpp: "ScalarType::U32" }
             - { token: ".s32", cpp: "ScalarType::S32" }
       args:
-        - { name: "dst", kind: reg }
+        - { name: "dst",  kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger{ saturate=false }"
+      emit_note: "ArithInteger"
 
     # ── Integer: add.sat.s32 (universal) ─────────────────────────────────────
     # signed 32-bit saturating add supported from PTX 1.0, all SM
@@ -42,18 +42,20 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        sat:
+        saturate:
           kind: fixed
-          fixed_value: ".sat"
-        type:
+          type: bool
+          fixed_value: { token: ".sat", cpp: "true" }
+        type_:
           kind: fixed
-          fixed_value: ".s32"
+          type: ScalarType
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger{ saturate=true }"
+      emit_note: "ArithInteger"
 
     # ── Integer: SIMD no-sat (sm_90+) ─────────────────────────────────────────
     # add.u16x2 / add.s16x2 (no sat) introduced in PTX 8.0, requires sm_90+
@@ -62,7 +64,7 @@
         min_ptx_version: 8.0
         min_sm: 90
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -73,7 +75,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger{ saturate=false }"
+      emit_note: "ArithInteger"
 
     # ── Integer: packed optional sat (sm_120f family) ──────────────────────────
     # add{.sat}.u8x4 / add{.sat}.s8x4 introduced in PTX 9.2, requires sm_120f family
@@ -82,12 +84,12 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        sat:
+        saturate:
           kind: optional
           type: bool
           values:
             - { token: ".sat", cpp: "true" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -98,7 +100,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger{ saturate=true }"
+      emit_note: "ArithInteger"
 
     # ── Integer: SIMD sat + u32 sat (sm_120f family) ────────────────────────────
     # add.sat.u16x2 / add.sat.s16x2 / add.sat.u32 introduced in PTX 9.2, requires sm_120f family
@@ -108,10 +110,11 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        sat:
+        saturate:
           kind: fixed
-          fixed_value: ".sat"
-        type:
+          type: bool
+          fixed_value: { token: ".sat", cpp: "true" }
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -124,7 +127,7 @@
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
       emit_note:
-        "ArithInteger{ saturate=true }"
+        "ArithInteger"
 
         # ── add.f32 ──────────────────────────────────────────────────────────────
     - description: "add.f32"
@@ -132,7 +135,7 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        rnd:
+        rounding:
           kind: optional
           type: RoundingMode
           values:
@@ -140,25 +143,26 @@
             - { token: ".rz", cpp: "RoundingMode::Zero" }
             - { token: ".rm", cpp: "RoundingMode::NegativeInf", min_sm: 20 }
             - { token: ".rp", cpp: "RoundingMode::PositiveInf", min_sm: 20 }
-        ftz:
+        flush_to_zero:
           kind: optional
           type: bool
           values:
             - { token: ".ftz", cpp: "true" }
-        sat:
+        saturate:
           kind: optional
           type: bool
           values:
             - { token: ".sat", cpp: "true" }
-        type:
+        type_:
           kind: fixed
-          fixed_value: ".f32"
+          type: ScalarType
+          fixed_value: { token: ".f32", cpp: "ScalarType::F32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
+      emit_note: "ArithFloat"
 
     # ── add.f64 ──────────────────────────────────────────────────────────────
     # ftz / sat not supported; sm_13+ required; .rm/.rp inherit variant min_sm
@@ -167,7 +171,7 @@
         min_ptx_version: 1.0
         min_sm: 13
       modifiers:
-        rnd:
+        rounding:
           kind: optional
           type: RoundingMode
           values:
@@ -175,15 +179,16 @@
             - { token: ".rz", cpp: "RoundingMode::Zero" }
             - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
             - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        type:
+        type_:
           kind: fixed
-          fixed_value: ".f64"
+          type: ScalarType
+          fixed_value: { token: ".f64", cpp: "ScalarType::F64" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
+      emit_note: "ArithFloat"
 
     # ── add.f32x2 ────────────────────────────────────────────────────────────
     # sat not supported (absent = disallowed); sm_100+, PTX 8.6
@@ -192,7 +197,7 @@
         min_ptx_version: 8.6
         min_sm: 100
       modifiers:
-        rnd:
+        rounding:
           kind: optional
           type: RoundingMode
           values:
@@ -200,20 +205,21 @@
             - { token: ".rz", cpp: "RoundingMode::Zero" }
             - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
             - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
+        flush_to_zero:
           kind: optional
           type: bool
           values:
             - { token: ".ftz", cpp: "true" }
-        type:
+        type_:
           kind: fixed
-          fixed_value: ".f32x2"
+          type: ScalarType
+          fixed_value: { token: ".f32x2", cpp: "ScalarType::F32x2" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
+      emit_note: "ArithFloat"
 
     # ── add half-precision (f16 / f16x2) ─────────────────────────────────────
     # rnd: .rn only; ftz / sat legal
@@ -222,22 +228,22 @@
         min_ptx_version: 6.0
         min_sm: 53
       modifiers:
-        rnd:
+        rounding:
           kind: optional
           type: RoundingMode
           values:
             - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        ftz:
+        flush_to_zero:
           kind: optional
           type: bool
           values:
             - { token: ".ftz", cpp: "true" }
-        sat:
+        saturate:
           kind: optional
           type: bool
           values:
             - { token: ".sat", cpp: "true" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -248,7 +254,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
+      emit_note: "ArithFloat"
 
     # ── add bf16 / bf16x2 ────────────────────────────────────────────────────
     # ftz / sat not supported; rnd: .rn only
@@ -257,12 +263,12 @@
         min_ptx_version: 7.0
         min_sm: 80
       modifiers:
-        rnd:
+        rounding:
           kind: optional
           type: RoundingMode
           values:
             - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -273,7 +279,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat{ is_fusable = rnd.is_none() }"
+      emit_note: "ArithFloat"
 
 ###############################################################################
 # sub

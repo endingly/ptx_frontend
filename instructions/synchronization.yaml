@@ -7,7 +7,11 @@
 - opcode: "bar.sync"
   doc: "PTX ISA §9.7.11.1"
   variants:
-    - modifiers: {}
+    - description: "bar.sync with optional thread count"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "barname", kind: reg_or_imm, note: "barrier name 0..15" }
         - {
@@ -20,7 +24,11 @@
 - opcode: "bar.arrive"
   doc: "PTX ISA §9.7.11.1"
   variants:
-    - modifiers: {}
+    - description: "bar.arrive"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "barname", kind: reg_or_imm }
         - { name: "numthreads", kind: reg_or_imm }
@@ -29,7 +37,11 @@
 - opcode: "bar.red"
   doc: "PTX ISA §9.7.11.1"
   variants:
-    - modifiers:
+    - description: "bar.red popc/and/or"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         redop:
           kind: required
           type: BarRedOp
@@ -39,7 +51,7 @@
             - { token: ".or", cpp: "BarRedOp::Or" }
         pred:
           kind: fixed
-          fixed_value: ".pred"
+          fixed_value: { token: ".pred", cpp: "ScalarType::Pred" }
       args:
         - { name: "dst", kind: reg, note: "destination pred (popc→u32)" }
         - { name: "barname", kind: reg_or_imm }
@@ -50,7 +62,11 @@
 - opcode: "bar.warp.sync"
   doc: "PTX ISA §9.7.11.1"
   variants:
-    - modifiers: {}
+    - description: "bar.warp.sync"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "membermask", kind: reg_or_imm, note: "32-bit thread mask" }
       cpp_struct: "InstrBarWarpSync"
@@ -58,7 +74,11 @@
 - opcode: "barrier.sync"
   doc: "PTX ISA §9.7.11.2"
   variants:
-    - modifiers: {}
+    - description: "barrier.sync with optional thread count"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "barname", kind: reg_or_imm }
         - { name: "numthreads", kind: optional_reg_or_imm }
@@ -67,7 +87,11 @@
 - opcode: "barrier.sync.aligned"
   doc: "PTX ISA §9.7.11.2"
   variants:
-    - modifiers: {}
+    - description: "barrier.sync.aligned"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "barname", kind: reg_or_imm }
         - { name: "numthreads", kind: optional_reg_or_imm }
@@ -77,7 +101,11 @@
 - opcode: "barrier.arrive"
   doc: "PTX ISA §9.7.11.2"
   variants:
-    - modifiers: {}
+    - description: "barrier.arrive"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "barname", kind: reg_or_imm }
         - { name: "numthreads", kind: optional_reg_or_imm }
@@ -86,7 +114,11 @@
 - opcode: "barrier.arrive.aligned"
   doc: "PTX ISA §9.7.11.2"
   variants:
-    - modifiers: {}
+    - description: "barrier.arrive.aligned"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args:
         - { name: "barname", kind: reg_or_imm }
         - { name: "numthreads", kind: optional_reg_or_imm }
@@ -96,7 +128,11 @@
 - opcode: "barrier.cluster.arrive"
   doc: "PTX ISA §9.7.11.3"
   variants:
-    - modifiers:
+    - description: "barrier.cluster.arrive with optional aligned"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         aligned:
           kind: optional
           type: bool
@@ -108,7 +144,11 @@
 - opcode: "barrier.cluster.wait"
   doc: "PTX ISA §9.7.11.3"
   variants:
-    - modifiers:
+    - description: "barrier.cluster.wait with optional aligned"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         aligned:
           kind: optional
           type: bool
@@ -124,6 +164,9 @@
   doc: "PTX ISA §9.7.11.4"
   variants:
     - description: "membar level"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         level:
           kind: required
@@ -137,10 +180,13 @@
         cpp_struct: "InstrMembar"
 
     - description: "membar.proxy.proxykind"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         proxy:
           kind: fixed
-          fixed_value: ".proxy"
+          fixed_value: { token: ".proxy", cpp: "true" }
         kind:
           kind: required
           type: FenceProxyKind
@@ -166,6 +212,9 @@
   doc: "PTX ISA §9.7.11.5"
   variants:
     - description: "fence acquire/release"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         qualifier:
           kind: optional
@@ -187,6 +236,9 @@
       cpp_struct: "InstrFence"
 
     - description: "fence.sem.sync_restrict::shared::{cta,cluster}.scope"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         sem:
           kind: required
@@ -215,10 +267,13 @@
       cpp_struct: "InstrFenceSyncRestrict"
 
     - description: "fence.op_restrict.sem.scope"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         op_restrict:
           kind: fixed
-          fixed_value: ".op_restrict"
+          fixed_value: { token: ".op_restrict", cpp: "true" }
         sem:
           kind: required
           type: FenceSemantics
@@ -233,10 +288,13 @@
       cpp_struct: "InstrFenceOpRestrict"
 
     - description: "fence.proxy"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         proxy:
           kind: fixed
-          fixed_value: ".proxy"
+          fixed_value: { token: ".proxy", cpp: "true" }
         kind:
           kind: required
           type: FenceProxyKind
@@ -257,13 +315,16 @@
       cpp_struct: "InstrFenceProxy"
 
     - description: "fence.proxy.tensormap::generic.sem.scope — uni-directional"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         proxy:
           kind: fixed
-          fixed_value: ".proxy"
+          fixed_value: { token: ".proxy", cpp: "true" }
         to_from:
           kind: fixed
-          fixed_value: ".tensormap::generic"
+          fixed_value: { token: ".tensormap::generic", cpp: "true" }
         sem:
           kind: required
           type: FenceSemantics
@@ -284,13 +345,16 @@
       cpp_struct: "InstrFenceProxyTensormap"
 
     - description: "fence.proxy.async::generic.sem.sync_restrict..."
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         proxy:
           kind: fixed
-          fixed_value: ".proxy"
+          fixed_value: { token: ".proxy", cpp: "true" }
         async_generic:
           kind: fixed
-          fixed_value: ".async::generic"
+          fixed_value: { token: ".async::generic", cpp: "true" }
         sem:
           kind: required
           type: FenceSemantics
@@ -324,6 +388,9 @@
   doc: "PTX ISA §9.7.11.6"
   variants:
     - description: "atom (default/weak)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         qualifier:
           kind: optional
@@ -393,7 +460,11 @@
 - opcode: "red"
   doc: "PTX ISA §9.7.11.7"
   variants:
-    - modifiers:
+    - description: "red"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         qualifier:
           kind: optional
           type: AtomQualifier
@@ -456,7 +527,11 @@
 - opcode: "vote"
   doc: "PTX ISA §9.7.11.8"
   variants:
-    - modifiers:
+    - description: "vote all/any/uni/ballot"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         uni:
           kind: optional
           type: bool
@@ -472,7 +547,7 @@
             - { token: ".ballot", cpp: "VoteMode::Ballot" }
         pred:
           kind: fixed
-          fixed_value: ".pred"
+          fixed_value: { token: ".pred", cpp: "ScalarType::Pred" }
       args:
         - {
             name: "dst",
@@ -488,7 +563,11 @@
 - opcode: "vote.sync"
   doc: "PTX ISA §9.7.11.8"
   variants:
-    - modifiers:
+    - description: "vote.sync all/any/uni/ballot"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         mode:
           kind: required
           type: VoteMode
@@ -499,7 +578,7 @@
             - { token: ".ballot", cpp: "VoteMode::Ballot" }
         pred:
           kind: fixed
-          fixed_value: ".pred"
+          fixed_value: { token: ".pred", cpp: "ScalarType::Pred" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: pred }
@@ -512,7 +591,11 @@
 - opcode: "match.sync"
   doc: "PTX ISA §9.7.11.9"
   variants:
-    - modifiers:
+    - description: "match.sync any/all b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         mode:
           kind: required
           type: MatchSyncMode
@@ -537,10 +620,14 @@
 - opcode: "activemask"
   doc: "PTX ISA §9.7.11.10"
   variants:
-    - modifiers:
+    - description: "activemask.b32"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b32:
           kind: fixed
-          fixed_value: ".b32"
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
       args:
         - { name: "dst", kind: reg }
       cpp_struct: "InstrActivemask"
@@ -551,7 +638,11 @@
 - opcode: "redux.sync"
   doc: "PTX ISA §9.7.11.11"
   variants:
-    - modifiers:
+    - description: "redux.sync op.type"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         op:
           kind: required
           type: ReduxSyncOp
@@ -581,10 +672,14 @@
 - opcode: "elect.sync"
   doc: "PTX ISA §9.7.11.12"
   variants:
-    - modifiers:
+    - description: "elect.sync.b32"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b32:
           kind: fixed
-          fixed_value: ".b32"
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
       args:
         - { name: "dst", kind: pred }
         - { name: "rx", kind: reg, note: "b32 out (elected thread)" }
@@ -598,13 +693,16 @@
   doc: "PTX ISA §9.7.11.13"
   variants:
     - description: "cp.async.bulk shared←global"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         dst_space:
           kind: fixed
-          fixed_value: ".shared::cluster"
+          fixed_value: { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
         src_space:
           kind: fixed
-          fixed_value: ".global"
+          fixed_value: { token: ".global", cpp: "StateSpace::Global" }
         completion_mechanism:
           kind: required
           type: CpAsyncBulkCompletionMechanism
@@ -626,10 +724,13 @@
       cpp_struct: "InstrCpAsyncBulk"
 
     - description: "cp.async.bulk global←shared (write-back)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         dst_space:
           kind: fixed
-          fixed_value: ".global"
+          fixed_value: { token: ".global", cpp: "StateSpace::Global" }
         src_space:
           kind: required
           type: StateSpace
@@ -648,13 +749,16 @@
       cpp_struct: "InstrCpAsyncBulk"
 
     - description: "cp.async.bulk shared←shared (cluster)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         dst_space:
           kind: fixed
-          fixed_value: ".shared::cluster"
+          fixed_value: { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
         src_space:
           kind: fixed
-          fixed_value: ".shared::cta"
+          fixed_value: { token: ".shared::cta", cpp: "StateSpace::Shared" }
         completion_mechanism:
           kind: required
           type: CpAsyncBulkCompletionMechanism
@@ -673,14 +777,22 @@
 - opcode: "cp.async.bulk.commit_group"
   doc: "PTX ISA §9.7.11.14"
   variants:
-    - modifiers: {}
+    - description: "cp.async.bulk.commit_group"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args: []
       cpp_struct: "InstrCpAsyncBulkCommitGroup"
 
 - opcode: "cp.async.bulk.wait_group"
   doc: "PTX ISA §9.7.11.15"
   variants:
-    - modifiers:
+    - description: "cp.async.bulk.wait_group with optional read"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         read:
           kind: optional
           type: bool
@@ -696,10 +808,14 @@
 - opcode: "mbarrier.init"
   doc: "PTX ISA §9.7.11.17"
   variants:
-    - modifiers:
+    - description: "mbarrier.init.b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "addr", kind: addr }
         - { name: "count", kind: reg_or_imm }
@@ -708,10 +824,14 @@
 - opcode: "mbarrier.inval"
   doc: "PTX ISA §9.7.11.17"
   variants:
-    - modifiers:
+    - description: "mbarrier.inval.b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "addr", kind: addr }
       cpp_struct: "InstrMbarrierInval"
@@ -720,10 +840,13 @@
   doc: "PTX ISA §9.7.11.18"
   variants:
     - description: "mbarrier.arrive (returns token)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "state", kind: reg, note: "u64 out" }
         - { name: "addr", kind: addr }
@@ -731,13 +854,16 @@
       cpp_struct: "InstrMbarrierArrive"
 
     - description: "mbarrier.arrive.noComplete"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         no_complete:
           kind: fixed
-          fixed_value: ".noComplete"
+          fixed_value: { token: ".noComplete", cpp: "true" }
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "state", kind: reg }
         - { name: "addr", kind: addr }
@@ -747,10 +873,14 @@
 - opcode: "mbarrier.arrive.expect_tx"
   doc: "PTX ISA §9.7.11.18"
   variants:
-    - modifiers:
+    - description: "mbarrier.arrive.expect_tx.b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "state", kind: reg }
         - { name: "addr", kind: addr }
@@ -760,10 +890,14 @@
 - opcode: "mbarrier.test_wait"
   doc: "PTX ISA §9.7.11.19"
   variants:
-    - modifiers:
+    - description: "mbarrier.test_wait.b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "waitcomplete", kind: pred, note: "pred out" }
         - { name: "addr", kind: addr }
@@ -773,10 +907,14 @@
 - opcode: "mbarrier.try_wait"
   doc: "PTX ISA §9.7.11.19"
   variants:
-    - modifiers:
+    - description: "mbarrier.try_wait.b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "waitcomplete", kind: pred }
         - { name: "addr", kind: addr }
@@ -787,10 +925,14 @@
 - opcode: "mbarrier.pending_count"
   doc: "PTX ISA §9.7.11.20"
   variants:
-    - modifiers:
+    - description: "mbarrier.pending_count.b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         b64:
           kind: fixed
-          fixed_value: ".b64"
+          fixed_value: { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "count", kind: reg }
         - { name: "state", kind: reg }

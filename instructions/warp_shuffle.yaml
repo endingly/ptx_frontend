@@ -6,7 +6,11 @@
 - opcode: "shfl.sync"
   doc: "PTX ISA §9.7.9.1"
   variants:
-    - modifiers:
+    - description: "shfl.sync mode.b32"
+      constraints:
+        min_ptx_version: 6.0
+        min_sm: 53
+      modifiers:
         mode:
           kind: required
           type: ShflMode
@@ -17,7 +21,7 @@
             - { token: ".idx", cpp: "ShflMode::Idx" }
         b32:
           kind: fixed
-          fixed_value: ".b32"
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "pred_out", kind: optional_pred }

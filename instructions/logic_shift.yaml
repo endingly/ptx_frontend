@@ -3,8 +3,12 @@
 - opcode: "and"
   doc: "PTX ISA §9.7.5.1"
   variants:
-    - modifiers:
-        type:
+    - description: "and pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -21,8 +25,12 @@
 - opcode: "or"
   doc: "PTX ISA §9.7.5.2"
   variants:
-    - modifiers:
-        type:
+    - description: "or pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -39,8 +47,12 @@
 - opcode: "xor"
   doc: "PTX ISA §9.7.5.3"
   variants:
-    - modifiers:
-        type:
+    - description: "xor pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -57,8 +69,12 @@
 - opcode: "not"
   doc: "PTX ISA §9.7.5.4"
   variants:
-    - modifiers:
-        type:
+    - description: "not pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -74,8 +90,12 @@
 - opcode: "cnot"
   doc: "PTX ISA §9.7.5.5"
   variants:
-    - modifiers:
-        type:
+    - description: "cnot b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -91,10 +111,14 @@
   doc: "PTX ISA §9.7.5.6"
   variants:
     - description: "lop3.b32 (3-input logic)"
+      constraints:
+        min_ptx_version: 5.0
+        min_sm: 50
       modifiers:
-        b32:
+        type_:
           kind: fixed
-          fixed_value: ".b32"
+          type: ScalarType
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -106,8 +130,12 @@
 - opcode: "shl"
   doc: "PTX ISA §9.7.5.7"
   variants:
-    - modifiers:
-        type:
+    - description: "shl b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -123,8 +151,12 @@
 - opcode: "shr"
   doc: "PTX ISA §9.7.5.8"
   variants:
-    - modifiers:
-        type:
+    - description: "shr b/u/s 16/32/64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -142,13 +174,17 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm, note: "shift amount u32" }
       cpp_struct: "InstrShr"
-      emit_note: "kind = Arithmetic if signed else Logical"
+      emit_note: "ShrData"
 
 - opcode: "shf"
   doc: "PTX ISA §9.7.5.9"
   variants:
-    - modifiers:
-        dir:
+    - description: "shf.l/r.clamp/wrap.b32"
+      constraints:
+        min_ptx_version: 3.0
+        min_sm: 32
+      modifiers:
+        direction:
           kind: required
           type: ShiftDirection
           values:
@@ -160,24 +196,30 @@
           values:
             - { token: ".clamp", cpp: "FunnelShiftMode::Clamp" }
             - { token: ".wrap", cpp: "FunnelShiftMode::Wrap" }
-        b32:
+        type_:
           kind: fixed
-          fixed_value: ".b32"
+          type: ScalarType
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src_a", kind: reg_or_imm }
         - { name: "src_b", kind: reg_or_imm }
         - { name: "src_c", kind: reg_or_imm }
       cpp_struct: "InstrShf"
+      emit_note: "ShfDetails"
 
 - opcode: "prmt"
   doc: "PTX ISA §9.7.5.10"
   variants:
     - description: "prmt.b32 (default mode)"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
       modifiers:
-        b32:
+        type_:
           kind: fixed
-          fixed_value: ".b32"
+          type: ScalarType
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
         mode:
           kind: optional
           type: PrmtMode

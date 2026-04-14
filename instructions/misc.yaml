@@ -6,14 +6,22 @@
 - opcode: "brkpt"
   doc: "PTX ISA §9.7.12.1"
   variants:
-    - modifiers: {}
+    - description: "brkpt"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args: []
       cpp_struct: "InstrBrkpt"
 
 - opcode: "pmevent"
   doc: "PTX ISA §9.7.12.2"
   variants:
-    - modifiers:
+    - description: "pmevent with optional .a"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         a:
           kind: optional
           type: bool
@@ -26,14 +34,22 @@
 - opcode: "griddepcontrol.launch_dependents"
   doc: "PTX ISA §9.7.12.3"
   variants:
-    - modifiers: {}
+    - description: "griddepcontrol.launch_dependents"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args: []
       cpp_struct: "InstrGridDepControlLaunchDependents"
 
 - opcode: "griddepcontrol.wait"
   doc: "PTX ISA §9.7.12.3"
   variants:
-    - modifiers: {}
+    - description: "griddepcontrol.wait"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args: []
       cpp_struct: "InstrGridDepControlWait"
 
@@ -44,7 +60,11 @@
 - opcode: "setmaxnreg"
   doc: "PTX ISA §9.7.12.4"
   variants:
-    - modifiers:
+    - description: "setmaxnreg inc/dec u32"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         mode:
           kind: required
           type: SetMaxNregMode
@@ -53,7 +73,7 @@
             - { token: ".dec", cpp: "SetMaxNregMode::Dec" }
         u32:
           kind: fixed
-          fixed_value: ".u32"
+          fixed_value: { token: ".u32", cpp: "ScalarType::U32" }
       args:
         - { name: "nreg", kind: imm }
       cpp_struct: "InstrSetMaxNreg"
@@ -66,6 +86,9 @@
   doc: "PTX ISA §9.7.7.1"
   variants:
     - description: "tex.geom.v4.dtype.ctype"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         geom:
           kind: required
@@ -79,7 +102,7 @@
             - { token: ".cube", cpp: "TexGeom::Cube" }
         v4:
           kind: fixed
-          fixed_value: ".v4"
+          fixed_value: { token: ".v4", cpp: "true" }
         dtype:
           kind: required
           type: ScalarType
@@ -102,7 +125,11 @@
 - opcode: "tld4"
   doc: "PTX ISA §9.7.7.2"
   variants:
-    - modifiers:
+    - description: "tld4.comp.geom.v4.dtype.ctype"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         comp:
           kind: required
           type: TexComponent
@@ -118,7 +145,7 @@
             - { token: ".2d", cpp: "TexGeom::D2" }
         v4:
           kind: fixed
-          fixed_value: ".v4"
+          fixed_value: { token: ".v4", cpp: "true" }
         dtype:
           kind: required
           type: ScalarType
@@ -144,7 +171,11 @@
 - opcode: "cp.reduce.async.bulk"
   doc: "PTX ISA §9.7.11.13"
   variants:
-    - modifiers:
+    - description: "cp.reduce.async.bulk dst_space.src_space.op.type"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         dst_space:
           kind: required
           type: StateSpace
@@ -196,10 +227,14 @@
 - opcode: "cp.reduce.async.bulk.tensor"
   doc: "PTX ISA §9.7.11.16"
   variants:
-    - modifiers:
+    - description: "cp.reduce.async.bulk.tensor"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         dst_space:
           kind: fixed
-          fixed_value: ".global"
+          fixed_value: { token: ".global", cpp: "StateSpace::Global" }
         src_space:
           kind: required
           type: StateSpace
@@ -253,7 +288,11 @@
 - opcode: "isspacep"
   doc: "PTX ISA §9.7.8.12"
   variants:
-    - modifiers:
+    - description: "isspacep.space"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         space:
           kind: required
           type: StateSpace
@@ -274,7 +313,11 @@
 - opcode: "stacksave"
   doc: "PTX ISA §9.7.8.13"
   variants:
-    - modifiers:
+    - description: "stacksave u32/u64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         size:
           kind: required
           type: ScalarType
@@ -288,7 +331,11 @@
 - opcode: "stackrestore"
   doc: "PTX ISA §9.7.8.13"
   variants:
-    - modifiers:
+    - description: "stackrestore u32/u64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         size:
           kind: required
           type: ScalarType

@@ -6,7 +6,11 @@
 - opcode: "bra"
   doc: "PTX ISA §9.7.10.1"
   variants:
-    - modifiers:
+    - description: "bra (uni)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         uni:
           kind: optional
           type: bool
@@ -22,7 +26,11 @@
 - opcode: "brx.idx"
   doc: "PTX ISA §9.7.10.2"
   variants:
-    - modifiers:
+    - description: "brx.idx (uni)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         uni:
           kind: optional
           type: bool
@@ -40,6 +48,9 @@
   doc: "PTX ISA §9.7.10.3"
   variants:
     - description: "call (uni) with optional return list"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
       modifiers:
         uni:
           kind: optional
@@ -66,7 +77,11 @@
 - opcode: "ret"
   doc: "PTX ISA §9.7.10.4"
   variants:
-    - modifiers:
+    - description: "ret (uni)"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         uni:
           kind: optional
           type: bool
@@ -81,14 +96,22 @@
 - opcode: "exit"
   doc: "PTX ISA §9.7.10.5"
   variants:
-    - modifiers: {}
+    - description: "exit"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args: []
       cpp_struct: "InstrExit"
 
 - opcode: "trap"
   doc: "PTX ISA §9.7.10.6"
   variants:
-    - modifiers: {}
+    - description: "trap"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers: {}
       args: []
       cpp_struct: "InstrTrap"
 
@@ -98,10 +121,14 @@
 - opcode: "nanosleep"
   doc: "PTX ISA §9.7.10.7"
   variants:
-    - modifiers:
+    - description: "nanosleep.u32"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
         u32:
           kind: fixed
-          fixed_value: ".u32"
+          fixed_value: { token: ".u32", cpp: "ScalarType::U32" }
       args:
         - { name: "ns", kind: reg_or_imm, note: "nanoseconds, u32" }
       cpp_struct: "InstrNanosleep"

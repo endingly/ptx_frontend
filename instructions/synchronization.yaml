@@ -176,8 +176,8 @@
             - { token: ".gl", cpp: "MembarLevel::Gl" }
             - { token: ".sys", cpp: "MembarLevel::Sys" }
             - { token: ".cluster", cpp: "MembarLevel::Cluster" }
-        args: []
-        cpp_struct: "InstrMembar"
+      args: []
+      cpp_struct: "InstrMembar"
 
     - description: "membar.proxy.proxykind"
       constraints:

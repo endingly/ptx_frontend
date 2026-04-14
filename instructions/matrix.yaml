@@ -258,11 +258,11 @@
         shape:
           kind: required
           type: Tcgen05Shape
-          values: !include _shared/matrix_shapes.yaml
+          values: !include _shared/tcgen05_shapes.yaml
         num:
           kind: required
           type: Tcgen05Num
-          values: !include _shared/matrix_nums.yaml
+          values: !include _shared/tcgen05_nums.yaml
         b32:
           kind: optional
           type: bool
@@ -305,7 +305,7 @@
         shape:
           kind: required
           type: Tcgen05Shape
-          values: !include _shared/matrix_shapes.yaml
+          values: !include _shared/tcgen05_shapes.yaml
         num:
           kind: required
           type: Tcgen05Num

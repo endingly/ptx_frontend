@@ -20,17 +20,23 @@ void TypeChecker::error(std::string msg) {
   errors_.push_back(TypeError{std::move(msg)});
 }
 
-void TypeChecker::require_sm(uint32_t min_v, std::string_view ctx) {
-  if (target_.sm < min_v)
+bool TypeChecker::require_sm(uint32_t min_v, std::string_view ctx) {
+  if (target_.sm < min_v) {
     error(std::string(ctx) + " requires sm_" + std::to_string(min_v) +
           " or higher (target is sm_" + std::to_string(target_.sm) + ")");
+    return false;
+  }
+  return true;
 }
 
-void TypeChecker::require_ptx(float min_v, std::string_view ctx) {
-  if (target_.ptx_version < min_v)
+bool TypeChecker::require_ptx(float min_v, std::string_view ctx) {
+  if (target_.ptx_version < min_v) {
     error(std::string(ctx) + " requires PTX " + std::to_string(min_v) +
           " or higher (target is PTX " + std::to_string(target_.ptx_version) +
           ")");
+    return false;
+  }
+  return true;
 }
 
 void TypeChecker::check_add(const InstrAdd<ParsedOp>& i) {

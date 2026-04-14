@@ -32,16 +32,22 @@ class TypeChecker {
   const CompileTarget& target_;
   std::vector<TypeError> errors_;
 
-  void error(std::string msg);
-  void require_sm(uint32_t min_v, std::string_view ctx);
-  void require_ptx(float min_v, std::string_view ctx);
-
   // operand type check via LegacySymbolTable
   void check_operand(const ParsedOp& op, ScalarType expected);
   void check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
 
   void check_add_integer(const InstrAdd<ParsedOp>& i);
   void check_add_float(const InstrAdd<ParsedOp>& i);
+
+ protected:
+  /// Emit a type error (also used by generated subclasses).
+  void error(std::string msg);
+
+  /// Return false and emit an error if target_.ptx_version < min_v.
+  bool require_ptx(float min_v, std::string_view ctx);
+
+  /// Return false and emit an error if target_.sm < min_v.
+  bool require_sm(uint32_t min_v, std::string_view ctx);
 
  public:
   TypeChecker(const LegacySymbolTable& sym, const CompileTarget& target)

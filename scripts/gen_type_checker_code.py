@@ -416,8 +416,7 @@ def _generate_variant_check(variant: VariantModel, variant_idx: int, cpp_struct:
             if mod.kind == ModifierKind.Fixed:
                 if mod.fixed_value:
                     check = f"(instr.data == {mod.fixed_value.cpp_code})"
-                    mod_desc = _escape_cpp_string(f"{desc}: modifier {mod.name} check failed")
-                    lines.append(f'    if (!({check})) {{ error("{mod_desc}"); return false; }}')
+                    lines.append(f'    if (!({check})) {{ return false; }}')
             elif mod.kind == ModifierKind.Required and mod.values:
                 vals = ", ".join(v.cpp_code for v in mod.values)
                 check = (
@@ -426,8 +425,7 @@ def _generate_variant_check(variant: VariantModel, variant_idx: int, cpp_struct:
                     f"return is_one_of(instr.data, _allowed); "
                     f"}}())"
                 )
-                mod_desc = _escape_cpp_string(f"{desc}: modifier {mod.name} check failed")
-                lines.append(f'    if (!({check})) {{ error("{mod_desc}"); return false; }}')
+                lines.append(f'    if (!({check})) {{ return false; }}')
     else:
         # Normal struct (direct or variant alternative) -- access fields by name
         for mod in variant.modifiers:
@@ -435,9 +433,8 @@ def _generate_variant_check(variant: VariantModel, variant_idx: int, cpp_struct:
                 continue
             check = mod.generate_field_check(data_var)
             if check != "true":
-                mod_desc = _escape_cpp_string(f"{desc}: modifier {mod.name} check failed")
                 lines.append(
-                    f'    if (!({check})) {{ error("{mod_desc}"); return false; }}'
+                    f'    if (!({check})) {{ return false; }}'
                 )
 
     # ── Operand type checks ───────────────────────────────────────────────────

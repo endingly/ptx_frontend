@@ -246,3 +246,82 @@ TEST(TypeCheckerAdd, UndefinedRegister_Error) {
   EXPECT_EQ(errs.size(), 3u);
   EXPECT_TRUE(errs[0].message.find("undefined") != std::string::npos);
 }
+// ── TypeCheckerGen operand type checking: bfind ──────────────────────────────
+
+#include "type_checker_gen.hpp"
+#include "symbol_resolver.hpp"
+
+namespace {
+
+// Build a minimal SymbolTable entry and return its SymbolId.
+static SymbolId make_resolved_sym(SymbolTable& st, const std::string& name,
+                                   ScalarType ty) {
+  auto id = st.insert_global(name, SymbolKind::Register,
+                              Type{ScalarTypeT{ty}}, StateSpace::Reg);
+  EXPECT_TRUE(id.has_value());
+  return id.value_or(kInvalidSymbolId);
+}
+
+// Build a resolved register operand from a SymbolId.
+static ResolvedOp resolved_reg(SymbolId id) {
+  return ResolvedOp::from_value(RegOrImmediate<SymbolId>::Reg(id));
+}
+
+}  // namespace
+
+TEST(TypeCheckerGenBfind, ValidU32_NoErrors) {
+  LegacySymbolTable lsym;
+  SymbolTable st;
+  auto dst_id = make_resolved_sym(st, "d", ScalarType::U32);
+  auto src_id = make_resolved_sym(st, "a", ScalarType::U32);
+
+  CompileTarget target{80, 8.0f};
+  TypeCheckerGen tc{lsym, target};
+  tc.set_resolved_symbols(st);
+
+  InstrBfind<ResolvedOp> instr{
+      BfindDetails{ScalarType::U32, false},
+      resolved_reg(dst_id),
+      resolved_reg(src_id)};
+  tc.check_bfind(instr);
+  EXPECT_TRUE(tc.errors().empty());
+}
+
+TEST(TypeCheckerGenBfind, SrcTypeMismatch_Error) {
+  LegacySymbolTable lsym;
+  SymbolTable st;
+  // dst must be u32, src must be u64 (instruction says u64)
+  auto dst_id = make_resolved_sym(st, "d", ScalarType::U32);
+  auto src_id = make_resolved_sym(st, "a", ScalarType::U32);  // WRONG: should be u64
+
+  CompileTarget target{80, 8.0f};
+  TypeCheckerGen tc{lsym, target};
+  tc.set_resolved_symbols(st);
+
+  InstrBfind<ResolvedOp> instr{
+      BfindDetails{ScalarType::U64, false},  // instruction type is u64
+      resolved_reg(dst_id),
+      resolved_reg(src_id)};
+  tc.check_bfind(instr);
+  auto errs = tc.errors();
+  ASSERT_FALSE(errs.empty());
+  EXPECT_NE(errs[0].message.find("type mismatch"), std::string::npos);
+}
+
+TEST(TypeCheckerGenBfind, ShiftamtVariant_ValidS32) {
+  LegacySymbolTable lsym;
+  SymbolTable st;
+  auto dst_id = make_resolved_sym(st, "d", ScalarType::U32);
+  auto src_id = make_resolved_sym(st, "a", ScalarType::S32);
+
+  CompileTarget target{80, 8.0f};
+  TypeCheckerGen tc{lsym, target};
+  tc.set_resolved_symbols(st);
+
+  InstrBfind<ResolvedOp> instr{
+      BfindDetails{ScalarType::S32, /*shiftamt=*/true},
+      resolved_reg(dst_id),
+      resolved_reg(src_id)};
+  tc.check_bfind(instr);
+  EXPECT_TRUE(tc.errors().empty());
+}

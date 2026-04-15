@@ -819,3 +819,47 @@ TEST(ParserFence, MultipleInSequence) {
       std::get<FenceProxyBidir>(std::get<InstrFence<ParsedOp>>(instrs[2]).data);
   EXPECT_EQ(d2.kind, FenceProxyKind::Alias);
 }
+// ── bfind (PTX §9.7.5.11) ─────────────────────────────────────────────────────
+
+TEST(ParserBfind, Unsigned32) {
+  auto instrs = parse_instrs("bfind.u32 %r0, %r1;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& instr = std::get<InstrBfind<ParsedOp>>(instrs[0]);
+  EXPECT_EQ(instr.data.type_, ScalarType::U32);
+  EXPECT_FALSE(instr.data.shiftamt);
+}
+
+TEST(ParserBfind, Signed64WithShiftamt) {
+  auto instrs = parse_instrs("bfind.shiftamt.s64 %r0, %rd0;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& instr = std::get<InstrBfind<ParsedOp>>(instrs[0]);
+  EXPECT_EQ(instr.data.type_, ScalarType::S64);
+  EXPECT_TRUE(instr.data.shiftamt);
+}
+
+TEST(ParserBfind, Unsigned64) {
+  auto instrs = parse_instrs("bfind.u64 %r0, %rd0;");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& instr = std::get<InstrBfind<ParsedOp>>(instrs[0]);
+  EXPECT_EQ(instr.data.type_, ScalarType::U64);
+  EXPECT_FALSE(instr.data.shiftamt);
+}
+
+// ── ldu (PTX §9.7.8.3) ────────────────────────────────────────────────────────
+
+TEST(ParserLdu, GlobalF32) {
+  auto instrs = parse_instrs("ldu.global.f32 %f0, [%rd0];");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& instr = std::get<InstrLdu<ParsedOp>>(instrs[0]);
+  EXPECT_EQ(instr.data.state_space, StateSpace::Global);
+  EXPECT_TRUE(std::holds_alternative<ScalarTypeT>(instr.data.typ));
+  EXPECT_EQ(std::get<ScalarTypeT>(instr.data.typ).type, ScalarType::F32);
+}
+
+TEST(ParserLdu, DefaultGlobalU32) {
+  // ldu without explicit state space defaults to global
+  auto instrs = parse_instrs("ldu.u32 %r0, [%rd0];");
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& instr = std::get<InstrLdu<ParsedOp>>(instrs[0]);
+  EXPECT_EQ(instr.data.state_space, StateSpace::Global);
+}

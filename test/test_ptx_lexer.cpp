@@ -503,3 +503,33 @@ TEST(PtxLexer92Integration, Tcgen05LdWithOffset) {
   EXPECT_EQ(toks[4].first, TokenKind::DotShape32x32b);
   EXPECT_EQ(toks[6].first, TokenKind::DotOffset);
 }
+// ── bfind / ldu new tokens (PTX §9.7.5.11, §9.7.8.3) ─────────────────────────
+
+// bfind.u32 dst, src;
+TEST(PtxLexerBfind, OpcodeAndModifiers) {
+  auto toks = lex_all("bfind .u32");
+  ASSERT_EQ(toks.size(), 2u);
+  EXPECT_EQ(toks[0].first, TokenKind::Bfind);
+  EXPECT_EQ(toks[0].second, "bfind");
+  EXPECT_EQ(toks[1].first, TokenKind::DotU32);
+}
+
+// bfind.shiftamt.s64 dst, src;
+TEST(PtxLexerBfind, ShiftamtModifier) {
+  auto toks = lex_all("bfind .shiftamt .s64");
+  ASSERT_EQ(toks.size(), 3u);
+  EXPECT_EQ(toks[0].first, TokenKind::Bfind);
+  EXPECT_EQ(toks[1].first, TokenKind::DotShiftamt);
+  EXPECT_EQ(toks[1].second, ".shiftamt");
+  EXPECT_EQ(toks[2].first, TokenKind::DotS64);
+}
+
+// ldu.global.f32 dst, [src];
+TEST(PtxLexerLdu, OpcodeAndModifiers) {
+  auto toks = lex_all("ldu .global .f32");
+  ASSERT_EQ(toks.size(), 3u);
+  EXPECT_EQ(toks[0].first, TokenKind::Ldu);
+  EXPECT_EQ(toks[0].second, "ldu");
+  EXPECT_EQ(toks[1].first, TokenKind::DotGlobal);
+  EXPECT_EQ(toks[2].first, TokenKind::DotF32);
+}

@@ -43,7 +43,7 @@ class TypeCheckerGen : public TypeChecker {
   void check_prefetchu(const InstrPrefetch<ResolvedOp>& instr);
   void check_cvt(const InstrCvt<ResolvedOp>& instr);
   void check_cvt_pack(const InstrCvtPack<ResolvedOp>& instr);
-  void check_cvta(const InstrCvta<ResolvedOp>& instr);
+  // cvta: struct InstrCvta not available -- skipped
   void check_cp_async(const InstrCpAsync<ResolvedOp>& instr);
   void check_cp_async_commit_group(const InstrCpAsyncCommitGroup& instr);
   void check_cp_async_wait_group(const InstrCpAsyncWaitGroup<ResolvedOp>& instr);
@@ -95,7 +95,7 @@ class TypeCheckerGen : public TypeChecker {
   void check_shl(const InstrShl<ResolvedOp>& instr);
   void check_shr(const InstrShr<ResolvedOp>& instr);
   void check_shf(const InstrShf<ResolvedOp>& instr);
-  void check_prmt(const InstrPrmt<ResolvedOp>& instr);
+  // prmt: struct InstrPrmt not available -- skipped
   void check_ldmatrix(const InstrLdMatrix<ResolvedOp>& instr);
   void check_stmatrix(const InstrStMatrix<ResolvedOp>& instr);
   void check_mma_sync(const InstrMma<ResolvedOp>& instr);
@@ -105,7 +105,7 @@ class TypeCheckerGen : public TypeChecker {
   // tcgen05.mma: struct InstrTcgen05Mma not available -- skipped
   // tcgen05.mma.ws: struct InstrTcgen05MmaWs not available -- skipped
   void check_tcgen05_fence(const InstrTcgen05Fence<ResolvedOp>& instr);
-  void check_tcgen05_commit(const InstrTcgen05CommitArrival<ResolvedOp>& instr);
+  // tcgen05.commit: struct InstrTcgen05CommitGroup not available -- skipped
   void check_tcgen05_wait(const InstrTcgen05Wait<ResolvedOp>& instr);
   void check_tcgen05_alloc(const InstrTcgen05Alloc<ResolvedOp>& instr);
   void check_tcgen05_dealloc(const InstrTcgen05Dealloc<ResolvedOp>& instr);
@@ -135,8 +135,8 @@ class TypeCheckerGen : public TypeChecker {
   void check_barrier_cluster_wait(const InstrClusterBarrier<ResolvedOp>& instr);
   void check_membar(const InstrMembar& instr);
   void check_fence(const InstrFence<ResolvedOp>& instr);
-  void check_atom(const InstrAtom<ResolvedOp>& instr);
-  void check_red(const InstrRed<ResolvedOp>& instr);
+  // atom: struct InstrAtom not available -- skipped
+  // red: struct InstrRed not available -- skipped
   void check_vote(const InstrVote<ResolvedOp>& instr);
   void check_vote_sync(const InstrVote<ResolvedOp>& instr);
   // match.sync: struct InstrMatchSync not available -- skipped

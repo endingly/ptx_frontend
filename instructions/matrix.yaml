@@ -14,21 +14,18 @@
         aligned:
           kind: fixed
           fixed_value: ".aligned"
-        trans:
+        transpose:
           kind: optional
           type: bool
           values:
             - { token: ".trans", cpp: "true" }
-        num:
+        number:
           kind: required
-          type: LdMatrixNum
+          type: MatrixNumber
           values:
-            - { token: ".x1", cpp: "LdMatrixNum::X1" }
-            - { token: ".x2", cpp: "LdMatrixNum::X2" }
-            - { token: ".x4", cpp: "LdMatrixNum::X4" }
-        b16:
-          kind: fixed
-          fixed_value: ".b16"
+            - { token: ".x1", cpp: "MatrixNumber::X1" }
+            - { token: ".x2", cpp: "MatrixNumber::X2" }
+            - { token: ".x4", cpp: "MatrixNumber::X4" }
       args:
         - { name: "dst",  kind: reg_list, note: "1/2/4 b32 registers" }
         - { name: "addr", kind: addr,     note: "shared memory" }
@@ -47,21 +44,18 @@
         aligned:
           kind: fixed
           fixed_value: ".aligned"
-        trans:
+        transpose:
           kind: optional
           type: bool
           values:
             - { token: ".trans", cpp: "true" }
-        num:
+        number:
           kind: required
-          type: LdMatrixNum
+          type: MatrixNumber
           values:
-            - { token: ".x1", cpp: "LdMatrixNum::X1" }
-            - { token: ".x2", cpp: "LdMatrixNum::X2" }
-            - { token: ".x4", cpp: "LdMatrixNum::X4" }
-        b16:
-          kind: fixed
-          fixed_value: ".b16"
+            - { token: ".x1", cpp: "MatrixNumber::X1" }
+            - { token: ".x2", cpp: "MatrixNumber::X2" }
+            - { token: ".x4", cpp: "MatrixNumber::X4" }
       args:
         - { name: "addr", kind: addr }
         - { name: "src",  kind: reg_list }
@@ -575,12 +569,12 @@
   variants:
     - description: "tcgen05.fence before/after"
       modifiers:
-        when:
+        kind:
           kind: required
-          type: Tcgen05FenceWhen
+          type: Tcgen05FenceKind
           values:
-            - { token: ".before_thread_sync", cpp: "Tcgen05FenceWhen::BeforeSync" }
-            - { token: ".after_thread_sync",  cpp: "Tcgen05FenceWhen::AfterSync"  }
+            - { token: ".before_thread_sync", cpp: "Tcgen05FenceKind::BeforeThreadSync" }
+            - { token: ".after_thread_sync",  cpp: "Tcgen05FenceKind::AfterThreadSync"  }
       args: []
       cpp_struct: "InstrTcgen05Fence"
 

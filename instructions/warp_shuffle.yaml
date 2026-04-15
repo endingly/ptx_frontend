@@ -13,12 +13,12 @@
       modifiers:
         mode:
           kind: required
-          type: ShflMode
+          type: ShuffleMode
           values:
-            - { token: ".up", cpp: "ShflMode::Up" }
-            - { token: ".down", cpp: "ShflMode::Down" }
-            - { token: ".bfly", cpp: "ShflMode::Bfly" }
-            - { token: ".idx", cpp: "ShflMode::Idx" }
+            - { token: ".up", cpp: "ShuffleMode::Up" }
+            - { token: ".down", cpp: "ShuffleMode::Down" }
+            - { token: ".bfly", cpp: "ShuffleMode::Bfly" }
+            - { token: ".idx", cpp: "ShuffleMode::Idx" }
         b32:
           kind: fixed
           fixed_value: { token: ".b32", cpp: "ScalarType::B32" }

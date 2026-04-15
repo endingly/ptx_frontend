@@ -196,10 +196,6 @@
           values:
             - { token: ".clamp", cpp: "FunnelShiftMode::Clamp" }
             - { token: ".wrap", cpp: "FunnelShiftMode::Wrap" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src_a", kind: reg_or_imm }

@@ -1703,7 +1703,7 @@
         min_ptx_version: 7.0
         min_sm: 72
       modifiers:
-        mode:
+        control:
           kind: required
           type: Dp2aControl
           values:

@@ -210,28 +210,16 @@ void TypeCheckerGen::check_cvt(const InstrCvt<ResolvedOp>& instr) {
 
 // PTX ISA §9.7.9.22
 void TypeCheckerGen::check_cvt_pack(const InstrCvtPack<ResolvedOp>& instr) {
-  // variant 0: 
+  // variant 0: cvt.pack.sat.etype.ntype (8-bit)
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.sat == .sat))) { error(": modifier sat check failed"); return false; }
+    if (!require_ptx(7.0f, "cvt.pack.sat.etype.ntype (8-bit)")) return false;
+    if (!require_sm(72u, "cvt.pack.sat.etype.ntype (8-bit)")) return false;
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U8, ScalarType::S8}); return is_one_of(instr.data.to, _allowed); }()))) { error("cvt.pack.sat.etype.ntype (8-bit): modifier to check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S32, ScalarType::U32}); return is_one_of(instr.data.from, _allowed); }()))) { error("cvt.pack.sat.etype.ntype (8-bit): modifier from check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
     error("cvt.pack: no matching variant found");
-  }
-}
-
-// PTX ISA §9.7.9.20
-void TypeCheckerGen::check_cvta(const InstrCvta<ResolvedOp>& instr) {
-  // variant 0: cvta explicit-to-generic
-  auto check_v0 = [&]() -> bool {
-    return true;
-  };
-  // variant 1: cvta.to generic-to-explicit
-  auto check_v1 = [&]() -> bool {
-    return true;
-  };
-  if (!(check_v0() || check_v1())) {
-    error("cvta: no matching variant found");
   }
 }
 
@@ -295,36 +283,28 @@ void TypeCheckerGen::check_fma(const InstrFma<ResolvedOp>& instr) {
   // variant 0: fma.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "fma.f32")) return false;
-    if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
-    if (!((d.type_ == ScalarType::F32))) { error("fma.f32: modifier type_ check failed"); return false; }
+    if (!((instr.data.type_ == ScalarType::F32))) { error("fma.f32: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 1: fma.f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "fma.f64")) return false;
     if (!require_sm(13u, "fma.f64")) return false;
-    if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
-    if (!((d.type_ == ScalarType::F64))) { error("fma.f64: modifier type_ check failed"); return false; }
+    if (!((instr.data.type_ == ScalarType::F64))) { error("fma.f64: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 2: fma half-precision (f16/f16x2)
   auto check_v2 = [&]() -> bool {
     if (!require_ptx(6.0f, "fma half-precision (f16/f16x2)")) return false;
     if (!require_sm(53u, "fma half-precision (f16/f16x2)")) return false;
-    if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("fma half-precision (f16/f16x2): modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("fma half-precision (f16/f16x2): modifier type_ check failed"); return false; }
     return true;
   };
   // variant 3: fma bf16/bf16x2
   auto check_v3 = [&]() -> bool {
     if (!require_ptx(7.0f, "fma bf16/bf16x2")) return false;
     if (!require_sm(80u, "fma bf16/bf16x2")) return false;
-    if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("fma bf16/bf16x2: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("fma bf16/bf16x2: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -337,35 +317,25 @@ void TypeCheckerGen::check_rcp(const InstrRcp<ResolvedOp>& instr) {
   // variant 0: rcp.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.approx.f32")) return false;
-    if (!std::holds_alternative<RcpData>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<RcpData>(instr.data);
-    if (!((d.kind == RcpKind::Approx))) { error("rcp.approx.f32: modifier kind check failed"); return false; }
-    if (!((d.type_ == ScalarType::F32))) { error("rcp.approx.f32: modifier type_ check failed"); return false; }
+    if (!((instr.data.type_ == ScalarType::F32))) { error("rcp.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 1: rcp.approx.f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.approx.f64")) return false;
-    if (!std::holds_alternative<RcpData>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<RcpData>(instr.data);
-    if (!((d.kind == RcpKind::Approx))) { error("rcp.approx.f64: modifier kind check failed"); return false; }
-    if (!((d.type_ == ScalarType::F64))) { error("rcp.approx.f64: modifier type_ check failed"); return false; }
+    if (!((instr.data.type_ == ScalarType::F64))) { error("rcp.approx.f64: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 2: rcp.rnd.f32
   auto check_v2 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.rnd.f32")) return false;
-    if (!std::holds_alternative<RcpData>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<RcpData>(instr.data);
-    if (!((d.type_ == ScalarType::F32))) { error("rcp.rnd.f32: modifier type_ check failed"); return false; }
+    if (!((instr.data.type_ == ScalarType::F32))) { error("rcp.rnd.f32: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 3: rcp.rnd.f64
   auto check_v3 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.rnd.f64")) return false;
-    if (!std::holds_alternative<RcpData>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<RcpData>(instr.data);
-    if (!((d.type_ == ScalarType::F64))) { error("rcp.rnd.f64: modifier type_ check failed"); return false; }
+    if (!((instr.data.type_ == ScalarType::F64))) { error("rcp.rnd.f64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -378,7 +348,6 @@ void TypeCheckerGen::check_sqrt(const InstrSqrt<ResolvedOp>& instr) {
   // variant 0: sqrt.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "sqrt.approx.f32")) return false;
-    if (!((instr.data.kind == SqrtKind::Approx))) { error("sqrt.approx.f32: modifier kind check failed"); return false; }
     if (!((instr.data.type_ == ScalarType::F32))) { error("sqrt.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
@@ -405,14 +374,12 @@ void TypeCheckerGen::check_rsqrt(const InstrRsqrt<ResolvedOp>& instr) {
   // variant 0: rsqrt.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "rsqrt.approx.f32")) return false;
-    if (!((instr.data.kind == RsqrtKind::Approx))) { error("rsqrt.approx.f32: modifier kind check failed"); return false; }
     if (!((instr.data.type_ == ScalarType::F32))) { error("rsqrt.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 1: rsqrt.approx.f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "rsqrt.approx.f64")) return false;
-    if (!((instr.data.kind == RsqrtKind::Approx))) { error("rsqrt.approx.f64: modifier kind check failed"); return false; }
     if (!((instr.data.type_ == ScalarType::F64))) { error("rsqrt.approx.f64: modifier type_ check failed"); return false; }
     return true;
   };
@@ -426,8 +393,6 @@ void TypeCheckerGen::check_sin(const InstrSin<ResolvedOp>& instr) {
   // variant 0: sin.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "sin.approx.f32")) return false;
-    if (!((instr.data.kind == TrigKind::Approx))) { error("sin.approx.f32: modifier kind check failed"); return false; }
-    if (!((instr.data.type_ == ScalarType::F32))) { error("sin.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -440,8 +405,6 @@ void TypeCheckerGen::check_cos(const InstrCos<ResolvedOp>& instr) {
   // variant 0: cos.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "cos.approx.f32")) return false;
-    if (!((instr.data.kind == TrigKind::Approx))) { error("cos.approx.f32: modifier kind check failed"); return false; }
-    if (!((instr.data.type_ == ScalarType::F32))) { error("cos.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -454,8 +417,6 @@ void TypeCheckerGen::check_lg2(const InstrLg2<ResolvedOp>& instr) {
   // variant 0: lg2.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "lg2.approx.f32")) return false;
-    if (!((instr.data.kind == TrigKind::Approx))) { error("lg2.approx.f32: modifier kind check failed"); return false; }
-    if (!((instr.data.type_ == ScalarType::F32))) { error("lg2.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -468,7 +429,6 @@ void TypeCheckerGen::check_ex2(const InstrEx2<ResolvedOp>& instr) {
   // variant 0: ex2.approx.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "ex2.approx.f32")) return false;
-    if (!((instr.data.kind == Ex2Kind::Approx))) { error("ex2.approx.f32: modifier kind check failed"); return false; }
     if (!((instr.data.type_ == ScalarType::F32))) { error("ex2.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
@@ -476,7 +436,6 @@ void TypeCheckerGen::check_ex2(const InstrEx2<ResolvedOp>& instr) {
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(6.0f, "ex2.approx f16/f16x2/bf16/bf16x2")) return false;
     if (!require_sm(53u, "ex2.approx f16/f16x2/bf16/bf16x2")) return false;
-    if (!((instr.data.kind == Ex2Kind::Approx))) { error("ex2.approx f16/f16x2/bf16/bf16x2: modifier kind check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2, ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("ex2.approx f16/f16x2/bf16/bf16x2: modifier type_ check failed"); return false; }
     return true;
   };
@@ -491,16 +450,14 @@ void TypeCheckerGen::check_tanh(const InstrTanh<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(7.5f, "tanh.approx.f32")) return false;
     if (!require_sm(80u, "tanh.approx.f32")) return false;
-    if (!((instr.data.kind == TanhKind::Approx))) { error("tanh.approx.f32: modifier kind check failed"); return false; }
-    if (!((instr.data.type_ == ScalarType::F32))) { error("tanh.approx.f32: modifier type_ check failed"); return false; }
+    if (!((instr.data == ScalarType::F32))) { error("tanh.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 1: tanh.approx f16/f16x2/bf16/bf16x2
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(7.5f, "tanh.approx f16/f16x2/bf16/bf16x2")) return false;
     if (!require_sm(80u, "tanh.approx f16/f16x2/bf16/bf16x2")) return false;
-    if (!((instr.data.kind == TanhKind::Approx))) { error("tanh.approx f16/f16x2/bf16/bf16x2: modifier kind check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2, ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("tanh.approx f16/f16x2/bf16/bf16x2: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2, ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data, _allowed); }()))) { error("tanh.approx f16/f16x2/bf16/bf16x2: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1())) {
@@ -514,7 +471,7 @@ void TypeCheckerGen::check_copysign(const InstrCopysign<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(7.0f, "copysign.f32/f64")) return false;
     if (!require_sm(80u, "copysign.f32/f64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("copysign.f32/f64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data, _allowed); }()))) { error("copysign.f32/f64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -840,10 +797,8 @@ void TypeCheckerGen::check_mul24(const InstrMul24<ResolvedOp>& instr) {
   // variant 0: mul24 hi/lo
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "mul24 hi/lo")) return false;
-    if (!std::holds_alternative<Mul24Details>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<Mul24Details>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<Mul24Control>({Mul24Control::Hi, Mul24Control::Lo}); return is_one_of(d.control, _allowed); }()))) { error("mul24 hi/lo: modifier control check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::S32}); return is_one_of(d.type_, _allowed); }()))) { error("mul24 hi/lo: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<Mul24Control>({Mul24Control::Hi, Mul24Control::Lo}); return is_one_of(instr.data.control, _allowed); }()))) { error("mul24 hi/lo: modifier control check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::S32}); return is_one_of(instr.data.type_, _allowed); }()))) { error("mul24 hi/lo: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -856,9 +811,7 @@ void TypeCheckerGen::check_sad(const InstrSad<ResolvedOp>& instr) {
   // variant 0: sad integer
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "sad integer")) return false;
-    if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("sad integer: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data, _allowed); }()))) { error("sad integer: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -881,7 +834,6 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!require_ptx(1.0f, "div.approx.f32")) return false;
     if (!std::holds_alternative<DivFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivFloat>(instr.data);
-    if (!((d.kind == DivFloatKind::Approx))) { error("div.approx.f32: modifier kind check failed"); return false; }
     if (!((d.type_ == ScalarType::F32))) { error("div.approx.f32: modifier type_ check failed"); return false; }
     return true;
   };
@@ -890,7 +842,6 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!require_ptx(1.0f, "div.full.f32")) return false;
     if (!std::holds_alternative<DivFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivFloat>(instr.data);
-    if (!((d.kind == DivFloatKind::Full))) { error("div.full.f32: modifier kind check failed"); return false; }
     if (!((d.type_ == ScalarType::F32))) { error("div.full.f32: modifier type_ check failed"); return false; }
     return true;
   };
@@ -921,9 +872,7 @@ void TypeCheckerGen::check_rem(const InstrRem<ResolvedOp>& instr) {
   // variant 0: rem integer
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "rem integer")) return false;
-    if (!std::holds_alternative<DivInt>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<DivInt>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("rem integer: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data, _allowed); }()))) { error("rem integer: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -936,35 +885,27 @@ void TypeCheckerGen::check_abs(const InstrAbs<ResolvedOp>& instr) {
   // variant 0: abs integer
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "abs integer")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("abs integer: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs integer: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 1: abs.f32/f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "abs.f32/f64")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(d.type_, _allowed); }()))) { error("abs.f32/f64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs.f32/f64: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 2: abs.f16/f16x2
   auto check_v2 = [&]() -> bool {
     if (!require_ptx(6.0f, "abs.f16/f16x2")) return false;
     if (!require_sm(53u, "abs.f16/f16x2")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("abs.f16/f16x2: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs.f16/f16x2: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 3: abs.bf16/bf16x2
   auto check_v3 = [&]() -> bool {
     if (!require_ptx(7.0f, "abs.bf16/bf16x2")) return false;
     if (!require_sm(80u, "abs.bf16/bf16x2")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("abs.bf16/bf16x2: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs.bf16/bf16x2: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -977,35 +918,27 @@ void TypeCheckerGen::check_neg(const InstrNeg<ResolvedOp>& instr) {
   // variant 0: neg integer
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "neg integer")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("neg integer: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg integer: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 1: neg.f32/f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "neg.f32/f64")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(d.type_, _allowed); }()))) { error("neg.f32/f64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg.f32/f64: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 2: neg.f16/f16x2
   auto check_v2 = [&]() -> bool {
     if (!require_ptx(6.0f, "neg.f16/f16x2")) return false;
     if (!require_sm(53u, "neg.f16/f16x2")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("neg.f16/f16x2: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg.f16/f16x2: modifier type_ check failed"); return false; }
     return true;
   };
   // variant 3: neg.bf16/bf16x2
   auto check_v3 = [&]() -> bool {
     if (!require_ptx(7.0f, "neg.bf16/bf16x2")) return false;
     if (!require_sm(80u, "neg.bf16/bf16x2")) return false;
-    if (!std::holds_alternative<TypeFtz>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<TypeFtz>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("neg.bf16/bf16x2: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg.bf16/bf16x2: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -1119,7 +1052,7 @@ void TypeCheckerGen::check_clz(const InstrClz<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(2.0f, "clz b32/b64")) return false;
     if (!require_sm(20u, "clz b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("clz b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("clz b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1133,7 +1066,7 @@ void TypeCheckerGen::check_brev(const InstrBrev<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(2.0f, "brev b32/b64")) return false;
     if (!require_sm(20u, "brev b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("brev b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("brev b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1147,7 +1080,7 @@ void TypeCheckerGen::check_popc(const InstrPopc<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(2.0f, "popc b32/b64")) return false;
     if (!require_sm(20u, "popc b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("popc b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("popc b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1161,7 +1094,7 @@ void TypeCheckerGen::check_bfe(const InstrBfe<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(2.0f, "bfe u32/u64/s32/s64")) return false;
     if (!require_sm(20u, "bfe u32/u64/s32/s64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::U64, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("bfe u32/u64/s32/s64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::U64, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data, _allowed); }()))) { error("bfe u32/u64/s32/s64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1175,7 +1108,7 @@ void TypeCheckerGen::check_bfi(const InstrBfi<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(2.0f, "bfi b32/b64")) return false;
     if (!require_sm(20u, "bfi b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("bfi b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("bfi b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1189,8 +1122,7 @@ void TypeCheckerGen::check_bmsk(const InstrBmsk<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(7.0f, "bmsk.clamp/wrap.b32")) return false;
     if (!require_sm(80u, "bmsk.clamp/wrap.b32")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<BmskMode>({BmskMode::Clamp, BmskMode::Wrap}); return is_one_of(instr.data.mode, _allowed); }()))) { error("bmsk.clamp/wrap.b32: modifier mode check failed"); return false; }
-    if (!((instr.data.type_ == ScalarType::B32))) { error("bmsk.clamp/wrap.b32: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<BmskMode>({BmskMode::Clamp, BmskMode::Wrap}); return is_one_of(instr.data, _allowed); }()))) { error("bmsk.clamp/wrap.b32: modifier mode check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1204,7 +1136,6 @@ void TypeCheckerGen::check_dp4a(const InstrDp4a<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(6.0f, "dp4a u32/s32")) return false;
     if (!require_sm(61u, "dp4a u32/s32")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::S32}); return is_one_of(instr.data.btype, _allowed); }()))) { error("dp4a u32/s32: modifier btype check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1218,8 +1149,7 @@ void TypeCheckerGen::check_dp2a(const InstrDp2a<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(7.0f, "dp2a lo/hi u32/s32")) return false;
     if (!require_sm(72u, "dp2a lo/hi u32/s32")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<Dp2aControl>({Dp2aControl::Low, Dp2aControl::High}); return is_one_of(instr.data.mode, _allowed); }()))) { error("dp2a lo/hi u32/s32: modifier mode check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::S32}); return is_one_of(instr.data.btype, _allowed); }()))) { error("dp2a lo/hi u32/s32: modifier btype check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<Dp2aControl>({Dp2aControl::Low, Dp2aControl::High}); return is_one_of(instr.data.control, _allowed); }()))) { error("dp2a lo/hi u32/s32: modifier control check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1312,7 +1242,7 @@ void TypeCheckerGen::check_and(const InstrAnd<ResolvedOp>& instr) {
   // variant 0: and pred/b16/b32/b64
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "and pred/b16/b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("and pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("and pred/b16/b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1325,7 +1255,7 @@ void TypeCheckerGen::check_or(const InstrOr<ResolvedOp>& instr) {
   // variant 0: or pred/b16/b32/b64
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "or pred/b16/b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("or pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("or pred/b16/b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1338,7 +1268,7 @@ void TypeCheckerGen::check_xor(const InstrXor<ResolvedOp>& instr) {
   // variant 0: xor pred/b16/b32/b64
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "xor pred/b16/b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("xor pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("xor pred/b16/b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1351,7 +1281,7 @@ void TypeCheckerGen::check_not(const InstrNot<ResolvedOp>& instr) {
   // variant 0: not pred/b16/b32/b64
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "not pred/b16/b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("not pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("not pred/b16/b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1364,7 +1294,7 @@ void TypeCheckerGen::check_shl(const InstrShl<ResolvedOp>& instr) {
   // variant 0: shl b16/b32/b64
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "shl b16/b32/b64")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("shl b16/b32/b64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("shl b16/b32/b64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1377,9 +1307,7 @@ void TypeCheckerGen::check_shr(const InstrShr<ResolvedOp>& instr) {
   // variant 0: shr b/u/s 16/32/64
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "shr b/u/s 16/32/64")) return false;
-    if (!std::holds_alternative<ShrData>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ShrData>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B16, ScalarType::B32, ScalarType::B64, ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("shr b/u/s 16/32/64: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B16, ScalarType::B32, ScalarType::B64, ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("shr b/u/s 16/32/64: modifier type_ check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1393,11 +1321,8 @@ void TypeCheckerGen::check_shf(const InstrShf<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(3.0f, "shf.l/r.clamp/wrap.b32")) return false;
     if (!require_sm(32u, "shf.l/r.clamp/wrap.b32")) return false;
-    if (!std::holds_alternative<ShfDetails>(instr.data)) return false;
-    [[maybe_unused]] auto& d = std::get<ShfDetails>(instr.data);
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ShiftDirection>({ShiftDirection::Left, ShiftDirection::Right}); return is_one_of(d.direction, _allowed); }()))) { error("shf.l/r.clamp/wrap.b32: modifier direction check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FunnelShiftMode>({FunnelShiftMode::Clamp, FunnelShiftMode::Wrap}); return is_one_of(d.mode, _allowed); }()))) { error("shf.l/r.clamp/wrap.b32: modifier mode check failed"); return false; }
-    if (!((d.type_ == ScalarType::B32))) { error("shf.l/r.clamp/wrap.b32: modifier type_ check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ShiftDirection>({ShiftDirection::Left, ShiftDirection::Right}); return is_one_of(instr.data.direction, _allowed); }()))) { error("shf.l/r.clamp/wrap.b32: modifier direction check failed"); return false; }
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<FunnelShiftMode>({FunnelShiftMode::Clamp, FunnelShiftMode::Wrap}); return is_one_of(instr.data.mode, _allowed); }()))) { error("shf.l/r.clamp/wrap.b32: modifier mode check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1405,28 +1330,10 @@ void TypeCheckerGen::check_shf(const InstrShf<ResolvedOp>& instr) {
   }
 }
 
-// PTX ISA §9.7.5.10
-void TypeCheckerGen::check_prmt(const InstrPrmt<ResolvedOp>& instr) {
-  // variant 0: prmt.b32 (default mode)
-  auto check_v0 = [&]() -> bool {
-    if (!require_ptx(2.0f, "prmt.b32 (default mode)")) return false;
-    if (!require_sm(20u, "prmt.b32 (default mode)")) return false;
-    if (!((instr.data.type_ == ScalarType::B32))) { error("prmt.b32 (default mode): modifier type_ check failed"); return false; }
-    return true;
-  };
-  if (!(check_v0())) {
-    error("prmt: no matching variant found");
-  }
-}
-
 // PTX ISA §9.7.13.4
 void TypeCheckerGen::check_ldmatrix(const InstrLdMatrix<ResolvedOp>& instr) {
   // variant 0: 
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.sync == .sync))) { error(": modifier sync check failed"); return false; }
-    if (!((instr.data.aligned == .aligned))) { error(": modifier aligned check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<LdMatrixNum>({LdMatrixNum::X1, LdMatrixNum::X2, LdMatrixNum::X4}); return is_one_of(instr.data.num, _allowed); }()))) { error(": modifier num check failed"); return false; }
-    if (!((instr.data.b16 == .b16))) { error(": modifier b16 check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1438,10 +1345,6 @@ void TypeCheckerGen::check_ldmatrix(const InstrLdMatrix<ResolvedOp>& instr) {
 void TypeCheckerGen::check_stmatrix(const InstrStMatrix<ResolvedOp>& instr) {
   // variant 0: 
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.sync == .sync))) { error(": modifier sync check failed"); return false; }
-    if (!((instr.data.aligned == .aligned))) { error(": modifier aligned check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<LdMatrixNum>({LdMatrixNum::X1, LdMatrixNum::X2, LdMatrixNum::X4}); return is_one_of(instr.data.num, _allowed); }()))) { error(": modifier num check failed"); return false; }
-    if (!((instr.data.b16 == .b16))) { error(": modifier b16 check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1453,9 +1356,6 @@ void TypeCheckerGen::check_stmatrix(const InstrStMatrix<ResolvedOp>& instr) {
 void TypeCheckerGen::check_mma_sync(const InstrMma<ResolvedOp>& instr) {
   // variant 0: mma.sync.aligned (standard)
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.aligned == .aligned))) { error("mma.sync.aligned (standard): modifier aligned check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<MmaShape>({MmaShape::M8n8k4, MmaShape::M16n8k8, MmaShape::M16n8k16, MmaShape::M16n8k32, MmaShape::M16n8k64, MmaShape::M8n8k16, MmaShape::M8n8k32, MmaShape::M16n8k4, MmaShape::M16n8k128, MmaShape::M8n8k128}); return is_one_of(instr.data.shape, _allowed); }()))) { error("mma.sync.aligned (standard): modifier shape check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::BF16, ScalarType::TF32, ScalarType::S8, ScalarType::U8, ScalarType::S4, ScalarType::U4, ScalarType::B1, ScalarType::E4m3, ScalarType::E5m2, ScalarType::F64}); return is_one_of(instr.data.btype, _allowed); }()))) { error("mma.sync.aligned (standard): modifier btype check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1482,8 +1382,6 @@ void TypeCheckerGen::check_cp_async_bulk_tensor(const InstrCpAsyncBulkTensor<Res
 void TypeCheckerGen::check_tcgen05_ld(const InstrTcgen05Ld<ResolvedOp>& instr) {
   // variant 0: tcgen05.ld.sync.aligned
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.sync == .sync))) { error("tcgen05.ld.sync.aligned: modifier sync check failed"); return false; }
-    if (!((instr.data.aligned == .aligned))) { error("tcgen05.ld.sync.aligned: modifier aligned check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1495,8 +1393,6 @@ void TypeCheckerGen::check_tcgen05_ld(const InstrTcgen05Ld<ResolvedOp>& instr) {
 void TypeCheckerGen::check_tcgen05_st(const InstrTcgen05St<ResolvedOp>& instr) {
   // variant 0: tcgen05.st.sync.aligned
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.sync == .sync))) { error("tcgen05.st.sync.aligned: modifier sync check failed"); return false; }
-    if (!((instr.data.aligned == .aligned))) { error("tcgen05.st.sync.aligned: modifier aligned check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1508,7 +1404,6 @@ void TypeCheckerGen::check_tcgen05_st(const InstrTcgen05St<ResolvedOp>& instr) {
 void TypeCheckerGen::check_tcgen05_fence(const InstrTcgen05Fence<ResolvedOp>& instr) {
   // variant 0: tcgen05.fence before/after
   auto check_v0 = [&]() -> bool {
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<Tcgen05FenceWhen>({Tcgen05FenceWhen::BeforeSync, Tcgen05FenceWhen::AfterSync}); return is_one_of(instr.data.when, _allowed); }()))) { error("tcgen05.fence before/after: modifier when check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1516,23 +1411,10 @@ void TypeCheckerGen::check_tcgen05_fence(const InstrTcgen05Fence<ResolvedOp>& in
   }
 }
 
-// PTX ISA §9.7.15.7
-void TypeCheckerGen::check_tcgen05_commit(const InstrTcgen05CommitArrival<ResolvedOp>& instr) {
-  // variant 0: tcgen05.commit_group
-  auto check_v0 = [&]() -> bool {
-    if (!((instr.data.group == .group))) { error("tcgen05.commit_group: modifier group check failed"); return false; }
-    return true;
-  };
-  if (!(check_v0())) {
-    error("tcgen05.commit: no matching variant found");
-  }
-}
-
 // PTX ISA §9.7.15.8
 void TypeCheckerGen::check_tcgen05_wait(const InstrTcgen05Wait<ResolvedOp>& instr) {
   // variant 0: tcgen05.wait_group
   auto check_v0 = [&]() -> bool {
-    if (!((instr.data.group == .group))) { error("tcgen05.wait_group: modifier group check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1625,7 +1507,6 @@ void TypeCheckerGen::check_setmaxnreg(const InstrSetMaxNReg<ResolvedOp>& instr) 
   // variant 0: setmaxnreg inc/dec u32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "setmaxnreg inc/dec u32")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<SetMaxNregMode>({SetMaxNregMode::Inc, SetMaxNregMode::Dec}); return is_one_of(instr.data.mode, _allowed); }()))) { error("setmaxnreg inc/dec u32: modifier mode check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1638,7 +1519,6 @@ void TypeCheckerGen::check_bar_red(const InstrBarRed<ResolvedOp>& instr) {
   // variant 0: bar.red popc/and/or
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "bar.red popc/and/or")) return false;
-    if (!((instr.data.pred == ScalarType::Pred))) { error("bar.red popc/and/or: modifier pred check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1728,7 +1608,6 @@ void TypeCheckerGen::check_membar(const InstrMembar& instr) {
   // variant 1: membar.proxy.proxykind
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "membar.proxy.proxykind")) return false;
-    if (!((instr.data.proxy == true))) { error("membar.proxy.proxykind: modifier proxy check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1())) {
@@ -1746,68 +1625,30 @@ void TypeCheckerGen::check_fence(const InstrFence<ResolvedOp>& instr) {
   // variant 1: fence.sem.sync_restrict::shared::{cta,cluster}.scope
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "fence.sem.sync_restrict::shared::{cta,cluster}.scope")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FenceSemantics>({FenceSemantics::Acquire, FenceSemantics::Release}); return is_one_of(instr.data.sem, _allowed); }()))) { error("fence.sem.sync_restrict::shared::{cta,cluster}.scope: modifier sem check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FenceSyncRestrict>({FenceSyncRestrict::SharedCluster, FenceSyncRestrict::SharedCta}); return is_one_of(instr.data.sync_restrict, _allowed); }()))) { error("fence.sem.sync_restrict::shared::{cta,cluster}.scope: modifier sync_restrict check failed"); return false; }
     return true;
   };
   // variant 2: fence.op_restrict.sem.scope
   auto check_v2 = [&]() -> bool {
     if (!require_ptx(1.0f, "fence.op_restrict.sem.scope")) return false;
-    if (!((instr.data.op_restrict == true))) { error("fence.op_restrict.sem.scope: modifier op_restrict check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FenceSemantics>({FenceSemantics::Release}); return is_one_of(instr.data.sem, _allowed); }()))) { error("fence.op_restrict.sem.scope: modifier sem check failed"); return false; }
     return true;
   };
   // variant 3: fence.proxy
   auto check_v3 = [&]() -> bool {
     if (!require_ptx(1.0f, "fence.proxy")) return false;
-    if (!((instr.data.proxy == true))) { error("fence.proxy: modifier proxy check failed"); return false; }
     return true;
   };
   // variant 4: fence.proxy.tensormap::generic.sem.scope \x2014 uni-directional
   auto check_v4 = [&]() -> bool {
     if (!require_ptx(1.0f, "fence.proxy.tensormap::generic.sem.scope \x2014 uni-directional")) return false;
-    if (!((instr.data.proxy == true))) { error("fence.proxy.tensormap::generic.sem.scope \\x2014 uni-directional: modifier proxy check failed"); return false; }
-    if (!((instr.data.to_from == true))) { error("fence.proxy.tensormap::generic.sem.scope \\x2014 uni-directional: modifier to_from check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FenceSemantics>({FenceSemantics::Release, FenceSemantics::Acquire}); return is_one_of(instr.data.sem, _allowed); }()))) { error("fence.proxy.tensormap::generic.sem.scope \\x2014 uni-directional: modifier sem check failed"); return false; }
     return true;
   };
   // variant 5: fence.proxy.async::generic.sem.sync_restrict...
   auto check_v5 = [&]() -> bool {
     if (!require_ptx(1.0f, "fence.proxy.async::generic.sem.sync_restrict...")) return false;
-    if (!((instr.data.proxy == true))) { error("fence.proxy.async::generic.sem.sync_restrict...: modifier proxy check failed"); return false; }
-    if (!((instr.data.async_generic == true))) { error("fence.proxy.async::generic.sem.sync_restrict...: modifier async_generic check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FenceSemantics>({FenceSemantics::Acquire, FenceSemantics::Release}); return is_one_of(instr.data.sem, _allowed); }()))) { error("fence.proxy.async::generic.sem.sync_restrict...: modifier sem check failed"); return false; }
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<FenceSyncRestrict>({FenceSyncRestrict::SharedCluster, FenceSyncRestrict::SharedCta}); return is_one_of(instr.data.sync_restrict, _allowed); }()))) { error("fence.proxy.async::generic.sem.sync_restrict...: modifier sync_restrict check failed"); return false; }
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4() || check_v5())) {
     error("fence: no matching variant found");
-  }
-}
-
-// PTX ISA §9.7.11.6
-void TypeCheckerGen::check_atom(const InstrAtom<ResolvedOp>& instr) {
-  // variant 0: atom (default/weak)
-  auto check_v0 = [&]() -> bool {
-    if (!require_ptx(1.0f, "atom (default/weak)")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64, ScalarType::B128, ScalarType::U32, ScalarType::U64, ScalarType::S32, ScalarType::S64, ScalarType::F16, ScalarType::F16x2, ScalarType::BF16, ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("atom (default/weak): modifier type_ check failed"); return false; }
-    return true;
-  };
-  if (!(check_v0())) {
-    error("atom: no matching variant found");
-  }
-}
-
-// PTX ISA §9.7.11.7
-void TypeCheckerGen::check_red(const InstrRed<ResolvedOp>& instr) {
-  // variant 0: red
-  auto check_v0 = [&]() -> bool {
-    if (!require_ptx(1.0f, "red")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64, ScalarType::U32, ScalarType::U64, ScalarType::S32, ScalarType::S64, ScalarType::F16, ScalarType::F16x2, ScalarType::BF16, ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("red: modifier type_ check failed"); return false; }
-    return true;
-  };
-  if (!(check_v0())) {
-    error("red: no matching variant found");
   }
 }
 
@@ -1816,7 +1657,6 @@ void TypeCheckerGen::check_vote(const InstrVote<ResolvedOp>& instr) {
   // variant 0: vote all/any/uni/ballot
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "vote all/any/uni/ballot")) return false;
-    if (!((instr.data.pred == ScalarType::Pred))) { error("vote all/any/uni/ballot: modifier pred check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -1829,7 +1669,6 @@ void TypeCheckerGen::check_vote_sync(const InstrVote<ResolvedOp>& instr) {
   // variant 0: vote.sync all/any/uni/ballot
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "vote.sync all/any/uni/ballot")) return false;
-    if (!((instr.data.pred == ScalarType::Pred))) { error("vote.sync all/any/uni/ballot: modifier pred check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {
@@ -2004,7 +1843,6 @@ void TypeCheckerGen::check_shfl_sync(const InstrShflSync<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(6.0f, "shfl.sync mode.b32")) return false;
     if (!require_sm(53u, "shfl.sync mode.b32")) return false;
-    if (!(([&]{ static constexpr auto _allowed = std::to_array<ShflMode>({ShflMode::Up, ShflMode::Down, ShflMode::Bfly, ShflMode::Idx}); return is_one_of(instr.data.mode, _allowed); }()))) { error("shfl.sync mode.b32: modifier mode check failed"); return false; }
     return true;
   };
   if (!(check_v0())) {

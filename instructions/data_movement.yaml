@@ -688,22 +688,23 @@
 - opcode: "cvt.pack"
   doc: "PTX ISA §9.7.9.22"
   variants:
-    - modifiers:
-        sat:
-          kind: fixed
-          fixed_value: ".sat"
-        convert_type:
+    - description: "cvt.pack.sat.etype.ntype (8-bit)"
+      constraints:
+        min_ptx_version: 7.0
+        min_sm: 72
+      modifiers:
+        to:
           kind: required
           type: ScalarType
           values:
             - { token: ".u8", cpp: "ScalarType::U8" }
             - { token: ".s8", cpp: "ScalarType::S8" }
-        s32:
-          kind: fixed
-          fixed_value: ".s32"
-        b32:
-          kind: fixed
-          fixed_value: ".b32"
+        from:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg }

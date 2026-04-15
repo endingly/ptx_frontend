@@ -367,18 +367,11 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        kind:
-          kind: fixed
-          fixed_value: { token: ".approx", cpp: "TrigKind::Approx" }
         flush_to_zero:
           kind: optional
           type: bool
           values:
             - { token: ".ftz", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".f32", cpp: "ScalarType::F32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg }
@@ -392,18 +385,11 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        kind:
-          kind: fixed
-          fixed_value: { token: ".approx", cpp: "TrigKind::Approx" }
         flush_to_zero:
           kind: optional
           type: bool
           values:
             - { token: ".ftz", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".f32", cpp: "ScalarType::F32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg }
@@ -417,18 +403,11 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        kind:
-          kind: fixed
-          fixed_value: { token: ".approx", cpp: "TrigKind::Approx" }
         flush_to_zero:
           kind: optional
           type: bool
           values:
             - { token: ".ftz", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".f32", cpp: "ScalarType::F32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg }

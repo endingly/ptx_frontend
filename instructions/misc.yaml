@@ -65,12 +65,12 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        mode:
+        op:
           kind: required
-          type: SetMaxNregMode
+          type: SetMaxNRegOp
           values:
-            - { token: ".inc", cpp: "SetMaxNregMode::Inc" }
-            - { token: ".dec", cpp: "SetMaxNregMode::Dec" }
+            - { token: ".inc", cpp: "SetMaxNRegOp::Inc" }
+            - { token: ".dec", cpp: "SetMaxNRegOp::Dec" }
         u32:
           kind: fixed
           fixed_value: { token: ".u32", cpp: "ScalarType::U32" }

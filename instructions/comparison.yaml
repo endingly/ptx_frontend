@@ -1,0 +1,225 @@
+# PTX ISA 9.2 — Comparison and Selection Instructions
+###############################################################################
+# setp
+###############################################################################
+- opcode: "setp"
+  doc: "PTX ISA §9.7.6.1"
+  variants:
+    - description: "setp with optional bool combinator"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        cmpop:
+          kind: required
+          type: SetpCompareOp
+          values:
+            - { token: ".eq",  cpp: "SetpCompareOp::Eq" }
+            - { token: ".ne",  cpp: "SetpCompareOp::NotEq" }
+            - { token: ".lt",  cpp: "SetpCompareOp::SignedLess" }
+            - { token: ".le",  cpp: "SetpCompareOp::SignedLessOrEq" }
+            - { token: ".gt",  cpp: "SetpCompareOp::SignedGreater" }
+            - { token: ".ge",  cpp: "SetpCompareOp::SignedGreaterOrEq" }
+            - { token: ".lo",  cpp: "SetpCompareOp::UnsignedLess" }
+            - { token: ".ls",  cpp: "SetpCompareOp::UnsignedLessOrEq" }
+            - { token: ".hi",  cpp: "SetpCompareOp::UnsignedGreater" }
+            - { token: ".hs",  cpp: "SetpCompareOp::UnsignedGreaterOrEq" }
+            - { token: ".equ", cpp: "SetpCompareOp::NanEq" }
+            - { token: ".neu", cpp: "SetpCompareOp::NanNotEq" }
+            - { token: ".ltu", cpp: "SetpCompareOp::NanLess" }
+            - { token: ".leu", cpp: "SetpCompareOp::NanLessOrEq" }
+            - { token: ".gtu", cpp: "SetpCompareOp::NanGreater" }
+            - { token: ".geu", cpp: "SetpCompareOp::NanGreaterOrEq" }
+            - { token: ".num", cpp: "SetpCompareOp::IsNotNan" }
+            - { token: ".nan", cpp: "SetpCompareOp::IsAnyNan" }
+        flush_to_zero:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        boolop:
+          kind: optional
+          type: SetpBoolPostOp
+          values:
+            - { token: ".and", cpp: "SetpBoolPostOp::And" }
+            - { token: ".or", cpp: "SetpBoolPostOp::Or" }
+            - { token: ".xor", cpp: "SetpBoolPostOp::Xor" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+      args:
+        - { name: "dst1", kind: pred }
+        - { name: "dst2", kind: optional_pred, note: "second destination pred |q|" }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: optional_pred, note: "bool-op source, present iff boolop set" }
+      cpp_struct: "InstrSetp"
+      emit_note: "if boolop present → InstrSetpBool"
+
+###############################################################################
+# set
+###############################################################################
+- opcode: "set"
+  doc: "PTX ISA §9.7.6.2"
+  variants:
+    - description: "set with optional bool combinator"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        cmpop:
+          kind: required
+          type: SetpCompareOp
+          values:
+            - { token: ".eq",  cpp: "SetpCompareOp::Eq" }
+            - { token: ".ne",  cpp: "SetpCompareOp::NotEq" }
+            - { token: ".lt",  cpp: "SetpCompareOp::SignedLess" }
+            - { token: ".le",  cpp: "SetpCompareOp::SignedLessOrEq" }
+            - { token: ".gt",  cpp: "SetpCompareOp::SignedGreater" }
+            - { token: ".ge",  cpp: "SetpCompareOp::SignedGreaterOrEq" }
+            - { token: ".lo",  cpp: "SetpCompareOp::UnsignedLess" }
+            - { token: ".ls",  cpp: "SetpCompareOp::UnsignedLessOrEq" }
+            - { token: ".hi",  cpp: "SetpCompareOp::UnsignedGreater" }
+            - { token: ".hs",  cpp: "SetpCompareOp::UnsignedGreaterOrEq" }
+            - { token: ".equ", cpp: "SetpCompareOp::NanEq" }
+            - { token: ".neu", cpp: "SetpCompareOp::NanNotEq" }
+            - { token: ".ltu", cpp: "SetpCompareOp::NanLess" }
+            - { token: ".leu", cpp: "SetpCompareOp::NanLessOrEq" }
+            - { token: ".gtu", cpp: "SetpCompareOp::NanGreater" }
+            - { token: ".geu", cpp: "SetpCompareOp::NanGreaterOrEq" }
+            - { token: ".num", cpp: "SetpCompareOp::IsNotNan" }
+            - { token: ".nan", cpp: "SetpCompareOp::IsAnyNan" }
+        flush_to_zero:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        boolop:
+          kind: optional
+          type: SetpBoolPostOp
+          values:
+            - { token: ".and", cpp: "SetpBoolPostOp::And" }
+            - { token: ".or", cpp: "SetpBoolPostOp::Or" }
+            - { token: ".xor", cpp: "SetpBoolPostOp::Xor" }
+        dtype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+        stype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: optional_pred, note: "bool-op source" }
+      cpp_struct: "InstrSet"
+
+###############################################################################
+# selp
+###############################################################################
+- opcode: "selp"
+  doc: "PTX ISA §9.7.6.3"
+  variants:
+    - description: "selp pred/integer/float"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: pred }
+      cpp_struct: "InstrSelp"
+
+###############################################################################
+# slct
+###############################################################################
+- opcode: "slct"
+  doc: "PTX ISA §9.7.6.4"
+  variants:
+    - description: "slct with dtype and ctype"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        flush_to_zero:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        dtype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+        ctype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrSlct"

@@ -1,0 +1,41 @@
+{
+    "version": 8,
+    "configurePresets": [
+        {
+            "name": "linux-gcc-11-debug",
+            "displayName": "GCC 11.4.0 x86_64-linux-gnu debug",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "/usr/bin/gcc",
+                "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "linux-gcc-11-release",
+            "displayName": "GCC 11.4.0 x86_64-linux-gnu release",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "/usr/bin/gcc",
+                "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "linux-gcc-11-debug",
+            "configurePreset": "linux-gcc-11-debug"
+        },
+        {
+            "name": "linux-gcc-11-release",
+            "configurePreset": "linux-gcc-11-release"
+        }
+    ]
+}

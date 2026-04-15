@@ -1,0 +1,905 @@
+# PTX ISA 9.2 — Data Movement and Conversion Instructions
+# Ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions
+
+###############################################################################
+# mov
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-mov
+###############################################################################
+- opcode: "mov"
+  doc: "PTX ISA §9.7.9.3"
+  variants:
+    - description: "mov scalar/pred — dst and src are both scalar"
+      modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".b128", cpp: "ScalarType::B128" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrMov"
+
+    - description: >
+        mov vector pack — dst is scalar reg, src is { a, b [, c, d] }
+        The number of elements is inferred from sizeof(type) / sizeof(element).
+        e.g. mov.b32 r, {a,b}  means 2×u16→b32
+      modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".b128", cpp: "ScalarType::B128" }
+      args:
+        - { name: "dst", kind: reg }
+        - {
+            name: "src",
+            kind: reg_list,
+            note: "{ a, b } or { a, b, c, d } — no .vN modifier!",
+          }
+      cpp_struct: "InstrMov"
+
+    - description: >
+        mov vector unpack — dst is { d, e [, f, g] }, src is scalar reg
+        e.g. mov.b64 {lo, hi}, %x
+      modifiers:
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".b128", cpp: "ScalarType::B128" }
+      args:
+        - {
+            name: "dst",
+            kind: reg_list,
+            note: "{ d, e } or { d, e, f, g } — no .vN modifier!",
+          }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrMov"
+
+###############################################################################
+# ld
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-ld
+###############################################################################
+- opcode: "ld"
+  doc: "PTX ISA §9.7.9.8"
+  variants:
+    - description: "ld weak/default"
+      modifiers:
+        weak:
+          kind: optional
+          type: RawLdStQualifier
+          values:
+            - { token: ".weak", cpp: "LdStQualifier::Weak" }
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".const", cpp: "StateSpace::Const" }
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".param", cpp: "StateSpace::Param" }
+            - { token: ".param::entry", cpp: "StateSpace::Param" }
+            - { token: ".param::func", cpp: "StateSpace::Param" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        cop:
+          kind: optional
+          type: LdCacheOperator
+          values:
+            - { token: ".ca", cpp: "LdCacheOperator::Cached" }
+            - { token: ".cg", cpp: "LdCacheOperator::L2Only" }
+            - { token: ".cs", cpp: "LdCacheOperator::Streaming" }
+            - { token: ".lu", cpp: "LdCacheOperator::LastUse" }
+            - { token: ".cv", cpp: "LdCacheOperator::Uncached" }
+        level_eviction_priority:
+          kind: optional
+          type: EvictionPriority
+          values:
+            - { token: ".L1::evict_normal", cpp: "EvictionPriority::Normal" }
+            - { token: ".L1::evict_unchanged", cpp: "EvictionPriority::Normal" }
+            - { token: ".L1::evict_first", cpp: "EvictionPriority::LastUse" }
+            - { token: ".L1::evict_last", cpp: "EvictionPriority::PreferL2" }
+            - { token: ".L1::no_allocate", cpp: "EvictionPriority::NoAllocate" }
+        level_cache_hint:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".L2::cache_hint", cpp: "true" }
+        level_prefetch_size:
+          kind: optional
+          type: PrefetchSize
+          values:
+            - { token: ".L2::64B", cpp: "PrefetchSize::Bytes64" }
+            - { token: ".L2::128B", cpp: "PrefetchSize::Bytes128" }
+            - { token: ".L2::256B", cpp: "PrefetchSize::Bytes256" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+            - { token: ".v8", cpp: "8" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".b128", cpp: "ScalarType::B128" }
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: addr }
+        - { name: "cache_policy", kind: optional_reg }
+      cpp_struct: "InstrLd"
+
+    - description: "ld volatile"
+      modifiers:
+        volatile:
+          kind: fixed
+          fixed_value: ".volatile"
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+        level_prefetch_size:
+          kind: optional
+          type: PrefetchSize
+          values:
+            - { token: ".L2::64B", cpp: "PrefetchSize::Bytes64" }
+            - { token: ".L2::128B", cpp: "PrefetchSize::Bytes128" }
+            - { token: ".L2::256B", cpp: "PrefetchSize::Bytes256" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+            - { token: ".v8", cpp: "8" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: addr }
+      cpp_struct: "InstrLd"
+
+    - description: "ld relaxed/acquire"
+      modifiers:
+        qualifier:
+          kind: required
+          type: LdStQualifier
+          values:
+            - { token: ".relaxed", cpp: "LdStQualifier::Relaxed" }
+            - { token: ".acquire", cpp: "LdStQualifier::Acquire" }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cta", cpp: "MemScope::Cta" }
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+            - { token: ".gpu", cpp: "MemScope::Gpu" }
+            - { token: ".sys", cpp: "MemScope::Sys" }
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+            - { token: ".v8", cpp: "8" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: addr }
+        - { name: "cache_policy", kind: optional_reg }
+      cpp_struct: "InstrLd"
+
+    - description: "ld.global.nc (non-coherent)"
+      modifiers:
+        global:
+          kind: fixed
+          fixed_value: ".global"
+        cop:
+          kind: optional
+          type: LdCacheOperator
+          values:
+            - { token: ".ca", cpp: "LdCacheOperator::Cached" }
+            - { token: ".cg", cpp: "LdCacheOperator::L2Only" }
+            - { token: ".cs", cpp: "LdCacheOperator::Streaming" }
+        nc:
+          kind: fixed
+          fixed_value: ".nc"
+        level_eviction_priority:
+          kind: optional
+          type: EvictionPriority
+          values:
+            - { token: ".L1::evict_normal", cpp: "EvictionPriority::Normal" }
+            - { token: ".L1::evict_unchanged", cpp: "EvictionPriority::Normal" }
+            - { token: ".L1::evict_first", cpp: "EvictionPriority::LastUse" }
+            - { token: ".L1::evict_last", cpp: "EvictionPriority::PreferL2" }
+            - { token: ".L1::no_allocate", cpp: "EvictionPriority::NoAllocate" }
+        level_cache_hint:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".L2::cache_hint", cpp: "true" }
+        level_prefetch_size:
+          kind: optional
+          type: PrefetchSize
+          values:
+            - { token: ".L2::64B", cpp: "PrefetchSize::Bytes64" }
+            - { token: ".L2::128B", cpp: "PrefetchSize::Bytes128" }
+            - { token: ".L2::256B", cpp: "PrefetchSize::Bytes256" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: addr }
+        - { name: "cache_policy", kind: optional_reg }
+      cpp_struct: "InstrLd"
+      emit_note: "non_coherent = true"
+
+###############################################################################
+# st
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st
+###############################################################################
+- opcode: "st"
+  doc: "PTX ISA §9.7.9.11"
+  variants:
+    - description: "st weak/default"
+      modifiers:
+        weak:
+          kind: optional
+          type: RawLdStQualifier
+          values:
+            - { token: ".weak", cpp: "LdStQualifier::Weak" }
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".param", cpp: "StateSpace::Param" }
+            - { token: ".param::func", cpp: "StateSpace::Param" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        cop:
+          kind: optional
+          type: StCacheOperator
+          values:
+            - { token: ".wb", cpp: "StCacheOperator::Writeback" }
+            - { token: ".cg", cpp: "StCacheOperator::L2Only" }
+            - { token: ".cs", cpp: "StCacheOperator::Streaming" }
+            - { token: ".wt", cpp: "StCacheOperator::Writethrough" }
+        level_eviction_priority:
+          kind: optional
+          type: EvictionPriority
+          values:
+            - { token: ".L1::evict_normal", cpp: "EvictionPriority::Normal" }
+            - { token: ".L1::evict_unchanged", cpp: "EvictionPriority::Normal" }
+            - { token: ".L1::evict_first", cpp: "EvictionPriority::LastUse" }
+            - { token: ".L1::evict_last", cpp: "EvictionPriority::PreferL2" }
+            - { token: ".L1::no_allocate", cpp: "EvictionPriority::NoAllocate" }
+        level_cache_hint:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".L2::cache_hint", cpp: "true" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+            - { token: ".v8", cpp: "8" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".b128", cpp: "ScalarType::B128" }
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: addr }
+        - { name: "src", kind: reg }
+        - { name: "cache_policy", kind: optional_reg }
+      cpp_struct: "InstrSt"
+
+    - description: "st volatile"
+      modifiers:
+        volatile:
+          kind: fixed
+          fixed_value: ".volatile"
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+            - { token: ".v8", cpp: "8" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: addr }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrSt"
+
+    - description: "st relaxed/release"
+      modifiers:
+        qualifier:
+          kind: required
+          type: LdStQualifier
+          values:
+            - { token: ".relaxed", cpp: "LdStQualifier::Relaxed" }
+            - { token: ".release", cpp: "LdStQualifier::Release" }
+        scope:
+          kind: required
+          type: MemScope
+          values:
+            - { token: ".cta", cpp: "MemScope::Cta" }
+            - { token: ".cluster", cpp: "MemScope::Cluster" }
+            - { token: ".gpu", cpp: "MemScope::Gpu" }
+            - { token: ".sys", cpp: "MemScope::Sys" }
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        vec:
+          kind: optional
+          type: VectorPrefix
+          values:
+            - { token: ".v2", cpp: "2" }
+            - { token: ".v4", cpp: "4" }
+            - { token: ".v8", cpp: "8" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b8", cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: addr }
+        - { name: "src", kind: reg }
+        - { name: "cache_policy", kind: optional_reg }
+      cpp_struct: "InstrSt"
+
+###############################################################################
+# prefetch / prefetchu
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-prefetch-prefetchu
+###############################################################################
+- opcode: "prefetch"
+  doc: "PTX ISA §9.7.9.15"
+  variants:
+    - modifiers:
+        space:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+        level:
+          kind: required
+          type: CacheLevel
+          values:
+            - { token: ".L1", cpp: "CacheLevel::L1" }
+            - { token: ".L2", cpp: "CacheLevel::L2" }
+      args:
+        - { name: "src", kind: addr }
+      cpp_struct: "InstrPrefetch"
+
+- opcode: "prefetchu"
+  doc: "PTX ISA §9.7.9.15"
+  variants:
+    - modifiers:
+        level:
+          kind: required
+          type: CacheLevel
+          values:
+            - { token: ".L1", cpp: "CacheLevel::L1" }
+      args:
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrPrefetch"
+      emit_note: "space = StateSpace::Generic (uniform)"
+
+###############################################################################
+# cvt
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cvt
+###############################################################################
+- opcode: "cvt"
+  doc: "PTX ISA §9.7.9.21"
+  variants:
+    - description: "cvt integer/float rounding"
+      modifiers:
+        ifrnd:
+          kind: optional
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
+            - { token: ".rni", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rzi", cpp: "RoundingMode::Zero" }
+            - { token: ".rmi", cpp: "RoundingMode::NegativeInf" }
+            - { token: ".rpi", cpp: "RoundingMode::PositiveInf" }
+        ftz:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".ftz", cpp: "true" }
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        dtype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".f16", cpp: "ScalarType::F16" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrCvt"
+
+    - description: "cvt f8x2 pack (frnd2)"
+      modifiers:
+        frnd2:
+          kind: required
+          type: RoundingMode
+          values:
+            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
+            - { token: ".rz", cpp: "RoundingMode::Zero" }
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        satfinite:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".satfinite", cpp: "true" }
+        x2_to_type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
+            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+        x2_from_type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".e4m3x2", cpp: "ScalarType::E4m3x2" }
+            - { token: ".e5m2x2", cpp: "ScalarType::E5m2x2" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+        - { name: "src2", kind: optional_reg }
+      cpp_struct: "InstrCvt"
+
+    - description: "cvt f8x2 from f32 (rn.satfinite)"
+      modifiers:
+        rn:
+          kind: fixed
+          fixed_value: ".rn"
+        satfinite:
+          kind: fixed
+          fixed_value: ".satfinite"
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        f8x2type:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".e4m3x2", cpp: "ScalarType::E4m3x2" }
+            - { token: ".e5m2x2", cpp: "ScalarType::E5m2x2" }
+        from_f32:
+          kind: fixed
+          fixed_value: ".f32"
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+        - { name: "src2", kind: reg }
+      cpp_struct: "InstrCvt"
+
+###############################################################################
+# cvt.pack
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cvt-pack
+###############################################################################
+- opcode: "cvt.pack"
+  doc: "PTX ISA §9.7.9.22"
+  variants:
+    - description: "cvt.pack.sat.etype.ntype (8-bit)"
+      constraints:
+        min_ptx_version: 7.0
+        min_sm: 72
+      modifiers:
+        to:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u8", cpp: "ScalarType::U8" }
+            - { token: ".s8", cpp: "ScalarType::S8" }
+        from:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg }
+        - { name: "src2", kind: reg }
+        - { name: "src3", kind: reg }
+      cpp_struct: "InstrCvtPack"
+
+###############################################################################
+# cvta
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cvta
+###############################################################################
+- opcode: "cvta"
+  doc: "PTX ISA §9.7.9.20"
+  variants:
+    - description: "cvta explicit-to-generic"
+      modifiers:
+        space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".const", cpp: "StateSpace::Const" }
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+            - { token: ".param", cpp: "StateSpace::Param" }
+            - { token: ".param::entry", cpp: "StateSpace::Param" }
+        size:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrCvta"
+      emit_note: "direction = CvtaDirection::ExplicitToGeneric"
+
+    - description: "cvta.to generic-to-explicit"
+      modifiers:
+        to:
+          kind: fixed
+          fixed_value: ".to"
+        space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".const", cpp: "StateSpace::Const" }
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".local", cpp: "StateSpace::Local" }
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+            - { token: ".param", cpp: "StateSpace::Param" }
+            - { token: ".param::entry", cpp: "StateSpace::Param" }
+        size:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrCvta"
+      emit_note: "direction = CvtaDirection::GenericToExplicit"
+
+###############################################################################
+# cp.async
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async
+###############################################################################
+- opcode: "cp.async"
+  doc: "PTX ISA §9.7.9.25"
+  variants:
+    - modifiers:
+        cop:
+          kind: required
+          type: CpAsyncCacheOperator
+          values:
+            - { token: ".ca", cpp: "CpAsyncCacheOperator::Cached" }
+            - { token: ".cg", cpp: "CpAsyncCacheOperator::L2Only" }
+        space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".shared", cpp: "StateSpace::Shared" }
+            - { token: ".shared::cta", cpp: "StateSpace::Shared" }
+        global:
+          kind: fixed
+          fixed_value: ".global"
+        level_cache_hint:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".L2::cache_hint", cpp: "true" }
+        level_prefetch_size:
+          kind: optional
+          type: PrefetchSize
+          values:
+            - { token: ".L2::64B", cpp: "PrefetchSize::Bytes64" }
+            - { token: ".L2::128B", cpp: "PrefetchSize::Bytes128" }
+            - { token: ".L2::256B", cpp: "PrefetchSize::Bytes256" }
+      args:
+        - { name: "dst", kind: addr, note: "shared memory address" }
+        - { name: "src", kind: addr, note: "global memory address" }
+        - { name: "cp_size", kind: imm, note: "4, 8, or 16 bytes" }
+        - { name: "src_size", kind: optional_imm, note: "source size in bytes" }
+        - { name: "cache_policy", kind: optional_reg }
+      cpp_struct: "InstrCpAsync"
+
+- opcode: "cp.async.commit_group"
+  doc: "PTX ISA §9.7.9.25.3.1"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrCpAsyncCommitGroup"
+
+- opcode: "cp.async.wait_group"
+  doc: "PTX ISA §9.7.9.25.3.2"
+  variants:
+    - modifiers: {}
+      args:
+        - {
+            name: "n",
+            kind: imm,
+            note: "number of prior commit groups to wait for",
+          }
+      cpp_struct: "InstrCpAsyncWaitGroup"
+
+- opcode: "cp.async.wait_all"
+  doc: "PTX ISA §9.7.9.25.3.3"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrCpAsyncWaitAll"
+
+###############################################################################
+# createpolicy
+# https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-createpolicy
+###############################################################################
+- opcode: "createpolicy.fractional"
+  doc: "PTX ISA §9.7.9.18"
+  variants:
+    - modifiers:
+        primary_priority:
+          kind: required
+          type: EvictionPriority
+          values:
+            - { token: ".L2::evict_last", cpp: "EvictionPriority::PreferL2" }
+            - { token: ".L2::evict_normal", cpp: "EvictionPriority::Normal" }
+            - { token: ".L2::evict_first", cpp: "EvictionPriority::LastUse" }
+            - { token: ".L2::evict_unchanged", cpp: "EvictionPriority::Normal" }
+        b64:
+          kind: fixed
+          fixed_value: ".b64"
+      args:
+        - { name: "cache_policy", kind: reg }
+        - { name: "fraction", kind: optional_imm }
+      cpp_struct: "InstrCreatePolicyFractional"
+
+- opcode: "ldu"
+  doc: "PTX ISA §9.7.8.3 (read-only data cache load, deprecated since PTX 6.5)"
+  variants:
+    - description: "ldu.global.type dst, [src]"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".const", cpp: "StateSpace::Const" }
+        type:
+          kind: required
+          type: Type
+          values:
+            - { token: ".u8",  cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8",  cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+            - { token: ".b8",  cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: addr }
+      cpp_struct: "InstrLdu"

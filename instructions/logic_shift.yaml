@@ -1,0 +1,279 @@
+# PTX ISA 9.2 — Logic and Shift Instructions
+
+- opcode: "and"
+  doc: "PTX ISA §9.7.5.1"
+  variants:
+    - description: "and pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrAnd"
+
+- opcode: "or"
+  doc: "PTX ISA §9.7.5.2"
+  variants:
+    - description: "or pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrOr"
+
+- opcode: "xor"
+  doc: "PTX ISA §9.7.5.3"
+  variants:
+    - description: "xor pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrXor"
+
+- opcode: "not"
+  doc: "PTX ISA §9.7.5.4"
+  variants:
+    - description: "not pred/b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".pred", cpp: "ScalarType::Pred" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrNot"
+
+- opcode: "cnot"
+  doc: "PTX ISA §9.7.5.5"
+  variants:
+    - description: "cnot b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrCnot"
+
+- opcode: "lop3"
+  doc: "PTX ISA §9.7.5.6"
+  variants:
+    - description: "lop3.b32 (3-input logic)"
+      constraints:
+        min_ptx_version: 5.0
+        min_sm: 50
+      modifiers:
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+        - { name: "immLut", kind: imm, note: "8-bit LUT immediate" }
+      cpp_struct: "InstrLop3"
+
+- opcode: "shl"
+  doc: "PTX ISA §9.7.5.7"
+  variants:
+    - description: "shl b16/b32/b64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm, note: "shift amount u32" }
+      cpp_struct: "InstrShl"
+
+- opcode: "shr"
+  doc: "PTX ISA §9.7.5.8"
+  variants:
+    - description: "shr b/u/s 16/32/64"
+      constraints:
+        min_ptx_version: 1.0
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm, note: "shift amount u32" }
+      cpp_struct: "InstrShr"
+      emit_note: "ShrData"
+
+- opcode: "shf"
+  doc: "PTX ISA §9.7.5.9"
+  variants:
+    - description: "shf.l/r.clamp/wrap.b32"
+      constraints:
+        min_ptx_version: 3.0
+        min_sm: 32
+      modifiers:
+        direction:
+          kind: required
+          type: ShiftDirection
+          values:
+            - { token: ".l", cpp: "ShiftDirection::Left" }
+            - { token: ".r", cpp: "ShiftDirection::Right" }
+        mode:
+          kind: required
+          type: FunnelShiftMode
+          values:
+            - { token: ".clamp", cpp: "FunnelShiftMode::Clamp" }
+            - { token: ".wrap", cpp: "FunnelShiftMode::Wrap" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src_a", kind: reg_or_imm }
+        - { name: "src_b", kind: reg_or_imm }
+        - { name: "src_c", kind: reg_or_imm }
+      cpp_struct: "InstrShf"
+      emit_note: "ShfDetails"
+
+- opcode: "prmt"
+  doc: "PTX ISA §9.7.5.10"
+  variants:
+    - description: "prmt.b32 (default mode)"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
+        mode:
+          kind: optional
+          type: PrmtMode
+          values:
+            - { token: ".f4e", cpp: "PrmtMode::F4e" }
+            - { token: ".b4e", cpp: "PrmtMode::B4e" }
+            - { token: ".rc8", cpp: "PrmtMode::Rc8" }
+            - { token: ".ecl", cpp: "PrmtMode::Ecl" }
+            - { token: ".ecr", cpp: "PrmtMode::Ecr" }
+            - { token: ".rc16", cpp: "PrmtMode::Rc16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrPrmt"
+
+- opcode: "bfind"
+  doc: "PTX ISA §9.7.5.11"
+  variants:
+    - description: "bfind.u32/u64 (unsigned, find highest set bit)"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        shiftamt:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".shiftamt", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrBfind"
+
+    - description: "bfind.s32/s64 (signed, find highest non-sign bit)"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        shiftamt:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".shiftamt", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrBfind"

@@ -1,0 +1,664 @@
+# PTX ISA 9.2 — Matrix / Tensor Instructions
+# Covers: ldmatrix, stmatrix, mma, wmma, cp.async.bulk.tensor, tcgen05.*
+
+###############################################################################
+# ldmatrix
+###############################################################################
+- opcode: "ldmatrix"
+  doc: "PTX ISA §9.7.13.4"
+  variants:
+    - modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        transpose:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".trans", cpp: "true" }
+        number:
+          kind: required
+          type: MatrixNumber
+          values:
+            - { token: ".x1", cpp: "MatrixNumber::X1" }
+            - { token: ".x2", cpp: "MatrixNumber::X2" }
+            - { token: ".x4", cpp: "MatrixNumber::X4" }
+      args:
+        - { name: "dst",  kind: reg_list, note: "1/2/4 b32 registers" }
+        - { name: "addr", kind: addr,     note: "shared memory" }
+      cpp_struct: "InstrLdmatrix"
+
+###############################################################################
+# stmatrix
+###############################################################################
+- opcode: "stmatrix"
+  doc: "PTX ISA §9.7.13.5"
+  variants:
+    - modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        transpose:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".trans", cpp: "true" }
+        number:
+          kind: required
+          type: MatrixNumber
+          values:
+            - { token: ".x1", cpp: "MatrixNumber::X1" }
+            - { token: ".x2", cpp: "MatrixNumber::X2" }
+            - { token: ".x4", cpp: "MatrixNumber::X4" }
+      args:
+        - { name: "addr", kind: addr }
+        - { name: "src",  kind: reg_list }
+      cpp_struct: "InstrStmatrix"
+
+###############################################################################
+# mma.sync
+###############################################################################
+- opcode: "mma.sync"
+  doc: "PTX ISA §9.7.13.2"
+  variants:
+    - description: "mma.sync.aligned (standard)"
+      modifiers:
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        shape:
+          kind: required
+          type: MmaShape
+          values:
+            - { token: ".m8n8k4",   cpp: "MmaShape::M8n8k4"   }
+            - { token: ".m16n8k8",  cpp: "MmaShape::M16n8k8"  }
+            - { token: ".m16n8k16", cpp: "MmaShape::M16n8k16" }
+            - { token: ".m16n8k32", cpp: "MmaShape::M16n8k32" }
+            - { token: ".m16n8k64", cpp: "MmaShape::M16n8k64" }
+            - { token: ".m8n8k16",  cpp: "MmaShape::M8n8k16"  }
+            - { token: ".m8n8k32",  cpp: "MmaShape::M8n8k32"  }
+            - { token: ".m16n8k4",  cpp: "MmaShape::M16n8k4"  }
+            - { token: ".m16n8k128",cpp: "MmaShape::M16n8k128"}
+            - { token: ".m8n8k128", cpp: "MmaShape::M8n8k128" }
+        row_col:
+          kind: required
+          type: MmaLayout
+          values:
+            - { token: ".row.col", cpp: "MmaLayout::RowCol" }
+            - { token: ".row.row", cpp: "MmaLayout::RowRow" }
+            - { token: ".col.row", cpp: "MmaLayout::ColRow" }
+            - { token: ".col.col", cpp: "MmaLayout::ColCol" }
+        dtype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f16",  cpp: "ScalarType::F16"  }
+            - { token: ".f32",  cpp: "ScalarType::F32"  }
+            - { token: ".s32",  cpp: "ScalarType::S32"  }
+            - { token: ".f64",  cpp: "ScalarType::F64"  }
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f16",  cpp: "ScalarType::F16"  }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".tf32", cpp: "ScalarType::TF32" }
+            - { token: ".s8",   cpp: "ScalarType::S8"   }
+            - { token: ".u8",   cpp: "ScalarType::U8"   }
+            - { token: ".s4",   cpp: "ScalarType::S4"   }
+            - { token: ".u4",   cpp: "ScalarType::U4"   }
+            - { token: ".b1",   cpp: "ScalarType::B1"   }
+            - { token: ".e4m3", cpp: "ScalarType::E4m3" }
+            - { token: ".e5m2", cpp: "ScalarType::E5m2" }
+            - { token: ".f64",  cpp: "ScalarType::F64"  }
+        btype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f16",  cpp: "ScalarType::F16"  }
+            - { token: ".bf16", cpp: "ScalarType::BF16" }
+            - { token: ".tf32", cpp: "ScalarType::TF32" }
+            - { token: ".s8",   cpp: "ScalarType::S8"   }
+            - { token: ".u8",   cpp: "ScalarType::U8"   }
+            - { token: ".s4",   cpp: "ScalarType::S4"   }
+            - { token: ".u4",   cpp: "ScalarType::U4"   }
+            - { token: ".b1",   cpp: "ScalarType::B1"   }
+            - { token: ".e4m3", cpp: "ScalarType::E4m3" }
+            - { token: ".e5m2", cpp: "ScalarType::E5m2" }
+            - { token: ".f64",  cpp: "ScalarType::F64"  }
+        satfinite:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".satfinite", cpp: "true" }
+        xor_mode:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".xor.popc", cpp: "true" }
+      args:
+        - { name: "d", kind: reg_list, note: "destination accumulator registers" }
+        - { name: "a", kind: reg_list }
+        - { name: "b", kind: reg_list }
+        - { name: "c", kind: reg_list }
+      cpp_struct: "InstrMmaSync"
+
+###############################################################################
+# cp.async.bulk.tensor  (TMA — 1D/2D/3D/4D/5D)
+###############################################################################
+- opcode: "cp.async.bulk.tensor"
+  doc: "PTX ISA §9.7.11.16"
+  variants:
+    - description: "cp.async.bulk.tensor shared←global (load)"
+      modifiers:
+        dst_space:
+          kind: fixed
+          fixed_value: ".shared::cluster"
+        src_space:
+          kind: fixed
+          fixed_value: ".global"
+        dim:
+          kind: required
+          type: TmaDim
+          values:
+            - { token: ".1d", cpp: "TmaDim::D1" }
+            - { token: ".2d", cpp: "TmaDim::D2" }
+            - { token: ".3d", cpp: "TmaDim::D3" }
+            - { token: ".4d", cpp: "TmaDim::D4" }
+            - { token: ".5d", cpp: "TmaDim::D5" }
+        im2col:
+          kind: optional
+          type: TmaLoadMode
+          values:
+            - { token: ".im2col",       cpp: "TmaLoadMode::Im2col"      }
+            - { token: ".im2col_no_offs",cpp: "TmaLoadMode::Im2colNoOff" }
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - { token: ".mbarrier::complete_tx::bytes",
+                cpp: "CpBulkCM::MbarComplTx" }
+            - { token: ".multicast::cluster::mbarrier::complete_tx::bytes",
+                cpp: "CpBulkCM::MulticastMbarComplTx" }
+        level_cache_hint:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".L2::cache_hint", cpp: "true" }
+      args:
+        - { name: "dst_smem",       kind: addr }
+        - { name: "tensor_map",     kind: reg }
+        - { name: "coords",         kind: reg_list, note: "1..5 coordinate regs" }
+        - { name: "mbar_ptr",       kind: addr }
+        - { name: "im2col_offsets", kind: optional_reg_list }
+        - { name: "multicast_mask", kind: optional_reg }
+        - { name: "cache_policy",   kind: optional_reg }
+      cpp_struct: "InstrCpAsyncBulkTensor"
+      emit_note: "direction = Load"
+
+    - description: "cp.async.bulk.tensor global←shared (store)"
+      modifiers:
+        dst_space:
+          kind: fixed
+          fixed_value: ".global"
+        src_space:
+          kind: required
+          type: StateSpace
+          values:
+            - { token: ".shared::cta",     cpp: "StateSpace::Shared"        }
+            - { token: ".shared::cluster", cpp: "StateSpace::SharedCluster" }
+        dim:
+          kind: required
+          type: TmaDim
+          values:
+            - { token: ".1d", cpp: "TmaDim::D1" }
+            - { token: ".2d", cpp: "TmaDim::D2" }
+            - { token: ".3d", cpp: "TmaDim::D3" }
+            - { token: ".4d", cpp: "TmaDim::D4" }
+            - { token: ".5d", cpp: "TmaDim::D5" }
+        completion_mechanism:
+          kind: required
+          type: CpAsyncBulkCompletionMechanism
+          values:
+            - { token: ".bulk_group", cpp: "CpBulkCM::BulkGroup" }
+      args:
+        - { name: "tensor_map", kind: reg }
+        - { name: "coords",     kind: reg_list }
+        - { name: "src_smem",   kind: addr }
+      cpp_struct: "InstrCpAsyncBulkTensor"
+      emit_note: "direction = Store"
+
+###############################################################################
+# tcgen05 — Tensor Core Generation 05 (PTX ISA 9.2 / Blackwell)
+# Ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tcgen05-instructions
+###############################################################################
+- opcode: "tcgen05.ld"
+  doc: "PTX ISA §9.7.15.2"
+  variants:
+    - description: "tcgen05.ld.sync.aligned"
+      modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        shape:
+          kind: required
+          type: Tcgen05Shape
+          values: !include _shared/tcgen05_shapes.yaml
+        num:
+          kind: required
+          type: Tcgen05Num
+          values: !include _shared/tcgen05_nums.yaml
+        b32:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".b32", cpp: "true" }
+        pack:
+          kind: optional
+          type: Tcgen05PackMode
+          values:
+            - { token: ".b8x16.b6x16_p32", cpp: "Tcgen05PackMode::B8x16_B6x16p32" }
+            - { token: ".b8x16.b4x16_p64", cpp: "Tcgen05PackMode::B8x16_B4x16p64" }
+        unpack:
+          kind: optional
+          type: Tcgen05UnpackMode
+          values:
+            - { token: ".b6x16_p32", cpp: "Tcgen05UnpackMode::B6x16p32" }
+            - { token: ".b4x16_p64", cpp: "Tcgen05UnpackMode::B4x16p64" }
+        offset:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".offset", cpp: "true" }
+      args:
+        - { name: "dst",    kind: reg_list, note: "accumulator regs in tmem" }
+        - { name: "tmem",   kind: addr,     note: "tensor memory address (.b32)" }
+        - { name: "offset", kind: optional_imm }
+      cpp_struct: "InstrTcgen05Ld"
+
+- opcode: "tcgen05.st"
+  doc: "PTX ISA §9.7.15.3"
+  variants:
+    - description: "tcgen05.st.sync.aligned"
+      modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        shape:
+          kind: required
+          type: Tcgen05Shape
+          values: !include _shared/tcgen05_shapes.yaml
+        num:
+          kind: required
+          type: Tcgen05Num
+          values: !include _shared/tcgen05_nums.yaml
+        b32:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".b32", cpp: "true" }
+        offset:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".offset", cpp: "true" }
+      args:
+        - { name: "tmem",   kind: addr }
+        - { name: "src",    kind: reg_list }
+        - { name: "offset", kind: optional_imm }
+      cpp_struct: "InstrTcgen05St"
+
+- opcode: "tcgen05.mma"
+  doc: "PTX ISA §9.7.15.4"
+  variants:
+    - description: "tcgen05.mma.sync.aligned (standard)"
+      modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        kind:
+          kind: required
+          type: Tcgen05MmaKind
+          values:
+            - { token: ".kind::mxf8f6f4",  cpp: "Tcgen05MmaKind::Mxf8f6f4"  }
+            - { token: ".kind::mxf4nvf4",  cpp: "Tcgen05MmaKind::Mxf4nvf4"  }
+            - { token: ".kind::mxf4",      cpp: "Tcgen05MmaKind::Mxf4"      }
+            - { token: ".kind::f16bf16",   cpp: "Tcgen05MmaKind::F16bf16"   }
+            - { token: ".kind::tf32",      cpp: "Tcgen05MmaKind::Tf32"      }
+            - { token: ".kind::i8",        cpp: "Tcgen05MmaKind::I8"        }
+            - { token: ".kind::b1",        cpp: "Tcgen05MmaKind::B1"        }
+        shape:
+          kind: required
+          type: Tcgen05MmaShape
+          values:
+            - { token: ".m64n8k32",    cpp: "Tcgen05MmaShape::M64n8k32"    }
+            - { token: ".m64n16k32",   cpp: "Tcgen05MmaShape::M64n16k32"   }
+            - { token: ".m64n32k32",   cpp: "Tcgen05MmaShape::M64n32k32"   }
+            - { token: ".m64n64k32",   cpp: "Tcgen05MmaShape::M64n64k32"   }
+            - { token: ".m64n128k32",  cpp: "Tcgen05MmaShape::M64n128k32"  }
+            - { token: ".m64n256k32",  cpp: "Tcgen05MmaShape::M64n256k32"  }
+            - { token: ".m128n8k32",   cpp: "Tcgen05MmaShape::M128n8k32"   }
+            - { token: ".m128n16k32",  cpp: "Tcgen05MmaShape::M128n16k32"  }
+            - { token: ".m128n32k32",  cpp: "Tcgen05MmaShape::M128n32k32"  }
+            - { token: ".m128n64k32",  cpp: "Tcgen05MmaShape::M128n64k32"  }
+            - { token: ".m128n128k32", cpp: "Tcgen05MmaShape::M128n128k32" }
+            - { token: ".m128n256k32", cpp: "Tcgen05MmaShape::M128n256k32" }
+        row_col:
+          kind: required
+          type: MmaLayout
+          values:
+            - { token: ".row.col", cpp: "MmaLayout::RowCol" }
+            - { token: ".row.row", cpp: "MmaLayout::RowRow" }
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f8e4m3",  cpp: "ScalarType::E4m3"  }
+            - { token: ".f8e5m2",  cpp: "ScalarType::E5m2"  }
+            - { token: ".f6e2m3",  cpp: "ScalarType::E2m3"  }
+            - { token: ".f6e3m2",  cpp: "ScalarType::E3m2"  }
+            - { token: ".f4e2m1",  cpp: "ScalarType::E2m1"  }
+            - { token: ".s8",      cpp: "ScalarType::S8"    }
+            - { token: ".u8",      cpp: "ScalarType::U8"    }
+            - { token: ".s4",      cpp: "ScalarType::S4"    }
+            - { token: ".u4",      cpp: "ScalarType::U4"    }
+            - { token: ".f16",     cpp: "ScalarType::F16"   }
+            - { token: ".bf16",    cpp: "ScalarType::BF16"  }
+            - { token: ".tf32",    cpp: "ScalarType::TF32"  }
+            - { token: ".b1",      cpp: "ScalarType::B1"    }
+        btype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f8e4m3",  cpp: "ScalarType::E4m3"  }
+            - { token: ".f8e5m2",  cpp: "ScalarType::E5m2"  }
+            - { token: ".f6e2m3",  cpp: "ScalarType::E2m3"  }
+            - { token: ".f6e3m2",  cpp: "ScalarType::E3m2"  }
+            - { token: ".f4e2m1",  cpp: "ScalarType::E2m1"  }
+            - { token: ".s8",      cpp: "ScalarType::S8"    }
+            - { token: ".u8",      cpp: "ScalarType::U8"    }
+            - { token: ".s4",      cpp: "ScalarType::S4"    }
+            - { token: ".u4",      cpp: "ScalarType::U4"    }
+            - { token: ".f16",     cpp: "ScalarType::F16"   }
+            - { token: ".bf16",    cpp: "ScalarType::BF16"  }
+            - { token: ".tf32",    cpp: "ScalarType::TF32"  }
+            - { token: ".b1",      cpp: "ScalarType::B1"    }
+        scale_factor:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".scale::2,1",  cpp: "true" }
+            - { token: ".scale::1,2",  cpp: "true" }
+        negate:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".neg::a",  cpp: "true" }
+            - { token: ".neg::b",  cpp: "true" }
+        b1op:
+          kind: optional
+          type: Tcgen05B1Op
+          values:
+            - { token: ".xor.popc",  cpp: "Tcgen05B1Op::XorPopc" }
+            - { token: ".and.popc",  cpp: "Tcgen05B1Op::AndPopc"  }
+      args:
+        - { name: "d_tmem",   kind: addr,     note: "tensor memory (accumulator)" }
+        - { name: "a",        kind: reg_list, note: "A-matrix operands in regs"   }
+        - { name: "b_desc",   kind: reg,      note: "matrix descriptor for B"     }
+        - { name: "idesc",    kind: optional_reg, note: "scale factor descriptor" }
+      cpp_struct: "InstrTcgen05Mma"
+
+    - description: "tcgen05.mma.sync.aligned with smem B"
+      modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        kind:
+          kind: required
+          type: Tcgen05MmaKind
+          values:
+            - { token: ".kind::mxf8f6f4",  cpp: "Tcgen05MmaKind::Mxf8f6f4"  }
+            - { token: ".kind::mxf4nvf4",  cpp: "Tcgen05MmaKind::Mxf4nvf4"  }
+            - { token: ".kind::mxf4",      cpp: "Tcgen05MmaKind::Mxf4"      }
+            - { token: ".kind::f16bf16",   cpp: "Tcgen05MmaKind::F16bf16"   }
+            - { token: ".kind::tf32",      cpp: "Tcgen05MmaKind::Tf32"      }
+            - { token: ".kind::i8",        cpp: "Tcgen05MmaKind::I8"        }
+            - { token: ".kind::b1",        cpp: "Tcgen05MmaKind::B1"        }
+        shape:
+          kind: required
+          type: Tcgen05MmaShape
+          values:
+            - { token: ".m64n8k32",    cpp: "Tcgen05MmaShape::M64n8k32"    }
+            - { token: ".m64n16k32",   cpp: "Tcgen05MmaShape::M64n16k32"   }
+            - { token: ".m64n32k32",   cpp: "Tcgen05MmaShape::M64n32k32"   }
+            - { token: ".m64n64k32",   cpp: "Tcgen05MmaShape::M64n64k32"   }
+            - { token: ".m64n128k32",  cpp: "Tcgen05MmaShape::M64n128k32"  }
+            - { token: ".m64n256k32",  cpp: "Tcgen05MmaShape::M64n256k32"  }
+        row_col:
+          kind: required
+          type: MmaLayout
+          values:
+            - { token: ".row.col", cpp: "MmaLayout::RowCol" }
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f8e4m3", cpp: "ScalarType::E4m3"  }
+            - { token: ".f8e5m2", cpp: "ScalarType::E5m2"  }
+            - { token: ".f6e2m3", cpp: "ScalarType::E2m3"  }
+            - { token: ".f6e3m2", cpp: "ScalarType::E3m2"  }
+            - { token: ".f4e2m1", cpp: "ScalarType::E2m1"  }
+            - { token: ".s8",     cpp: "ScalarType::S8"    }
+            - { token: ".u8",     cpp: "ScalarType::U8"    }
+            - { token: ".s4",     cpp: "ScalarType::S4"    }
+            - { token: ".u4",     cpp: "ScalarType::U4"    }
+            - { token: ".f16",    cpp: "ScalarType::F16"   }
+            - { token: ".bf16",   cpp: "ScalarType::BF16"  }
+            - { token: ".tf32",   cpp: "ScalarType::TF32"  }
+        btype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f8e4m3", cpp: "ScalarType::E4m3"  }
+            - { token: ".f8e5m2", cpp: "ScalarType::E5m2"  }
+            - { token: ".f6e2m3", cpp: "ScalarType::E2m3"  }
+            - { token: ".f6e3m2", cpp: "ScalarType::E3m2"  }
+            - { token: ".f4e2m1", cpp: "ScalarType::E2m1"  }
+            - { token: ".s8",     cpp: "ScalarType::S8"    }
+            - { token: ".u8",     cpp: "ScalarType::U8"    }
+            - { token: ".s4",     cpp: "ScalarType::S4"    }
+            - { token: ".u4",     cpp: "ScalarType::U4"    }
+            - { token: ".f16",    cpp: "ScalarType::F16"   }
+            - { token: ".bf16",   cpp: "ScalarType::BF16"  }
+            - { token: ".tf32",   cpp: "ScalarType::TF32"  }
+        b_src:
+          kind: fixed
+          fixed_value: ".collector::b0::smem"
+      args:
+        - { name: "d_tmem",  kind: addr }
+        - { name: "a",       kind: reg_list }
+        - { name: "b_smem",  kind: addr }
+        - { name: "idesc",   kind: optional_reg }
+      cpp_struct: "InstrTcgen05Mma"
+      emit_note: "b_from_smem = true"
+
+- opcode: "tcgen05.mma.ws"
+  doc: "PTX ISA §9.7.15.5"
+  variants:
+    - description: "tcgen05.mma.ws (warpgroup scale)"
+      modifiers:
+        sync:
+          kind: fixed
+          fixed_value: ".sync"
+        aligned:
+          kind: fixed
+          fixed_value: ".aligned"
+        kind:
+          kind: required
+          type: Tcgen05MmaKind
+          values:
+            - { token: ".kind::mxf8f6f4", cpp: "Tcgen05MmaKind::Mxf8f6f4" }
+            - { token: ".kind::mxf4nvf4", cpp: "Tcgen05MmaKind::Mxf4nvf4" }
+        shape:
+          kind: required
+          type: Tcgen05MmaShape
+          values:
+            - { token: ".m64n8k32",    cpp: "Tcgen05MmaShape::M64n8k32"    }
+            - { token: ".m64n16k32",   cpp: "Tcgen05MmaShape::M64n16k32"   }
+            - { token: ".m64n32k32",   cpp: "Tcgen05MmaShape::M64n32k32"   }
+            - { token: ".m64n64k32",   cpp: "Tcgen05MmaShape::M64n64k32"   }
+            - { token: ".m64n128k32",  cpp: "Tcgen05MmaShape::M64n128k32"  }
+            - { token: ".m64n256k32",  cpp: "Tcgen05MmaShape::M64n256k32"  }
+            - { token: ".m128n8k32",   cpp: "Tcgen05MmaShape::M128n8k32"   }
+            - { token: ".m128n16k32",  cpp: "Tcgen05MmaShape::M128n16k32"  }
+            - { token: ".m128n32k32",  cpp: "Tcgen05MmaShape::M128n32k32"  }
+            - { token: ".m128n64k32",  cpp: "Tcgen05MmaShape::M128n64k32"  }
+            - { token: ".m128n128k32", cpp: "Tcgen05MmaShape::M128n128k32" }
+            - { token: ".m128n256k32", cpp: "Tcgen05MmaShape::M128n256k32" }
+        row_col:
+          kind: required
+          type: MmaLayout
+          values:
+            - { token: ".row.col", cpp: "MmaLayout::RowCol" }
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f8e4m3", cpp: "ScalarType::E4m3"  }
+            - { token: ".f8e5m2", cpp: "ScalarType::E5m2"  }
+            - { token: ".f6e2m3", cpp: "ScalarType::E2m3"  }
+            - { token: ".f6e3m2", cpp: "ScalarType::E3m2"  }
+            - { token: ".f4e2m1", cpp: "ScalarType::E2m1"  }
+        btype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".f8e4m3", cpp: "ScalarType::E4m3"  }
+            - { token: ".f8e5m2", cpp: "ScalarType::E5m2"  }
+            - { token: ".f6e2m3", cpp: "ScalarType::E2m3"  }
+            - { token: ".f6e3m2", cpp: "ScalarType::E3m2"  }
+            - { token: ".f4e2m1", cpp: "ScalarType::E2m1"  }
+      args:
+        - { name: "d_tmem",  kind: addr }
+        - { name: "a",       kind: reg_list }
+        - { name: "b_desc",  kind: reg }
+        - { name: "scale_a", kind: reg }
+        - { name: "scale_b", kind: reg }
+      cpp_struct: "InstrTcgen05MmaWs"
+
+- opcode: "tcgen05.fence"
+  doc: "PTX ISA §9.7.15.6"
+  variants:
+    - description: "tcgen05.fence before/after"
+      modifiers:
+        kind:
+          kind: required
+          type: Tcgen05FenceKind
+          values:
+            - { token: ".before_thread_sync", cpp: "Tcgen05FenceKind::BeforeThreadSync" }
+            - { token: ".after_thread_sync",  cpp: "Tcgen05FenceKind::AfterThreadSync"  }
+      args: []
+      cpp_struct: "InstrTcgen05Fence"
+
+- opcode: "tcgen05.commit"
+  doc: "PTX ISA §9.7.15.7"
+  variants:
+    - description: "tcgen05.commit_group"
+      modifiers:
+        group:
+          kind: fixed
+          fixed_value: ".group"
+        sync:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sync", cpp: "true" }
+        aligned:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".aligned", cpp: "true" }
+      args: []
+      cpp_struct: "InstrTcgen05CommitGroup"
+
+- opcode: "tcgen05.wait"
+  doc: "PTX ISA §9.7.15.8"
+  variants:
+    - description: "tcgen05.wait_group"
+      modifiers:
+        group:
+          kind: fixed
+          fixed_value: ".group"
+        sync:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sync", cpp: "true" }
+        aligned:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".aligned", cpp: "true" }
+      args:
+        - { name: "n", kind: imm, note: "number of prior groups to wait" }
+      cpp_struct: "InstrTcgen05WaitGroup"
+
+- opcode: "tcgen05.alloc"
+  doc: "PTX ISA §9.7.15.9"
+  variants:
+    - modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "ptr_out", kind: reg }
+        - { name: "ncolumns", kind: reg_or_imm }
+      cpp_struct: "InstrTcgen05Alloc"
+
+- opcode: "tcgen05.dealloc"
+  doc: "PTX ISA §9.7.15.9"
+  variants:
+    - modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "ptr",      kind: reg }
+        - { name: "ncolumns", kind: reg_or_imm }
+      cpp_struct: "InstrTcgen05Dealloc"
+
+- opcode: "tcgen05.relinquish_alloc_permit"
+  doc: "PTX ISA §9.7.15.9"
+  variants:
+    - modifiers: {}
+      args: []
+      cpp_struct: "InstrTcgen05RelinquishAllocPermit"
+
+- opcode: "tcgen05.shift"
+  doc: "PTX ISA §9.7.15.10"
+  variants:
+    - modifiers:
+        b32:
+          kind: fixed
+          fixed_value: ".b32"
+      args:
+        - { name: "ptr", kind: reg, note: "tmem pointer" }
+      cpp_struct: "InstrTcgen05Shift"

@@ -232,3 +232,48 @@
         - { name: "src2", kind: reg_or_imm }
         - { name: "src3", kind: reg_or_imm }
       cpp_struct: "InstrPrmt"
+
+- opcode: "bfind"
+  doc: "PTX ISA §9.7.5.11"
+  variants:
+    - description: "bfind.u32/u64 (unsigned, find highest set bit)"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        shiftamt:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".shiftamt", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrBfind"
+
+    - description: "bfind.s32/s64 (signed, find highest non-sign bit)"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        shiftamt:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".shiftamt", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      cpp_struct: "InstrBfind"

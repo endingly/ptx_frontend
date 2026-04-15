@@ -1694,6 +1694,29 @@ struct Parser {
     return InstrBrev<ParsedOp>{stype, dst, src};
   }
 
+  // bfind[.shiftamt].type dst, a;
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bfind() {
+    bool shiftamt = match(TokenKind::DotShiftamt);
+    auto stype = TRY(parse_scalar_type());
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src = TRY(parse_operand());
+    return InstrBfind<ParsedOp>{BfindDetails{stype, shiftamt}, dst, src};
+  }
+
+  // ldu.{ss}.type dst, [src];
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_ldu() {
+    // optional state space (default: global)
+    StateSpace ss = StateSpace::Global;
+    if (check(TokenKind::DotGlobal)) { lex.consume(); ss = StateSpace::Global; }
+    else if (check(TokenKind::DotConst)) { lex.consume(); ss = StateSpace::Const; }
+    auto typ = TRY(parse_instr_type());
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src = TRY(parse_operand());
+    return InstrLdu<ParsedOp>{LduDetails{ss, typ}, dst, src};
+  }
+
   tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_rem() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
@@ -1870,6 +1893,8 @@ struct Parser {
       case TokenKind::Popc: return parse_instr_popc();
       case TokenKind::Clz:  return parse_instr_clz();
       case TokenKind::Brev: return parse_instr_brev();
+      case TokenKind::Bfind: return parse_instr_bfind();
+      case TokenKind::Ldu:  return parse_instr_ldu();
       // logic
       case TokenKind::And:  return parse_instr_logic(TokenKind::And);
       case TokenKind::Or:   return parse_instr_logic(TokenKind::Or);
@@ -1939,6 +1964,8 @@ struct Parser {
       case TokenKind::Popc:
       case TokenKind::Clz:
       case TokenKind::Brev:
+      case TokenKind::Bfind:
+      case TokenKind::Ldu:
       case TokenKind::And:
       case TokenKind::Or:
       case TokenKind::Xor:

@@ -605,13 +605,27 @@ struct InstrClusterLaunchControl {
   Op addr;
 };
 
+// bfind[.shiftamt].type dst, src;
+template <OperandLike Op>
+struct InstrBfind {
+  BfindDetails data;
+  Op dst, src;
+};
+
+// ldu.{ss}.type dst, [src];
+template <OperandLike Op>
+struct InstrLdu {
+  LduDetails data;
+  Op dst, src;
+};
+
 // Instruction variant — Op = ParsedOp for the parsed stage
 template <OperandLike Op>
 using Instruction = std::variant<
     InstrAbs<Op>, InstrActivemask<Op>, InstrAdd<Op>, InstrAddExtended<Op>,
     InstrSubExtended<Op>, InstrMadExtended<Op>, InstrAnd<Op>, InstrAtom<Op>,
     InstrAtomCas<Op>, InstrBarWarp<Op>, InstrBar<Op>, InstrBarRed<Op>,
-    InstrBfe<Op>, InstrBfi<Op>, InstrBmsk<Op>,
+    InstrBfe<Op>, InstrBfi<Op>, InstrBfind<Op>, InstrBmsk<Op>,
     InstrBra<typename Op::id_type>,  // <-- Ident only
     InstrBrev<Op>,
     InstrCall<Op>,  // NOTE: CallArgs needs Id; adapt as needed
@@ -619,8 +633,8 @@ using Instruction = std::variant<
     InstrCpAsyncWaitGroup<Op>, InstrCpAsyncWaitAll,
     InstrCreatePolicyFractional<Op>, InstrCvt<Op>, InstrCvtPack<Op>,
     InstrCvta<Op>, InstrDiv<Op>, InstrDp4a<Op>, InstrEx2<Op>, InstrFma<Op>,
-    InstrLd<Op>, InstrLg2<Op>, InstrMad<Op>, InstrMax<Op>, InstrMembar,
-    InstrMin<Op>, InstrMov<Op>, InstrMul<Op>, InstrMul24<Op>,
+    InstrLd<Op>, InstrLdu<Op>, InstrLg2<Op>, InstrMad<Op>, InstrMax<Op>,
+    InstrMembar, InstrMin<Op>, InstrMov<Op>, InstrMul<Op>, InstrMul24<Op>,
     InstrNanosleep<Op>, InstrNeg<Op>, InstrNot<Op>, InstrOr<Op>, InstrPopc<Op>,
     InstrPrmt<Op>, InstrRcp<Op>, InstrRem<Op>, InstrRet, InstrRsqrt<Op>,
     InstrSelp<Op>, InstrSet<Op>, InstrSetBool<Op>, InstrSetp<Op>,

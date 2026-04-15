@@ -5,6 +5,8 @@
 
 #include "type_checker_gen.hpp"
 #include <array>
+#include <optional>
+#include <string>
 #include <variant>
 
 namespace ptx_frontend {
@@ -19,6 +21,45 @@ bool is_one_of(const T& val, const std::array<T, N>& arr) {
 
 void TypeCheckerGen::check_module(const ResolvedModule& /*mod*/) {
   // Dispatch happens via ptx_visit_dispatch.hpp visitor pattern.
+}
+
+// ── check_op_scalar_type ───────────────────────────────────────────────────
+// Verify that a resolved register operand has the expected scalar type.
+// Extracts a SymbolId from the operand, looks it up in the symbol table,
+// and compares the declared type.  Immediate and address operands are
+// silently ignored (they carry no type information in the symbol table).
+void TypeCheckerGen::check_op_scalar_type(
+    const ResolvedOp& op, ScalarType expected, const char* ctx) {
+  if (!resolved_symbols_) return;
+
+  // Walk the ParsedOperand variant to find a SymbolId.
+  std::optional<SymbolId> sym_id;
+  std::visit(
+      [&](const auto& v) {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, RegOrImmediate<SymbolId>>) {
+          if (std::holds_alternative<SymbolId>(v.value))
+            sym_id = std::get<SymbolId>(v.value);
+        } else if constexpr (std::is_same_v<T, ResolvedOp::RegOffset>) {
+          sym_id = v.base;
+        } else if constexpr (std::is_same_v<T, ResolvedOp::VecMemberIdx>) {
+          sym_id = v.base;
+        }
+        // ImmediateValue, VecPack, Pred: no symbol to look up
+      },
+      op.value);
+
+  if (!sym_id.has_value() || *sym_id == kInvalidSymbolId) return;
+
+  const auto& entry = resolved_symbols_->entry(*sym_id);
+  // Only scalar types carry a single ScalarType tag.
+  if (!std::holds_alternative<ScalarTypeT>(entry.type)) return;
+  ScalarType actual = std::get<ScalarTypeT>(entry.type).type;
+  if (actual != expected) {
+    error(std::string(ctx) + ": operand type mismatch: expected "
+          + to_string(expected)
+          + " got " + to_string(actual));
+  }
 }
 
 // PTX ISA §9.7.6.1
@@ -278,12 +319,29 @@ void TypeCheckerGen::check_createpolicy_fractional(const InstrCreatePolicyFracti
   }
 }
 
+// PTX ISA §9.7.8.3 (read-only data cache load, deprecated since PTX 6.5)
+void TypeCheckerGen::check_ldu(const InstrLdu<ResolvedOp>& instr) {
+  // variant 0: ldu.global.type dst, [src]
+  auto check_v0 = [&]() -> bool {
+    if (!require_ptx(2.0f, "ldu.global.type dst, [src]")) return false;
+    if (!require_sm(20u, "ldu.global.type dst, [src]")) return false;
+    return true;
+  };
+  if (!(check_v0())) {
+    error("ldu: no matching variant found");
+  }
+}
+
 // PTX ISA §9.7.2.1
 void TypeCheckerGen::check_fma(const InstrFma<ResolvedOp>& instr) {
   // variant 0: fma.f32
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "fma.f32")) return false;
     if (!((instr.data.type_ == ScalarType::F32))) { error("fma.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "fma.f32: dst");
+    check_op_scalar_type(instr.src1, instr.data.type_, "fma.f32: src1");
+    check_op_scalar_type(instr.src2, instr.data.type_, "fma.f32: src2");
+    check_op_scalar_type(instr.src3, instr.data.type_, "fma.f32: src3");
     return true;
   };
   // variant 1: fma.f64
@@ -291,6 +349,10 @@ void TypeCheckerGen::check_fma(const InstrFma<ResolvedOp>& instr) {
     if (!require_ptx(1.0f, "fma.f64")) return false;
     if (!require_sm(13u, "fma.f64")) return false;
     if (!((instr.data.type_ == ScalarType::F64))) { error("fma.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "fma.f64: dst");
+    check_op_scalar_type(instr.src1, instr.data.type_, "fma.f64: src1");
+    check_op_scalar_type(instr.src2, instr.data.type_, "fma.f64: src2");
+    check_op_scalar_type(instr.src3, instr.data.type_, "fma.f64: src3");
     return true;
   };
   // variant 2: fma half-precision (f16/f16x2)
@@ -298,6 +360,10 @@ void TypeCheckerGen::check_fma(const InstrFma<ResolvedOp>& instr) {
     if (!require_ptx(6.0f, "fma half-precision (f16/f16x2)")) return false;
     if (!require_sm(53u, "fma half-precision (f16/f16x2)")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("fma half-precision (f16/f16x2): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "fma half-precision (f16/f16x2): dst");
+    check_op_scalar_type(instr.src1, instr.data.type_, "fma half-precision (f16/f16x2): src1");
+    check_op_scalar_type(instr.src2, instr.data.type_, "fma half-precision (f16/f16x2): src2");
+    check_op_scalar_type(instr.src3, instr.data.type_, "fma half-precision (f16/f16x2): src3");
     return true;
   };
   // variant 3: fma bf16/bf16x2
@@ -305,6 +371,10 @@ void TypeCheckerGen::check_fma(const InstrFma<ResolvedOp>& instr) {
     if (!require_ptx(7.0f, "fma bf16/bf16x2")) return false;
     if (!require_sm(80u, "fma bf16/bf16x2")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("fma bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "fma bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src1, instr.data.type_, "fma bf16/bf16x2: src1");
+    check_op_scalar_type(instr.src2, instr.data.type_, "fma bf16/bf16x2: src2");
+    check_op_scalar_type(instr.src3, instr.data.type_, "fma bf16/bf16x2: src3");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -318,24 +388,32 @@ void TypeCheckerGen::check_rcp(const InstrRcp<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.approx.f32")) return false;
     if (!((instr.data.type_ == ScalarType::F32))) { error("rcp.approx.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "rcp.approx.f32: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "rcp.approx.f32: src");
     return true;
   };
   // variant 1: rcp.approx.f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.approx.f64")) return false;
     if (!((instr.data.type_ == ScalarType::F64))) { error("rcp.approx.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "rcp.approx.f64: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "rcp.approx.f64: src");
     return true;
   };
   // variant 2: rcp.rnd.f32
   auto check_v2 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.rnd.f32")) return false;
     if (!((instr.data.type_ == ScalarType::F32))) { error("rcp.rnd.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "rcp.rnd.f32: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "rcp.rnd.f32: src");
     return true;
   };
   // variant 3: rcp.rnd.f64
   auto check_v3 = [&]() -> bool {
     if (!require_ptx(1.0f, "rcp.rnd.f64")) return false;
     if (!((instr.data.type_ == ScalarType::F64))) { error("rcp.rnd.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "rcp.rnd.f64: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "rcp.rnd.f64: src");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -349,12 +427,16 @@ void TypeCheckerGen::check_sqrt(const InstrSqrt<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "sqrt.approx.f32")) return false;
     if (!((instr.data.type_ == ScalarType::F32))) { error("sqrt.approx.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "sqrt.approx.f32: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "sqrt.approx.f32: src");
     return true;
   };
   // variant 1: sqrt.rnd.f32
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "sqrt.rnd.f32")) return false;
     if (!((instr.data.type_ == ScalarType::F32))) { error("sqrt.rnd.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "sqrt.rnd.f32: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "sqrt.rnd.f32: src");
     return true;
   };
   // variant 2: sqrt.rnd.f64
@@ -362,6 +444,8 @@ void TypeCheckerGen::check_sqrt(const InstrSqrt<ResolvedOp>& instr) {
     if (!require_ptx(1.0f, "sqrt.rnd.f64")) return false;
     if (!require_sm(13u, "sqrt.rnd.f64")) return false;
     if (!((instr.data.type_ == ScalarType::F64))) { error("sqrt.rnd.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "sqrt.rnd.f64: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "sqrt.rnd.f64: src");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2())) {
@@ -451,6 +535,8 @@ void TypeCheckerGen::check_tanh(const InstrTanh<ResolvedOp>& instr) {
     if (!require_ptx(7.5f, "tanh.approx.f32")) return false;
     if (!require_sm(80u, "tanh.approx.f32")) return false;
     if (!((instr.data == ScalarType::F32))) { error("tanh.approx.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "tanh.approx.f32: dst");
+    check_op_scalar_type(instr.src, instr.data, "tanh.approx.f32: src");
     return true;
   };
   // variant 1: tanh.approx f16/f16x2/bf16/bf16x2
@@ -458,6 +544,8 @@ void TypeCheckerGen::check_tanh(const InstrTanh<ResolvedOp>& instr) {
     if (!require_ptx(7.5f, "tanh.approx f16/f16x2/bf16/bf16x2")) return false;
     if (!require_sm(80u, "tanh.approx f16/f16x2/bf16/bf16x2")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2, ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data, _allowed); }()))) { error("tanh.approx f16/f16x2/bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "tanh.approx f16/f16x2/bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src, instr.data, "tanh.approx f16/f16x2/bf16/bf16x2: src");
     return true;
   };
   if (!(check_v0() || check_v1())) {
@@ -472,6 +560,9 @@ void TypeCheckerGen::check_copysign(const InstrCopysign<ResolvedOp>& instr) {
     if (!require_ptx(7.0f, "copysign.f32/f64")) return false;
     if (!require_sm(80u, "copysign.f32/f64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data, _allowed); }()))) { error("copysign.f32/f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "copysign.f32/f64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "copysign.f32/f64: src1");
+    check_op_scalar_type(instr.src2, instr.data, "copysign.f32/f64: src2");
     return true;
   };
   if (!(check_v0())) {
@@ -487,6 +578,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U64, ScalarType::S16, ScalarType::S64, ScalarType::U32, ScalarType::S32}); return is_one_of(d.type_, _allowed); }()))) { error("add integer no-sat (universal): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add integer no-sat (universal): dst");
+    check_op_scalar_type(instr.src1, d.type_, "add integer no-sat (universal): src1");
+    check_op_scalar_type(instr.src2, d.type_, "add integer no-sat (universal): src2");
     return true;
   };
   // variant 1: add.sat.s32 (universal)
@@ -496,6 +590,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!((d.saturate == true))) { error("add.sat.s32 (universal): modifier saturate check failed"); return false; }
     if (!((d.type_ == ScalarType::S32))) { error("add.sat.s32 (universal): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add.sat.s32 (universal): dst");
+    check_op_scalar_type(instr.src1, d.type_, "add.sat.s32 (universal): src1");
+    check_op_scalar_type(instr.src2, d.type_, "add.sat.s32 (universal): src2");
     return true;
   };
   // variant 2: add SIMD no-sat (sm_90+)
@@ -505,6 +602,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16x2, ScalarType::S16x2}); return is_one_of(d.type_, _allowed); }()))) { error("add SIMD no-sat (sm_90+): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add SIMD no-sat (sm_90+): dst");
+    check_op_scalar_type(instr.src1, d.type_, "add SIMD no-sat (sm_90+): src1");
+    check_op_scalar_type(instr.src2, d.type_, "add SIMD no-sat (sm_90+): src2");
     return true;
   };
   // variant 3: add packed optional-sat (sm_120f family)
@@ -514,6 +614,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U8x4, ScalarType::S8x4}); return is_one_of(d.type_, _allowed); }()))) { error("add packed optional-sat (sm_120f family): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add packed optional-sat (sm_120f family): dst");
+    check_op_scalar_type(instr.src1, d.type_, "add packed optional-sat (sm_120f family): src1");
+    check_op_scalar_type(instr.src2, d.type_, "add packed optional-sat (sm_120f family): src2");
     return true;
   };
   // variant 4: add SIMD sat / add.sat.u32 (sm_120f family)
@@ -524,6 +627,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!((d.saturate == true))) { error("add SIMD sat / add.sat.u32 (sm_120f family): modifier saturate check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16x2, ScalarType::S16x2, ScalarType::U32}); return is_one_of(d.type_, _allowed); }()))) { error("add SIMD sat / add.sat.u32 (sm_120f family): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add SIMD sat / add.sat.u32 (sm_120f family): dst");
+    check_op_scalar_type(instr.src1, d.type_, "add SIMD sat / add.sat.u32 (sm_120f family): src1");
+    check_op_scalar_type(instr.src2, d.type_, "add SIMD sat / add.sat.u32 (sm_120f family): src2");
     return true;
   };
   // variant 5: add.f32
@@ -532,6 +638,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("add.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "add.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "add.f32: src2");
     return true;
   };
   // variant 6: add.f64
@@ -541,6 +650,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F64))) { error("add.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add.f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "add.f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "add.f64: src2");
     return true;
   };
   // variant 7: add.f32x2
@@ -550,6 +662,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32x2))) { error("add.f32x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add.f32x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "add.f32x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "add.f32x2: src2");
     return true;
   };
   // variant 8: add half-precision (f16, f16x2)
@@ -559,6 +674,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("add half-precision (f16, f16x2): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add half-precision (f16, f16x2): dst");
+    check_op_scalar_type(instr.src1, d.type_, "add half-precision (f16, f16x2): src1");
+    check_op_scalar_type(instr.src2, d.type_, "add half-precision (f16, f16x2): src2");
     return true;
   };
   // variant 9: add bf16/bf16x2
@@ -568,6 +686,9 @@ void TypeCheckerGen::check_add(const InstrAdd<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("add bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "add bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "add bf16/bf16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "add bf16/bf16x2: src2");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4() || check_v5() || check_v6() || check_v7() || check_v8() || check_v9())) {
@@ -583,6 +704,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S64, ScalarType::S32}); return is_one_of(d.type_, _allowed); }()))) { error("sub integer no-sat (universal): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub integer no-sat (universal): dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub integer no-sat (universal): src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub integer no-sat (universal): src2");
     return true;
   };
   // variant 1: sub.sat.s32 (universal)
@@ -592,6 +716,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!((d.saturate == true))) { error("sub.sat.s32 (universal): modifier saturate check failed"); return false; }
     if (!((d.type_ == ScalarType::S32))) { error("sub.sat.s32 (universal): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub.sat.s32 (universal): dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub.sat.s32 (universal): src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub.sat.s32 (universal): src2");
     return true;
   };
   // variant 2: sub SIMD no-sat (sm_90+)
@@ -601,6 +728,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16x2, ScalarType::S16x2}); return is_one_of(d.type_, _allowed); }()))) { error("sub SIMD no-sat (sm_90+): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub SIMD no-sat (sm_90+): dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub SIMD no-sat (sm_90+): src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub SIMD no-sat (sm_90+): src2");
     return true;
   };
   // variant 3: sub packed optional-sat (sm_120f family)
@@ -610,6 +740,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithInteger>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U8x4, ScalarType::S8x4}); return is_one_of(d.type_, _allowed); }()))) { error("sub packed optional-sat (sm_120f family): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub packed optional-sat (sm_120f family): dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub packed optional-sat (sm_120f family): src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub packed optional-sat (sm_120f family): src2");
     return true;
   };
   // variant 4: sub SIMD sat / sub.sat.u32 (sm_120f family)
@@ -620,6 +753,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<ArithInteger>(instr.data);
     if (!((d.saturate == true))) { error("sub SIMD sat / sub.sat.u32 (sm_120f family): modifier saturate check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16x2, ScalarType::S16x2, ScalarType::U32}); return is_one_of(d.type_, _allowed); }()))) { error("sub SIMD sat / sub.sat.u32 (sm_120f family): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub SIMD sat / sub.sat.u32 (sm_120f family): dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub SIMD sat / sub.sat.u32 (sm_120f family): src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub SIMD sat / sub.sat.u32 (sm_120f family): src2");
     return true;
   };
   // variant 5: sub.f32
@@ -628,6 +764,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("sub.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub.f32: src2");
     return true;
   };
   // variant 6: sub.f32x2
@@ -637,6 +776,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32x2))) { error("sub.f32x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub.f32x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub.f32x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub.f32x2: src2");
     return true;
   };
   // variant 7: sub.f64
@@ -646,6 +788,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F64))) { error("sub.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub.f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub.f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub.f64: src2");
     return true;
   };
   // variant 8: sub half-precision (f16, f16x2)
@@ -655,6 +800,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("sub half-precision (f16, f16x2): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub half-precision (f16, f16x2): dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub half-precision (f16, f16x2): src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub half-precision (f16, f16x2): src2");
     return true;
   };
   // variant 9: sub bf16/bf16x2
@@ -664,6 +812,9 @@ void TypeCheckerGen::check_sub(const InstrSub<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("sub bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "sub bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "sub bf16/bf16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "sub bf16/bf16x2: src2");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4() || check_v5() || check_v6() || check_v7() || check_v8() || check_v9())) {
@@ -680,6 +831,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<MulInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<MulIntControl>({MulIntControl::High, MulIntControl::Low}); return is_one_of(d.control, _allowed); }()))) { error("mul integer hi/lo: modifier control check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("mul integer hi/lo: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul integer hi/lo: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul integer hi/lo: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul integer hi/lo: src2");
     return true;
   };
   // variant 1: mul.wide
@@ -689,6 +843,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<MulInt>(instr.data);
     if (!((d.control == MulIntControl::Wide))) { error("mul.wide: modifier control check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::S16, ScalarType::S32}); return is_one_of(d.type_, _allowed); }()))) { error("mul.wide: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul.wide: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul.wide: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul.wide: src2");
     return true;
   };
   // variant 2: mul.f32
@@ -697,6 +854,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("mul.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul.f32: src2");
     return true;
   };
   // variant 3: mul.f32x2
@@ -706,6 +866,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32x2))) { error("mul.f32x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul.f32x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul.f32x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul.f32x2: src2");
     return true;
   };
   // variant 4: mul.f64
@@ -715,6 +878,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F64))) { error("mul.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul.f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul.f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul.f64: src2");
     return true;
   };
   // variant 5: mul half-precision (f16, f16x2)
@@ -724,6 +890,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("mul half-precision (f16, f16x2): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul half-precision (f16, f16x2): dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul half-precision (f16, f16x2): src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul half-precision (f16, f16x2): src2");
     return true;
   };
   // variant 6: mul bf16/bf16x2
@@ -733,6 +902,9 @@ void TypeCheckerGen::check_mul(const InstrMul<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("mul bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mul bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mul bf16/bf16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mul bf16/bf16x2: src2");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4() || check_v5() || check_v6())) {
@@ -749,6 +921,10 @@ void TypeCheckerGen::check_mad(const InstrMad<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<MadInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<MulIntControl>({MulIntControl::High, MulIntControl::Low}); return is_one_of(d.control, _allowed); }()))) { error("mad integer hi/lo: modifier control check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("mad integer hi/lo: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mad integer hi/lo: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mad integer hi/lo: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mad integer hi/lo: src2");
+    check_op_scalar_type(instr.src3, d.type_, "mad integer hi/lo: src3");
     return true;
   };
   // variant 1: mad.wide
@@ -758,6 +934,10 @@ void TypeCheckerGen::check_mad(const InstrMad<ResolvedOp>& instr) {
     [[maybe_unused]] auto& d = std::get<MadInt>(instr.data);
     if (!((d.control == MulIntControl::Wide))) { error("mad.wide: modifier control check failed"); return false; }
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::S16, ScalarType::S32}); return is_one_of(d.type_, _allowed); }()))) { error("mad.wide: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mad.wide: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mad.wide: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mad.wide: src2");
+    check_op_scalar_type(instr.src3, d.type_, "mad.wide: src3");
     return true;
   };
   // variant 2: mad.hi.sat.s32
@@ -768,6 +948,10 @@ void TypeCheckerGen::check_mad(const InstrMad<ResolvedOp>& instr) {
     if (!((d.control == MulIntControl::High))) { error("mad.hi.sat.s32: modifier control check failed"); return false; }
     if (!((d.saturate == true))) { error("mad.hi.sat.s32: modifier saturate check failed"); return false; }
     if (!((d.type_ == ScalarType::S32))) { error("mad.hi.sat.s32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mad.hi.sat.s32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mad.hi.sat.s32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mad.hi.sat.s32: src2");
+    check_op_scalar_type(instr.src3, d.type_, "mad.hi.sat.s32: src3");
     return true;
   };
   // variant 3: mad.f32
@@ -776,6 +960,10 @@ void TypeCheckerGen::check_mad(const InstrMad<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("mad.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mad.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mad.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mad.f32: src2");
+    check_op_scalar_type(instr.src3, d.type_, "mad.f32: src3");
     return true;
   };
   // variant 4: mad.f64
@@ -785,6 +973,10 @@ void TypeCheckerGen::check_mad(const InstrMad<ResolvedOp>& instr) {
     if (!std::holds_alternative<ArithFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<ArithFloat>(instr.data);
     if (!((d.type_ == ScalarType::F64))) { error("mad.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "mad.f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "mad.f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "mad.f64: src2");
+    check_op_scalar_type(instr.src3, d.type_, "mad.f64: src3");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4())) {
@@ -812,6 +1004,10 @@ void TypeCheckerGen::check_sad(const InstrSad<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "sad integer")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data, _allowed); }()))) { error("sad integer: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "sad integer: dst");
+    check_op_scalar_type(instr.src1, instr.data, "sad integer: src1");
+    check_op_scalar_type(instr.src2, instr.data, "sad integer: src2");
+    check_op_scalar_type(instr.src3, instr.data, "sad integer: src3");
     return true;
   };
   if (!(check_v0())) {
@@ -827,6 +1023,9 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!std::holds_alternative<DivInt>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("div integer: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "div integer: dst");
+    check_op_scalar_type(instr.src1, d.type_, "div integer: src1");
+    check_op_scalar_type(instr.src2, d.type_, "div integer: src2");
     return true;
   };
   // variant 1: div.approx.f32
@@ -835,6 +1034,9 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!std::holds_alternative<DivFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("div.approx.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "div.approx.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "div.approx.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "div.approx.f32: src2");
     return true;
   };
   // variant 2: div.full.f32
@@ -843,6 +1045,9 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!std::holds_alternative<DivFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("div.full.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "div.full.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "div.full.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "div.full.f32: src2");
     return true;
   };
   // variant 3: div.rnd.f32
@@ -851,6 +1056,9 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!std::holds_alternative<DivFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivFloat>(instr.data);
     if (!((d.type_ == ScalarType::F32))) { error("div.rnd.f32: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "div.rnd.f32: dst");
+    check_op_scalar_type(instr.src1, d.type_, "div.rnd.f32: src1");
+    check_op_scalar_type(instr.src2, d.type_, "div.rnd.f32: src2");
     return true;
   };
   // variant 4: div.rnd.f64
@@ -860,6 +1068,9 @@ void TypeCheckerGen::check_div(const InstrDiv<ResolvedOp>& instr) {
     if (!std::holds_alternative<DivFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<DivFloat>(instr.data);
     if (!((d.type_ == ScalarType::F64))) { error("div.rnd.f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "div.rnd.f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "div.rnd.f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "div.rnd.f64: src2");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4())) {
@@ -873,6 +1084,9 @@ void TypeCheckerGen::check_rem(const InstrRem<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "rem integer")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data, _allowed); }()))) { error("rem integer: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "rem integer: dst");
+    check_op_scalar_type(instr.src1, instr.data, "rem integer: src1");
+    check_op_scalar_type(instr.src2, instr.data, "rem integer: src2");
     return true;
   };
   if (!(check_v0())) {
@@ -886,12 +1100,16 @@ void TypeCheckerGen::check_abs(const InstrAbs<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "abs integer")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs integer: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "abs integer: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "abs integer: src");
     return true;
   };
   // variant 1: abs.f32/f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "abs.f32/f64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs.f32/f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "abs.f32/f64: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "abs.f32/f64: src");
     return true;
   };
   // variant 2: abs.f16/f16x2
@@ -899,6 +1117,8 @@ void TypeCheckerGen::check_abs(const InstrAbs<ResolvedOp>& instr) {
     if (!require_ptx(6.0f, "abs.f16/f16x2")) return false;
     if (!require_sm(53u, "abs.f16/f16x2")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs.f16/f16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "abs.f16/f16x2: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "abs.f16/f16x2: src");
     return true;
   };
   // variant 3: abs.bf16/bf16x2
@@ -906,6 +1126,8 @@ void TypeCheckerGen::check_abs(const InstrAbs<ResolvedOp>& instr) {
     if (!require_ptx(7.0f, "abs.bf16/bf16x2")) return false;
     if (!require_sm(80u, "abs.bf16/bf16x2")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("abs.bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "abs.bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "abs.bf16/bf16x2: src");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -919,12 +1141,16 @@ void TypeCheckerGen::check_neg(const InstrNeg<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "neg integer")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg integer: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "neg integer: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "neg integer: src");
     return true;
   };
   // variant 1: neg.f32/f64
   auto check_v1 = [&]() -> bool {
     if (!require_ptx(1.0f, "neg.f32/f64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg.f32/f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "neg.f32/f64: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "neg.f32/f64: src");
     return true;
   };
   // variant 2: neg.f16/f16x2
@@ -932,6 +1158,8 @@ void TypeCheckerGen::check_neg(const InstrNeg<ResolvedOp>& instr) {
     if (!require_ptx(6.0f, "neg.f16/f16x2")) return false;
     if (!require_sm(53u, "neg.f16/f16x2")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg.f16/f16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "neg.f16/f16x2: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "neg.f16/f16x2: src");
     return true;
   };
   // variant 3: neg.bf16/bf16x2
@@ -939,6 +1167,8 @@ void TypeCheckerGen::check_neg(const InstrNeg<ResolvedOp>& instr) {
     if (!require_ptx(7.0f, "neg.bf16/bf16x2")) return false;
     if (!require_sm(80u, "neg.bf16/bf16x2")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(instr.data.type_, _allowed); }()))) { error("neg.bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "neg.bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src, instr.data.type_, "neg.bf16/bf16x2: src");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3())) {
@@ -954,6 +1184,9 @@ void TypeCheckerGen::check_min(const InstrMin<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxInt>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("min integer (universal): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "min integer (universal): dst");
+    check_op_scalar_type(instr.src1, d.type_, "min integer (universal): src1");
+    check_op_scalar_type(instr.src2, d.type_, "min integer (universal): src2");
     return true;
   };
   // variant 1: min SIMD integer (sm_90+)
@@ -963,6 +1196,9 @@ void TypeCheckerGen::check_min(const InstrMin<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxInt>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16x2, ScalarType::S16x2}); return is_one_of(d.type_, _allowed); }()))) { error("min SIMD integer (sm_90+): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "min SIMD integer (sm_90+): dst");
+    check_op_scalar_type(instr.src1, d.type_, "min SIMD integer (sm_90+): src1");
+    check_op_scalar_type(instr.src2, d.type_, "min SIMD integer (sm_90+): src2");
     return true;
   };
   // variant 2: min.f32/f64
@@ -971,6 +1207,9 @@ void TypeCheckerGen::check_min(const InstrMin<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(d.type_, _allowed); }()))) { error("min.f32/f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "min.f32/f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "min.f32/f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "min.f32/f64: src2");
     return true;
   };
   // variant 3: min.f16/f16x2
@@ -980,6 +1219,9 @@ void TypeCheckerGen::check_min(const InstrMin<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("min.f16/f16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "min.f16/f16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "min.f16/f16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "min.f16/f16x2: src2");
     return true;
   };
   // variant 4: min.bf16/bf16x2
@@ -989,6 +1231,9 @@ void TypeCheckerGen::check_min(const InstrMin<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("min.bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "min.bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "min.bf16/bf16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "min.bf16/bf16x2: src2");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4())) {
@@ -1004,6 +1249,9 @@ void TypeCheckerGen::check_max(const InstrMax<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxInt>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(d.type_, _allowed); }()))) { error("max integer (universal): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "max integer (universal): dst");
+    check_op_scalar_type(instr.src1, d.type_, "max integer (universal): src1");
+    check_op_scalar_type(instr.src2, d.type_, "max integer (universal): src2");
     return true;
   };
   // variant 1: max SIMD integer (sm_90+)
@@ -1013,6 +1261,9 @@ void TypeCheckerGen::check_max(const InstrMax<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxInt>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxInt>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U16x2, ScalarType::S16x2}); return is_one_of(d.type_, _allowed); }()))) { error("max SIMD integer (sm_90+): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "max SIMD integer (sm_90+): dst");
+    check_op_scalar_type(instr.src1, d.type_, "max SIMD integer (sm_90+): src1");
+    check_op_scalar_type(instr.src2, d.type_, "max SIMD integer (sm_90+): src2");
     return true;
   };
   // variant 2: max.f32/f64
@@ -1021,6 +1272,9 @@ void TypeCheckerGen::check_max(const InstrMax<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F32, ScalarType::F64}); return is_one_of(d.type_, _allowed); }()))) { error("max.f32/f64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "max.f32/f64: dst");
+    check_op_scalar_type(instr.src1, d.type_, "max.f32/f64: src1");
+    check_op_scalar_type(instr.src2, d.type_, "max.f32/f64: src2");
     return true;
   };
   // variant 3: max.f16/f16x2
@@ -1030,6 +1284,9 @@ void TypeCheckerGen::check_max(const InstrMax<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::F16, ScalarType::F16x2}); return is_one_of(d.type_, _allowed); }()))) { error("max.f16/f16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "max.f16/f16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "max.f16/f16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "max.f16/f16x2: src2");
     return true;
   };
   // variant 4: max.bf16/bf16x2
@@ -1039,6 +1296,9 @@ void TypeCheckerGen::check_max(const InstrMax<ResolvedOp>& instr) {
     if (!std::holds_alternative<MinMaxFloat>(instr.data)) return false;
     [[maybe_unused]] auto& d = std::get<MinMaxFloat>(instr.data);
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::BF16, ScalarType::BF16x2}); return is_one_of(d.type_, _allowed); }()))) { error("max.bf16/bf16x2: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, d.type_, "max.bf16/bf16x2: dst");
+    check_op_scalar_type(instr.src1, d.type_, "max.bf16/bf16x2: src1");
+    check_op_scalar_type(instr.src2, d.type_, "max.bf16/bf16x2: src2");
     return true;
   };
   if (!(check_v0() || check_v1() || check_v2() || check_v3() || check_v4())) {
@@ -1053,6 +1313,7 @@ void TypeCheckerGen::check_clz(const InstrClz<ResolvedOp>& instr) {
     if (!require_ptx(2.0f, "clz b32/b64")) return false;
     if (!require_sm(20u, "clz b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("clz b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.src, instr.data, "clz b32/b64: src");
     return true;
   };
   if (!(check_v0())) {
@@ -1067,6 +1328,8 @@ void TypeCheckerGen::check_brev(const InstrBrev<ResolvedOp>& instr) {
     if (!require_ptx(2.0f, "brev b32/b64")) return false;
     if (!require_sm(20u, "brev b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("brev b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "brev b32/b64: dst");
+    check_op_scalar_type(instr.src, instr.data, "brev b32/b64: src");
     return true;
   };
   if (!(check_v0())) {
@@ -1081,6 +1344,7 @@ void TypeCheckerGen::check_popc(const InstrPopc<ResolvedOp>& instr) {
     if (!require_ptx(2.0f, "popc b32/b64")) return false;
     if (!require_sm(20u, "popc b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("popc b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.src, instr.data, "popc b32/b64: src");
     return true;
   };
   if (!(check_v0())) {
@@ -1095,6 +1359,10 @@ void TypeCheckerGen::check_bfe(const InstrBfe<ResolvedOp>& instr) {
     if (!require_ptx(2.0f, "bfe u32/u64/s32/s64")) return false;
     if (!require_sm(20u, "bfe u32/u64/s32/s64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::U64, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data, _allowed); }()))) { error("bfe u32/u64/s32/s64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "bfe u32/u64/s32/s64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "bfe u32/u64/s32/s64: src1");
+    check_op_scalar_type(instr.src2, instr.data, "bfe u32/u64/s32/s64: src2");
+    check_op_scalar_type(instr.src3, instr.data, "bfe u32/u64/s32/s64: src3");
     return true;
   };
   if (!(check_v0())) {
@@ -1109,6 +1377,11 @@ void TypeCheckerGen::check_bfi(const InstrBfi<ResolvedOp>& instr) {
     if (!require_ptx(2.0f, "bfi b32/b64")) return false;
     if (!require_sm(20u, "bfi b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("bfi b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "bfi b32/b64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "bfi b32/b64: src1");
+    check_op_scalar_type(instr.src2, instr.data, "bfi b32/b64: src2");
+    check_op_scalar_type(instr.src3, instr.data, "bfi b32/b64: src3");
+    check_op_scalar_type(instr.src4, instr.data, "bfi b32/b64: src4");
     return true;
   };
   if (!(check_v0())) {
@@ -1243,6 +1516,9 @@ void TypeCheckerGen::check_and(const InstrAnd<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "and pred/b16/b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("and pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "and pred/b16/b32/b64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "and pred/b16/b32/b64: src1");
+    check_op_scalar_type(instr.src2, instr.data, "and pred/b16/b32/b64: src2");
     return true;
   };
   if (!(check_v0())) {
@@ -1256,6 +1532,9 @@ void TypeCheckerGen::check_or(const InstrOr<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "or pred/b16/b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("or pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "or pred/b16/b32/b64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "or pred/b16/b32/b64: src1");
+    check_op_scalar_type(instr.src2, instr.data, "or pred/b16/b32/b64: src2");
     return true;
   };
   if (!(check_v0())) {
@@ -1269,6 +1548,9 @@ void TypeCheckerGen::check_xor(const InstrXor<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "xor pred/b16/b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("xor pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "xor pred/b16/b32/b64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "xor pred/b16/b32/b64: src1");
+    check_op_scalar_type(instr.src2, instr.data, "xor pred/b16/b32/b64: src2");
     return true;
   };
   if (!(check_v0())) {
@@ -1282,6 +1564,8 @@ void TypeCheckerGen::check_not(const InstrNot<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "not pred/b16/b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::Pred, ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("not pred/b16/b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "not pred/b16/b32/b64: dst");
+    check_op_scalar_type(instr.src, instr.data, "not pred/b16/b32/b64: src");
     return true;
   };
   if (!(check_v0())) {
@@ -1295,6 +1579,8 @@ void TypeCheckerGen::check_shl(const InstrShl<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "shl b16/b32/b64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B16, ScalarType::B32, ScalarType::B64}); return is_one_of(instr.data, _allowed); }()))) { error("shl b16/b32/b64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data, "shl b16/b32/b64: dst");
+    check_op_scalar_type(instr.src1, instr.data, "shl b16/b32/b64: src1");
     return true;
   };
   if (!(check_v0())) {
@@ -1308,6 +1594,8 @@ void TypeCheckerGen::check_shr(const InstrShr<ResolvedOp>& instr) {
   auto check_v0 = [&]() -> bool {
     if (!require_ptx(1.0f, "shr b/u/s 16/32/64")) return false;
     if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::B16, ScalarType::B32, ScalarType::B64, ScalarType::U16, ScalarType::U32, ScalarType::U64, ScalarType::S16, ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("shr b/u/s 16/32/64: modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.dst, instr.data.type_, "shr b/u/s 16/32/64: dst");
+    check_op_scalar_type(instr.src1, instr.data.type_, "shr b/u/s 16/32/64: src1");
     return true;
   };
   if (!(check_v0())) {
@@ -1327,6 +1615,29 @@ void TypeCheckerGen::check_shf(const InstrShf<ResolvedOp>& instr) {
   };
   if (!(check_v0())) {
     error("shf: no matching variant found");
+  }
+}
+
+// PTX ISA §9.7.5.11
+void TypeCheckerGen::check_bfind(const InstrBfind<ResolvedOp>& instr) {
+  // variant 0: bfind.u32/u64 (unsigned, find highest set bit)
+  auto check_v0 = [&]() -> bool {
+    if (!require_ptx(2.0f, "bfind.u32/u64 (unsigned, find highest set bit)")) return false;
+    if (!require_sm(20u, "bfind.u32/u64 (unsigned, find highest set bit)")) return false;
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::U32, ScalarType::U64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("bfind.u32/u64 (unsigned, find highest set bit): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.src, instr.data.type_, "bfind.u32/u64 (unsigned, find highest set bit): src");
+    return true;
+  };
+  // variant 1: bfind.s32/s64 (signed, find highest non-sign bit)
+  auto check_v1 = [&]() -> bool {
+    if (!require_ptx(2.0f, "bfind.s32/s64 (signed, find highest non-sign bit)")) return false;
+    if (!require_sm(20u, "bfind.s32/s64 (signed, find highest non-sign bit)")) return false;
+    if (!(([&]{ static constexpr auto _allowed = std::to_array<ScalarType>({ScalarType::S32, ScalarType::S64}); return is_one_of(instr.data.type_, _allowed); }()))) { error("bfind.s32/s64 (signed, find highest non-sign bit): modifier type_ check failed"); return false; }
+    check_op_scalar_type(instr.src, instr.data.type_, "bfind.s32/s64 (signed, find highest non-sign bit): src");
+    return true;
+  };
+  if (!(check_v0() || check_v1())) {
+    error("bfind: no matching variant found");
   }
 }
 

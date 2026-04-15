@@ -169,9 +169,11 @@ enum class TokenKind : uint16_t {
   Shf,
   Bfe,
   Bfi,
+  Bfind,
   Brev,
   Bmsk,
   Clz,
+  Ldu,
   Popc,
   Prmt,
   Setp,
@@ -263,6 +265,9 @@ enum class TokenKind : uint16_t {
   DotLo,
   DotWide,
   DotCc,
+
+  // bfind modifier
+  DotShiftamt,
 
   // Comparison ops
   DotEq,

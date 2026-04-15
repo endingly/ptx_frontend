@@ -721,4 +721,19 @@ struct ClusterLaunchControlDetails {
   CLCOp op;
 };
 
+// bfind.{u32,u64,s32,s64} dst, src;
+// bfind.shiftamt.{u32,u64,s32,s64} dst, src;
+// dst is always .u32; src type is given by type_
+struct BfindDetails {
+  ScalarType type_;   // source type: u32, u64, s32, or s64
+  bool shiftamt = false;
+};
+
+// ldu.{ss}.type dst, [src];   (read-only cache, PTX 2.0)
+// ss = global (default), const
+struct LduDetails {
+  StateSpace state_space;  // Global or Const
+  Type typ;                // element type
+};
+
 };  // namespace ptx_frontend

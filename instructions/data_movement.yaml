@@ -866,3 +866,40 @@
         - { name: "cache_policy", kind: reg }
         - { name: "fraction", kind: optional_imm }
       cpp_struct: "InstrCreatePolicyFractional"
+
+- opcode: "ldu"
+  doc: "PTX ISA §9.7.8.3 (read-only data cache load, deprecated since PTX 6.5)"
+  variants:
+    - description: "ldu.global.type dst, [src]"
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        ss:
+          kind: optional
+          type: StateSpace
+          values:
+            - { token: ".global", cpp: "StateSpace::Global" }
+            - { token: ".const", cpp: "StateSpace::Const" }
+        type:
+          kind: required
+          type: Type
+          values:
+            - { token: ".u8",  cpp: "ScalarType::U8" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s8",  cpp: "ScalarType::S8" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".f32", cpp: "ScalarType::F32" }
+            - { token: ".f64", cpp: "ScalarType::F64" }
+            - { token: ".b8",  cpp: "ScalarType::B8" }
+            - { token: ".b16", cpp: "ScalarType::B16" }
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: addr }
+      cpp_struct: "InstrLdu"

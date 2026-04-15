@@ -240,9 +240,11 @@ STRING      \"[^\"]*\"
 "shf"           { TOK(Shf); }
 "bfe"           { TOK(Bfe); }
 "bfi"           { TOK(Bfi); }
+"bfind"         { TOK(Bfind); }
 "brev"          { TOK(Brev); }
 "bmsk"          { TOK(Bmsk); }
 "clz"           { TOK(Clz); }
+"ldu"           { TOK(Ldu); }
 "popc"          { TOK(Popc); }
 "prmt"          { TOK(Prmt); }
 
@@ -366,6 +368,9 @@ STRING      \"[^\"]*\"
 ".lo"           { TOK(DotLo); }
 ".wide"         { TOK(DotWide); }
 ".cc"           { TOK(DotCc); }
+
+ /* bfind modifier */
+".shiftamt"     { TOK(DotShiftamt); }
 
  /* Comparison operators (used in setp / set) */
 ".eq"           { TOK(DotEq); }

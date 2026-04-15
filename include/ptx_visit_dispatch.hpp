@@ -496,6 +496,37 @@ expected<InstrBfi<To>, Err> map_instr(InstrBfi<From> instr,
   return InstrBfi<To>{instr.data, *dst, *src1, *src2, *src3, *src4};
 }
 
+// ── InstrBfind ─────────────────────────────────────────────────────────────
+template <OperandLike Op, typename Err>
+expected<void, Err> visit_instr(const InstrBfind<Op>& instr,
+                                Visitor<Op, Err>& v) {
+  // dst is always .u32 (result is a bit position)
+  Type t_dst = make_scalar(ScalarType::U32);
+  VisitTypeSpace ts_dst{&t_dst, StateSpace::Reg};
+  // src type is given by data.type_
+  Type t_src = make_scalar(instr.data.type_);
+  VisitTypeSpace ts_src{&t_src, StateSpace::Reg};
+  if (auto r = v.visit(instr.dst, ts_dst, true, false); !r)
+    return r;
+  return v.visit(instr.src, ts_src, false, false);
+}
+
+template <OperandLike From, OperandLike To, typename Err>
+expected<InstrBfind<To>, Err> map_instr(InstrBfind<From> instr,
+                                        VisitorMap<From, To, Err>& v) {
+  Type t_dst = make_scalar(ScalarType::U32);
+  VisitTypeSpace ts_dst{&t_dst, StateSpace::Reg};
+  Type t_src = make_scalar(instr.data.type_);
+  VisitTypeSpace ts_src{&t_src, StateSpace::Reg};
+  auto dst = v.visit(std::move(instr.dst), ts_dst, true, false);
+  if (!dst)
+    return unexpected(dst.error());
+  auto src = v.visit(std::move(instr.src), ts_src, false, false);
+  if (!src)
+    return unexpected(src.error());
+  return InstrBfind<To>{instr.data, *dst, *src};
+}
+
 template <OperandLike Op, typename Err>
 expected<void, Err> visit_instr(const InstrBmsk<Op>& instr,
                                 Visitor<Op, Err>& v) {
@@ -1099,6 +1130,35 @@ expected<InstrLd<To>, Err> map_instr(InstrLd<From> instr,
   if (!src)
     return unexpected(src.error());
   return InstrLd<To>{instr.data, *dst, *src};
+}
+
+// ── InstrLdu ───────────────────────────────────────────────────────────────
+template <OperandLike Op, typename Err>
+expected<void, Err> visit_instr(const InstrLdu<Op>& instr,
+                                Visitor<Op, Err>& v) {
+  Type t_dst = instr.data.typ;
+  VisitTypeSpace ts_dst{&t_dst, StateSpace::Reg};
+  Type t_src = instr.data.typ;
+  VisitTypeSpace ts_src{&t_src, instr.data.state_space};
+  if (auto r = v.visit(instr.dst, ts_dst, true, false); !r)
+    return r;
+  return v.visit(instr.src, ts_src, false, false);
+}
+
+template <OperandLike From, OperandLike To, typename Err>
+expected<InstrLdu<To>, Err> map_instr(InstrLdu<From> instr,
+                                      VisitorMap<From, To, Err>& v) {
+  Type t_dst = instr.data.typ;
+  VisitTypeSpace ts_dst{&t_dst, StateSpace::Reg};
+  Type t_src = instr.data.typ;
+  VisitTypeSpace ts_src{&t_src, instr.data.state_space};
+  auto dst = v.visit(std::move(instr.dst), ts_dst, true, false);
+  if (!dst)
+    return unexpected(dst.error());
+  auto src = v.visit(std::move(instr.src), ts_src, false, false);
+  if (!src)
+    return unexpected(src.error());
+  return InstrLdu<To>{instr.data, *dst, *src};
 }
 
 // ── InstrLg2 ───────────────────────────────────────────────────────────────

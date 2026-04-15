@@ -23,7 +23,7 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
 from load_instuctions import load_all_instructions
-from models import Instruction, VariantModel, ModifierKind
+from models import Instruction, VariantModel, ModifierKind, ArgumentKind
 
 INSTRUCTIONS_DIR = _REPO_ROOT / "instructions"
 OUT_HPP = _REPO_ROOT / "include" / "type_checker_gen.hpp"
@@ -270,6 +270,76 @@ _SKIP_MODIFIER_FIELD_NAMES: set[str] = {
     "sem", "sync_restrict", "op_restrict", "to_from", "async_generic",
 }
 
+# ── Operand type checking constants ───────────────────────────────────────────
+
+# Structs where instr.data IS a ScalarType and operands should be type-checked.
+# The value is the C++ expression to use as the expected ScalarType.
+_SCALAR_DATA_OP_TYPE_EXPR: dict[str, str] = {
+    "InstrAnd":       "instr.data",
+    "InstrBrev":      "instr.data",
+    "InstrBfe":       "instr.data",
+    "InstrBfi":       "instr.data",
+    "InstrCopysign":  "instr.data",
+    "InstrNot":       "instr.data",
+    "InstrOr":        "instr.data",
+    "InstrPopc":      "instr.data",
+    "InstrClz":       "instr.data",
+    "InstrRem":       "instr.data",
+    "InstrShl":       "instr.data",
+    "InstrTanh":      "instr.data",
+    "InstrXor":       "instr.data",
+    "InstrSad":       "instr.data",
+}
+
+# Structs where instr.data is a named struct with a .type_ ScalarType field.
+_DATA_DOTTYPE_OP_TYPE_EXPR: dict[str, str] = {
+    "InstrAbs":    "instr.data.type_",
+    "InstrNeg":    "instr.data.type_",
+    "InstrFma":    "instr.data.type_",   # in _DIRECT_DATA_STRUCTS; ArithFloat.type_
+    "InstrRcp":    "instr.data.type_",   # in _DIRECT_DATA_STRUCTS; RcpData.type_
+    "InstrSqrt":   "instr.data.type_",   # in _DIRECT_DATA_STRUCTS; RcpData.type_
+    "InstrShr":    "instr.data.type_",   # ShrData.type_  (data is NOT a plain ScalarType)
+    "InstrBfind":  "instr.data.type_",   # BfindDetails.type_ (src type; dst skipped below)
+}
+
+# (cpp_struct, arg_name) pairs whose type checking must be skipped because the
+# operand has a DIFFERENT type than the instruction's nominal `type_`:
+#   - bfind dst: always u32 (result is a bit-position)
+#   - clz/popc dst: always u32 (count of bits)
+#   - shl/shr src2: always u32 (shift amount)
+#   - mul.wide dst: double-width type (cannot use d.type_ directly)
+_SKIP_ARG_OP_TYPE_CHECK: frozenset[tuple[str, str]] = frozenset({
+    ("InstrBfind", "dst"),
+    ("InstrClz",   "dst"),
+    ("InstrPopc",  "dst"),
+    ("InstrShl",   "src2"),
+    ("InstrShr",   "src2"),
+})
+
+# Argument kinds for which a scalar-type check against the instruction type makes sense.
+_REG_LIKE_KINDS: frozenset[ArgumentKind] = frozenset({
+    ArgumentKind.Reg,
+    ArgumentKind.Reg_Or_Imm,
+})
+
+
+def _get_op_type_expr(
+    cpp_struct: str,
+    use_variant_access: bool,
+) -> str | None:
+    """Return the C++ expression for the expected ScalarType for operand checking.
+
+    Returns None when operand type checking is not applicable for this struct.
+    """
+    if cpp_struct in _SCALAR_DATA_OP_TYPE_EXPR:
+        return _SCALAR_DATA_OP_TYPE_EXPR[cpp_struct]
+    if cpp_struct in _DATA_DOTTYPE_OP_TYPE_EXPR:
+        return _DATA_DOTTYPE_OP_TYPE_EXPR[cpp_struct]
+    # Variant-data structs: all variant alternatives in _VARIANT_EMIT_NOTES have type_
+    if use_variant_access:
+        return "d.type_"
+    return None
+
 
 def _resolve_struct(cpp_struct: str) -> str | None:
     if cpp_struct in _STRUCT_NAME_MAP:
@@ -370,6 +440,26 @@ def _generate_variant_check(variant: VariantModel, variant_idx: int, cpp_struct:
                     f'    if (!({check})) {{ error("{mod_desc}"); return false; }}'
                 )
 
+    # ── Operand type checks ───────────────────────────────────────────────────
+    # For each register-like argument, verify that the register's declared type
+    # in the symbol table matches the instruction's nominal scalar type.
+    type_expr = _get_op_type_expr(cpp_struct, use_variant_access)
+    if type_expr:
+        for arg in variant.arguments:
+            if (cpp_struct, arg.name) in _SKIP_ARG_OP_TYPE_CHECK:
+                continue
+            if arg.kind in _REG_LIKE_KINDS:
+                arg_desc = _escape_cpp_string(f"{desc}: {arg.name}")
+                lines.append(
+                    f'    check_op_scalar_type(instr.{arg.name}, {type_expr}, "{arg_desc}");'
+                )
+            elif arg.kind == ArgumentKind.OptionalReg:
+                arg_desc = _escape_cpp_string(f"{desc}: {arg.name}")
+                lines.append(
+                    f'    if (instr.{arg.name}.has_value()) '
+                    f'check_op_scalar_type(*instr.{arg.name}, {type_expr}, "{arg_desc}");'
+                )
+
     lines.append("    return true;")
     lines.append("  };")
     return "\n".join(lines)
@@ -430,6 +520,7 @@ def generate() -> None:
         _AUTOGEN_NOTICE + "\n"
         "#pragma once\n"
         "#include <array>\n"
+        "#include <optional>\n"
         "#include <variant>\n"
         "#include \"type_checker.hpp\"\n"
         "#include \"symbol_resolver.hpp\"\n"
@@ -439,7 +530,7 @@ def generate() -> None:
         "\n"
         "/// TypeCheckerGen uses the ResolvedModule (symbol-resolved AST) to perform\n"
         "/// per-instruction type checking.  Each check_<opcode>() method validates\n"
-        "/// the data modifiers against the PTX 9.2 specification.\n"
+        "/// the data modifiers AND operand scalar types against the PTX 9.2 spec.\n"
         "///\n"
         "/// Inherits from TypeChecker to reuse require_sm(), require_ptx(), error().\n"
         "class TypeCheckerGen : public TypeChecker {\n"
@@ -447,11 +538,27 @@ def generate() -> None:
         "  TypeCheckerGen(const LegacySymbolTable& sym, const CompileTarget& target)\n"
         "      : TypeChecker(sym, target) {}\n"
         "\n"
+        "  /// Attach the resolved symbol table so that operand types can be verified.\n"
+        "  /// Must be called before check_module() when operand type checking is desired.\n"
+        "  void set_resolved_symbols(const SymbolTable& st) {\n"
+        "    resolved_symbols_ = &st;\n"
+        "  }\n"
+        "\n"
         "  /// Check all instructions in a resolved module.\n"
         "  void check_module(const ResolvedModule& mod);\n"
         "\n"
         + "".join(declarations)
         + "\n"
+        " private:\n"
+        "  /// Pointer to the resolved symbol table (optional; set via set_resolved_symbols).\n"
+        "  const SymbolTable* resolved_symbols_ = nullptr;\n"
+        "\n"
+        "  /// Verify that a register operand has the expected scalar type.\n"
+        "  /// Reports a type-mismatch error via error() if the types differ.\n"
+        "  /// Silently ignores immediate operands and operands with invalid SymbolIds.\n"
+        "  void check_op_scalar_type(const ResolvedOp& op,\n"
+        "                            ScalarType expected,\n"
+        "                            const char* ctx);\n"
         "};\n"
         "\n"
         "}  // namespace ptx_frontend\n"
@@ -461,6 +568,8 @@ def generate() -> None:
         _AUTOGEN_NOTICE + "\n"
         "#include \"type_checker_gen.hpp\"\n"
         "#include <array>\n"
+        "#include <optional>\n"
+        "#include <string>\n"
         "#include <variant>\n"
         "\n"
         "namespace ptx_frontend {\n"
@@ -475,6 +584,45 @@ def generate() -> None:
         "\n"
         "void TypeCheckerGen::check_module(const ResolvedModule& /*mod*/) {\n"
         "  // Dispatch happens via ptx_visit_dispatch.hpp visitor pattern.\n"
+        "}\n"
+        "\n"
+        "// ── check_op_scalar_type ───────────────────────────────────────────────────\n"
+        "// Verify that a resolved register operand has the expected scalar type.\n"
+        "// Extracts a SymbolId from the operand, looks it up in the symbol table,\n"
+        "// and compares the declared type.  Immediate and address operands are\n"
+        "// silently ignored (they carry no type information in the symbol table).\n"
+        "void TypeCheckerGen::check_op_scalar_type(\n"
+        "    const ResolvedOp& op, ScalarType expected, const char* ctx) {\n"
+        "  if (!resolved_symbols_) return;\n"
+        "\n"
+        "  // Walk the ParsedOperand variant to find a SymbolId.\n"
+        "  std::optional<SymbolId> sym_id;\n"
+        "  std::visit(\n"
+        "      [&](const auto& v) {\n"
+        "        using T = std::decay_t<decltype(v)>;\n"
+        "        if constexpr (std::is_same_v<T, RegOrImmediate<SymbolId>>) {\n"
+        "          if (std::holds_alternative<SymbolId>(v.value))\n"
+        "            sym_id = std::get<SymbolId>(v.value);\n"
+        "        } else if constexpr (std::is_same_v<T, ResolvedOp::RegOffset>) {\n"
+        "          sym_id = v.base;\n"
+        "        } else if constexpr (std::is_same_v<T, ResolvedOp::VecMemberIdx>) {\n"
+        "          sym_id = v.base;\n"
+        "        }\n"
+        "        // ImmediateValue, VecPack, Pred: no symbol to look up\n"
+        "      },\n"
+        "      op.value);\n"
+        "\n"
+        "  if (!sym_id.has_value() || *sym_id == kInvalidSymbolId) return;\n"
+        "\n"
+        "  const auto& entry = resolved_symbols_->entry(*sym_id);\n"
+        "  // Only scalar types carry a single ScalarType tag.\n"
+        "  if (!std::holds_alternative<ScalarTypeT>(entry.type)) return;\n"
+        "  ScalarType actual = std::get<ScalarTypeT>(entry.type).type;\n"
+        "  if (actual != expected) {\n"
+        "    error(std::string(ctx) + \": operand type mismatch: expected \"\n"
+        "          + to_string(expected)\n"
+        "          + \" got \" + to_string(actual));\n"
+        "  }\n"
         "}\n"
         "\n"
         + "".join(definitions)

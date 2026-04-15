@@ -5,6 +5,7 @@
 
 #pragma once
 #include <array>
+#include <optional>
 #include <variant>
 #include "type_checker.hpp"
 #include "symbol_resolver.hpp"
@@ -14,13 +15,19 @@ namespace ptx_frontend {
 
 /// TypeCheckerGen uses the ResolvedModule (symbol-resolved AST) to perform
 /// per-instruction type checking.  Each check_<opcode>() method validates
-/// the data modifiers against the PTX 9.2 specification.
+/// the data modifiers AND operand scalar types against the PTX 9.2 spec.
 ///
 /// Inherits from TypeChecker to reuse require_sm(), require_ptx(), error().
 class TypeCheckerGen : public TypeChecker {
  public:
   TypeCheckerGen(const LegacySymbolTable& sym, const CompileTarget& target)
       : TypeChecker(sym, target) {}
+
+  /// Attach the resolved symbol table so that operand types can be verified.
+  /// Must be called before check_module() when operand type checking is desired.
+  void set_resolved_symbols(const SymbolTable& st) {
+    resolved_symbols_ = &st;
+  }
 
   /// Check all instructions in a resolved module.
   void check_module(const ResolvedModule& mod);
@@ -49,6 +56,7 @@ class TypeCheckerGen : public TypeChecker {
   void check_cp_async_wait_group(const InstrCpAsyncWaitGroup<ResolvedOp>& instr);
   void check_cp_async_wait_all(const InstrCpAsyncWaitAll& instr);
   void check_createpolicy_fractional(const InstrCreatePolicyFractional<ResolvedOp>& instr);
+  void check_ldu(const InstrLdu<ResolvedOp>& instr);
   void check_fma(const InstrFma<ResolvedOp>& instr);
   void check_rcp(const InstrRcp<ResolvedOp>& instr);
   void check_sqrt(const InstrSqrt<ResolvedOp>& instr);
@@ -96,6 +104,7 @@ class TypeCheckerGen : public TypeChecker {
   void check_shr(const InstrShr<ResolvedOp>& instr);
   void check_shf(const InstrShf<ResolvedOp>& instr);
   // prmt: struct InstrPrmt not available -- skipped
+  void check_bfind(const InstrBfind<ResolvedOp>& instr);
   void check_ldmatrix(const InstrLdMatrix<ResolvedOp>& instr);
   void check_stmatrix(const InstrStMatrix<ResolvedOp>& instr);
   void check_mma_sync(const InstrMma<ResolvedOp>& instr);
@@ -123,6 +132,10 @@ class TypeCheckerGen : public TypeChecker {
   // isspacep: struct InstrIsSpacep not available -- skipped
   // stacksave: struct InstrStacksave not available -- skipped
   // stackrestore: struct InstrStackrestore not available -- skipped
+  // suld: struct InstrTex not available -- skipped
+  // sust: struct InstrTex not available -- skipped
+  // sured: struct InstrTex not available -- skipped
+  // suq: struct InstrTex not available -- skipped
   // bar.sync: struct InstrBarSync not available -- skipped
   // bar.arrive: struct InstrBarArrive not available -- skipped
   void check_bar_red(const InstrBarRed<ResolvedOp>& instr);
@@ -155,6 +168,16 @@ class TypeCheckerGen : public TypeChecker {
   // mbarrier.pending_count: struct InstrMbarrierPendingCount not available -- skipped
   void check_shfl_sync(const InstrShflSync<ResolvedOp>& instr);
 
+ private:
+  /// Pointer to the resolved symbol table (optional; set via set_resolved_symbols).
+  const SymbolTable* resolved_symbols_ = nullptr;
+
+  /// Verify that a register operand has the expected scalar type.
+  /// Reports a type-mismatch error via error() if the types differ.
+  /// Silently ignores immediate operands and operands with invalid SymbolIds.
+  void check_op_scalar_type(const ResolvedOp& op,
+                            ScalarType expected,
+                            const char* ctx);
 };
 
 }  // namespace ptx_frontend

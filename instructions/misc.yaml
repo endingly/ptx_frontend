@@ -345,3 +345,62 @@
       args:
         - { name: "src", kind: reg }
       cpp_struct: "InstrStackrestore"
+
+# ── Surface Instructions (PTX ISA §9.7.11) ───────────────────────────────────
+# These instructions operate on surface objects (opaque handles).
+# Full IR structs (InstrSuld, InstrSust, InstrSured, InstrSuq) are pending.
+
+- opcode: "suld"
+  doc: "PTX ISA §9.7.11.1 (surface load)"
+  variants:
+    - description: "suld.b.geom.type dst, [surf_handle, coords]"
+      constraints:
+        min_ptx_version: 3.1
+        min_sm: 20
+      modifiers: {}
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "surf_handle", kind: reg }
+        - { name: "coords", kind: reg_list }
+      cpp_struct: "InstrTex"
+
+- opcode: "sust"
+  doc: "PTX ISA §9.7.11.2 (surface store)"
+  variants:
+    - description: "sust.b.geom.type [surf_handle, coords], src"
+      constraints:
+        min_ptx_version: 3.1
+        min_sm: 20
+      modifiers: {}
+      args:
+        - { name: "surf_handle", kind: reg }
+        - { name: "coords", kind: reg_list }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrTex"
+
+- opcode: "sured"
+  doc: "PTX ISA §9.7.11.3 (surface reduction)"
+  variants:
+    - description: "sured.b.op.geom.type [surf_handle, coords], src"
+      constraints:
+        min_ptx_version: 3.1
+        min_sm: 20
+      modifiers: {}
+      args:
+        - { name: "surf_handle", kind: reg }
+        - { name: "coords", kind: reg_list }
+        - { name: "src", kind: reg }
+      cpp_struct: "InstrTex"
+
+- opcode: "suq"
+  doc: "PTX ISA §9.7.11.4 (surface query)"
+  variants:
+    - description: "suq.query_type.b32 dst, [surf_handle]"
+      constraints:
+        min_ptx_version: 3.1
+        min_sm: 20
+      modifiers: {}
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "surf_handle", kind: reg }
+      cpp_struct: "InstrTex"

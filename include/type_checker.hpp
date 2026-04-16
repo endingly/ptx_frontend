@@ -33,8 +33,8 @@ class TypeChecker {
   std::vector<TypeError> errors_;
 
   void error(std::string msg);
-  void require_sm(uint32_t min_v, std::string_view ctx);
-  void require_ptx(float min_v, std::string_view ctx);
+  bool require_sm(uint32_t min_v, std::string_view ctx);
+  bool require_ptx(float min_v, std::string_view ctx);
 
   // operand type check via LegacySymbolTable
   void check_operand(const ParsedOp& op, ScalarType expected);

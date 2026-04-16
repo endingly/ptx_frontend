@@ -811,16 +811,16 @@ struct Parser {
     if (scalar_kind(stype) == ScalarKind::Float) {
       ArithFloat af;
       af.type_ = stype;
-      af.rounding = rm.value_or(RoundingMode::NearestEven);
-      af.flush_to_zero = ftz ? std::optional<bool>{true} : std::nullopt;
-      af.saturate = sat;
+      af.rnd = rm.value_or(RoundingMode::NearestEven);
+      af.ftz = ftz ? std::optional<bool>{true} : std::nullopt;
+      af.sat = sat;
       return af;
     } else {
       if (rm.has_value())
         return err("rounding mode not valid for integer add/sub");
       ArithInteger ai;
       ai.type_ = stype;
-      ai.saturate = sat;
+      ai.sat = sat;
       return ai;
     }
   }
@@ -858,12 +858,12 @@ struct Parser {
         check(TokenKind::DotWide)) {
       MulInt mi;
       if (match(TokenKind::DotHi))
-        mi.control = MulIntControl::High;
+        mi.mode = MulIntControl::High;
       else if (match(TokenKind::DotLo))
-        mi.control = MulIntControl::Low;
+        mi.mode = MulIntControl::Low;
       else {
         lex.consume();
-        mi.control = MulIntControl::Wide;
+        mi.mode = MulIntControl::Wide;
       }
       mi.type_ = TRY(parse_scalar_type());
       data = mi;
@@ -874,9 +874,9 @@ struct Parser {
       bool ftz = try_parse_ftz();
       bool sat = try_parse_sat();
       af.type_ = TRY(parse_scalar_type());
-      af.rounding = rm.value_or(RoundingMode::NearestEven);
-      af.flush_to_zero = ftz ? std::optional<bool>{true} : std::nullopt;
-      af.saturate = sat;
+      af.rnd = rm.value_or(RoundingMode::NearestEven);
+      af.ftz = ftz ? std::optional<bool>{true} : std::nullopt;
+      af.sat = sat;
       data = af;
     }
     auto dst = TRY(parse_operand());
@@ -910,9 +910,9 @@ struct Parser {
       bool ftz = try_parse_ftz();
       bool sat = try_parse_sat();
       af.type_ = TRY(parse_scalar_type());
-      af.rounding = rm.value_or(RoundingMode::NearestEven);
-      af.flush_to_zero = ftz ? std::optional<bool>{true} : std::nullopt;
-      af.saturate = sat;
+      af.rnd = rm.value_or(RoundingMode::NearestEven);
+      af.ftz = ftz ? std::optional<bool>{true} : std::nullopt;
+      af.sat = sat;
       af.is_fusable = false;
       data = af;
     }
@@ -933,9 +933,9 @@ struct Parser {
     bool ftz = try_parse_ftz();
     bool sat = try_parse_sat();
     af.type_ = TRY(parse_scalar_type());
-    af.rounding = rm.value_or(RoundingMode::NearestEven);
-    af.flush_to_zero = ftz ? std::optional<bool>{true} : std::nullopt;
-    af.saturate = sat;
+    af.rnd = rm.value_or(RoundingMode::NearestEven);
+    af.ftz = ftz ? std::optional<bool>{true} : std::nullopt;
+    af.sat = sat;
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src1 = TRY(parse_operand());

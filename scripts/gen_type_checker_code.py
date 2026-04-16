@@ -34,10 +34,6 @@ auto check_target_version = [&](){{
 
 if __name__ == "__main__":
     instructions = load_instructions(Path("instructions/test.yaml"))
-    # for instr in instructions:
-    #     print(f"Instruction: {instr.opcode}")
-    #     for idx, variant in enumerate(instr.variants):
-    #         print(f"  Variant {idx}: {variant.description}")
 
     print(
         f"cpp code check modifier: {instructions[0].variants[0].generate_code_for_type_check(0)}\n"

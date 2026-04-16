@@ -145,7 +145,7 @@ TEST(TypeCheckerAdd, F32_RmRp_RequiresSm20) {
   ArithFloat af;
   af.type_ = ScalarType::F32;
   af.is_fusable = false;
-  af.rounding = RoundingMode::NegativeInf;  // .rm
+  af.rnd = RoundingMode::NegativeInf;  // .rm
   // sm_10 < 20 → error
   CompileTarget bad{10, 1.0f};
   auto errs = check_add(sym, bad, make_add(af, "d", "a", "b"));
@@ -191,7 +191,7 @@ TEST(TypeCheckerAdd, F32x2_SatIsError) {
                        {"b", ScalarType::F32x2}});
   ArithFloat af;
   af.type_ = ScalarType::F32x2;
-  af.saturate = true;
+  af.sat = true;
   CompileTarget target{100, 8.6f};
   auto errs = check_add(sym, target, make_add(af, "d", "a", "b"));
   ASSERT_EQ(errs.size(), 1u);
@@ -204,7 +204,7 @@ TEST(TypeCheckerAdd, F16_RnOnly_OtherRndIsError) {
   ArithFloat af;
   af.type_ = ScalarType::F16;
   af.is_fusable = false;
-  af.rounding = RoundingMode::Zero;  // .rz — not allowed for f16
+  af.rnd = RoundingMode::Zero;  // .rz — not allowed for f16
   CompileTarget target{53, 6.0f};
   auto errs = check_add(sym, target, make_add(af, "d", "a", "b"));
   ASSERT_EQ(errs.size(), 1u);
@@ -217,7 +217,7 @@ TEST(TypeCheckerAdd, BF16_FtzIsError) {
                        {"b", ScalarType::BF16}});
   ArithFloat af;
   af.type_ = ScalarType::BF16;
-  af.flush_to_zero = true;
+  af.ftz = true;
   CompileTarget target{80, 7.0f};
   auto errs = check_add(sym, target, make_add(af, "d", "a", "b"));
   ASSERT_EQ(errs.size(), 1u);

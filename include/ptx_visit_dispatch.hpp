@@ -1292,7 +1292,7 @@ expected<void, Err> visit_instr(const InstrMul<Op>& instr,
         if constexpr (std::is_same_v<D, MulInt>) {
           Type t_src = make_scalar(d.type_);
           VisitTypeSpace ts_src{&t_src, StateSpace::Reg};
-          if (d.control == MulIntControl::Wide) {
+          if (d.mode == MulIntControl::Wide) {
             Type t_dst = make_scalar(mul_wide_dst_type(d.type_));
             VisitTypeSpace ts_dst{&t_dst, StateSpace::Reg};
             if (auto r = v.visit(instr.dst, ts_dst, true, false); !r)
@@ -1327,7 +1327,7 @@ expected<InstrMul<To>, Err> map_instr(InstrMul<From> instr,
           Type t_src = make_scalar(d.type_);
           VisitTypeSpace ts_src{&t_src, StateSpace::Reg};
           expected<To, Err> dst;
-          if (d.control == MulIntControl::Wide) {
+          if (d.mode == MulIntControl::Wide) {
             Type t_dst = make_scalar(mul_wide_dst_type(d.type_));
             VisitTypeSpace ts_dst{&t_dst, StateSpace::Reg};
             dst = v.visit(std::move(instr.dst), ts_dst, true, false);

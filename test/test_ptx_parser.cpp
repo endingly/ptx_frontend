@@ -185,14 +185,14 @@ TEST(Parser, AddIntS32) {
   auto& i = as<InstrAdd<ParsedOp>>(instrs, 0);
   auto& ai = std::get<ArithInteger>(i.data);
   EXPECT_EQ(ai.type_, ScalarType::S32);
-  EXPECT_FALSE(ai.saturate);
+  EXPECT_FALSE(ai.sat);
 }
 
 TEST(Parser, AddIntSat) {
   auto instrs = parse_instrs("add.sat.s32 %r2, %r0, %r1;");
   ASSERT_EQ(instrs.size(), 1u);
   auto& ai = std::get<ArithInteger>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
-  EXPECT_TRUE(ai.saturate);
+  EXPECT_TRUE(ai.sat);
 }
 
 TEST(Parser, AddU8x4NoSat) {
@@ -200,7 +200,7 @@ TEST(Parser, AddU8x4NoSat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& ai = std::get<ArithInteger>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(ai.type_, ScalarType::U8x4);
-  EXPECT_FALSE(ai.saturate);
+  EXPECT_FALSE(ai.sat);
 }
 
 TEST(Parser, AddS8x4Sat) {
@@ -208,7 +208,7 @@ TEST(Parser, AddS8x4Sat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& ai = std::get<ArithInteger>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(ai.type_, ScalarType::S8x4);
-  EXPECT_TRUE(ai.saturate);
+  EXPECT_TRUE(ai.sat);
 }
 
 TEST(Parser, AddF32x2RnFtz) {
@@ -216,8 +216,8 @@ TEST(Parser, AddF32x2RnFtz) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F32x2);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
-  EXPECT_EQ(af.flush_to_zero, std::optional<bool>{true});
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
+  EXPECT_EQ(af.ftz, std::optional<bool>{true});
 }
 
 TEST(Parser, SubS32) {
@@ -233,7 +233,7 @@ TEST(Parser, SubU16) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& ai = std::get<ArithInteger>(as<InstrSub<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(ai.type_, ScalarType::U16);
-  EXPECT_FALSE(ai.saturate);
+  EXPECT_FALSE(ai.sat);
 }
 
 // ── sub int optional-sat ────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ TEST(Parser, SubU8x4NoSat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& ai = std::get<ArithInteger>(as<InstrSub<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(ai.type_, ScalarType::U8x4);
-  EXPECT_FALSE(ai.saturate);
+  EXPECT_FALSE(ai.sat);
 }
 
 TEST(Parser, SubS8x4Sat) {
@@ -251,7 +251,7 @@ TEST(Parser, SubS8x4Sat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& ai = std::get<ArithInteger>(as<InstrSub<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(ai.type_, ScalarType::S8x4);
-  EXPECT_TRUE(ai.saturate);
+  EXPECT_TRUE(ai.sat);
 }
 
 // ── sub float ─────────────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ TEST(Parser, SubF32Sat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrSub<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F32);
-  EXPECT_TRUE(af.saturate);
+  EXPECT_TRUE(af.sat);
 }
 
 TEST(Parser, SubF32x2RnFtz) {
@@ -269,8 +269,8 @@ TEST(Parser, SubF32x2RnFtz) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrSub<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F32x2);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
-  EXPECT_EQ(af.flush_to_zero, std::optional<bool>{true});
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
+  EXPECT_EQ(af.ftz, std::optional<bool>{true});
 }
 
 TEST(Parser, SubF64NoFtz) {
@@ -279,7 +279,7 @@ TEST(Parser, SubF64NoFtz) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrSub<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F64);
-  EXPECT_EQ(af.rounding, RoundingMode::Zero);
+  EXPECT_EQ(af.rnd, RoundingMode::Zero);
 }
 
 TEST(Parser, MulLoS32) {
@@ -287,21 +287,21 @@ TEST(Parser, MulLoS32) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& mi = std::get<MulInt>(as<InstrMul<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(mi.type_, ScalarType::S32);
-  EXPECT_EQ(mi.control, MulIntControl::Low);
+  EXPECT_EQ(mi.mode, MulIntControl::Low);
 }
 
 TEST(Parser, MulWideS32) {
   auto instrs = parse_instrs("mul.wide.s32 %rd0, %r0, %r1;");
   ASSERT_EQ(instrs.size(), 1u);
   auto& mi = std::get<MulInt>(as<InstrMul<ParsedOp>>(instrs, 0).data);
-  EXPECT_EQ(mi.control, MulIntControl::Wide);
+  EXPECT_EQ(mi.mode, MulIntControl::Wide);
 }
 
 TEST(Parser, MulHiU32) {
   auto instrs = parse_instrs("mul.hi.u32 %r2, %r0, %r1;");
   ASSERT_EQ(instrs.size(), 1u);
   auto& mi = std::get<MulInt>(as<InstrMul<ParsedOp>>(instrs, 0).data);
-  EXPECT_EQ(mi.control, MulIntControl::High);
+  EXPECT_EQ(mi.mode, MulIntControl::High);
   EXPECT_EQ(mi.type_, ScalarType::U32);
 }
 
@@ -312,7 +312,7 @@ TEST(Parser, MulF32Sat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrMul<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F32);
-  EXPECT_TRUE(af.saturate);
+  EXPECT_TRUE(af.sat);
 }
 
 TEST(Parser, MulF32x2RnFtz) {
@@ -320,8 +320,8 @@ TEST(Parser, MulF32x2RnFtz) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrMul<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F32x2);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
-  EXPECT_EQ(af.flush_to_zero, std::optional<bool>{true});
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
+  EXPECT_EQ(af.ftz, std::optional<bool>{true});
 }
 
 TEST(Parser, MulF64Rz) {
@@ -330,8 +330,8 @@ TEST(Parser, MulF64Rz) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrMul<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F64);
-  EXPECT_EQ(af.rounding, RoundingMode::Zero);
-  EXPECT_FALSE(af.saturate);
+  EXPECT_EQ(af.rnd, RoundingMode::Zero);
+  EXPECT_FALSE(af.sat);
 }
 
 TEST(Parser, MulF16Sat) {
@@ -340,8 +340,8 @@ TEST(Parser, MulF16Sat) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrMul<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F16);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
-  EXPECT_TRUE(af.saturate);
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
+  EXPECT_TRUE(af.sat);
 }
 
 TEST(Parser, MulBF16x2) {
@@ -350,7 +350,7 @@ TEST(Parser, MulBF16x2) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrMul<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::BF16x2);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
 }
 
 TEST(Parser, MadLoS32) {
@@ -366,7 +366,7 @@ TEST(Parser, AddF32) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = std::get<ArithFloat>(as<InstrAdd<ParsedOp>>(instrs, 0).data);
   EXPECT_EQ(af.type_, ScalarType::F32);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
 }
 
 TEST(Parser, MulF32Approx) {
@@ -381,15 +381,15 @@ TEST(Parser, FmaRnF32) {
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = as<InstrFma<ParsedOp>>(instrs, 0).data;
   EXPECT_EQ(af.type_, ScalarType::F32);
-  EXPECT_EQ(af.rounding, RoundingMode::NearestEven);
+  EXPECT_EQ(af.rnd, RoundingMode::NearestEven);
 }
 
 TEST(Parser, FmaRzFtzF32) {
   auto instrs = parse_instrs("fma.rz.ftz.f32 %f3, %f0, %f1, %f2;");
   ASSERT_EQ(instrs.size(), 1u);
   auto& af = as<InstrFma<ParsedOp>>(instrs, 0).data;
-  EXPECT_EQ(af.rounding, RoundingMode::Zero);
-  EXPECT_EQ(af.flush_to_zero, std::optional<bool>{true});
+  EXPECT_EQ(af.rnd, RoundingMode::Zero);
+  EXPECT_EQ(af.ftz, std::optional<bool>{true});
 }
 
 TEST(Parser, CvtS32ToF32) {

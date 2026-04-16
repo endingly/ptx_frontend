@@ -29,7 +29,7 @@
             - { token: ".u32", cpp: "ScalarType::U32" }
             - { token: ".s32", cpp: "ScalarType::S32" }
       args:
-        - { name: "dst",  kind: reg }
+        - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
@@ -42,7 +42,7 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        saturate:
+        sat:
           kind: fixed
           type: bool
           fixed_value: { token: ".sat", cpp: "true" }
@@ -84,7 +84,7 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        saturate:
+        sat:
           kind: optional
           type: bool
           values:
@@ -110,7 +110,7 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        saturate:
+        sat:
           kind: fixed
           type: bool
           fixed_value: { token: ".sat", cpp: "true" }
@@ -126,160 +126,7 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrAdd"
-      emit_note:
-        "ArithInteger"
-
-        # ── add.f32 ──────────────────────────────────────────────────────────────
-    - description: "add.f32"
-      constraints:
-        min_ptx_version: 1.0
-        min_sm: 0
-      modifiers:
-        rounding:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf", min_sm: 20 }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf", min_sm: 20 }
-        flush_to_zero:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        saturate:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".f32", cpp: "ScalarType::F32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat"
-
-    # ── add.f64 ──────────────────────────────────────────────────────────────
-    # ftz / sat not supported; sm_13+ required; .rm/.rp inherit variant min_sm
-    - description: "add.f64"
-      constraints:
-        min_ptx_version: 1.0
-        min_sm: 13
-      modifiers:
-        rounding:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".f64", cpp: "ScalarType::F64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat"
-
-    # ── add.f32x2 ────────────────────────────────────────────────────────────
-    # sat not supported (absent = disallowed); sm_100+, PTX 8.6
-    - description: "add.f32x2"
-      constraints:
-        min_ptx_version: 8.6
-        min_sm: 100
-      modifiers:
-        rounding:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        flush_to_zero:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".f32x2", cpp: "ScalarType::F32x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat"
-
-    # ── add half-precision (f16 / f16x2) ─────────────────────────────────────
-    # rnd: .rn only; ftz / sat legal
-    - description: "add half-precision (f16, f16x2)"
-      constraints:
-        min_ptx_version: 6.0
-        min_sm: 53
-      modifiers:
-        rounding:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        flush_to_zero:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        saturate:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat"
-
-    # ── add bf16 / bf16x2 ────────────────────────────────────────────────────
-    # ftz / sat not supported; rnd: .rn only
-    - description: "add bf16/bf16x2"
-      constraints:
-        min_ptx_version: 7.0
-        min_sm: 80
-      modifiers:
-        rounding:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithFloat"
+      emit_note: "ArithInteger"
 
 ###############################################################################
 # sub
@@ -288,8 +135,11 @@
   doc: "PTX ISA §9.7.1.2"
   variants:
     - description: "sub integer (no sat)"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -303,9 +153,12 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrSub"
-      emit_note: "ArithInteger{ saturate=false }"
+      emit_note: "ArithInteger"
 
     - description: "sub integer with optional sat"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
         sat:
           kind: optional
@@ -317,128 +170,30 @@
           type: ScalarType
           values:
             - { token: ".s32", cpp: "ScalarType::S32" }
+            # - { token: ".u8x4", cpp: "ScalarType::U8x4" }
+            # - { token: ".s8x4", cpp: "ScalarType::S8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrSub"
+
+    - description: "sub integer with optional sat for packed types"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        type:
+          kind: required
+          type: ScalarType
+          values:
             - { token: ".u8x4", cpp: "ScalarType::U8x4" }
             - { token: ".s8x4", cpp: "ScalarType::S8x4" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSub"
-
-    - description: "sub.f32"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type:
-          kind: fixed
-          fixed_value: ".f32"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSub"
-
-    - description: "sub.f32x2"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: fixed
-          fixed_value: ".f32x2"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSub"
-
-    - description: "sub.f64"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        type:
-          kind: fixed
-          fixed_value: ".f64"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSub"
-
-    - description: "sub half-precision"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSub"
-
-    - description: "sub bf16/bf16x2"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -451,169 +206,34 @@
 - opcode: "mul"
   doc: "PTX ISA §9.7.1.3"
   variants:
-    - description: "mul integer hi/lo"
+    - description: "mul integer"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
         mode:
           kind: required
           type: MulIntControl
           values:
+            - { token: ".wide", cpp: "MulIntControl::Wide" }
+            - { token: ".low", cpp: "MulIntControl::Low" }
             - { token: ".hi", cpp: "MulIntControl::High" }
-            - { token: ".lo", cpp: "MulIntControl::Low" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
             - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrMul"
-
-    - description: "mul.wide"
-      modifiers:
-        wide:
-          kind: fixed
-          fixed_value: ".wide"
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrMul"
-      emit_note: "MulIntControl::Wide"
-
-    - description: "mul.f32"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type:
-          kind: fixed
-          fixed_value: ".f32"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrMul"
-
-    - description: "mul.f32x2"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: fixed
-          fixed_value: ".f32x2"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrMul"
-
-    - description: "mul.f64"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        type:
-          kind: fixed
-          fixed_value: ".f64"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrMul"
-
-    - description: "mul half-precision"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrMul"
-
-    - description: "mul bf16/bf16x2"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrMul"
+      emit_note: "MulInt"
 
 ###############################################################################
 # mad
@@ -621,23 +241,27 @@
 - opcode: "mad"
   doc: "PTX ISA §9.7.1.4"
   variants:
-    - description: "mad integer hi/lo"
+    - description: "mad integer"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
         mode:
           kind: required
           type: MulIntControl
           values:
+            - { token: ".wide", cpp: "MulIntControl::Wide" }
+            - { token: ".low", cpp: "MulIntControl::Low" }
             - { token: ".hi", cpp: "MulIntControl::High" }
-            - { token: ".lo", cpp: "MulIntControl::Low" }
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
             - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
       args:
         - { name: "dst", kind: reg }
@@ -645,92 +269,51 @@
         - { name: "src2", kind: reg_or_imm }
         - { name: "src3", kind: reg_or_imm }
       cpp_struct: "InstrMad"
+      emit_note: "MulInt"
 
-    - description: "mad.wide"
+    - description: "mad.hi.sat.s32 (universal)"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        wide:
+        mode:
           kind: fixed
-          fixed_value: ".wide"
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      cpp_struct: "InstrMad"
-
-    - description: "mad.hi.sat.s32"
-      modifiers:
-        hi:
-          kind: fixed
-          fixed_value: ".hi"
+          type: MulIntControl
+          fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
         sat:
           kind: fixed
-          fixed_value: ".sat"
-        type:
+          type: bool
+          fixed_value: { token: ".sat", cpp: "true" }
+        type_:
           kind: fixed
-          fixed_value: ".s32"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      cpp_struct: "InstrMad"
-
-    - description: "mad float"
-      modifiers:
-        rnd:
-          kind: optional
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type:
-          kind: required
           type: ScalarType
-          values:
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
         - { name: "src3", kind: reg_or_imm }
       cpp_struct: "InstrMad"
+      emit_note: "MulInt"
 
 ###############################################################################
-# mul24 / mad24
+# mul24
 ###############################################################################
 - opcode: "mul24"
   doc: "PTX ISA §9.7.1.5"
   variants:
-    - modifiers:
+    - description: "Multiply two 24-bit integer values."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
         mode:
           kind: required
-          type: Mul24Control
+          type: MulIntControl
           values:
-            - { token: ".hi", cpp: "Mul24Control::Hi" }
-            - { token: ".lo", cpp: "Mul24Control::Lo" }
-        type:
+            - { token: ".low", cpp: "MulIntControl::Low" }
+            - { token: ".hi", cpp: "MulIntControl::High" }
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -741,23 +324,26 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrMul24"
+      emit_note: "MulInt"
 
+###############################################################################
+# mad24
+###############################################################################
 - opcode: "mad24"
   doc: "PTX ISA §9.7.1.6"
   variants:
-    - modifiers:
+    - description: "Multiply two 24-bit integer values and add a third value."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
         mode:
           kind: required
-          type: Mul24Control
+          type: MulIntControl
           values:
-            - { token: ".hi", cpp: "Mul24Control::Hi" }
-            - { token: ".lo", cpp: "Mul24Control::Lo" }
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type:
+            - { token: ".low", cpp: "MulIntControl::Low" }
+            - { token: ".hi", cpp: "MulIntControl::High" }
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -769,6 +355,32 @@
         - { name: "src2", kind: reg_or_imm }
         - { name: "src3", kind: reg_or_imm }
       cpp_struct: "InstrMad24"
+      emit_note: "MulInt"
+
+    - description: "mad24.hi.sat.s32 (universal)"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: fixed
+          type: MulIntControl
+          fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
+        sat:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".sat", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrMad24"
+      emit_note: "MulInt"
 
 ###############################################################################
 # sad
@@ -776,346 +388,406 @@
 - opcode: "sad"
   doc: "PTX ISA §9.7.1.7"
   variants:
-    - modifiers:
-        type:
+    - description: "Sum of absolute differences."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        data:
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
         - { name: "src3", kind: reg_or_imm }
       cpp_struct: "InstrSad"
+      emit_note: null # not variant-specific, should be emitted on InstrSad itself
 
 ###############################################################################
-# div / rem
+# div
 ###############################################################################
 - opcode: "div"
   doc: "PTX ISA §9.7.1.8"
   variants:
-    - description: "div integer"
+    - description: "Divide one value by another."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrDiv"
+      emit_note: "DivInt"
 
-    - description: "div.approx.f32"
-      modifiers:
-        approx:
-          kind: fixed
-          fixed_value: ".approx"
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: fixed
-          fixed_value: ".f32"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrDiv"
-      emit_note: "DivFloat{ kind=Approx }"
-
-    - description: "div.full.f32"
-      modifiers:
-        full:
-          kind: fixed
-          fixed_value: ".full"
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: fixed
-          fixed_value: ".f32"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrDiv"
-      emit_note: "DivFloat{ kind=ApproxFull }"
-
-    - description: "div.rnd float"
-      modifiers:
-        rnd:
-          kind: required
-          type: RoundingMode
-          values:
-            - { token: ".rn", cpp: "RoundingMode::NearestEven" }
-            - { token: ".rz", cpp: "RoundingMode::Zero" }
-            - { token: ".rm", cpp: "RoundingMode::NegativeInf" }
-            - { token: ".rp", cpp: "RoundingMode::PositiveInf" }
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrDiv"
-
+###############################################################################
+# rem
+###############################################################################
 - opcode: "rem"
   doc: "PTX ISA §9.7.1.9"
   variants:
-    - modifiers:
-        type:
+    - description: "The remainder of integer division."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        data:
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrRem"
+      emit_note: null
 
 ###############################################################################
-# abs / neg
+# abs
 ###############################################################################
 - opcode: "abs"
   doc: "PTX ISA §9.7.1.10"
   variants:
-    - description: "abs integer"
+    - description: "Absolute value."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
-            - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
       cpp_struct: "InstrAbs"
-      emit_note: "TypeFtz{ flush_to_zero=None }"
+      emit_note: null # TODO: design for emitting without variant/slef
 
-    - description: "abs float"
-      modifiers:
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src", kind: reg_or_imm }
-      cpp_struct: "InstrAbs"
-
+###############################################################################
+# neg
+###############################################################################
 - opcode: "neg"
   doc: "PTX ISA §9.7.1.11"
   variants:
-    - description: "neg integer"
+    - description: "Arithmetic negate."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
-            - { token: ".s16", cpp: "ScalarType::S16" }
             - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
       cpp_struct: "InstrNeg"
-      emit_note: "TypeFtz{ flush_to_zero=None }"
+      emit_note: null # TODO: design for emitting without variant/slef
 
-    - description: "neg float"
+    - description: "neg.s8x4 (sm_120f family)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
       modifiers:
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        type:
-          kind: required
+        type_:
+          kind: fixed
           type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
       cpp_struct: "InstrNeg"
+      emit_note: null # TODO: design for emitting without variant/slef
 
 ###############################################################################
-# min / max
+# min
 ###############################################################################
 - opcode: "min"
   doc: "PTX ISA §9.7.1.12"
   variants:
-    - description: "min integer"
+    - description: "Find the minimum of two values."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
             - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
             - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
+            # - { token: ".u16x2", cpp: "ScalarType::U16x2" }
+            # - { token: ".u8x4", cpp: "ScalarType::U8x4" }
             - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrMin"
+      emit_note: "MinMaxInt"
 
-    - description: "min float"
+    - description: "min.u16x2 (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
       modifiers:
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        nan:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".NaN", cpp: "true" }
-        type:
-          kind: required
+        type_:
+          kind: fixed
           type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+          fixed_value: { token: ".u16x2", cpp: "ScalarType::U16x2" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrMin"
+      emit_note: "MinMaxInt"
 
+    - description: "min{.relu}.s16x2 (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
+      modifiers:
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s16x2", cpp: "ScalarType::S16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMin"
+      emit_note: "MinMaxInt"
+
+    - description: "min.relu.s32 (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
+      modifiers:
+        relu:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".relu", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMin"
+      emit_note: "MinMaxInt"
+
+    - description: "min.u8x4 (sm_120+)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".u8x4", cpp: "ScalarType::U8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMin"
+      emit_note: "MinMaxInt"
+
+    - description: "min.s8x4 (sm_120+)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMin"
+      emit_note: "MinMaxInt"
+
+###############################################################################
+# max
+###############################################################################
 - opcode: "max"
   doc: "PTX ISA §9.7.1.13"
   variants:
-    - description: "max integer"
+    - description: "Find the maximum of two values."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
       modifiers:
-        type:
+        type_:
           kind: required
           type: ScalarType
           values:
             - { token: ".u16", cpp: "ScalarType::U16" }
             - { token: ".u32", cpp: "ScalarType::U32" }
             - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
             - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
             - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrMax"
+      emit_note: "MinMaxInt"
 
-    - description: "max float"
+    - description: "max.u16x2 (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
       modifiers:
-        ftz:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".ftz", cpp: "true" }
-        nan:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".NaN", cpp: "true" }
-        type:
-          kind: required
+        type_:
+          kind: fixed
           type: ScalarType
-          values:
-            - { token: ".f16", cpp: "ScalarType::F16" }
-            - { token: ".f16x2", cpp: "ScalarType::F16x2" }
-            - { token: ".f32", cpp: "ScalarType::F32" }
-            - { token: ".f64", cpp: "ScalarType::F64" }
-            - { token: ".bf16", cpp: "ScalarType::BF16" }
-            - { token: ".bf16x2", cpp: "ScalarType::BF16x2" }
+          fixed_value: { token: ".u16x2", cpp: "ScalarType::U16x2" }
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       cpp_struct: "InstrMax"
+      emit_note: "MinMaxInt"
+
+    - description: "max{.relu}.s16x2 (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
+      modifiers:
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s16x2", cpp: "ScalarType::S16x2" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMax"
+      emit_note: "MinMaxInt"
+
+    - description: "max.relu.s32 (sm_90+)"
+      constraints:
+        min_ptx_version: 8.0
+        min_sm: 90
+      modifiers:
+        relu:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".relu", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMax"
+      emit_note: "MinMaxInt"
+
+    - description: "max.u8x4 (sm_120+)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".u8x4", cpp: "ScalarType::U8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMax"
+      emit_note: "MinMaxInt"
+
+    - description: "max.s8x4 (sm_120+)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        relu:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".relu", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      cpp_struct: "InstrMax"
+      emit_note: "MinMaxInt"
 
 ###############################################################################
-# clz / brev / popc / bfe / bfi / bmsk / dp4a / dp2a
+# popc
 ###############################################################################
-- opcode: "clz"
+- opcode: "popc"
   doc: "PTX ISA §9.7.1.14"
   variants:
-    - modifiers:
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
-      args:
-        - { name: "dst", kind: reg, note: "u32 result" }
-        - { name: "src", kind: reg }
-      cpp_struct: "InstrClz"
-
-- opcode: "brev"
-  doc: "PTX ISA §9.7.1.15"
-  variants:
-    - modifiers:
-        type:
+    - description: "Population count."
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        type_:
           kind: required
           type: ScalarType
           values:
@@ -1123,272 +795,6 @@
             - { token: ".b64", cpp: "ScalarType::B64" }
       args:
         - { name: "dst", kind: reg }
-        - { name: "src", kind: reg }
-      cpp_struct: "InstrBrev"
-
-- opcode: "popc"
-  doc: "PTX ISA §9.7.1.16"
-  variants:
-    - modifiers:
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
-      args:
-        - { name: "dst", kind: reg, note: "u32 result" }
-        - { name: "src", kind: reg }
+        - { name: "src", kind: reg_or_imm }
       cpp_struct: "InstrPopc"
-
-- opcode: "bfe"
-  doc: "PTX ISA §9.7.1.17"
-  variants:
-    - modifiers:
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg }
-        - { name: "src2", kind: reg, note: "start bit (u32)" }
-        - { name: "src3", kind: reg, note: "bit width (u32)" }
-      cpp_struct: "InstrBfe"
-
-- opcode: "bfi"
-  doc: "PTX ISA §9.7.1.18"
-  variants:
-    - modifiers:
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg }
-        - { name: "src2", kind: reg }
-        - { name: "src3", kind: reg, note: "start (u32)" }
-        - { name: "src4", kind: reg, note: "width (u32)" }
-      cpp_struct: "InstrBfi"
-
-- opcode: "bmsk"
-  doc: "PTX ISA §9.7.1.19"
-  variants:
-    - modifiers:
-        mode:
-          kind: required
-          type: BmskMode
-          values:
-            - { token: ".clamp", cpp: "BmskMode::Clamp" }
-            - { token: ".wrap", cpp: "BmskMode::Wrap" }
-        b32:
-          kind: fixed
-          fixed_value: ".b32"
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src_a", kind: reg }
-        - { name: "src_b", kind: reg }
-      cpp_struct: "InstrBmsk"
-
-- opcode: "dp4a"
-  doc: "PTX ISA §9.7.1.20"
-  variants:
-    - modifiers:
-        atype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-        btype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg }
-        - { name: "src2", kind: reg }
-        - { name: "src3", kind: reg }
-      cpp_struct: "InstrDp4a"
-
-- opcode: "dp2a"
-  doc: "PTX ISA §9.7.1.21"
-  variants:
-    - modifiers:
-        mode:
-          kind: required
-          type: Dp2aControl
-          values:
-            - { token: ".lo", cpp: "Dp2aControl::Low" }
-            - { token: ".hi", cpp: "Dp2aControl::High" }
-        atype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-        btype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg }
-        - { name: "src2", kind: reg }
-        - { name: "src3", kind: reg }
-      cpp_struct: "InstrDp2a"
-
-###############################################################################
-# Extended precision: add.cc / addc / sub.cc / subc / mad.cc / madc
-###############################################################################
-- opcode: "add.cc"
-  doc: "PTX ISA §9.7.1.22"
-  variants:
-    - modifiers:
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAddExtended"
-      emit_note: "CarryKind::CarryOut"
-
-- opcode: "addc"
-  doc: "PTX ISA §9.7.1.23"
-  variants:
-    - modifiers:
-        cc:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".cc", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAddExtended"
-      emit_note: "cc=true → CarryInCarryOut, cc=false → CarryIn"
-
-- opcode: "sub.cc"
-  doc: "PTX ISA §9.7.1.24"
-  variants:
-    - modifiers:
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSubExtended"
-      emit_note: "CarryKind::CarryOut"
-
-- opcode: "subc"
-  doc: "PTX ISA §9.7.1.25"
-  variants:
-    - modifiers:
-        cc:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".cc", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrSubExtended"
-
-- opcode: "mad.cc"
-  doc: "PTX ISA §9.7.1.26"
-  variants:
-    - modifiers:
-        mode:
-          kind: required
-          type: MulIntControl
-          values:
-            - { token: ".lo", cpp: "MulIntControl::Low" }
-            - { token: ".hi", cpp: "MulIntControl::High" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      cpp_struct: "InstrMadExtended"
-      emit_note: "CarryKind::CarryOut"
-
-- opcode: "madc"
-  doc: "PTX ISA §9.7.1.27"
-  variants:
-    - modifiers:
-        mode:
-          kind: required
-          type: MulIntControl
-          values:
-            - { token: ".lo", cpp: "MulIntControl::Low" }
-            - { token: ".hi", cpp: "MulIntControl::High" }
-        cc:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".cc", cpp: "true" }
-        type:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      cpp_struct: "InstrMadExtended"
+      emit_note: null

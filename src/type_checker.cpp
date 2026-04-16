@@ -20,17 +20,23 @@ void TypeChecker::error(std::string msg) {
   errors_.push_back(TypeError{std::move(msg)});
 }
 
-void TypeChecker::require_sm(uint32_t min_v, std::string_view ctx) {
-  if (target_.sm < min_v)
+bool TypeChecker::require_sm(uint32_t min_v, std::string_view ctx) {
+  if (target_.sm < min_v) {
     error(std::string(ctx) + " requires sm_" + std::to_string(min_v) +
           " or higher (target is sm_" + std::to_string(target_.sm) + ")");
+    return false;
+  }
+  return true;
 }
 
-void TypeChecker::require_ptx(float min_v, std::string_view ctx) {
-  if (target_.ptx_version < min_v)
+bool TypeChecker::require_ptx(float min_v, std::string_view ctx) {
+  if (target_.ptx_version < min_v) {
     error(std::string(ctx) + " requires PTX " + std::to_string(min_v) +
           " or higher (target is PTX " + std::to_string(target_.ptx_version) +
           ")");
+    return false;
+  }
+  return true;
 }
 
 void TypeChecker::check_add(const InstrAdd<ParsedOp>& i) {
@@ -49,7 +55,7 @@ void TypeChecker::check_add_integer(const InstrAdd<ParsedOp>& i) {
   using ST = ScalarType;
   auto d = std::get<ArithInteger>(i.data);
   const auto t = d.type_;
-  const bool sat = d.saturate;
+  const bool sat = d.sat;
 
   // ── variant: integer no-sat, universal (ptx 1.0, sm 0) ─────────────────
   static constexpr std::array universal_nosat = {ST::U16, ST::U64, ST::S16,
@@ -98,14 +104,13 @@ void TypeChecker::check_add_float(const InstrAdd<ParsedOp>& i) {
 
   // value-level min_sm helper: .rm / .rp carry extra SM requirement
   auto check_rm_rp_sm = [&](int required_sm, std::string_view ctx) {
-    if (has_rnd &&
-        (d.rounding == RM::NegativeInf || d.rounding == RM::PositiveInf))
+    if (has_rnd && (d.rnd == RM::NegativeInf || d.rnd == RM::PositiveInf))
       require_sm(required_sm, std::string(ctx) + " with .rm/.rp");
   };
 
   // only-.rn helper
   auto require_rn_only = [&](std::string_view ctx) {
-    if (has_rnd && d.rounding != RM::NearestEven)
+    if (has_rnd && d.rnd != RM::NearestEven)
       error(std::string(ctx) + " only supports .rn rounding");
   };
 
@@ -126,7 +131,7 @@ void TypeChecker::check_add_float(const InstrAdd<ParsedOp>& i) {
     case ST::F32x2:
       require_sm(100, "add.f32x2");
       require_ptx(8.6, "add.f32x2");
-      if (d.saturate)
+      if (d.sat)
         error("add.f32x2 does not support .sat");
       check_dst_src2(i, ST::F32x2);
       break;
@@ -146,9 +151,9 @@ void TypeChecker::check_add_float(const InstrAdd<ParsedOp>& i) {
       require_sm(80, "add" + to_string(t));
       require_ptx(7.0, "add" + to_string(t));
       require_rn_only("add" + to_string(t));
-      if (d.saturate)
+      if (d.sat)
         error("add" + to_string(t) + " does not support .sat");
-      if (d.flush_to_zero.has_value())
+      if (d.ftz.has_value())
         error("add" + to_string(t) + " does not support .ftz");
       check_dst_src2(i, t);
       break;

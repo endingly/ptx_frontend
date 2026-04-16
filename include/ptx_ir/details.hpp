@@ -26,13 +26,13 @@ enum class CpAsyncCacheOperator { Cached, L2Only };
 // --- ArithInteger / ArithFloat / ArithDetails ---
 struct ArithInteger {
   ScalarType type_;
-  bool saturate = false;
+  bool sat = false;  // saturate
 };
 struct ArithFloat {
   ScalarType type_;
-  RoundingMode rounding = RoundingMode::NearestEven;
-  std::optional<bool> flush_to_zero;  // nullopt = not applicable
-  bool saturate = false;
+  RoundingMode rnd = RoundingMode::NearestEven;
+  std::optional<bool> ftz;  // nullopt = not applicable
+  bool sat = false;         // saturate
   bool is_fusable = false;  // see ZLUDA comment about fused mul/add
 };
 using ArithDetails = std::variant<ArithInteger, ArithFloat>;
@@ -54,7 +54,7 @@ enum class MulIntControl { Low, High, Wide };
 // --- MulDetails ---
 struct MulInt {
   ScalarType type_;
-  MulIntControl control;
+  MulIntControl mode;
 };
 using MulDetails = std::variant<MulInt, ArithFloat>;
 
@@ -95,6 +95,7 @@ enum class MinMaxSign { Signed, Unsigned };
 struct MinMaxInt {
   MinMaxSign sign;
   ScalarType type_;
+  bool relu = false;
 };
 using MinMaxDetails = std::variant<MinMaxInt, MinMaxFloat>;
 

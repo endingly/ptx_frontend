@@ -91,4 +91,8 @@ std::string to_string(ScalarType t) {
   return "UnknownScalarType(" + std::to_string((uint8_t)t) + ")";
 }
 
+std::string to_string(bool v) {
+  return v ? "true" : "false";
+}
+
 };  // namespace ptx_frontend

@@ -1,40 +1,61 @@
-from load_instuctions import load_instructions, Path
-from load_instuctions import VariantModel
+from load_instuctions import load_instructions, Path, Instruction
+from argparse import ArgumentParser
+from utils import format_file_inplace
 
 
-class VariantCodeGenerator:
-    REQ_PTX_VERSION_FUNC_NAME = "require_ptx"
-    REQ_SM_VERSION_FUNC_NAME = "require_sm"
+def add_parser():
+    parser = ArgumentParser(
+        description="Generate type checker code for PTX instructions."
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        required=True,
+        help="Path to the YAML file containing instruction definitions.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        required=True,
+        help="Dir, Path to the output file where the generated code will be saved.",
+    )
+    return parser
 
-    def __init__(self, model: VariantModel) -> None:
-        self.model = model
 
-    def gen_variant_check_function(self):
-        """
-        generate variant mode to cpp lambda function
-        """
+def generate_src_code_for_type_check(instructions: list[Instruction]):
+    content = "\n".join(
+        [instruction.generate_code_for_type_check() for instruction in instructions]
+    )
+    return content
 
-        # with function idx and function content
-        shell_code = """
-auto variant{} = [&]() {
-{}
-};
-        """
 
-        check_target_version_function = f"""
-auto check_target_version = [&](){{
-    bool flag = true;
-    flag &= {self.REQ_PTX_VERSION_FUNC_NAME}({self.model.min_ptx_version},{self.model.description});
-    flag &= {self.REQ_SM_VERSION_FUNC_NAME}({self.model.min_sm_version},{self.model.description});
-}};
-        """
-
-    pass
+def generate_header_code_for_type_check(instructions: list[Instruction]):
+    content = "\n".join(
+        [instruction.function_signature_for_type_check for instruction in instructions]
+    )
+    return content
 
 
 if __name__ == "__main__":
-    instructions = load_instructions(Path("instructions/test.yaml"))
+    parser = add_parser()
+    args = parser.parse_args()
 
-    print(
-        f"cpp code check modifier: {instructions[0].variants[0].generate_code_for_type_check(0)}\n"
-    )
+    input_file = Path(args.input)
+    output_dir = Path(args.output)  # "type_checker.gen"
+
+    instructions = load_instructions(input_file)
+    src_code = generate_src_code_for_type_check(instructions)
+    header_code = generate_header_code_for_type_check(instructions)
+
+    src_file = output_dir / "type_checker.src.gen"
+    header_file = output_dir / "type_checker.h.gen"
+    with open(src_file, "w") as f:
+        f.write(src_code)
+
+    with open(header_file, "w") as f:
+        f.write(header_code)
+
+    format_file_inplace(src_file.__str__())
+    format_file_inplace(header_file.__str__())

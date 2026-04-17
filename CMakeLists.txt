@@ -20,14 +20,33 @@ FLEX_TARGET(
     COMPILE_FLAGS "--header-file=${PTX_LEXER_HDR} -w"
 )
 
+# yaml generator target
+# find python
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(from_yaml ${CMAKE_CURRENT_SOURCE_DIR}/instructions/integer_arith.yaml)
+add_custom_command(
+    OUTPUT ${PTX_GEN_DIR}/type_checker.src.gen ${PTX_GEN_DIR}/type_checker.h.gen
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_type_checker_code.py
+    --input ${from_yaml}
+    --output ${PTX_GEN_DIR}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_type_checker_code.py ${from_yaml}
+    COMMENT "Generating type checker code from ${from_yaml}"
+)
+add_custom_target(
+    gen_type_checker_code
+    DEPENDS ${PTX_GEN_DIR}/type_checker.src.gen ${PTX_GEN_DIR}/type_checker.h.gen
+)
+
+# target ptx_frontend
 file(GLOB_RECURSE ptx_frontend_srcs src/*.cpp)
 add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS})
 target_include_directories(
-    ptx_frontend 
+    ptx_frontend
     PUBLIC include ${PTX_GEN_DIR}
     PRIVATE dependencies
 )
 target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
+add_dependencies(ptx_frontend gen_type_checker_code)
 
 # # target ptx_frontend_test
 aux_source_directory(test ptx_frontend_test_files)

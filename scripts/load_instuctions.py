@@ -12,7 +12,9 @@ def _parse_modifier(name: str, mod_def: dict) -> Modifier:
     fixed_value: ModifierValue | None = None
 
     if kind == ModifierKind.Fixed:
-        fixed_value = mod_def["fixed_value"]
+        fixed_value = ModifierValue(
+            mod_def["fixed_value"]["token"], mod_def["fixed_value"]["cpp"]
+        )
     else:
         for v in mod_def.get("values", []):
             values.append(ModifierValue(token=v["token"], cpp_code=v["cpp"]))
@@ -53,7 +55,9 @@ def _parse_instruction(raw: dict) -> Instruction:
     instr = Instruction(opcode=raw["opcode"])
     instr.doc = raw.get("doc", "")
     for v in raw.get("variants", []):
-        instr.variants.append(_parse_variant(v))
+        tmp_variant = _parse_variant(v)
+        tmp_variant.variant_idx = len(instr.variants)
+        instr.variants.append(tmp_variant)
     return instr
 
 

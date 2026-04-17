@@ -398,4 +398,7 @@ inline bool has_flag(LinkingDirective d, LinkingDirective f) {
   return (static_cast<uint8_t>(d) & static_cast<uint8_t>(f)) != 0;
 }
 
+// convert to string functions for error messages
+std::string to_string(bool v);
+
 };  // namespace ptx_frontend

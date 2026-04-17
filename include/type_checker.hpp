@@ -35,19 +35,18 @@ class TypeChecker {
   void error(std::string msg);
   bool require_sm(uint32_t min_v, std::string_view ctx);
   bool require_ptx(float min_v, std::string_view ctx);
+  bool require_sm(uint32_t min_v);
+  bool require_ptx(float min_v);
 
   // operand type check via LegacySymbolTable
   void check_operand(const ParsedOp& op, ScalarType expected);
   void check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
 
-  void check_add_integer(const InstrAdd<ParsedOp>& i);
-  void check_add_float(const InstrAdd<ParsedOp>& i);
-
  public:
   TypeChecker(const LegacySymbolTable& sym, const CompileTarget& target)
       : sym_(sym), target_(target) {}
 
-  void check_add(const InstrAdd<ParsedOp>& i);
+#include "type_checker.h.gen"
 
   const std::vector<TypeError>& errors() const { return errors_; }
 };

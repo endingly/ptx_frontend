@@ -34,11 +34,19 @@ def _parse_variant(raw: dict) -> VariantModel:
     constraints = raw.get("constraints", {})
     variant.min_ptx_version = float(constraints.get("min_ptx_version", 0))
     variant.min_sm_version = int(constraints.get("min_sm", 0))
-    variant.emit_note = raw.get("emit_note", "")
+
+    # emit_note: null in YAML becomes None in Python; treat as empty string
+    emit_note_raw = raw.get("emit_note")
+    variant.emit_note = emit_note_raw if emit_note_raw is not None else ""
+
+    # data_kind: how to access i.data when generating modifier checks
+    data_kind_raw = raw.get("data_kind", "variant")
+    variant.data_kind = DataKind(data_kind_raw)
 
     for mod_name, mod_def in raw.get("modifiers", {}).items():
         tmp_modifier = _parse_modifier(mod_name, mod_def)
         tmp_modifier.emit_note = variant.emit_note
+        tmp_modifier.data_kind = variant.data_kind
         variant.modifiers.append(tmp_modifier)
 
     for arg in raw.get("args", []):

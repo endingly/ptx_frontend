@@ -5,17 +5,6 @@
 
 namespace ptx_frontend {
 
-template <typename T, std::size_t N>
-bool is_one_of(T& target_item,
-               const std::array<std::remove_const_t<T>, N>& arr) {
-  for (const auto& item : arr) {
-    if (target_item == item) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void TypeChecker::error(std::string msg) {
   errors_.push_back(TypeError{std::move(msg)});
 }
@@ -85,7 +74,5 @@ void TypeChecker::check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t) {
   check_operand(i.src1, t);
   check_operand(i.src2, t);
 }
-
-#include "type_checker.src.gen"
 
 };  // namespace ptx_frontend

@@ -1163,6 +1163,43 @@ expected<InstrMad<To>, Err> map_instr(InstrMad<From> instr,
   return InstrMad<To>{instr.data, *dst, *src1, *src2, *src3};
 }
 
+// ── InstrMad24 ─────────────────────────────────────────────────────────────
+template <OperandLike Op, typename Err>
+expected<void, Err> visit_instr(const InstrMad24<Op>& instr,
+                                Visitor<Op, Err>& v) {
+  ScalarType st = std::visit([](const auto& d) { return d.type_; }, instr.data);
+  Type t = make_scalar(st);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  if (auto r = v.visit(instr.dst, ts, true, false); !r)
+    return r;
+  if (auto r = v.visit(instr.src1, ts, false, false); !r)
+    return r;
+  if (auto r = v.visit(instr.src2, ts, false, false); !r)
+    return r;
+  return v.visit(instr.src3, ts, false, false);
+}
+
+template <OperandLike From, OperandLike To, typename Err>
+expected<InstrMad24<To>, Err> map_instr(InstrMad24<From> instr,
+                                        VisitorMap<From, To, Err>& v) {
+  ScalarType st = std::visit([](const auto& d) { return d.type_; }, instr.data);
+  Type t = make_scalar(st);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  auto dst = v.visit(std::move(instr.dst), ts, true, false);
+  if (!dst)
+    return unexpected(dst.error());
+  auto src1 = v.visit(std::move(instr.src1), ts, false, false);
+  if (!src1)
+    return unexpected(src1.error());
+  auto src2 = v.visit(std::move(instr.src2), ts, false, false);
+  if (!src2)
+    return unexpected(src2.error());
+  auto src3 = v.visit(std::move(instr.src3), ts, false, false);
+  if (!src3)
+    return unexpected(src3.error());
+  return InstrMad24<To>{instr.data, *dst, *src1, *src2, *src3};
+}
+
 // ── InstrMax ───────────────────────────────────────────────────────────────
 template <OperandLike Op, typename Err>
 expected<void, Err> visit_instr(const InstrMax<Op>& instr,

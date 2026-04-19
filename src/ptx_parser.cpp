@@ -894,14 +894,14 @@ struct Parser {
         check(TokenKind::DotWide)) {
       MadInt mi;
       if (match(TokenKind::DotHi))
-        mi.control = MulIntControl::High;
+        mi.mode = MulIntControl::High;
       else if (match(TokenKind::DotLo))
-        mi.control = MulIntControl::Low;
+        mi.mode = MulIntControl::Low;
       else {
         lex.consume();
-        mi.control = MulIntControl::Wide;
+        mi.mode = MulIntControl::Wide;
       }
-      mi.saturate = try_parse_sat();
+      mi.sat = try_parse_sat();
       mi.type_ = TRY(parse_scalar_type());
       data = mi;
     } else {
@@ -924,6 +924,44 @@ struct Parser {
     TRY(expect(TokenKind::Comma, ","));
     auto src3 = TRY(parse_operand());
     return InstrMad<ParsedOp>{data, dst, src1, src2, src3};
+  }
+
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_mad24() {
+    MadDetails data;
+    if (check(TokenKind::DotHi) || check(TokenKind::DotLo) ||
+        check(TokenKind::DotWide)) {
+      MadInt mi;
+      if (match(TokenKind::DotHi))
+        mi.mode = MulIntControl::High;
+      else if (match(TokenKind::DotLo))
+        mi.mode = MulIntControl::Low;
+      else {
+        lex.consume();
+        mi.mode = MulIntControl::Wide;
+      }
+      mi.sat = try_parse_sat();
+      mi.type_ = TRY(parse_scalar_type());
+      data = mi;
+    } else {
+      ArithFloat af;
+      auto rm = try_parse_rounding();
+      bool ftz = try_parse_ftz();
+      bool sat = try_parse_sat();
+      af.type_ = TRY(parse_scalar_type());
+      af.rnd = rm.value_or(RoundingMode::NearestEven);
+      af.ftz = ftz ? std::optional<bool>{true} : std::nullopt;
+      af.sat = sat;
+      af.is_fusable = false;
+      data = af;
+    }
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src1 = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src2 = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src3 = TRY(parse_operand());
+    return InstrMad24<ParsedOp>{data, dst, src1, src2, src3};
   }
 
   // fma (always float)
@@ -1859,6 +1897,7 @@ struct Parser {
       case TokenKind::Sub:  return parse_instr_sub();
       case TokenKind::Mul:  return parse_instr_mul();
       case TokenKind::Mad:  return parse_instr_mad();
+      case TokenKind::Mad24:return parse_instr_mad24();
       case TokenKind::Fma:  return parse_instr_fma();
       case TokenKind::Div:  return parse_instr_div();
       case TokenKind::Rem:  return parse_instr_rem();

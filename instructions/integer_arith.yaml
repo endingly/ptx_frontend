@@ -10,6 +10,7 @@
 ###############################################################################
 - opcode: "add"
   doc: "PTX ISA §9.7.1.1"
+  cpp: "InstrAdd"
   variants:
     - description: "add integer no-sat (universal)"
       constraints:
@@ -34,8 +35,10 @@
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger"
+      emit_note:
+        kind: sub_variant # type with: sub_variant/sub_struct/direct
+        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
+        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
 
     # ── Integer: add.sat.s32 (universal) ─────────────────────────────────────
     # signed 32-bit saturating add supported from PTX 1.0, all SM
@@ -56,8 +59,10 @@
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger"
+      emit_note:
+        kind: sub_variant # type with: sub_variant/sub_struct/direct
+        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
+        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
 
     # ── Integer: SIMD no-sat (sm_90+) ─────────────────────────────────────────
     # add.u16x2 / add.s16x2 (no sat) introduced in PTX 8.0, requires sm_90+
@@ -80,8 +85,10 @@
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger"
+      emit_note:
+        kind: sub_variant # type with: sub_variant/sub_struct/direct
+        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
+        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
 
     # ── Integer: packed optional sat (sm_120f family) ──────────────────────────
     # add{.sat}.u8x4 / add{.sat}.s8x4 introduced in PTX 9.2, requires sm_120f family
@@ -105,8 +112,10 @@
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger"
+      emit_note:
+        kind: sub_variant # type with: sub_variant/sub_struct/direct
+        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
+        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
 
     # ── Integer: SIMD sat + u32 sat (sm_120f family) ────────────────────────────
     # add.sat.u16x2 / add.sat.s16x2 / add.sat.u32 introduced in PTX 9.2, requires sm_120f family
@@ -131,262 +140,296 @@
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
-      cpp_struct: "InstrAdd"
-      emit_note: "ArithInteger"
+      emit_note:
+        kind: sub_variant # type with: sub_variant/sub_struct/direct
+        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
+        emit_type: "ArithInteger" # type of the instruction to emit, instra struct self if direct
 
-# ###############################################################################
-# # sub
-# ###############################################################################
-# - opcode: "sub"
-#   doc: "PTX ISA §9.7.1.2"
-#   variants:
-#     - description: "sub integer (no sat)"
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u16", cpp: "ScalarType::U16" }
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrSub"
-#       emit_note: "ArithInteger"
+###############################################################################
+# sub
+###############################################################################
+- opcode: "sub"
+  doc: "PTX ISA §9.7.1.2"
+  cpp: "InstrSub"
+  variants:
+    - description: "sub integer (no sat)"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        sat:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".sat", cpp: "false" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "ArithInteger"
 
-#     - description: "sub integer with optional sat"
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         sat:
-#           kind: optional
-#           type: bool
-#           values:
-#             - { token: ".sat", cpp: "true" }
-#         type:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             # - { token: ".u8x4", cpp: "ScalarType::U8x4" }
-#             # - { token: ".s8x4", cpp: "ScalarType::S8x4" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrSub"
+    - description: "sub integer with optional sat"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "ArithInteger"
 
-#     - description: "sub integer with optional sat for packed types"
-#       constraints:
-#         min_ptx_version: 9.2
-#         min_sm: 120
-#       modifiers:
-#         sat:
-#           kind: optional
-#           type: bool
-#           values:
-#             - { token: ".sat", cpp: "true" }
-#         type:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u8x4", cpp: "ScalarType::U8x4" }
-#             - { token: ".s8x4", cpp: "ScalarType::S8x4" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrSub"
+    - description: "sub integer with optional sat for packed types"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        sat:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".sat", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u8x4", cpp: "ScalarType::U8x4" }
+            - { token: ".s8x4", cpp: "ScalarType::S8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "ArithInteger"
 
-# ###############################################################################
-# # mul
-# ###############################################################################
-# - opcode: "mul"
-#   doc: "PTX ISA §9.7.1.3"
-#   variants:
-#     - description: "mul integer"
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         mode:
-#           kind: required
-#           type: MulIntControl
-#           values:
-#             - { token: ".wide", cpp: "MulIntControl::Wide" }
-#             - { token: ".low", cpp: "MulIntControl::Low" }
-#             - { token: ".hi", cpp: "MulIntControl::High" }
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u16", cpp: "ScalarType::U16" }
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrMul"
-#       emit_note: "MulInt"
+###############################################################################
+# mul
+###############################################################################
+- opcode: "mul"
+  doc: "PTX ISA §9.7.1.3"
+  cpp: "InstrMul"
+  variants:
+    - description: "mul integer"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: required
+          type: MulIntControl
+          values:
+            - { token: ".wide", cpp: "MulIntControl::Wide" }
+            - { token: ".low", cpp: "MulIntControl::Low" }
+            - { token: ".hi", cpp: "MulIntControl::High" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "MulInt"
 
-# ###############################################################################
-# # mad
-# ###############################################################################
-# - opcode: "mad"
-#   doc: "PTX ISA §9.7.1.4"
-#   variants:
-#     - description: "mad integer"
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         mode:
-#           kind: required
-#           type: MulIntControl
-#           values:
-#             - { token: ".wide", cpp: "MulIntControl::Wide" }
-#             - { token: ".low", cpp: "MulIntControl::Low" }
-#             - { token: ".hi", cpp: "MulIntControl::High" }
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u16", cpp: "ScalarType::U16" }
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrMad"
-#       emit_note: "MulInt"
+###############################################################################
+# mad
+###############################################################################
+- opcode: "mad"
+  doc: "PTX ISA §9.7.1.4"
+  cpp: "InstrMad"
+  variants:
+    - description: "mad integer"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: required
+          type: MulIntControl
+          values:
+            - { token: ".wide", cpp: "MulIntControl::Wide" }
+            - { token: ".low", cpp: "MulIntControl::Low" }
+            - { token: ".hi", cpp: "MulIntControl::High" }
+        sat:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".sat", cpp: "false" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "MadInt"
 
-#     - description: "mad.hi.sat.s32 (universal)"
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         mode:
-#           kind: fixed
-#           type: MulIntControl
-#           fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
-#         sat:
-#           kind: fixed
-#           type: bool
-#           fixed_value: { token: ".sat", cpp: "true" }
-#         type_:
-#           kind: fixed
-#           type: ScalarType
-#           fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrMad"
-#       emit_note: "MulInt"
+    - description: "mad.hi.sat.s32 (universal)"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: fixed
+          type: MulIntControl
+          fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
+        sat:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".sat", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "MadInt"
 
-# ###############################################################################
-# # mul24
-# ###############################################################################
-# - opcode: "mul24"
-#   doc: "PTX ISA §9.7.1.5"
-#   variants:
-#     - description: "Multiply two 24-bit integer values."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         mode:
-#           kind: required
-#           type: MulIntControl
-#           values:
-#             - { token: ".low", cpp: "MulIntControl::Low" }
-#             - { token: ".hi", cpp: "MulIntControl::High" }
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrMul24"
-#       emit_note: "MulInt"
+###############################################################################
+# mul24
+###############################################################################
+- opcode: "mul24"
+  doc: "PTX ISA §9.7.1.5"
+  cpp: "InstrMul24"
+  variants:
+    - description: "Multiply two 24-bit integer values."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: required
+          type: MulIntControl
+          values:
+            - { token: ".low", cpp: "MulIntControl::Low" }
+            - { token: ".hi", cpp: "MulIntControl::High" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "MulInt"
 
-# ###############################################################################
-# # mad24
-# ###############################################################################
-# - opcode: "mad24"
-#   doc: "PTX ISA §9.7.1.6"
-#   variants:
-#     - description: "Multiply two 24-bit integer values and add a third value."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         mode:
-#           kind: required
-#           type: MulIntControl
-#           values:
-#             - { token: ".low", cpp: "MulIntControl::Low" }
-#             - { token: ".hi", cpp: "MulIntControl::High" }
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrMad24"
-#       emit_note: "MulInt"
+###############################################################################
+# mad24
+###############################################################################
+- opcode: "mad24"
+  doc: "PTX ISA §9.7.1.6"
+  cpp: "InstrMad24"
+  variants:
+    - description: "Multiply two 24-bit integer values and add a third value."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: required
+          type: MulIntControl
+          values:
+            - { token: ".low", cpp: "MulIntControl::Low" }
+            - { token: ".hi", cpp: "MulIntControl::High" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "MadInt"
 
-#     - description: "mad24.hi.sat.s32 (universal)"
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         mode:
-#           kind: fixed
-#           type: MulIntControl
-#           fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
-#         sat:
-#           kind: fixed
-#           type: bool
-#           fixed_value: { token: ".sat", cpp: "true" }
-#         type_:
-#           kind: fixed
-#           type: ScalarType
-#           fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrMad24"
-#       emit_note: "MulInt"
+    - description: "mad24.hi.sat.s32 (universal)"
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        mode:
+          kind: fixed
+          type: MulIntControl
+          fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
+        sat:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".sat", cpp: "true" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      cpp_struct: "InstrMad24"
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "MadInt"
 
 # ###############################################################################
 # # sad

@@ -21,7 +21,24 @@ class ArgumentKind(Enum):
     Reg_Or_Imm = "reg_or_imm"
 
 
+class EmitKind(Enum):
+    SubVariant = "sub_variant"
+    SubStruct = "sub_struct"
+    Direct = "direct"
+
+
 # ── data struct ─────────────────────────────────────────────────────────────────────
+
+
+class EmitNote:
+
+    def __init__(self, kind: EmitKind, instance: str | None, emit_type: str | None):
+        self.kind = kind
+        self.instance = instance
+        self.emit_type = emit_type
+
+    def __repr__(self):
+        return f"EmitNote(kind={self.kind.value!r}, instance={self.instance!r}, emit_type={self.emit_type!r})"
 
 
 class ModifierValue:
@@ -42,7 +59,7 @@ class Modifier:
         values: list[ModifierValue],
         fixed_value: ModifierValue | None = None,
         # addtional arg from instruction yaml, used for code emitting
-        emit_note: str = "",
+        emit_note: EmitNote = EmitNote(EmitKind.Direct, None, None),
     ):
         self.name = name
         self.kind = kind
@@ -54,19 +71,25 @@ class Modifier:
     def __repr__(self):
         return f"Modifier({self.name!r}, kind={self.kind.value}, values={self.values}, emit_note={self.emit_note!r})"
 
+    # arg gen
+    def gen_formal_parameter_list(self):
+        """generate the argument list for the type check function"""
+        args_list = f"const {self.emit_note.emit_type}& d"
+        return args_list
+
+    def gen_actual_argument_list(self):
+        """generate the actual argument list to pass to the type check function"""
+        if self.emit_note.kind == EmitKind.Direct:
+            return "i"  # instruction struct self
+        elif self.emit_note.kind == EmitKind.SubVariant:
+            return f"std::get<{self.emit_note.emit_type}>(i.{self.emit_note.instance})"
+        else:
+            return f"i.{self.emit_note.instance}"
+
     def generate_code_for_type_check(self):
         is_req = self.kind == ModifierKind.Required
         is_option = self.kind == ModifierKind.Optional
         is_fixed = self.kind == ModifierKind.Fixed
-
-        # arg gen
-        def gen_args_list():
-            args_list = ""
-            if self.emit_note == "":
-                args_list = ""
-            else:
-                args_list = f"const {self.emit_note}& d"
-            return args_list
 
         def gen_check_fixed_value():
             if self.fixed_value is None:
@@ -97,7 +120,7 @@ class Modifier:
                 return gen_check_fixed_value()
 
         content = f"""
-        auto check_{self.name} = [&]({gen_args_list()}) {{
+        auto check_{self.name} = [&]({self.gen_formal_parameter_list()}) {{
             {gen_content_func()}
         }};
         """
@@ -105,29 +128,12 @@ class Modifier:
 
     @property
     def function_signature_for_type_check(self):
-        def gen_args_list():
-            args_list = ""
-            if self.emit_note == "":
-                args_list = ""
-            else:
-                args_list = f"std::get<{self.emit_note}>(i.data)"
-            return args_list
-
-        return f"check_{self.name}({gen_args_list()});"
+        return f"check_{self.name}({self.gen_actual_argument_list()});"
 
     def generate_code_for_match(self):
         is_req = self.kind == ModifierKind.Required
         is_option = self.kind == ModifierKind.Optional
         is_fixed = self.kind == ModifierKind.Fixed
-
-        # arg gen
-        def gen_args_list():
-            args_list = ""
-            if self.emit_note == "":
-                args_list = ""
-            else:
-                args_list = f"const {self.emit_note}& d"
-            return args_list
 
         def gen_check_fixed_value():
             if self.fixed_value is None:
@@ -154,7 +160,7 @@ class Modifier:
                 return gen_check_fixed_value()
 
         content = f"""
-        auto match_{self.name} = [&]({gen_args_list()}) {{
+        auto match_{self.name} = [&]({self.gen_formal_parameter_list()}) {{
             {gen_content_func()}
         }};
         """
@@ -162,24 +168,30 @@ class Modifier:
 
     @property
     def function_signature_for_match(self):
-        def gen_args_list():
-            args_list = ""
-            if self.emit_note == "":
-                args_list = ""
-            else:
-                args_list = f"std::get<{self.emit_note}>(i.data)"
-            return args_list
-
-        return f"match_{self.name}({gen_args_list()});"
+        return f"match_{self.name}({self.gen_actual_argument_list()});"
 
 
 class Argument:
     def __init__(self, name: str, kind: ArgumentKind):
         self.name = name
         self.kind = kind
+        self.type: str = ""
+        # type of the argument, used for type checking
+        self.emit_note: EmitNote = EmitNote(EmitKind.Direct, None, None)
 
     def __repr__(self):
         return f"Argument({self.name!r}, {self.kind.value})"
+
+    def gen_actual_argument_list(self) -> str:
+        if self.emit_note.kind == EmitKind.Direct:
+            return f"i.type_"
+        elif self.emit_note.kind == EmitKind.SubStruct:
+            return f"i.{self.emit_note.instance}.type_"
+        else:
+            return f"std::get<{self.emit_note.emit_type}>(i.{self.emit_note.instance}).type_"
+
+    def gen_code_for_type_check(self) -> str:
+        return f"check_operand(i.{self.name}, {self.gen_actual_argument_list()});"
 
 
 class VariantModel:
@@ -194,7 +206,7 @@ class VariantModel:
         self.modifiers: list[Modifier] = []
         self.arguments: list[Argument] = []
         self.cpp_struct_name: str = ""
-        self.emit_note: str = ""
+        self.emit_note: EmitNote = EmitNote(EmitKind.Direct, None, None)
         # for code gen
         self.variant_idx: int = 0
 
@@ -261,6 +273,7 @@ class VariantModel:
             bool flag = true;
             {"\n".join([f"flag &= {modifier.function_signature_for_match}" for modifier in self.modifiers])}
 
+            {"\n".join([f"{arg.gen_code_for_type_check()}" for arg in self.arguments])}
             return flag;
         }};
         """
@@ -273,6 +286,7 @@ class Instruction:
         self.opcode: str = opcode
         self.doc: str = ""
         self.variants: list[VariantModel] = []
+        self.cpp: str = ""
 
     def __repr__(self):
         return f"Instruction({self.opcode!r}, {len(self.variants)} variants)"
@@ -298,34 +312,17 @@ class Instruction:
         ]
 
         content = f"""
-bool TypeChecker::check(const Instr{self.op_name}<ResolvedOp> &i) {{
-    {variant_check_funcs}
-    {variant_match_funcs}
-
-    {"".join([f'if ({variant.function_signature_for_match}) return {variant.function_signature_for_type_check};' for variant in self.variants])}
-    
-    // if reach here, means no variant match the instruction with given modifiers, emit error
-    error("illegal modifier: no matching variant found for instruction {self.opcode} with given modifiers");
-    return false;
-}};
-
-bool TypeChecker::check(const Instr{self.op_name}<ParsedOp> &i) {{
-    {variant_check_funcs}
-    {variant_match_funcs}
-
-    {"".join([f'if ({variant.function_signature_for_match}) return {variant.function_signature_for_type_check};' for variant in self.variants])}
-
-    // if reach here, means no variant match the instruction with given modifiers, emit error
-    error("illegal modifier: no matching variant found for instruction {self.opcode} with given modifiers");
-    return false;
-}};
+        template <IdentLike Id>
+        bool check(const Instr{self.op_name}<ParsedOperand<Id>> &i) {{
+            {variant_check_funcs}
+            {variant_match_funcs}
+        
+            {"".join([f'if ({variant.function_signature_for_match}) return {variant.function_signature_for_type_check};' for variant in self.variants])}
+            
+            // if reach here, means no variant match the instruction with given modifiers, emit error
+            error("illegal modifier: no matching variant found for instruction {self.opcode} with given modifiers");
+            return false;
+        }};
         """
 
         return content
-
-    @property
-    def function_signature_for_type_check(self):
-        return f"""
-bool check(const Instr{self.op_name}<ResolvedOp> &i);
-bool check(const Instr{self.op_name}<ParsedOp> &i);
-        """

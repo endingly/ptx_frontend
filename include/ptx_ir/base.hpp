@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstring>
 #include <expected.hpp>
+#include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -48,7 +49,12 @@ enum class ScalarType : uint8_t {
 
 enum class ScalarKind { Bit, Unsigned, Signed, Float, Pred };
 
-std::string to_string(ScalarType t);
+template <typename Enum>
+  requires std::is_enum_v<Enum>
+std::string to_string(Enum e) noexcept {
+  return std::string{magic_enum::enum_name(e)};
+}
+
 ScalarKind scalar_kind(ScalarType t);
 uint8_t scalar_size_of(ScalarType t);
 
@@ -187,8 +193,8 @@ struct ParsedOperand {
       value;
 
   template <typename T>
-    requires utils::is_one_of<T, RegOffset, VecMemberIdx, RegOrImmediate<Id>,
-                              ImmediateValue, VecPack>
+    requires utils::is_one_of_v<T, RegOffset, VecMemberIdx, RegOrImmediate<Id>,
+                                ImmediateValue, VecPack>
   static ParsedOperand from_value(T v) {
     ParsedOperand p;
     if constexpr (std::is_same_v<T, VecPack>) {

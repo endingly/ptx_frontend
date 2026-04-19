@@ -1,5 +1,4 @@
 #include "ptx_ir/base.hpp"
-#include <magic_enum/magic_enum.hpp>
 
 namespace ptx_frontend {
 
@@ -83,12 +82,6 @@ uint8_t scalar_size_of(ScalarType t) {
       return 16;
   }
   return 0;
-}
-
-std::string to_string(ScalarType t) {
-  if (auto s = magic_enum::enum_name(t); !s.empty())
-    return std::string(s);
-  return "UnknownScalarType(" + std::to_string((uint8_t)t) + ")";
 }
 
 std::string to_string(bool v) {

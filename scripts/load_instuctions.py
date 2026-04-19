@@ -28,13 +28,20 @@ def _parse_modifier(name: str, mod_def: dict) -> Modifier:
     )
 
 
+def _parse_emit_note(raw: dict) -> EmitNote:
+    kind = EmitKind(raw["kind"])
+    instance: str | None = raw.get("instance")
+    emit_type: str | None = raw.get("emit_type")
+    return EmitNote(kind=kind, instance=instance, emit_type=emit_type)
+
+
 def _parse_variant(raw: dict) -> VariantModel:
     variant = VariantModel(description=raw.get("description", ""))
 
     constraints = raw.get("constraints", {})
     variant.min_ptx_version = float(constraints.get("min_ptx_version", 0))
     variant.min_sm_version = int(constraints.get("min_sm", 0))
-    variant.emit_note = raw.get("emit_note", "")
+    variant.emit_note = _parse_emit_note(raw.get("emit_note", {}))
 
     for mod_name, mod_def in raw.get("modifiers", {}).items():
         tmp_modifier = _parse_modifier(mod_name, mod_def)
@@ -42,11 +49,9 @@ def _parse_variant(raw: dict) -> VariantModel:
         variant.modifiers.append(tmp_modifier)
 
     for arg in raw.get("args", []):
-        variant.arguments.append(
-            Argument(name=arg["name"], kind=ArgumentKind(arg["kind"]))
-        )
-
-    variant.cpp_struct_name = raw.get("cpp_struct", "")
+        temp_arg = Argument(name=arg["name"], kind=ArgumentKind(arg["kind"]))
+        temp_arg.emit_note = variant.emit_note
+        variant.arguments.append(temp_arg)
 
     return variant
 
@@ -54,6 +59,7 @@ def _parse_variant(raw: dict) -> VariantModel:
 def _parse_instruction(raw: dict) -> Instruction:
     instr = Instruction(opcode=raw["opcode"])
     instr.doc = raw.get("doc", "")
+    instr.cpp = raw.get("cpp", "")
     for v in raw.get("variants", []):
         tmp_variant = _parse_variant(v)
         tmp_variant.variant_idx = len(instr.variants)

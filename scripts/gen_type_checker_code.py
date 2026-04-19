@@ -31,13 +31,6 @@ def generate_src_code_for_type_check(instructions: list[Instruction]):
     return content
 
 
-def generate_header_code_for_type_check(instructions: list[Instruction]):
-    content = "\n".join(
-        [instruction.function_signature_for_type_check for instruction in instructions]
-    )
-    return content
-
-
 if __name__ == "__main__":
     parser = add_parser()
     args = parser.parse_args()
@@ -47,15 +40,9 @@ if __name__ == "__main__":
 
     instructions = load_instructions(input_file)
     src_code = generate_src_code_for_type_check(instructions)
-    header_code = generate_header_code_for_type_check(instructions)
 
     src_file = output_dir / "type_checker.src.gen"
-    header_file = output_dir / "type_checker.h.gen"
     with open(src_file, "w") as f:
         f.write(src_code)
 
-    with open(header_file, "w") as f:
-        f.write(header_code)
-
     format_file_inplace(src_file.__str__())
-    format_file_inplace(header_file.__str__())

@@ -5,6 +5,7 @@
 #include <vector>
 #include "ptx_ir/instr.hpp"
 #include "symbol_resolver.hpp"
+#include "utils.hpp"
 
 namespace ptx_frontend {
 
@@ -42,11 +43,18 @@ class TypeChecker {
   void check_operand(const ParsedOp& op, ScalarType expected);
   void check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
 
+  template <typename T, std::size_t N>
+  static constexpr bool is_one_of(
+      const T& target,
+      const std::array<std::remove_const_t<T>, N>& arr) noexcept {
+    return ptx_frontend::utils::contains(arr, target);
+  }
+
  public:
   TypeChecker(const LegacySymbolTable& sym, const CompileTarget& target)
       : sym_(sym), target_(target) {}
 
-#include "type_checker.h.gen"
+#include "type_checker.src.gen"
 
   const std::vector<TypeError>& errors() const { return errors_; }
 };

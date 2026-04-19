@@ -248,3 +248,228 @@ TEST(TypeCheckerAdd, IllegalIntCombo_SatU16_Error) {
 //   EXPECT_EQ(errs.size(), 3u);
 //   EXPECT_TRUE(errs[0].message.find("undefined") != std::string::npos);
 // }
+
+// helpers for sub (mirror make_add)
+static InstrSub<ParsedOp> make_sub(ArithDetails data, std::string_view dst,
+                                   std::string_view src1,
+                                   std::string_view src2) {
+  return InstrSub<ParsedOp>{data, reg(dst), reg(src1), reg(src2)};
+}
+
+static std::vector<TypeError> check_sub(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrSub<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  auto flag = tc.check(instr);
+  return tc.errors();
+}
+
+// ── integer variants for sub ────────────────────────────────────────────────
+
+TEST(TypeCheckerSub, IntNoSat_U32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_sub(ArithInteger{ScalarType::U32, false}, "d", "a", "b");
+  EXPECT_TRUE(check_sub(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSub, IntNoSat_S16_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::S16}, {"a", ScalarType::S16}, {"b", ScalarType::S16}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_sub(ArithInteger{ScalarType::S16, false}, "d", "a", "b");
+  EXPECT_TRUE(check_sub(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSub, IntSatS32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::S32}, {"a", ScalarType::S32}, {"b", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_sub(ArithInteger{ScalarType::S32, true}, "d", "a", "b");
+  EXPECT_TRUE(check_sub(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSub, IntSatU32_RequiresSm120) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  // u32 not allowed with sat
+  CompileTarget target{90, 9.2f};
+  auto instr = make_sub(ArithInteger{ScalarType::U32, true}, "d", "a", "b");
+  auto errs = check_sub(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("illegal") != std::string::npos);
+}
+
+TEST(TypeCheckerSub, PackedOptionalSat_U8x4_RequiresSm120AndPtx92) {
+  auto sym = make_sym({{"d", ScalarType::U8x4},
+                       {"a", ScalarType::U8x4},
+                       {"b", ScalarType::U8x4}});
+  // correct target
+  CompileTarget ok{120, 9.2f};
+  EXPECT_TRUE(
+      check_sub(sym, ok,
+                make_sub(ArithInteger{ScalarType::U8x4, false}, "d", "a", "b"))
+          .empty());
+  // wrong sm
+  CompileTarget bad_sm{90, 9.2f};
+  auto errs =
+      check_sub(sym, bad_sm,
+                make_sub(ArithInteger{ScalarType::U8x4, false}, "d", "a", "b"));
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_120") != std::string::npos);
+}
+
+TEST(TypeCheckerSub, IllegalIntCombo_SatU16_Error) {
+  // sub.sat.u16 is not a valid PTX variant
+  auto sym = make_sym(
+      {{"d", ScalarType::U16}, {"a", ScalarType::U16}, {"b", ScalarType::U16}});
+  CompileTarget target{90, 9.2f};
+  auto instr = make_sub(ArithInteger{ScalarType::U16, true}, "d", "a", "b");
+  auto errs = check_sub(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("illegal") != std::string::npos);
+}
+
+// helpers for mul
+static InstrMul<ParsedOp> make_mul(MulDetails data, std::string_view dst,
+                                   std::string_view src1,
+                                   std::string_view src2) {
+  return InstrMul<ParsedOp>{data, reg(dst), reg(src1), reg(src2)};
+}
+
+static std::vector<TypeError> check_mul(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrMul<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  auto flag = tc.check(instr);
+  return tc.errors();
+}
+
+// ── integer variants for mul ────────────────────────────────────────────────
+
+TEST(TypeCheckerMul, IntLow_U32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  // MulInt { type_, mode }
+  auto instr =
+      make_mul(MulInt{ScalarType::U32, MulIntControl::Low}, "d", "a", "b");
+  EXPECT_TRUE(check_mul(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerMul, IntWide_U64_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U64}, {"a", ScalarType::U64}, {"b", ScalarType::U64}});
+  CompileTarget target{0, 1.0f};
+  auto instr =
+      make_mul(MulInt{ScalarType::U64, MulIntControl::Wide}, "d", "a", "b");
+  EXPECT_TRUE(check_mul(sym, target, instr).empty());
+}
+
+// helpers for mad (four-operand)
+static InstrMad<ParsedOp> make_mad(MadDetails data, std::string_view dst,
+                                   std::string_view src1, std::string_view src2,
+                                   std::string_view src3) {
+  return InstrMad<ParsedOp>{data, reg(dst), reg(src1), reg(src2), reg(src3)};
+}
+
+static std::vector<TypeError> check_mad(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrMad<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  auto flag = tc.check(instr);
+  return tc.errors();
+}
+
+// ── integer / float variants for mad ────────────────────────────────────────
+
+TEST(TypeCheckerMad, IntLow_U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_mad(MadInt{MulIntControl::Low, false, ScalarType::U32}, "d",
+                        "a", "b", "c");
+  EXPECT_TRUE(check_mad(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerMad, IntHiSat_S32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::S32},
+                       {"a", ScalarType::S32},
+                       {"b", ScalarType::S32},
+                       {"c", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_mad(MadInt{MulIntControl::High, true, ScalarType::S32}, "d",
+                        "a", "b", "c");
+  EXPECT_TRUE(check_mad(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerMad, OperandTypeMismatch_Error) {
+  // dst declared as F32 but instruction is .s32 → type mismatch
+  auto sym = make_sym({{"d", ScalarType::F32},
+                       {"a", ScalarType::S32},
+                       {"b", ScalarType::S32},
+                       {"c", ScalarType::S32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_mad(MadInt{MulIntControl::Low, false, ScalarType::S32}, "d",
+                        "a", "b", "c");
+  auto errs = check_mad(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// helpers for mad24 (uses same MadDetails / MadInt)
+static InstrMad24<ParsedOp> make_mad24(MadDetails data, std::string_view dst,
+                                       std::string_view src1,
+                                       std::string_view src2,
+                                       std::string_view src3) {
+  return InstrMad24<ParsedOp>{data, reg(dst), reg(src1), reg(src2), reg(src3)};
+}
+
+static std::vector<TypeError> check_mad24(const LegacySymbolTable& sym,
+                                          const CompileTarget& target,
+                                          const InstrMad24<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  auto flag = tc.check(instr);
+  return tc.errors();
+}
+
+// ── integer variants for mad24 ────────────────────────────────────────────
+
+TEST(TypeCheckerMad24, IntLo_U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_mad24(MadInt{MulIntControl::Low, false, ScalarType::U32},
+                          "d", "a", "b", "c");
+  EXPECT_TRUE(check_mad24(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerMad24, IntHiSat_S32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::S32},
+                       {"a", ScalarType::S32},
+                       {"b", ScalarType::S32},
+                       {"c", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_mad24(MadInt{MulIntControl::High, true, ScalarType::S32},
+                          "d", "a", "b", "c");
+  EXPECT_TRUE(check_mad24(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerMad24, IllegalType_Error) {
+  // mad24 expects 24-bit multiply types (typically s32/u32) — u16 should be illegal
+  auto sym = make_sym({{"d", ScalarType::U16},
+                       {"a", ScalarType::U16},
+                       {"b", ScalarType::U16},
+                       {"c", ScalarType::U16}});
+  CompileTarget target{90, 9.2f};
+  auto instr = make_mad24(MadInt{MulIntControl::Low, false, ScalarType::U16},
+                          "d", "a", "b", "c");
+  auto errs = check_mad24(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("illegal") != std::string::npos);
+}

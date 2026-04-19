@@ -220,6 +220,11 @@ struct InstrMul24 {
   Op dst, src1, src2;
 };
 template <OperandLike Op>
+struct InstrMad24 {
+  MadDetails data;
+  Op dst, src1, src2, src3;
+};
+template <OperandLike Op>
 struct InstrNanosleep {
   Op src;
 };
@@ -619,8 +624,8 @@ using Instruction = std::variant<
     InstrCpAsyncWaitGroup<Op>, InstrCpAsyncWaitAll,
     InstrCreatePolicyFractional<Op>, InstrCvt<Op>, InstrCvtPack<Op>,
     InstrCvta<Op>, InstrDiv<Op>, InstrDp4a<Op>, InstrEx2<Op>, InstrFma<Op>,
-    InstrLd<Op>, InstrLg2<Op>, InstrMad<Op>, InstrMax<Op>, InstrMembar,
-    InstrMin<Op>, InstrMov<Op>, InstrMul<Op>, InstrMul24<Op>,
+    InstrLd<Op>, InstrLg2<Op>, InstrMad<Op>, InstrMad24<Op>, InstrMax<Op>,
+    InstrMembar, InstrMin<Op>, InstrMov<Op>, InstrMul<Op>, InstrMul24<Op>,
     InstrNanosleep<Op>, InstrNeg<Op>, InstrNot<Op>, InstrOr<Op>, InstrPopc<Op>,
     InstrPrmt<Op>, InstrRcp<Op>, InstrRem<Op>, InstrRet, InstrRsqrt<Op>,
     InstrSelp<Op>, InstrSet<Op>, InstrSetBool<Op>, InstrSetp<Op>,

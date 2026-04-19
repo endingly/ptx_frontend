@@ -67,8 +67,8 @@ struct Mul24Details {
 
 // --- MadDetails ---
 struct MadInt {
-  MulIntControl control;
-  bool saturate;
+  MulIntControl mode;
+  bool sat;
   ScalarType type_;
 };
 using MadDetails = std::variant<MadInt, ArithFloat>;

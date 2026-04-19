@@ -357,8 +357,8 @@ TEST(Parser, MadLoS32) {
   auto instrs = parse_instrs("mad.lo.s32 %r3, %r0, %r1, %r2;");
   ASSERT_EQ(instrs.size(), 1u);
   auto& mi = std::get<MadInt>(as<InstrMad<ParsedOp>>(instrs, 0).data);
-  EXPECT_EQ(mi.control, MulIntControl::Low);
-  EXPECT_FALSE(mi.saturate);
+  EXPECT_EQ(mi.mode, MulIntControl::Low);
+  EXPECT_FALSE(mi.sat);
 }
 
 TEST(Parser, AddF32) {

@@ -431,153 +431,176 @@
         instance: "data"
         emit_type: "MadInt"
 
-# ###############################################################################
-# # sad
-# ###############################################################################
-# - opcode: "sad"
-#   doc: "PTX ISA §9.7.1.7"
-#   variants:
-#     - description: "Sum of absolute differences."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         data:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#             - { token: ".u16", cpp: "ScalarType::U16" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrSad"
-#       emit_note: null # not variant-specific, should be emitted on InstrSad itself
+###############################################################################
+# sad
+###############################################################################
+- opcode: "sad"
+  doc: "PTX ISA §9.7.1.7"
+  cpp: "InstrSad"
+  variants:
+    - description: "Sum of absolute differences."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        data:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: direct
+        instance: null
+        emit_type: null
 
-# ###############################################################################
-# # div
-# ###############################################################################
-# - opcode: "div"
-#   doc: "PTX ISA §9.7.1.8"
-#   variants:
-#     - description: "Divide one value by another."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#             - { token: ".u16", cpp: "ScalarType::U16" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrDiv"
-#       emit_note: "DivInt"
+###############################################################################
+# div
+###############################################################################
+- opcode: "div"
+  doc: "PTX ISA §9.7.1.8"
+  cpp: "InstrDiv"
+  variants:
+    - description: "Divide one value by another."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: sub_variant
+        instance: "data"
+        emit_type: "DivInt"
 
-# ###############################################################################
-# # rem
-# ###############################################################################
-# - opcode: "rem"
-#   doc: "PTX ISA §9.7.1.9"
-#   variants:
-#     - description: "The remainder of integer division."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         data:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#             - { token: ".u16", cpp: "ScalarType::U16" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrRem"
-#       emit_note: null
+###############################################################################
+# rem
+###############################################################################
+- opcode: "rem"
+  doc: "PTX ISA §9.7.1.9"
+  cpp: "InstrRem"
+  variants:
+    - description: "The remainder of integer division."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        data:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".u16", cpp: "ScalarType::U16" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
-# ###############################################################################
-# # abs
-# ###############################################################################
-# - opcode: "abs"
-#   doc: "PTX ISA §9.7.1.10"
-#   variants:
-#     - description: "Absolute value."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src", kind: reg_or_imm }
-#       cpp_struct: "InstrAbs"
-#       emit_note: null # TODO: design for emitting without variant/slef
+###############################################################################
+# abs
+###############################################################################
+- opcode: "abs"
+  doc: "PTX ISA §9.7.1.10"
+  cpp: "InstrAbs"
+  variants:
+    - description: "Absolute value."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      emit_note:
+        kind: sub_struct
+        instance: "data"
+        emit_type: "TypeFtz"
 
-# ###############################################################################
-# # neg
-# ###############################################################################
-# - opcode: "neg"
-#   doc: "PTX ISA §9.7.1.11"
-#   variants:
-#     - description: "Arithmetic negate."
-#       constraints:
-#         min_ptx_version: 1
-#         min_sm: 0
-#       modifiers:
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#             - { token: ".s16", cpp: "ScalarType::S16" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src", kind: reg_or_imm }
-#       cpp_struct: "InstrNeg"
-#       emit_note: null # TODO: design for emitting without variant/slef
+###############################################################################
+# neg
+###############################################################################
+- opcode: "neg"
+  doc: "PTX ISA §9.7.1.11"
+  cpp: "InstrNeg"
+  variants:
+    - description: "Arithmetic negate."
+      constraints:
+        min_ptx_version: 1
+        min_sm: 0
+      modifiers:
+        ftz:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".ftz", cpp: "false" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+            - { token: ".s16", cpp: "ScalarType::S16" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      emit_note:
+        kind: sub_struct
+        instance: "data"
+        emit_type: "TypeFtz"
 
-#     - description: "neg.s8x4 (sm_120f family)"
-#       constraints:
-#         min_ptx_version: 9.2
-#         min_sm: 120
-#       modifiers:
-#         type_:
-#           kind: fixed
-#           type: ScalarType
-#           fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src", kind: reg_or_imm }
-#       cpp_struct: "InstrNeg"
-#       emit_note: null # TODO: design for emitting without variant/slef
+    - description: "neg.s8x4 (sm_120f family)"
+      constraints:
+        min_ptx_version: 9.2
+        min_sm: 120
+      modifiers:
+        ftz:
+          kind: fixed
+          type: bool
+          fixed_value: { token: ".ftz", cpp: "false" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      emit_note:
+        kind: sub_struct
+        instance: "data"
+        emit_type: "TypeFtz"
 
 # ###############################################################################
 # # min

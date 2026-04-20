@@ -1026,7 +1026,7 @@ struct Parser {
     bool ftz = try_parse_ftz();
     auto stype = TRY(parse_scalar_type());
     TypeFtz tf;
-    tf.flush_to_zero = ftz ? std::optional<bool>{true} : std::nullopt;
+    tf.ftz = ftz;
     tf.type_ = stype;
     return tf;
   }

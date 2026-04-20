@@ -393,7 +393,7 @@ TEST(PtxVisitDispatch, VisitInstrEx2) {
   using namespace ptx_frontend;
 
   InstrEx2<ParsedOp> instr{
-      .data = TypeFtz{std::nullopt, ScalarType::F32},
+      .data = TypeFtz{false, ScalarType::F32},
       .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("dst")),
       .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("src")),
   };
@@ -421,7 +421,7 @@ TEST(PtxVisitDispatch, MapInstrEx2) {
   using namespace ptx_frontend;
 
   InstrEx2<ParsedOp> instr{
-      .data = TypeFtz{std::nullopt, ScalarType::F32},
+      .data = TypeFtz{false, ScalarType::F32},
       .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d")),
       .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("s")),
   };
@@ -1259,7 +1259,7 @@ TEST(PtxVisitDispatch, MapInstrRet) {
 TEST(PtxVisitDispatch, VisitInstrRsqrt) {
   using namespace ptx_frontend;
   InstrRsqrt<ParsedOp> instr{
-      .data = TypeFtz{.flush_to_zero = false, .type_ = ScalarType::F32},
+      .data = TypeFtz{.ftz = false, .type_ = ScalarType::F32},
       .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d")),
       .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("a")),
   };
@@ -1281,7 +1281,7 @@ TEST(PtxVisitDispatch, VisitInstrRsqrt) {
 TEST(PtxVisitDispatch, MapInstrRsqrt) {
   using namespace ptx_frontend;
   InstrRsqrt<ParsedOp> instr{
-      .data = TypeFtz{.flush_to_zero = false, .type_ = ScalarType::F32},
+      .data = TypeFtz{.ftz = false, .type_ = ScalarType::F32},
       .dst = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("d")),
       .src = ParsedOp::from_value(RegOrImmediate<Ident>::Reg("a")),
   };

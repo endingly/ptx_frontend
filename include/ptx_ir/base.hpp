@@ -406,5 +406,6 @@ inline bool has_flag(LinkingDirective d, LinkingDirective f) {
 
 // convert to string functions for error messages
 std::string to_string(bool v);
+std::string to_string(std::optional<bool> t);
 
 };  // namespace ptx_frontend

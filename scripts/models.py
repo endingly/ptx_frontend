@@ -74,13 +74,15 @@ class Modifier:
     # arg gen
     def gen_formal_parameter_list(self):
         """generate the argument list for the type check function"""
-        args_list = f"const {self.emit_note.emit_type}& d"
-        return args_list
+        if self.emit_note.kind == EmitKind.Direct:
+            return f"const {self.type_name}& d"
+        else:
+            return f"const {self.emit_note.emit_type}& d"
 
     def gen_actual_argument_list(self):
         """generate the actual argument list to pass to the type check function"""
         if self.emit_note.kind == EmitKind.Direct:
-            return "i"  # instruction struct self
+            return f"i.{self.name}"  # instruction struct self
         elif self.emit_note.kind == EmitKind.SubVariant:
             return f"std::get<{self.emit_note.emit_type}>(i.{self.emit_note.instance})"
         else:
@@ -106,11 +108,14 @@ class Modifier:
 
         def gen_content_func():
             if is_req:
+                output_name = (
+                    f"d.{self.name}" if self.emit_note.kind != EmitKind.Direct else "d"
+                )
                 return f"""
                 static constexpr std::array container_cpp_code = {{ { ",".join([value.cpp_code for value in self.values])} }};
-                bool check_r = is_one_of(d.{self.name}, container_cpp_code); // d from instruction
+                bool check_r = is_one_of({output_name}, container_cpp_code); // d from instruction
                 if (!check_r) {{
-                    error("Modifier {self.name} has invalid value: " + to_string(d.{self.name}));
+                    error("Modifier {self.name} has invalid value: " + to_string({output_name}));
                 }}
                 return check_r;
                 """
@@ -149,9 +154,12 @@ class Modifier:
 
         def gen_content_func():
             if is_req:
+                output_name = (
+                    f"d.{self.name}" if self.emit_note.kind != EmitKind.Direct else "d"
+                )
                 return f"""
                 static constexpr std::array container_cpp_code = {{ { ",".join([value.cpp_code for value in self.values])} }};
-                bool check_r = is_one_of(d.{self.name}, container_cpp_code); // d from instruction
+                bool check_r = is_one_of({output_name}, container_cpp_code); // d from instruction
                 return check_r;
                 """
             elif is_option:
@@ -177,18 +185,36 @@ class Argument:
         self.kind = kind
         self.type: str = ""
         # type of the argument, used for type checking
-        self.emit_note: EmitNote = EmitNote(EmitKind.Direct, None, None)
+        self.parent_variant: VariantModel | None = None
 
     def __repr__(self):
         return f"Argument({self.name!r}, {self.kind.value})"
 
     def gen_actual_argument_list(self) -> str:
-        if self.emit_note.kind == EmitKind.Direct:
-            return f"i.type_"
-        elif self.emit_note.kind == EmitKind.SubStruct:
-            return f"i.{self.emit_note.instance}.type_"
+
+        def get_actual_var_name() -> str:
+            """we should get modifier value to gen actual argument"""
+            target_modifier_type_name = "ScalarType"  # currently we only support type check on scalar type, so the target modifier type is fixed to "ScalarType"
+            if self.parent_variant is None:
+                raise ValueError(
+                    "Argument must have a parent variant to gen actual argument list"
+                )
+            for modifier in self.parent_variant.modifiers:
+                if modifier.type_name == target_modifier_type_name:
+                    return modifier.name
+
+            return "type_"  # default name for type modifier
+
+        if self.parent_variant is None:
+            raise ValueError(
+                "Argument must have a parent variant to gen actual argument list"
+            )
+        if self.parent_variant.emit_note.kind == EmitKind.Direct:
+            return f"i.{get_actual_var_name()}"
+        elif self.parent_variant.emit_note.kind == EmitKind.SubStruct:
+            return f"i.{self.parent_variant.emit_note.instance}.{get_actual_var_name()}"
         else:
-            return f"std::get<{self.emit_note.emit_type}>(i.{self.emit_note.instance}).type_"
+            return f"std::get<{self.parent_variant.emit_note.emit_type}>(i.{self.parent_variant.emit_note.instance}).{get_actual_var_name()}"
 
     def gen_code_for_type_check(self) -> str:
         return f"check_operand(i.{self.name}, {self.gen_actual_argument_list()});"
@@ -231,8 +257,6 @@ class VariantModel:
         check_modifiers_function = "\n".join(
             [modifier.generate_code_for_type_check() for modifier in self.modifiers]
         )
-
-        # TODO: gen check arguments after resolving simbolic register and immediate value
 
         # with function idx and function content
         content = f"""

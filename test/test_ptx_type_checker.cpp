@@ -473,3 +473,183 @@ TEST(TypeCheckerMad24, IllegalType_Error) {
   ASSERT_EQ(errs.size(), 1u);
   EXPECT_TRUE(errs[0].message.find("illegal") != std::string::npos);
 }
+
+// helpers for sad (4-operand)
+static InstrSad<ParsedOp> make_sad(ScalarType data, std::string_view dst,
+                                   std::string_view src1, std::string_view src2,
+                                   std::string_view src3) {
+  return InstrSad<ParsedOp>{data, reg(dst), reg(src1), reg(src2), reg(src3)};
+}
+static std::vector<TypeError> check_sad(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrSad<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+TEST(TypeCheckerSad, U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_sad(ScalarType::U32, "d", "a", "b", "c");
+  EXPECT_TRUE(check_sad(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSad, S16_Ok) {
+  auto sym = make_sym({{"d", ScalarType::S16},
+                       {"a", ScalarType::S16},
+                       {"b", ScalarType::S16},
+                       {"c", ScalarType::S16}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_sad(ScalarType::S16, "d", "a", "b", "c");
+  EXPECT_TRUE(check_sad(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSad, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_sad(ScalarType::U32, "d", "a", "b", "c");
+  auto errs = check_sad(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// helpers for div
+static InstrDiv<ParsedOp> make_div(DivDetails data, std::string_view dst,
+                                   std::string_view src1,
+                                   std::string_view src2) {
+  return InstrDiv<ParsedOp>{data, reg(dst), reg(src1), reg(src2)};
+}
+static std::vector<TypeError> check_div(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrDiv<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+TEST(TypeCheckerDiv, IntU32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr =
+      make_div(DivInt{DivSign::Unsigned, ScalarType::U32}, "d", "a", "b");
+  EXPECT_TRUE(check_div(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerDiv, IntS16_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::S16}, {"a", ScalarType::S16}, {"b", ScalarType::S16}});
+  CompileTarget target{0, 1.0f};
+  auto instr =
+      make_div(DivInt{DivSign::Signed, ScalarType::S16}, "d", "a", "b");
+  EXPECT_TRUE(check_div(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerDiv, OperandTypeMismatch_Error) {
+  auto sym = make_sym(
+      {{"d", ScalarType::F32}, {"a", ScalarType::S32}, {"b", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr =
+      make_div(DivInt{DivSign::Signed, ScalarType::S32}, "d", "a", "b");
+  auto errs = check_div(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// helpers for rem
+static InstrRem<ParsedOp> make_rem(ScalarType data, std::string_view dst,
+                                   std::string_view src1,
+                                   std::string_view src2) {
+  return InstrRem<ParsedOp>{data, reg(dst), reg(src1), reg(src2)};
+}
+static std::vector<TypeError> check_rem(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrRem<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+TEST(TypeCheckerRem, U32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_rem(ScalarType::U32, "d", "a", "b");
+  EXPECT_TRUE(check_rem(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerRem, IllegalType_Error) {
+  auto sym = make_sym(
+      {{"d", ScalarType::F32}, {"a", ScalarType::F32}, {"b", ScalarType::F32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_rem(ScalarType::U32, "d", "a", "b");
+  auto errs = check_rem(sym, target, instr);
+  ASSERT_EQ(errs.size(), 3u);
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// helpers for abs (TypeFtz)
+static InstrAbs<ParsedOp> make_abs(TypeFtz data, std::string_view dst,
+                                   std::string_view src) {
+  return InstrAbs<ParsedOp>{data, reg(dst), reg(src)};
+}
+static std::vector<TypeError> check_abs(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrAbs<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+TEST(TypeCheckerAbs, S32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::S32}, {"a", ScalarType::S32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_abs(TypeFtz{false, ScalarType::S32}, "d", "a");
+  EXPECT_TRUE(check_abs(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerAbs, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32}, {"a", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_abs(TypeFtz{false, ScalarType::S32}, "d", "a");
+  auto errs = check_abs(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// helpers for neg (TypeFtz)
+static InstrNeg<ParsedOp> make_neg(TypeFtz data, std::string_view dst,
+                                   std::string_view src) {
+  return InstrNeg<ParsedOp>{data, reg(dst), reg(src)};
+}
+static std::vector<TypeError> check_neg(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrNeg<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+TEST(TypeCheckerNeg, S32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::S32}, {"a", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_neg(TypeFtz{false, ScalarType::S32}, "d", "a");
+  auto errs = check_neg(sym, target, instr);
+  EXPECT_TRUE(errs.empty());
+}
+
+TEST(TypeCheckerNeg, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32}, {"a", ScalarType::S32}});
+  CompileTarget target{0, 1.0f};
+  auto instr = make_neg(TypeFtz{false, ScalarType::S32}, "d", "a");
+  auto errs = check_neg(sym, target, instr);
+  ASSERT_EQ(errs.size(), 1u);
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}

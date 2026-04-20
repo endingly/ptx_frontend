@@ -50,7 +50,7 @@ def _parse_variant(raw: dict) -> VariantModel:
 
     for arg in raw.get("args", []):
         temp_arg = Argument(name=arg["name"], kind=ArgumentKind(arg["kind"]))
-        temp_arg.emit_note = variant.emit_note
+        temp_arg.parent_variant = variant
         variant.arguments.append(temp_arg)
 
     return variant

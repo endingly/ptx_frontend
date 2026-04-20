@@ -88,4 +88,10 @@ std::string to_string(bool v) {
   return v ? "true" : "false";
 }
 
+std::string to_string(std::optional<bool> t) {
+  if (!t.has_value())
+    return "nullopt";
+  return t.value() ? "true" : "false";
+}
+
 };  // namespace ptx_frontend

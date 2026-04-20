@@ -39,7 +39,7 @@ using ArithDetails = std::variant<ArithInteger, ArithFloat>;
 
 // --- TypeFtz (Abs, Neg, Rsqrt, Ex2) ---
 struct TypeFtz {
-  std::optional<bool> flush_to_zero;
+  bool ftz;
   ScalarType type_;
 };
 

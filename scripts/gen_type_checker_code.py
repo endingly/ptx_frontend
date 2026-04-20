@@ -1,4 +1,5 @@
 from load_instuctions import load_instructions, Path, Instruction
+from code_gen import InstructionCodeGen
 from argparse import ArgumentParser
 from utils import format_file_inplace
 
@@ -26,7 +27,10 @@ def add_parser():
 
 def generate_src_code_for_type_check(instructions: list[Instruction]):
     content = "\n".join(
-        [instruction.generate_code_for_type_check() for instruction in instructions]
+        [
+            InstructionCodeGen(instruction).generate_code_for_type_check()
+            for instruction in instructions
+        ]
     )
     return content
 

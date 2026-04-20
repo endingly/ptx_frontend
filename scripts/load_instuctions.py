@@ -45,7 +45,7 @@ def _parse_variant(raw: dict) -> VariantModel:
 
     for mod_name, mod_def in raw.get("modifiers", {}).items():
         tmp_modifier = _parse_modifier(mod_name, mod_def)
-        tmp_modifier.emit_note = variant.emit_note
+        tmp_modifier.parent_variant = variant
         variant.modifiers.append(tmp_modifier)
 
     for arg in raw.get("args", []):
@@ -62,7 +62,6 @@ def _parse_instruction(raw: dict) -> Instruction:
     instr.cpp = raw.get("cpp", "")
     for v in raw.get("variants", []):
         tmp_variant = _parse_variant(v)
-        tmp_variant.variant_idx = len(instr.variants)
         instr.variants.append(tmp_variant)
     return instr
 

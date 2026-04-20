@@ -1,5 +1,5 @@
 from pathlib import Path
-from models import *
+from code_gen.models import *
 import yaml
 
 # ── parse functional ───────────────────────────────────────────────────────────────────

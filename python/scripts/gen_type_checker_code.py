@@ -1,7 +1,12 @@
-from load_instuctions import load_instructions, Path, Instruction
-from code_gen import InstructionCodeGen
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from code_gen.load_instuctions import load_instructions, Instruction
+from code_gen.code_gen import InstructionCodeGen
 from argparse import ArgumentParser
-from utils import format_file_inplace
+from base.utils import format_file_inplace
 
 
 def add_parser():

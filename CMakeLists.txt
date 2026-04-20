@@ -26,10 +26,10 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(from_yaml ${CMAKE_CURRENT_SOURCE_DIR}/instructions/integer_arith.yaml)
 add_custom_command(
     OUTPUT ${PTX_GEN_DIR}/type_checker.src.gen 
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_type_checker_code.py
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py
     --input ${from_yaml}
     --output ${PTX_GEN_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_type_checker_code.py ${from_yaml}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py ${from_yaml}
     COMMENT "Generating type checker code from ${from_yaml}"
 )
 add_custom_target(

@@ -1,4 +1,4 @@
-from models import *
+from code_gen.models import *
 
 
 class ArgumentCodeGen:

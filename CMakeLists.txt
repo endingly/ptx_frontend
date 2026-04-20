@@ -42,9 +42,13 @@ file(GLOB_RECURSE ptx_frontend_srcs src/*.cpp)
 add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS})
 target_include_directories(
     ptx_frontend
-    PUBLIC include ${PTX_GEN_DIR} dependencies
+    PUBLIC include ${PTX_GEN_DIR}
 )
 target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
+find_package(fmt CONFIG REQUIRED)
+find_package(magic_enum CONFIG REQUIRED)
+target_link_libraries(ptx_frontend PUBLIC fmt::fmt magic_enum::magic_enum)
+
 add_dependencies(ptx_frontend gen_type_checker_code)
 
 # # target ptx_frontend_test

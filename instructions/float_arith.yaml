@@ -1,5 +1,54 @@
 # PTX ISA 9.2 — Floating-Point Arithmetic Instructions
 
+# ###############################################################################
+# # abs
+# ###############################################################################
+# - opcode: "abs"
+#   doc: "PTX ISA §9.7.3.9"
+#   cpp: "InstrAbs"
+#   variants:
+#     - description: "abs{.ftz}.f32"
+#       constraints:
+#         min_ptx_version: 1
+#         min_sm: 0
+#       modifiers:
+#         ftz:
+#           kind: optional
+#           type: bool
+#           values:
+#             - { token: ".ftz", cpp: "true" }
+#         type_:
+#           kind: required
+#           type: ScalarType
+#           values:
+#             - { token: ".s32", cpp: "ScalarType::S32" }
+#             - { token: ".s64", cpp: "ScalarType::S64" }
+#             - { token: ".s16", cpp: "ScalarType::S16" }
+#       args:
+#         - { name: "dst", kind: reg }
+#         - { name: "src", kind: reg_or_imm }
+#       emit_note:
+#         kind: sub_struct
+#         instance: "data"
+#         emit_type: "TypeFtz"
+
+#     - description: "abs.f64"
+#       constraints:
+#         min_ptx_version: 1
+#         min_sm: 0
+#       modifiers:
+#         type_:
+#           kind: fixed
+#           type: ScalarType
+#           fixed_value: { token: ".f64", cpp: "ScalarType::F64" }
+#       args:
+#         - { name: "dst", kind: reg }
+#         - { name: "src", kind: reg_or_imm }
+#       emit_note:
+#         kind: sub_struct
+#         instance: "data"
+#         emit_type: "TypeFtz"
+
 ###############################################################################
 # fma
 ###############################################################################

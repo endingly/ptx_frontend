@@ -1,6 +1,7 @@
 from pathlib import Path
 from code_gen.models import *
 import yaml
+from code_gen.merge_variant import merge_variants
 
 # ── parse functional ───────────────────────────────────────────────────────────────────
 
@@ -62,10 +63,16 @@ def _parse_instruction(raw: dict) -> Instruction:
     instr.cpp = raw.get("cpp", "")
     for v in raw.get("variants", []):
         tmp_variant = _parse_variant(v)
+        tmp_variant.parent_instruction = instr
         instr.variants.append(tmp_variant)
     return instr
 
 
 def load_instructions(yaml_path: Path) -> list[Instruction]:
     docs = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    return [_parse_instruction(item) for item in docs]
+    temp_r = [_parse_instruction(item) for item in docs]
+    merged_instructions = merge_variants(temp_r)
+    for instr in merged_instructions:
+        for variant in instr.variants:
+            variant.parent_instruction = instr
+    return merged_instructions

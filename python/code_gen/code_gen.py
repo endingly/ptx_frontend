@@ -206,7 +206,6 @@ class VariantCodeGen:
 
             bool flag = check_target_version();
             {"\n".join([f"flag &= {ModifierCodeGen(modifier).function_signature_for_type_check}" for modifier in self.variant.modifiers])}
-
             return flag;
         }};
         """

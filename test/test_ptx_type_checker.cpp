@@ -653,3 +653,199 @@ TEST(TypeCheckerNeg, OperandTypeMismatch_Error) {
   ASSERT_EQ(errs.size(), 1u);
   EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
 }
+
+// helpers for min/max
+static InstrMin<ParsedOp> make_min(MinMaxDetails data, std::string_view dst,
+                                   std::string_view src1,
+                                   std::string_view src2) {
+  return InstrMin<ParsedOp>{data, reg(dst), reg(src1), reg(src2)};
+}
+static std::vector<TypeError> check_min(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrMin<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrMax<ParsedOp> make_max(MinMaxDetails data, std::string_view dst,
+                                   std::string_view src1,
+                                   std::string_view src2) {
+  return InstrMax<ParsedOp>{data, reg(dst), reg(src1), reg(src2)};
+}
+static std::vector<TypeError> check_max(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrMax<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+// ── min tests ───────────────────────────────────────────────────────────────
+
+TEST(TypeCheckerMin, Int_U32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  MinMaxInt mi{MinMaxSign::Unsigned, ScalarType::U32, false};
+  EXPECT_TRUE(check_min(sym, target, make_min(mi, "d", "a", "b")).empty());
+}
+
+TEST(TypeCheckerMin, Simd_U16x2_RequiresSm90) {
+  auto sym = make_sym({{"d", ScalarType::U16x2},
+                       {"a", ScalarType::U16x2},
+                       {"b", ScalarType::U16x2}});
+  CompileTarget target{80, 8.0f};  // sm < 90
+  MinMaxInt mi{MinMaxSign::Unsigned, ScalarType::U16x2, false};
+  auto errs = check_min(sym, target, make_min(mi, "d", "a", "b"));
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_90") != std::string::npos);
+}
+
+TEST(TypeCheckerMin, Packed_U8x4_RequiresSm120AndPtx92) {
+  auto sym = make_sym({{"d", ScalarType::U8x4},
+                       {"a", ScalarType::U8x4},
+                       {"b", ScalarType::U8x4}});
+  CompileTarget ok{120, 9.2f};
+  MinMaxInt mi{MinMaxSign::Unsigned, ScalarType::U8x4, false};
+  EXPECT_TRUE(check_min(sym, ok, make_min(mi, "d", "a", "b")).empty());
+
+  CompileTarget bad_sm{90, 9.2f};
+  auto errs = check_min(sym, bad_sm, make_min(mi, "d", "a", "b"));
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_120") != std::string::npos);
+
+  CompileTarget bad_ptx{120, 8.0f};
+  auto errs2 = check_min(sym, bad_ptx, make_min(mi, "d", "a", "b"));
+  EXPECT_FALSE(errs2.empty());
+  EXPECT_TRUE(errs2[0].message.find("PTX") != std::string::npos);
+}
+
+TEST(TypeCheckerMin, Relu_S32_Ok_And_RequiresSm90) {
+  auto sym = make_sym(
+      {{"d", ScalarType::S32}, {"a", ScalarType::S32}, {"b", ScalarType::S32}});
+  // OK on sm_90
+  CompileTarget ok{90, 8.0f};
+  MinMaxInt mi_rel{MinMaxSign::Signed, ScalarType::S32, true};
+  EXPECT_TRUE(check_min(sym, ok, make_min(mi_rel, "d", "a", "b")).empty());
+
+  // bad on lower sm
+  CompileTarget bad{80, 8.0f};
+  auto errs = check_min(sym, bad, make_min(mi_rel, "d", "a", "b"));
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_90") != std::string::npos);
+}
+
+// ── max tests (mirror of min) ──────────────────────────────────────────────
+
+TEST(TypeCheckerMax, Int_U32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  MinMaxInt mi{MinMaxSign::Unsigned, ScalarType::U32, false};
+  EXPECT_TRUE(check_max(sym, target, make_max(mi, "d", "a", "b")).empty());
+}
+
+TEST(TypeCheckerMax, Simd_U16x2_RequiresSm90) {
+  auto sym = make_sym({{"d", ScalarType::U16x2},
+                       {"a", ScalarType::U16x2},
+                       {"b", ScalarType::U16x2}});
+  CompileTarget target{80, 8.0f};  // sm < 90
+  MinMaxInt mi{MinMaxSign::Unsigned, ScalarType::U16x2, false};
+  auto errs = check_max(sym, target, make_max(mi, "d", "a", "b"));
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_90") != std::string::npos);
+}
+
+TEST(TypeCheckerMax, Relu_S32_Ok_And_RequiresSm90) {
+  auto sym = make_sym(
+      {{"d", ScalarType::S32}, {"a", ScalarType::S32}, {"b", ScalarType::S32}});
+  CompileTarget ok{90, 8.0f};
+  MinMaxInt mi_rel{MinMaxSign::Signed, ScalarType::S32, true};
+  EXPECT_TRUE(check_max(sym, ok, make_max(mi_rel, "d", "a", "b")).empty());
+
+  CompileTarget bad{80, 8.0f};
+  auto errs = check_max(sym, bad, make_max(mi_rel, "d", "a", "b"));
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_90") != std::string::npos);
+}
+
+// helpers for popc / clz
+static InstrPopc<ParsedOp> make_popc(ScalarType data, std::string_view dst,
+                                     std::string_view src) {
+  return InstrPopc<ParsedOp>{data, reg(dst), reg(src)};
+}
+static std::vector<TypeError> check_popc(const LegacySymbolTable& sym,
+                                         const CompileTarget& target,
+                                         const InstrPopc<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrClz<ParsedOp> make_clz(ScalarType data, std::string_view dst,
+                                   std::string_view src) {
+  return InstrClz<ParsedOp>{data, reg(dst), reg(src)};
+}
+static std::vector<TypeError> check_clz(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrClz<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+// ── popc tests ───────────────────────────────────────────────────────────────
+
+TEST(TypeCheckerPopc, B32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::B32}, {"a", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};  // sm >= 20, ptx >= 2.0
+  auto instr = make_popc(ScalarType::B32, "d", "a");
+  EXPECT_TRUE(check_popc(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerPopc, RequiresSm20) {
+  auto sym = make_sym({{"d", ScalarType::B32}, {"a", ScalarType::B32}});
+  CompileTarget target{10, 2.0f};  // sm < 20
+  auto instr = make_popc(ScalarType::B32, "d", "a");
+  auto errs = check_popc(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_20") != std::string::npos);
+}
+
+TEST(TypeCheckerPopc, DstTypeMismatch_Error) {
+  // dst declared wrong type
+  auto sym = make_sym({{"d", ScalarType::U32}, {"a", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_popc(ScalarType::B32, "d", "a");
+  auto errs = check_popc(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// ── clz tests ────────────────────────────────────────────────────────────────
+
+TEST(TypeCheckerClz, B32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::B32}, {"a", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_clz(ScalarType::B32, "d", "a");
+  EXPECT_TRUE(check_clz(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerClz, RequiresSm20) {
+  auto sym = make_sym({{"d", ScalarType::B32}, {"a", ScalarType::B32}});
+  CompileTarget target{10, 2.0f};  // sm < 20
+  auto instr = make_clz(ScalarType::B32, "d", "a");
+  auto errs = check_clz(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_20") != std::string::npos);
+}
+
+TEST(TypeCheckerClz, DstTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::U32}, {"a", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_clz(ScalarType::B32, "d", "a");
+  auto errs = check_clz(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}

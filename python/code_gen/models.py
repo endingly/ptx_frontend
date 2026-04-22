@@ -85,6 +85,15 @@ class Argument:
     def __repr__(self):
         return f"Argument({self.name!r}, {self.kind.value})"
 
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Argument):
+            return False
+        flag: bool = True
+        flag &= self.name == value.name
+        flag &= self.kind == value.kind
+        flag &= self.type == value.type
+        return flag
+
 
 class VariantModel:
     def __init__(self, description: str):

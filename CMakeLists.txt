@@ -6,6 +6,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
+option(CCACHE_ENABLE "Use ccache to speed up recompilation" ON)
+
+if(CCACHE_ENABLE)
+    find_program(CCACHE_FOUND ccache)
+    message(STATUS "ccache found: ${CCACHE_FOUND}")
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+endif(CCACHE_ENABLE)
+
 # Flex target
 include(FindFLEX)
 set(PTX_LEXER_IN ${CMAKE_CURRENT_SOURCE_DIR}/src/ptx_lexer.l)

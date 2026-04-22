@@ -968,3 +968,286 @@ TEST(TypeCheckerFns, UndefinedRegisters_Error) {
   auto errs = check_fns(sym, target, instr);
   EXPECT_EQ(errs.size(), 4u);
 }
+
+// helpers for brev / bfe / bfi
+static InstrBrev<ParsedOp> make_brev(ScalarType data, std::string_view dst,
+                                     std::string_view src) {
+  return InstrBrev<ParsedOp>{data, reg(dst), reg(src)};
+}
+static std::vector<TypeError> check_brev(const LegacySymbolTable& sym,
+                                         const CompileTarget& target,
+                                         const InstrBrev<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrBfe<ParsedOp> make_bfe(ScalarType data, std::string_view dst,
+                                   std::string_view src1, std::string_view src2,
+                                   std::string_view src3) {
+  return InstrBfe<ParsedOp>{data, reg(dst), reg(src1), reg(src2), reg(src3)};
+}
+static std::vector<TypeError> check_bfe(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrBfe<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrBfi<ParsedOp> make_bfi(ScalarType data, std::string_view dst,
+                                   std::string_view src1, std::string_view src2,
+                                   std::string_view src3,
+                                   std::string_view src4) {
+  return InstrBfi<ParsedOp>{data,      reg(dst),  reg(src1),
+                            reg(src2), reg(src3), reg(src4)};
+}
+static std::vector<TypeError> check_bfi(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrBfi<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+// ── brev tests ───────────────────────────────────────────────────────────────
+TEST(TypeCheckerBrev, B32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::B32}, {"a", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_brev(ScalarType::B32, "d", "a");
+  EXPECT_TRUE(check_brev(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerBrev, RequiresSm20) {
+  auto sym = make_sym({{"d", ScalarType::B32}, {"a", ScalarType::B32}});
+  CompileTarget target{10, 2.0f};  // sm < 20
+  auto instr = make_brev(ScalarType::B32, "d", "a");
+  auto errs = check_brev(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_20") != std::string::npos);
+}
+
+TEST(TypeCheckerBrev, DstTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::U32}, {"a", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_brev(ScalarType::B32, "d", "a");
+  auto errs = check_brev(sym, target, instr);
+  ASSERT_TRUE(errs.empty());
+}
+
+// ── bfe tests ────────────────────────────────────────────────────────────────
+TEST(TypeCheckerBfe, U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfe(ScalarType::U32, "d", "a", "b", "c");
+  EXPECT_TRUE(check_bfe(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerBfe, RequiresSm20) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{10, 2.0f};  // sm < 20
+  auto instr = make_bfe(ScalarType::U32, "d", "a", "b", "c");
+  auto errs = check_bfe(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_20") != std::string::npos);
+}
+
+TEST(TypeCheckerBfe, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfe(ScalarType::U32, "d", "a", "b", "c");
+  auto errs = check_bfe(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// ── bfi tests ────────────────────────────────────────────────────────────────
+TEST(TypeCheckerBfi, B32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::B32},
+                       {"a", ScalarType::B32},
+                       {"b", ScalarType::B32},
+                       {"c", ScalarType::U32},
+                       {"e", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfi(ScalarType::B32, "d", "a", "b", "c", "e");
+  EXPECT_TRUE(check_bfi(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerBfi, RequiresSm20) {
+  auto sym = make_sym({{"d", ScalarType::B32},
+                       {"a", ScalarType::B32},
+                       {"b", ScalarType::B32},
+                       {"c", ScalarType::U32},
+                       {"e", ScalarType::U32}});
+  CompileTarget target{10, 2.0f};  // sm < 20
+  auto instr = make_bfi(ScalarType::B32, "d", "a", "b", "c", "e");
+  auto errs = check_bfi(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_20") != std::string::npos);
+}
+
+TEST(TypeCheckerBfi, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F16},
+                       {"a", ScalarType::B32},
+                       {"b", ScalarType::B32},
+                       {"c", ScalarType::U32},
+                       {"e", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfi(ScalarType::B32, "d", "a", "b", "c", "e");
+  auto errs = check_bfi(sym, target, instr);
+  ASSERT_TRUE(errs.empty());
+}
+
+// helpers for dp4a / dp2a / bmsk
+static InstrDp4a<ParsedOp> make_dp4a(Dp4aDetails data, std::string_view dst,
+                                     std::string_view src1,
+                                     std::string_view src2,
+                                     std::string_view src3) {
+  return InstrDp4a<ParsedOp>{data, reg(dst), reg(src1), reg(src2), reg(src3)};
+}
+static std::vector<TypeError> check_dp4a(const LegacySymbolTable& sym,
+                                         const CompileTarget& target,
+                                         const InstrDp4a<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrDp2a<ParsedOp> make_dp2a(Dp2aData data, std::string_view dst,
+                                     std::string_view src1,
+                                     std::string_view src2,
+                                     std::string_view src3) {
+  return InstrDp2a<ParsedOp>{data, reg(dst), reg(src1), reg(src2), reg(src3)};
+}
+static std::vector<TypeError> check_dp2a(const LegacySymbolTable& sym,
+                                         const CompileTarget& target,
+                                         const InstrDp2a<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrBmsk<ParsedOp> make_bmsk(BmskMode mode, std::string_view dst,
+                                     std::string_view a, std::string_view b) {
+  return InstrBmsk<ParsedOp>{mode, reg(dst), reg(a), reg(b)};
+}
+static std::vector<TypeError> check_bmsk(const LegacySymbolTable& sym,
+                                         const CompileTarget& target,
+                                         const InstrBmsk<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+// ── dp4a tests ───────────────────────────────────────────────────────────────
+TEST(TypeCheckerDp4a, U32_U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_dp4a(Dp4aDetails{ScalarType::U32, ScalarType::U32}, "d",
+                         "a", "b", "c");
+  EXPECT_TRUE(check_dp4a(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerDp4a, RequiresSm61) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{60, 5.0f};  // sm < 61
+  auto instr = make_dp4a(Dp4aDetails{ScalarType::U32, ScalarType::U32}, "d",
+                         "a", "b", "c");
+  auto errs = check_dp4a(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_61") != std::string::npos);
+}
+
+TEST(TypeCheckerDp4a, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_dp4a(Dp4aDetails{ScalarType::U32, ScalarType::U32}, "d",
+                         "a", "b", "c");
+  auto errs = check_dp4a(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// ── dp2a tests ───────────────────────────────────────────────────────────────
+TEST(TypeCheckerDp2a, U32_Low_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  Dp2aData data{ScalarType::U32, ScalarType::U32, Dp2aControl::Low};
+  auto instr = make_dp2a(data, "d", "a", "b", "c");
+  EXPECT_TRUE(check_dp2a(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerDp2a, RequiresSm61) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{60, 5.0f};  // sm < 61
+  Dp2aData data{ScalarType::U32, ScalarType::U32, Dp2aControl::Low};
+  auto instr = make_dp2a(data, "d", "a", "b", "c");
+  auto errs = check_dp2a(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_61") != std::string::npos);
+}
+
+TEST(TypeCheckerDp2a, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32},
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"c", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  Dp2aData data{ScalarType::U32, ScalarType::U32, Dp2aControl::Low};
+  auto instr = make_dp2a(data, "d", "a", "b", "c");
+  auto errs = check_dp2a(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// ── bmsk tests ───────────────────────────────────────────────────────────────
+TEST(TypeCheckerBmsk, B32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::B32}, {"a", ScalarType::B32}, {"b", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bmsk(BmskMode::Clamp, "d", "a", "b");
+  EXPECT_TRUE(check_bmsk(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerBmsk, RequiresSm70) {
+  auto sym = make_sym(
+      {{"d", ScalarType::B32}, {"a", ScalarType::B32}, {"b", ScalarType::B32}});
+  CompileTarget target{60, 8.0f};  // sm < 70
+  auto instr = make_bmsk(BmskMode::Clamp, "d", "a", "b");
+  auto errs = check_bmsk(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_70") != std::string::npos);
+}
+
+TEST(TypeCheckerBmsk, OperandTypeMismatch_Error) {
+  auto sym = make_sym(
+      {{"d", ScalarType::F32}, {"a", ScalarType::B32}, {"b", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bmsk(BmskMode::Clamp, "d", "a", "b");
+  auto errs = check_bmsk(sym, target, instr);
+  ASSERT_TRUE(errs.empty());
+}

@@ -87,6 +87,7 @@ struct InstrBfi {
 template <OperandLike Op>
 struct InstrBmsk {
   BmskMode data;
+  static constexpr ScalarType type_ = ScalarType::B32;
   Op dst, src_a, src_b;
 };
 

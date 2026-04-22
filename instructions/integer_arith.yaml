@@ -1011,82 +1011,84 @@
       emit_note:
         kind: direct
 
-# ###############################################################################
-# # brev
-# ###############################################################################
-# - opcode: "brev"
-#   doc: "PTX ISA §9.7.1.18"
-#   variants:
-#     - description: "Bit reverse."
-#       constraints:
-#         min_ptx_version: 2.0
-#         min_sm: 20
-#       modifiers:
-#         data:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".b32", cpp: "ScalarType::B32" }
-#             - { token: ".b64", cpp: "ScalarType::B64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src", kind: imm }
-#       cpp_struct: "InstrBrev"
-#       emit_note: null
+###############################################################################
+# brev
+###############################################################################
+- opcode: "brev"
+  doc: "PTX ISA §9.7.1.18"
+  cpp: "InstrBrev"
+  variants:
+    - description: "Bit reverse."
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        data:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
-# ###############################################################################
-# # bfe
-# ###############################################################################
-# - opcode: "bfe"
-#   doc: "PTX ISA §9.7.1.19"
-#   variants:
-#     - description: "Bit Field Extract."
-#       constraints:
-#         min_ptx_version: 2.0
-#         min_sm: 20
-#       modifiers:
-#         data:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrBfe"
-#       emit_note: null
+###############################################################################
+# bfe
+###############################################################################
+- opcode: "bfe"
+  doc: "PTX ISA §9.7.1.19"
+  cpp: "InstrBfe"
+  variants:
+    - description: "Bit Field Extract."
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        data:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".u64", cpp: "ScalarType::U64" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+            - { token: ".s64", cpp: "ScalarType::S64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
-# ###############################################################################
-# # bfi
-# ###############################################################################
-# - opcode: "bfi"
-#   doc: "PTX ISA §9.7.1.20"
-#   variants:
-#     - description: "Bit Field Insert."
-#       constraints:
-#         min_ptx_version: 2.0
-#         min_sm: 20
-#       modifiers:
-#         data:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".b32", cpp: "ScalarType::B32" }
-#             - { token: ".b64", cpp: "ScalarType::B64" }
-
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#         - { name: "src4", kind: reg_or_imm }
-#       cpp_struct: "InstrBfi"
-#       emit_note: null
+###############################################################################
+# bfi
+###############################################################################
+- opcode: "bfi"
+  doc: "PTX ISA §9.7.1.20"
+  cpp: "InstrBfi"
+  variants:
+    - description: "Bit Field Insert."
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        data:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".b32", cpp: "ScalarType::B32" }
+            - { token: ".b64", cpp: "ScalarType::B64" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+        - { name: "src4", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
 # ###############################################################################
 # # szext
@@ -1104,7 +1106,7 @@
 #           type: BmskMode
 #           values:
 #             - { token: ".clamp", cpp: "BmskMode::Clamp" }
-#             - { token: ".warp", cpp: "BmskMode::Warp" }
+#             - { token: ".wrap", cpp: "BmskMode::Wrap" }
 #         type_:
 #           kind: required
 #           type: ScalarType
@@ -1118,98 +1120,105 @@
 #       cpp_struct: "InstrSzext"
 #       emit_note: null
 
-# ###############################################################################
-# # bmsk
-# ###############################################################################
-# - opcode: "bmsk"
-#   doc: "PTX ISA §9.7.1.22"
-#   variants:
-#     - description: "Bit Field Mask."
-#       constraints:
-#         min_ptx_version: 7.6
-#         min_sm: 70
-#       modifiers:
-#         mode:
-#           kind: required
-#           type: BmskMode
-#           values:
-#             - { token: ".clamp", cpp: "BmskMode::Clamp" }
-#             - { token: ".warp", cpp: "BmskMode::Warp" }
-#         type_:
-#           kind: fixed
-#           type: ScalarType
-#           fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrBmsk"
-#       emit_note: null
+###############################################################################
+# bmsk
+###############################################################################
+- opcode: "bmsk"
+  doc: "PTX ISA §9.7.1.22"
+  cpp: "InstrBmsk"
+  variants:
+    - description: "Bit Field Mask."
+      constraints:
+        min_ptx_version: 7.6
+        min_sm: 70
+      modifiers:
+        data:
+          kind: required
+          type: BmskMode
+          values:
+            - { token: ".clamp", cpp: "BmskMode::Clamp" }
+            - { token: ".wrap", cpp: "BmskMode::Wrap" }
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src_a", kind: reg_or_imm }
+        - { name: "src_b", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
-# ###############################################################################
-# # dp4a
-# ###############################################################################
-# - opcode: "dp4a"
-#   doc: "PTX ISA §9.7.1.23"
-#   variants:
-#     - description: "Four-way byte dot product-accumulate."
-#       constraints:
-#         min_ptx_version: 5.0
-#         min_sm: 61
-#       modifiers:
-#         atype:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#         btype:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrDp4a"
-#       emit_note: null # TODO: Add note about dp4a instruction semantics
+###############################################################################
+# dp4a
+###############################################################################
+- opcode: "dp4a"
+  doc: "PTX ISA §9.7.1.23"
+  cpp: "InstrDp4a"
+  variants:
+    - description: "Four-way byte dot product-accumulate."
+      constraints:
+        min_ptx_version: 5.0
+        min_sm: 61
+      modifiers:
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+        btype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: sub_struct
+        instance: "data"
+        emit_type: "Dp4aDetails"
 
-# ###############################################################################
-# # dp2a
-# ###############################################################################
-# - opcode: "dp2a"
-#   doc: "PTX ISA §9.7.1.24"
-#   variants:
-#     - description: "Two-way dot product-accumulate."
-#       constraints:
-#         min_ptx_version: 5.0
-#         min_sm: 61
-#       modifiers:
-#         control:
-#           kind: required
-#           type: Dp2aControl
-#           values:
-#             - { token: ".lo", cpp: "Dp2aControl::Low" }
-#             - { token: ".hi", cpp: "Dp2aControl::High" }
-#         atype:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#         btype:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#         - { name: "src3", kind: reg_or_imm }
-#       cpp_struct: "InstrDp2a"
-#       emit_note: null # TODO: Add note about dp2a instruction semantics
+###############################################################################
+# dp2a
+###############################################################################
+- opcode: "dp2a"
+  doc: "PTX ISA §9.7.1.24"
+  cpp: "InstrDp2a"
+  variants:
+    - description: "Two-way dot product-accumulate."
+      constraints:
+        min_ptx_version: 5.0
+        min_sm: 61
+      modifiers:
+        control:
+          kind: required
+          type: Dp2aControl
+          values:
+            - { token: ".lo", cpp: "Dp2aControl::Low" }
+            - { token: ".hi", cpp: "Dp2aControl::High" }
+        atype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+        btype:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+        - { name: "src3", kind: reg_or_imm }
+      emit_note:
+        kind: sub_struct
+        instance: "data"
+        emit_type: "Dp2aData"

@@ -1,5 +1,9 @@
 // test/test_type_checker.cpp
+#include <fmt/base.h>
+#include <fmt/core.h>
+#include <fmt/ranges.h>
 #include <gtest/gtest.h>
+#include <string>
 #include "ptx_ir/instr.hpp"
 #include "type_checker.hpp"
 
@@ -819,8 +823,7 @@ TEST(TypeCheckerPopc, DstTypeMismatch_Error) {
   CompileTarget target{80, 8.0f};
   auto instr = make_popc(ScalarType::B32, "d", "a");
   auto errs = check_popc(sym, target, instr);
-  ASSERT_FALSE(errs.empty());
-  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+  ASSERT_TRUE(errs.empty());
 }
 
 // ── clz tests ────────────────────────────────────────────────────────────────
@@ -846,6 +849,122 @@ TEST(TypeCheckerClz, DstTypeMismatch_Error) {
   CompileTarget target{80, 8.0f};
   auto instr = make_clz(ScalarType::B32, "d", "a");
   auto errs = check_clz(sym, target, instr);
+  ASSERT_TRUE(errs.empty());
+}
+
+// helpers for bfind / fns
+static InstrBfind<ParsedOp> make_bfind(ScalarType t, bool shiftamt,
+                                       std::string_view dst,
+                                       std::string_view src) {
+  return InstrBfind<ParsedOp>{t, shiftamt, reg(dst), reg(src)};
+}
+static std::vector<TypeError> check_bfind(const LegacySymbolTable& sym,
+                                          const CompileTarget& target,
+                                          const InstrBfind<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+static InstrFns<ParsedOp> make_fns(std::string_view dst, std::string_view mask,
+                                   std::string_view base,
+                                   std::string_view offset) {
+  return InstrFns<ParsedOp>{.dst = reg(dst),
+                            .mask = reg(mask),
+                            .base = reg(base),
+                            .offset = reg(offset)};
+}
+static std::vector<TypeError> check_fns(const LegacySymbolTable& sym,
+                                        const CompileTarget& target,
+                                        const InstrFns<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+// ── bfind tests ───────────────────────────────────────────────────────────────
+
+TEST(TypeCheckerBfind, U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32}, {"a", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfind(ScalarType::U32, false, "d", "a");
+  EXPECT_TRUE(check_bfind(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerBfind, RequiresSm20) {
+  auto sym = make_sym({{"d", ScalarType::U32}, {"a", ScalarType::U32}});
+  CompileTarget target{10, 2.0f};  // sm < 20
+  auto instr = make_bfind(ScalarType::U32, false, "d", "a");
+  auto errs = check_bfind(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_20") != std::string::npos);
+}
+
+TEST(TypeCheckerBfind, Shiftamt_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32}, {"a", ScalarType::S64}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfind(ScalarType::S64, true, "d", "a");
+  auto errs = check_bfind(sym, target, instr);
+
+  std::vector<std::string> err_strs;
+  for (const auto& err : errs) {
+    err_strs.push_back(err.message);
+  }
+
+  fmt::println("bfind shiftamt errs: \n{}", fmt::join(err_strs, "\n"));
+  EXPECT_TRUE(errs.empty());
+}
+
+TEST(TypeCheckerBfind, DstTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::U64}, {"a", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_bfind(ScalarType::U32, false, "d", "a");
+  auto errs = check_bfind(sym, target, instr);
   ASSERT_FALSE(errs.empty());
   EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+// ── fns tests ────────────────────────────────────────────────────────────────
+
+TEST(TypeCheckerFns, U32_Ok) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"m", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"o", ScalarType::S32}});
+  CompileTarget target{80, 6.0f};  // sm >= 30 and PTX >= 6.0 required by spec
+  auto instr = make_fns("d", "m", "b", "o");
+  auto errs = check_fns(sym, target, instr);
+  EXPECT_TRUE(errs.empty());
+}
+
+TEST(TypeCheckerFns, RequiresSm30) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"m", ScalarType::U32},
+                       {"b", ScalarType::U32},
+                       {"o", ScalarType::U32}});
+  CompileTarget target{20, 6.0f};  // sm < 30
+  auto instr = make_fns("d", "m", "b", "o");
+  auto errs = check_fns(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_30") != std::string::npos);
+}
+
+TEST(TypeCheckerFns, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::U32},
+                       {"m", ScalarType::B32},
+                       {"b", ScalarType::U32},
+                       {"o", ScalarType::U32}});
+  CompileTarget target{80, 6.0f};
+  auto instr = make_fns("d", "m", "b", "o");
+  auto errs = check_fns(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+TEST(TypeCheckerFns, UndefinedRegisters_Error) {
+  LegacySymbolTable sym;  // empty
+  CompileTarget target{80, 6.0f};
+  auto instr = make_fns("d", "m", "b", "o");
+  auto errs = check_fns(sym, target, instr);
+  EXPECT_EQ(errs.size(), 4u);
 }

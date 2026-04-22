@@ -1473,6 +1473,69 @@ expected<InstrNeg<To>, Err> map_instr(InstrNeg<From> instr,
   return InstrNeg<To>{instr.data, *dst, *src};
 }
 
+// ── InstrBfind ───────────────────────────────────────────────────────────────
+template <OperandLike Op, typename Err>
+expected<void, Err> visit_instr(const InstrBfind<Op>& instr,
+                                Visitor<Op, Err>& v) {
+  Type t = make_scalar(instr.type_);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  if (auto r = v.visit(instr.dst, ts, true, false); !r)
+    return r;
+  return v.visit(instr.src, ts, false, false);
+}
+
+template <OperandLike From, OperandLike To, typename Err>
+expected<InstrBfind<To>, Err> map_instr(InstrBfind<From> instr,
+                                        VisitorMap<From, To, Err>& v) {
+  Type t = make_scalar(instr.type_);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  auto dst = v.visit(std::move(instr.dst), ts, true, false);
+  if (!dst)
+    return unexpected(dst.error());
+  auto src = v.visit(std::move(instr.src), ts, false, false);
+  if (!src)
+    return unexpected(src.error());
+  return InstrBfind<To>{.type_ = instr.type_,
+                        .shiftamt = instr.shiftamt,
+                        .dst = *dst,
+                        .src = *src};
+}
+
+// ── InstrFns ───────────────────────────────────────────────────────────────
+template <OperandLike Op, typename Err>
+expected<void, Err> visit_instr(const InstrFns<Op>& instr,
+                                Visitor<Op, Err>& v) {
+  Type t = make_scalar(instr.type_);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  if (auto r = v.visit(instr.dst, ts, true, false); !r)
+    return r;
+  if (auto r = v.visit(instr.mask, ts, false, false); !r)
+    return r;
+  if (auto r = v.visit(instr.base, ts, false, false); !r)
+    return r;
+  return v.visit(instr.offset, ts, false, false);
+}
+
+template <OperandLike From, OperandLike To, typename Err>
+expected<InstrFns<To>, Err> map_instr(InstrFns<From> instr,
+                                      VisitorMap<From, To, Err>& v) {
+  Type t = make_scalar(instr.type_);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  auto dst = v.visit(std::move(instr.dst), ts, true, false);
+  if (!dst)
+    return unexpected(dst.error());
+  auto mask = v.visit(std::move(instr.mask), ts, false, false);
+  if (!mask)
+    return unexpected(mask.error());
+  auto base = v.visit(std::move(instr.base), ts, false, false);
+  if (!base)
+    return unexpected(base.error());
+  auto offset = v.visit(std::move(instr.offset), ts, false, false);
+  if (!offset)
+    return unexpected(offset.error());
+  return InstrFns<To>{instr.type_, *dst, *mask, *base, *offset};
+}
+
 // ── InstrNot ───────────────────────────────────────────────────────────────
 template <OperandLike Op, typename Err>
 expected<void, Err> visit_instr(const InstrNot<Op>& instr,

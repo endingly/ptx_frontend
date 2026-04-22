@@ -9,27 +9,41 @@ class ArgumentCodeGen:
 
         def get_actual_var_name() -> str:
             """we should get modifier value to gen actual argument"""
-            target_modifier_type_name = "ScalarType"  # currently we only support type check on scalar type, so the target modifier type is fixed to "ScalarType"
+            # if the argument does not have type, we will try to find a modifier with type info in the same variant
+            # and use it as the argument for type check function.
+            # currently we only support type check on scalar type, so we will look for a modifier with type_name "ScalarType".
+            # if not found, we will use a default name "type_" for the argument in type check function
+            # and let the user to figure out which modifier is the type modifier when writing the type check function content.
+            if self.argument.type is None:
+                target_modifier_type_name = "ScalarType"  # currently we only support type check on scalar type, so the target modifier type is fixed to "ScalarType"
+                if self.argument.parent_variant is None:
+                    raise ValueError(
+                        "Argument must have a parent variant to gen actual argument list"
+                    )
+                for modifier in self.argument.parent_variant.modifiers:
+                    if modifier.type_name == target_modifier_type_name:
+                        return modifier.name
+            else:
+                cpp_names = [value.cpp_code for value in self.argument.type]
+                if len(cpp_names) == 1:
+                    return cpp_names[0]
+                else:
+                    return f"{{{', '.join(cpp_names)}}}"  # if multiple possible types, return as a list for user to check in type check function content
+            return "type_"  # default name if no modifier with type info found
+
+        if self.argument.type is None:
             if self.argument.parent_variant is None:
                 raise ValueError(
                     "Argument must have a parent variant to gen actual argument list"
                 )
-            for modifier in self.argument.parent_variant.modifiers:
-                if modifier.type_name == target_modifier_type_name:
-                    return modifier.name
-
-            return "type_"  # default name for type modifier
-
-        if self.argument.parent_variant is None:
-            raise ValueError(
-                "Argument must have a parent variant to gen actual argument list"
-            )
-        if self.argument.parent_variant.emit_note.kind == EmitKind.Direct:
-            return f"i.{get_actual_var_name()}"
-        elif self.argument.parent_variant.emit_note.kind == EmitKind.SubStruct:
-            return f"i.{self.argument.parent_variant.emit_note.instance}.{get_actual_var_name()}"
+            if self.argument.parent_variant.emit_note.kind == EmitKind.Direct:
+                return f"i.{get_actual_var_name()}"
+            elif self.argument.parent_variant.emit_note.kind == EmitKind.SubStruct:
+                return f"i.{self.argument.parent_variant.emit_note.instance}.{get_actual_var_name()}"
+            else:
+                return f"std::get<{self.argument.parent_variant.emit_note.emit_type}>(i.{self.argument.parent_variant.emit_note.instance}).{get_actual_var_name()}"
         else:
-            return f"std::get<{self.argument.parent_variant.emit_note.emit_type}>(i.{self.argument.parent_variant.emit_note.instance}).{get_actual_var_name()}"
+            return f"{get_actual_var_name()}"
 
     def gen_code_for_type_check(self) -> str:
         return (
@@ -38,6 +52,9 @@ class ArgumentCodeGen:
 
 
 class ModifierCodeGen:
+    LAMBDA_IN_ARG_NAME = "d"
+    INSTR_INSTANCE = "i"
+
     def __init__(self, modifier: Modifier):
         self.modifier = modifier
 
@@ -45,14 +62,7 @@ class ModifierCodeGen:
 
     def gen_formal_parameter_list(self):
         """generate the argument list for the type check function"""
-        if self.modifier.parent_variant is None:
-            raise ValueError(
-                "Modifier must have a parent variant to gen formal parameter list"
-            )
-        if self.modifier.parent_variant.emit_note.kind == EmitKind.Direct:
-            return f"const {self.modifier.type_name}& d"
-        else:
-            return f"const {self.modifier.parent_variant.emit_note.emit_type}& d"
+        return f"const {self.modifier.type_name}& {self.LAMBDA_IN_ARG_NAME}"
 
     def gen_actual_argument_list(self):
         """generate the actual argument list to pass to the type check function"""
@@ -61,29 +71,18 @@ class ModifierCodeGen:
                 "Modifier must have a parent variant to gen actual argument list"
             )
         if self.modifier.parent_variant.emit_note.kind == EmitKind.Direct:
-            return f"i.{self.modifier.name}"  # instruction struct self
+            return (
+                f"{self.INSTR_INSTANCE}.{self.modifier.name}"  # instruction struct self
+            )
         elif self.modifier.parent_variant.emit_note.kind == EmitKind.SubVariant:
-            return f"std::get<{self.modifier.parent_variant.emit_note.emit_type}>(i.{self.modifier.parent_variant.emit_note.instance})"
+            return f"std::get<{self.modifier.parent_variant.emit_note.emit_type}>({self.INSTR_INSTANCE}.{self.modifier.parent_variant.emit_note.instance}).{self.modifier.name}"
         else:
-            return f"i.{self.modifier.parent_variant.emit_note.instance}"
+            return f"{self.INSTR_INSTANCE}.{self.modifier.parent_variant.emit_note.instance}.{self.modifier.name}"
 
     def generate_code_for_type_check(self):
         is_req = self.modifier.kind == ModifierKind.Required
         is_option = self.modifier.kind == ModifierKind.Optional
         is_fixed = self.modifier.kind == ModifierKind.Fixed
-
-        def gen_check_fixed_value():
-            if self.modifier.fixed_value is None:
-                return 'error("Fixed modifier must have a fixed value"); return false;'
-            else:
-                return f"""
-                if (d.{self.modifier.name} == {self.modifier.fixed_value.cpp_code}) {{
-                    return true;
-                }} else {{
-                    error("Modifier {self.modifier.name} must be {self.modifier.fixed_value.cpp_code}, but got " + to_string(d.{self.modifier.name}));
-                    return false;
-                }}
-                """  # type: ignore
 
         def gen_content_func():
             if is_req:
@@ -91,11 +90,7 @@ class ModifierCodeGen:
                     raise ValueError(
                         "Modifier must have a parent variant to gen content function"
                     )
-                output_name = (
-                    f"d.{self.modifier.name}"
-                    if self.modifier.parent_variant.emit_note.kind != EmitKind.Direct
-                    else "d"
-                )
+                output_name = self.LAMBDA_IN_ARG_NAME
                 return f"""
                 static constexpr std::array container_cpp_code = {{ { ",".join([value.cpp_code for value in self.modifier.values])} }};
                 bool check_r = is_one_of({output_name}, container_cpp_code); // d from instruction
@@ -107,7 +102,19 @@ class ModifierCodeGen:
             elif is_option:
                 return "return true;"
             elif is_fixed:
-                return gen_check_fixed_value()
+                if self.modifier.fixed_value is None:
+                    return (
+                        'error("Fixed modifier must have a fixed value"); return false;'
+                    )
+                else:
+                    return f"""
+                    if ({self.LAMBDA_IN_ARG_NAME} == {self.modifier.fixed_value.cpp_code}) {{
+                        return true;
+                    }} else {{
+                        error("Modifier {self.modifier.name} must be {self.modifier.fixed_value.cpp_code}, but got " + to_string({self.LAMBDA_IN_ARG_NAME}));
+                        return false;
+                    }}
+                    """  # type: ignore
 
         content = f"""
         auto check_{self.modifier.name} = [&]({self.gen_formal_parameter_list()}) {{
@@ -130,7 +137,7 @@ class ModifierCodeGen:
                 return "return false;"
             else:
                 return f"""
-                if (d.{self.modifier.name} == {self.modifier.fixed_value.cpp_code}) {{
+                if ({self.LAMBDA_IN_ARG_NAME} == {self.modifier.fixed_value.cpp_code}) {{
                     return true;
                 }} else {{
                     return false;
@@ -143,11 +150,7 @@ class ModifierCodeGen:
                     raise ValueError(
                         "Modifier must have a parent variant to gen content function"
                     )
-                output_name = (
-                    f"d.{self.modifier.name}"
-                    if self.modifier.parent_variant.emit_note.kind != EmitKind.Direct
-                    else "d"
-                )
+                output_name = self.LAMBDA_IN_ARG_NAME
                 return f"""
                 static constexpr std::array container_cpp_code = {{ { ",".join([value.cpp_code for value in self.modifier.values])} }};
                 bool check_r = is_one_of({output_name}, container_cpp_code); // d from instruction
@@ -206,6 +209,9 @@ class VariantCodeGen:
 
             bool flag = check_target_version();
             {"\n".join([f"flag &= {ModifierCodeGen(modifier).function_signature_for_type_check}" for modifier in self.variant.modifiers])}
+            
+            // check operand
+            {"\n".join([f"flag &= {ArgumentCodeGen(arg).gen_code_for_type_check()}" for arg in self.variant.arguments])}
             return flag;
         }};
         """
@@ -237,7 +243,6 @@ class VariantCodeGen:
             bool flag = true;
             {"\n".join([f"flag &= {ModifierCodeGen(modifier).function_signature_for_match}" for modifier in self.variant.modifiers])}
 
-            {"\n".join([f"{ArgumentCodeGen(arg).gen_code_for_type_check()}" for arg in self.variant.arguments])}
             return flag;
         }};
         """

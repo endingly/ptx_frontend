@@ -40,8 +40,10 @@ class TypeChecker {
   bool require_ptx(float min_v);
 
   // operand type check via LegacySymbolTable
-  void check_operand(const ParsedOp& op, ScalarType expected);
-  void check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
+  bool check_operand(const ParsedOp& op, ScalarType expected);
+  bool check_operand(const ParsedOp& op,
+                     const std::vector<ScalarType>& expected);
+  bool check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
 
   template <typename T, std::size_t N>
   static constexpr bool is_one_of(

@@ -1,6 +1,7 @@
 #pragma once
 #include <numeric>
 #include <optional>
+#include "ptx_ir/base.hpp"
 #include "ptx_ir/details.hpp"
 
 namespace ptx_frontend {
@@ -115,6 +116,20 @@ struct InstrClz {
   ScalarType data;
   Op dst /*u32*/, src;
 };
+
+template <OperandLike Op>
+struct InstrBfind {
+  ScalarType type_;
+  bool shiftamt;
+  Op dst /*u32*/, src;
+};
+
+template <OperandLike Op>
+struct InstrFns {
+  ScalarType type_ = ScalarType::B32;
+  Op dst, mask, base, offset;
+};
+
 template <OperandLike Op>
 struct InstrCos {
   FlushToZero data;
@@ -647,7 +662,8 @@ using Instruction = std::variant<
     InstrCpAsyncBulk<Op>, InstrCpAsyncBulkTensor<Op>,
     InstrCpAsyncBulkCommitGroup, InstrCpAsyncBulkWaitGroup<Op>,
     InstrTensormapReplace<Op>, InstrTensormapCpFenceProxy<Op>,
-    InstrPrefetchu<Op>, InstrClusterLaunchControl<Op>>;
+    InstrPrefetchu<Op>, InstrClusterLaunchControl<Op>, InstrBfind<Op>,
+    InstrFns<Op>>;
 
 // ============================================================
 // § 11  Statement<Op>  ←  ast.rs::Statement

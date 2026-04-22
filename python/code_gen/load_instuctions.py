@@ -1,7 +1,50 @@
+import copy
 from pathlib import Path
 from code_gen.models import *
 import yaml
 from code_gen.merge_variant import merge_variants
+
+project_root = Path(__file__).parent.parent.parent
+
+# ── feature !ref functional ───────────────────────────────────────────────────────────────────
+
+# global load shared yamls
+yaml_base_dir = project_root / "instructions"
+shared_yamls = yaml.safe_load(
+    (yaml_base_dir / "_shared/meta.yaml").read_text(encoding="utf-8")
+)
+
+
+def _find_in_shared(obj, key):
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            if isinstance(v, dict) and v.get("token") in (key, "." + key):
+                return v
+    if isinstance(obj, list):
+        token = key if key.startswith(".") else "." + key
+        for it in obj:
+            if isinstance(it, dict) and it.get("token") == token:
+                return it
+        try:
+            return obj[int(key)]
+        except:
+            pass
+    raise KeyError(f"shared path part '{key}' not found")
+
+
+def ref_constructor(loader, node):
+    path = loader.construct_scalar(node)  # e.g. "scalar_types.u16"
+    obj = shared_yamls
+    for part in path.split("."):
+        if not part:
+            continue
+        obj = _find_in_shared(obj, part)
+    return copy.deepcopy(obj)
+
+
+yaml.SafeLoader.add_constructor("!ref", ref_constructor)
 
 # ── parse functional ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +95,27 @@ def _parse_variant(raw: dict) -> VariantModel:
     for arg in raw.get("args", []):
         temp_arg = Argument(name=arg["name"], kind=ArgumentKind(arg["kind"]))
         temp_arg.parent_variant = variant
+        if "type" in arg:
+            types_raw = arg.get("type", [])
+            args_list: list[ModifierValue] = []
+
+            # normalize to iterable of dicts
+            if isinstance(types_raw, dict):
+                types_iter = [types_raw]
+            else:
+                types_iter = list(types_raw)
+
+            for item in types_iter:
+                if not isinstance(item, dict):
+                    raise TypeError(f"unexpected arg.type item: {item!r}")
+                args_list.append(
+                    ModifierValue(token=item["token"], cpp_code=item["cpp"])
+                )
+
+            temp_arg.type = args_list
+        else:
+            temp_arg.type = None
+
         variant.arguments.append(temp_arg)
 
     return variant

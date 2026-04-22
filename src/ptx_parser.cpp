@@ -1724,6 +1724,48 @@ struct Parser {
     return InstrClz<ParsedOp>{stype, dst, src};
   }
 
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bfind() {
+    bool shift = false;
+
+    // accept .shiftamt before type
+    if (match(TokenKind::DotShiftamt)) {
+      shift = true;
+    } else if (check(TokenKind::DotIdent) && lex.peek().text == ".shiftamt") {
+      lex.consume();
+      shift = true;
+    }
+
+    auto stype = TRY(parse_scalar_type());
+
+    // accept .shiftamt after type as well
+    if (!shift) {
+      if (match(TokenKind::DotShiftamt)) {
+        shift = true;
+      } else if (check(TokenKind::DotIdent) && lex.peek().text == ".shiftamt") {
+        lex.consume();
+        shift = true;
+      }
+    }
+
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src = TRY(parse_operand());
+
+    return InstrBfind<ParsedOp>{stype, shift, dst, src};
+  }
+
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_fns() {
+    auto stype = TRY(parse_scalar_type());
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto mask = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto base = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto offset = TRY(parse_operand());
+    return InstrFns<ParsedOp>{stype, dst, mask, base, offset};
+  }
+
   tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_brev() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
@@ -1909,6 +1951,8 @@ struct Parser {
       case TokenKind::Popc: return parse_instr_popc();
       case TokenKind::Clz:  return parse_instr_clz();
       case TokenKind::Brev: return parse_instr_brev();
+      case TokenKind::Bfind:return parse_instr_bfind();
+      case TokenKind::Fns:  return parse_instr_fns();
       // logic
       case TokenKind::And:  return parse_instr_logic(TokenKind::And);
       case TokenKind::Or:   return parse_instr_logic(TokenKind::Or);

@@ -25,18 +25,18 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
+            - !ref scalar_types.u16
+            - !ref scalar_types.u64
+            - !ref scalar_types.s16
+            - !ref scalar_types.s64
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
       emit_note:
-        kind: sub_variant # type with: sub_variant/sub_struct/direct
+        kind: sub_variant
         instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
         emit_type: "ArithInteger" # type of the instruction to emit, null if direct
 
@@ -54,7 +54,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+          fixed_value: !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -79,8 +79,8 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
-            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
+            - !ref scalar_types.u16x2
+            - !ref scalar_types.s16x2
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -106,8 +106,8 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u8x4", cpp: "ScalarType::U8x4" }
-            - { token: ".s8x4", cpp: "ScalarType::S8x4" }
+            - !ref scalar_types.u8x4
+            - !ref scalar_types.s8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -133,9 +133,9 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16x2", cpp: "ScalarType::U16x2" }
-            - { token: ".s16x2", cpp: "ScalarType::S16x2" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
+            - !ref scalar_types.u16x2
+            - !ref scalar_types.s16x2
+            - !ref scalar_types.u32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -165,11 +165,11 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
+            - !ref scalar_types.u16
+            - !ref scalar_types.u32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s16
+            - !ref scalar_types.s64
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -193,7 +193,7 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".s32", cpp: "ScalarType::S32" }
+            - !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -217,8 +217,8 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u8x4", cpp: "ScalarType::U8x4" }
-            - { token: ".s8x4", cpp: "ScalarType::S8x4" }
+            - !ref scalar_types.u8x4
+            - !ref scalar_types.s8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -251,12 +251,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
+            - !ref scalar_types.u16
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s16
+            - !ref scalar_types.s64
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -293,12 +293,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
+            - !ref scalar_types.u16
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s16
+            - !ref scalar_types.s64
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -325,7 +325,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+          fixed_value: !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -358,8 +358,8 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -391,8 +391,8 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -419,7 +419,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+          fixed_value: !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -447,12 +447,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s64
+            - !ref scalar_types.u16
+            - !ref scalar_types.s16
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -479,12 +479,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s64
+            - !ref scalar_types.u16
+            - !ref scalar_types.s16
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -510,12 +510,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
+            - !ref scalar_types.u32
+            - !ref scalar_types.s32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s64
+            - !ref scalar_types.u16
+            - !ref scalar_types.s16
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -539,9 +539,9 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
+            - !ref scalar_types.s32
+            - !ref scalar_types.s64
+            - !ref scalar_types.s16
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
@@ -570,9 +570,9 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
+            - !ref scalar_types.s32
+            - !ref scalar_types.s64
+            - !ref scalar_types.s16
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
@@ -593,7 +593,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+          fixed_value: !ref scalar_types.s8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
@@ -622,12 +622,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
+            - !ref scalar_types.u16
+            - !ref scalar_types.u32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s16
+            - !ref scalar_types.s64
+            - !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -649,7 +649,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".u16x2", cpp: "ScalarType::U16x2" }
+          fixed_value: !ref scalar_types.u16x2
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -672,7 +672,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s16x2", cpp: "ScalarType::S16x2" }
+          fixed_value: !ref scalar_types.s16x2
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -694,7 +694,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+          fixed_value: !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -716,7 +716,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".u8x4", cpp: "ScalarType::U8x4" }
+          fixed_value: !ref scalar_types.u8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -739,7 +739,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+          fixed_value: !ref scalar_types.s8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -769,12 +769,12 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".u16", cpp: "ScalarType::U16" }
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s16", cpp: "ScalarType::S16" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
+            - !ref scalar_types.u16
+            - !ref scalar_types.u32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s16
+            - !ref scalar_types.s64
+            - !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -796,7 +796,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".u16x2", cpp: "ScalarType::U16x2" }
+          fixed_value: !ref scalar_types.u16x2
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -819,7 +819,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s16x2", cpp: "ScalarType::S16x2" }
+          fixed_value: !ref scalar_types.s16x2
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -841,7 +841,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s32", cpp: "ScalarType::S32" }
+          fixed_value: !ref scalar_types.s32
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -863,7 +863,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".u8x4", cpp: "ScalarType::U8x4" }
+          fixed_value: !ref scalar_types.u8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -886,7 +886,7 @@
         type_:
           kind: fixed
           type: ScalarType
-          fixed_value: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+          fixed_value: !ref scalar_types.s8x4
       args:
         - { name: "dst", kind: reg }
         - { name: "src1", kind: reg_or_imm }
@@ -912,8 +912,8 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
+            - !ref scalar_types.b32
+            - !ref scalar_types.b64
       args:
         - { name: "dst", kind: reg }
         - { name: "src", kind: reg_or_imm }
@@ -936,70 +936,80 @@
           kind: required
           type: ScalarType
           values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
+            - !ref scalar_types.b32
+            - !ref scalar_types.b64
       args:
         - { name: "dst", kind: reg } # TODO: clz.b64 cnt, X;
         - { name: "src", kind: reg_or_imm }
       emit_note:
         kind: direct
 
-# ###############################################################################
-# # bfind
-# ###############################################################################
-# - opcode: "bfind" # TODO: support next commit
-#   doc: "PTX ISA §9.7.1.16"
-#   variants:
-#     - description: "Find most significant non-sign bit."
-#       constraints:
-#         min_ptx_version: 2.0
-#         min_sm: 20
-#       modifiers:
-#         shiftamt:
-#           kind: optional
-#           type: bool
-#           values:
-#             - { token: ".shiftamt", cpp: "true" }
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src", kind: reg_or_imm }
-#       cpp_struct: "InstrBfind"
-#       emit_note: null
+###############################################################################
+# bfind
+###############################################################################
+- opcode: "bfind"
+  doc: "PTX ISA §9.7.1.16"
+  cpp: "InstrBfind"
+  variants:
+    - description: "Find most significant non-sign bit."
+      constraints:
+        min_ptx_version: 2.0
+        min_sm: 20
+      modifiers:
+        shiftamt:
+          kind: optional
+          type: bool
+          values:
+            - { token: ".shiftamt", cpp: "true" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - !ref scalar_types.u32
+            - !ref scalar_types.u64
+            - !ref scalar_types.s32
+            - !ref scalar_types.s64
+      args:
+        - { name: "dst", kind: reg, type: !ref scalar_types.u32 }
+        - { name: "src", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
-# ###############################################################################
-# # fns
-# ###############################################################################
-# - opcode: "fns" # TODO
-#   doc: "PTX ISA §9.7.1.17"
-#   variants:
-#     - description: "Find the n-th set bit."
-#       constraints:
-#         min_ptx_version: 6.0
-#         min_sm: 30
-#       modifiers:
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".u64", cpp: "ScalarType::U64" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#             - { token: ".s64", cpp: "ScalarType::S64" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "mask", kind: imm }
-#         - { name: "base", kind: imm }
-#         - { name: "offset", kind: imm }
-#       cpp_struct: "InstrFns"
-#       emit_note: null
+###############################################################################
+# fns
+###############################################################################
+- opcode: "fns"
+  doc: "PTX ISA §9.7.1.17"
+  cpp: "InstrFns"
+  variants:
+    - description: "Find the n-th set bit."
+      constraints:
+        min_ptx_version: 6.0
+        min_sm: 30
+      modifiers:
+        type_:
+          kind: fixed
+          type: ScalarType
+          fixed_value: !ref scalar_types.b32
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "mask", kind: reg_or_imm }
+        - {
+            name: "base",
+            kind: reg_or_imm,
+            type:
+              [
+                !ref scalar_types.u32,
+                !ref scalar_types.s32,
+                !ref scalar_types.b32,
+                !ref scalar_types.u32,
+                !ref scalar_types.s32,
+                !ref scalar_types.b32,
+              ],
+          }
+        - { name: "offset", kind: reg_or_imm, type: !ref scalar_types.s32 }
+      emit_note:
+        kind: direct
 
 # ###############################################################################
 # # brev

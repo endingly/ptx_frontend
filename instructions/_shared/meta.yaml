@@ -1,0 +1,90 @@
+scalar_types:
+  u16:
+    token: ".u16"
+    cpp: "ScalarType::U16"
+  u32:
+    token: ".u32"
+    cpp: "ScalarType::U32"
+  u64:
+    token: ".u64"
+    cpp: "ScalarType::U64"
+  s16:
+    token: ".s16"
+    cpp: "ScalarType::S16"
+  s32:
+    token: ".s32"
+    cpp: "ScalarType::S32"
+  s64:
+    token: ".s64"
+    cpp: "ScalarType::S64"
+  f16:
+    token: ".f16"
+    cpp: "ScalarType::F16"
+  f32:
+    token: ".f32"
+    cpp: "ScalarType::F32"
+  f64:
+    token: ".f64"
+    cpp: "ScalarType::F64"
+  u8x4:
+    token: ".u8x4"
+    cpp: "ScalarType::U8x4"
+  s8x4:
+    token: ".s8x4"
+    cpp: "ScalarType::S8x4"
+  u16x2:
+    token: ".u16x2"
+    cpp: "ScalarType::U16x2"
+  s16x2:
+    token: ".s16x2"
+    cpp: "ScalarType::S16x2"
+  b8:
+    token: ".b8"
+    cpp: "ScalarType::B8"
+  b16:
+    token: ".b16"
+    cpp: "ScalarType::B16"
+  b32:
+    token: ".b32"
+    cpp: "ScalarType::B32"
+  b64:
+    token: ".b64"
+    cpp: "ScalarType::B64"
+  b128:
+    token: ".b128"
+    cpp: "ScalarType::B128"
+  f16x2:
+    token: ".f16x2"
+    cpp: "ScalarType::F16x2"
+  f32x2:
+    token: ".f32x2"
+    cpp: "ScalarType::F32x2"
+  bf16:
+    token: ".bf16"
+    cpp: "ScalarType::BF16"
+  bf16x2:
+    token: ".bf16x2"
+    cpp: "ScalarType::BF16x2"
+  e4m3:
+    token: ".e4m3"
+    cpp: "ScalarType::E4M3"
+  e4m3x2:
+    token: ".e4m3x2"
+    cpp: "ScalarType::E4M3x2"
+  e5m2:
+    token: ".e5m2"
+    cpp: "ScalarType::E5M2"
+  e5m2x2:
+    token: ".e5m2x2"
+    cpp: "ScalarType::E5M2x2"
+  pred:
+    token: ".pred"
+    cpp: "ScalarType::Pred"
+  tf32:
+    token: ".tf32"
+    cpp: "ScalarType::TF32"
+
+emit_kind:
+  direct: "direct"
+  sub_variant: "sub_variant"
+  sub_struct: "sub_struct"

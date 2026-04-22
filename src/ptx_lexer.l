@@ -217,6 +217,8 @@ STRING      \"[^\"]*\"
 "madc"          { TOK(Madc); }
 "dp4a"          { TOK(Dp4a); }
 "dp2a"          { TOK(Dp2a); }
+"bfind"         { TOK(Bfind); }
+"fns"           { TOK(Fns); }
 
  /* Arithmetic — float */
 "fma"           { TOK(Fma); }
@@ -422,6 +424,9 @@ STRING      \"[^\"]*\"
 ".wrap"         { TOK(DotWrap); }
 ".l"            { TOK(DotL); }
 ".r"            { TOK(DotR); }
+
+ /* for bfind */
+".shift"        { TOK(DotShift); }
 
  /* griddepcontrol */
 ".launch_dependents" { TOK(DotLaunchDependents); }

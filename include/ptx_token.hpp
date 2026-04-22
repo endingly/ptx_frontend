@@ -142,6 +142,8 @@ enum class TokenKind : uint16_t {
   Neg,
   Min,
   Max,
+  Bfind,
+  Fns,
   Sad,
   AddCc,
   Addc,
@@ -314,6 +316,7 @@ enum class TokenKind : uint16_t {
   DotWrap,
   DotL,
   DotR,
+  DotShiftamt,
 
   // griddepcontrol
   DotLaunchDependents,

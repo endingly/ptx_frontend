@@ -78,7 +78,7 @@ class Argument:
     def __init__(self, name: str, kind: ArgumentKind):
         self.name = name
         self.kind = kind
-        self.type: str = ""
+        self.type: list[ModifierValue] | None = None
         # type of the argument, used for type checking
         self.parent_variant: VariantModel | None = None
 

@@ -1251,3 +1251,68 @@ TEST(TypeCheckerBmsk, OperandTypeMismatch_Error) {
   auto errs = check_bmsk(sym, target, instr);
   ASSERT_TRUE(errs.empty());
 }
+
+// helpers for szext
+static InstrSzext<ParsedOp> make_szext(BmskMode mode, ScalarType type_,
+                                       std::string_view dst,
+                                       std::string_view src1,
+                                       std::string_view src2) {
+  return InstrSzext<ParsedOp>{mode, type_, reg(dst), reg(src1), reg(src2)};
+}
+static std::vector<TypeError> check_szext(const LegacySymbolTable& sym,
+                                          const CompileTarget& target,
+                                          const InstrSzext<ParsedOp>& instr) {
+  TypeChecker tc{sym, target};
+  tc.check(instr);
+  return tc.errors();
+}
+
+// ── szext tests ───────────────────────────────────────────────────────────────
+TEST(TypeCheckerSzext, U32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_szext(BmskMode::Clamp, ScalarType::U32, "d", "a", "b");
+  EXPECT_TRUE(check_szext(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSzext, S32_Ok) {
+  auto sym = make_sym(
+      {{"d", ScalarType::S32}, {"a", ScalarType::S32}, {"b", ScalarType::S32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_szext(BmskMode::Wrap, ScalarType::S32, "d", "a", "b");
+  EXPECT_TRUE(check_szext(sym, target, instr).empty());
+}
+
+TEST(TypeCheckerSzext, RequiresSm70) {
+  auto sym = make_sym(
+      {{"d", ScalarType::U32}, {"a", ScalarType::U32}, {"b", ScalarType::U32}});
+  CompileTarget target{60, 8.0f};  // sm < 70
+  auto instr = make_szext(BmskMode::Clamp, ScalarType::U32, "d", "a", "b");
+  auto errs = check_szext(sym, target, instr);
+  EXPECT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("sm_70") != std::string::npos);
+}
+
+TEST(TypeCheckerSzext, OperandTypeMismatch_Error) {
+  auto sym = make_sym({{"d", ScalarType::F32},  // dst has wrong type
+                       {"a", ScalarType::U32},
+                       {"b", ScalarType::U32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_szext(BmskMode::Clamp, ScalarType::U32, "d", "a", "b");
+  auto errs = check_szext(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("type mismatch") != std::string::npos);
+}
+
+TEST(TypeCheckerSzext, InvalidTypeModifier_Error) {
+  // type_ must be U32 or S32 — using B32 should trigger modifier error
+  auto sym = make_sym(
+      {{"d", ScalarType::B32}, {"a", ScalarType::B32}, {"b", ScalarType::B32}});
+  CompileTarget target{80, 8.0f};
+  auto instr = make_szext(BmskMode::Clamp, ScalarType::B32, "d", "a", "b");
+  auto errs = check_szext(sym, target, instr);
+  ASSERT_FALSE(errs.empty());
+  EXPECT_TRUE(errs[0].message.find("Modifier type_") != std::string::npos ||
+              errs[0].message.find("illegal modifier") != std::string::npos);
+}

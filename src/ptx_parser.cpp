@@ -8,7 +8,9 @@
  * original source — the caller keeps it alive.
  */
 #include "ptx_parser.hpp"
+#include "ptx_ir/details.hpp"
 #include "ptx_lexer.hpp"
+#include "ptx_token.hpp"
 
 #include <cassert>
 #include <charconv>
@@ -1766,6 +1768,44 @@ struct Parser {
     return InstrFns<ParsedOp>{stype, dst, mask, base, offset};
   }
 
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_szext() {
+    BmskMode mode;
+    if (match(TokenKind::DotClamp))
+      mode = BmskMode::Clamp;
+    else if (match(TokenKind::DotWrap))
+      mode = BmskMode::Wrap;
+    else
+      return err_tok("size extension mode (.clamp/.wrap)");
+
+    auto stype = TRY(parse_scalar_type());
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src1 = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src2 = TRY(parse_operand());
+    return InstrSzext<ParsedOp>{
+        .mode = mode, .type_ = stype, .dst = dst, .src1 = src1, .src2 = src2};
+  }
+
+  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bmsk() {
+    BmskMode mode;
+    if (match(TokenKind::DotClamp))
+      mode = BmskMode::Clamp;
+    else if (match(TokenKind::DotWrap))
+      mode = BmskMode::Wrap;
+    else
+      return err_tok("size extension mode (.clamp/.wrap)");
+
+    auto stype = TRY(parse_scalar_type());
+    auto dst = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src1 = TRY(parse_operand());
+    TRY(expect(TokenKind::Comma, ","));
+    auto src2 = TRY(parse_operand());
+    return InstrBmsk<ParsedOp>{
+        .data = mode, .dst = dst, .src_a = src1, .src_b = src2};
+  }
+
   tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_brev() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
@@ -1953,6 +1993,8 @@ struct Parser {
       case TokenKind::Brev: return parse_instr_brev();
       case TokenKind::Bfind:return parse_instr_bfind();
       case TokenKind::Fns:  return parse_instr_fns();
+      case TokenKind::Szext:return parse_instr_szext();
+      case TokenKind::Bmsk: return parse_instr_bmsk();
       // logic
       case TokenKind::And:  return parse_instr_logic(TokenKind::And);
       case TokenKind::Or:   return parse_instr_logic(TokenKind::Or);
@@ -2019,6 +2061,8 @@ struct Parser {
       case TokenKind::Min:
       case TokenKind::Max:
       case TokenKind::Sad:
+      case TokenKind::Bmsk:
+      case TokenKind::Szext:
       case TokenKind::Popc:
       case TokenKind::Clz:
       case TokenKind::Brev:

@@ -91,6 +91,13 @@ struct InstrBmsk {
   Op dst, src_a, src_b;
 };
 
+template <OperandLike Op>
+struct InstrSzext {
+  BmskMode mode;
+  ScalarType type_;
+  Op dst, src1, src2;
+};
+
 // Bra takes an Ident, not a full operand
 template <typename Id>
 struct InstrBra {
@@ -664,7 +671,7 @@ using Instruction = std::variant<
     InstrCpAsyncBulkCommitGroup, InstrCpAsyncBulkWaitGroup<Op>,
     InstrTensormapReplace<Op>, InstrTensormapCpFenceProxy<Op>,
     InstrPrefetchu<Op>, InstrClusterLaunchControl<Op>, InstrBfind<Op>,
-    InstrFns<Op>>;
+    InstrFns<Op>, InstrSzext<Op>>;
 
 // ============================================================
 // § 11  Statement<Op>  ←  ast.rs::Statement

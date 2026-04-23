@@ -144,6 +144,7 @@ enum class TokenKind : uint16_t {
   Max,
   Bfind,
   Fns,
+  Szext,
   Sad,
   AddCc,
   Addc,

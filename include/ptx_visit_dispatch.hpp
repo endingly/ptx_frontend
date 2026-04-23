@@ -526,6 +526,35 @@ expected<InstrBmsk<To>, Err> map_instr(InstrBmsk<From> instr,
 }
 
 template <OperandLike Op, typename Err>
+expected<void, Err> visit_instr(const InstrSzext<Op>& instr,
+                                Visitor<Op, Err>& v) {
+  Type t = make_scalar(instr.type_);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  if (auto r = v.visit(instr.dst, ts, true, false); !r)
+    return r;
+  if (auto r = v.visit(instr.src1, ts, false, false); !r)
+    return r;
+  return v.visit(instr.src2, ts, false, false);
+}
+
+template <OperandLike From, OperandLike To, typename Err>
+expected<InstrSzext<To>, Err> map_instr(InstrSzext<From> instr,
+                                        VisitorMap<From, To, Err>& v) {
+  Type t = make_scalar(instr.type_);
+  VisitTypeSpace ts{&t, StateSpace::Reg};
+  auto dst = v.visit(std::move(instr.dst), ts, true, false);
+  if (!dst)
+    return unexpected(dst.error());
+  auto src1 = v.visit(std::move(instr.src1), ts, false, false);
+  if (!src1)
+    return unexpected(src1.error());
+  auto src2 = v.visit(std::move(instr.src2), ts, false, false);
+  if (!src2)
+    return unexpected(src2.error());
+  return InstrSzext<To>{instr.mode, instr.type_, *dst, *src1, *src2};
+}
+
+template <OperandLike Op, typename Err>
 expected<void, Err> visit_instr(const InstrBra<typename Op::id_type>& instr,
                                 Visitor<Op, Err>& v) {
   return v.visit_ident(instr.src, std::nullopt, false, false);

@@ -219,6 +219,7 @@ STRING      \"[^\"]*\"
 "dp2a"          { TOK(Dp2a); }
 "bfind"         { TOK(Bfind); }
 "fns"           { TOK(Fns); }
+"szext"         { TOK(Szext); }
 
  /* Arithmetic — float */
 "fma"           { TOK(Fma); }

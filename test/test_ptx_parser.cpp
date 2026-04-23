@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "ptx_ir/details.hpp"
 #include "ptx_ir/instr.hpp"
 #include "ptx_parser.hpp"
 
@@ -818,4 +819,25 @@ TEST(ParserFence, MultipleInSequence) {
   auto& d2 =
       std::get<FenceProxyBidir>(std::get<InstrFence<ParsedOp>>(instrs[2]).data);
   EXPECT_EQ(d2.kind, FenceProxyKind::Alias);
+}
+
+// -- bmsk/szext parse test
+TEST(ParserBmsk, Basic) {
+  auto instrs = parse_instrs(R"(
+   bmsk.clamp.b32 %r0, %r1, %r2;
+  )");
+
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& i = as<InstrBmsk<ParsedOp>>(instrs, 0);
+  EXPECT_EQ(i.data, BmskMode::Clamp);
+}
+
+TEST(ParserSzext, Basic) {
+  auto instrs = parse_instrs(R"(
+   szext.clamp.b32 %r0, %r1, %r2;
+  )");
+
+  ASSERT_EQ(instrs.size(), 1u);
+  auto& i = as<InstrSzext<ParsedOp>>(instrs, 0);
+  EXPECT_EQ(i.mode, BmskMode::Clamp);
 }

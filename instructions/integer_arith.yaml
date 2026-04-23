@@ -1090,35 +1090,36 @@
       emit_note:
         kind: direct
 
-# ###############################################################################
-# # szext
-# ###############################################################################
-# - opcode: "szext" # TODO
-#   doc: "PTX ISA §9.7.1.21"
-#   variants:
-#     - description: "Sign Extend."
-#       constraints:
-#         min_ptx_version: 7.6
-#         min_sm: 70
-#       modifiers:
-#         mode:
-#           kind: required
-#           type: BmskMode
-#           values:
-#             - { token: ".clamp", cpp: "BmskMode::Clamp" }
-#             - { token: ".wrap", cpp: "BmskMode::Wrap" }
-#         type_:
-#           kind: required
-#           type: ScalarType
-#           values:
-#             - { token: ".u32", cpp: "ScalarType::U32" }
-#             - { token: ".s32", cpp: "ScalarType::S32" }
-#       args:
-#         - { name: "dst", kind: reg }
-#         - { name: "src1", kind: reg_or_imm }
-#         - { name: "src2", kind: reg_or_imm }
-#       cpp_struct: "InstrSzext"
-#       emit_note: null
+###############################################################################
+# szext
+###############################################################################
+- opcode: "szext"
+  doc: "PTX ISA §9.7.1.21"
+  cpp: "InstrSzext"
+  variants:
+    - description: "Sign Extend."
+      constraints:
+        min_ptx_version: 7.6
+        min_sm: 70
+      modifiers:
+        mode:
+          kind: required
+          type: BmskMode
+          values:
+            - { token: ".clamp", cpp: "BmskMode::Clamp" }
+            - { token: ".wrap", cpp: "BmskMode::Wrap" }
+        type_:
+          kind: required
+          type: ScalarType
+          values:
+            - { token: ".u32", cpp: "ScalarType::U32" }
+            - { token: ".s32", cpp: "ScalarType::S32" }
+      args:
+        - { name: "dst", kind: reg }
+        - { name: "src1", kind: reg_or_imm }
+        - { name: "src2", kind: reg_or_imm }
+      emit_note:
+        kind: direct
 
 ###############################################################################
 # bmsk

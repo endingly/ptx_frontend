@@ -425,7 +425,6 @@
         - { name: "src1", kind: reg_or_imm }
         - { name: "src2", kind: reg_or_imm }
         - { name: "src3", kind: reg_or_imm }
-      cpp_struct: "InstrMad24"
       emit_note:
         kind: sub_variant
         instance: "data"

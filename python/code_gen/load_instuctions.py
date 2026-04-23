@@ -86,6 +86,7 @@ def _parse_variant(raw: dict) -> VariantModel:
     variant.min_ptx_version = float(constraints.get("min_ptx_version", 0))
     variant.min_sm_version = int(constraints.get("min_sm", 0))
     variant.emit_note = _parse_emit_note(raw.get("emit_note", {}))
+    variant.cpp_struct_name = raw.get("cpp_struct_name", "")  # optional
 
     for mod_name, mod_def in raw.get("modifiers", {}).items():
         tmp_modifier = _parse_modifier(mod_name, mod_def)
@@ -128,6 +129,8 @@ def _parse_instruction(raw: dict) -> Instruction:
     for v in raw.get("variants", []):
         tmp_variant = _parse_variant(v)
         tmp_variant.parent_instruction = instr
+        if tmp_variant.cpp_struct_name == "":
+            tmp_variant.cpp_struct_name = instr.cpp
         instr.variants.append(tmp_variant)
     return instr
 

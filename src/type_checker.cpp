@@ -2,8 +2,10 @@
 #include <array>
 #include <magic_enum/magic_enum.hpp>
 #include <type_traits>
+#include <variant>
 #include <vector>
 #include "ptx_ir/base.hpp"
+#include "symbol_resolver.hpp"
 
 namespace ptx_frontend {
 
@@ -38,7 +40,7 @@ bool TypeChecker::require_ptx(float min_v) {
   return target_.ptx_version >= min_v;
 }
 
-bool TypeChecker::check_operand(const ParsedOp& op,
+bool TypeChecker::check_operand(const ResolvedOp& op,
                                 const std::vector<ScalarType>& expected) {
   auto clear = [&](int32_t pop_num) {
     // pop n-1 errors, keep the last one which is the most relevant
@@ -58,68 +60,82 @@ bool TypeChecker::check_operand(const ParsedOp& op,
   return false;
 }
 
-bool TypeChecker::check_operand(const ParsedOp& op, ScalarType expected) {
-  // extract register name (if any) and look up in symbol table
-  std::optional<Ident> reg_name;
-
+bool TypeChecker::check_operand(const ResolvedOp& op, ScalarType expected) {
+  using Id = ResolvedOp::id_type;
+  std::optional<Id> reg_name;
   std::visit(
       [&](const auto& v) {
         using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, RegOrImmediate<Ident>>) {
-          if (std::holds_alternative<Ident>(v.value))
-            reg_name = std::get<Ident>(v.value);
-          // immediate: skip type check
-        } else if constexpr (std::is_same_v<T, ParsedOp::RegOffset>) {
+        if constexpr (std::is_same_v<T, RegOrImmediate<Id>>) {
+          if (std::holds_alternative<Id>(v.value))
+            reg_name = std::get<Id>(v.value);
+        } else if constexpr (std::is_same_v<T, ResolvedOp::RegOffset>) {
           reg_name = v.base;
-        } else if constexpr (std::is_same_v<T, ParsedOp::VecMemberIdx>) {
+        } else if constexpr (std::is_same_v<T, ResolvedOp::VecMemberIdx>) {
           reg_name = v.base;
         }
-        // ImmediateValue / VecPack: skip
       },
       op.value);
 
   if (!reg_name)
-    return true;  // immediate — skip
+    return true;  // immediate or vec-pack -> skip
 
-  auto it = sym_.find(std::string(*reg_name));
-  if (it == sym_.end()) {
-    error("undefined register: " + std::string(*reg_name));
+  Type declared_type;
+  std::string name_for_err;
+
+  // check if the register is defined and get its type
+  SymbolId id = *reg_name;
+  if (id == kInvalidSymbolId) {
+    error("undefined register id");
+    return false;
+  }
+  const SymbolEntry& ent = sym_.entry(id);
+  declared_type = ent.type;
+  name_for_err = ent.name;
+
+  auto actual_scalar = std::visit(
+      [&](const auto& t) -> std::optional<ScalarType> {
+        using T = std::decay_t<decltype(t)>;
+        if constexpr (std::is_same_v<T, ScalarTypeT> or
+                      std::is_same_v<T, VectorTypeT> or
+                      std::is_same_v<T, ArrayTypeT>) {
+          return t.type;
+        }
+        return std::nullopt;
+      },
+      declared_type);
+  if (!actual_scalar) {
+    error("type mismatch on " + name_for_err + ": expected " +
+          to_string(expected) + ", got non-scalar type");
     return false;
   }
 
-  // if expected type is .b16, .b32, or .b64, allow matching .f16, .f32, or .f64 respectively
-  if (expected == ScalarType::B16 or expected == ScalarType::B32 or
-      expected == ScalarType::B64 or expected == ScalarType::B8 or
+  // bit-kind: match by element bit-width (B32 matches F32 etc.)
+  if (expected == ScalarType::B8 || expected == ScalarType::B16 ||
+      expected == ScalarType::B32 || expected == ScalarType::B64 ||
       expected == ScalarType::B128) {
 
-    static constexpr auto all_enums = magic_enum::enum_values<ScalarType>();
-
-    std::vector<ScalarType> matching_types;
     auto target_width = scalar_size_of(expected);
-    for (auto&& item : all_enums) {
-      if (scalar_size_of(item) == target_width)
-        matching_types.push_back(item);
-    }
+    static constexpr auto all_enums = magic_enum::enum_values<ScalarType>();
+    std::vector<ScalarType> matching;
+    for (auto e : all_enums)
+      if (scalar_size_of(e) == target_width)
+        matching.push_back(e);
 
-    if (!utils::contains(matching_types, it->second.type))
-      return false;
-  } else {
-    if (it->second.type != expected) {
-      error("type mismatch on " + std::string(*reg_name) + ": expected " +
-            to_string(expected) + ", got " + to_string(it->second.type));
+    if (!utils::contains(matching, *actual_scalar)) {
+      error("type mismatch on " + name_for_err + ": expected " +
+            to_string(expected) + ", got " + to_string(*actual_scalar));
       return false;
     }
+    return true;
   }
 
+  if (*actual_scalar != expected) {
+    error("type mismatch on " + name_for_err + ": expected " +
+          to_string(expected) + ", got " + to_string(*actual_scalar));
+    return false;
+  }
   return true;
-}
-
-bool TypeChecker::check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t) {
-  bool ok = true;
-  ok &= check_operand(i.dst, t);
-  ok &= check_operand(i.src1, t);
-  ok &= check_operand(i.src2, t);
-  return ok;
 }
 
 };  // namespace ptx_frontend

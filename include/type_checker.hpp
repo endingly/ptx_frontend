@@ -19,17 +19,8 @@ struct TypeError {
   // TODO: source location
 };
 
-// Legacy lightweight symbol table used by the standalone TypeChecker
-// (before the full SymbolTable / ResolvedModule pipeline is integrated).
-// Kept for backward-compatibility with existing tests.
-struct RegDecl {
-  ScalarType type;   // reg type, e.g. F32
-  StateSpace space;  // state space, e.g. Reg
-};
-using LegacySymbolTable = std::unordered_map<std::string, RegDecl>;
-
 class TypeChecker {
-  const LegacySymbolTable& sym_;
+  const SymbolTable& sym_;
   const CompileTarget& target_;
   std::vector<TypeError> errors_;
 
@@ -39,11 +30,17 @@ class TypeChecker {
   bool require_sm(uint32_t min_v);
   bool require_ptx(float min_v);
 
-  // operand type check via LegacySymbolTable
-  bool check_operand(const ParsedOp& op, ScalarType expected);
-  bool check_operand(const ParsedOp& op,
+  /**
+   * @brief Check if the operand matches the expected type.
+   * 
+   * @param op target operand
+   * @param expected expected type
+   * @return true if the operand matches the expected type
+   * @return false if the operand does not match the expected type, and record an error message
+   */
+  bool check_operand(const ResolvedOp& op, ScalarType expected);
+  bool check_operand(const ResolvedOp& op,
                      const std::vector<ScalarType>& expected);
-  bool check_dst_src2(const InstrAdd<ParsedOp>& i, ScalarType t);
 
   template <typename T, std::size_t N>
   static constexpr bool is_one_of(
@@ -53,7 +50,7 @@ class TypeChecker {
   }
 
  public:
-  TypeChecker(const LegacySymbolTable& sym, const CompileTarget& target)
+  TypeChecker(const SymbolTable& sym, const CompileTarget& target)
       : sym_(sym), target_(target) {}
 
 #include "type_checker.src.gen"

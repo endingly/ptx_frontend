@@ -1,5 +1,5 @@
 #pragma once
-#include <expected.hpp>
+#include <expected>
 #include <string>
 #include "ptx_ir/instr.hpp"
 #include "ptx_lexer.hpp"
@@ -33,6 +33,6 @@ struct ParseError {
  *   if (!result) { /* handle result.error() *\/ }
  *   Module& mod = *result;
  */
-tl::expected<Module, ParseError> parse_module(std::string_view src);
+std::expected<Module, ParseError> parse_module(std::string_view src);
 
 }  // namespace ptx_frontend

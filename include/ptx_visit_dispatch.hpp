@@ -5,8 +5,6 @@
 
 namespace ptx_frontend {
 
-using tl::unexpected;
-
 template <typename T>
 ScalarType get_scalar_type(const T& data);
 

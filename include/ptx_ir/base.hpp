@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
-#include <expected.hpp>
+#include <expected>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <string_view>
@@ -11,8 +11,8 @@
 
 namespace ptx_frontend {
 
-using tl::expected;
-using tl::unexpected;
+using std::expected;
+using std::unexpected;
 
 enum class ScalarType : uint8_t {
   U8,
@@ -225,7 +225,7 @@ struct ParsedOperand {
           if constexpr (std::is_same_v<T, RegOffset>) {
             auto r = fn(v.base);
             if (!r)
-              return tl::unexpected(r.error());
+              return unexpected(r.error());
             return ParsedOperand<NewId>::from_value(
                 typename ParsedOperand<NewId>::RegOffset{*r, v.offset});
           }
@@ -234,7 +234,7 @@ struct ParsedOperand {
           else if constexpr (std::is_same_v<T, VecMemberIdx>) {
             auto r = fn(v.base);
             if (!r)
-              return tl::unexpected(r.error());
+              return unexpected(r.error());
             return ParsedOperand<NewId>::from_value(
                 typename ParsedOperand<NewId>::VecMemberIdx{*r, v.member});
           }
@@ -267,7 +267,7 @@ struct ParsedOperand {
               if (std::holds_alternative<Id>(item.value)) {
                 auto r = fn(std::get<Id>(item.value));
                 if (!r)
-                  return tl::unexpected(r.error());
+                  return unexpected(r.error());
                 new_vec.push_back(RegOrImmediate<NewId>::Reg(*r));
               } else {
                 new_vec.push_back(RegOrImmediate<NewId>::Imm(

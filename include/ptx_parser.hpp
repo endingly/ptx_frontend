@@ -22,6 +22,7 @@ namespace ptx_frontend {
 
 struct ParseError {
   int line;
+  int column;
   std::string message;
 };
 

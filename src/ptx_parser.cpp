@@ -42,12 +42,16 @@ struct Parser {
 
   // ── error ──────────────────────────────────────────────────
   tl::unexpected<ParseError> err(std::string msg) {
-    return tl::unexpected(ParseError{lex.peek().line, std::move(msg)});
+    auto temp_token = lex.peek();
+    return tl::unexpected(
+        ParseError{temp_token.line, temp_token.column, std::move(msg)});
   }
+
   tl::unexpected<ParseError> err_tok(const char* what) {
     auto t = lex.peek();
     return err(std::string("expected ") + what + ", got '" +
-               std::string(t.text) + "' at line " + std::to_string(t.line));
+               std::string(t.text) + "' at line " + std::to_string(t.line) +
+               ", column " + std::to_string(t.column));
   }
 
   // ── token predicates ──────────────────────────────────────

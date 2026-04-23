@@ -11,6 +11,7 @@ class PtxLexer {
     TokenKind kind;
     std::string_view text;
     int line;
+    int column;
   };
 
   explicit PtxLexer(std::string_view src);

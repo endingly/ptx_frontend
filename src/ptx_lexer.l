@@ -32,6 +32,7 @@ extern std::string_view ptx_intern(const char* s, std::size_t len, void* extra);
 typedef ptx_frontend::PtxSVal YYSTYPE;
 
 #define YY_DECL TokenKind yylex(YYSTYPE *yylval_param, yyscan_t yyscanner)
+#define YY_USER_ACTION yyset_column(yyget_column(yyscanner) + yyget_leng(yyscanner), yyscanner);
 %}
 
 /* ── scanner options ──────────────────────────────────────────────────── */

@@ -114,7 +114,7 @@ struct InstrBrev {
 template <OperandLike Op>
 struct InstrCall {
   CallDetails data;
-  CallArgs<typename Op::id_type /* if Op = ParsedOperand<Id> */> arguments;
+  CallArgs<typename unwrap_operand_t<Op>::id_type /* if Op = ParsedOperand<Id> */> arguments;
 };
 // NOTE: In C++ without Rust's associated types, you may need to pass Id as
 // a second template parameter for Call. See usage note below.
@@ -640,7 +640,7 @@ using Instruction = std::variant<
     InstrSubExtended<Op>, InstrMadExtended<Op>, InstrAnd<Op>, InstrAtom<Op>,
     InstrAtomCas<Op>, InstrBarWarp<Op>, InstrBar<Op>, InstrBarRed<Op>,
     InstrBfe<Op>, InstrBfi<Op>, InstrBmsk<Op>,
-    InstrBra<typename Op::id_type>,  // <-- Ident only
+    InstrBra<typename unwrap_operand_t<Op>::id_type>,  // <-- Ident only
     InstrBrev<Op>,
     InstrCall<Op>,  // NOTE: CallArgs needs Id; adapt as needed
     InstrClz<Op>, InstrCos<Op>, InstrCpAsync<Op>, InstrCpAsyncCommitGroup,
@@ -679,7 +679,7 @@ using Instruction = std::variant<
 
 template <OperandLike Op>
 struct Statement {
-  using IdType = typename Op::id_type;  // for IdentLike constraint on Label
+  using IdType = typename unwrap_operand_t<Op>::id_type;  // for IdentLike constraint on Label
 
   struct LabelS {
     IdType label;

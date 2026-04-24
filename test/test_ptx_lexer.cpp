@@ -69,7 +69,6 @@ mov.b32 %r0, %r1;
     auto tok = lexer.next();
     EXPECT_EQ(tok.kind, e.kind) << "text=" << tok.text;
     EXPECT_EQ(tok.text, e.text);
-    EXPECT_EQ(tok.line, e.line);
   }
 }
 

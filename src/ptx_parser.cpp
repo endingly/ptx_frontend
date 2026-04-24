@@ -9,9 +9,11 @@
  */
 #include "ptx_parser.hpp"
 #include "ptx_ir/details.hpp"
+#include "ptx_ir/source_loc.hpp"
 #include "ptx_lexer.hpp"
 #include "ptx_token.hpp"
 
+#include <fmt/format.h>
 #include <cassert>
 #include <charconv>
 #include <cstring>
@@ -44,14 +46,14 @@ struct Parser {
   unexpected<ParseError> err(std::string msg) {
     auto temp_token = lex.peek();
     return unexpected(
-        ParseError{temp_token.line, temp_token.column, std::move(msg)});
+        ParseError{.message = std::move(msg), .range = temp_token.range});
   }
 
   unexpected<ParseError> err_tok(const char* what) {
     auto t = lex.peek();
-    return err(std::string("expected ") + what + ", got '" +
-               std::string(t.text) + "' at line " + std::to_string(t.line) +
-               ", column " + std::to_string(t.column));
+    return err(fmt::format("expected {}, got '{}', at {}:{}-{}:{}", what,
+                           t.text, t.range.start.line, t.range.start.column,
+                           t.range.end.line, t.range.end.column));
   }
 
   // ── token predicates ──────────────────────────────────────
@@ -164,11 +166,11 @@ struct Parser {
   }
 
   // require a scalar-type token and consume it
-  expected<ScalarType, ParseError> parse_scalar_type() {
+  expected<WithLoc<ScalarType>, ParseError> parse_scalar_type() {
     auto k = lex.peek().kind;
     if (auto t = token_to_scalar_type(k)) {
-      lex.consume();
-      return *t;
+      auto token = lex.consume();
+      return WithLoc<ScalarType>{*t, token.range};
     }
     return err_tok("scalar type (.b32 / .f32 / ...)");
   }
@@ -449,19 +451,21 @@ struct Parser {
   // §5  Immediate value
   // ============================================================
 
-  expected<ImmediateValue, ParseError> parse_immediate() {
+  expected<WithLoc<ImmediateValue>, ParseError> parse_immediate() {
     auto tok = lex.peek();
     switch (tok.kind) {
       case TokenKind::Hex:
       case TokenKind::Decimal:
         lex.consume();
-        return ImmediateValue::from_value(parse_uint(tok.text));
+        return WithLoc{ImmediateValue::from_value(parse_uint(tok.text)),
+                       tok.range};
 
       case TokenKind::Minus: {
         lex.consume();
         auto ntok = TRY(expect(TokenKind::Decimal, "integer"));
-        return ImmediateValue::from_value(
-            -static_cast<int64_t>(parse_uint(ntok.text)));
+        return WithLoc{ImmediateValue::from_value(
+                           -static_cast<int64_t>(parse_uint(ntok.text))),
+                       ntok.range};
       }
 
       case TokenKind::F32Hex: {
@@ -472,7 +476,7 @@ struct Parser {
         std::from_chars(sv.data() + 2, sv.data() + sv.size(), bits, 16);
         float f;
         std::memcpy(&f, &bits, sizeof(f));
-        return ImmediateValue::from_value(f);
+        return WithLoc{ImmediateValue::from_value(f), tok.range};
       }
 
       case TokenKind::F64Hex: {
@@ -483,7 +487,7 @@ struct Parser {
         std::from_chars(sv.data() + 2, sv.data() + sv.size(), bits, 16);
         double d;
         std::memcpy(&d, &bits, sizeof(d));
-        return ImmediateValue::from_value(d);
+        return WithLoc{ImmediateValue::from_value(d), tok.range};
       }
 
       case TokenKind::F64: {
@@ -491,12 +495,12 @@ struct Parser {
         double d = 0.0;
         auto sv = tok.text;
         std::from_chars(sv.data(), sv.data() + sv.size(), d);
-        return ImmediateValue::from_value(d);
+        return WithLoc{ImmediateValue::from_value(d), tok.range};
       }
 
       case TokenKind::WarpSz:
         lex.consume();
-        return ImmediateValue::from_value(uint64_t{32});
+        return WithLoc{ImmediateValue::from_value(uint64_t{32}), tok.range};
 
       default:
         return err_tok("immediate value");
@@ -513,29 +517,35 @@ struct Parser {
   //   0x1234       → ImmediateValue
   // ============================================================
 
-  expected<ParsedOp, ParseError> parse_operand() {
+  expected<WithLoc<ParsedOp>, ParseError> parse_operand() {
+    SourceRange loc;
     // VecPack   { a, b, ... }
     if (check(TokenKind::LBrace)) {
       lex.consume();
       ParsedOperand<Ident>::VecPack pack;
       // first element
       if (!check(TokenKind::RBrace)) {
-        pack.push_back(TRY(parse_reg_or_imm()));
+        auto reg_or_imm = TRY(parse_reg_or_imm());
+        pack.push_back(std::move(reg_or_imm.value));
+        loc.start = reg_or_imm.loc.start;
         while (match(TokenKind::Comma)) {
           if (check(TokenKind::RBrace))
             break;
-          pack.push_back(TRY(parse_reg_or_imm()));
+          auto reg_or_imm_next = TRY(parse_reg_or_imm());
+          pack.push_back(std::move(reg_or_imm_next.value));
+          loc.end = reg_or_imm_next.loc.end;
         }
       }
       TRY(expect(TokenKind::RBrace, "}"));
-      return ParsedOp::from_value(std::move(pack));
+      return WithLoc{ParsedOp::from_value(std::move(pack)), loc};
     }
 
     // Identifier-based operands
     if (check(TokenKind::Ident)) {
       auto id = lex.consume();
       Ident base = id.text;
-
+      SourceRange loc;
+      loc = id.range;
       // %r0.x  → VecMemberIdx
       if (check(TokenKind::Dot)) {
         lex.consume();
@@ -553,39 +563,46 @@ struct Parser {
         else
           return err("unknown vector member '" + std::string(member_tok.text) +
                      "'");
-        return ParsedOp::from_value(
-            ParsedOperand<Ident>::VecMemberIdx{base, m});
+        loc.end = member_tok.range.end;
+        return WithLoc{
+            ParsedOp::from_value(ParsedOperand<Ident>::VecMemberIdx{base, m}),
+            loc};
       }
 
       // %r0+offset  or  %r0-offset → RegOffset
       if (check(TokenKind::Plus) || check(TokenKind::Minus)) {
         int sign = check(TokenKind::Plus) ? 1 : -1;
-        lex.consume();
+        auto token = lex.consume();
         auto offset_tok = TRY(expect(TokenKind::Decimal, "offset"));
         int32_t off = sign * (int32_t)parse_uint(offset_tok.text);
-        return ParsedOp::from_value(ParsedOperand<Ident>::RegOffset{base, off});
+        return WithLoc{
+            ParsedOp::from_value(ParsedOperand<Ident>::RegOffset{base, off}),
+            token.range};
       }
 
       // plain register
-      return ParsedOp::from_value(RegOrImmediate<Ident>::Reg(base));
+      return WithLoc{ParsedOp::from_value(RegOrImmediate<Ident>::Reg(base)),
+                     id.range};
     }
 
     // Address operand  [reg]  /  [reg+offset]  /  [reg-offset]  /  [imm]
     if (check(TokenKind::LBracket)) {
-      lex.consume();  // eat '['
+      SourceRange loc;
+      loc = lex.consume().range;
       ParsedOp inner;
       if (check(TokenKind::Ident)) {
         auto id = lex.consume();
+        loc.end = id.range.end;
         Ident base = id.text;
         if (check(TokenKind::Plus) || check(TokenKind::Minus)) {
           int sign = check(TokenKind::Plus) ? 1 : -1;
-          lex.consume();
+          loc.end = lex.consume().range.end;
           // offset might be hex or decimal
           auto offset_tok = lex.peek();
           if (offset_tok.kind != TokenKind::Decimal &&
               offset_tok.kind != TokenKind::Hex)
             return err_tok("address offset");
-          lex.consume();
+          loc.end = lex.consume().range.end;
           int32_t off = sign * (int32_t)parse_uint(offset_tok.text);
           inner =
               ParsedOp::from_value(ParsedOperand<Ident>::RegOffset{base, off});
@@ -594,24 +611,25 @@ struct Parser {
         }
       } else {
         auto imm = TRY(parse_immediate());
-        inner = ParsedOp::from_value(imm);
+        loc.end = imm.loc.end;
+        inner = ParsedOp::from_value(imm.value);
       }
-      TRY(expect(TokenKind::RBracket, "]"));
-      return inner;
+      loc.end = TRY(expect(TokenKind::RBracket, "]")).range.end;
+      return WithLoc{inner, loc};
     }
 
     // Immediate
     auto imm = TRY(parse_immediate());
-    return ParsedOp::from_value(imm);
+    return WithLoc{ParsedOp::from_value(imm.value), imm.loc};
   }
 
-  expected<RegOrImmediate<Ident>, ParseError> parse_reg_or_imm() {
+  expected<WithLoc<RegOrImmediate<Ident>>, ParseError> parse_reg_or_imm() {
     if (check(TokenKind::Ident)) {
       auto id = lex.consume();
-      return RegOrImmediate<Ident>::Reg(id.text);
+      return WithLoc{RegOrImmediate<Ident>::Reg(id.text), id.range};
     }
     auto imm = TRY(parse_immediate());
-    return RegOrImmediate<Ident>::Imm(imm);
+    return WithLoc{RegOrImmediate<Ident>::Imm(imm.value), imm.loc};
   }
 
   // ============================================================
@@ -636,32 +654,48 @@ struct Parser {
   // ============================================================
 
   // ── helper: rounding mode ───────────────────��─────────────
-  std::optional<RoundingMode> try_parse_rounding() {
+  std::optional<WithLoc<RoundingMode>> try_parse_rounding() {
     switch (lex.peek().kind) {
       case TokenKind::DotRn:
       case TokenKind::DotRni:
         lex.consume();
-        return RoundingMode::NearestEven;
+        return WithLoc<RoundingMode>{RoundingMode::NearestEven,
+                                     lex.peek().range};
       case TokenKind::DotRz:
       case TokenKind::DotRzi:
         lex.consume();
-        return RoundingMode::Zero;
+        return WithLoc<RoundingMode>{RoundingMode::Zero, lex.peek().range};
       case TokenKind::DotRm:
       case TokenKind::DotRmi:
         lex.consume();
-        return RoundingMode::NegativeInf;
+        return WithLoc<RoundingMode>{RoundingMode::NegativeInf,
+                                     lex.peek().range};
       case TokenKind::DotRp:
       case TokenKind::DotRpi:
         lex.consume();
-        return RoundingMode::PositiveInf;
+        return WithLoc<RoundingMode>{RoundingMode::PositiveInf,
+                                     lex.peek().range};
       default:
         return std::nullopt;
     }
   }
 
   // ── helper: ftz ──────────────────────────────────────────
-  bool try_parse_ftz() { return match(TokenKind::DotFtz); }
-  bool try_parse_sat() { return match(TokenKind::DotSat); }
+  WithLoc<bool> try_parse_ftz() {
+    if (check(TokenKind::DotFtz)) {
+      auto token = lex.consume();
+      return WithLoc<bool>(true, token.range);
+    }
+    return WithLoc<bool>(false);
+  }
+
+  WithLoc<bool> try_parse_sat() {
+    if (check(TokenKind::DotSat)) {
+      auto token = lex.consume();
+      return WithLoc<bool>(true, token.range);
+    }
+    return WithLoc<bool>(false);
+  }
 
   // ── 8.1  mov ──────────────────────────────────────────────
   // mov.type  dst, src;    (scalar)
@@ -809,8 +843,8 @@ struct Parser {
     // PTX serials: [.rnd] [.ftz] [.sat] .type
     // all before .type, and in any order with optional presence
     auto rm = try_parse_rounding();  // .rn / .rz / .rm / .rp  (optional)
-    bool ftz = try_parse_ftz();      // .ftz                    (optional)
-    bool sat = try_parse_sat();      // .sat                    (optional)
+    auto ftz = try_parse_ftz();      // .ftz                    (optional)
+    auto sat = try_parse_sat();      // .sat                    (optional)
 
     auto stype = TRY(parse_scalar_type());  // .f32 / .s32 / ...   (required)
 
@@ -831,14 +865,14 @@ struct Parser {
     }
   }
 
-  expected<Instruction<ParsedOp>, ParseError> parse_instr_add() {
+  expected<Instruction<WithLoc<ParsedOp>>, ParseError> parse_instr_add() {
     auto data = TRY(parse_arith_details());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src1 = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src2 = TRY(parse_operand());
-    return InstrAdd<ParsedOp>{data, dst, src1, src2};
+    return InstrAdd<WithLoc<ParsedOp>>{data, dst, src1, src2};
   }
 
   expected<Instruction<ParsedOp>, ParseError> parse_instr_sub() {

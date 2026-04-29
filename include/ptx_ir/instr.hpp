@@ -3,6 +3,7 @@
 #include <optional>
 #include "ptx_ir/base.hpp"
 #include "ptx_ir/details.hpp"
+#include "ptx_ir/source_loc.hpp"
 
 namespace ptx_frontend {
 
@@ -17,16 +18,16 @@ using Opt = std::optional<Op>;  // models Option<T> arguments
 template <OperandLike Op>
 struct InstrAbs {
   TypeFtz data;
-  Op dst, src;
+  WithLoc<Op> dst, src;
 };
 template <OperandLike Op>
 struct InstrActivemask {
-  Op dst;
+  WithLoc<Op> dst;
 };
 template <OperandLike Op>
 struct InstrAdd {
   ArithDetails data;
-  Op dst, src1, src2;
+  WithLoc<Op> dst, src1, src2;
 };
 template <OperandLike Op>
 struct InstrAddExtended {
@@ -114,7 +115,9 @@ struct InstrBrev {
 template <OperandLike Op>
 struct InstrCall {
   CallDetails data;
-  CallArgs<typename unwrap_operand_t<Op>::id_type /* if Op = ParsedOperand<Id> */> arguments;
+  CallArgs<
+      typename unwrap_operand_t<Op>::id_type /* if Op = ParsedOperand<Id> */>
+      arguments;
 };
 // NOTE: In C++ without Rust's associated types, you may need to pass Id as
 // a second template parameter for Call. See usage note below.
@@ -679,7 +682,8 @@ using Instruction = std::variant<
 
 template <OperandLike Op>
 struct Statement {
-  using IdType = typename unwrap_operand_t<Op>::id_type;  // for IdentLike constraint on Label
+  using IdType = typename unwrap_operand_t<
+      Op>::id_type;  // for IdentLike constraint on Label
 
   struct LabelS {
     IdType label;

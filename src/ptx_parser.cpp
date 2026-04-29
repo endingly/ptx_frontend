@@ -865,14 +865,14 @@ struct Parser {
     }
   }
 
-  expected<Instruction<WithLoc<ParsedOp>>, ParseError> parse_instr_add() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_add() {
     auto data = TRY(parse_arith_details());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src1 = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src2 = TRY(parse_operand());
-    return InstrAdd<WithLoc<ParsedOp>>{data, dst, src1, src2};
+    return InstrAdd<ParsedOp>{data, dst, src1, src2};
   }
 
   expected<Instruction<ParsedOp>, ParseError> parse_instr_sub() {

@@ -14,6 +14,7 @@ PtxLexer::PtxLexer(std::string_view src) : impl_(std::make_unique<Impl>()) {
   yylex_init(&impl_->scanner);
   impl_->buf = yy_scan_bytes(src.data(), (int)src.size(), impl_->scanner);
   yyset_lineno(1, impl_->scanner);
+  yyset_column(1, impl_->scanner);
 }
 
 PtxLexer::~PtxLexer() {
@@ -23,8 +24,17 @@ PtxLexer::~PtxLexer() {
 
 PtxLexer::Token PtxLexer::next() {
   PtxSVal sval{};
+  // 1. record the token line/col
+  int32_t start_line = yyget_lineno(impl_->scanner);
+  int32_t start_col = yyget_column(impl_->scanner);
+  // 2. get the token kind and text
   TokenKind kind = static_cast<TokenKind>(yylex(&sval, impl_->scanner));
-  return Token{kind, sval.sv, yyget_lineno(impl_->scanner)};
+  // 3. construct the token with text and line/col info
+  int32_t end_line = yyget_lineno(impl_->scanner);
+  int32_t end_col = yyget_column(impl_->scanner);
+  // 4. construct the token with text and line/col info
+  SourceRange range{{start_line, start_col}, {end_line, end_col}};
+  return Token{kind, sval.sv, range};
 }
 
 PtxLexer::Token PtxLexer::peek() {

@@ -1,18 +1,19 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
-#include <expected.hpp>
+#include <expected>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <string_view>
 #include <variant>
 #include <vector>
+#include "ptx_ir/source_loc.hpp"
 #include "utils.hpp"
 
 namespace ptx_frontend {
 
-using tl::expected;
-using tl::unexpected;
+using std::expected;
+using std::unexpected;
 
 enum class ScalarType : uint8_t {
   U8,
@@ -225,7 +226,7 @@ struct ParsedOperand {
           if constexpr (std::is_same_v<T, RegOffset>) {
             auto r = fn(v.base);
             if (!r)
-              return tl::unexpected(r.error());
+              return unexpected(r.error());
             return ParsedOperand<NewId>::from_value(
                 typename ParsedOperand<NewId>::RegOffset{*r, v.offset});
           }
@@ -234,7 +235,7 @@ struct ParsedOperand {
           else if constexpr (std::is_same_v<T, VecMemberIdx>) {
             auto r = fn(v.base);
             if (!r)
-              return tl::unexpected(r.error());
+              return unexpected(r.error());
             return ParsedOperand<NewId>::from_value(
                 typename ParsedOperand<NewId>::VecMemberIdx{*r, v.member});
           }
@@ -267,7 +268,7 @@ struct ParsedOperand {
               if (std::holds_alternative<Id>(item.value)) {
                 auto r = fn(std::get<Id>(item.value));
                 if (!r)
-                  return tl::unexpected(r.error());
+                  return unexpected(r.error());
                 new_vec.push_back(RegOrImmediate<NewId>::Reg(*r));
               } else {
                 new_vec.push_back(RegOrImmediate<NewId>::Imm(
@@ -325,6 +326,18 @@ struct MultiVariableNames {
 using MultiVariable =
     std::variant<MultiVariableParameterized, MultiVariableNames>;
 
+template <typename Op>
+struct unwrap_operand {
+  using type = Op;
+};
+
+template <typename T>  // 对 WithLoc<T> 偏特化
+struct unwrap_operand<WithLoc<T>> {
+  using type = T;
+};
+
+template <typename Op>
+using unwrap_operand_t = typename unwrap_operand<Op>::type;
 /**
  * @brief OperandLike concept to constrain instruction operand types. An operand type must be copyable and equality comparable, tagged with a static boolean is_operand, and have an associated id_type for the IdentLike constraint on operands.
  * 
@@ -333,9 +346,8 @@ using MultiVariable =
  */
 template <typename Op>
 concept OperandLike = requires {
-  requires Op::is_operand == true;  // taged with is_operand
-  typename Op::
-      id_type;  // must have an associated id_type for the IdentLike constraint on operands
+  requires unwrap_operand_t<Op>::is_operand == true;
+  typename unwrap_operand_t<Op>::id_type;
 } && std::copyable<Op> && std::equality_comparable<Op>;
 
 // ============================================================

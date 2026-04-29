@@ -1,5 +1,6 @@
 #pragma once
 #include "ptx_ir/base.hpp"
+#include "ptx_ir/source_loc.hpp"
 
 namespace ptx_frontend {
 
@@ -25,8 +26,8 @@ enum class CpAsyncCacheOperator { Cached, L2Only };
 
 // --- ArithInteger / ArithFloat / ArithDetails ---
 struct ArithInteger {
-  ScalarType type_;
-  bool sat = false;  // saturate
+  WithLoc<ScalarType> type_;
+  WithLoc<bool> sat = false;  // saturate
 };
 struct ArithFloat {
   ScalarType type_;

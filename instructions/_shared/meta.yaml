@@ -88,3 +88,49 @@ emit_kind:
   direct: "direct"
   sub_variant: "sub_variant"
   sub_struct: "sub_struct"
+
+arg_kinds:
+  reg:
+    name: "register"
+    description: "single register"
+    cpp: "StateSpace::Reg"
+  pred:
+    name: "predicate register"
+    description: "predicate register"
+    cpp: "StateSpace::Pred"
+  addr:
+    name: "address"
+    description: "[reg+imm] or [reg] or [symbol]"
+    cpp: "StateSpace::Generic"
+  imm:
+    name: "immediate"
+    description: "immediate constant"
+    cpp: "StateSpace::Reg"
+  label:
+    name: "label"
+    description: "branch target label (identifier)"
+  label_or_reg:
+    name: "label or register"
+    description: "function name or indirect register"
+  reg_or_imm:
+    name: "register or immediate"
+    description: "register or immediate"
+    cpp: "StateSpace::Reg"
+  optional_reg:
+    name: "optional register"
+    description: "register, may be omitted"
+  optional_pred:
+    name: "optional predicate register"
+    description: "predicate register, may be omitted"
+  optional_imm:
+    name: "optional immediate"
+    description: "immediate, may be omitted"
+  optional_reg_or_imm:
+    name: "optional register or immediate"
+    description: "register or immediate, may be omitted"
+  reg_list:
+    name: "register list"
+    description: "comma-separated register group in { } or ( )"
+  optional_reg_list:
+    name: "optional register list"
+    description: "register group, may be omitted"

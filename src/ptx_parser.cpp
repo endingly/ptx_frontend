@@ -9,9 +9,11 @@
  */
 #include "ptx_parser.hpp"
 #include "ptx_ir/details.hpp"
+#include "ptx_ir/source_loc.hpp"
 #include "ptx_lexer.hpp"
 #include "ptx_token.hpp"
 
+#include <fmt/format.h>
 #include <cassert>
 #include <charconv>
 #include <cstring>
@@ -20,14 +22,14 @@
 #include <vector>
 
 // Propagate errors like Rust's `?` operator.
-// Usage inside a function returning tl::expected<T, ParseError>:
+// Usage inside a function returning expected<T, ParseError>:
 //   auto val = TRY(some_expected_returning_call());
-#define TRY(expr)                          \
-  ({                                       \
-    auto _res = (expr);                    \
-    if (!_res)                             \
-      return tl::unexpected(_res.error()); \
-    std::move(*_res);                      \
+#define TRY(expr)                      \
+  ({                                   \
+    auto _res = (expr);                \
+    if (!_res)                         \
+      return unexpected(_res.error()); \
+    std::move(*_res);                  \
   })
 
 namespace ptx_frontend {
@@ -41,13 +43,17 @@ struct Parser {
   explicit Parser(std::string_view src) : lex(src) {}
 
   // ── error ──────────────────────────────────────────────────
-  tl::unexpected<ParseError> err(std::string msg) {
-    return tl::unexpected(ParseError{lex.peek().line, std::move(msg)});
+  unexpected<ParseError> err(std::string msg) {
+    auto temp_token = lex.peek();
+    return unexpected(
+        ParseError{.message = std::move(msg), .range = temp_token.range});
   }
-  tl::unexpected<ParseError> err_tok(const char* what) {
+
+  unexpected<ParseError> err_tok(const char* what) {
     auto t = lex.peek();
-    return err(std::string("expected ") + what + ", got '" +
-               std::string(t.text) + "' at line " + std::to_string(t.line));
+    return err(fmt::format("expected {}, got '{}', at {}:{}-{}:{}", what,
+                           t.text, t.range.start.line, t.range.start.column,
+                           t.range.end.line, t.range.end.column));
   }
 
   // ── token predicates ──────────────────────────────────────
@@ -69,7 +75,7 @@ struct Parser {
   }
 
   // consume or return error
-  using TokResult = tl::expected<PtxLexer::Token, ParseError>;
+  using TokResult = expected<PtxLexer::Token, ParseError>;
   TokResult expect(TokenKind k, const char* what) {
     if (!check(k))
       return err_tok(what);
@@ -160,11 +166,11 @@ struct Parser {
   }
 
   // require a scalar-type token and consume it
-  tl::expected<ScalarType, ParseError> parse_scalar_type() {
+  expected<WithLoc<ScalarType>, ParseError> parse_scalar_type() {
     auto k = lex.peek().kind;
     if (auto t = token_to_scalar_type(k)) {
-      lex.consume();
-      return *t;
+      auto token = lex.consume();
+      return WithLoc<ScalarType>{*t, token.range};
     }
     return err_tok("scalar type (.b32 / .f32 / ...)");
   }
@@ -198,7 +204,7 @@ struct Parser {
   //     .address_size 32|64
   // ============================================================
 
-  tl::expected<std::pair<uint8_t, uint8_t>, ParseError> parse_version() {
+  expected<std::pair<uint8_t, uint8_t>, ParseError> parse_version() {
     lex.consume();  // DotVersion
 
     // The lexer's longest-match rule causes "8.0" to be tokenized as a
@@ -225,7 +231,7 @@ struct Parser {
   }
 
   // .target sm_XX  [, texmode_independent | debug | ...]
-  tl::expected<uint32_t, ParseError> parse_target() {
+  expected<uint32_t, ParseError> parse_target() {
     lex.consume();  // DotTarget
     // expect an identifier like sm_80
     auto id = TRY(expect(TokenKind::Ident, "sm_XX"));
@@ -245,7 +251,7 @@ struct Parser {
   }
 
   // .address_size 32|64
-  tl::expected<void, ParseError> parse_address_size() {
+  expected<void, ParseError> parse_address_size() {
     lex.consume();  // DotAddressSize
     TRY(expect(TokenKind::Decimal, "32 or 64"));
     // we don't store this for now; PTX frontend always works in 64-bit
@@ -280,7 +286,7 @@ struct Parser {
   //   .v2 .f32 [4]      →  ArrayTypeT{2, F32, {4}}
   // ============================================================
 
-  tl::expected<Type, ParseError> parse_type() {
+  expected<Type, ParseError> parse_type() {
     // optional vector prefix
     std::optional<uint8_t> vec;
     if (match(TokenKind::DotV2))
@@ -317,7 +323,7 @@ struct Parser {
   }
 
   // Parse instruction operand type, supporting .vN vector prefix but not [N] array dimensions. Used for all instruction parsing functions (as opposed to parse_type() used in variable declarations).
-  tl::expected<Type, ParseError> parse_instr_type() {
+  expected<Type, ParseError> parse_instr_type() {
     std::optional<uint8_t> vec;
     if (match(TokenKind::DotV2))
       vec = 2;
@@ -342,7 +348,7 @@ struct Parser {
   //   .param .b32  param0;
   // ============================================================
 
-  tl::expected<MultiVariable, ParseError> parse_variable() {
+  expected<MultiVariable, ParseError> parse_variable() {
     // optional .align N
     std::optional<uint32_t> align;
     if (match(TokenKind::DotAlign)) {
@@ -427,7 +433,7 @@ struct Parser {
   // Full variable-declaration statement (includes state-space):
   //   .reg .b32 %r<4>;
   //   .global .align 16 .b32 foo[4] = {0,0,0,0};
-  tl::expected<MultiVariable, ParseError> parse_variable_decl() {
+  expected<MultiVariable, ParseError> parse_variable_decl() {
     auto k = lex.peek().kind;
     auto ss_opt = token_to_state_space(k);
     if (!ss_opt)
@@ -445,19 +451,21 @@ struct Parser {
   // §5  Immediate value
   // ============================================================
 
-  tl::expected<ImmediateValue, ParseError> parse_immediate() {
+  expected<WithLoc<ImmediateValue>, ParseError> parse_immediate() {
     auto tok = lex.peek();
     switch (tok.kind) {
       case TokenKind::Hex:
       case TokenKind::Decimal:
         lex.consume();
-        return ImmediateValue::from_value(parse_uint(tok.text));
+        return WithLoc{ImmediateValue::from_value(parse_uint(tok.text)),
+                       tok.range};
 
       case TokenKind::Minus: {
         lex.consume();
         auto ntok = TRY(expect(TokenKind::Decimal, "integer"));
-        return ImmediateValue::from_value(
-            -static_cast<int64_t>(parse_uint(ntok.text)));
+        return WithLoc{ImmediateValue::from_value(
+                           -static_cast<int64_t>(parse_uint(ntok.text))),
+                       ntok.range};
       }
 
       case TokenKind::F32Hex: {
@@ -468,7 +476,7 @@ struct Parser {
         std::from_chars(sv.data() + 2, sv.data() + sv.size(), bits, 16);
         float f;
         std::memcpy(&f, &bits, sizeof(f));
-        return ImmediateValue::from_value(f);
+        return WithLoc{ImmediateValue::from_value(f), tok.range};
       }
 
       case TokenKind::F64Hex: {
@@ -479,7 +487,7 @@ struct Parser {
         std::from_chars(sv.data() + 2, sv.data() + sv.size(), bits, 16);
         double d;
         std::memcpy(&d, &bits, sizeof(d));
-        return ImmediateValue::from_value(d);
+        return WithLoc{ImmediateValue::from_value(d), tok.range};
       }
 
       case TokenKind::F64: {
@@ -487,12 +495,12 @@ struct Parser {
         double d = 0.0;
         auto sv = tok.text;
         std::from_chars(sv.data(), sv.data() + sv.size(), d);
-        return ImmediateValue::from_value(d);
+        return WithLoc{ImmediateValue::from_value(d), tok.range};
       }
 
       case TokenKind::WarpSz:
         lex.consume();
-        return ImmediateValue::from_value(uint64_t{32});
+        return WithLoc{ImmediateValue::from_value(uint64_t{32}), tok.range};
 
       default:
         return err_tok("immediate value");
@@ -509,29 +517,35 @@ struct Parser {
   //   0x1234       → ImmediateValue
   // ============================================================
 
-  tl::expected<ParsedOp, ParseError> parse_operand() {
+  expected<WithLoc<ParsedOp>, ParseError> parse_operand() {
+    SourceRange loc;
     // VecPack   { a, b, ... }
     if (check(TokenKind::LBrace)) {
       lex.consume();
       ParsedOperand<Ident>::VecPack pack;
       // first element
       if (!check(TokenKind::RBrace)) {
-        pack.push_back(TRY(parse_reg_or_imm()));
+        auto reg_or_imm = TRY(parse_reg_or_imm());
+        pack.push_back(std::move(reg_or_imm.value));
+        loc.start = reg_or_imm.loc.start;
         while (match(TokenKind::Comma)) {
           if (check(TokenKind::RBrace))
             break;
-          pack.push_back(TRY(parse_reg_or_imm()));
+          auto reg_or_imm_next = TRY(parse_reg_or_imm());
+          pack.push_back(std::move(reg_or_imm_next.value));
+          loc.end = reg_or_imm_next.loc.end;
         }
       }
       TRY(expect(TokenKind::RBrace, "}"));
-      return ParsedOp::from_value(std::move(pack));
+      return WithLoc{ParsedOp::from_value(std::move(pack)), loc};
     }
 
     // Identifier-based operands
     if (check(TokenKind::Ident)) {
       auto id = lex.consume();
       Ident base = id.text;
-
+      SourceRange loc;
+      loc = id.range;
       // %r0.x  → VecMemberIdx
       if (check(TokenKind::Dot)) {
         lex.consume();
@@ -549,39 +563,46 @@ struct Parser {
         else
           return err("unknown vector member '" + std::string(member_tok.text) +
                      "'");
-        return ParsedOp::from_value(
-            ParsedOperand<Ident>::VecMemberIdx{base, m});
+        loc.end = member_tok.range.end;
+        return WithLoc{
+            ParsedOp::from_value(ParsedOperand<Ident>::VecMemberIdx{base, m}),
+            loc};
       }
 
       // %r0+offset  or  %r0-offset → RegOffset
       if (check(TokenKind::Plus) || check(TokenKind::Minus)) {
         int sign = check(TokenKind::Plus) ? 1 : -1;
-        lex.consume();
+        auto token = lex.consume();
         auto offset_tok = TRY(expect(TokenKind::Decimal, "offset"));
         int32_t off = sign * (int32_t)parse_uint(offset_tok.text);
-        return ParsedOp::from_value(ParsedOperand<Ident>::RegOffset{base, off});
+        return WithLoc{
+            ParsedOp::from_value(ParsedOperand<Ident>::RegOffset{base, off}),
+            token.range};
       }
 
       // plain register
-      return ParsedOp::from_value(RegOrImmediate<Ident>::Reg(base));
+      return WithLoc{ParsedOp::from_value(RegOrImmediate<Ident>::Reg(base)),
+                     id.range};
     }
 
     // Address operand  [reg]  /  [reg+offset]  /  [reg-offset]  /  [imm]
     if (check(TokenKind::LBracket)) {
-      lex.consume();  // eat '['
+      SourceRange loc;
+      loc = lex.consume().range;
       ParsedOp inner;
       if (check(TokenKind::Ident)) {
         auto id = lex.consume();
+        loc.end = id.range.end;
         Ident base = id.text;
         if (check(TokenKind::Plus) || check(TokenKind::Minus)) {
           int sign = check(TokenKind::Plus) ? 1 : -1;
-          lex.consume();
+          loc.end = lex.consume().range.end;
           // offset might be hex or decimal
           auto offset_tok = lex.peek();
           if (offset_tok.kind != TokenKind::Decimal &&
               offset_tok.kind != TokenKind::Hex)
             return err_tok("address offset");
-          lex.consume();
+          loc.end = lex.consume().range.end;
           int32_t off = sign * (int32_t)parse_uint(offset_tok.text);
           inner =
               ParsedOp::from_value(ParsedOperand<Ident>::RegOffset{base, off});
@@ -590,24 +611,25 @@ struct Parser {
         }
       } else {
         auto imm = TRY(parse_immediate());
-        inner = ParsedOp::from_value(imm);
+        loc.end = imm.loc.end;
+        inner = ParsedOp::from_value(imm.value);
       }
-      TRY(expect(TokenKind::RBracket, "]"));
-      return inner;
+      loc.end = TRY(expect(TokenKind::RBracket, "]")).range.end;
+      return WithLoc{inner, loc};
     }
 
     // Immediate
     auto imm = TRY(parse_immediate());
-    return ParsedOp::from_value(imm);
+    return WithLoc{ParsedOp::from_value(imm.value), imm.loc};
   }
 
-  tl::expected<RegOrImmediate<Ident>, ParseError> parse_reg_or_imm() {
+  expected<WithLoc<RegOrImmediate<Ident>>, ParseError> parse_reg_or_imm() {
     if (check(TokenKind::Ident)) {
       auto id = lex.consume();
-      return RegOrImmediate<Ident>::Reg(id.text);
+      return WithLoc{RegOrImmediate<Ident>::Reg(id.text), id.range};
     }
     auto imm = TRY(parse_immediate());
-    return RegOrImmediate<Ident>::Imm(imm);
+    return WithLoc{RegOrImmediate<Ident>::Imm(imm.value), imm.loc};
   }
 
   // ============================================================
@@ -632,38 +654,54 @@ struct Parser {
   // ============================================================
 
   // ── helper: rounding mode ───────────────────��─────────────
-  std::optional<RoundingMode> try_parse_rounding() {
+  std::optional<WithLoc<RoundingMode>> try_parse_rounding() {
     switch (lex.peek().kind) {
       case TokenKind::DotRn:
       case TokenKind::DotRni:
         lex.consume();
-        return RoundingMode::NearestEven;
+        return WithLoc<RoundingMode>{RoundingMode::NearestEven,
+                                     lex.peek().range};
       case TokenKind::DotRz:
       case TokenKind::DotRzi:
         lex.consume();
-        return RoundingMode::Zero;
+        return WithLoc<RoundingMode>{RoundingMode::Zero, lex.peek().range};
       case TokenKind::DotRm:
       case TokenKind::DotRmi:
         lex.consume();
-        return RoundingMode::NegativeInf;
+        return WithLoc<RoundingMode>{RoundingMode::NegativeInf,
+                                     lex.peek().range};
       case TokenKind::DotRp:
       case TokenKind::DotRpi:
         lex.consume();
-        return RoundingMode::PositiveInf;
+        return WithLoc<RoundingMode>{RoundingMode::PositiveInf,
+                                     lex.peek().range};
       default:
         return std::nullopt;
     }
   }
 
   // ── helper: ftz ──────────────────────────────────────────
-  bool try_parse_ftz() { return match(TokenKind::DotFtz); }
-  bool try_parse_sat() { return match(TokenKind::DotSat); }
+  WithLoc<bool> try_parse_ftz() {
+    if (check(TokenKind::DotFtz)) {
+      auto token = lex.consume();
+      return WithLoc<bool>(true, token.range);
+    }
+    return WithLoc<bool>(false);
+  }
+
+  WithLoc<bool> try_parse_sat() {
+    if (check(TokenKind::DotSat)) {
+      auto token = lex.consume();
+      return WithLoc<bool>(true, token.range);
+    }
+    return WithLoc<bool>(false);
+  }
 
   // ── 8.1  mov ──────────────────────────────────────────────
   // mov.type  dst, src;    (scalar)
   // mov.type  dst, {a,b};  (pack)
   // mov.type  {a,b}, src;  (unpack)
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_mov() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_mov() {
     auto stype = TRY(parse_scalar_type());
     Type typ = ScalarTypeT{stype};
 
@@ -674,7 +712,7 @@ struct Parser {
   }
 
   // ── 8.2  ld / st ─────────────────────────────────────────
-  tl::expected<LdStQualifierData, ParseError> parse_ld_qualifier() {
+  expected<LdStQualifierData, ParseError> parse_ld_qualifier() {
     LdStQualifierData q;
     switch (lex.peek().kind) {
       case TokenKind::DotVolatile:
@@ -703,7 +741,7 @@ struct Parser {
     return q;
   }
 
-  tl::expected<MemScope, ParseError> parse_mem_scope() {
+  expected<MemScope, ParseError> parse_mem_scope() {
     switch (lex.peek().kind) {
       case TokenKind::DotCta:
         lex.consume();
@@ -725,7 +763,7 @@ struct Parser {
     }
   }
 
-  tl::expected<StateSpace, ParseError> parse_state_space() {
+  expected<StateSpace, ParseError> parse_state_space() {
     auto k = lex.peek().kind;
     if (auto ss = token_to_state_space(k)) {
       lex.consume();
@@ -774,7 +812,7 @@ struct Parser {
     }
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_ld() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_ld() {
     auto qual = TRY(parse_ld_qualifier());
     auto ss = TRY(parse_state_space());
     auto cache = try_parse_ld_cache();
@@ -787,7 +825,7 @@ struct Parser {
     return InstrLd<ParsedOp>{d, dst, src};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_st() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_st() {
     auto qual = TRY(parse_ld_qualifier());
     auto ss = TRY(parse_state_space());
     auto cache = try_parse_st_cache();
@@ -801,12 +839,12 @@ struct Parser {
 
   // ── 8.3  Arithmetic (integer) ─────────────────────────────
   //  add / sub
-  tl::expected<ArithDetails, ParseError> parse_arith_details() {
+  expected<ArithDetails, ParseError> parse_arith_details() {
     // PTX serials: [.rnd] [.ftz] [.sat] .type
     // all before .type, and in any order with optional presence
     auto rm = try_parse_rounding();  // .rn / .rz / .rm / .rp  (optional)
-    bool ftz = try_parse_ftz();      // .ftz                    (optional)
-    bool sat = try_parse_sat();      // .sat                    (optional)
+    auto ftz = try_parse_ftz();      // .ftz                    (optional)
+    auto sat = try_parse_sat();      // .sat                    (optional)
 
     auto stype = TRY(parse_scalar_type());  // .f32 / .s32 / ...   (required)
 
@@ -827,7 +865,7 @@ struct Parser {
     }
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_add() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_add() {
     auto data = TRY(parse_arith_details());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -837,7 +875,7 @@ struct Parser {
     return InstrAdd<ParsedOp>{data, dst, src1, src2};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_sub() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_sub() {
     auto data = TRY(parse_arith_details());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -848,9 +886,9 @@ struct Parser {
   }
 
   // mul
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_mul() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_mul() {
     MulDetails data;
-    auto stype = [&]() -> tl::expected<ScalarType, ParseError> {
+    auto stype = [&]() -> expected<ScalarType, ParseError> {
       // .hi / .lo / .wide  for integer;  rounding for float
       return parse_scalar_type();
     };
@@ -890,7 +928,7 @@ struct Parser {
   }
 
   // mad
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_mad() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_mad() {
     MadDetails data;
     if (check(TokenKind::DotHi) || check(TokenKind::DotLo) ||
         check(TokenKind::DotWide)) {
@@ -928,7 +966,7 @@ struct Parser {
     return InstrMad<ParsedOp>{data, dst, src1, src2, src3};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_mad24() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_mad24() {
     MadDetails data;
     if (check(TokenKind::DotHi) || check(TokenKind::DotLo) ||
         check(TokenKind::DotWide)) {
@@ -967,7 +1005,7 @@ struct Parser {
   }
 
   // fma (always float)
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_fma() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_fma() {
     ArithFloat af;
     auto rm = try_parse_rounding();
     bool ftz = try_parse_ftz();
@@ -987,7 +1025,7 @@ struct Parser {
   }
 
   // div
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_div() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_div() {
     DivDetails data;
     // float?
     if (check(TokenKind::DotApprox) || check(TokenKind::DotFull) ||
@@ -1024,7 +1062,7 @@ struct Parser {
   }
 
   // ── 8.4  Unary arithmetic ─────────────────────────────────
-  tl::expected<TypeFtz, ParseError> parse_type_ftz() {
+  expected<TypeFtz, ParseError> parse_type_ftz() {
     bool ftz = try_parse_ftz();
     auto stype = TRY(parse_scalar_type());
     TypeFtz tf;
@@ -1033,14 +1071,14 @@ struct Parser {
     return tf;
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_abs() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_abs() {
     auto data = TRY(parse_type_ftz());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src = TRY(parse_operand());
     return InstrAbs<ParsedOp>{data, dst, src};
   }
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_neg() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_neg() {
     auto data = TRY(parse_type_ftz());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1049,7 +1087,7 @@ struct Parser {
   }
 
   // min / max
-  tl::expected<MinMaxDetails, ParseError> parse_min_max_details() {
+  expected<MinMaxDetails, ParseError> parse_min_max_details() {
     bool ftz = try_parse_ftz();
     bool nan = match(TokenKind::DotNaN);
     auto stype = TRY(parse_scalar_type());
@@ -1068,7 +1106,7 @@ struct Parser {
       return mi;
     }
   }
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_min() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_min() {
     auto data = TRY(parse_min_max_details());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1077,7 +1115,7 @@ struct Parser {
     auto s2 = TRY(parse_operand());
     return InstrMin<ParsedOp>{data, dst, s1, s2};
   }
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_max() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_max() {
     auto data = TRY(parse_min_max_details());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1088,7 +1126,7 @@ struct Parser {
   }
 
   // ── 8.5  Logic & bitwise ─────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_logic(
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_logic(
       TokenKind opcode) {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
@@ -1107,14 +1145,14 @@ struct Parser {
         return err("unexpected logic opcode");
     }
   }
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_not() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_not() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
     auto src = TRY(parse_operand());
     return InstrNot<ParsedOp>{stype, dst, src};
   }
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_shl() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_shl() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1123,7 +1161,7 @@ struct Parser {
     auto s2 = TRY(parse_operand());
     return InstrShl<ParsedOp>{stype, dst, s1, s2};
   }
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_shr() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_shr() {
     bool arith = check(TokenKind::DotS8) || check(TokenKind::DotS16) ||
                  check(TokenKind::DotS32) || check(TokenKind::DotS64);
     auto stype = TRY(parse_scalar_type());
@@ -1139,7 +1177,7 @@ struct Parser {
   }
 
   // ── 8.6  Comparison / setp ────────────────────────────────
-  tl::expected<SetpCompareOp, ParseError> parse_cmp_op(bool is_float) {
+  expected<SetpCompareOp, ParseError> parse_cmp_op(bool is_float) {
     auto k = lex.peek().kind;
     if (is_float) {
       switch (k) {
@@ -1229,14 +1267,14 @@ struct Parser {
     }
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_setp() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_setp() {
     // PTX 语法: setp.CmpOp[.BoolOp][.ftz].type
     // 先读 cmp_op，但此时还不知道 is_float，需要 peek 类型来决定
     // 实际上 cmp_op token 本身已经隐含了 int/float，可直接尝试两者
 
     // 先尝试读 cmp_op（整数或浮点都试）
     // 策略：先 peek，若是已知的 cmp token 则消耗
-    auto parse_cmp_any = [&]() -> tl::expected<SetpCompareOp, ParseError> {
+    auto parse_cmp_any = [&]() -> expected<SetpCompareOp, ParseError> {
       auto k = lex.peek().kind;
       // 整数专用
       switch (k) {
@@ -1363,7 +1401,7 @@ struct Parser {
   }
 
   // ── 8.7  selp ────────────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_selp() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_selp() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1376,7 +1414,7 @@ struct Parser {
   }
 
   // ── 8.8  cvt ─────────────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_cvt() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_cvt() {
     // parse all modifiers before the two types
     auto rm = try_parse_rounding();
     bool irnd = match(TokenKind::DotRni) || match(TokenKind::DotRzi) ||
@@ -1452,24 +1490,24 @@ struct Parser {
   }
 
   // ── 8.9  bra / call / ret / trap ────────���────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bra() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_bra() {
     match(TokenKind::DotUni);  // optional .uni
     auto label = TRY(expect(TokenKind::Ident, "branch label"));
     return InstrBra<Ident>{label.text};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_ret() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_ret() {
     bool uni = match(TokenKind::DotUni);
     RetData d{uni};
     return InstrRet{d};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_trap() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_trap() {
     return InstrTrap{};
   }
 
   // call  (uni)?  (retlist,)?  fname, (arglist)?;
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_call() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_call() {
     bool uni = match(TokenKind::DotUni);
     CallDetails details;
     details.uniform = uni;
@@ -1507,13 +1545,13 @@ struct Parser {
   }
 
   // ── 8.10  membar ─────────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_membar() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_membar() {
     MemScope sc = TRY(parse_mem_scope());
     return InstrMembar{sc};
   }
 
   // ── 8.11  bar ────────────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bar() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_bar() {
     bool aligned = match(TokenKind::DotAligned);
 
     // bar.sync / bar.red / bar.warp
@@ -1558,7 +1596,7 @@ struct Parser {
   }
 
   // ── 8.12  atom ───────────────────────────────────────────
-  tl::expected<AtomicOp, ParseError> parse_atomic_op() {
+  expected<AtomicOp, ParseError> parse_atomic_op() {
     switch (lex.peek().kind) {
       case TokenKind::DotAnd:
         lex.consume();
@@ -1592,7 +1630,7 @@ struct Parser {
     }
   }
 
-  tl::expected<AtomSemantics, ParseError> parse_atom_semantics() {
+  expected<AtomSemantics, ParseError> parse_atom_semantics() {
     switch (lex.peek().kind) {
       case TokenKind::DotRelaxed:
         lex.consume();
@@ -1611,7 +1649,7 @@ struct Parser {
     }
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_atom() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_atom() {
     auto sem = TRY(parse_atom_semantics());
     auto sc = check(TokenKind::DotCta) || check(TokenKind::DotGpu) ||
                       check(TokenKind::DotSys) || check(TokenKind::DotCluster)
@@ -1644,7 +1682,7 @@ struct Parser {
   }
 
   // ── 8.13  vote ───────────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_vote() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_vote() {
     match(TokenKind::DotSync);
     VoteMode mode;
     if (match(TokenKind::DotAll))
@@ -1667,7 +1705,7 @@ struct Parser {
   }
 
   // ── 8.14  shfl.sync ──────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_shfl() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_shfl() {
     TRY(expect(TokenKind::DotSync, ".sync"));
     ShuffleMode mode;
     if (match(TokenKind::DotUp))
@@ -1704,13 +1742,13 @@ struct Parser {
   }
 
   // ── 8.15  Miscellaneous small instructions ────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_activemask() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_activemask() {
     TRY(expect(TokenKind::DotB32, ".b32"));
     auto dst = TRY(parse_operand());
     return InstrActivemask<ParsedOp>{dst};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_popc() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_popc() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1718,7 +1756,7 @@ struct Parser {
     return InstrPopc<ParsedOp>{stype, dst, src};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_clz() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_clz() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1726,7 +1764,7 @@ struct Parser {
     return InstrClz<ParsedOp>{stype, dst, src};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bfind() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_bfind() {
     bool shift = false;
 
     // accept .shiftamt before type
@@ -1756,7 +1794,7 @@ struct Parser {
     return InstrBfind<ParsedOp>{stype, shift, dst, src};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_fns() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_fns() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1768,7 +1806,7 @@ struct Parser {
     return InstrFns<ParsedOp>{stype, dst, mask, base, offset};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_szext() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_szext() {
     BmskMode mode;
     if (match(TokenKind::DotClamp))
       mode = BmskMode::Clamp;
@@ -1787,7 +1825,7 @@ struct Parser {
         .mode = mode, .type_ = stype, .dst = dst, .src1 = src1, .src2 = src2};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_bmsk() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_bmsk() {
     BmskMode mode;
     if (match(TokenKind::DotClamp))
       mode = BmskMode::Clamp;
@@ -1806,7 +1844,7 @@ struct Parser {
         .data = mode, .dst = dst, .src_a = src1, .src_b = src2};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_brev() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_brev() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1814,7 +1852,7 @@ struct Parser {
     return InstrBrev<ParsedOp>{stype, dst, src};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_rem() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_rem() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1824,7 +1862,7 @@ struct Parser {
     return InstrRem<ParsedOp>{stype, dst, s1, s2};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_sad() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_sad() {
     auto stype = TRY(parse_scalar_type());
     auto dst = TRY(parse_operand());
     TRY(expect(TokenKind::Comma, ","));
@@ -1837,7 +1875,7 @@ struct Parser {
   }
 
   // ── 8.16  cvta ───────────────────────────────────────────
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_cvta() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_cvta() {
     // cvta.to.ss  or  cvta.ss
     CvtaDirection dir = CvtaDirection::ExplicitToGeneric;
     StateSpace ss;
@@ -1857,7 +1895,7 @@ struct Parser {
     return InstrCvta<ParsedOp>{CvtaDetails{ss, dir}, dst, src};
   }
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instr_fence() {
+  expected<Instruction<ParsedOp>, ParseError> parse_instr_fence() {
     // ── fence.proxy.* ────────────────────────────────────────────────────
     if (match(TokenKind::DotProxy)) {
       // fence.proxy.async::generic.sem.sync_restrict.scope — uni-dir
@@ -1964,7 +2002,7 @@ struct Parser {
   // §9  Instruction dispatch (after consuming the opcode token)
   // ============================================================
 
-  tl::expected<Instruction<ParsedOp>, ParseError> parse_instruction(
+  expected<Instruction<ParsedOp>, ParseError> parse_instruction(
       TokenKind opcode) {
     switch (opcode) {
         // data movement
@@ -2107,7 +2145,7 @@ struct Parser {
     }
   }
 
-  tl::expected<Statement<ParsedOp>, ParseError> parse_statement() {
+  expected<Statement<ParsedOp>, ParseError> parse_statement() {
     // block
     if (check(TokenKind::LBrace)) {
       return parse_block();
@@ -2150,7 +2188,7 @@ struct Parser {
     return Statement<ParsedOp>::Instr(pred, std::move(instr));
   }
 
-  tl::expected<Statement<ParsedOp>, ParseError> parse_block() {
+  expected<Statement<ParsedOp>, ParseError> parse_block() {
     TRY(expect(TokenKind::LBrace, "{"));
     std::vector<Statement<ParsedOp>> stmts;
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
@@ -2172,7 +2210,7 @@ struct Parser {
   // ============================================================
 
   // Parse a parameter list:  ( .param .b32 p0, .param .b32 p1, ... )
-  tl::expected<std::vector<Variable>, ParseError> parse_param_list() {
+  expected<std::vector<Variable>, ParseError> parse_param_list() {
     TRY(expect(TokenKind::LParen, "("));
     std::vector<Variable> params;
     while (!check(TokenKind::RParen) && !check(TokenKind::Eof)) {
@@ -2200,7 +2238,7 @@ struct Parser {
     return params;
   }
 
-  tl::expected<Function<ParsedOp>, ParseError> parse_function(MethodKind kind) {
+  expected<Function<ParsedOp>, ParseError> parse_function(MethodKind kind) {
     MethodDeclaration decl;
     decl.kind = kind;
 
@@ -2284,7 +2322,7 @@ struct Parser {
   // §12  Top-level directive
   // ============================================================
 
-  tl::expected<Directive<ParsedOp>, ParseError> parse_directive() {
+  expected<Directive<ParsedOp>, ParseError> parse_directive() {
     LinkingDirective linking = parse_linking();
 
     // .entry / .func
@@ -2328,7 +2366,7 @@ struct Parser {
   // §13  Module (entry point)
   // ============================================================
 
-  tl::expected<Module, ParseError> parse() {
+  expected<Module, ParseError> parse() {
     Module mod;
 
     // ── module header ──────────────────────────────────────
@@ -2344,7 +2382,7 @@ struct Parser {
     if (check(TokenKind::DotAddressSize)) {
       auto r = parse_address_size();
       if (!r)
-        return tl::unexpected(r.error());
+        return unexpected(r.error());
     }
 
     // ── directives ─────────────────────────────────────────
@@ -2397,7 +2435,7 @@ struct Parser {
 
 namespace ptx_frontend {
 
-tl::expected<Module, ParseError> parse_module(std::string_view src) {
+expected<Module, ParseError> parse_module(std::string_view src) {
   Parser p(src);
   return p.parse();
 }

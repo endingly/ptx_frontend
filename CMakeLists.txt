@@ -6,14 +6,20 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
-option(CCACHE_ENABLE "Use ccache to speed up recompilation" ON)
+option(CCACHE_FOUND "Use ccache to speed up recompilation" ON)
+option(BUILD_TESTING "enable test program building" OFF)
 
-if(CCACHE_ENABLE)
+if(CCACHE_FOUND)
     find_program(CCACHE_FOUND ccache)
-    message(STATUS "ccache found: ${CCACHE_FOUND}")
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-endif(CCACHE_ENABLE)
+endif(CCACHE_FOUND)
+
+if(BUILD_TESTING)
+    include(CTest)
+    enable_testing()
+    include(GoogleTest)
+endif()
 
 # Flex target
 include(FindFLEX)
@@ -34,7 +40,7 @@ FLEX_TARGET(
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(from_yaml ${CMAKE_CURRENT_SOURCE_DIR}/instructions/integer_arith.yaml)
 add_custom_command(
-    OUTPUT ${PTX_GEN_DIR}/type_checker.src.gen 
+    OUTPUT ${PTX_GEN_DIR}/type_checker.src.gen
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py
     --input ${from_yaml}
     --output ${PTX_GEN_DIR}
@@ -61,8 +67,11 @@ target_link_libraries(ptx_frontend PUBLIC fmt::fmt magic_enum::magic_enum)
 add_dependencies(ptx_frontend gen_type_checker_code)
 
 # # target ptx_frontend_test
-aux_source_directory(test ptx_frontend_test_files)
-add_executable(ptx_frontend_test ${ptx_frontend_test_files})
-target_link_libraries(ptx_frontend_test PRIVATE ptx_frontend)
-find_package(GTest CONFIG REQUIRED)
-target_link_libraries(ptx_frontend_test PRIVATE GTest::gtest GTest::gtest_main)
+if(BUILD_TESTING)
+    aux_source_directory(test ptx_frontend_test_files)
+    add_executable(ptx_frontend_test ${ptx_frontend_test_files})
+    target_link_libraries(ptx_frontend_test PRIVATE ptx_frontend)
+    find_package(GTest CONFIG REQUIRED)
+    target_link_libraries(ptx_frontend_test PRIVATE GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(ptx_frontend_test)
+endif()

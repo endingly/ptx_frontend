@@ -143,3 +143,12 @@ def load_instructions(yaml_path: Path) -> list[Instruction]:
         for variant in instr.variants:
             variant.parent_instruction = instr
     return merged_instructions
+
+
+def get_default_value_for_type(type_name: str) -> str:
+    TARGET_GROUP_NAME = "default_values_map"
+    default_values_map = shared_yamls.get(TARGET_GROUP_NAME, {})
+    if type_name in default_values_map:
+        return default_values_map[type_name]
+    else:
+        raise KeyError(f"default value for type '{type_name}' not found")

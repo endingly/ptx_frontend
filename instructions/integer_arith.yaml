@@ -17,10 +17,10 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "false" }
+        # sat:
+        #   kind: fixed
+        #   type: bool
+        #   fixed_value: { token: ".sat", cpp: "false" }
         type_:
           kind: required
           type: ScalarType

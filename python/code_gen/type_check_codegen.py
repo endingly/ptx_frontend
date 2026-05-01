@@ -1,4 +1,6 @@
 from code_gen.models import *
+from code_gen.merge_variant import merge_variant
+from code_gen.load_instuctions import get_default_value_for_type
 
 
 class ArgumentCodeGen:
@@ -182,6 +184,66 @@ class VariantCodeGen:
         self.variant = variant
         # for code gen
         self.variant_idx = variant_idx  # will be set later after merging variants
+        self.variant_prototype = self._get_variant_prototype()
+
+    def _get_variant_prototype(self) -> VariantModel:
+        if self.variant.parent_instruction is None:
+            raise ValueError("Variant must have a parent instruction to get prototype")
+        inst_after_merge = merge_variant(self.variant.parent_instruction)
+        target_variant: VariantModel | None = None
+        for variant in inst_after_merge.variants:
+            if self.variant.cpp_struct_name == variant.cpp_struct_name:
+                target_variant = variant
+                break
+
+        if target_variant is None:
+            raise ValueError("Target variant not found after merging")
+        return target_variant
+
+    def _get_ignore_modifiers(self) -> list[Modifier]:
+        def_modifiers = self.variant.modifiers
+        prototype_modifiers = self.variant_prototype.modifiers
+        ignore_modifiers = []
+        for mod in prototype_modifiers:
+            if mod.name not in [def_mod.name for def_mod in def_modifiers]:
+                mod.parent_variant = self.variant  # set parent variant for code gen
+                ignore_modifiers.append(mod)
+        return ignore_modifiers
+
+    def _generate_code_for_ignore_modifier(self) -> str:
+        ignore_modifiers = self._get_ignore_modifiers()
+        for mod in ignore_modifiers:
+            # Modify modifier information
+            mod.kind = ModifierKind.Fixed
+            if mod.type_name is None:
+                raise ValueError(
+                    "Modifier must have a type name to gen code for ignore modifier"
+                )
+            if mod.fixed_value is None:
+                mod.fixed_value = ModifierValue(
+                    token="", cpp_code=get_default_value_for_type(mod.type_name)
+                )
+            else:
+                mod.fixed_value.cpp_code = get_default_value_for_type(mod.type_name)
+
+        # generate code for ignore modifiers
+        content = "\n".join(
+            [
+                ModifierCodeGen(mod).generate_code_for_type_check()
+                for mod in ignore_modifiers
+            ]
+        )
+
+        return content
+
+    def _generate_code_for_ignore_modifier_in_usage(self) -> list[str]:
+        ignore_modifiers = self._get_ignore_modifiers()
+        content = [
+            ModifierCodeGen(mod).function_signature_for_type_check
+            for mod in ignore_modifiers
+        ]
+
+        return content
 
     def generate_code_for_type_check(self):
         # generate code for type check, including check ptx/sm version and modifiers
@@ -206,10 +268,12 @@ class VariantCodeGen:
         auto check_variant{self.variant_idx} = [&]() -> bool {{
             {check_target_version_function}
             {check_modifiers_function}
+            {self._generate_code_for_ignore_modifier()}
 
             bool flag = check_target_version();
             {"\n".join([f"flag &= {ModifierCodeGen(modifier).function_signature_for_type_check}" for modifier in self.variant.modifiers])}
-            
+            {"\n".join([f"flag &= {sig}" for sig in self._generate_code_for_ignore_modifier_in_usage()])}
+
             // check operand
             {"\n".join([f"flag &= {ArgumentCodeGen(arg).gen_code_for_type_check()}" for arg in self.variant.arguments])}
             return flag;

@@ -82,7 +82,8 @@ TEST(TypeCheckerAdd, IntSatS32_Ok) {
   CompileTarget target{0, 1.0f};
   auto instr =
       make_add(ArithInteger{ScalarType::S32, true}, sym, "fn", "d", "a", "b");
-  EXPECT_TRUE(check_add(sym, target, instr).empty());
+  auto errors = check_add(sym, target, instr);
+  EXPECT_TRUE(errors.empty());
 }
 
 TEST(TypeCheckerAdd, IntSatU32_RequiresSm120) {
@@ -368,7 +369,8 @@ TEST(TypeCheckerMad24, IntLo_U32_Ok) {
   CompileTarget target{80, 8.0f};
   auto instr = make_mad24(MadInt{MulIntControl::Low, false, ScalarType::U32},
                           sym, "fn", "d", "a", "b", "c");
-  EXPECT_TRUE(check_mad24(sym, target, instr).empty());
+  auto errs = check_mad24(sym, target, instr);
+  EXPECT_TRUE(errs.empty());
 }
 
 TEST(TypeCheckerMad24, IntHiSat_S32_Ok) {

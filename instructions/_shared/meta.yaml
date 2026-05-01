@@ -134,3 +134,7 @@ arg_kinds:
   optional_reg_list:
     name: "optional register list"
     description: "register group, may be omitted"
+
+default_values_map:
+  bool: "false"
+  ScalarType: "ScalarType::U32"

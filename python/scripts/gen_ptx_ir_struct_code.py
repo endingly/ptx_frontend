@@ -1,13 +1,12 @@
-# import sys
-from pathlib import Path
+"""
+the script to generate the code for ptx ir struct definitions, which are used in the ptx ir builder and ptx ir printer.
+"""
 
-# sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-from code_gen.load_instuctions import load_instructions, Instruction
-from code_gen.type_check_codegen import InstructionCodeGen
 from argparse import ArgumentParser
+from code_gen.instruction_struct_codegen import InstructionStructCodeGen
+from code_gen.load_instuctions import load_instructions, Instruction
+from pathlib import Path
 from base.utils import format_file_inplace
-
 
 def add_parser():
     parser = ArgumentParser(
@@ -29,29 +28,21 @@ def add_parser():
     )
     return parser
 
-
-def generate_src_code_for_type_check(instructions: list[Instruction]):
-    content = "\n".join(
-        [
-            InstructionCodeGen(instruction).generate_code_for_type_check()
-            for instruction in instructions
-        ]
-    )
-    return content
-
-
 if __name__ == "__main__":
     parser = add_parser()
     args = parser.parse_args()
 
     input_file = Path(args.input)
-    output_dir = Path(args.output)  # "type_checker.gen"
+    output_dir = Path(args.output)  # "instruction_struct.src.gen"
 
     instructions = load_instructions(input_file)
-    src_code = generate_src_code_for_type_check(instructions)
+    content_r = ""
+    for instruction in instructions:
+        codegen = InstructionStructCodeGen(instruction)
+        content_r += codegen.generate_code()
 
-    src_file = output_dir / "type_checker.src.gen"
+    src_file = output_dir / "ptx_ir.src.gen"
     with open(src_file, "w") as f:
-        f.write(src_code)
+        f.write(content_r)
 
     format_file_inplace(src_file.__str__())

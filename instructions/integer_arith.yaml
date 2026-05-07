@@ -17,10 +17,6 @@
         min_ptx_version: 1.0
         min_sm: 0
       modifiers:
-        # sat:
-        #   kind: fixed
-        #   type: bool
-        #   fixed_value: { token: ".sat", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -71,10 +67,6 @@
         min_ptx_version: 8.0
         min_sm: 90
       modifiers:
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -157,10 +149,6 @@
         min_ptx_version: 1
         min_sm: 0
       modifiers:
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -285,10 +273,6 @@
             - { token: ".wide", cpp: "MulIntControl::Wide" }
             - { token: ".low", cpp: "MulIntControl::Low" }
             - { token: ".hi", cpp: "MulIntControl::High" }
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -561,10 +545,6 @@
         min_ptx_version: 1
         min_sm: 0
       modifiers:
-        ftz:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".ftz", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -585,10 +565,6 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        ftz:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".ftz", cpp: "false" }
         type_:
           kind: fixed
           type: ScalarType
@@ -613,10 +589,6 @@
         min_ptx_version: 1
         min_sm: 0
       modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -641,10 +613,6 @@
         min_ptx_version: 8.0
         min_sm: 90
       modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "false" }
         type_:
           kind: fixed
           type: ScalarType
@@ -708,10 +676,6 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "false" }
         type_:
           kind: fixed
           type: ScalarType
@@ -760,10 +724,6 @@
         min_ptx_version: 1
         min_sm: 0
       modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "false" }
         type_:
           kind: required
           type: ScalarType
@@ -788,10 +748,6 @@
         min_ptx_version: 8.0
         min_sm: 90
       modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "false" }
         type_:
           kind: fixed
           type: ScalarType
@@ -855,10 +811,6 @@
         min_ptx_version: 9.2
         min_sm: 120
       modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "false" }
         type_:
           kind: fixed
           type: ScalarType

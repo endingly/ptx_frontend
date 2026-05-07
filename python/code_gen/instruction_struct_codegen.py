@@ -93,8 +93,23 @@ class InstructionStructCodeGen:
 
         return content
 
+    @staticmethod
+    def _gen_commit(content: str) -> str:
+        """generate comment with content for cpp code"""
+        line = "*" * (len(content) + 12)  # larger than content length
+        return f"""
+        // {line}
+        // {content}
+        // {line}
+        """
+
     def generate_code(self) -> str:
-        content = self._generate_sub_info_struct()
+
+        content = self._gen_commit(
+            f"{self.instruction.opcode} instruction struct start"
+        )
+
+        content += self._generate_sub_info_struct()
         for variant in self.inst_after_merge.variants:
             content += self._generate_instruction_struct(variant)
         return content

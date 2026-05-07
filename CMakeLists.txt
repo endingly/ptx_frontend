@@ -47,9 +47,19 @@ add_custom_command(
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py ${from_yaml}
     COMMENT "Generating type checker code from ${from_yaml}"
 )
+add_custom_command(
+    OUTPUT ${PTX_GEN_DIR}/ptx_ir.src.gen
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_ptx_ir_struct_code.py
+    --input ${from_yaml}
+    --output ${PTX_GEN_DIR}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_ptx_ir_struct_code.py ${from_yaml}
+    COMMENT "Generating PTX IR struct code from ${from_yaml}"
+)
 add_custom_target(
-    gen_type_checker_code
-    DEPENDS ${PTX_GEN_DIR}/type_checker.src.gen
+    auto_gen_code
+    DEPENDS 
+        ${PTX_GEN_DIR}/type_checker.src.gen
+        ${PTX_GEN_DIR}/ptx_ir.src.gen
 )
 
 # target ptx_frontend
@@ -64,7 +74,7 @@ find_package(fmt CONFIG REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(ptx_frontend PUBLIC fmt::fmt magic_enum::magic_enum)
 
-add_dependencies(ptx_frontend gen_type_checker_code)
+add_dependencies(ptx_frontend auto_gen_code)
 
 # # target ptx_frontend_test
 if(BUILD_TESTING)

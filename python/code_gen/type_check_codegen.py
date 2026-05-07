@@ -210,7 +210,7 @@ class VariantCodeGen:
                 ignore_modifiers.append(mod)
         return ignore_modifiers
 
-    def _generate_code_for_ignore_modifier(self) -> str:
+    def _generate_code_for_ignore_modifier_for_type_check(self) -> str:
         ignore_modifiers = self._get_ignore_modifiers()
         for mod in ignore_modifiers:
             # Modify modifier information
@@ -236,10 +236,42 @@ class VariantCodeGen:
 
         return content
 
-    def _generate_code_for_ignore_modifier_in_usage(self) -> list[str]:
+    def _generate_code_for_ignore_modifier_for_match(self) -> str:
+        ignore_modifiers = self._get_ignore_modifiers()
+        for mod in ignore_modifiers:
+            # Modify modifier information
+            mod.kind = ModifierKind.Fixed
+            if mod.type_name is None:
+                raise ValueError(
+                    "Modifier must have a type name to gen code for ignore modifier"
+                )
+            if mod.fixed_value is None:
+                mod.fixed_value = ModifierValue(
+                    token="", cpp_code=get_default_value_for_type(mod.type_name)
+                )
+            else:
+                mod.fixed_value.cpp_code = get_default_value_for_type(mod.type_name)
+
+        # generate code for ignore modifiers
+        content = "\n".join(
+            [ModifierCodeGen(mod).generate_code_for_match() for mod in ignore_modifiers]
+        )
+
+        return content
+
+    def _generate_code_for_ignore_modifier_in_usage_for_type_check(self) -> list[str]:
         ignore_modifiers = self._get_ignore_modifiers()
         content = [
             ModifierCodeGen(mod).function_signature_for_type_check
+            for mod in ignore_modifiers
+        ]
+
+        return content
+
+    def _generate_code_for_ignore_modifier_in_usage_for_match(self) -> list[str]:
+        ignore_modifiers = self._get_ignore_modifiers()
+        content = [
+            ModifierCodeGen(mod).function_signature_for_match
             for mod in ignore_modifiers
         ]
 
@@ -268,11 +300,11 @@ class VariantCodeGen:
         auto check_variant{self.variant_idx} = [&]() -> bool {{
             {check_target_version_function}
             {check_modifiers_function}
-            {self._generate_code_for_ignore_modifier()}
+            {self._generate_code_for_ignore_modifier_for_type_check()}
 
             bool flag = check_target_version();
             {"\n".join([f"flag &= {ModifierCodeGen(modifier).function_signature_for_type_check}" for modifier in self.variant.modifiers])}
-            {"\n".join([f"flag &= {sig}" for sig in self._generate_code_for_ignore_modifier_in_usage()])}
+            {"\n".join([f"flag &= {sig}" for sig in self._generate_code_for_ignore_modifier_in_usage_for_type_check()])}
 
             // check operand
             {"\n".join([f"flag &= {ArgumentCodeGen(arg).gen_code_for_type_check()}" for arg in self.variant.arguments])}
@@ -303,9 +335,11 @@ class VariantCodeGen:
         content = f"""
         auto match_variant{self.variant_idx} = [&]() -> bool {{
             {match_modifiers_function}
+            {self._generate_code_for_ignore_modifier_for_match()}
 
             bool flag = true;
             {"\n".join([f"flag &= {ModifierCodeGen(modifier).function_signature_for_match}" for modifier in self.variant.modifiers])}
+            {"\n".join([f"flag &= {sig}" for sig in self._generate_code_for_ignore_modifier_in_usage_for_match()])}
 
             return flag;
         }};

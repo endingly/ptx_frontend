@@ -25,10 +25,12 @@ enum class StCacheOperator { Writeback, L2Only, Streaming, Writethrough };
 enum class CpAsyncCacheOperator { Cached, L2Only };
 
 // --- ArithInteger / ArithFloat / ArithDetails ---
+/*
 struct ArithInteger {
   WithLoc<ScalarType> type_;
   WithLoc<bool> sat = false;  // saturate
 };
+*/
 struct ArithFloat {
   ScalarType type_;
   RoundingMode rnd = RoundingMode::NearestEven;
@@ -36,13 +38,17 @@ struct ArithFloat {
   bool sat = false;         // saturate
   bool is_fusable = false;  // see ZLUDA comment about fused mul/add
 };
+/*
 using ArithDetails = std::variant<ArithInteger, ArithFloat>;
+*/
 
 // --- TypeFtz (Abs, Neg, Rsqrt, Ex2) ---
+/*
 struct TypeFtz {
   bool ftz;
   ScalarType type_;
 };
+*/
 
 // --- FlushToZero (Sin, Cos, Lg2, Ex2 approx path) ---
 struct FlushToZero {
@@ -53,11 +59,16 @@ struct FlushToZero {
 enum class MulIntControl { Low, High, Wide };
 
 // --- MulDetails ---
+/*
 struct MulInt {
   ScalarType type_;
   MulIntControl mode;
 };
+*/
+
+/*
 using MulDetails = std::variant<MulInt, ArithFloat>;
+*/
 
 // --- Mul24Details ---
 enum class Mul24Control { Lo, Hi };
@@ -67,12 +78,16 @@ struct Mul24Details {
 };
 
 // --- MadDetails ---
+/*
 struct MadInt {
   MulIntControl mode;
   bool sat;
   ScalarType type_;
 };
+*/
+/*
 using MadDetails = std::variant<MadInt, ArithFloat>;
+*/
 
 // --- CarryKind / CarryDetails / MadCarryDetails ---
 enum class CarryKind { CarryIn, CarryOut, CarryInCarryOut };
@@ -93,12 +108,16 @@ struct MinMaxFloat {
   ScalarType type_;
 };
 enum class MinMaxSign { Signed, Unsigned };
+/*
 struct MinMaxInt {
   MinMaxSign sign;
   ScalarType type_;
   bool relu = false;
 };
+*/
+/*
 using MinMaxDetails = std::variant<MinMaxInt, MinMaxFloat>;
+*/
 
 // --- DivDetails ---
 struct DivFloat {
@@ -107,12 +126,12 @@ struct DivFloat {
   enum class Kind { Approx, ApproxFull, Rounding } kind;
   RoundingMode rounding = RoundingMode::NearestEven;
 };
-enum class DivSign { Unsigned, Signed };
-struct DivInt {
-  DivSign sign;
-  ScalarType type_;
-};
-using DivDetails = std::variant<DivInt, DivFloat>;
+// enum class DivSign { Unsigned, Signed };
+// struct DivInt {
+//   DivSign sign;
+//   ScalarType type_;
+// };
+// using DivDetails = std::variant<DivInt, DivFloat>;
 
 // --- RcpKind / RcpData ---
 struct RcpCompliant {
@@ -385,6 +404,7 @@ struct MmaDetails {
 };
 
 // --- Dp4aDetails / Dp2aDetails ---
+/*
 struct Dp4aDetails {
   ScalarType atype, btype;
   ScalarType ctype() const {
@@ -393,7 +413,9 @@ struct Dp4aDetails {
                : ScalarType::S32;
   }
 };
+*/
 enum class Dp2aControl { Low, High };
+/*
 struct Dp2aData {
   ScalarType atype, btype;
   Dp2aControl control;
@@ -403,6 +425,7 @@ struct Dp2aData {
                : ScalarType::S32;
   }
 };
+*/
 
 // --- CpAsyncDetails ---
 enum class CpAsyncCpSize { Bytes4, Bytes8, Bytes16 };

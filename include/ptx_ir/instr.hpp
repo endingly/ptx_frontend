@@ -7,6 +7,8 @@
 
 namespace ptx_frontend {
 
+#include "ptx_ir.src.gen"
+
 // ============================================================
 // § 9  Instruction<Op>  ←  ast.rs  generate_instruction_type!(...)
 //      Using std::variant for the closed sum type.
@@ -15,20 +17,24 @@ namespace ptx_frontend {
 template <OperandLike Op>
 using Opt = std::optional<Op>;  // models Option<T> arguments
 
+/*
 template <OperandLike Op>
 struct InstrAbs {
   TypeFtz data;
   WithLoc<Op> dst, src;
 };
+*/
 template <OperandLike Op>
 struct InstrActivemask {
   WithLoc<Op> dst;
 };
+/*
 template <OperandLike Op>
 struct InstrAdd {
   ArithDetails data;
   WithLoc<Op> dst, src1, src2;
 };
+*/
 template <OperandLike Op>
 struct InstrAddExtended {
   CarryDetails data;
@@ -75,15 +81,16 @@ struct InstrBarRed {
   Op dst1, src_barrier, src_predicate, src_negate_predicate;
   Opt<Op> src_threadcount;
 };
+/*
 template <OperandLike Op>
 struct InstrBfe {
   ScalarType data;
-  Op dst, src1, src2 /*u32*/, src3 /*u32*/;
+  Op dst, src1, src2, src3;
 };
 template <OperandLike Op>
 struct InstrBfi {
   ScalarType data;
-  Op dst, src1, src2, src3 /*u32*/, src4 /*u32*/;
+  Op dst, src1, src2, src3, src4;
 };
 template <OperandLike Op>
 struct InstrBmsk {
@@ -98,6 +105,7 @@ struct InstrSzext {
   ScalarType type_;
   Op dst, src1, src2;
 };
+*/
 
 // Bra takes an Ident, not a full operand
 template <typename Id>
@@ -105,11 +113,13 @@ struct InstrBra {
   Id src;
 };
 
+/*
 template <OperandLike Op>
 struct InstrBrev {
   ScalarType data;
   Op dst, src;
 };
+*/
 
 // Call has its own args struct
 template <OperandLike Op>
@@ -122,17 +132,18 @@ struct InstrCall {
 // NOTE: In C++ without Rust's associated types, you may need to pass Id as
 // a second template parameter for Call. See usage note below.
 
+/*
 template <OperandLike Op>
 struct InstrClz {
   ScalarType data;
-  Op dst /*u32*/, src;
+  Op dst, src;
 };
 
 template <OperandLike Op>
 struct InstrBfind {
   ScalarType type_;
   bool shiftamt;
-  Op dst /*u32*/, src;
+  Op dst, src;
 };
 
 template <OperandLike Op>
@@ -140,6 +151,7 @@ struct InstrFns {
   ScalarType type_ = ScalarType::B32;
   Op dst, mask, base, offset;
 };
+*/
 
 template <OperandLike Op>
 struct InstrCos {
@@ -182,16 +194,18 @@ struct InstrCvta {
   CvtaDetails data;
   Op dst, src;
 };
-template <OperandLike Op>
-struct InstrDiv {
-  DivDetails data;
-  Op dst, src1, src2;
-};
+// template <OperandLike Op>
+// struct InstrDiv {
+//   DivDetails data;
+//   Op dst, src1, src2;
+// };
+/*
 template <OperandLike Op>
 struct InstrDp4a {
   Dp4aDetails data;
-  Op dst /*b32*/, src1, src2, src3;
+  Op dst, src1, src2, src3;
 };
+*/
 template <OperandLike Op>
 struct InstrEx2 {
   TypeFtz data;
@@ -212,6 +226,7 @@ struct InstrLg2 {
   FlushToZero data;
   Op dst, src;
 };
+/*
 template <OperandLike Op>
 struct InstrMad {
   MadDetails data;
@@ -222,19 +237,23 @@ struct InstrMax {
   MinMaxDetails data;
   Op dst, src1, src2;
 };
+*/
 struct InstrMembar {
   MemScope data;
 };
+/*
 template <OperandLike Op>
 struct InstrMin {
   MinMaxDetails data;
   Op dst, src1, src2;
 };
+*/
 template <OperandLike Op>
 struct InstrMov {
   MovDetails data;
   Op dst, src;
 };
+/*
 template <OperandLike Op>
 struct InstrMul {
   MulDetails data;
@@ -250,15 +269,18 @@ struct InstrMad24 {
   MadDetails data;
   Op dst, src1, src2, src3;
 };
+*/
 template <OperandLike Op>
 struct InstrNanosleep {
   Op src;
 };
+/*
 template <OperandLike Op>
 struct InstrNeg {
   TypeFtz data;
   Op dst, src;
 };
+*/
 template <OperandLike Op>
 struct InstrNot {
   ScalarType data;
@@ -269,11 +291,13 @@ struct InstrOr {
   ScalarType data;
   Op dst, src1, src2;
 };
+/*
 template <OperandLike Op>
 struct InstrPopc {
   ScalarType data;
-  Op dst /*u32*/, src;
+  Op dst, src;
 };
+*/
 template <OperandLike Op>
 struct InstrPrmt {
   Op dst, src1, src2, src3;
@@ -283,11 +307,13 @@ struct InstrRcp {
   RcpData data;
   Op dst, src;
 };
+/*
 template <OperandLike Op>
 struct InstrRem {
   ScalarType data;
   Op dst, src1, src2;
 };
+*/
 struct InstrRet {
   RetData data;
 };
@@ -362,11 +388,13 @@ struct InstrSt {
   StData data;
   Op src1, src2;
 };
+/*
 template <OperandLike Op>
 struct InstrSub {
   ArithDetails data;
   Op dst, src1, src2;
 };
+*/
 struct InstrTrap {};
 template <OperandLike Op>
 struct InstrXor {
@@ -411,6 +439,7 @@ struct InstrPrefetch {
   PrefetchData data;
   Op src;
 };
+/*
 template <OperandLike Op>
 struct InstrSad {
   ScalarType data;
@@ -421,6 +450,7 @@ struct InstrDp2a {
   Dp2aData data;
   Op dst, src1, src2, src3;
 };
+*/
 
 // fence
 template <OperandLike Op>

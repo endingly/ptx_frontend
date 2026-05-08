@@ -3,6 +3,8 @@ from code_gen.merge_variant import merge_variant
 
 
 class InstructionStructCodeGen:
+    generated_details_structs: set[str] = set()
+
     def __init__(self, instruction: Instruction):
         """init function
 
@@ -16,13 +18,21 @@ class InstructionStructCodeGen:
         content_r = ""
 
         for variant in self.inst_after_merge.variants:
-            if variant.emit_note.kind != EmitKind.Direct:
-                content = f"""
-                struct {variant.emit_note.emit_type} {{
-                    {";\n".join(f"{m.type_name} {m.name}" for m in variant.modifiers)};
-                }};
-                """
-                content_r += content
+            class_def = variant.emit_note.emit_type or "Unknown"
+            if class_def in self.generated_details_structs:
+                continue
+            else:
+                if variant.emit_note.kind != EmitKind.Direct:
+                    content = f"""
+                    struct {class_def} {{
+                        {";\n".join(f"{m.type_name} {m.name}" for m in variant.modifiers)};
+                    }};
+                    """
+                    content_r += content
+                    self.generated_details_structs.add(class_def)
+
+        content_r += self.variant_type_def_alias
+
         return content_r
 
     @property
@@ -43,6 +53,32 @@ class InstructionStructCodeGen:
         ]
         content = f"std::variant<{" ,".join(list_r)}>"
         return content
+
+    @property
+    def variant_type_def_name(self) -> str:
+        """
+        get the type definition name of the variant field in the instruction struct.
+        If there is no variant, return empty string.
+        """
+        if not self.variant_type_def:
+            return ""
+        else:
+            name = self.instruction.opcode
+            name = name[0].upper() + name[1:]  # capitalize the first letter
+            return f"{name}Details"
+
+    @property
+    def variant_type_def_alias(self) -> str:
+        """
+        get the type definition alias of the variant field in the instruction struct.
+        If there is no variant, return empty string.
+        """
+        if not self.variant_type_def:
+            return ""
+        else:
+            name = self.variant_type_def_name
+            content = f"using {name} = {self.variant_type_def};"
+            return content
 
     @property
     def sub_info_kind(self) -> EmitKind:
@@ -76,7 +112,7 @@ class InstructionStructCodeGen:
             template <OperandLike Op>
             struct {self.inst_after_merge.cpp} {{
                 // sub info
-                {self.variant_type_def} data;
+                {self.variant_type_def_name} data;
             
                 {";\n".join(self._generate_operand_def(arg) for arg in variant.arguments)};
             }};
@@ -115,6 +151,7 @@ class InstructionStructCodeGen:
         return content
 
 
+# test code
 if __name__ == "__main__":
     from load_instuctions import load_instructions
     from pathlib import Path

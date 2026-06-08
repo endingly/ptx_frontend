@@ -3,6 +3,7 @@ from pathlib import Path
 from code_gen.models import *
 import yaml
 from code_gen.merge_variant import merge_variants
+from code_gen.spec_loader import load_instruction_specs
 
 project_root = Path(__file__).parent.parent.parent
 
@@ -135,14 +136,30 @@ def _parse_instruction(raw: dict) -> Instruction:
     return instr
 
 
-def load_instructions(yaml_path: Path) -> list[Instruction]:
-    docs = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    temp_r = [_parse_instruction(item) for item in docs]
-    merged_instructions = merge_variants(temp_r)
-    for instr in merged_instructions:
+def _restore_parent_links(instructions: list[Instruction]) -> list[Instruction]:
+    for instr in instructions:
         for variant in instr.variants:
             variant.parent_instruction = instr
-    return merged_instructions
+            for modifier in variant.modifiers:
+                modifier.parent_variant = variant
+            for arg in variant.arguments:
+                arg.parent_variant = variant
+    return instructions
+
+
+def load_instructions(yaml_path: Path) -> list[Instruction]:
+    raw_text = yaml_path.read_text(encoding="utf-8")
+    docs = yaml.safe_load(raw_text)
+
+    if isinstance(docs, dict) and docs.get("schema") == "ptx-instr/v1":
+        # New declarative schema: validate and lower to the legacy codegen model.
+        temp_r = load_instruction_specs(yaml_path)
+    else:
+        # Legacy schema retained for other instruction categories during the migration.
+        temp_r = [_parse_instruction(item) for item in docs]
+
+    merged_instructions = merge_variants(temp_r)
+    return _restore_parent_links(merged_instructions)
 
 
 def get_default_value_for_type(type_name: str) -> str:

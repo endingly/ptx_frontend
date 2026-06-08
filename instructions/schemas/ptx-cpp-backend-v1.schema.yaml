@@ -1,0 +1,647 @@
+# schemas/ptx-cpp-backend-v1.schema.yaml
+#
+# JSON Schema written in YAML.
+#
+# This schema validates C++ backend mapping files for PTX instruction specs.
+# It intentionally does NOT describe PTX ISA facts. PTX-facing instruction
+# facts should live in files validated by ptx-instr-v1.schema.yaml.
+#
+# Recommended file layout:
+#
+#   schemas/
+#     ptx-instr-v1.schema.yaml
+#     ptx-cpp-backend-v1.schema.yaml
+#
+#   instructions/
+#     integer_arith.yaml
+#
+#   instructions_backend/
+#     cpp/
+#       integer_arith.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://ptxc.dev/schemas/ptx-cpp-backend-v1.schema.yaml"
+
+title: "PTX C++ Backend Mapping Schema"
+description: >
+  Schema for C++ code-generation backend mappings. This file maps declarative
+  PTX instruction specs to generated C++ IR structs, enum values, fields,
+  emit policies, and optional backend-specific generation hints.
+
+type: object
+additionalProperties: false
+
+required:
+  - schema
+  - backend
+  - target
+  - instructions
+
+properties:
+  schema:
+    description: "Schema/version tag used by backend loader."
+    const: "ptx-cpp-backend/v1"
+
+  backend:
+    description: "Backend name."
+    const: "cpp"
+
+  target:
+    description: "Backend target name. Useful if future backends generate different C++ layers."
+    type: string
+    enum:
+      - ptx_ir
+      - type_checker
+      - parser
+      - printer
+      - visitor
+      - all
+
+  spec_schema:
+    description: "Expected PTX spec schema version this backend mapping is paired with."
+    type: string
+    enum:
+      - ptx-instr/v1
+
+  category:
+    description: "Instruction category this backend file maps."
+    $ref: "#/$defs/schema_identifier"
+
+  namespace:
+    description: "Optional C++ namespace used by generated code."
+    $ref: "#/$defs/cpp_qualified_name"
+
+  includes:
+    description: "Optional C++ includes required by generated code."
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+
+  common:
+    description: "Reusable backend defaults and common mappings."
+    type: object
+    additionalProperties: false
+    properties:
+      default_emit:
+        $ref: "#/$defs/emit"
+
+      default_operand_space:
+        $ref: "#/$defs/cpp_expr"
+
+      default_modifier_field_naming:
+        type: string
+        enum:
+          - same_as_spec
+          - snake_to_camel
+          - append_underscore_for_keywords
+
+      keyword_field_rewrites:
+        description: >
+          Field name rewrites for names that collide with C++ keywords or
+          local coding conventions, for example type -> type_.
+        type: object
+        additionalProperties:
+          $ref: "#/$defs/cpp_identifier"
+
+  domains:
+    description: >
+      Backend value domains. These map semantic values from PTX spec to C++
+      enum/constant expressions.
+    type: object
+    additionalProperties:
+      $ref: "#/$defs/domain_mapping"
+
+  emit_kinds:
+    description: >
+      Optional declaration of supported emit kinds. Normally you can omit this
+      and let the generator hard-code support.
+    type: object
+    additionalProperties:
+      $ref: "#/$defs/emit_kind_mapping"
+
+  instructions:
+    description: "Per-instruction C++ backend mappings, keyed by PTX opcode."
+    type: object
+    minProperties: 1
+    additionalProperties:
+      $ref: "#/$defs/instruction_backend"
+
+$defs:
+  # ---------------------------------------------------------------------------
+  # Common identifiers
+  # ---------------------------------------------------------------------------
+
+  schema_identifier:
+    type: string
+    pattern: "^[a-z][a-z0-9_]*$"
+
+  ptx_opcode:
+    description: "PTX opcode key. Compound opcode spellings are allowed."
+    type: string
+    pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]+)*$"
+
+  cpp_identifier:
+    description: "C++ identifier."
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+
+  cpp_qualified_name:
+    description: "C++ name, optionally namespace-qualified."
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$"
+
+  cpp_type:
+    description: "C++ type name, optionally namespace-qualified."
+    $ref: "#/$defs/cpp_qualified_name"
+
+  cpp_expr:
+    description: "C++ expression emitted verbatim by the backend."
+    type: string
+    minLength: 1
+
+  spec_ref:
+    description: "Reference to a symbol in the PTX spec, for example opcode, variant, modifier, or operand name."
+    $ref: "#/$defs/schema_identifier"
+
+  # ---------------------------------------------------------------------------
+  # Domain mapping
+  # ---------------------------------------------------------------------------
+
+  domain_mapping:
+    description: >
+      Mapping from PTX spec semantic values to C++ enum/constant expressions.
+      Example: scalar_types.u32 -> ScalarType::U32.
+    type: object
+    additionalProperties: false
+
+    required:
+      - cpp_type
+      - values
+
+    properties:
+      cpp_type:
+        $ref: "#/$defs/cpp_type"
+
+      description:
+        type: string
+
+      values:
+        type: object
+        minProperties: 1
+        additionalProperties:
+          $ref: "#/$defs/value_mapping"
+
+      default:
+        description: "Optional default C++ expression for this domain."
+        $ref: "#/$defs/cpp_expr"
+
+  value_mapping:
+    description: "Mapping for one semantic value."
+    oneOf:
+      - $ref: "#/$defs/cpp_expr"
+      - type: object
+        additionalProperties: false
+        required:
+          - cpp
+        properties:
+          cpp:
+            $ref: "#/$defs/cpp_expr"
+
+          token:
+            description: "Optional PTX token if backend needs it for printer generation."
+            type: string
+            pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+
+          aliases:
+            description: "Optional semantic aliases accepted by backend."
+            type: array
+            uniqueItems: true
+            items:
+              type: string
+
+          doc:
+            type: string
+
+  # ---------------------------------------------------------------------------
+  # Emit policy
+  # ---------------------------------------------------------------------------
+
+  emit:
+    description: >
+      Describes how an instruction variant is represented in generated C++ IR.
+      This is the backend equivalent of your old emit_note.
+    type: object
+    additionalProperties: false
+
+    required:
+      - kind
+
+    properties:
+      kind:
+        type: string
+        enum:
+          - direct
+          - sub_struct
+          - sub_variant
+          - custom
+
+      instance:
+        description: >
+          Field name in the instruction struct that stores the sub-struct or
+          sub-variant. Example: data.
+        $ref: "#/$defs/cpp_identifier"
+
+      type:
+        description: >
+          C++ type used for sub_struct/sub_variant. Example: ArithInteger,
+          MulInt, TypeFtz.
+        $ref: "#/$defs/cpp_type"
+
+      variant:
+        description: >
+          Optional C++ variant alternative name if different from type.
+        $ref: "#/$defs/cpp_type"
+
+      custom_handler:
+        description: "Custom codegen hook name when kind=custom."
+        $ref: "#/$defs/schema_identifier"
+
+    allOf:
+      - if:
+          properties:
+            kind:
+              enum:
+                - sub_struct
+                - sub_variant
+          required:
+            - kind
+        then:
+          required:
+            - instance
+            - type
+
+      - if:
+          properties:
+            kind:
+              const: custom
+          required:
+            - kind
+        then:
+          required:
+            - custom_handler
+
+  emit_kind_mapping:
+    type: object
+    additionalProperties: false
+    properties:
+      cpp_helper:
+        $ref: "#/$defs/cpp_qualified_name"
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Instruction mapping
+  # ---------------------------------------------------------------------------
+
+  instruction_backend:
+    description: "C++ backend mapping for one PTX instruction."
+    type: object
+    additionalProperties: false
+
+    required:
+      - cpp
+
+    properties:
+      cpp:
+        description: "Generated C++ IR struct for this instruction."
+        $ref: "#/$defs/cpp_type"
+
+      opcode_enum:
+        description: "Optional generated opcode enum expression."
+        $ref: "#/$defs/cpp_expr"
+
+      emit:
+        description: "Default emit policy for this instruction."
+        $ref: "#/$defs/emit"
+
+      modifiers:
+        description: >
+          Per-modifier backend mapping. Keys should match modifier names in the
+          PTX spec. Cross-checking is done by semantic validation.
+        type: object
+        additionalProperties:
+          $ref: "#/$defs/modifier_backend"
+
+      operands:
+        description: >
+          Per-operand backend mapping. Keys should match operand names in the
+          PTX spec.
+        type: object
+        additionalProperties:
+          $ref: "#/$defs/operand_backend"
+
+      variants:
+        description: >
+          Per-variant backend overrides. Keys should match variant names in the
+          PTX spec.
+        type: object
+        additionalProperties:
+          $ref: "#/$defs/variant_backend"
+
+      type_checker:
+        $ref: "#/$defs/type_checker_backend"
+
+      parser:
+        $ref: "#/$defs/parser_backend"
+
+      printer:
+        $ref: "#/$defs/printer_backend"
+
+      visitor:
+        $ref: "#/$defs/visitor_backend"
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Variant mapping
+  # ---------------------------------------------------------------------------
+
+  variant_backend:
+    description: "Backend override for one PTX variant."
+    type: object
+    additionalProperties: false
+
+    properties:
+      cpp:
+        description: "Optional variant-specific C++ struct."
+        $ref: "#/$defs/cpp_type"
+
+      emit:
+        description: "Variant-specific emit override."
+        $ref: "#/$defs/emit"
+
+      modifiers:
+        type: object
+        additionalProperties:
+          $ref: "#/$defs/modifier_backend"
+
+      operands:
+        type: object
+        additionalProperties:
+          $ref: "#/$defs/operand_backend"
+
+      type_checker:
+        $ref: "#/$defs/type_checker_backend"
+
+      parser:
+        $ref: "#/$defs/parser_backend"
+
+      printer:
+        $ref: "#/$defs/printer_backend"
+
+      visitor:
+        $ref: "#/$defs/visitor_backend"
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Modifier mapping
+  # ---------------------------------------------------------------------------
+
+  modifier_backend:
+    description: "C++ backend mapping for one PTX modifier."
+    type: object
+    additionalProperties: false
+
+    properties:
+      field:
+        description: "C++ field name generated for this modifier."
+        $ref: "#/$defs/cpp_identifier"
+
+      cpp_type:
+        description: "C++ field type. Usually inferred from domain, but can be overridden."
+        $ref: "#/$defs/cpp_type"
+
+      domain:
+        description: "Backend domain name used to map semantic values to C++ expressions."
+        $ref: "#/$defs/schema_identifier"
+
+      default:
+        description: "Default C++ expression when modifier is omitted."
+        $ref: "#/$defs/cpp_expr"
+
+      fixed:
+        description: "Fixed C++ expression when modifier is always fixed."
+        $ref: "#/$defs/cpp_expr"
+
+      token_field:
+        description: "Optional generated field that stores token spelling."
+        $ref: "#/$defs/cpp_identifier"
+
+      optional_policy:
+        description: "How optional modifiers are represented in C++."
+        type: string
+        enum:
+          - default_value
+          - std_optional
+          - bool_presence_plus_value
+          - custom
+
+      presence_field:
+        description: "Field name used when optional_policy=bool_presence_plus_value."
+        $ref: "#/$defs/cpp_identifier"
+
+      custom_handler:
+        description: "Custom backend hook for this modifier."
+        $ref: "#/$defs/schema_identifier"
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Operand mapping
+  # ---------------------------------------------------------------------------
+
+  operand_backend:
+    description: "C++ backend mapping for one PTX operand."
+    type: object
+    additionalProperties: false
+
+    properties:
+      field:
+        description: "C++ field name generated for this operand."
+        $ref: "#/$defs/cpp_identifier"
+
+      cpp_type:
+        description: "C++ field type for this operand."
+        $ref: "#/$defs/cpp_type"
+
+      state_space:
+        description: "C++ expression for expected operand state space."
+        $ref: "#/$defs/cpp_expr"
+
+      type_field:
+        description: "Optional C++ field recording operand type."
+        $ref: "#/$defs/cpp_identifier"
+
+      list_element_type:
+        description: "C++ element type if this operand is a list."
+        $ref: "#/$defs/cpp_type"
+
+      optional_policy:
+        description: "How optional operands are represented in C++."
+        type: string
+        enum:
+          - std_optional
+          - nullable
+          - empty_vector
+          - sentinel
+          - custom
+
+      custom_handler:
+        description: "Custom backend hook for operand parsing/checking/emission."
+        $ref: "#/$defs/schema_identifier"
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Type checker backend hints
+  # ---------------------------------------------------------------------------
+
+  type_checker_backend:
+    description: "Backend hints for generated type-checking code."
+    type: object
+    additionalProperties: false
+
+    properties:
+      rule:
+        description: "C++ or generator rule name to use for this instruction/variant."
+        $ref: "#/$defs/cpp_qualified_name"
+
+      helper:
+        description: "C++ helper function called by generated checker."
+        $ref: "#/$defs/cpp_qualified_name"
+
+      emit_function:
+        description: "Generated or handwritten checker function name."
+        $ref: "#/$defs/cpp_identifier"
+
+      custom:
+        description: "Use handwritten checker path."
+        type: boolean
+
+      diagnostics:
+        description: "Diagnostic policy."
+        type: string
+        enum:
+          - generic
+          - detailed
+          - custom
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Parser backend hints
+  # ---------------------------------------------------------------------------
+
+  parser_backend:
+    description: "Backend hints for parser generation."
+    type: object
+    additionalProperties: false
+
+    properties:
+      opcode_token:
+        description: "Lexer token or parser symbol for the opcode."
+        $ref: "#/$defs/cpp_identifier"
+
+      parse_function:
+        description: "Generated or handwritten parse function."
+        $ref: "#/$defs/cpp_identifier"
+
+      build_function:
+        description: "Builder function that constructs IR from parsed instruction."
+        $ref: "#/$defs/cpp_identifier"
+
+      strategy:
+        type: string
+        enum:
+          - generic_opcode_modifiers_operands
+          - generated_rule
+          - handwritten
+          - custom
+
+      custom_handler:
+        $ref: "#/$defs/schema_identifier"
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Printer backend hints
+  # ---------------------------------------------------------------------------
+
+  printer_backend:
+    description: "Backend hints for PTX printer/disassembler generation."
+    type: object
+    additionalProperties: false
+
+    properties:
+      print_function:
+        $ref: "#/$defs/cpp_identifier"
+
+      modifier_order:
+        description: "Explicit modifier print order."
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/schema_identifier"
+
+      operand_order:
+        description: "Explicit operand print order."
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/schema_identifier"
+
+      omit_default_modifiers:
+        type: boolean
+        default: true
+
+      custom_handler:
+        $ref: "#/$defs/schema_identifier"
+
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Visitor backend hints
+  # ---------------------------------------------------------------------------
+
+  visitor_backend:
+    description: "Backend hints for generated visitor code."
+    type: object
+    additionalProperties: false
+
+    properties:
+      visit_name:
+        description: "Visitor method suffix or full name."
+        $ref: "#/$defs/cpp_identifier"
+
+      enable_const_visit:
+        type: boolean
+        default: true
+
+      enable_mut_visit:
+        type: boolean
+        default: true
+
+      custom_handler:
+        $ref: "#/$defs/schema_identifier"
+
+      doc:
+        type: string

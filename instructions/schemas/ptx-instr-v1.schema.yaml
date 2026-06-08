@@ -1,0 +1,1046 @@
+# schemas/ptx-instr-v1.schema.yaml
+#
+# JSON Schema written in YAML.
+#
+# This schema validates PTX-facing instruction specifications.
+# It intentionally does NOT describe C++ IR/backend mapping.
+#
+# Expected usage:
+#
+#   instructions/
+#     integer_arith.yaml
+#
+#   schemas/
+#     ptx-instr-v1.schema.yaml
+#
+# Later, C++ backend mapping should use a separate schema, for example:
+#
+#   schemas/
+#     ptx-cpp-backend-v1.schema.yaml
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://ptxc.dev/schemas/ptx-instr-v1.schema.yaml"
+
+title: "PTX Instruction Specification Schema"
+description: >
+  Declarative schema for PTX instruction facts. This schema validates
+  PTX-facing instruction specifications only. Backend-specific information,
+  such as C++ IR struct names, enum mappings, generated field names, or visitor
+  behavior, should be stored in a separate backend schema.
+
+type: object
+additionalProperties: false
+
+required:
+  - schema
+  - ptx_isa
+  - category
+  - instructions
+
+properties:
+  schema:
+    description: "Schema/version tag used by the loader."
+    const: "ptx-instr/v1"
+
+  ptx_isa:
+    description: "PTX ISA version targeted by this instruction spec file."
+    $ref: "#/$defs/ptx_version"
+    examples:
+      - "9.2"
+
+  category:
+    description: "Instruction category represented by this spec file."
+    $ref: "#/$defs/schema_identifier"
+    examples:
+      - integer_arithmetic
+      - floating_point
+      - data_movement
+      - control_flow
+      - synchronization
+      - matrix
+
+  section:
+    description: "Optional PTX ISA document section for this category."
+    type: string
+    pattern: "^[0-9]+(\\.[0-9]+)*$"
+    examples:
+      - "9.7.1"
+
+  doc:
+    description: "Optional human-readable description for this spec file."
+    type: string
+
+  type_sets:
+    description: >
+      Named groups of PTX type names. A modifier value may reference a named
+      set with '$set_name'. The existence of such references should also be
+      checked by the semantic validator.
+    type: object
+    additionalProperties:
+      $ref: "#/$defs/type_set"
+
+  value_sets:
+    description: >
+      Named reusable value groups for non-type modifiers, for example rounding
+      modes, cache operators, comparison operators, memory semantics, or scopes.
+    type: object
+    additionalProperties:
+      $ref: "#/$defs/value_set"
+
+  modifier_sets:
+    description: >
+      Named reusable modifier sequences. Variants may include these through
+      modifier_set_refs. JSON Schema checks the shape; Python semantic
+      validation should check that references exist and do not conflict.
+    type: object
+    additionalProperties:
+      type: array
+      items:
+        $ref: "#/$defs/modifier"
+
+  operand_patterns:
+    description: >
+      Named reusable operand lists. Instruction-level and variant-level operands
+      may reference a pattern by name.
+    type: object
+    additionalProperties:
+      type: array
+      minItems: 0
+      items:
+        $ref: "#/$defs/operand"
+
+  instructions:
+    description: "Instruction specifications in this file."
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/$defs/instruction"
+
+$defs:
+  # ---------------------------------------------------------------------------
+  # Common scalar definitions
+  # ---------------------------------------------------------------------------
+
+  schema_identifier:
+    description: >
+      Identifier used by schema-level symbolic names such as category, rule,
+      operand pattern name, modifier name, or type set name.
+    type: string
+    pattern: "^[a-z][a-z0-9_]*$"
+
+  ptx_identifier:
+    description: >
+      PTX-like identifier. This is intentionally more permissive than
+      schema_identifier and can represent labels, symbols, registers, or
+      predefined identifiers in examples.
+    type: string
+    pattern: "^[$%A-Za-z_][A-Za-z0-9_$%<>.]*$"
+
+  ptx_version:
+    description: "PTX ISA version string."
+    type: string
+    pattern: "^[0-9]+(\\.[0-9]+)?$"
+    examples:
+      - "1.0"
+      - "2.0"
+      - "7.6"
+      - "8.0"
+      - "9.2"
+
+  sm_version:
+    description: "Numeric SM architecture version."
+    type: integer
+    minimum: 0
+    examples:
+      - 0
+      - 20
+      - 30
+      - 61
+      - 70
+      - 80
+      - 90
+      - 100
+      - 120
+
+  arch_family:
+    description: >
+      Architecture family marker, for example sm_90a or sm_120f.
+      Use this when a PTX feature is architecture-family-specific rather than
+      merely SM-version-specific.
+    type: string
+    pattern: "^sm_[0-9]+[a-z]?$"
+    examples:
+      - sm_90a
+      - sm_100a
+      - sm_120f
+
+  doc_section:
+    type: string
+    pattern: "^[0-9]+(\\.[0-9]+)*$"
+
+  # ---------------------------------------------------------------------------
+  # PTX types
+  # ---------------------------------------------------------------------------
+
+  ptx_type_name:
+    description: >
+      PTX type name without leading dot. This list intentionally includes more
+      than integer arithmetic needs so the same schema can cover later PTX
+      categories.
+    type: string
+    enum:
+      # Predicate
+      - pred
+
+      # Bit-size types
+      - b1
+      - b2
+      - b4
+      - b6
+      - b8
+      - b16
+      - b32
+      - b64
+      - b128
+
+      # Unsigned integer types
+      - u4
+      - u8
+      - u16
+      - u32
+      - u64
+
+      # Signed integer types
+      - s4
+      - s8
+      - s16
+      - s32
+      - s64
+
+      # Floating point types
+      - f16
+      - f32
+      - f64
+
+      # Packed / alternate FP
+      - f16x2
+      - bf16
+      - bf16x2
+      - tf32
+
+      # Packed integer types
+      - u8x4
+      - s8x4
+      - u16x2
+      - s16x2
+
+      # FP8 / FP6 / FP4-style alternate formats
+      - e4m3
+      - e4m3x2
+      - e4m3x4
+
+      - e5m2
+      - e5m2x2
+      - e5m2x4
+
+      - e3m2
+      - e3m2x2
+      - e3m2x4
+
+      - e2m3
+      - e2m3x2
+      - e2m3x4
+
+      - e2m1
+      - e2m1x2
+      - e2m1x4
+
+      # Other packed/sub-byte spellings that may appear in tensor-era PTX
+      - b4x16_p64
+      - b6x16_p32
+      - b6p2x16
+
+  type_set:
+    description: "Named set of PTX types."
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      $ref: "#/$defs/ptx_type_name"
+
+  value_set:
+    description: "Named set of symbolic values for a non-type modifier domain."
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      $ref: "#/$defs/symbolic_value"
+
+  symbolic_value:
+    description: >
+      Semantic value for a non-type PTX modifier. It normally excludes the
+      leading dot. Example: sat, relu, wide, hi, low, rn, rz, global, shared.
+      It must not begin with '$'; '$name' is reserved for references to
+      type_sets or value_sets.
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_:<>-]*$"
+
+  # ---------------------------------------------------------------------------
+  # PTX state spaces and memory-related domains
+  # ---------------------------------------------------------------------------
+
+  state_space:
+    description: "PTX state space name without leading dot."
+    type: string
+    enum:
+      - reg
+      - sreg
+      - const
+      - global
+      - local
+      - param
+      - shared
+      - tex
+      - surf
+      - generic
+
+  memory_scope:
+    description: "PTX memory/synchronization scope without leading dot."
+    type: string
+    enum:
+      - cta
+      - cluster
+      - gpu
+      - sys
+
+  memory_semantics:
+    description: "PTX memory ordering/semantics qualifier without leading dot."
+    type: string
+    enum:
+      - weak
+      - volatile
+      - relaxed
+      - acquire
+      - release
+      - acq_rel
+      - sc
+
+  proxy_kind:
+    description: "PTX proxy qualifier without leading dot or namespace marker."
+    type: string
+    enum:
+      - generic
+      - async
+      - tensormap
+      - alias
+
+  cache_operator:
+    description: "PTX cache operator without leading dot."
+    type: string
+    enum:
+      - ca
+      - cg
+      - cs
+      - lu
+      - cv
+      - wb
+      - wt
+
+  eviction_priority:
+    description: "PTX cache eviction priority hint."
+    type: string
+    enum:
+      - evict_normal
+      - evict_first
+      - evict_last
+      - no_allocate
+
+  prefetch_size:
+    description: "PTX prefetch size qualifier."
+    type: string
+    enum:
+      - L2::64B
+      - L2::128B
+      - L2::256B
+
+  # ---------------------------------------------------------------------------
+  # Modifiers
+  # ---------------------------------------------------------------------------
+
+  modifier_kind:
+    description: >
+      High-level kind of a PTX modifier. This should describe PTX semantics,
+      not C++ representation.
+    type: string
+    enum:
+      - flag
+      - type
+      - enum
+      - state_space
+      - scope
+      - semantics
+      - cache
+      - eviction_priority
+      - prefetch_size
+      - rounding
+      - predicate
+      - comparison
+      - boolean_op
+      - shape
+      - layout
+      - memory_order
+      - proxy
+      - tensor_map
+      - matrix
+      - custom
+
+  modifier_presence:
+    description: "Whether a modifier is required, optional, fixed, or absent."
+    type: string
+    enum:
+      - required
+      - optional
+      - fixed
+      - absent
+
+  modifier_value:
+    description: >
+      A PTX modifier value. For type modifiers, prefer ptx_type_name. For enum
+      modifiers, use a semantic value such as wide, hi, lo, relu, approx.
+      A token override may be provided as an object.
+    anyOf:
+      - $ref: "#/$defs/symbolic_value"
+      - $ref: "#/$defs/ptx_type_name"
+      - type: boolean
+      - type: integer
+      - type: object
+        additionalProperties: false
+        required:
+          - value
+        properties:
+          value:
+            anyOf:
+              - $ref: "#/$defs/symbolic_value"
+              - $ref: "#/$defs/ptx_type_name"
+              - type: boolean
+              - type: integer
+          token:
+            type: string
+            pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+          doc:
+            type: string
+
+  value_ref:
+    description: >
+      Reference to a named type_set or value_set. The target must be checked by
+      semantic validation.
+    type: string
+    pattern: "^\\$[A-Za-z_][A-Za-z0-9_]*$"
+
+  modifier:
+    description: "PTX instruction modifier."
+    type: object
+    additionalProperties: false
+
+    required:
+      - name
+      - kind
+      - presence
+
+    properties:
+      name:
+        description: >
+          Semantic name of this modifier, for example type, sat, mode, rounding,
+          scope, cache, state_space.
+        $ref: "#/$defs/schema_identifier"
+
+      kind:
+        $ref: "#/$defs/modifier_kind"
+
+      presence:
+        $ref: "#/$defs/modifier_presence"
+
+      domain:
+        description: >
+          Name of the semantic domain this modifier draws values from, for
+          example scalar_types, rounding_modes, cache_ops, state_spaces.
+          The existence of the domain should be checked semantically.
+        $ref: "#/$defs/schema_identifier"
+
+      values:
+        description: >
+          Legal values when presence is required or optional. Items may be
+          concrete values or references such as $int_arith_scalar.
+        type: array
+        minItems: 1
+        items:
+          anyOf:
+            - $ref: "#/$defs/modifier_value"
+            - $ref: "#/$defs/value_ref"
+
+      value:
+        description: "Fixed value when presence=fixed."
+        $ref: "#/$defs/modifier_value"
+
+      token:
+        description: >
+          Concrete token for flag-like modifiers, for example .sat or .relu.
+          For type-like values, token is usually derived from value.
+        type: string
+        pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+
+      default:
+        description: >
+          Default semantic value when presence=optional and the modifier is
+          omitted.
+        oneOf:
+          - type: string
+          - type: boolean
+          - type: integer
+          - type: "null"
+
+      order:
+        description: >
+          Optional order index for deterministic pretty-printing. PTX syntax
+          often requires modifiers in a particular order.
+        type: integer
+        minimum: 0
+
+      doc:
+        type: string
+
+    allOf:
+      - if:
+          properties:
+            presence:
+              const: fixed
+          required:
+            - presence
+        then:
+          required:
+            - value
+
+      - if:
+          properties:
+            presence:
+              const: required
+          required:
+            - presence
+        then:
+          required:
+            - values
+
+      - if:
+          properties:
+            presence:
+              const: optional
+          required:
+            - presence
+        then:
+          anyOf:
+            - required:
+                - values
+            - required:
+                - token
+            - required:
+                - default
+
+      - if:
+          properties:
+            kind:
+              enum:
+                - type
+                - enum
+                - state_space
+                - scope
+                - semantics
+                - cache
+                - eviction_priority
+                - prefetch_size
+                - rounding
+                - predicate
+                - comparison
+                - boolean_op
+                - shape
+                - layout
+                - memory_order
+                - proxy
+                - tensor_map
+                - matrix
+                - custom
+          required:
+            - kind
+        then:
+          required:
+            - domain
+
+      - if:
+          properties:
+            kind:
+              const: flag
+          required:
+            - kind
+        then:
+          not:
+            required:
+              - domain
+
+  # ---------------------------------------------------------------------------
+  # Operands
+  # ---------------------------------------------------------------------------
+
+  operand_kind:
+    description: "Kind of PTX operand."
+    type: string
+    enum:
+      - reg
+      - pred
+      - sreg
+      - addr
+      - imm
+      - const_expr
+      - label
+      - label_or_reg
+      - symbol
+      - func
+      - reg_or_imm
+      - addr_or_symbol
+      - reg_list
+      - pred_list
+      - operand_list
+      - vector
+      - tuple
+      - matrix_fragment
+      - descriptor
+
+      - optional_reg
+      - optional_pred
+      - optional_imm
+      - optional_reg_or_imm
+      - optional_reg_list
+      - optional_pred_list
+      - optional_operand_list
+
+  operand_access:
+    description: "How the instruction accesses this operand."
+    type: string
+    enum:
+      - read
+      - write
+      - read_write
+      - address
+      - control
+      - metadata
+
+  operand_role:
+    description: "Semantic role of an operand."
+    type: string
+    enum:
+      - dst
+      - src
+      - src1
+      - src2
+      - src3
+      - src4
+      - addr
+      - predicate
+      - guard
+      - label
+      - mask
+      - metadata
+      - descriptor
+      - barrier
+      - immediate
+      - shape
+      - layout
+      - other
+
+  operand:
+    description: "PTX instruction operand."
+    type: object
+    additionalProperties: false
+
+    required:
+      - name
+      - kind
+
+    properties:
+      name:
+        $ref: "#/$defs/schema_identifier"
+
+      kind:
+        $ref: "#/$defs/operand_kind"
+
+      role:
+        $ref: "#/$defs/operand_role"
+
+      access:
+        $ref: "#/$defs/operand_access"
+
+      type:
+        description: >
+          Allowed operand type or type expression. Use a simple string for one
+          type, a list for several types, or a type expression when the operand
+          type depends on modifiers.
+        oneOf:
+          - $ref: "#/$defs/ptx_type_name"
+          - type: array
+            minItems: 1
+            items:
+              $ref: "#/$defs/ptx_type_name"
+          - $ref: "#/$defs/type_expr"
+
+      state_space:
+        description: "Allowed operand state space or state spaces."
+        oneOf:
+          - $ref: "#/$defs/state_space"
+          - type: array
+            minItems: 1
+            items:
+              $ref: "#/$defs/state_space"
+              uniqueItems: true
+
+      vector:
+        $ref: "#/$defs/vector_spec"
+
+      optional:
+        type: boolean
+        default: false
+
+      variadic:
+        type: boolean
+        default: false
+
+      min_items:
+        description: "Minimum number of items for list-like operands."
+        type: integer
+        minimum: 0
+
+      max_items:
+        description: "Maximum number of items for list-like operands."
+        type: integer
+        minimum: 0
+
+      alignment:
+        description: "Required alignment in bytes, if applicable."
+        type: integer
+        minimum: 1
+
+      description:
+        type: string
+
+  vector_spec:
+    description: "Vector, tuple, or matrix fragment operand shape."
+    type: object
+    additionalProperties: false
+    properties:
+      kind:
+        type: string
+        enum:
+          - none
+          - tuple
+          - vector
+          - matrix_fragment
+
+      arity:
+        description: "Allowed number or numbers of elements."
+        oneOf:
+          - type: integer
+            minimum: 1
+          - type: array
+            minItems: 1
+            uniqueItems: true
+            items:
+              type: integer
+              minimum: 1
+
+      components:
+        description: "Allowed component names, for example x/y/z/w or 0..f."
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+
+  type_expr:
+    description: >
+      Type expression used when a simple enum is not enough. The expression is
+      not interpreted by JSON Schema. It should be interpreted by the semantic
+      validator or normalizer.
+    type: object
+    additionalProperties: false
+    required:
+      - expr
+    properties:
+      expr:
+        type: string
+        examples:
+          - "$type"
+          - "$atype"
+          - "$dtype"
+          - "same_as(type)"
+          - "one_of($int_arith_scalar)"
+          - "same_size_as(src1)"
+      doc:
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Availability and semantic validation hooks
+  # ---------------------------------------------------------------------------
+
+  availability:
+    description: >
+      PTX/SM availability constraints for an instruction variant.
+    type: object
+    additionalProperties: false
+
+    properties:
+      ptx:
+        $ref: "#/$defs/ptx_version"
+
+      sm:
+        $ref: "#/$defs/sm_version"
+
+      family:
+        $ref: "#/$defs/arch_family"
+
+      deprecated:
+        type: boolean
+        default: false
+
+      removed:
+        type: boolean
+        default: false
+
+      notes:
+        type: string
+
+    anyOf:
+      - required:
+          - ptx
+      - required:
+          - sm
+      - required:
+          - family
+
+  semantic_rule:
+    description: >
+      Named semantic/type-checking rule implemented outside JSON Schema.
+    type: string
+    pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+    examples:
+      - integer_arith.binary_same_type
+      - integer_arith.add
+      - integer_arith.mul
+      - memory.ld
+      - matrix.mma
+
+  constraint:
+    description: >
+      Extra semantic constraint. JSON Schema checks shape only. The semantic
+      validator should check actual meaning.
+    type: object
+    additionalProperties: false
+
+    required:
+      - kind
+
+    properties:
+      kind:
+        type: string
+        enum:
+          - same_type
+          - same_size
+          - dst_type
+          - src_type
+          - operand_count
+          - operand_kind
+          - requires_modifier
+          - forbids_modifier
+          - requires_state_space
+          - forbids_state_space
+          - requires_sm
+          - requires_ptx
+          - mutually_exclusive_modifiers
+          - implies_modifier
+          - custom
+
+      operands:
+        type: array
+        items:
+          $ref: "#/$defs/schema_identifier"
+
+      modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      modifiers:
+        type: array
+        items:
+          $ref: "#/$defs/schema_identifier"
+
+      value: {}
+
+      rule:
+        $ref: "#/$defs/semantic_rule"
+
+      message:
+        type: string
+
+  example:
+    description: "Positive or negative PTX example for an instruction or variant."
+    type: object
+    additionalProperties: false
+
+    required:
+      - ptx
+
+    properties:
+      ptx:
+        type: string
+
+      valid:
+        type: boolean
+        default: true
+
+      reason:
+        type: string
+
+      target:
+        description: "Optional target architecture assumed by this example."
+        type: string
+        examples:
+          - sm_80
+          - sm_90
+          - sm_120f
+
+  # ---------------------------------------------------------------------------
+  # Instruction variants and instructions
+  # ---------------------------------------------------------------------------
+
+  variant:
+    description: "A PTX instruction variant."
+    type: object
+    additionalProperties: false
+
+    required:
+      - name
+      - availability
+
+    properties:
+      name:
+        $ref: "#/$defs/schema_identifier"
+
+      description:
+        type: string
+
+      syntax:
+        description: "Optional syntax override for this variant."
+        type: string
+
+      availability:
+        $ref: "#/$defs/availability"
+
+      modifier_set_refs:
+        description: >
+          Names of reusable modifier sets. Existence should be checked
+          semantically.
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/schema_identifier"
+
+      modifiers:
+        description: "Modifiers for this variant."
+        type: array
+        items:
+          $ref: "#/$defs/modifier"
+
+      operands:
+        description: >
+          Either a named operand pattern or an explicit operand list. If omitted,
+          the instruction-level operands are used.
+        oneOf:
+          - $ref: "#/$defs/schema_identifier"
+          - type: array
+            items:
+              $ref: "#/$defs/operand"
+
+      rule:
+        $ref: "#/$defs/semantic_rule"
+
+      constraints:
+        type: array
+        items:
+          $ref: "#/$defs/constraint"
+
+      examples:
+        type: array
+        items:
+          $ref: "#/$defs/example"
+
+      doc:
+        type: string
+
+  instruction:
+    description: "A PTX instruction."
+    type: object
+    additionalProperties: false
+
+    required:
+      - opcode
+      - variants
+
+    properties:
+      opcode:
+        description: >
+          PTX instruction keyword. Compound opcode spelling such as ld.global.nc,
+          cp.async.bulk, or wgmma.mma_async may be kept here if your frontend
+          treats it as a single opcode. Alternatively, you may split compound
+          spellings into opcode + modifiers in the spec.
+        type: string
+        pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]+)*$"
+
+      category:
+        description: "Optional instruction-level category override."
+        $ref: "#/$defs/schema_identifier"
+
+      section:
+        description: "Optional PTX document section for this instruction."
+        $ref: "#/$defs/doc_section"
+
+      doc:
+        type: string
+
+      syntax:
+        description: >
+          Human-readable PTX syntax pattern. This field is for documentation and
+          printer guidance. JSON Schema does not parse it.
+        type: string
+        examples:
+          - "add{.sat}.{type} dst, src1, src2"
+          - "mul.{mode}.{type} dst, src1, src2"
+          - "ld{.weak}{.ss}{.cop}.{type} dst, [addr]"
+
+      operands:
+        description: >
+          Default operands for variants. Either a named operand pattern or an
+          explicit operand list.
+        oneOf:
+          - $ref: "#/$defs/schema_identifier"
+          - type: array
+            items:
+              $ref: "#/$defs/operand"
+
+      variants:
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/variant"
+
+      examples:
+        type: array
+        items:
+          $ref: "#/$defs/example"
+
+      notes:
+        type: string

@@ -1,1176 +1,489 @@
-# PTX ISA 9.2 — Integer Arithmetic Instructions
-# Ref: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#integer-arithmetic-instructions
+schema: ptx-instr/v1
+ptx_isa: "9.2"
+category: integer_arithmetic
+section: "9.7.1"
 
-###############################################################################
-# add
-###############################################################################
-# constraints schema:
-#   min_ptx_version: X.Y           # min PTX ISA version
-#   min_sm: NN                     # min SM architecture (universal sm_NN+)
-###############################################################################
-- opcode: "add"
-  doc: "PTX ISA §9.7.1.1"
-  cpp: "InstrAdd"
-  variants:
-    - description: "add integer no-sat (universal)"
-      constraints:
-        min_ptx_version: 1.0
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16
-            - !ref scalar_types.u64
-            - !ref scalar_types.s16
-            - !ref scalar_types.s64
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
-        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
+type_sets:
+  int_arith_all: [u16, u32, u64, s16, s32, s64]
+  int_arith_no_s32: [u16, u32, u64, s16, s64]
+  int_arith_basic: [u32, s32, u64, s64, u16, s16]
+  int_signed_basic: [s32, s64, s16]
+  int_minmax_scalar: [u16, u32, u64, s16, s64, s32]
+  bit32_64: [b32, b64]
+  signedness32: [u32, s32]
+  signedness64_32: [u32, u64, s32, s64]
+  signedness32_64: [u32, s32, u64, s64]
 
-    # ── Integer: add.sat.s32 (universal) ─────────────────────────────────────
-    # signed 32-bit saturating add supported from PTX 1.0, all SM
-    - description: "add.sat.s32 (universal)"
-      constraints:
-        min_ptx_version: 1.0
-        min_sm: 0
-      modifiers:
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant # type with: sub_variant/sub_struct/direct
-        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
-        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
+operand_patterns:
+  unary:
+    - { name: dst, kind: reg }
+    - { name: src, kind: reg_or_imm }
+  binary:
+    - { name: dst, kind: reg }
+    - { name: src1, kind: reg_or_imm }
+    - { name: src2, kind: reg_or_imm }
+  ternary:
+    - { name: dst, kind: reg }
+    - { name: src1, kind: reg_or_imm }
+    - { name: src2, kind: reg_or_imm }
+    - { name: src3, kind: reg_or_imm }
+  quaternary:
+    - { name: dst, kind: reg }
+    - { name: src1, kind: reg_or_imm }
+    - { name: src2, kind: reg_or_imm }
+    - { name: src3, kind: reg_or_imm }
+    - { name: src4, kind: reg_or_imm }
 
-    # ── Integer: SIMD no-sat (sm_90+) ─────────────────────────────────────────
-    # add.u16x2 / add.s16x2 (no sat) introduced in PTX 8.0, requires sm_90+
-    - description: "add SIMD no-sat (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16x2
-            - !ref scalar_types.s16x2
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant # type with: sub_variant/sub_struct/direct
-        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
-        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
+cpp_backend:
+  domains:
+    scalar_types:
+      cpp_type: ScalarType
+      values:
+        u16: { token: ".u16", cpp: "ScalarType::U16" }
+        u32: { token: ".u32", cpp: "ScalarType::U32" }
+        u64: { token: ".u64", cpp: "ScalarType::U64" }
+        s16: { token: ".s16", cpp: "ScalarType::S16" }
+        s32: { token: ".s32", cpp: "ScalarType::S32" }
+        s64: { token: ".s64", cpp: "ScalarType::S64" }
+        u8x4: { token: ".u8x4", cpp: "ScalarType::U8x4" }
+        s8x4: { token: ".s8x4", cpp: "ScalarType::S8x4" }
+        u16x2: { token: ".u16x2", cpp: "ScalarType::U16x2" }
+        s16x2: { token: ".s16x2", cpp: "ScalarType::S16x2" }
+        b32: { token: ".b32", cpp: "ScalarType::B32" }
+        b64: { token: ".b64", cpp: "ScalarType::B64" }
+    mul_int_control:
+      cpp_type: MulIntControl
+      values:
+        wide: { token: ".wide", cpp: "MulIntControl::Wide" }
+        low: { token: ".low", cpp: "MulIntControl::Low" }
+        hi: { token: ".hi", cpp: "MulIntControl::High" }
+    bmsk_mode:
+      cpp_type: BmskMode
+      values:
+        clamp: { token: ".clamp", cpp: "BmskMode::Clamp" }
+        wrap: { token: ".wrap", cpp: "BmskMode::Wrap" }
+    dp2a_control:
+      cpp_type: Dp2aControl
+      values:
+        low: { token: ".lo", cpp: "Dp2aControl::Low" }
+        hi: { token: ".hi", cpp: "Dp2aControl::High" }
 
-    # ── Integer: packed optional sat (sm_120f family) ──────────────────────────
-    # add{.sat}.u8x4 / add{.sat}.s8x4 introduced in PTX 9.2, requires sm_120f family
-    - description: "add packed optional-sat (sm_120f family)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u8x4
-            - !ref scalar_types.s8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant # type with: sub_variant/sub_struct/direct
-        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
-        emit_type: "ArithInteger" # type of the instruction to emit, null if direct
+  instructions:
+    add: { cpp: InstrAdd, emit: { kind: sub_variant, instance: data, type: ArithInteger } }
+    sub: { cpp: InstrSub, emit: { kind: sub_variant, instance: data, type: ArithInteger } }
+    mul: { cpp: InstrMul, emit: { kind: sub_variant, instance: data, type: MulInt } }
+    mad: { cpp: InstrMad, emit: { kind: sub_variant, instance: data, type: MadInt } }
+    mul24: { cpp: InstrMul24, emit: { kind: sub_variant, instance: data, type: MulInt } }
+    mad24: { cpp: InstrMad24, emit: { kind: sub_variant, instance: data, type: MadInt } }
+    sad: { cpp: InstrSad, emit: { kind: direct } }
+    div: { cpp: InstrDiv, emit: { kind: sub_variant, instance: data, type: DivInt } }
+    rem: { cpp: InstrRem, emit: { kind: direct } }
+    abs: { cpp: InstrAbs, emit: { kind: sub_struct, instance: data, type: TypeFtz } }
+    neg: { cpp: InstrNeg, emit: { kind: sub_struct, instance: data, type: TypeFtz } }
+    min: { cpp: InstrMin, emit: { kind: sub_variant, instance: data, type: MinMaxInt } }
+    max: { cpp: InstrMax, emit: { kind: sub_variant, instance: data, type: MinMaxInt } }
+    popc: { cpp: InstrPopc, emit: { kind: direct } }
+    clz: { cpp: InstrClz, emit: { kind: direct } }
+    bfind: { cpp: InstrBfind, emit: { kind: direct } }
+    fns: { cpp: InstrFns, emit: { kind: direct } }
+    brev: { cpp: InstrBrev, emit: { kind: direct } }
+    bfe: { cpp: InstrBfe, emit: { kind: direct } }
+    bfi: { cpp: InstrBfi, emit: { kind: direct } }
+    szext: { cpp: InstrSzext, emit: { kind: direct } }
+    bmsk: { cpp: InstrBmsk, emit: { kind: direct } }
+    dp4a: { cpp: InstrDp4a, emit: { kind: sub_struct, instance: data, type: Dp4aDetails } }
+    dp2a: { cpp: InstrDp2a, emit: { kind: sub_struct, instance: data, type: Dp2aData } }
 
-    # ── Integer: SIMD sat + u32 sat (sm_120f family) ────────────────────────────
-    # add.sat.u16x2 / add.sat.s16x2 / add.sat.u32 introduced in PTX 9.2, requires sm_120f family
-    # Note: u16x2/s16x2 no-sat versions are in sm_90+ variants; here sat is mandatory
-    - description: "add SIMD sat / add.sat.u32 (sm_120f family)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "true" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16x2
-            - !ref scalar_types.s16x2
-            - !ref scalar_types.u32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant # type with: sub_variant/sub_struct/direct
-        instance: "data" # instance of the sub_variant/sub_struct data to emit, null if direct
-        emit_type: "ArithInteger" # type of the instruction to emit, instra struct self if direct
+instructions:
+  - opcode: add
+    doc: "PTX ISA §9.7.1.1"
+    syntax: "add{.sat}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: add_integer_no_sat
+        description: "add integer no-sat (universal)"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16, u64, s16, s64, u32, s32] }
+      - name: add_sat_s32
+        description: "add.sat.s32 (universal)"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: sat, kind: flag, presence: fixed, value: true, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s32 }
+      - name: add_simd_no_sat_sm90
+        description: "add SIMD no-sat (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16x2, s16x2] }
+      - name: add_packed_optional_sat_sm120
+        description: "add packed optional-sat (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: sat, kind: flag, presence: optional, default: false, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u8x4, s8x4] }
+      - name: add_simd_sat_sm120
+        description: "add.sat.u16x2 / add.sat.s16x2 / add.sat.u32 (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: sat, kind: flag, presence: fixed, value: true, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16x2, s16x2, u32] }
 
-###############################################################################
-# sub
-###############################################################################
-- opcode: "sub"
-  doc: "PTX ISA §9.7.1.2"
-  cpp: "InstrSub"
-  variants:
-    - description: "sub integer (no sat)"
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16
-            - !ref scalar_types.u32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s16
-            - !ref scalar_types.s64
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "ArithInteger"
+  - opcode: sub
+    doc: "PTX ISA §9.7.1.2"
+    syntax: "sub{.sat}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: sub_integer_no_sat
+        description: "sub integer (no sat)"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s64] }
+      - name: sub_s32_optional_sat
+        description: "sub integer with optional sat"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: sat, kind: flag, presence: optional, default: false, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [s32] }
+      - name: sub_packed_optional_sat_sm120
+        description: "sub integer with optional sat for packed types"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: sat, kind: flag, presence: optional, default: false, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u8x4, s8x4] }
 
-    - description: "sub integer with optional sat"
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "ArithInteger"
+  - opcode: mul
+    doc: "PTX ISA §9.7.1.3"
+    syntax: "mul.{mode}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: mul_integer
+        description: "mul integer"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: mode, kind: enum, domain: mul_int_control, presence: required, values: [wide, low, hi] }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16, u32, s32, u64, s16, s64] }
 
-    - description: "sub integer with optional sat for packed types"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        sat:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".sat", cpp: "true" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u8x4
-            - !ref scalar_types.s8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "ArithInteger"
+  - opcode: mad
+    doc: "PTX ISA §9.7.1.4"
+    syntax: "mad.{mode}{.sat}.{type} dst, src1, src2, src3"
+    operands: ternary
+    variants:
+      - name: mad_integer
+        description: "mad integer"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: mode, kind: enum, domain: mul_int_control, presence: required, values: [wide, low, hi] }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16, u32, s32, u64, s16, s64] }
+      - name: mad_hi_sat_s32
+        description: "mad.hi.sat.s32 (universal)"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: mode, kind: enum, domain: mul_int_control, presence: fixed, value: hi }
+          - { name: sat, kind: flag, presence: fixed, value: true, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s32 }
 
-###############################################################################
-# mul
-###############################################################################
-- opcode: "mul"
-  doc: "PTX ISA §9.7.1.3"
-  cpp: "InstrMul"
-  variants:
-    - description: "mul integer"
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        mode:
-          kind: required
-          type: MulIntControl
-          values:
-            - { token: ".wide", cpp: "MulIntControl::Wide" }
-            - { token: ".low", cpp: "MulIntControl::Low" }
-            - { token: ".hi", cpp: "MulIntControl::High" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s16
-            - !ref scalar_types.s64
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MulInt"
+  - opcode: mul24
+    doc: "PTX ISA §9.7.1.5"
+    syntax: "mul24.{mode}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: mul24_integer
+        description: "Multiply two 24-bit integer values."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: mode, kind: enum, domain: mul_int_control, presence: required, values: [low, hi] }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }
 
-###############################################################################
-# mad
-###############################################################################
-- opcode: "mad"
-  doc: "PTX ISA §9.7.1.4"
-  cpp: "InstrMad"
-  variants:
-    - description: "mad integer"
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        mode:
-          kind: required
-          type: MulIntControl
-          values:
-            - { token: ".wide", cpp: "MulIntControl::Wide" }
-            - { token: ".low", cpp: "MulIntControl::Low" }
-            - { token: ".hi", cpp: "MulIntControl::High" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s16
-            - !ref scalar_types.s64
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MadInt"
+  - opcode: mad24
+    doc: "PTX ISA §9.7.1.6"
+    syntax: "mad24.{mode}{.sat}.{type} dst, src1, src2, src3"
+    operands: ternary
+    variants:
+      - name: mad24_integer
+        description: "Multiply two 24-bit integer values and add a third value."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: mode, kind: enum, domain: mul_int_control, presence: required, values: [low, hi] }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }
+      - name: mad24_hi_sat_s32
+        description: "mad24.hi.sat.s32 (universal)"
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: mode, kind: enum, domain: mul_int_control, presence: fixed, value: hi }
+          - { name: sat, kind: flag, presence: fixed, value: true, token: ".sat" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s32 }
 
-    - description: "mad.hi.sat.s32 (universal)"
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        mode:
-          kind: fixed
-          type: MulIntControl
-          fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MadInt"
+  - opcode: sad
+    doc: "PTX ISA §9.7.1.7"
+    syntax: "sad.{type} dst, src1, src2, src3"
+    operands: ternary
+    variants:
+      - name: sad_integer
+        description: "Sum of absolute differences."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, u16, s16] }
 
-###############################################################################
-# mul24
-###############################################################################
-- opcode: "mul24"
-  doc: "PTX ISA §9.7.1.5"
-  cpp: "InstrMul24"
-  variants:
-    - description: "Multiply two 24-bit integer values."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        mode:
-          kind: required
-          type: MulIntControl
-          values:
-            - { token: ".low", cpp: "MulIntControl::Low" }
-            - { token: ".hi", cpp: "MulIntControl::High" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MulInt"
+  - opcode: div
+    doc: "PTX ISA §9.7.1.8"
+    syntax: "div.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: div_integer
+        description: "Divide one value by another."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, u16, s16] }
 
-###############################################################################
-# mad24
-###############################################################################
-- opcode: "mad24"
-  doc: "PTX ISA §9.7.1.6"
-  cpp: "InstrMad24"
-  variants:
-    - description: "Multiply two 24-bit integer values and add a third value."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        mode:
-          kind: required
-          type: MulIntControl
-          values:
-            - { token: ".low", cpp: "MulIntControl::Low" }
-            - { token: ".hi", cpp: "MulIntControl::High" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MadInt"
+  - opcode: rem
+    doc: "PTX ISA §9.7.1.9"
+    syntax: "rem.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: rem_integer
+        description: "The remainder of integer division."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, u16, s16] }
 
-    - description: "mad24.hi.sat.s32 (universal)"
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        mode:
-          kind: fixed
-          type: MulIntControl
-          fixed_value: { token: ".hi", cpp: "MulIntControl::High" }
-        sat:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".sat", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MadInt"
+  - opcode: abs
+    doc: "PTX ISA §9.7.1.10"
+    syntax: "abs.{type} dst, src"
+    operands: unary
+    variants:
+      - name: abs_integer
+        description: "Absolute value."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [s32, s64, s16] }
 
-###############################################################################
-# sad
-###############################################################################
-- opcode: "sad"
-  doc: "PTX ISA §9.7.1.7"
-  cpp: "InstrSad"
-  variants:
-    - description: "Sum of absolute differences."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s64
-            - !ref scalar_types.u16
-            - !ref scalar_types.s16
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-        instance: null
-        emit_type: null
+  - opcode: neg
+    doc: "PTX ISA §9.7.1.11"
+    syntax: "neg.{type} dst, src"
+    operands: unary
+    variants:
+      - name: neg_integer
+        description: "Arithmetic negate."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [s32, s64, s16] }
+      - name: neg_s8x4_sm120
+        description: "neg.s8x4 (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s8x4 }
 
-###############################################################################
-# div
-###############################################################################
-- opcode: "div"
-  doc: "PTX ISA §9.7.1.8"
-  cpp: "InstrDiv"
-  variants:
-    - description: "Divide one value by another."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s64
-            - !ref scalar_types.u16
-            - !ref scalar_types.s16
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "DivInt"
+  - opcode: min
+    doc: "PTX ISA §9.7.1.12"
+    syntax: "min{.relu}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: min_integer
+        description: "Find the minimum of two values."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s64, s32] }
+      - name: min_u16x2_sm90
+        description: "min.u16x2 (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: u16x2 }
+      - name: min_s16x2_optional_relu_sm90
+        description: "min{.relu}.s16x2 (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: relu, kind: flag, presence: optional, default: false, token: ".relu" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s16x2 }
+      - name: min_relu_s32_sm90
+        description: "min.relu.s32 (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: relu, kind: flag, presence: fixed, value: true, token: ".relu" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s32 }
+      - name: min_u8x4_sm120
+        description: "min.u8x4 (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: u8x4 }
+      - name: min_s8x4_optional_relu_sm120
+        description: "min{.relu}.s8x4 (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: relu, kind: flag, presence: optional, default: false, token: ".relu" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s8x4 }
 
-###############################################################################
-# rem
-###############################################################################
-- opcode: "rem"
-  doc: "PTX ISA §9.7.1.9"
-  cpp: "InstrRem"
-  variants:
-    - description: "The remainder of integer division."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u32
-            - !ref scalar_types.s32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s64
-            - !ref scalar_types.u16
-            - !ref scalar_types.s16
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: direct
+  - opcode: max
+    doc: "PTX ISA §9.7.1.13"
+    syntax: "max{.relu}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: max_integer
+        description: "Find the maximum of two values."
+        availability: { ptx: "1.0", sm: 0 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s64, s32] }
+      - name: max_u16x2_sm90
+        description: "max.u16x2 (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: u16x2 }
+      - name: max_s16x2_optional_relu_sm90
+        description: "max{.relu}.s16x2 (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: relu, kind: flag, presence: optional, default: false, token: ".relu" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s16x2 }
+      - name: max_relu_s32_sm90
+        description: "max.relu.s32 (sm_90+)"
+        availability: { ptx: "8.0", sm: 90 }
+        modifiers:
+          - { name: relu, kind: flag, presence: fixed, value: true, token: ".relu" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s32 }
+      - name: max_u8x4_sm120
+        description: "max.u8x4 (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: u8x4 }
+      - name: max_s8x4_optional_relu_sm120
+        description: "max{.relu}.s8x4 (sm_120f family)"
+        availability: { ptx: "9.2", sm: 120, family: sm_120f }
+        modifiers:
+          - { name: relu, kind: flag, presence: optional, default: false, token: ".relu" }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: s8x4 }
 
-###############################################################################
-# abs
-###############################################################################
-- opcode: "abs"
-  doc: "PTX ISA §9.7.1.10"
-  cpp: "InstrAbs"
-  variants:
-    - description: "Absolute value."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.s32
-            - !ref scalar_types.s64
-            - !ref scalar_types.s16
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: sub_struct
-        instance: "data"
-        emit_type: "TypeFtz"
+  - opcode: popc
+    doc: "PTX ISA §9.7.1.14"
+    syntax: "popc.{type} dst, src"
+    operands: unary
+    variants:
+      - name: popc_bits
+        description: "Population count."
+        availability: { ptx: "2.0", sm: 20 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [b32, b64] }
 
-###############################################################################
-# neg
-###############################################################################
-- opcode: "neg"
-  doc: "PTX ISA §9.7.1.11"
-  cpp: "InstrNeg"
-  variants:
-    - description: "Arithmetic negate."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.s32
-            - !ref scalar_types.s64
-            - !ref scalar_types.s16
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: sub_struct
-        instance: "data"
-        emit_type: "TypeFtz"
+  - opcode: clz
+    doc: "PTX ISA §9.7.1.15"
+    syntax: "clz.{type} dst, src"
+    operands: unary
+    variants:
+      - name: clz_bits
+        description: "Count leading zeros."
+        availability: { ptx: "2.0", sm: 20 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [b32, b64] }
 
-    - description: "neg.s8x4 (sm_120f family)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: sub_struct
-        instance: "data"
-        emit_type: "TypeFtz"
+  - opcode: bfind
+    doc: "PTX ISA §9.7.1.16"
+    syntax: "bfind{.shiftamt}.{type} dst, src"
+    operands:
+      - { name: dst, kind: reg, type: u32 }
+      - { name: src, kind: reg_or_imm }
+    variants:
+      - name: bfind_integer
+        description: "Find most significant non-sign bit."
+        availability: { ptx: "2.0", sm: 20 }
+        modifiers:
+          - { name: shiftamt, kind: flag, presence: optional, default: false, token: ".shiftamt" }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u32, u64, s32, s64] }
 
-###############################################################################
-# min
-###############################################################################
-- opcode: "min"
-  doc: "PTX ISA §9.7.1.12"
-  cpp: "InstrMin"
-  variants:
-    - description: "Find the minimum of two values."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16
-            - !ref scalar_types.u32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s16
-            - !ref scalar_types.s64
-            - !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: fns
+    doc: "PTX ISA §9.7.1.17"
+    syntax: "fns.b32 dst, mask, base, offset"
+    operands:
+      - { name: dst, kind: reg }
+      - { name: mask, kind: reg_or_imm }
+      - { name: base, kind: reg_or_imm, type: [u32, s32, b32, u32, s32, b32] }
+      - { name: offset, kind: reg_or_imm, type: s32 }
+    variants:
+      - name: fns_b32
+        description: "Find the n-th set bit."
+        availability: { ptx: "6.0", sm: 30 }
+        modifiers:
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: b32 }
 
-    - description: "min.u16x2 (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.u16x2
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: brev
+    doc: "PTX ISA §9.7.1.18"
+    syntax: "brev.{type} dst, src"
+    operands: unary
+    variants:
+      - name: brev_bits
+        description: "Bit reverse."
+        availability: { ptx: "2.0", sm: 20 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [b32, b64] }
 
-    - description: "min{.relu}.s16x2 (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        relu:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".relu", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s16x2
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: bfe
+    doc: "PTX ISA §9.7.1.19"
+    syntax: "bfe.{type} dst, src1, src2, src3"
+    operands: ternary
+    variants:
+      - name: bfe_integer
+        description: "Bit Field Extract."
+        availability: { ptx: "2.0", sm: 20 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [u32, u64, s32, s64] }
 
-    - description: "min.relu.s32 (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: bfi
+    doc: "PTX ISA §9.7.1.20"
+    syntax: "bfi.{type} dst, src1, src2, src3, src4"
+    operands: quaternary
+    variants:
+      - name: bfi_bits
+        description: "Bit Field Insert."
+        availability: { ptx: "2.0", sm: 20 }
+        modifiers:
+          - { name: data, kind: type, domain: scalar_types, presence: required, values: [b32, b64] }
 
-    - description: "min.u8x4 (sm_120+)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.u8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: szext
+    doc: "PTX ISA §9.7.1.21"
+    syntax: "szext.{mode}.{type} dst, src1, src2"
+    operands: binary
+    variants:
+      - name: szext_integer
+        description: "Sign Extend."
+        availability: { ptx: "7.6", sm: 70 }
+        modifiers:
+          - { name: mode, kind: enum, domain: bmsk_mode, presence: required, values: [clamp, wrap] }
+          - { name: type_, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }
 
-    - description: "min.s8x4 (sm_120+)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        relu:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".relu", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: bmsk
+    doc: "PTX ISA §9.7.1.22"
+    syntax: "bmsk.{mode}.b32 dst, src_a, src_b"
+    operands:
+      - { name: dst, kind: reg }
+      - { name: src_a, kind: reg_or_imm }
+      - { name: src_b, kind: reg_or_imm }
+    variants:
+      - name: bmsk_b32
+        description: "Bit Field Mask."
+        availability: { ptx: "7.6", sm: 70 }
+        modifiers:
+          - { name: data, kind: enum, domain: bmsk_mode, presence: required, values: [clamp, wrap] }
+          - { name: type_, kind: type, domain: scalar_types, presence: fixed, value: b32 }
 
-###############################################################################
-# max
-###############################################################################
-- opcode: "max"
-  doc: "PTX ISA §9.7.1.12"
-  cpp: "InstrMax"
-  variants:
-    - description: "Find the maximum of two values."
-      constraints:
-        min_ptx_version: 1
-        min_sm: 0
-      modifiers:
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u16
-            - !ref scalar_types.u32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s16
-            - !ref scalar_types.s64
-            - !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
+  - opcode: dp4a
+    doc: "PTX ISA §9.7.1.23"
+    syntax: "dp4a.{atype}.{btype} dst, src1, src2, src3"
+    operands: ternary
+    variants:
+      - name: dp4a_integer
+        description: "Four-way byte dot product-accumulate."
+        availability: { ptx: "5.0", sm: 61 }
+        modifiers:
+          - { name: atype, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }
+          - { name: btype, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }
 
-    - description: "max.u16x2 (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.u16x2
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
-
-    - description: "max{.relu}.s16x2 (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        relu:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".relu", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s16x2
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
-
-    - description: "max.relu.s32 (sm_90+)"
-      constraints:
-        min_ptx_version: 8.0
-        min_sm: 90
-      modifiers:
-        relu:
-          kind: fixed
-          type: bool
-          fixed_value: { token: ".relu", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
-
-    - description: "max.u8x4 (sm_120+)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.u8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
-
-    - description: "max.s8x4 (sm_120+)"
-      constraints:
-        min_ptx_version: 9.2
-        min_sm: 120
-      modifiers:
-        relu:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".relu", cpp: "true" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.s8x4
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: sub_variant
-        instance: "data"
-        emit_type: "MinMaxInt"
-
-###############################################################################
-# popc
-###############################################################################
-- opcode: "popc"
-  doc: "PTX ISA §9.7.1.14"
-  cpp: "InstrPopc"
-  variants:
-    - description: "Population count."
-      constraints:
-        min_ptx_version: 2.0
-        min_sm: 20
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.b32
-            - !ref scalar_types.b64
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# clz
-###############################################################################
-- opcode: "clz"
-  doc: "PTX ISA §9.7.1.15"
-  cpp: "InstrClz"
-  variants:
-    - description: "Count leading zeros."
-      constraints:
-        min_ptx_version: 2.0
-        min_sm: 20
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.b32
-            - !ref scalar_types.b64
-      args:
-        - { name: "dst", kind: reg } # TODO: clz.b64 cnt, X;
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# bfind
-###############################################################################
-- opcode: "bfind"
-  doc: "PTX ISA §9.7.1.16"
-  cpp: "InstrBfind"
-  variants:
-    - description: "Find most significant non-sign bit."
-      constraints:
-        min_ptx_version: 2.0
-        min_sm: 20
-      modifiers:
-        shiftamt:
-          kind: optional
-          type: bool
-          values:
-            - { token: ".shiftamt", cpp: "true" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - !ref scalar_types.u32
-            - !ref scalar_types.u64
-            - !ref scalar_types.s32
-            - !ref scalar_types.s64
-      args:
-        - { name: "dst", kind: reg, type: !ref scalar_types.u32 }
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# fns
-###############################################################################
-- opcode: "fns"
-  doc: "PTX ISA §9.7.1.17"
-  cpp: "InstrFns"
-  variants:
-    - description: "Find the n-th set bit."
-      constraints:
-        min_ptx_version: 6.0
-        min_sm: 30
-      modifiers:
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: !ref scalar_types.b32
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "mask", kind: reg_or_imm }
-        - {
-            name: "base",
-            kind: reg_or_imm,
-            type:
-              [
-                !ref scalar_types.u32,
-                !ref scalar_types.s32,
-                !ref scalar_types.b32,
-                !ref scalar_types.u32,
-                !ref scalar_types.s32,
-                !ref scalar_types.b32,
-              ],
-          }
-        - { name: "offset", kind: reg_or_imm, type: !ref scalar_types.s32 }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# brev
-###############################################################################
-- opcode: "brev"
-  doc: "PTX ISA §9.7.1.18"
-  cpp: "InstrBrev"
-  variants:
-    - description: "Bit reverse."
-      constraints:
-        min_ptx_version: 2.0
-        min_sm: 20
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# bfe
-###############################################################################
-- opcode: "bfe"
-  doc: "PTX ISA §9.7.1.19"
-  cpp: "InstrBfe"
-  variants:
-    - description: "Bit Field Extract."
-      constraints:
-        min_ptx_version: 2.0
-        min_sm: 20
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".u64", cpp: "ScalarType::U64" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-            - { token: ".s64", cpp: "ScalarType::S64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# bfi
-###############################################################################
-- opcode: "bfi"
-  doc: "PTX ISA §9.7.1.20"
-  cpp: "InstrBfi"
-  variants:
-    - description: "Bit Field Insert."
-      constraints:
-        min_ptx_version: 2.0
-        min_sm: 20
-      modifiers:
-        data:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".b32", cpp: "ScalarType::B32" }
-            - { token: ".b64", cpp: "ScalarType::B64" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-        - { name: "src4", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# szext
-###############################################################################
-- opcode: "szext"
-  doc: "PTX ISA §9.7.1.21"
-  cpp: "InstrSzext"
-  variants:
-    - description: "Sign Extend."
-      constraints:
-        min_ptx_version: 7.6
-        min_sm: 70
-      modifiers:
-        mode:
-          kind: required
-          type: BmskMode
-          values:
-            - { token: ".clamp", cpp: "BmskMode::Clamp" }
-            - { token: ".wrap", cpp: "BmskMode::Wrap" }
-        type_:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# bmsk
-###############################################################################
-- opcode: "bmsk"
-  doc: "PTX ISA §9.7.1.22"
-  cpp: "InstrBmsk"
-  variants:
-    - description: "Bit Field Mask."
-      constraints:
-        min_ptx_version: 7.6
-        min_sm: 70
-      modifiers:
-        data:
-          kind: required
-          type: BmskMode
-          values:
-            - { token: ".clamp", cpp: "BmskMode::Clamp" }
-            - { token: ".wrap", cpp: "BmskMode::Wrap" }
-        type_:
-          kind: fixed
-          type: ScalarType
-          fixed_value: { token: ".b32", cpp: "ScalarType::B32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src_a", kind: reg_or_imm }
-        - { name: "src_b", kind: reg_or_imm }
-      emit_note:
-        kind: direct
-
-###############################################################################
-# dp4a
-###############################################################################
-- opcode: "dp4a"
-  doc: "PTX ISA §9.7.1.23"
-  cpp: "InstrDp4a"
-  variants:
-    - description: "Four-way byte dot product-accumulate."
-      constraints:
-        min_ptx_version: 5.0
-        min_sm: 61
-      modifiers:
-        atype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-        btype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: sub_struct
-        instance: "data"
-        emit_type: "Dp4aDetails"
-
-###############################################################################
-# dp2a
-###############################################################################
-- opcode: "dp2a"
-  doc: "PTX ISA §9.7.1.24"
-  cpp: "InstrDp2a"
-  variants:
-    - description: "Two-way dot product-accumulate."
-      constraints:
-        min_ptx_version: 5.0
-        min_sm: 61
-      modifiers:
-        control:
-          kind: required
-          type: Dp2aControl
-          values:
-            - { token: ".lo", cpp: "Dp2aControl::Low" }
-            - { token: ".hi", cpp: "Dp2aControl::High" }
-        atype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-        btype:
-          kind: required
-          type: ScalarType
-          values:
-            - { token: ".u32", cpp: "ScalarType::U32" }
-            - { token: ".s32", cpp: "ScalarType::S32" }
-      args:
-        - { name: "dst", kind: reg }
-        - { name: "src1", kind: reg_or_imm }
-        - { name: "src2", kind: reg_or_imm }
-        - { name: "src3", kind: reg_or_imm }
-      emit_note:
-        kind: sub_struct
-        instance: "data"
-        emit_type: "Dp2aData"
+  - opcode: dp2a
+    doc: "PTX ISA §9.7.1.24"
+    syntax: "dp2a.{control}.{atype}.{btype} dst, src1, src2, src3"
+    operands: ternary
+    variants:
+      - name: dp2a_integer
+        description: "Two-way dot product-accumulate."
+        availability: { ptx: "5.0", sm: 61 }
+        modifiers:
+          - { name: control, kind: enum, domain: dp2a_control, presence: required, values: [low, hi] }
+          - { name: atype, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }
+          - { name: btype, kind: type, domain: scalar_types, presence: required, values: [u32, s32] }

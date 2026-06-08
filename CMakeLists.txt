@@ -39,20 +39,30 @@ FLEX_TARGET(
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(from_yaml ${CMAKE_CURRENT_SOURCE_DIR}/instructions/integer_arith.yaml)
+file(GLOB_RECURSE PTX_CODEGEN_PY CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py
+)
+file(GLOB_RECURSE PTX_INSTRUCTION_YAMLS CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/instructions/*.yaml
+)
 add_custom_command(
     OUTPUT ${PTX_GEN_DIR}/type_checker.src.gen
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py
+    COMMAND ${CMAKE_COMMAND} -E env
+    PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python
+    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py
     --input ${from_yaml}
     --output ${PTX_GEN_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_type_checker_code.py ${from_yaml}
+    DEPENDS ${PTX_CODEGEN_PY} ${PTX_INSTRUCTION_YAMLS}
     COMMENT "Generating type checker code from ${from_yaml}"
 )
 add_custom_command(
     OUTPUT ${PTX_GEN_DIR}/ptx_ir.src.gen
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_ptx_ir_struct_code.py
+    COMMAND ${CMAKE_COMMAND} -E env
+    PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python
+    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_ptx_ir_struct_code.py
     --input ${from_yaml}
     --output ${PTX_GEN_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_ptx_ir_struct_code.py ${from_yaml}
+    DEPENDS ${PTX_CODEGEN_PY} ${PTX_INSTRUCTION_YAMLS}
     COMMENT "Generating PTX IR struct code from ${from_yaml}"
 )
 add_custom_target(

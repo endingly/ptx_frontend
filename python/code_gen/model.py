@@ -1,18 +1,35 @@
-"""
-This module defines the data models used for code generation of PTX instructions in the C++ backend.
-It includes the `ModifierSpec` dataclass, which encapsulates the specifications for instruction modifiers, such as their name, kind, presence, domain, possible values, default value, and associated token.
-This model is essential for accurately representing the modifiers that can be applied to PTX instructions during code generation.
-"""
-
-from dataclasses import dataclass, field
+# python/code_gen/model.py
+from dataclasses import dataclass
 from typing import Any
+
+# -----------------------------------------------------------------------------
+# PTX instruction spec normalized model
+# -----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ModifierSpec:
     """
-    Data model representing the specification of a PTX instruction modifier for the C++ backend code generation.
-    see instructions/schemas/ptx-instr-v1.schema.yaml for more details on the fields and their meanings.
+    A normalized PTX modifier from instruction spec YAML.
+
+    Example PTX spec:
+
+        - name: sat
+          kind: flag
+          presence: optional
+          default: false
+          token: ".sat"
+
+        - name: type
+          kind: type
+          domain: scalar_types
+          presence: required
+          values:
+            - "$add_integer_scalar"
+
+    After normalization, referenced value sets are expanded, so values becomes:
+
+        ("u16", "u32", "u64", "s16", "s32", "s64")
     """
 
     name: str
@@ -27,6 +44,29 @@ class ModifierSpec:
 
 @dataclass(frozen=True)
 class OperandSpec:
+    """
+    A normalized PTX operand.
+
+    Example PTX spec:
+
+        - name: dst
+          kind: reg
+          role: dst
+          access: write
+          type:
+            expr: "$type"
+
+    Normalized as:
+
+        OperandSpec(
+            name="dst",
+            kind="reg",
+            role="dst",
+            access="write",
+            type_expr="$type",
+        )
+    """
+
     name: str
     kind: str
     role: str | None = None
@@ -36,6 +76,18 @@ class OperandSpec:
 
 @dataclass(frozen=True)
 class VariantSpec:
+    """
+    One PTX instruction variant.
+
+    For add, examples include:
+
+        add_integer_no_sat
+        add_sat_s32
+        add_simd_no_sat_sm90
+        add_packed_optional_sat_sm120
+        add_sat_sm120
+    """
+
     name: str
     availability: dict[str, Any]
     modifiers: tuple[ModifierSpec, ...]
@@ -45,18 +97,52 @@ class VariantSpec:
 
 @dataclass(frozen=True)
 class InstructionSpec:
+    """
+    One normalized PTX instruction.
+
+    Example:
+
+        opcode = "add"
+        syntax = "add{.sat}.{type} dst, src1, src2"
+        variants = (...)
+    """
+
     opcode: str
     syntax: str | None
     variants: tuple[VariantSpec, ...]
 
 
-#################################################################################################################
-# The following data models are used for representing the backend-specific mappings of PTX instruction modifiers.
-#################################################################################################################
+# -----------------------------------------------------------------------------
+# C++ backend normalized model
+# -----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class DomainBackend:
+    """
+    Backend mapping for one semantic domain.
+
+    Example backend YAML:
+
+        scalar_types:
+          cpp_type: ScalarType
+          values:
+            u32: ScalarType::U32
+            s32: ScalarType::S32
+          default: ScalarType::U32
+
+    Normalized as:
+
+        DomainBackend(
+            cpp_type="ScalarType",
+            values={
+                "u32": "ScalarType::U32",
+                "s32": "ScalarType::S32",
+            },
+            default="ScalarType::U32",
+        )
+    """
+
     cpp_type: str
     values: dict[str, str]
     default: str | None = None
@@ -64,6 +150,23 @@ class DomainBackend:
 
 @dataclass(frozen=True)
 class ModifierBackend:
+    """
+    Backend mapping for one modifier.
+
+    Example backend YAML:
+
+        type:
+          field: type_
+          cpp_type: ScalarType
+          domain: scalar_types
+
+        sat:
+          field: sat
+          cpp_type: bool
+          default: "false"
+          optional_policy: default_value
+    """
+
     field: str
     cpp_type: str | None = None
     domain: str | None = None
@@ -73,12 +176,46 @@ class ModifierBackend:
 
 @dataclass(frozen=True)
 class OperandBackend:
+    """
+    Backend mapping for one operand.
+
+    Example backend YAML:
+
+        dst:
+          field: dst
+          cpp_type: Operand
+          state_space: StateSpace::Reg
+
+    For now, this minimal model only stores field/cpp_type.
+    More fields such as state_space can be added when gen_checker/gen_parser
+    starts using them.
+    """
+
     field: str
     cpp_type: str
 
 
 @dataclass(frozen=True)
 class EmitBackend:
+    """
+    How a PTX instruction is represented inside generated C++ IR.
+
+    Example:
+
+        emit:
+          kind: sub_variant
+          instance: data
+          type: ArithInteger
+
+    Meaning:
+
+        struct InstrAdd {
+            using Data = std::variant<ArithInteger>;
+            Data data;
+            ...
+        };
+    """
+
     kind: str
     instance: str | None = None
     type: str | None = None
@@ -86,6 +223,38 @@ class EmitBackend:
 
 @dataclass(frozen=True)
 class InstructionBackend:
+    """
+    C++ backend mapping for one PTX instruction.
+
+    Example:
+
+        add:
+          cpp: InstrAdd
+          emit:
+            kind: sub_variant
+            instance: data
+            type: ArithInteger
+
+          modifiers:
+            sat: ...
+            type: ...
+
+          operands:
+            dst: ...
+            src1: ...
+            src2: ...
+
+          type_checker:
+            rule: integer_arith::check_add
+
+          visitor:
+            visit_name: visitAdd
+
+          printer:
+            modifier_order: [sat, type]
+            operand_order: [dst, src1, src2]
+    """
+
     opcode: str
     cpp: str
     emit: EmitBackend
@@ -97,14 +266,39 @@ class InstructionBackend:
     operand_order: tuple[str, ...] = ()
 
 
-#################################################################################################################
-# The following data models are used for representing the complete mapping of PTX instructions to their C++ backend implementations,
-# including the instruction specifications and the backend-specific mappings.
-#################################################################################################################
+# -----------------------------------------------------------------------------
+# Top-level codegen model
+# -----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class CodegenUnit:
+    """
+    The unified normalized model consumed by all C++ generators.
+
+    It is produced by:
+
+        PTX spec YAML
+          +
+        C++ backend YAML
+          ↓
+        schema validation
+          ↓
+        semantic validation
+          ↓
+        normalization
+          ↓
+        CodegenUnit
+
+    Then different generators consume the same CodegenUnit:
+
+        gen_ir.py
+        gen_checker.py
+        gen_printer.py
+        gen_visitor.py
+        gen_registry.py
+    """
+
     namespace: str
     instructions: tuple[InstructionSpec, ...]
     backends: dict[str, InstructionBackend]

@@ -2,6 +2,8 @@ PyYAML==6.0.3
 attrs==26.1.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
--e git+ssh://git@github.com/endingly/ptx_frontend.git@c8cb27b929a7a1660b761e059572b4b9f77afb56#egg=ptx_frontend&subdirectory=python
+-e ./python
 referencing==0.37.0
 rpds-py==2026.5.1
+Jinja2==3.1.6
+MarkupSafe==3.0.3

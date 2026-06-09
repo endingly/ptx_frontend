@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from code_gen.model import (
     CodegenUnit,
     DomainBackend,
+    EmitAlternativeBackend,
     EmitBackend,
     InstructionBackend,
     InstructionSpec,
@@ -240,43 +241,52 @@ def build_emit_view(
     if emit.kind == "sub_variant":
         instance = require_emit_instance(emit, backend_instr.opcode)
         variant_type = require_emit_type(emit, backend_instr.opcode)
-        if not emit.alternatives:
-            raise ValueError(
-                f"{backend_instr.opcode}: emit.kind='sub_variant' requires "
-                "emit.alternatives. Example:\n"
-                "  emit:\n"
-                "    kind: sub_variant\n"
-                "    instance: data\n"
-                "    type: Data\n"
-                "    alternatives:\n"
-                "      - name: IntegerData"
+
+        alternatives = tuple(
+            build_variant_alternative_view(
+                instr=instr,
+                backend_instr=backend_instr,
+                domains=domains,
+                alternative=alternative,
             )
-        alternatives: list[VariantAlternativeView] = []
-        for alternative in emit.alternatives:
-            if alternative.name == variant_type:
-                raise ValueError(
-                    f"{backend_instr.opcode}: sub_variant alternative name "
-                    f"{alternative.name!r} conflicts with variant alias "
-                    f"{variant_type!r}"
-                )
-            alternatives.append(
-                VariantAlternativeView(
-                    name=alternative.name,
-                    fields=build_modifier_fields(
-                        instr=instr,
-                        backend_instr=backend_instr,
-                        domains=domains,
-                    ),
-                )
-            )
+            for alternative in emit.alternatives
+        )
+
         return EmitView(
             kind="sub_variant",
             instance=instance,
             variant_type=variant_type,
-            alternatives=tuple(alternatives),
+            alternatives=alternatives,
         )
 
     raise ValueError(f"{backend_instr.opcode}: unsupported emit kind {emit.kind!r}")
+
+
+def build_variant_alternative_view(
+    *,
+    instr: InstructionSpec,
+    backend_instr: InstructionBackend,
+    domains: dict[str, DomainBackend],
+    alternative: EmitAlternativeBackend,
+) -> VariantAlternativeView:
+    if alternative.variants:
+        fields = build_modifier_fields_for_variants(
+            instr=instr,
+            variant_names=set(alternative.variants),
+            backend_instr=backend_instr,
+            domains=domains,
+        )
+    else:
+        fields = build_modifier_fields(
+            instr=instr,
+            backend_instr=backend_instr,
+            domains=domains,
+        )
+
+    return VariantAlternativeView(
+        name=alternative.name,
+        fields=fields,
+    )
 
 
 def require_emit_instance(emit: EmitBackend, opcode: str) -> str:
@@ -288,9 +298,14 @@ def require_emit_instance(emit: EmitBackend, opcode: str) -> str:
 
 def require_emit_type(emit: EmitBackend, opcode: str) -> str:
     """
-    In the new nested-struct design, emit.type is still required by backend YAML,
-    but it names a nested struct inside the instruction, not a namespace-level
-    detail struct.
+    direct:
+        unused
+
+    sub_struct:
+        emit.type names the nested data struct.
+
+    sub_variant:
+        emit.type names the std::variant alias.
     """
 
     if emit.type is None:
@@ -334,6 +349,51 @@ def build_modifier_fields(
                 domains=domains,
             ),
         )
+
+    return order_fields_by_backend_modifier_order(
+        fields_by_name=fields_by_name,
+        backend_instr=backend_instr,
+    )
+
+
+def build_modifier_fields_for_variants(
+    *,
+    instr: InstructionSpec,
+    variant_names: set[str],
+    backend_instr: InstructionBackend,
+    domains: dict[str, DomainBackend],
+) -> tuple[FieldView, ...]:
+    fields_by_name: dict[str, FieldView] = {}
+
+    for variant in instr.variants:
+        if variant.name not in variant_names:
+            continue
+
+        for modifier in variant.modifiers:
+            if modifier.presence == "absent":
+                continue
+
+            field_name = resolve_modifier_field_name(
+                modifier=modifier,
+                backend_instr=backend_instr,
+            )
+
+            if field_name in fields_by_name:
+                continue
+
+            fields_by_name[field_name] = FieldView(
+                name=field_name,
+                cpp_type=resolve_modifier_cpp_type(
+                    modifier=modifier,
+                    backend_instr=backend_instr,
+                    domains=domains,
+                ),
+                default=resolve_modifier_default(
+                    modifier=modifier,
+                    backend_instr=backend_instr,
+                    domains=domains,
+                ),
+            )
 
     return order_fields_by_backend_modifier_order(
         fields_by_name=fields_by_name,
@@ -714,8 +774,9 @@ def render_ir_header_to_string(
 # -----------------------------------------------------------------------------
 
 import argparse
-from code_gen.normalize import build_codegen_unit
+
 from base.utils import format_file_inplace
+from code_gen.normalize import build_codegen_unit
 
 
 def main() -> None:

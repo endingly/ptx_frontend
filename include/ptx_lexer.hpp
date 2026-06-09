@@ -20,6 +20,8 @@ class PtxLexer {
 
   PtxLexer(const PtxLexer&) = delete;
   PtxLexer& operator=(const PtxLexer&) = delete;
+  PtxLexer(PtxLexer&&) = delete;
+  PtxLexer& operator=(PtxLexer&&) = delete;
 
   Token next();
   Token peek();

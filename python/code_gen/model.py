@@ -196,6 +196,11 @@ class OperandBackend:
 
 
 @dataclass(frozen=True)
+class EmitAlternativeBackend:
+    name: str
+    variants: tuple[str, ...] = ()
+
+@dataclass(frozen=True)
 class EmitBackend:
     """
     How a PTX instruction is represented inside generated C++ IR.
@@ -205,12 +210,14 @@ class EmitBackend:
         emit:
           kind: sub_variant
           instance: data
-          type: ArithInteger
+          type: Data
+          alternatives:
+            - name: IntegerData
 
     Meaning:
 
         struct InstrAdd {
-            using Data = std::variant<ArithInteger>;
+            using Data = std::variant<IntegerData>;
             Data data;
             ...
         };
@@ -218,7 +225,16 @@ class EmitBackend:
 
     kind: str
     instance: str | None = None
+    # sub_struct:
+    #     nested struct name
+    #
+    # sub_variant:
+    #     variant alias name
     type: str | None = None
+
+    # sub_variant:
+    #     nested alternative struct names
+    alternatives: tuple[EmitAlternativeBackend, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -299,7 +315,31 @@ class CodegenUnit:
         gen_registry.py
     """
 
+    # Schema/version metadata.
+    spec_schema: str
+    backend_schema: str
+
+    # Instruction category, for example:
+    #   integer_arithmetic
+    #   floating_point
+    #   data_movement
+    category: str
+
+    # C++ namespace for generated code.
     namespace: str
+
+    # C++ includes needed by generated IR/header files.
+    #
+    # Keep each include as a complete token:
+    #   "<variant>"
+    #   "\"ptx_frontend/ir/operand.hpp\""
+    includes: tuple[str, ...] | None
+
+    # Normalized PTX instruction specs.
     instructions: tuple[InstructionSpec, ...]
+
+    # C++ backend mappings, keyed by opcode.
     backends: dict[str, InstructionBackend]
+
+    # Backend domains, keyed by domain name.
     domains: dict[str, DomainBackend]

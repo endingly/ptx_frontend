@@ -82,6 +82,27 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
     return tuple(instructions)
 
 
+def normalize_emit_backend(raw_emit: dict) -> EmitBackend:
+    kind = raw_emit["kind"]
+
+    alternatives: list[EmitAlternativeBackend] = []
+
+    for raw_alt in raw_emit.get("alternatives", []):
+        alternatives.append(
+            EmitAlternativeBackend(
+                name=raw_alt["name"],
+                variants=tuple(raw_alt.get("variants", ())),
+            )
+        )
+
+    return EmitBackend(
+        kind=kind,
+        instance=raw_emit.get("instance"),
+        type=raw_emit.get("type"),
+        alternatives=tuple(alternatives),
+    )
+
+
 def normalize_backend(
     backend: dict[str, Any],
 ) -> tuple[str, dict[str, DomainBackend], dict[str, InstructionBackend]]:
@@ -141,11 +162,7 @@ def normalize_backend(
         instr_backends[opcode] = InstructionBackend(
             opcode=opcode,
             cpp=raw["cpp"],
-            emit=EmitBackend(
-                kind=emit_raw["kind"],
-                instance=emit_raw.get("instance"),
-                type=emit_raw.get("type"),
-            ),
+            emit=normalize_emit_backend(raw["emit"]),
             modifiers=modifiers,
             operands=operands,
             type_checker_rule=type_checker_rule,
@@ -158,6 +175,36 @@ def normalize_backend(
 
 
 def build_codegen_unit(spec_path: Path, backend_path: Path) -> CodegenUnit:
+
+    def resolve_backend_includes(raw_backend: dict) -> tuple[str, ...]:
+        raw_includes: tuple[str, ...] = raw_backend.get("includes", ())
+
+        # Default includes if not specified in the backend YAML
+        if raw_includes is None:
+            return (
+                "<variant>",
+                "<optional>",
+                '"ptx_ir/base.hpp"',
+                '"ptx_ir/details.hpp"',
+                '"ptx_ir/source_loc.hpp"',
+            )
+
+        # include format should be modified, append " or '
+        normalized = []
+        for include in raw_includes or []:
+            if include.startswith("<"):
+                pass
+            elif include.startswith('"'):
+                include = f"'{include}'"
+            else:
+                include = f'"{include}"'
+            normalized.append(include)
+
+        if not isinstance(raw_includes, list):
+            raise TypeError("backend.includes must be a list")
+
+        return tuple(str(include) for include in normalized)
+
     spec = load_yaml(spec_path)
     backend = load_yaml(backend_path)
 
@@ -165,7 +212,11 @@ def build_codegen_unit(spec_path: Path, backend_path: Path) -> CodegenUnit:
     namespace, domains, backends = normalize_backend(backend)
 
     return CodegenUnit(
+        spec_schema=spec["schema"],
+        backend_schema=backend["schema"],
+        category=spec["category"],
         namespace=namespace,
+        includes=resolve_backend_includes(backend),  # to be filled in later
         instructions=instructions,
         backends=backends,
         domains=domains,

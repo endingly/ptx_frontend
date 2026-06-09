@@ -6,6 +6,13 @@ target: all
 spec_schema: ptx-instr/v1
 category: integer_arithmetic
 
+includes:
+  - <numeric>
+  - <optional>
+  - "ptx_ir/base.hpp"
+  - "ptx_ir/details.hpp"
+  - "ptx_ir/source_loc.hpp"
+
 namespace: ptx_frontend
 
 common:
@@ -31,11 +38,11 @@ domains:
 
 instructions:
   add:
-    cpp: InstrAdd
+    cpp: InstrIntegerAdd
     emit:
-      kind: sub_variant
+      kind: sub_struct
       instance: data
-      type: ArithInteger
+      type: Data
 
     modifiers:
       sat:

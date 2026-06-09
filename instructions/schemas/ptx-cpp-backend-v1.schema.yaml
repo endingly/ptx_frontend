@@ -229,17 +229,19 @@ $defs:
 
   emit:
     description: >
-      Describes how an instruction variant is represented in generated C++ IR.
-      This is the backend equivalent of your old emit_note.
+      Controls how modifier/data fields are emitted in generated C++ IR.
     type: object
     additionalProperties: false
-
     required:
       - kind
 
     properties:
       kind:
-        type: string
+        description: >
+          direct: emit modifier fields directly in the instruction struct.
+          sub_struct: emit one nested data struct inside the instruction.
+          sub_variant: emit multiple nested data structs and a std::variant alias.
+          custom: use a custom backend handler.
         enum:
           - direct
           - sub_struct
@@ -248,38 +250,79 @@ $defs:
 
       instance:
         description: >
-          Field name in the instruction struct that stores the sub-struct or
-          sub-variant. Example: data.
+          Name of the generated data member. Required by sub_struct and
+          sub_variant. Example: data.
         $ref: "#/$defs/cpp_identifier"
 
       type:
         description: >
-          C++ type used for sub_struct/sub_variant. Example: ArithInteger,
-          MulInt, TypeFtz.
-        $ref: "#/$defs/cpp_type"
+          For sub_struct: nested data struct name.
 
-      variant:
+          For sub_variant: std::variant alias name.
+
+          This name is generated inside the instruction struct, not at
+          namespace scope.
+        $ref: "#/$defs/cpp_identifier"
+
+      alternatives:
         description: >
-          Optional C++ variant alternative name if different from type.
-        $ref: "#/$defs/cpp_type"
+          Only valid when kind is sub_variant. Each item describes one
+          nested data struct used as an alternative in the std::variant.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/emit_alternative"
 
       custom_handler:
-        description: "Custom codegen hook name when kind=custom."
-        $ref: "#/$defs/schema_identifier"
+        description: >
+          C++ handler used when kind is custom.
+        $ref: "#/$defs/cpp_qualified_name"
 
     allOf:
       - if:
           properties:
             kind:
-              enum:
-                - sub_struct
-                - sub_variant
+              const: direct
+          required:
+            - kind
+        then:
+          not:
+            anyOf:
+              - required: [instance]
+              - required: [type]
+              - required: [alternatives]
+              - required: [custom_handler]
+
+      - if:
+          properties:
+            kind:
+              const: sub_struct
           required:
             - kind
         then:
           required:
             - instance
             - type
+          not:
+            anyOf:
+              - required: [alternatives]
+              - required: [custom_handler]
+
+      - if:
+          properties:
+            kind:
+              const: sub_variant
+          required:
+            - kind
+        then:
+          required:
+            - instance
+            - type
+            - alternatives
+          not:
+            anyOf:
+              - required: [custom_handler]
 
       - if:
           properties:
@@ -290,6 +333,11 @@ $defs:
         then:
           required:
             - custom_handler
+          not:
+            anyOf:
+              - required: [instance]
+              - required: [type]
+              - required: [alternatives]
 
   emit_kind_mapping:
     type: object
@@ -297,6 +345,40 @@ $defs:
     properties:
       cpp_helper:
         $ref: "#/$defs/cpp_qualified_name"
+      doc:
+        type: string
+
+  emit_alternative:
+    description: >
+      One nested alternative data struct used by sub_variant emission.
+      The generated C++ type is nested inside the instruction struct.
+    type: object
+    additionalProperties: false
+    required:
+      - name
+    properties:
+      name:
+        description: >
+          Nested C++ struct name for this alternative.
+          Example: IntegerData, PackedData, DenseData, SparseData.
+        $ref: "#/$defs/cpp_identifier"
+
+      variants:
+        description: >
+          Optional PTX spec variant names covered by this alternative.
+
+          If sub_variant has exactly one alternative, variants may be omitted,
+          meaning this alternative covers all PTX variants of the instruction.
+
+          If sub_variant has multiple alternatives, each alternative should
+          explicitly list variants, and the union should cover all PTX variants
+          without overlap. That full coverage rule is better checked in Python
+          normalization.
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/schema_identifier"
+
       doc:
         type: string
 

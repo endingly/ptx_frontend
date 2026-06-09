@@ -1,0 +1,60 @@
+// Auto-generated. Do not edit manually.
+//
+// Source spec:
+//   PTX spec schema: {{ spec_schema }}
+//   Backend schema:  {{ backend_schema }}
+//   Category:        {{ category }}
+
+#pragma once
+
+{% for include in includes %}
+#include {{ include }}
+{% endfor %}
+
+namespace {{ namespace }} {
+
+template <OperandLike Op>
+using Opt = std::optional<Op>;  // models Option<T> arguments
+
+{% for instr in instructions %}
+template <OperandLike Operand>
+struct {{ instr.cpp_type }} {
+{% if instr.emit.kind == "direct" %}
+{% for field in instr.emit.data_struct.fields %}
+    {{ field.cpp_type }} {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
+{% endfor %}
+
+{% elif instr.emit.kind == "sub_struct" %}
+    struct {{ instr.emit.data_struct.name }} {
+{% for field in instr.emit.data_struct.fields %}
+        {{ field.cpp_type }} {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
+{% endfor %}
+    };
+
+    {{ instr.emit.data_struct.name }} {{ instr.emit.instance }};
+
+{% elif instr.emit.kind == "sub_variant" %}
+{% for alt in instr.emit.alternatives %}
+    struct {{ alt.name }} {
+{% for field in alt.fields %}
+        {{ field.cpp_type }} {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
+{% endfor %}
+    };
+
+{% endfor %}
+    using {{ instr.emit.variant_type }} = std::variant<
+{% for alt in instr.emit.alternatives %}
+        {{ alt.name }}{{ "," if not loop.last else "" }}
+{% endfor %}
+    >;
+
+    {{ instr.emit.variant_type }} {{ instr.emit.instance }};
+
+{% endif %}
+{% for operand in instr.operands %}
+    WithLoc<{{ operand.cpp_type }}> {{ operand.name }};
+{% endfor %}
+};
+
+{% endfor %}
+} // namespace {{ namespace }}

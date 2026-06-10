@@ -1,4 +1,5 @@
 from pathlib import Path
+from warnings import deprecated
 
 from code_gen.load_yaml import expand_value_refs, load_yaml
 from code_gen.model import *
@@ -298,22 +299,26 @@ def validate_one_sub_variant_mapping(
         )
 
 
-def resolve_backend_includes(raw_backend: dict[str, Any]) -> tuple[str, ...]:
+@deprecated(
+    "backend.includes is no longer supported; include necessary headers directly in the backend YAML"
+)
+def resolve_backend_includes(raw_backend: dict[str, Any]) -> tuple[str, ...] | None:
     raw_includes = raw_backend.get("includes", ())
 
     # Default includes if not specified in the backend YAML.
+    # if raw_includes is None:
+    #     return (
+    #         "<variant>",
+    #         "<optional>",
+    #         '"ptx_ir/base.hpp"',
+    #         '"ptx_ir/details.hpp"',
+    #         '"ptx_ir/source_loc.hpp"',
+    #     )
+
+    # if not isinstance(raw_includes, list):
+    #     raise TypeError("backend.includes must be a list")
     if raw_includes is None:
-        return (
-            "<variant>",
-            "<optional>",
-            '"ptx_ir/base.hpp"',
-            '"ptx_ir/details.hpp"',
-            '"ptx_ir/source_loc.hpp"',
-        )
-
-    if not isinstance(raw_includes, list):
-        raise TypeError("backend.includes must be a list")
-
+        return None
     normalized: list[str] = []
     for include in raw_includes:
         include_text = str(include)

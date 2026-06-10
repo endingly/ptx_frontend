@@ -16,6 +16,7 @@ using std::expected;
 using std::unexpected;
 
 enum class ScalarType : uint8_t {
+  Invalid = 0,
   U8,
   U8x4,
   U16,
@@ -48,7 +49,7 @@ enum class ScalarType : uint8_t {
   E5m2,  // .e5m2  — FP8 single element (non packed)
 };
 
-enum class ScalarKind { Bit, Unsigned, Signed, Float, Pred };
+enum class ScalarKind { Invalid, Bit, Unsigned, Signed, Float, Pred };
 
 template <typename Enum>
   requires std::is_enum_v<Enum>
@@ -85,6 +86,7 @@ inline Type make_vector(uint8_t n, ScalarType t) {
 }
 
 enum class StateSpace : uint8_t {
+  Invalid = 0,
   Reg,
   Const,
   Global,
@@ -97,7 +99,7 @@ enum class StateSpace : uint8_t {
   Tmem  // for blackwell(sm_100+)
 };
 
-enum class MemScope : uint8_t { Cta, Cluster, Gpu, Sys };
+enum class MemScope : uint8_t { Invalid = 0, Cta, Cluster, Gpu, Sys };
 
 struct ImmediateValue {
   std::variant<uint64_t, int64_t, float, double> value;
@@ -389,7 +391,7 @@ using TuningDirective =
                  TuningMinNCtaPerSm, TuningNoReturn>;
 
 // .entry vs .func
-enum class MethodKind { Kernel, Func };
+enum class MethodKind { Invalid = 0, Kernel, Func };
 
 struct MethodDeclaration {
   std::vector<Variable> return_arguments;
@@ -401,6 +403,7 @@ struct MethodDeclaration {
 
 // Linking visibility
 enum class LinkingDirective : uint8_t {
+  Invalid = 0,
   None = 0,
   Extern = 1 << 0,
   Visible = 1 << 1,

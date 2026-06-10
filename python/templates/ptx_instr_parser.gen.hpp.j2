@@ -1,0 +1,131 @@
+// Auto-generated. Do not edit manually.
+
+#pragma once
+
+{% for include in std_includes %}
+#include <{{ include }}>
+{% endfor %}
+
+{% for include in project_includes %}
+#include "{{ include }}"
+{% endfor %}
+
+namespace {{ namespace }} {
+
+template <OperandLike Operand>
+using PtxInstruction = std::variant<
+{%- for instr in instructions %}
+    {{ instr.cpp_type }}<Operand>{{ "," if not loop.last else "" }}
+{%- endfor %}
+>;
+
+namespace detail {
+
+{% for domain in domains %}
+inline std::optional<{{ domain.cpp_type }}> {{ domain.func_name }}(
+    std::string_view name) {
+{% for value in domain.values %}
+  if (name == "{{ value.spelling }}") {
+    return {{ value.cpp_expr }};
+  }
+{% endfor %}
+  return std::nullopt;
+}
+{% endfor %}
+
+{% for instr in instructions %}
+struct {{ instr.result_type }} {
+{% for field in instr.fields %}
+  WithLoc<{{ field.cpp_type }}> {{ field.name }};
+{% endfor %}
+};
+
+{% for variant in instr.variants %}
+inline std::optional<{{ instr.result_type }}>
+tryMatch{{ instr.cpp_type }}_{{ variant.func_suffix }}(
+    const ParsedOpcode& opcode) {
+{{ variant.match_body }}
+}
+{% endfor %}
+
+inline std::optional<{{ instr.result_type }}>
+tryMatch{{ instr.cpp_type }}Modifiers(const ParsedOpcode& opcode) {
+{% for variant in instr.variants %}
+  if (auto r = tryMatch{{ instr.cpp_type }}_{{ variant.func_suffix }}(opcode)) {
+    return r;
+  }
+{% endfor %}
+  return std::nullopt;
+}
+
+{% endfor %}
+
+}  // namespace detail
+
+{% for instr in instructions %}
+template <OperandLike Operand>
+std::optional<{{ instr.cpp_type }}<Operand>> {{ instr.parse_func }}(
+    Parser& parser,
+    const ParsedOpcode& opcode) {
+  if (opcode.text != "{{ instr.opcode }}") {
+    return std::nullopt;
+  }
+
+  auto matched = detail::tryMatch{{ instr.cpp_type }}Modifiers(opcode);
+  if (!matched) {
+    return std::nullopt;
+  }
+
+  {{ instr.cpp_type }}<Operand> instr;
+
+{% for field in instr.fields %}
+  instr.data.{{ field.name }} = matched->{{ field.name }};
+{% endfor %}
+
+{% for operand in instr.operands %}
+  instr.{{ operand.name }} = parser.parseOperandWithLoc<Operand>();
+{% if not loop.last %}
+  parser.expectComma();
+
+{% else %}
+  auto semi = parser.expectSemicolon();
+  instr.loc = SourceRange{opcode.range.start, semi.range.end};
+
+{% endif %}
+{% endfor %}
+  return instr;
+}
+{% endfor %}
+
+template <OperandLike Operand>
+std::optional<PtxInstruction<Operand>> tryParseGeneratedInstruction(
+    Parser& parser,
+    const ParsedOpcode& opcode) {
+{% for group in opcode_groups %}
+  if (opcode.text == "{{ group.opcode }}") {
+{% for instr in group.candidates %}
+    if (auto instr = {{ instr.parse_func }}<Operand>(parser, opcode)) {
+      return PtxInstruction<Operand>{std::move(*instr)};
+    }
+{% endfor %}
+    return std::nullopt;
+  }
+
+{% endfor %}
+  return std::nullopt;
+}
+
+template <OperandLike Operand>
+PtxInstruction<Operand> parseGeneratedInstruction(Parser& parser) {
+  auto opcode = parser.parseOpcodeWithModifiers();
+
+  if (auto instr = tryParseGeneratedInstruction<Operand>(parser, opcode)) {
+    return std::move(*instr);
+  }
+
+  throw ParseError(
+      opcode.range,
+      "unknown or unsupported instruction: " + std::string(opcode.text));
+}
+
+}  // namespace {{ namespace }}

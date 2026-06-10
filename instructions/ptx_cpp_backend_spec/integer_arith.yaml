@@ -6,14 +6,14 @@ target: all
 spec_schema: ptx-instr/v1
 category: integer_arithmetic
 
-includes:
-  - <numeric>
-  - <optional>
-  - "ptx_ir/base.hpp"
-  - "ptx_ir/details.hpp"
-  - "ptx_ir/source_loc.hpp"
+# includes:
+#   - <numeric>
+#   - <optional>
+#   - "ptx_ir/base.hpp"
+#   - "ptx_ir/details.hpp"
+#   - "ptx_ir/source_loc.hpp"
 
-namespace: ptx_frontend
+namespace: ptx_frontend::generated
 
 common:
   default_modifier_field_naming: append_underscore_for_keywords

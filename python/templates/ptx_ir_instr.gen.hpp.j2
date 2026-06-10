@@ -21,13 +21,13 @@ template <OperandLike Operand>
 struct {{ instr.cpp_type }} {
 {% if instr.emit.kind == "direct" %}
 {% for field in instr.emit.data_struct.fields %}
-    {{ field.cpp_type }} {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
+    WithLoc<{{ field.cpp_type }}> {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
 {% endfor %}
 
 {% elif instr.emit.kind == "sub_struct" %}
     struct {{ instr.emit.data_struct.name }} {
 {% for field in instr.emit.data_struct.fields %}
-        {{ field.cpp_type }} {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
+        WithLoc<{{ field.cpp_type }}> {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
 {% endfor %}
     };
 
@@ -37,7 +37,7 @@ struct {{ instr.cpp_type }} {
 {% for alt in instr.emit.alternatives %}
     struct {{ alt.name }} {
 {% for field in alt.fields %}
-        {{ field.cpp_type }} {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
+        WithLoc<{{ field.cpp_type }}> {{ field.name }}{% if field.default is not none %} = {{ field.default }}{% endif %};
 {% endfor %}
     };
 

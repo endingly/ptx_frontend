@@ -138,6 +138,31 @@ def generate_ir_header(
     output_path.write_text(content, encoding="utf-8")
 
 
+def add_external_includes(origin_includes: tuple[str, ...] | None) -> tuple[str, ...]:
+    """Add includes required by the generated code that are not specified in the backend YAML."""
+    external_includes = (
+        "<numeric>",
+        "<optional>",
+        '"ptx_ir/base.hpp"',
+        '"ptx_ir/details.hpp"',
+        '"ptx_ir/source_loc.hpp"',
+    )
+
+    if origin_includes is None:
+        return external_includes
+
+    # Avoid duplicates while preserving order.
+    seen = set()
+    result = []
+
+    for include in origin_includes + external_includes:
+        if include not in seen:
+            seen.add(include)
+            result.append(include)
+
+    return tuple(result)
+
+
 def build_ir_header_view(unit: CodegenUnit) -> IrHeaderView:
     instructions: list[InstructionView] = []
 
@@ -165,7 +190,7 @@ def build_ir_header_view(unit: CodegenUnit) -> IrHeaderView:
         backend_schema=unit.backend_schema,
         category=unit.category,
         namespace=unit.namespace,
-        includes=unit.includes,
+        includes=add_external_includes(unit.includes),
         instructions=tuple(instructions),
     )
 

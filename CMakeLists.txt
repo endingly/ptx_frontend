@@ -55,10 +55,26 @@ add_custom_command(
         ${PYTHON_TEMPLATES}
     COMMENT "Generating PTX IR struct code from ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml"
 )
+add_custom_command(
+    OUTPUT ${PTX_GEN_DIR}/ptx_parser.gen.hpp
+    COMMAND 
+        ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/code_gen/gen_parser.py
+        --spec ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml
+        --backend ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/integer_arith.yaml
+        --template-dir ${CMAKE_CURRENT_SOURCE_DIR}/python/templates
+        --output ${PTX_GEN_DIR}/ptx_parser.gen.hpp
+    DEPENDS 
+        ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml
+        ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/integer_arith.yaml 
+        ${PYTHON_SCRIPTS}
+        ${PYTHON_TEMPLATES}
+    COMMENT "Generating PTX parser code from ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml"
+)
 add_custom_target(
     auto_gen_code
     DEPENDS
         ${PTX_GEN_DIR}/ptx_ir_instr.gen.hpp
+        ${PTX_GEN_DIR}/ptx_parser.gen.hpp
 )
 
 # target ptx_frontend

@@ -96,8 +96,6 @@ PARSER_STD_INCLUDES = (
 
 PARSER_PROJECT_INCLUDES = (
     "ptx_parser.hpp",
-    "ptx_parse_operand.hpp",
-    "ptx_parse_types.hpp",
     "ptx_ir_instr.gen.hpp",
 )
 

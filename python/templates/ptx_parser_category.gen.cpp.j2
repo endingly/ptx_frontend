@@ -1,0 +1,201 @@
+// Auto-generated. Do not edit manually.
+//
+// Parser implementation for category: {{ category }}
+
+#include "{{ header_name }}"
+
+#include <cstddef>
+#include <optional>
+#include <utility>
+
+#include "ptx_parser_util.gen.hpp"
+
+namespace {{ namespace }}::parser_detail {
+
+{% for instr in instructions %}
+std::optional<{{ instr.match_type }}>
+{{ instr.match_func }}(
+    const ParsedOpcode& opcode) {
+  if (opcode.text != "{{ instr.opcode }}") {
+    return std::nullopt;
+  }
+
+  {{ instr.match_type }} match{};
+
+  // Scan each source modifier exactly once.
+  for (const auto& modifier : opcode.modifiers) {
+{% for field in instr.modifiers %}
+{% if field.kind == "flag" %}
+    if (modifier.name == "{{ field.token_name }}") {
+      if (match.{{ field.field }}.has_value()) {
+        return std::nullopt;
+      }
+
+      match.{{ field.field }} =
+          WithLoc<{{ field.cpp_type }}>{
+              true,
+              modifier.range,
+          };
+
+      continue;
+    }
+
+{% elif field.kind == "domain" %}
+    if (auto value =
+            parser_util::{{ field.parse_func }}(
+                modifier.name)) {
+      if (match.{{ field.field }}.has_value()) {
+        return std::nullopt;
+      }
+
+      match.{{ field.field }} =
+          WithLoc<{{ field.cpp_type }}>{
+              *value,
+              modifier.range,
+          };
+
+      continue;
+    }
+
+{% endif %}
+{% endfor %}
+    return std::nullopt;
+  }
+
+{% for variant in instr.variants %}
+  const auto {{ variant.predicate_name }} =
+      [&]() noexcept {
+{% for constraint in variant.constraints %}
+{% if constraint.presence == "absent" %}
+    if (match.{{ constraint.field }}.has_value()) {
+      return false;
+    }
+
+{% elif constraint.presence == "optional" %}
+{% if constraint.allowed_cpp_values %}
+    if (match.{{ constraint.field }}.has_value() &&
+        !(
+{% for value in constraint.allowed_cpp_values %}
+            match.{{ constraint.field }}->value ==
+                {{ value }}{{ " ||" if not loop.last else "" }}
+{% endfor %}
+        )) {
+      return false;
+    }
+
+{% endif %}
+{% elif constraint.presence == "required" %}
+    if (!match.{{ constraint.field }}.has_value()) {
+      return false;
+    }
+
+{% if constraint.allowed_cpp_values %}
+    if (!(
+{% for value in constraint.allowed_cpp_values %}
+        match.{{ constraint.field }}->value ==
+            {{ value }}{{ " ||" if not loop.last else "" }}
+{% endfor %}
+    )) {
+      return false;
+    }
+
+{% endif %}
+{% elif constraint.presence == "fixed" %}
+{% if constraint.kind == "flag" and constraint.fixed_cpp_value == "false" %}
+    if (match.{{ constraint.field }}.has_value()) {
+      return false;
+    }
+
+{% else %}
+    if (!match.{{ constraint.field }}.has_value()) {
+      return false;
+    }
+
+    if (match.{{ constraint.field }}->value !=
+        {{ constraint.fixed_cpp_value }}) {
+      return false;
+    }
+
+{% endif %}
+{% endif %}
+{% endfor %}
+    return true;
+  };
+
+{% endfor %}
+  std::size_t match_count = 0;
+  std::optional<{{ instr.form_type }}> selected_form;
+
+{% for variant in instr.variants %}
+  if ({{ variant.predicate_name }}()) {
+    selected_form =
+        {{ instr.form_type }}::{{ variant.enum_name }};
+
+    ++match_count;
+  }
+
+{% endfor %}
+  if (match_count != 1) {
+    return std::nullopt;
+  }
+
+  match.form = *selected_form;
+  return match;
+}
+
+{{ instr.cpp_type }}<ParsedOp>
+{{ instr.parse_func }}(
+    ParserCore& parser,
+    const ParsedOpcode& opcode,
+    {{ instr.match_type }} match) {
+  (void)opcode;
+
+  {{ instr.cpp_type }}<ParsedOp> instr{};
+
+{% if instr.emit_kind == "direct" or instr.emit_kind == "sub_struct" %}
+{% for modifier in instr.modifiers %}
+  if (match.{{ modifier.field }}.has_value()) {
+    {{ instr.assignment_prefix }}{{ modifier.field }} =
+        std::move(*match.{{ modifier.field }});
+  }
+
+{% endfor %}
+{% elif instr.emit_kind == "sub_variant" %}
+  switch (match.form) {
+{% for variant in instr.variants %}
+    case {{ instr.form_type }}::{{ variant.enum_name }}: {
+      {{ instr.cpp_type }}<ParsedOp>::{{ variant.storage_type }}
+          data{};
+
+{% for field in variant.storage_fields %}
+      if (match.{{ field }}.has_value()) {
+        data.{{ field }} =
+            std::move(*match.{{ field }});
+      }
+
+{% endfor %}
+      instr.{{ instr.data_instance }} =
+          std::move(data);
+
+      break;
+    }
+
+{% endfor %}
+  }
+
+{% endif %}
+{% for operand in instr.operands %}
+  instr.{{ operand.field }} =
+      parser.parseOperandWithLoc();
+{% if not loop.last %}
+  parser.expectComma();
+
+{% endif %}
+{% endfor %}
+  parser.expectSemicolon();
+
+  return instr;
+}
+
+{% endfor %}
+}  // namespace {{ namespace }}::parser_detail

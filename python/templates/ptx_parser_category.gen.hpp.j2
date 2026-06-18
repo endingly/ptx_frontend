@@ -1,0 +1,41 @@
+// Auto-generated. Do not edit manually.
+//
+// Parser declarations for category: {{ category }}
+
+#pragma once
+
+#include <optional>
+
+#include "{{ ir_header_name }}"
+#include "ptx_parser_core.hpp"
+
+namespace {{ namespace }}::parser_detail {
+
+{% for instr in instructions %}
+enum class {{ instr.form_type }} {
+{% for variant in instr.variants %}
+    {{ variant.enum_name }}{{ "," if not loop.last else "" }}
+{% endfor %}
+};
+
+struct {{ instr.match_type }} {
+    {{ instr.form_type }} form{};
+
+{% for modifier in instr.modifiers %}
+    std::optional<WithLoc<{{ modifier.cpp_type }}>>
+        {{ modifier.field }};
+{% endfor %}
+};
+
+std::optional<{{ instr.match_type }}>
+{{ instr.match_func }}(
+    const ParsedOpcode& opcode);
+
+{{ instr.cpp_type }}<ParsedOp>
+{{ instr.parse_func }}(
+    ParserCore& parser,
+    const ParsedOpcode& opcode,
+    {{ instr.match_type }} match);
+
+{% endfor %}
+}  // namespace {{ namespace }}::parser_detail

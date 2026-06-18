@@ -1,0 +1,72 @@
+// Auto-generated. Do not edit manually.
+
+#include "ptx_parser_registry.gen.hpp"
+
+#include <cstddef>
+#include <string>
+#include <utility>
+
+{% for header in parser_headers %}
+#include "{{ header }}"
+{% endfor %}
+
+namespace {{ namespace }} {
+
+ParsedInstruction parseInstruction(
+    ParserCore& parser) {
+  const ParsedOpcode opcode =
+      parser.parseOpcodeWithModifiers();
+
+{% for group in opcode_groups %}
+  if (opcode.text == "{{ group.opcode }}") {
+{% for candidate in group.candidates %}
+    auto {{ candidate.match_variable }} =
+        parser_detail::{{ candidate.match_func }}(
+            opcode);
+{% endfor %}
+
+    const std::size_t candidate_count =
+{% for candidate in group.candidates %}
+        static_cast<std::size_t>(
+            {{ candidate.match_variable }}.has_value()){{ " +" if not loop.last else ";" }}
+{% endfor %}
+
+    if (candidate_count == 0) {
+      throw ParseError(
+          opcode.range,
+          "no supported syntax variant for PTX opcode '" +
+              std::string(opcode.text) +
+              "'");
+    }
+
+    if (candidate_count > 1) {
+      throw ParseError(
+          opcode.range,
+          "ambiguous PTX instruction syntax for opcode '" +
+              std::string(opcode.text) +
+              "'");
+    }
+
+{% for candidate in group.candidates %}
+    if ({{ candidate.match_variable }}.has_value()) {
+      return ParsedInstruction{
+          parser_detail::{{ candidate.parse_func }}(
+              parser,
+              opcode,
+              std::move(
+                  *{{ candidate.match_variable }}))
+      };
+    }
+
+{% endfor %}
+  }
+
+{% endfor %}
+  throw ParseError(
+      opcode.range,
+      "unknown PTX opcode '" +
+          std::string(opcode.text) +
+          "'");
+}
+
+}  // namespace {{ namespace }}

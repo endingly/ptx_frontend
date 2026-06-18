@@ -1,0 +1,18 @@
+// Auto-generated. Do not edit manually.
+
+#pragma once
+
+#include "ptx_ir_registry.gen.hpp"
+#include "ptx_parser_core.hpp"
+
+namespace {{ namespace }} {
+
+/**
+ * Parse one complete PTX instruction.
+ *
+ * Opcode/modifier matching does not consume operand tokens.
+ */
+ParsedInstruction parseInstruction(
+    ParserCore& parser);
+
+}  // namespace {{ namespace }}

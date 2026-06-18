@@ -65,7 +65,7 @@ tryMatch{{ instr.cpp_type }}Modifiers(const ParsedOpcode& opcode) {
 {% for instr in instructions %}
 template <OperandLike Operand>
 std::optional<{{ instr.cpp_type }}<Operand>> {{ instr.parse_func }}(
-    Parser& parser,
+    ParserCore& parser,
     const ParsedOpcode& opcode) {
   if (opcode.text != "{{ instr.opcode }}") {
     return std::nullopt;
@@ -99,7 +99,7 @@ std::optional<{{ instr.cpp_type }}<Operand>> {{ instr.parse_func }}(
 
 template <OperandLike Operand>
 std::optional<PtxInstruction<Operand>> tryParseGeneratedInstruction(
-    Parser& parser,
+    ParserCore& parser,
     const ParsedOpcode& opcode) {
 {% for group in opcode_groups %}
   if (opcode.text == "{{ group.opcode }}") {
@@ -116,7 +116,7 @@ std::optional<PtxInstruction<Operand>> tryParseGeneratedInstruction(
 }
 
 template <OperandLike Operand>
-PtxInstruction<Operand> parseGeneratedInstruction(Parser& parser) {
+PtxInstruction<Operand> parseGeneratedInstruction(ParserCore& parser) {
   auto opcode = parser.parseOpcodeWithModifiers();
 
   if (auto instr = tryParseGeneratedInstruction<Operand>(parser, opcode)) {

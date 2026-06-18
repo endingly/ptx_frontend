@@ -1,0 +1,57 @@
+// Auto-generated. Do not edit manually.
+
+#pragma once
+
+#include <array>
+#include <optional>
+#include <string_view>
+#include <utility>
+
+#include "ptx_ir/base.hpp"
+
+namespace {{ namespace }}::parser_util {
+
+template <typename T, std::size_t N>
+constexpr std::optional<T> lookup(
+    std::string_view spelling,
+    const std::array<std::pair<std::string_view, T>, N>& entries) {
+  for (const auto& [name, value] : entries) {
+    if (name == spelling) {
+      return value;
+    }
+  }
+
+  return std::nullopt;
+}
+
+{% for domain in domains %}
+inline constexpr std::array<
+    std::pair<std::string_view, {{ domain.cpp_type }}>,
+    {{ domain.values | length }}>
+    {{ domain.table_name }} = {
+{% for value in domain.values %}
+        std::pair<std::string_view, {{ domain.cpp_type }}>{
+            "{{ value.spelling }}",
+            {{ value.cpp_expr }},
+        },
+{% endfor %}
+    };
+
+inline constexpr std::optional<{{ domain.cpp_type }}>
+{{ domain.parse_func }}(std::string_view spelling) {
+  return lookup(spelling, {{ domain.table_name }});
+}
+
+inline constexpr std::optional<std::string_view>
+{{ domain.to_string_func }}({{ domain.cpp_type }} value) {
+  for (const auto& [spelling, candidate] : {{ domain.table_name }}) {
+    if (candidate == value) {
+      return spelling;
+    }
+  }
+
+  return std::nullopt;
+}
+
+{% endfor %}
+}  // namespace {{ namespace }}::parser_util

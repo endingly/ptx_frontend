@@ -38,48 +38,44 @@ FLEX_TARGET(
 # yaml generator target
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+file(GLOB_RECURSE PTX_SPEC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
+file(GLOB_RECURSE PTX_BACKEND_FILES ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/*.yaml)
 file(GLOB_RECURSE PYTHON_SCRIPTS ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py)
 file(GLOB_RECURSE PYTHON_TEMPLATES ${CMAKE_CURRENT_SOURCE_DIR}/python/templates/*.j2)
-add_custom_command(
-    OUTPUT ${PTX_GEN_DIR}/ptx_ir_instr.gen.hpp
-    COMMAND 
-        ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/code_gen/gen_ir.py
-        --spec ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml
-        --backend ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/integer_arith.yaml
-        --template-dir ${CMAKE_CURRENT_SOURCE_DIR}/python/templates
-        --output ${PTX_GEN_DIR}/ptx_ir_instr.gen.hpp
-    DEPENDS 
-        ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml
-        ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/integer_arith.yaml 
-        ${PYTHON_SCRIPTS}
-        ${PYTHON_TEMPLATES}
-    COMMENT "Generating PTX IR struct code from ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml"
+set(PTX_GENERATED_FILES
+    ${PTX_GEN_DIR}/ptx_ir_integer_arithmetic.gen.hpp
+    ${PTX_GEN_DIR}/ptx_ir_registry.gen.hpp
+    ${PTX_GEN_DIR}/ptx_parser_util.gen.hpp
+    ${PTX_GEN_DIR}/ptx_parser_integer_arithmetic.gen.hpp
+    ${PTX_GEN_DIR}/ptx_parser_integer_arithmetic.gen.cpp
+    ${PTX_GEN_DIR}/ptx_parser_registry.gen.hpp
+    ${PTX_GEN_DIR}/ptx_parser_registry.gen.cpp
 )
 add_custom_command(
-    OUTPUT ${PTX_GEN_DIR}/ptx_parser.gen.hpp
+    OUTPUT ${PTX_GENERATED_FILES}
     COMMAND 
-        ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/code_gen/gen_parser.py
-        --spec ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml
-        --backend ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/integer_arith.yaml
+        ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+        --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+        --backend-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec
         --template-dir ${CMAKE_CURRENT_SOURCE_DIR}/python/templates
-        --output ${PTX_GEN_DIR}/ptx_parser.gen.hpp
-    DEPENDS 
-        ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml
-        ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/integer_arith.yaml 
+        --output ${PTX_GEN_DIR}
+    DEPENDS
+        ${PTX_SPEC_FILES}
+        ${PTX_BACKEND_FILES}
         ${PYTHON_SCRIPTS}
         ${PYTHON_TEMPLATES}
-    COMMENT "Generating PTX parser code from ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/integer_arith.yaml"
+    COMMENT "Generating PTX frontend code"
 )
 add_custom_target(
     auto_gen_code
     DEPENDS
-        ${PTX_GEN_DIR}/ptx_ir_instr.gen.hpp
-        ${PTX_GEN_DIR}/ptx_parser.gen.hpp
+        ${PTX_GENERATED_FILES}
 )
 
 # target ptx_frontend
 file(GLOB_RECURSE ptx_frontend_srcs src/*.cpp)
-add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS})
+file(GLOB_RECURSE ptx_frontend_generated_srcs ${PTX_GEN_DIR}/*.gen.cpp)
+add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS} ${ptx_frontend_generated_srcs})
 target_include_directories(
     ptx_frontend
     PUBLIC include ${PTX_GEN_DIR}

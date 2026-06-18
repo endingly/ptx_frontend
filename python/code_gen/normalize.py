@@ -57,10 +57,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
 
             operands = tuple(normalize_operand(x) for x in operands_raw)
 
+            # normalize layer need keep all info
             modifiers = tuple(
-                normalize_modifier(x, type_sets)
-                for x in raw_var.get("modifiers", [])
-                if x.get("presence") != "absent"
+                normalize_modifier(x, type_sets) for x in raw_var.get("modifiers", [])
             )
 
             variants.append(

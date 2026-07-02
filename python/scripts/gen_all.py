@@ -95,7 +95,10 @@ def main() -> None:
     # -------------------------------------------------------------------------
 
     for loaded in database.units:
-        output_path = output_dir / category_ir_header_name(loaded.unit.category)
+        # ir struct file in public dir
+        output_path = (
+            output_dir / "public" / category_ir_header_name(loaded.unit.category)
+        )
 
         generate_ir_header(
             loaded.unit,
@@ -109,7 +112,7 @@ def main() -> None:
     # Global IR registry
     # -------------------------------------------------------------------------
 
-    ir_registry_path = output_dir / "ptx_ir_registry.gen.hpp"
+    ir_registry_path = output_dir / "public/ptx_ir_registry.gen.hpp"
 
     generate_ir_registry_header(
         database,
@@ -123,7 +126,7 @@ def main() -> None:
     # Global parser domain/string utility
     # -------------------------------------------------------------------------
 
-    parser_util_path = output_dir / "ptx_parser_util.gen.hpp"
+    parser_util_path = output_dir / "private/ptx_parser_util.gen.hpp"
 
     generate_parser_util(
         database,
@@ -139,7 +142,7 @@ def main() -> None:
             database,
             loaded,
             template_dir=template_dir,
-            output_dir=output_dir,
+            output_dir=output_dir / "private",
         )
 
         generated_files.extend(
@@ -153,7 +156,7 @@ def main() -> None:
     registry_header, registry_source = generate_parser_registry(
         database,
         template_dir=template_dir,
-        output_dir=output_dir,
+        output_dir=output_dir / "private",
     )
 
     generated_files.extend(

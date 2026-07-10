@@ -8,7 +8,6 @@
 #include "ptx_ir/ptx_ir.hpp"
 
 namespace ptx_frontend {
-using generated::ParsedInstruction;
 
 struct ParseDiagnostic {
   SourceRange range;

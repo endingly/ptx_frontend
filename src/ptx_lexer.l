@@ -11,10 +11,8 @@ using ptx_frontend::SourcePos;
 using ptx_frontend::SourceRange;
 using ptx_frontend::TokenKind;
 
-extern std::string_view ptx_intern(const char* s, std::size_t len, void* extra);
-
 #define STORE_SV() \
-    yylval->sv = ptx_intern(yytext, static_cast<std::size_t>(yyleng), yyextra)
+    yylval->sv = std::string_view(yytext, static_cast<std::size_t>(yyleng))
 
 #define SET_EMPTY_SV() \
     yylval->sv = {}

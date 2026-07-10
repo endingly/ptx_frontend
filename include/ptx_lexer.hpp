@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <string>
 #include <string_view>
 #include "ptx_ir/source_loc.hpp"
 #include "ptx_token.hpp"
@@ -10,7 +11,7 @@ class PtxLexer {
  public:
   struct Token {
     TokenKind kind;
-    std::string_view text;
+    std::string text;
     // for error reporting; line and column of the token start
     SourceRange range;
   };

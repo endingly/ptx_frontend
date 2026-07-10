@@ -106,17 +106,18 @@ ParsedOpcode ParserCore::parseOpcodeWithModifiers() {
   auto opcode_token = expect(TokenKind::Ident, "instruction opcode");
 
   ParsedOpcode opcode{
-      .text = opcode_token.text,
+      .text = std::move(opcode_token.text),
       .range = opcode_token.range,
       .modifiers = {},
   };
 
   while (isDotLikeToken(peek().kind)) {
     auto modifier_token = consume();
+    auto modifier_name = std::string(stripDot(modifier_token.text));
 
     opcode.modifiers.push_back(ParsedModifier{
-        .text = modifier_token.text,
-        .name = stripDot(modifier_token.text),
+        .text = std::move(modifier_token.text),
+        .name = std::move(modifier_name),
         .range = modifier_token.range,
     });
 
@@ -130,7 +131,8 @@ WithLoc<ParsedOp> ParserCore::parseOperandWithLoc() {
   auto token = consume();
 
   if (token.kind == TokenKind::Ident) {
-    auto operand = ParsedOp::from_value(RegOrImmediate<Ident>::Reg(token.text));
+    auto operand = ParsedOp::from_value(
+        RegOrImmediate<Ident>::Reg(std::move(token.text)));
 
     return WithLoc<ParsedOp>{
         std::move(operand),

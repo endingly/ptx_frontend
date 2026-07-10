@@ -78,7 +78,8 @@ add_custom_target(
 
 # target ptx_frontend
 file(GLOB_RECURSE ptx_frontend_srcs src/*.cpp)
-file(GLOB_RECURSE ptx_frontend_generated_srcs ${PTX_GEN_PUBLIC_DIR}/*.gen.cpp ${PTX_GEN_PRIVATE_DIR}/*.gen.cpp)
+set(ptx_frontend_generated_srcs ${PTX_GENERATED_FILES})
+list(FILTER ptx_frontend_generated_srcs INCLUDE REGEX "\\.gen\\.cpp$")
 add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS} ${ptx_frontend_generated_srcs})
 target_include_directories(
     ptx_frontend
@@ -98,14 +99,34 @@ target_link_libraries(ptx_frontend PUBLIC fmt::fmt magic_enum::magic_enum)
 
 add_dependencies(ptx_frontend auto_gen_code)
 
-# # target ptx_frontend_test
+# Test targets
 if(BUILD_TESTING)
-    aux_source_directory(test ptx_frontend_test_files)
-    add_executable(ptx_frontend_test ${ptx_frontend_test_files})
-    target_link_libraries(ptx_frontend_test PRIVATE ptx_frontend)
     find_package(GTest CONFIG REQUIRED)
-    target_link_libraries(ptx_frontend_test PRIVATE GTest::gtest GTest::gtest_main)
-    gtest_discover_tests(ptx_frontend_test)
+
+    add_executable(ptx_lexer_test test/test_ptx_lexer.cpp)
+    target_link_libraries(
+        ptx_lexer_test
+        PRIVATE
+        ptx_frontend
+        GTest::gtest
+        GTest::gtest_main
+    )
+    gtest_discover_tests(ptx_lexer_test)
+
+    add_executable(ptx_parser_test test/test_ptx_parser_lifetime.cpp)
+    target_include_directories(
+        ptx_parser_test
+        PRIVATE
+        ${PTX_GEN_PRIVATE_DIR}
+    )
+    target_link_libraries(
+        ptx_parser_test
+        PRIVATE
+        ptx_frontend
+        GTest::gtest
+        GTest::gtest_main
+    )
+    gtest_discover_tests(ptx_parser_test)
 endif()
 
 # ################################################################

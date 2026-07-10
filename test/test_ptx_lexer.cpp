@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <deque>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -9,13 +8,6 @@
 #include "ptx_lexer.hpp"
 
 using namespace ptx_frontend;
-
-// Intern into a stable pool so string_views outlive the Flex buffer.
-std::string_view ptx_intern(const char* s, std::size_t len, void*) {
-  static std::deque<std::string> pool;
-  pool.emplace_back(s, len);
-  return pool.back();
-}
 
 struct LexedToken {
   TokenKind kind;

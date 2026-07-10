@@ -9,6 +9,8 @@
 
 namespace ptx_frontend {
 
-using generated::PtxInstruction;
+template <OperandLike Operand>
+using PtxInstruction = generated::PtxInstruction<Operand>;
+using ParsedInstruction = generated::ParsedInstruction;
 
-};
+};  // namespace ptx_frontend

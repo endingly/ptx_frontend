@@ -29,7 +29,7 @@ PtxLexer::~PtxLexer() {
 PtxLexer::Token PtxLexer::next() {
   PtxSVal sval{};
   TokenKind kind = static_cast<TokenKind>(yylex(&sval, impl_->scanner));
-  return Token{kind, sval.sv, sval.range};
+  return Token{kind, std::string(sval.sv), sval.range};
 }
 
 PtxLexer::Token PtxLexer::peek() {

@@ -4,6 +4,7 @@
 #include <expected>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -137,7 +138,7 @@ struct ImmediateValue {
   bool operator==(const ImmediateValue& other) const = default;
 };
 
-using Ident = std::string_view;
+using Ident = std::string;
 
 template <typename Id>
 concept IdentLike = std::copyable<Id> and std::equality_comparable<Id>;

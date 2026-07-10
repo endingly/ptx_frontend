@@ -12,13 +12,13 @@
 namespace ptx_frontend {
 
 struct ParsedModifier {
-  std::string_view text;
-  std::string_view name;
+  std::string text;
+  std::string name;
   SourceRange range;
 };
 
 struct ParsedOpcode {
-  std::string_view text;
+  std::string text;
   SourceRange range;
   std::vector<ParsedModifier> modifiers;
 };

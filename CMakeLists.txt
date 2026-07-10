@@ -111,4 +111,14 @@ endif()
 # ################################################################
 # install targets
 # ################################################################
-include(install_action)
+include(install_project_targets)
+
+install_project_targets(
+    PROJECT ptx_frontend
+    VERSION ${PROJECT_VERSION}
+    TARGETS ptx_frontend
+    EXPORT ptx_frontendTargets
+    INCLUDE_DIRS 
+        ${CMAKE_SOURCE_DIR}/include
+        ${PTX_GEN_PUBLIC_DIR}
+)

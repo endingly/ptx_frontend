@@ -20,6 +20,7 @@ enum class {{ instr.form_type }} {
 
 struct {{ instr.match_type }} {
     {{ instr.form_type }} form{};
+    InstructionAvailability availability{};
 
 {% for modifier in instr.modifiers %}
     std::optional<WithLoc<{{ modifier.cpp_type }}>>

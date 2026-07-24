@@ -49,7 +49,6 @@ instructions:
         field: sat
         cpp_type: bool
         default: "false"
-        optional_policy: default_value
 
       type:
         field: type_
@@ -60,7 +59,6 @@ instructions:
       dst:
         field: dst
         cpp_type: Operand
-        state_space: StateSpace::Reg
 
       src1:
         field: src1

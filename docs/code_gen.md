@@ -263,6 +263,12 @@ floating_point/add     -> InstrFloatAdd
 
 The parser or registry layer is responsible for dispatching a textual PTX instruction to the correct generated IR type based on opcode and modifiers.
 
+Generated parsers preserve the modifier slot order and operand kind declared
+by the PTX spec. Variant availability is also emitted into the parser. The
+public parser runs in syntax-only mode by default; callers can provide
+`ParserOptions::target` to validate the minimum PTX version, SM version, and
+architecture family while parsing.
+
 ## CodegenUnit
 
 After YAML validation and normalization, generators consume a typed `CodegenUnit`.
@@ -615,7 +621,7 @@ JSON/YAML schemas should check local structural rules.
 
 Examples:
 
-* `emit.kind` must be one of `direct`, `sub_struct`, `sub_variant`, or `custom`;
+* `emit.kind` must be one of `direct`, `sub_struct`, or `sub_variant`;
 * `sub_struct` requires `instance` and `type`;
 * `sub_variant` requires `instance`, `type`, and `alternatives`;
 * `alternatives` is only valid under `sub_variant`;

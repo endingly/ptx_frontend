@@ -241,12 +241,10 @@ $defs:
           direct: emit modifier fields directly in the instruction struct.
           sub_struct: emit one nested data struct inside the instruction.
           sub_variant: emit multiple nested data structs and a std::variant alias.
-          custom: use a custom backend handler.
         enum:
           - direct
           - sub_struct
           - sub_variant
-          - custom
 
       instance:
         description: >
@@ -274,11 +272,6 @@ $defs:
         items:
           $ref: "#/$defs/emit_alternative"
 
-      custom_handler:
-        description: >
-          C++ handler used when kind is custom.
-        $ref: "#/$defs/cpp_qualified_name"
-
     allOf:
       - if:
           properties:
@@ -292,7 +285,6 @@ $defs:
               - required: [instance]
               - required: [type]
               - required: [alternatives]
-              - required: [custom_handler]
 
       - if:
           properties:
@@ -307,7 +299,6 @@ $defs:
           not:
             anyOf:
               - required: [alternatives]
-              - required: [custom_handler]
 
       - if:
           properties:
@@ -320,24 +311,6 @@ $defs:
             - instance
             - type
             - alternatives
-          not:
-            anyOf:
-              - required: [custom_handler]
-
-      - if:
-          properties:
-            kind:
-              const: custom
-          required:
-            - kind
-        then:
-          required:
-            - custom_handler
-          not:
-            anyOf:
-              - required: [instance]
-              - required: [type]
-              - required: [alternatives]
 
   emit_kind_mapping:
     type: object
@@ -515,31 +488,6 @@ $defs:
         description: "Default C++ expression when modifier is omitted."
         $ref: "#/$defs/cpp_expr"
 
-      fixed:
-        description: "Fixed C++ expression when modifier is always fixed."
-        $ref: "#/$defs/cpp_expr"
-
-      token_field:
-        description: "Optional generated field that stores token spelling."
-        $ref: "#/$defs/cpp_identifier"
-
-      optional_policy:
-        description: "How optional modifiers are represented in C++."
-        type: string
-        enum:
-          - default_value
-          - std_optional
-          - bool_presence_plus_value
-          - custom
-
-      presence_field:
-        description: "Field name used when optional_policy=bool_presence_plus_value."
-        $ref: "#/$defs/cpp_identifier"
-
-      custom_handler:
-        description: "Custom backend hook for this modifier."
-        $ref: "#/$defs/schema_identifier"
-
       doc:
         type: string
 
@@ -560,32 +508,6 @@ $defs:
       cpp_type:
         description: "C++ field type for this operand."
         $ref: "#/$defs/cpp_type"
-
-      state_space:
-        description: "C++ expression for expected operand state space."
-        $ref: "#/$defs/cpp_expr"
-
-      type_field:
-        description: "Optional C++ field recording operand type."
-        $ref: "#/$defs/cpp_identifier"
-
-      list_element_type:
-        description: "C++ element type if this operand is a list."
-        $ref: "#/$defs/cpp_type"
-
-      optional_policy:
-        description: "How optional operands are represented in C++."
-        type: string
-        enum:
-          - std_optional
-          - nullable
-          - empty_vector
-          - sentinel
-          - custom
-
-      custom_handler:
-        description: "Custom backend hook for operand parsing/checking/emission."
-        $ref: "#/$defs/schema_identifier"
 
       doc:
         type: string

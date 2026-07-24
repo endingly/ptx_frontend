@@ -1,0 +1,8 @@
+instruction=add:InstrIntegerAdd
+modifiers=sat,type
+operands=dst:OperandKind::Register,src1:OperandKind::RegisterOrImmediate,src2:OperandKind::RegisterOrImmediate
+variant=add_integer_no_sat:ptx=1.0:sm=0:family=
+variant=add_sat_s32:ptx=1.0:sm=0:family=
+variant=add_simd_no_sat_sm90:ptx=8.0:sm=90:family=
+variant=add_packed_optional_sat_sm120:ptx=9.2:sm=120:family=sm_120f
+variant=add_sat_sm120:ptx=9.2:sm=120:family=sm_120f

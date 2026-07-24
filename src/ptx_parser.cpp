@@ -9,13 +9,14 @@ namespace ptx_frontend {
 
 class PtxParser::Impl {
  public:
-  explicit Impl(std::string_view source) : parser(source) {}
+  Impl(std::string_view source, ParserOptions options)
+      : parser(source, std::move(options)) {}
 
   ParserCore parser;
 };
 
-PtxParser::PtxParser(std::string_view source)
-    : impl_(std::make_unique<Impl>(source)) {}
+PtxParser::PtxParser(std::string_view source, ParserOptions options)
+    : impl_(std::make_unique<Impl>(source, std::move(options))) {}
 
 PtxParser::~PtxParser() = default;
 
@@ -43,8 +44,8 @@ PtxParser::parseInstruction() {
 }
 
 std::expected<ParsedInstruction, ParseDiagnostic> parseInstruction(
-    std::string_view source) {
-  PtxParser parser(source);
+    std::string_view source, ParserOptions options) {
+  PtxParser parser(source, std::move(options));
   return parser.parseInstruction();
 }
 

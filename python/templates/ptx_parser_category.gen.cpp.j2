@@ -21,12 +21,20 @@ std::optional<{{ instr.match_type }}>
   }
 
   {{ instr.match_type }} match{};
+  std::optional<std::size_t> last_modifier_slot;
 
   // Scan each source modifier exactly once.
   for (const auto& modifier : opcode.modifiers) {
 {% for field in instr.modifiers %}
 {% if field.kind == "flag" %}
     if (modifier.name == "{{ field.token_name }}") {
+      constexpr std::size_t modifier_slot = {{ loop.index0 }};
+      if (last_modifier_slot.has_value() &&
+          modifier_slot <= *last_modifier_slot) {
+        return std::nullopt;
+      }
+      last_modifier_slot = modifier_slot;
+
       if (match.{{ field.field }}.has_value()) {
         return std::nullopt;
       }
@@ -44,6 +52,13 @@ std::optional<{{ instr.match_type }}>
     if (auto value =
             parser_util::{{ field.parse_func }}(
                 modifier.name)) {
+      constexpr std::size_t modifier_slot = {{ loop.index0 }};
+      if (last_modifier_slot.has_value() &&
+          modifier_slot <= *last_modifier_slot) {
+        return std::nullopt;
+      }
+      last_modifier_slot = modifier_slot;
+
       if (match.{{ field.field }}.has_value()) {
         return std::nullopt;
       }
@@ -130,6 +145,13 @@ std::optional<{{ instr.match_type }}>
   if ({{ variant.predicate_name }}()) {
     selected_form =
         {{ instr.form_type }}::{{ variant.enum_name }};
+    match.availability = InstructionAvailability{
+        .min_ptx = PtxVersion{ {{ variant.min_ptx_major }}, {{ variant.min_ptx_minor }} },
+        .min_sm = {{ variant.min_sm }},
+        .family = "{{ variant.family }}",
+        .deprecated = {{ "true" if variant.deprecated else "false" }},
+        .removed = {{ "true" if variant.removed else "false" }},
+    };
 
     ++match_count;
   }
@@ -151,6 +173,8 @@ std::optional<{{ instr.match_type }}>
   (void)opcode;
 
   {{ instr.cpp_type }}<ParsedOp> instr{};
+
+  parser.requireAvailability(match.availability, opcode.range);
 
 {% if instr.emit_kind == "direct" or instr.emit_kind == "sub_struct" %}
 {% for modifier in instr.modifiers %}
@@ -186,7 +210,7 @@ std::optional<{{ instr.match_type }}>
 {% endif %}
 {% for operand in instr.operands %}
   instr.{{ operand.field }} =
-      parser.parseOperandWithLoc();
+      parser.parseOperandWithLoc({{ operand.kind_cpp }});
 {% if not loop.last %}
   parser.expectComma();
 

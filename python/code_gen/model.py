@@ -164,14 +164,12 @@ class ModifierBackend:
           field: sat
           cpp_type: bool
           default: "false"
-          optional_policy: default_value
     """
 
     field: str
     cpp_type: str | None = None
     domain: str | None = None
     default: str | None = None
-    optional_policy: str | None = None
 
 
 @dataclass(frozen=True)

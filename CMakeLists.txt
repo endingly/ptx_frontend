@@ -42,19 +42,30 @@ FLEX_TARGET(
 # yaml generator target
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
-file(GLOB_RECURSE PTX_SPEC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
-file(GLOB_RECURSE PTX_BACKEND_FILES ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/*.yaml)
-file(GLOB_RECURSE PYTHON_SCRIPTS ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py)
-file(GLOB_RECURSE PYTHON_TEMPLATES ${CMAKE_CURRENT_SOURCE_DIR}/python/templates/*.j2)
-set(PTX_GENERATED_FILES
-    ${PTX_GEN_PUBLIC_DIR}/ptx_ir_integer_arithmetic.gen.hpp
-    ${PTX_GEN_PUBLIC_DIR}/ptx_ir_registry.gen.hpp
-    ${PTX_GEN_PRIVATE_DIR}/ptx_parser_util.gen.hpp
-    ${PTX_GEN_PRIVATE_DIR}/ptx_parser_integer_arithmetic.gen.hpp
-    ${PTX_GEN_PRIVATE_DIR}/ptx_parser_integer_arithmetic.gen.cpp
-    ${PTX_GEN_PRIVATE_DIR}/ptx_parser_registry.gen.hpp
-    ${PTX_GEN_PRIVATE_DIR}/ptx_parser_registry.gen.cpp
+file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
+file(GLOB_RECURSE PTX_BACKEND_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/*.yaml)
+file(GLOB_RECURSE PYTHON_SCRIPTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py)
+file(GLOB_RECURSE PYTHON_TEMPLATES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/templates/*.j2)
+
+execute_process(
+    COMMAND
+    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+    --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+    --backend-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec
+    --template-dir ${CMAKE_CURRENT_SOURCE_DIR}/python/templates
+    --output ${CMAKE_CURRENT_BINARY_DIR}/generated
+    --list-outputs
+    RESULT_VARIABLE PTX_GENERATED_FILES_RESULT
+    OUTPUT_VARIABLE PTX_GENERATED_FILES_OUTPUT
+    ERROR_VARIABLE PTX_GENERATED_FILES_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+
+if(NOT PTX_GENERATED_FILES_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to determine generated files: ${PTX_GENERATED_FILES_ERROR}")
+endif()
+
+string(REPLACE "\n" ";" PTX_GENERATED_FILES "${PTX_GENERATED_FILES_OUTPUT}")
 add_custom_command(
     OUTPUT ${PTX_GENERATED_FILES}
     COMMAND
@@ -113,7 +124,11 @@ if(BUILD_TESTING)
     )
     gtest_discover_tests(ptx_lexer_test)
 
-    add_executable(ptx_parser_test test/test_ptx_parser_lifetime.cpp)
+    add_executable(
+        ptx_parser_test
+        test/test_ptx_parser.cpp
+        test/test_ptx_parser_lifetime.cpp
+    )
     target_include_directories(
         ptx_parser_test
         PRIVATE
@@ -127,6 +142,15 @@ if(BUILD_TESTING)
         GTest::gtest_main
     )
     gtest_discover_tests(ptx_parser_test)
+
+    add_test(
+        NAME ptx_codegen_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/python/test_codegen.py
+    )
+    set_tests_properties(
+        ptx_codegen_test
+        PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 endif()
 
 # ################################################################

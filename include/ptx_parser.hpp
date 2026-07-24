@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "ptx_ir/ptx_ir.hpp"
+#include "ptx_parser_options.hpp"
 
 namespace ptx_frontend {
 
@@ -22,7 +23,7 @@ struct ParseDiagnostic {
  */
 class PtxParser {
  public:
-  explicit PtxParser(std::string_view source);
+  explicit PtxParser(std::string_view source, ParserOptions options = {});
 
   ~PtxParser();
 
@@ -48,6 +49,6 @@ class PtxParser {
  * Convenience API for parsing exactly one instruction.
  */
 std::expected<ParsedInstruction, ParseDiagnostic> parseInstruction(
-    std::string_view source);
+    std::string_view source, ParserOptions options = {});
 
 }  // namespace ptx_frontend

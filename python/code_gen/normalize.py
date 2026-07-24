@@ -1,5 +1,4 @@
 from pathlib import Path
-from warnings import deprecated
 
 from code_gen.load_yaml import expand_value_refs, load_yaml
 from code_gen.model import *
@@ -149,9 +148,6 @@ def validate_emit_backend_shape(emit: EmitBackend, *, opcode: str) -> None:
             )
         return
 
-    if emit.kind == "custom":
-        return
-
     raise ValueError(f"{opcode}: unknown emit kind {emit.kind!r}")
 
 
@@ -202,7 +198,6 @@ def normalize_backend(
                 cpp_type=raw_mod.get("cpp_type"),
                 domain=raw_mod.get("domain"),
                 default=raw_mod.get("default"),
-                optional_policy=raw_mod.get("optional_policy"),
             )
 
         operands: dict[str, OperandBackend] = {}
@@ -298,9 +293,6 @@ def validate_one_sub_variant_mapping(
         )
 
 
-@deprecated(
-    "backend.includes is no longer supported; include necessary headers directly in the backend YAML"
-)
 def resolve_backend_includes(raw_backend: dict[str, Any]) -> tuple[str, ...] | None:
     raw_includes = raw_backend.get("includes", ())
 

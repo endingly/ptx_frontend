@@ -27,6 +27,10 @@ from code_gen.gen_parser_registry import (
     generate_parser_registry,
 )
 from code_gen.gen_parser_utils import generate_parser_util
+from code_gen.naming import (
+    category_parser_header_name,
+    category_parser_source_name,
+)
 from base.utils import format_file_inplace
 
 
@@ -66,6 +70,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Directory receiving generated C++ files.",
     )
 
+    parser.add_argument(
+        "--list-outputs",
+        action="store_true",
+        help="Print generated output paths without writing files.",
+    )
+
     return parser.parse_args()
 
 
@@ -81,12 +91,17 @@ def main() -> None:
     validate_directory(backend_dir, "--backend-dir")
     validate_directory(template_dir, "--template-dir")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     database = load_codegen_database(
         spec_dir=spec_dir,
         backend_dir=backend_dir,
     )
+
+    if args.list_outputs:
+        for path in expected_generated_files(database, output_dir):
+            print(path)
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     generated_files: list[Path] = []
 
@@ -166,7 +181,7 @@ def main() -> None:
         )
     )
 
-    format_generated_files(output_dir)
+    format_generated_files(generated_files)
 
 
 def validate_directory(path: Path, argument_name: str) -> None:
@@ -177,12 +192,34 @@ def validate_directory(path: Path, argument_name: str) -> None:
         raise NotADirectoryError(f"{argument_name} is not a directory: {path}")
 
 
-def format_generated_files(input_dir: Path):
-    generated_files = list(input_dir.glob("*.gen.hpp")) + list(
-        input_dir.glob("*.gen.cpp")
+def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
+    files: list[Path] = []
+
+    for loaded in database.units:
+        category = loaded.unit.category
+        files.extend(
+            (
+                output_dir / "public" / category_ir_header_name(category),
+                output_dir / "private" / category_parser_header_name(category),
+                output_dir / "private" / category_parser_source_name(category),
+            )
+        )
+
+    files.extend(
+        (
+            output_dir / "public/ptx_ir_registry.gen.hpp",
+            output_dir / "private/ptx_parser_util.gen.hpp",
+            output_dir / "private/ptx_parser_registry.gen.hpp",
+            output_dir / "private/ptx_parser_registry.gen.cpp",
+        )
     )
+
+    return tuple(files)
+
+
+def format_generated_files(generated_files: list[Path]) -> None:
     for file in generated_files:
-        format_file_inplace(file.__str__())
+        format_file_inplace(str(file))
 
 
 if __name__ == "__main__":

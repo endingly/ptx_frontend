@@ -58,6 +58,13 @@ class ParserVariantView:
 
     constraints: tuple[VariantConstraintView, ...]
 
+    min_ptx_major: int
+    min_ptx_minor: int
+    min_sm: int
+    family: str
+    deprecated: bool
+    removed: bool
+
     # Used only by emit.kind == sub_variant.
     storage_type: str | None
     storage_fields: tuple[str, ...]
@@ -67,6 +74,7 @@ class ParserVariantView:
 class ParserOperandView:
     spec_name: str
     field: str
+    kind_cpp: str
 
 
 @dataclass(frozen=True)
@@ -315,7 +323,11 @@ def build_modifier_views(
                 [],
             ).append(modifier)
 
-    ordered_names = list(backend.modifiers.keys())
+    ordered_names = canonical_modifier_order(spec)
+
+    for name in backend.modifiers:
+        if name not in ordered_names:
+            ordered_names.append(name)
 
     for name in occurrences:
         if name not in ordered_names:
@@ -432,6 +444,26 @@ def build_modifier_views(
         )
 
     return tuple(result)
+
+
+def canonical_modifier_order(spec: InstructionSpec) -> list[str]:
+    if not spec.variants:
+        raise ValueError(f"{spec.opcode}: no variants")
+
+    canonical = [modifier.name for modifier in spec.variants[0].modifiers]
+
+    if len(canonical) != len(set(canonical)):
+        raise ValueError(f"{spec.opcode}: duplicate modifier slots")
+
+    for variant in spec.variants[1:]:
+        order = [modifier.name for modifier in variant.modifiers]
+        if order != canonical:
+            raise ValueError(
+                f"{spec.opcode}.{variant.name}: modifier slots {order!r} "
+                f"do not match canonical order {canonical!r}"
+            )
+
+    return canonical
 
 
 def validate_modifier_recognizers(
@@ -630,6 +662,11 @@ def build_variant_views(
                 enum_name=to_pascal_case(variant.name),
                 predicate_name=("is_" + to_cpp_identifier(variant.name).lower()),
                 constraints=tuple(constraints),
+                **build_availability_view(
+                    opcode=spec.opcode,
+                    variant_name=variant.name,
+                    availability=variant.availability,
+                ),
                 storage_type=storage_type,
                 storage_fields=(
                     storage_fields.get(
@@ -643,6 +680,46 @@ def build_variant_views(
         )
 
     return tuple(result)
+
+
+def build_availability_view(
+    *,
+    opcode: str,
+    variant_name: str,
+    availability: dict,
+) -> dict[str, object]:
+    raw_ptx = str(availability.get("ptx", "0.0"))
+    parts = raw_ptx.split(".", maxsplit=1)
+
+    try:
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) == 2 else 0
+        min_sm = int(availability.get("sm", 0))
+    except ValueError as exc:
+        raise ValueError(
+            f"{opcode}.{variant_name}: invalid availability {availability!r}"
+        ) from exc
+
+    if (
+        major < 0
+        or minor < 0
+        or min_sm < 0
+        or major > 65535
+        or minor > 65535
+        or min_sm > 65535
+    ):
+        raise ValueError(
+            f"{opcode}.{variant_name}: availability values must fit uint16"
+        )
+
+    return {
+        "min_ptx_major": major,
+        "min_ptx_minor": minor,
+        "min_sm": min_sm,
+        "family": str(availability.get("family", "")),
+        "deprecated": bool(availability.get("deprecated", False)),
+        "removed": bool(availability.get("removed", False)),
+    }
 
 
 def build_variant_constraint(
@@ -784,10 +861,45 @@ def build_operand_views(
             ParserOperandView(
                 spec_name=operand.name,
                 field=backend_operand.field,
+                kind_cpp=operand_kind_cpp(
+                    opcode=spec.opcode,
+                    operand_name=operand.name,
+                    kind=operand.kind,
+                ),
             )
         )
 
     return tuple(result)
+
+
+def operand_kind_cpp(*, opcode: str, operand_name: str, kind: str) -> str:
+    mappings = {
+        "reg": "OperandKind::Register",
+        "pred": "OperandKind::Register",
+        "sreg": "OperandKind::Register",
+        "imm": "OperandKind::Immediate",
+        "reg_or_imm": "OperandKind::RegisterOrImmediate",
+        "addr": "OperandKind::Address",
+        "addr_or_symbol": "OperandKind::AddressOrIdentifier",
+        "label": "OperandKind::Identifier",
+        "label_or_reg": "OperandKind::Identifier",
+        "symbol": "OperandKind::Identifier",
+        "func": "OperandKind::Identifier",
+        "descriptor": "OperandKind::Identifier",
+        "reg_list": "OperandKind::Vector",
+        "pred_list": "OperandKind::Vector",
+        "operand_list": "OperandKind::Vector",
+        "vector": "OperandKind::Vector",
+        "tuple": "OperandKind::Vector",
+        "matrix_fragment": "OperandKind::Vector",
+    }
+
+    try:
+        return mappings[kind]
+    except KeyError as exc:
+        raise ValueError(
+            f"{opcode}.{operand_name}: parser does not support operand kind {kind!r}"
+        ) from exc
 
 
 def operand_signature(

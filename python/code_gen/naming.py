@@ -1,4 +1,5 @@
 import re
+from warnings import deprecated
 
 
 def to_pascal_case(value: str) -> str:
@@ -8,6 +9,7 @@ def to_pascal_case(value: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
+@deprecated("Use to_file_stem instead")
 def to_cpp_identifier(value: str) -> str:
     """Converts a string to a valid C++ identifier. Like "hello world" -> "hello_world"."""
     result = re.sub(r"[^A-Za-z0-9_]", "_", value)
@@ -28,6 +30,13 @@ def to_file_stem(value: str) -> str:
     result = re.sub(r"_+", "_", result)
 
     return result.strip("_").lower()
+
+
+def file_stem_to_pascal_case(value: str) -> str:
+    """Converts a file stem to PascalCase. Like "hello_world" -> "HelloWorld"."""
+    parts = re.split(r"[^A-Za-z0-9]+", value)
+
+    return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
 def category_ir_header_name(category: str) -> str:

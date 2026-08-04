@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "ptx_ir/source_loc.hpp"
 
@@ -19,6 +21,12 @@ enum class TokenKind : uint16_t {
   // End / error
   Eof,
   Error,
+
+  // Trivia is collected by PtxLexer and attached to the following
+  // significant token rather than exposed to every parser production.
+  Whitespace,
+  LineComment,
+  BlockComment,
 
   // Punctuation
   Comma,        // ,
@@ -89,6 +97,31 @@ enum class TokenKind : uint16_t {
   DotParam,
 };
 
+enum class TriviaKind : uint8_t {
+  Whitespace,
+  LineComment,
+  BlockComment,
+};
+
+struct Trivia {
+  TriviaKind kind;
+  std::string text;
+  SourceRange range;
+};
+
+/**
+ * A lossless lexical token.
+ *
+ * Whitespace and comments preceding this token are retained in
+ * `leading_trivia`. Trailing source trivia is retained on the Eof token.
+ */
+struct PtxToken {
+  TokenKind kind;
+  std::string text;
+  SourceRange range;
+  std::vector<Trivia> leading_trivia;
+};
+
 struct PtxSVal {
   std::string_view sv;
   SourceRange range;
@@ -96,6 +129,8 @@ struct PtxSVal {
 
 struct PtxLexerExtra {
   SourcePos pos{1, 1};
+  std::string block_comment_text;
+  SourcePos block_comment_start{};
 };
 
 }  // namespace ptx_frontend

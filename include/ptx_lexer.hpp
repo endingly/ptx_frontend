@@ -9,12 +9,7 @@ namespace ptx_frontend {
 
 class PtxLexer {
  public:
-  struct Token {
-    TokenKind kind;
-    std::string text;
-    // for error reporting; line and column of the token start
-    SourceRange range;
-  };
+  using Token = PtxToken;
 
   explicit PtxLexer(std::string_view src);
   ~PtxLexer();

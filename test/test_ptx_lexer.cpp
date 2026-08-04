@@ -188,15 +188,49 @@ TEST(PtxLexerNew, ComplexDotIdentifiersRemainSingleToken) {
       ".collector::b0::smem "
       ".mbarrier::complete_tx::bytes");
 
-  ASSERT_EQ(toks.size(), 7u);
+  ASSERT_EQ(toks.size(), 9u);
 
   expect_token(toks[0], TokenKind::DotIdent, ".kind::mxf8f6f4");
   expect_token(toks[1], TokenKind::DotIdent, ".async.shared::cta");
   expect_token(toks[2], TokenKind::DotIdent, ".shared::cluster");
-  expect_token(toks[3], TokenKind::DotIdent, ".scale::2,1");
-  expect_token(toks[4], TokenKind::DotIdent, ".b8x16.b6x16_p32");
-  expect_token(toks[5], TokenKind::DotIdent, ".collector::b0::smem");
-  expect_token(toks[6], TokenKind::DotIdent, ".mbarrier::complete_tx::bytes");
+  expect_token(toks[3], TokenKind::DotIdent, ".scale::2");
+  expect_token(toks[4], TokenKind::Comma, ",");
+  expect_token(toks[5], TokenKind::Decimal, "1");
+  expect_token(toks[6], TokenKind::DotIdent, ".b8x16.b6x16_p32");
+  expect_token(toks[7], TokenKind::DotIdent, ".collector::b0::smem");
+  expect_token(toks[8], TokenKind::DotIdent, ".mbarrier::complete_tx::bytes");
+}
+
+TEST(PtxLexerNew, PreservesLeadingTrivia) {
+  PtxLexer lexer("  // comment\n/* block */ add");
+
+  auto token = lexer.next();
+  ASSERT_EQ(token.kind, TokenKind::Ident);
+  EXPECT_EQ(token.text, "add");
+  ASSERT_EQ(token.leading_trivia.size(), 5u);
+  EXPECT_EQ(token.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(token.leading_trivia[0].text, "  ");
+  EXPECT_EQ(token.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(token.leading_trivia[1].text, "// comment");
+  EXPECT_EQ(token.leading_trivia[2].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(token.leading_trivia[2].text, "\n");
+  EXPECT_EQ(token.leading_trivia[3].kind, TriviaKind::BlockComment);
+  EXPECT_EQ(token.leading_trivia[3].text, "/* block */");
+  EXPECT_EQ(token.leading_trivia[4].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(token.leading_trivia[4].text, " ");
+}
+
+TEST(PtxLexerNew, PreservesTrailingTriviaOnEof) {
+  PtxLexer lexer("add\n// trailing");
+
+  EXPECT_EQ(lexer.next().kind, TokenKind::Ident);
+  auto eof = lexer.next();
+  ASSERT_EQ(eof.kind, TokenKind::Eof);
+  ASSERT_EQ(eof.leading_trivia.size(), 2u);
+  EXPECT_EQ(eof.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\n");
+  EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(eof.leading_trivia[1].text, "// trailing");
 }
 
 TEST(PtxLexerNew, NumericLeadingDotShapesAreDotIdent) {

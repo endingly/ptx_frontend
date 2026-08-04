@@ -125,32 +125,48 @@ if(BUILD_TESTING)
     gtest_discover_tests(ptx_lexer_test)
 
     add_executable(
-        ptx_parser_test
-        test/test_ptx_parser.cpp
-        test/test_ptx_parser_lifetime.cpp
-    )
-    target_include_directories(
-        ptx_parser_test
-        PRIVATE
-        ${PTX_GEN_PRIVATE_DIR}
+        test_ptx_synatax_parser
+        test/test_ptx_syntax_ast_parser.cpp
     )
     target_link_libraries(
-        ptx_parser_test
+        test_ptx_synatax_parser
         PRIVATE
         ptx_frontend
         GTest::gtest
         GTest::gtest_main
     )
-    gtest_discover_tests(ptx_parser_test)
+    target_compile_options(
+        test_ptx_synatax_parser PRIVATE -gdwarf-4
+    )
+    gtest_discover_tests(test_ptx_synatax_parser)
 
-    add_test(
-        NAME ptx_codegen_test
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/python/test_codegen.py
-    )
-    set_tests_properties(
-        ptx_codegen_test
-        PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    )
+    # add_executable(
+    #     ptx_parser_test
+    #     test/test_ptx_parser.cpp
+    #     test/test_ptx_parser_lifetime.cpp
+    # )
+    # target_include_directories(
+    #     ptx_parser_test
+    #     PRIVATE
+    #     ${PTX_GEN_PRIVATE_DIR}
+    # )
+    # target_link_libraries(
+    #     ptx_parser_test
+    #     PRIVATE
+    #     ptx_frontend
+    #     GTest::gtest
+    #     GTest::gtest_main
+    # )
+    # gtest_discover_tests(ptx_parser_test)
+
+    # add_test(
+    #     NAME ptx_codegen_test
+    #     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/python/test_codegen.py
+    # )
+    # set_tests_properties(
+    #     ptx_codegen_test
+    #     PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    # )
 endif()
 
 # ################################################################

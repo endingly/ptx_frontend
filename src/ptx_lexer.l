@@ -84,7 +84,7 @@ ID_CONT         [A-Za-z0-9_$%]
 IDENT           {ID_START}{ID_CONT}*
 
 DOT_ATOM        [A-Za-z0-9_$%]+
-DOT_IDENT       \.{DOT_ATOM}(::{DOT_ATOM})*(,{DOT_ATOM})*
+DOT_IDENT       \.{DOT_ATOM}(::{DOT_ATOM})*
 
 F32HEX          0[fF][0-9a-fA-F]{8}
 F64HEX          0[dD][0-9a-fA-F]{16}
@@ -99,16 +99,32 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 
 %%
 
-{WS}                    { /* skip */ }
-{LINE_CMT}              { /* skip */ }
+{WS}                    { TOK(Whitespace); }
+{LINE_CMT}              { TOK(LineComment); }
 
-"/*"                    { BEGIN(BLOCK_COMMENT); }
+"/*"                    {
+                            yyextra->block_comment_text.assign(yytext, yyleng);
+                            yyextra->block_comment_start = yylval->range.start;
+                            BEGIN(BLOCK_COMMENT);
+                        }
 
-<BLOCK_COMMENT>"*/"     { BEGIN(INITIAL); }
-<BLOCK_COMMENT>.|\n     { /* skip */ }
+<BLOCK_COMMENT>"*/"     {
+                            yyextra->block_comment_text.append(yytext, yyleng);
+                            yylval->sv = yyextra->block_comment_text;
+                            yylval->range = SourceRange{
+                                yyextra->block_comment_start,
+                                yylval->range.end,
+                            };
+                            BEGIN(INITIAL);
+                            return TokenKind::BlockComment;
+                        }
+<BLOCK_COMMENT>.|\n     { yyextra->block_comment_text.append(yytext, yyleng); }
 <BLOCK_COMMENT><<EOF>>  {
-                            SET_EMPTY_SV();
-                            yylval->range = ptx_make_current_range(yyextra);
+                            yylval->sv = yyextra->block_comment_text;
+                            yylval->range = SourceRange{
+                                yyextra->block_comment_start,
+                                ptx_make_current_range(yyextra).end,
+                            };
                             return TokenKind::Error;
                         }
 

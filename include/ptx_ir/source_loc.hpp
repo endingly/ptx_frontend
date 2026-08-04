@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace ptx_frontend {
 
@@ -83,6 +84,75 @@ struct WithLoc {
     requires std::equality_comparable<T>
   {
     return value == other.value && loc == other.loc;
+  }
+
+  bool operator==(const T& other) const
+    requires std::equality_comparable<T>
+  {
+    return value == other;
+  }
+};
+
+template <typename T>
+  requires std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>
+struct WithLocs {
+  T value{};
+  std::vector<SourceRange> locs;
+
+  WithLocs() = default;
+
+  WithLocs(const T& v, SourceRange l) : value(v) { locs.push_back(l); }
+
+  WithLocs(T&& v,
+           SourceRange l) noexcept(std::is_nothrow_move_constructible_v<T>)
+      : value(std::move(v)) {
+    locs.push_back(l);
+  }
+
+  WithLocs(const T& v) : value(v), locs{} {}
+
+  WithLocs(T&& v) noexcept(std::is_nothrow_move_constructible_v<T>)
+      : value(std::move(v)), locs{} {}
+
+  WithLocs(const WithLocs&) = default;
+  WithLocs& operator=(const WithLocs&) = default;
+  WithLocs(WithLocs&&) = default;
+  WithLocs& operator=(WithLocs&&) = default;
+
+  T& operator*() & noexcept { return value; }
+
+  const T& operator*() const& noexcept { return value; }
+
+  T* operator->() noexcept { return std::addressof(value); }
+
+  const T* operator->() const noexcept { return std::addressof(value); }
+
+  operator T&() & noexcept { return value; }
+
+  operator const T&() const& noexcept { return value; }
+
+  operator T() && noexcept(std::is_nothrow_move_constructible_v<T>) {
+    return std::move(value);
+  }
+
+  WithLocs& operator=(const T& v)
+    requires std::is_copy_assignable_v<T>
+  {
+    value = v;
+    return *this;
+  }
+
+  WithLocs& operator=(T&& v)
+    requires std::is_move_assignable_v<T>
+  {
+    value = std::move(v);
+    return *this;
+  }
+
+  bool operator==(const WithLocs& other) const
+    requires std::equality_comparable<T>
+  {
+    return value == other.value && locs == other.locs;
   }
 
   bool operator==(const T& other) const

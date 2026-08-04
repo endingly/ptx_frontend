@@ -5,6 +5,27 @@ typedef ptx_frontend::PtxSVal YYSTYPE;
 #include "_ptx_lexer.hpp"  // from ${PTX_GEN_DIR}, only visible to lexer impl
 
 namespace ptx_frontend {
+namespace {
+
+bool isTrivia(TokenKind kind) {
+  return kind == TokenKind::Whitespace || kind == TokenKind::LineComment ||
+         kind == TokenKind::BlockComment;
+}
+
+TriviaKind triviaKind(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::Whitespace:
+      return TriviaKind::Whitespace;
+    case TokenKind::LineComment:
+      return TriviaKind::LineComment;
+    case TokenKind::BlockComment:
+      return TriviaKind::BlockComment;
+    default:
+      return TriviaKind::Whitespace;
+  }
+}
+
+}  // namespace
 
 struct PtxLexer::Impl {
   yyscan_t scanner{};
@@ -27,9 +48,22 @@ PtxLexer::~PtxLexer() {
 }
 
 PtxLexer::Token PtxLexer::next() {
-  PtxSVal sval{};
-  TokenKind kind = static_cast<TokenKind>(yylex(&sval, impl_->scanner));
-  return Token{kind, std::string(sval.sv), sval.range};
+  std::vector<Trivia> leading_trivia;
+
+  for (;;) {
+    PtxSVal sval{};
+    TokenKind kind = static_cast<TokenKind>(yylex(&sval, impl_->scanner));
+    std::string text(sval.sv);
+
+    if (isTrivia(kind)) {
+      leading_trivia.push_back(
+          Trivia{triviaKind(kind), std::move(text), sval.range});
+      continue;
+    }
+
+    return Token{kind, std::move(text), sval.range,
+                 std::move(leading_trivia)};
+  }
 }
 
 PtxLexer::Token PtxLexer::peek() {

@@ -106,7 +106,12 @@ target_include_directories(
 target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
 find_package(fmt CONFIG REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
-target_link_libraries(ptx_frontend PUBLIC fmt::fmt magic_enum::magic_enum)
+find_package(Boost REQUIRED COMPONENTS dynamic_bitset)
+find_package(frozen CONFIG REQUIRED)
+target_link_libraries(
+    ptx_frontend 
+    PUBLIC fmt::fmt magic_enum::magic_enum Boost::dynamic_bitset frozen::frozen
+)
 
 add_dependencies(ptx_frontend auto_gen_code)
 

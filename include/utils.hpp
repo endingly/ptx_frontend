@@ -1,5 +1,7 @@
 #pragma once
+#include <cxxabi.h>
 #include <array>
+#include <memory>
 #include <ranges>
 #include <type_traits>
 
@@ -21,6 +23,22 @@ constexpr bool contains(const Range& r, const T& value) noexcept(noexcept(
     }
   }
   return false;
+}
+
+template <typename T>
+[[nodiscard]]
+std::string type_name() {
+  int status = 0;
+
+  std::unique_ptr<char, decltype(&std::free)> result{
+      abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status),
+      &std::free};
+
+  if (status == 0 && result) {
+    return result.get();
+  }
+
+  return typeid(T).name();
 }
 
 };  // namespace ptx_frontend::utils

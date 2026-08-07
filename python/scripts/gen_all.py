@@ -27,6 +27,7 @@ from code_gen.gen_parser_registry import (
     generate_parser_registry,
 )
 from code_gen.gen_parser_utils import generate_parser_util
+from code_gen.gen_resolved_ir import generate_resolved_ir_header
 from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_header
 from code_gen.naming import (
     category_parser_header_name,
@@ -139,6 +140,19 @@ def main() -> None:
     generated_files.append(ir_registry_path)
 
     # -------------------------------------------------------------------------
+    # Public generated Resolved IR instruction declarations
+    # -------------------------------------------------------------------------
+
+    resolved_ir_path = output_dir / "public/resolved_ir.gen.hpp"
+
+    generate_resolved_ir_header(
+        database,
+        output_path=resolved_ir_path,
+    )
+
+    generated_files.append(resolved_ir_path)
+
+    # -------------------------------------------------------------------------
     # Global parser domain/string utility
     # -------------------------------------------------------------------------
 
@@ -222,6 +236,7 @@ def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
     files.extend(
         (
             output_dir / "public/ptx_ir_registry.gen.hpp",
+            output_dir / "public/resolved_ir.gen.hpp",
             output_dir / "private/ptx_parser_util.gen.hpp",
             output_dir / "private/syntax_descriptor.gen.hpp",
             output_dir / "private/ptx_parser_registry.gen.hpp",

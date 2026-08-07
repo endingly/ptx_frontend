@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 
@@ -13,6 +14,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from code_gen.database import load_codegen_database
+from code_gen.gen_resolved_ir import generate_resolved_ir_header
 from ir.resolved_ir import ResolvedFieldOrigin, from_instruction_spec
 
 
@@ -75,6 +77,31 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
                 ("src2", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
             ],
+        )
+
+    def test_generate_resolved_ir_header(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+            backend_dir=REPO_ROOT / "instructions/ptx_cpp_backend_spec",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir.gen.hpp"
+            generate_resolved_ir_header(database, output_path=output_path)
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertTrue(source.startswith("#pragma once"))
+        self.assertIn("// Generated at: ", source)
+        self.assertIn("struct Add {", source)
+        self.assertIn("enum class VariantType {", source)
+        self.assertIn("struct IntegerNoSat {", source)
+        self.assertIn("WithLocs<ScalarType> type;", source)
+        self.assertIn("WithLocs<bool> saturate;", source)
+        self.assertIn("using Variant = std::variant<", source)
+        self.assertIn(
+            "static const check_end::InstructionDescriptor& "
+            "get_inst_descriptor() noexcept;",
+            source,
         )
 
 

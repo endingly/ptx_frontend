@@ -3,7 +3,7 @@
 #include <string_view>
 #include <variant>
 
-#include "ptx_syntax_parser.hpp"
+#include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
 namespace ptx_frontend {
 namespace {

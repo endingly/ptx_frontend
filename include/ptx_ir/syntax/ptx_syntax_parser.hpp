@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-#include "ptx_ir/ptx_syntax_ast.hpp"
+#include "ptx_ir/syntax/ptx_syntax_ast.hpp"
 #include "ptx_lexer.hpp"
 
 namespace ptx_frontend {

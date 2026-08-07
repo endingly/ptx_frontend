@@ -1,17 +1,16 @@
 #pragma once
 #include <fmt/core.h>
-#include <bit>
-#include <bitset>
-#include <boost/dynamic_bitset/dynamic_bitset.hpp>
+#include <array>
 #include <cstdint>
 #include <expected>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <ptx_ir/base.hpp>
 #include <source_location>
+#include <span>
 #include <type_traits>
 #include <unordered_set>
-#include "ptx_ir/ptx_syntax_ast.hpp"
+#include "ptx_ir/syntax/ptx_syntax_ast.hpp"
 
 namespace ptx_frontend::resolved_ir {
 
@@ -27,16 +26,16 @@ enum class OperandShape : uint16_t {
 
 template <typename T>
   requires(std::is_scoped_enum_v<T>)
-T operator|(T lhs, T rhs) {
-  using under_type = std::underlying_type<T>;
+constexpr T operator|(T lhs, T rhs) {
+  using under_type = std::underlying_type_t<T>;
   return static_cast<T>(static_cast<under_type>(lhs) |
                         static_cast<under_type>(rhs));
 }
 
 template <typename T>
   requires(std::is_scoped_enum_v<T>)
-bool valid(T enum_value) {
-  using under_type = std::underlying_type<T>;
+constexpr bool valid(T enum_value) {
+  using under_type = std::underlying_type_t<T>;
   constexpr int32_t bit_num = sizeof(under_type) * 8;
   bool flag = false;
   constexpr under_type full_r = 0;
@@ -69,9 +68,13 @@ enum class OperandSyntaxShape : uint8_t {
   Identifier = 1 << 0,
   Immediate = 1 << 1,
   Address = 1 << 2,
-  Vector = 1 << 3,
-  Group = 1 << 4,  // for op call syntax (...)
+  VectorPack = 1 << 3,
+  VectorMember = 1 << 4,
+  Group = 1 << 5,  // for op call syntax (...)
 };
+
+OperandSyntaxShape get_operand_syntax_shape(
+    const syntax_ast::AstOperand& operand);
 
 enum class OperandPresence : uint8_t {
   Required,
@@ -79,9 +82,14 @@ enum class OperandPresence : uint8_t {
 };
 
 struct OperandSlotDescriptor {
-  std::string field_id;               // "dst", "src1", "src2", "barrier_id"
-  OperandSyntaxShape allowed_shapes;  // AST 阶段允许的语法形状
+  std::string_view field_id;          // "dst", "src1", "src2", "barrier_id"
+  OperandSyntaxShape allowed_shapes;  // AST stage allow syntax shape
   OperandPresence presence;
+
+  // OperandRole role;
+  // OperandAccess access;
+  // OperandShape allowed_resolved_shapes;
+  // StateSpace allowed_state_spaces;
 };
 
 enum class OperandLayoutKind : uint8_t {
@@ -89,17 +97,8 @@ enum class OperandLayoutKind : uint8_t {
 };
 
 struct OperandLayoutDescriptor {
-
   OperandLayoutKind layout_id;
-  std::vector<OperandSlotDescriptor> slots;
-};
-
-struct OperandDescriptor {
-  std::string_view name;  // "dst", "src1", "src2"
-  OperandRole role;
-  OperandAccess access;
-  OperandShape allowed_shapes;
-  StateSpace allowed_state_spaces;
+  std::span<const OperandSlotDescriptor> slots;
 };
 
 enum class PresenceRequirement {
@@ -109,24 +108,24 @@ enum class PresenceRequirement {
 };
 
 struct ModifierDescriptor {
-  std::unordered_set<std::string> allowed_values;
+  std::span<const std::string_view> allowed_values;
   PresenceRequirement presence;
-  std::string kind_id;
+  std::string_view kind_id;
 
   bool check(std::string modifier_str) const;
 };
 
 struct VariantDescriptor {
-  std::string variant_name;
-  std::vector<ModifierDescriptor> modifiers;
-  std::vector<OperandLayoutDescriptor> operand_layouts;
+  std::string_view variant_name;
+  std::span<const ModifierDescriptor> modifiers;
+  std::span<const OperandLayoutDescriptor> operand_layouts;
 
   int32_t get_required_modifier_num() const;
 };
 
 struct InstructionDescriptor {
-  std::string Opcode_name;
-  std::vector<VariantDescriptor> variants;
+  std::string_view Opcode_name;
+  std::span<const VariantDescriptor> variants;
 };
 
 };  // namespace check_end
@@ -174,16 +173,8 @@ struct Add {
   };
 
   struct IntegerNoSat {
-    enum class Type {
-      U16,
-      U32,
-      U64,
-      S16,
-      S32,
-      S64,
-    };
     // no saturation for this variant
-    WithLocs<Type> type;
+    WithLocs<ScalarType> type;
     WithLocs<ResolvedRegisterId> dst;
     WithLocs<RegOrImm> src1;
     WithLocs<RegOrImm> src2;
@@ -200,12 +191,8 @@ struct Add {
 
   // YAML: add_simd_no_sat_sm90
   struct SimdNoSatSm90 {
-    enum class Type {
-      U16x2,
-      S16x2,
-    };
     // no saturation for this variant
-    WithLocs<Type> type;
+    WithLocs<ScalarType> type;
     WithLocs<ResolvedRegisterId> dst;
     WithLocs<RegOrImm> src1;
     WithLocs<RegOrImm> src2;
@@ -213,12 +200,7 @@ struct Add {
 
   // YAML: add_packed_optional_sat_sm120
   struct PackedOptionalSatSm120 {
-    enum class Type {
-      U8x4,
-      S8x4,
-    };
-
-    WithLocs<Type> type;
+    WithLocs<ScalarType> type;
     WithLocs<bool> saturate;
     WithLocs<ResolvedRegisterId> dst;
     WithLocs<RegOrImm> src1;
@@ -227,13 +209,8 @@ struct Add {
 
   // YAML: add_sat_sm120
   struct SatSm120 {
-    enum class Type {
-      U16x2,
-      S16x2,
-      U32,
-    };
     // saturation is always true for this variant
-    WithLocs<Type> type;
+    WithLocs<ScalarType> type;
     WithLocs<ResolvedRegisterId> dst;
     WithLocs<RegOrImm> src1;
     WithLocs<RegOrImm> src2;
@@ -243,10 +220,8 @@ struct Add {
                                PackedOptionalSatSm120, SatSm120>;
   Variant variant;
 
-  static std::expected<Add, ResolveDiagnostic> resolve(
-      const syntax_ast::AstInstruction& ast);
   bool check();
-  static check_end::InstructionDescriptor get_inst_descriptor();
+  static const check_end::InstructionDescriptor& get_inst_descriptor() noexcept;
 };
 
 template <typename T>
@@ -256,36 +231,97 @@ concept PtxOperator = requires(T object) {
   { object.check() } -> std::same_as<bool>;
   {
     T::get_inst_descriptor()
-  } -> std::same_as<check_end::InstructionDescriptor>;
+  } -> std::same_as<const check_end::InstructionDescriptor&>;
 };
-
-using str_map =
-    std::unordered_map<std::string, std::unordered_set<std::string>>;
 
 template <PtxOperator T>
 std::optional<std::string> get_kind_id(std::string input_str) {
-  str_map m_result;
-  auto inst_desc = T::get_inst_descriptor();
-  for (const auto& item : inst_desc.variants) {
-    for (const auto& item_m : item.modifiers) {
-      if (!m_result.contains(item_m.kind_id)) {
-        m_result[item_m.kind_id] = std::unordered_set<std::string>();
-        m_result[item_m.kind_id].insert_range(item_m.allowed_values);
-      } else {
-        for (const auto& item_c : item_m.allowed_values) {
-          if (!m_result[item_m.kind_id].contains(item_c)) {
-            m_result[item_m.kind_id].insert(item_c);
+  struct ModifierKindEntry {
+    std::string_view spelling;
+    std::string_view kind_id;
+  };
+  auto count_modifier_kind_entries =
+      [](const check_end::InstructionDescriptor& instruction) constexpr
+      -> size_t {
+    std::size_t count = 0;
+    for (const auto& variant : instruction.variants) {
+      for (const auto& modifier : variant.modifiers) {
+        for (const std::string_view spelling : modifier.allowed_values) {
+          bool already_seen = false;
+          bool reached_current_entry = false;
+          for (const auto& prior_variant : instruction.variants) {
+            for (const auto& prior_modifier : prior_variant.modifiers) {
+              for (const std::string_view prior_spelling :
+                   prior_modifier.allowed_values) {
+                if (&prior_modifier == &modifier &&
+                    &prior_spelling == &spelling) {
+                  reached_current_entry = true;
+                  break;
+                }
+                if (prior_spelling == spelling) {
+                  if (prior_modifier.kind_id != modifier.kind_id) {
+                    throw "one modifier spelling maps to multiple kind IDs";
+                  }
+                  already_seen = true;
+                }
+              }
+              if (reached_current_entry)
+                break;
+            }
+            if (reached_current_entry)
+              break;
           }
+          if (!already_seen)
+            ++count;
         }
       }
     }
-  }
+    return count;
+  };
+  const check_end::InstructionDescriptor& inst_desc = T::get_inst_descriptor();
+  constexpr size_t count = count_modifier_kind_entries(inst_desc);
+  auto build_modifier_kind_entries =
+      [&count](const check_end::InstructionDescriptor& instruction) constexpr
+      -> std::array<ModifierKindEntry, count> {
+    std::array<ModifierKindEntry, count> result{};
+    std::size_t result_size = 0;
+    for (const auto& variant : instruction.variants) {
+      for (const auto& modifier : variant.modifiers) {
+        for (const std::string_view spelling : modifier.allowed_values) {
+          bool already_seen = false;
+          for (std::size_t index = 0; index < result_size; ++index) {
+            const auto& existing = result[index];
+            if (existing.spelling != spelling)
+              continue;
+            if (existing.kind_id != modifier.kind_id) {
+              throw "one modifier spelling maps to multiple kind IDs";
+            }
+            already_seen = true;
+            break;
+          }
+          if (already_seen)
+            continue;
+          if (result_size == count) {
+            throw "modifier-kind entry count does not match output capacity";
+          }
+          result[result_size++] = ModifierKindEntry{
+              .spelling = spelling,
+              .kind_id = modifier.kind_id,
+          };
+        }
+      }
+    }
+    if (result_size != count) {
+      throw "modifier-kind entry count does not match generated table";
+    }
+    return result;
+  };
+  constexpr std::array<ModifierKindEntry, count> find_map_r =
+      build_modifier_kind_entries(inst_desc);
 
-  for (const auto& item : m_result) {
-    if (item.second.contains(input_str))
-      return item.first;
-    else
-      continue;
+  for (const auto& entry : find_map_r) {
+    if (entry.spelling == input_str)
+      return std::string(entry.kind_id);
   }
   return std::nullopt;
 }
@@ -319,6 +355,11 @@ std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
 
   return result;
 }
+
+bool matches_variant(const check_end::VariantDescriptor& variant,
+                     const ActualModifierTable& actual_modifiers);
+bool matches_modifier_slot(const check_end::ModifierDescriptor& descriptor,
+                           const ActualModifierTable& actual_modifiers);
 
 template <PtxOperator T>
 std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
@@ -366,11 +407,4 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
   }
   return *variant;
 }
-
-bool matches_modifier_slot(const check_end::ModifierDescriptor& descriptor,
-                           const ActualModifierTable& actual_modifiers);
-
-bool matches_variant(const check_end::VariantDescriptor& variant,
-                     const ActualModifierTable& actual_modifiers);
-
 };  // namespace ptx_frontend::resolved_ir

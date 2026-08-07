@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 #include "ptx_ir/source_loc.hpp"
-#include "ptx_token.hpp"
+#include "ptx_ir/lex/ptx_token.hpp"
 
 namespace ptx_frontend {
 

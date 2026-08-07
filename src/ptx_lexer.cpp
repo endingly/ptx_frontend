@@ -1,5 +1,4 @@
 #include "ptx_lexer.hpp"
-#include "ptx_token.hpp"
 
 typedef ptx_frontend::PtxSVal YYSTYPE;
 #include "_ptx_lexer.hpp"  // from ${PTX_GEN_DIR}, only visible to lexer impl

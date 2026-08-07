@@ -5,7 +5,7 @@
 #include <variant>
 #include <vector>
 
-#include "ptx_token.hpp"
+#include "ptx_ir/lex/ptx_token.hpp"
 
 namespace ptx_frontend::syntax_ast {
 

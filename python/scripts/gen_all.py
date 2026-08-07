@@ -27,6 +27,7 @@ from code_gen.gen_parser_registry import (
     generate_parser_registry,
 )
 from code_gen.gen_parser_utils import generate_parser_util
+from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_header
 from code_gen.naming import (
     category_parser_header_name,
     category_parser_source_name,
@@ -151,6 +152,19 @@ def main() -> None:
 
     generated_files.append(parser_util_path)
 
+    # -------------------------------------------------------------------------
+    # Resolved IR syntax descriptor implementations
+    # -------------------------------------------------------------------------
+
+    syntax_descriptor_path = output_dir / "private/syntax_descriptor.gen.hpp"
+
+    generate_syntax_descriptor_header(
+        database,
+        output_path=syntax_descriptor_path,
+    )
+
+    generated_files.append(syntax_descriptor_path)
+
     # Generate category parser files.
     for loaded in database.units:
         parser_header, parser_source = generate_parser_category(
@@ -209,6 +223,7 @@ def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
         (
             output_dir / "public/ptx_ir_registry.gen.hpp",
             output_dir / "private/ptx_parser_util.gen.hpp",
+            output_dir / "private/syntax_descriptor.gen.hpp",
             output_dir / "private/ptx_parser_registry.gen.hpp",
             output_dir / "private/ptx_parser_registry.gen.cpp",
         )

@@ -1,4 +1,4 @@
-#include "ptx_syntax_parser.hpp"
+#include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
 #include <utility>
 

@@ -7,8 +7,6 @@
   "dependencies": [
     "fmt",
     "gtest",
-    "magic-enum",
-    "boost-dynamic-bitset",
-    "frozen"
+    "magic-enum"
   ]
 }

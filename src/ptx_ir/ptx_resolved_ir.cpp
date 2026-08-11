@@ -6,11 +6,10 @@
 #include <limits>
 #include <string_view>
 #include <vector>
-#include "syntax_descriptor.gen.hpp"
 
 namespace ptx_frontend::resolved_ir::check_end {
 
-bool ModifierDescriptor::check(std::string modifier_str) const {
+bool SyntaxModifierDescriptor::check(std::string modifier_str) const {
   if (this->presence == PresenceRequirement::Absent) {
     return std::ranges::find(this->allowed_values, modifier_str) ==
            this->allowed_values.end();
@@ -23,7 +22,7 @@ bool ModifierDescriptor::check(std::string modifier_str) const {
   return false;  // should not reach here
 }
 
-int32_t VariantDescriptor::get_required_modifier_num() const {
+int32_t SyntaxVariantDescriptor::get_required_modifier_num() const {
   int32_t size = 0;
   for (const auto& item : this->modifiers) {
     if (item.presence == PresenceRequirement::Absent or
@@ -39,12 +38,18 @@ int32_t VariantDescriptor::get_required_modifier_num() const {
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-using check_end::OperandLayoutDescriptor;
 using check_end::OperandPresence;
-using check_end::OperandSlotDescriptor;
 using check_end::OperandSyntaxShape;
 using check_end::ResolvedValueKind;
-using check_end::VariantDescriptor;
+using check_end::ResolvedFieldDescriptor;
+using check_end::ResolvedInstructionDescriptor;
+using check_end::ResolvedOperandBindingDescriptor;
+using check_end::ResolvedVariantDescriptor;
+using check_end::SyntaxInstructionDescriptor;
+using check_end::SyntaxModifierDescriptor;
+using check_end::SyntaxOperandLayoutDescriptor;
+using check_end::SyntaxOperandSlotDescriptor;
+using check_end::SyntaxVariantDescriptor;
 
 /**
  * @brief Check if the actual operand syntax shape is allowed by the allowed shape.
@@ -68,13 +73,13 @@ bool allows_shape(OperandSyntaxShape allowed, OperandSyntaxShape actual) {
  * @return true if the actual operands match the layout descriptor
  * @return false otherwise
  */
-bool matches_operand_layout(const OperandLayoutDescriptor& layout,
+bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
                             const syntax_ast::AstInstruction& ast) {
   if (ast.operands.size() > layout.slots.size())
     return false;
 
   for (size_t index = 0; index < layout.slots.size(); ++index) {
-    const OperandSlotDescriptor& slot = layout.slots[index];
+    const SyntaxOperandSlotDescriptor& slot = layout.slots[index];
     if (index == ast.operands.size()) {
       if (slot.presence == OperandPresence::Required)
         return false;
@@ -94,13 +99,20 @@ bool matches_operand_layout(const OperandLayoutDescriptor& layout,
  * 
  * @param variant instruction variant descriptor
  * @param ast syntax AST instruction
- * @return std::expected<const OperandLayoutDescriptor*, ResolveDiagnostic> 
+ * @return the selected syntax layout and its index
  */
-std::expected<const OperandLayoutDescriptor*, ResolveDiagnostic>
-select_operand_layout(const VariantDescriptor& variant,
-                      const syntax_ast::AstInstruction& ast) {
-  const OperandLayoutDescriptor* selected = nullptr;
-  for (const OperandLayoutDescriptor& layout : variant.operand_layouts) {
+struct SelectedOperandLayout {
+  const SyntaxOperandLayoutDescriptor& descriptor;
+  size_t index;
+};
+
+std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
+    const SyntaxVariantDescriptor& variant,
+    const syntax_ast::AstInstruction& ast) {
+  const SyntaxOperandLayoutDescriptor* selected = nullptr;
+  size_t selected_index = 0;
+  for (size_t index = 0; index < variant.operand_layouts.size(); ++index) {
+    const auto& layout = variant.operand_layouts[index];
     if (!matches_operand_layout(layout, ast))
       continue;
     if (selected != nullptr) {
@@ -110,10 +122,12 @@ select_operand_layout(const VariantDescriptor& variant,
           variant.variant_name));
     }
     selected = &layout;
+    selected_index = index;
   }
 
   if (selected != nullptr)
-    return selected;
+    return SelectedOperandLayout{.descriptor = *selected,
+                                 .index = selected_index};
   return std::unexpected(ResolveDiagnostic{
       .range = ast.range,
       .message = fmt::format(
@@ -127,14 +141,14 @@ select_operand_layout(const VariantDescriptor& variant,
  * 
  * @param instruction instruction descriptor
  * @param name variant name string
- * @return const VariantDescriptor& 
+ * @return const SyntaxVariantDescriptor&
  */
-const VariantDescriptor& find_variant_descriptor(
-    const check_end::InstructionDescriptor& instruction,
+const SyntaxVariantDescriptor& find_syntax_variant_descriptor(
+    const SyntaxInstructionDescriptor& instruction,
     std::string_view name) {
   const auto& descriptors = instruction.variants;
   const auto it = std::ranges::find_if(
-      descriptors, [name](const VariantDescriptor& descriptor) {
+      descriptors, [name](const SyntaxVariantDescriptor& descriptor) {
         return descriptor.variant_name == name;
       });
   if (it == descriptors.end()) {
@@ -287,11 +301,11 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
  * @return std::optional<std::string_view> kind ID of the modifier if it matches, std::nullopt otherwise
  */
 std::optional<std::string_view> modifier_kind_id(
-    const check_end::InstructionDescriptor& instruction,
+    const SyntaxInstructionDescriptor& instruction,
     std::string_view spelling) {
   std::optional<std::string_view> result;
-  for (const VariantDescriptor& variant : instruction.variants) {
-    for (const check_end::ModifierDescriptor& modifier : variant.modifiers) {
+  for (const SyntaxVariantDescriptor& variant : instruction.variants) {
+    for (const SyntaxModifierDescriptor& modifier : variant.modifiers) {
       if (!std::ranges::contains(modifier.allowed_values, spelling))
         continue;
       if (result && *result != modifier.kind_id) {
@@ -306,36 +320,81 @@ std::optional<std::string_view> modifier_kind_id(
   return result;
 }
 
-std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
-    const OperandSlotDescriptor& slot, const ResolvedInstructionFields& fields,
-    const SourceRange& range) {
-  if (slot.type_expr.empty())
-    return ScalarType::Invalid;
-  if (!slot.type_expr.starts_with('$')) {
+const ResolvedVariantDescriptor& find_resolved_variant_descriptor(
+    const ResolvedInstructionDescriptor& instruction, std::string_view name) {
+  const auto it = std::ranges::find_if(
+      instruction.variants, [name](const ResolvedVariantDescriptor& descriptor) {
+        return descriptor.variant_name == name;
+      });
+  if (it == instruction.variants.end()) {
     throw ResolveException(
-        fmt::format("Operand slot '{}' has unsupported type expression '{}'.",
-                    slot.field_id, slot.type_expr));
+        fmt::format("Resolved descriptor for '{}' has no variant named '{}'.",
+                    instruction.opcode_name, name));
   }
-  const std::string_view field_id = slot.type_expr.substr(1);
+  return *it;
+}
+
+const ResolvedFieldDescriptor& find_resolved_field_descriptor(
+    const ResolvedVariantDescriptor& variant, std::string_view field_id) {
+  const auto it = std::ranges::find_if(
+      variant.fields, [field_id](const ResolvedFieldDescriptor& descriptor) {
+        return descriptor.field_id == field_id;
+      });
+  if (it == variant.fields.end()) {
+    throw ResolveException(fmt::format(
+        "Resolved descriptor variant '{}' has no field named '{}'.",
+        variant.variant_name, field_id));
+  }
+  return *it;
+}
+
+const SyntaxModifierDescriptor& find_syntax_modifier_descriptor(
+    const SyntaxVariantDescriptor& variant, std::string_view kind_id) {
+  const auto it = std::ranges::find_if(
+      variant.modifiers, [kind_id](const SyntaxModifierDescriptor& descriptor) {
+        return descriptor.kind_id == kind_id;
+      });
+  if (it == variant.modifiers.end()) {
+    throw ResolveException(fmt::format(
+        "Syntax descriptor variant '{}' has no modifier kind '{}'.",
+        variant.variant_name, kind_id));
+  }
+  return *it;
+}
+
+std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
+    const ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const SourceRange& range) {
+  if (binding.type_expr.empty())
+    return ScalarType::Invalid;
+  if (!binding.type_expr.starts_with('$')) {
+    throw ResolveException(
+        fmt::format("Resolved operand field '{}' has unsupported type expression "
+                    "'{}'.",
+                    binding.target_field_id, binding.type_expr));
+  }
+  const std::string_view field_id = binding.type_expr.substr(1);
   const auto it = fields.modifiers.find(std::string(field_id));
   if (it == fields.modifiers.end()) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = fmt::format("Operand '{}' requires modifier '{}'.",
-                               slot.field_id, field_id),
+                               binding.target_field_id, field_id),
     });
   }
   if (const auto* type = std::get_if<WithLocs<ScalarType>>(&it->second))
     return type->value;
   throw ResolveException(fmt::format(
       "Operand '{}' expects modifier '{}' to resolve as ScalarType.",
-      slot.field_id, field_id));
+      binding.target_field_id, field_id));
 }
 
 std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
-    const OperandSlotDescriptor& slot, const syntax_ast::AstOperand& operand,
+    const ResolvedFieldDescriptor& field,
+    const ResolvedOperandBindingDescriptor& binding,
+    const syntax_ast::AstOperand& operand,
     const ResolvedInstructionFields& fields) {
-  switch (slot.value_kind) {
+  switch (field.value_kind) {
     case ResolvedValueKind::Register: {
       auto value = resolve_register(operand);
       if (!value)
@@ -351,7 +410,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
             .message = "Expected an immediate operand.",
         });
       }
-      const auto type = type_for_operand(slot, fields, immediate->syntax.range);
+      const auto type =
+          type_for_operand(binding, fields, immediate->syntax.range);
       if (!type)
         return std::unexpected(type.error());
       auto value = resolve_immediate_value(*immediate, *type);
@@ -362,7 +422,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::RegOrImm: {
       const auto type = type_for_operand(
-          slot, fields,
+          binding, fields,
           std::visit([](const auto& item) { return item.syntax.range; },
                      operand));
       if (!type)
@@ -376,7 +436,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::ScalarType:
       throw ResolveException(fmt::format(
           "Operand slot '{}' has a non-operand resolved value kind.",
-          slot.field_id));
+          field.field_id));
   }
   throw ResolveException("Unknown ResolvedValueKind.");
 }
@@ -385,7 +445,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
 
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,
-    const check_end::InstructionDescriptor& instruction) {
+    const check_end::SyntaxInstructionDescriptor& instruction) {
   ActualModifierTable result;
   for (const auto& modifier : ast.modifiers) {
     const auto kind_id = modifier_kind_id(instruction, modifier.syntax.text);
@@ -410,49 +470,82 @@ std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
 
 std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
-    const check_end::InstructionDescriptor& instruction,
+    const check_end::SyntaxInstructionDescriptor& syntax_instruction,
+    const check_end::ResolvedInstructionDescriptor& resolved_instruction,
     std::string_view variant_name) {
-  const VariantDescriptor& variant =
-      find_variant_descriptor(instruction, variant_name);
-  const auto layout = select_operand_layout(variant, ast);
-  if (!layout)
-    return std::unexpected(layout.error());
+  const SyntaxVariantDescriptor& syntax_variant =
+      find_syntax_variant_descriptor(syntax_instruction, variant_name);
+  const ResolvedVariantDescriptor& resolved_variant =
+      find_resolved_variant_descriptor(resolved_instruction, variant_name);
+  const auto selected_layout = select_operand_layout(syntax_variant, ast);
+  if (!selected_layout)
+    return std::unexpected(selected_layout.error());
 
-  const auto actual_modifiers = collect_actual_modifiers(ast, instruction);
+  if (selected_layout->index >= resolved_variant.operand_layouts.size()) {
+    throw ResolveException(fmt::format(
+        "Resolved descriptor variant '{}' has no operand binding layout at "
+        "syntax layout index {}.",
+        variant_name, selected_layout->index));
+  }
+  const auto& resolved_layout =
+      resolved_variant.operand_layouts[selected_layout->index];
+  if (resolved_layout.bindings.size() !=
+      selected_layout->descriptor.slots.size()) {
+    throw ResolveException(fmt::format(
+        "Descriptor variant '{}': syntax layout {} has {} slots but resolved "
+        "binding layout has {} entries.",
+        variant_name, selected_layout->index,
+        selected_layout->descriptor.slots.size(), resolved_layout.bindings.size()));
+  }
+
+  const auto actual_modifiers =
+      collect_actual_modifiers(ast, syntax_instruction);
   if (!actual_modifiers)
     return std::unexpected(actual_modifiers.error());
 
   ResolvedInstructionFields fields{.variant_name = variant_name};
-  for (const check_end::ModifierDescriptor& modifier : variant.modifiers) {
-    const auto actual = actual_modifiers->find(std::string(modifier.kind_id));
+  for (const auto& binding : resolved_variant.modifier_bindings) {
+    const auto& syntax_modifier = find_syntax_modifier_descriptor(
+        syntax_variant, binding.source_kind_id);
+    const auto& field = find_resolved_field_descriptor(
+        resolved_variant, binding.target_field_id);
+    const auto actual =
+        actual_modifiers->find(std::string(binding.source_kind_id));
     const bool present = actual != actual_modifiers->end();
 
-    switch (modifier.value_kind) {
+    switch (field.value_kind) {
       case ResolvedValueKind::Bool:
         if (present) {
           fields.modifiers.emplace(
-              modifier.kind_id,
+              field.field_id,
               WithLocs<bool>{true, actual->second->syntax.range});
-        } else if (modifier.presence ==
+        } else if (syntax_modifier.presence ==
                    check_end::PresenceRequirement::Optional) {
-          fields.modifiers.emplace(modifier.kind_id, WithLocs<bool>{false});
+          fields.modifiers.emplace(field.field_id, WithLocs<bool>{false});
+        } else {
+          return std::unexpected(ResolveDiagnostic{
+              .range = ast.range,
+              .message = fmt::format("Resolved variant requires '{}' modifier.",
+                                     binding.source_kind_id),
+          });
         }
         break;
       case ResolvedValueKind::ScalarType:
         if (!present) {
-          if (modifier.presence == check_end::PresenceRequirement::Optional)
+          if (syntax_modifier.presence ==
+              check_end::PresenceRequirement::Optional)
             break;
           return std::unexpected(ResolveDiagnostic{
               .range = ast.range,
               .message = fmt::format("Resolved variant requires '{}' modifier.",
-                                     modifier.kind_id),
+                                     binding.source_kind_id),
           });
         }
         {
           auto value = resolve_scalar_type(*actual->second);
           if (!value)
             return std::unexpected(value.error());
-          fields.modifiers.emplace(modifier.kind_id, std::move(*value));
+          fields.modifiers.emplace(field.field_id, std::move(*value));
         }
         break;
       case ResolvedValueKind::Register:
@@ -460,21 +553,23 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::RegOrImm:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
-                        modifier.kind_id));
+                        binding.source_kind_id));
     }
   }
 
   for (size_t index = 0; index < ast.operands.size(); ++index) {
-    const OperandSlotDescriptor& slot = (*layout)->slots[index];
-    auto value = resolve_operand_value(slot, ast.operands[index], fields);
+    const auto& binding = resolved_layout.bindings[index];
+    const auto& field = find_resolved_field_descriptor(
+        resolved_variant, binding.target_field_id);
+    auto value = resolve_operand_value(field, binding, ast.operands[index], fields);
     if (!value)
       return std::unexpected(value.error());
     const auto [_, inserted] =
-        fields.operands.emplace(std::string(slot.field_id), std::move(*value));
+        fields.operands.emplace(std::string(field.field_id), std::move(*value));
     if (!inserted) {
       throw ResolveException(
           fmt::format("Operand layout for variant '{}' repeats field '{}'.",
-                      variant.variant_name, slot.field_id));
+                      syntax_variant.variant_name, field.field_id));
     }
   }
 
@@ -504,7 +599,7 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
       operand);
 }
 
-bool matches_modifier_slot(const check_end::ModifierDescriptor& descriptor,
+bool matches_modifier_slot(const check_end::SyntaxModifierDescriptor& descriptor,
                            const ActualModifierTable& actual_modifiers) {
   const auto it = actual_modifiers.find(std::string(descriptor.kind_id));
   const bool present = it != actual_modifiers.end();
@@ -528,7 +623,7 @@ bool matches_modifier_slot(const check_end::ModifierDescriptor& descriptor,
   throw ResolveException("Unknown PresenceRequirement.");
 }
 
-bool matches_variant(const check_end::VariantDescriptor& variant,
+bool matches_variant(const check_end::SyntaxVariantDescriptor& variant,
                      const ActualModifierTable& actual_modifiers) {
   std::unordered_set<std::string> declared_kinds;
 

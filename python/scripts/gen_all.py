@@ -15,8 +15,9 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from code_gen.database import load_codegen_database
+from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_ir import generate_resolved_ir_header
-from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_header
+from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
 from base.utils import format_file_inplace
 
 
@@ -85,17 +86,26 @@ def main() -> None:
     generated_files.append(resolved_ir_path)
 
     # -------------------------------------------------------------------------
-    # Resolved IR syntax descriptor implementations
+    # Descriptor storage and getter definitions
     # -------------------------------------------------------------------------
 
-    syntax_descriptor_path = output_dir / "private/syntax_descriptor.gen.hpp"
+    syntax_descriptor_path = output_dir / "private/syntax_descriptor.gen.cpp"
 
-    generate_syntax_descriptor_header(
+    generate_syntax_descriptor_source(
         database,
         output_path=syntax_descriptor_path,
     )
 
     generated_files.append(syntax_descriptor_path)
+
+    resolved_descriptor_path = output_dir / "private/resolved_descriptor.gen.cpp"
+
+    generate_resolved_descriptor_source(
+        database,
+        output_path=resolved_descriptor_path,
+    )
+
+    generated_files.append(resolved_descriptor_path)
 
     format_generated_files(generated_files)
 
@@ -112,7 +122,8 @@ def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
     del database
     return (
         output_dir / "public/resolved_ir.gen.hpp",
-        output_dir / "private/syntax_descriptor.gen.hpp",
+        output_dir / "private/syntax_descriptor.gen.cpp",
+        output_dir / "private/resolved_descriptor.gen.cpp",
     )
 
 
@@ -123,6 +134,7 @@ def remove_legacy_generated_files(output_dir: Path) -> None:
         "public/ptx_ir_*.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",
+        "private/syntax_descriptor.gen.hpp",
     )
     for pattern in legacy_patterns:
         for path in output_dir.glob(pattern):

@@ -77,16 +77,15 @@ struct {instruction.cpp_name} {{
   Variant variant;
 
   bool check();
-  static const check_end::InstructionDescriptor& get_inst_descriptor() noexcept;
-}};
+  static const check_end::SyntaxInstructionDescriptor&
+  get_syntax_descriptor() noexcept;
+  static const check_end::ResolvedInstructionDescriptor&
+  get_resolved_descriptor() noexcept;
+}};"""
+    return f"{definition}\n\n{_emit_resolve_specialization(instruction)}"
 
-template <>
-std::expected<{instruction.cpp_name}, ResolveDiagnostic>
-resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast);"""
-    return f"{definition}\n\n{_emit_resolve_binder(instruction)}"
 
-
-def _emit_resolve_binder(instruction: ResolvedInstruction) -> str:
+def _emit_resolve_specialization(instruction: ResolvedInstruction) -> str:
     variant_cases = "\n".join(
         _emit_resolve_variant_case(instruction, variant)
         for variant in instruction.variants
@@ -100,7 +99,8 @@ resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast) {{
     return std::unexpected(selected_variant.error());
 
   const auto fields = resolve_fields(
-      ast, {instruction.cpp_name}::get_inst_descriptor(),
+      ast, {instruction.cpp_name}::get_syntax_descriptor(),
+      {instruction.cpp_name}::get_resolved_descriptor(),
       magic_enum::enum_name(*selected_variant));
   if (!fields)
     return std::unexpected(fields.error());
@@ -135,7 +135,7 @@ def _emit_resolve_field_initializer(field: ResolvedField) -> str:
     )
     return (
         f".{field.name} = {accessor}<{field.value_cpp_type}>(*fields, "
-        f'"{field.source_name}"),'
+        f'"{field.name}"),'
     )
 
 

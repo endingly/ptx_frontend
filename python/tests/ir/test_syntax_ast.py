@@ -15,7 +15,7 @@ if str(PYTHON_ROOT) not in sys.path:
 from code_gen.database import load_codegen_database
 from code_gen.gen_syntax_ast_arch import (
     emit_check_end_instruction_descriptor_implementation,
-    generate_syntax_descriptor_header,
+    generate_syntax_descriptor_source,
 )
 from ir.syntax_ast import from_InstructionSpec
 from ir.syntax_ast import (
@@ -23,7 +23,6 @@ from ir.syntax_ast import (
     OperandLayoutKind,
     OperandPresence,
     OperandSyntaxShape,
-    ResolvedValueKind,
 )
 
 
@@ -68,11 +67,6 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 ),
             ],
         )
-        self.assertEqual(
-            integer_no_sat.modifiers[1].resolved_value_kind,
-            ResolvedValueKind.SCALAR_TYPE,
-        )
-
         sat_s32 = self.descriptor.variants[1]
         self.assertEqual(
             [
@@ -91,22 +85,19 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(layout.kind, OperandLayoutKind.FLAT)
         self.assertEqual(
             [
-                (slot.field_id, slot.allowed_syntax_shapes, slot.presence)
+                (slot.allowed_syntax_shapes, slot.presence)
                 for slot in layout.slots
             ],
             [
                 (
-                    "dst",
                     OperandSyntaxShape.IDENTIFIER_REF,
                     OperandPresence.REQUIRED,
                 ),
                 (
-                    "src1",
                     OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
                     OperandPresence.REQUIRED,
                 ),
                 (
-                    "src2",
                     OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
                     OperandPresence.REQUIRED,
                 ),
@@ -116,14 +107,6 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IDENTIFIER_REF))
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IMMEDIATE))
         self.assertFalse(layout.slots[1].allows(OperandSyntaxShape.ADDRESS))
-        self.assertEqual(
-            layout.slots[0].resolved_value_kind, ResolvedValueKind.REGISTER
-        )
-        self.assertEqual(
-            layout.slots[1].resolved_value_kind, ResolvedValueKind.REG_OR_IMM
-        )
-        self.assertEqual(layout.slots[1].type_expr, "$type")
-
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
         source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
 
@@ -136,11 +119,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             "inline static constexpr std::array<std::string_view, 6>", source
         )
         self.assertIn(
-            "inline static constexpr std::array<check_end::ModifierDescriptor, 2>",
+            "inline static constexpr std::array<check_end::SyntaxModifierDescriptor, 2>",
             source,
         )
         self.assertIn(
-            "inline static constexpr std::array<check_end::OperandSlotDescriptor, 3>",
+            "inline static constexpr std::array<check_end::SyntaxOperandSlotDescriptor, 3>",
             source,
         )
         self.assertIn('.Opcode_name = "add",', source)
@@ -159,31 +142,28 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ".layout_id = check_end::OperandLayoutKind::Flat,",
             source,
         )
-        self.assertIn(
-            ".value_kind = check_end::ResolvedValueKind::RegOrImm,",
-            source,
-        )
-        self.assertIn('.type_expr = "$type",', source)
+        self.assertNotIn("ResolvedValueKind", source)
+        self.assertNotIn(".type_expr", source)
         self.assertIn(
             ".allowed_shapes = check_end::OperandSyntaxShape::Identifier | "
             "check_end::OperandSyntaxShape::Immediate,",
             source,
         )
         self.assertIn(
-            "const check_end::InstructionDescriptor&\n"
-            "Add::get_inst_descriptor() noexcept {",
+            "const check_end::SyntaxInstructionDescriptor&\n"
+            "Add::get_syntax_descriptor() noexcept {",
             source,
         )
         self.assertTrue(source.endswith("}"))
 
-    def test_generate_private_syntax_descriptor_header(self) -> None:
+    def test_generate_private_syntax_descriptor_source(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "syntax_descriptor.gen.hpp"
-            generate_syntax_descriptor_header(
+            output_path = Path(directory) / "syntax_descriptor.gen.cpp"
+            generate_syntax_descriptor_source(
                 database,
                 output_path=output_path,
             )
@@ -192,7 +172,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(
             source.startswith("// Generated by python/scripts/gen_all.py. Do not edit.")
         )
-        self.assertIn("#pragma once", source)
+        self.assertNotIn("#pragma once", source)
         self.assertRegex(
             source,
             r"// Generated at: \d{4}-\d{2}-\d{2}T"
@@ -204,7 +184,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertIn("struct AddDescriptorStorage {", source)
-        self.assertIn("Add::get_inst_descriptor() noexcept", source)
+        self.assertIn("Add::get_syntax_descriptor() noexcept", source)
 
 
 if __name__ == "__main__":

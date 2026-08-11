@@ -90,26 +90,18 @@ enum class ResolvedValueKind : uint8_t {
   RegOrImm,
 };
 
-struct OperandSlotDescriptor {
-  std::string_view field_id;          // "dst", "src1", "src2", "barrier_id"
-  OperandSyntaxShape allowed_shapes;  // AST stage allow syntax shape
+struct SyntaxOperandSlotDescriptor {
+  OperandSyntaxShape allowed_shapes;
   OperandPresence presence;
-  ResolvedValueKind value_kind;
-  std::string_view type_expr;  // for example "$type"
-
-  // OperandRole role;
-  // OperandAccess access;
-  // OperandShape allowed_resolved_shapes;
-  // StateSpace allowed_state_spaces;
 };
 
 enum class OperandLayoutKind : uint8_t {
   Flat,  // normal layout
 };
 
-struct OperandLayoutDescriptor {
+struct SyntaxOperandLayoutDescriptor {
   OperandLayoutKind layout_id;
-  std::span<const OperandSlotDescriptor> slots;
+  std::span<const SyntaxOperandSlotDescriptor> slots;
 };
 
 enum class PresenceRequirement {
@@ -118,26 +110,56 @@ enum class PresenceRequirement {
   Required,  // YAML: required / fixed
 };
 
-struct ModifierDescriptor {
+struct SyntaxModifierDescriptor {
   std::span<const std::string_view> allowed_values;
   PresenceRequirement presence;
   std::string_view kind_id;
-  ResolvedValueKind value_kind;
 
   bool check(std::string modifier_str) const;
 };
 
-struct VariantDescriptor {
+struct SyntaxVariantDescriptor {
   std::string_view variant_name;
-  std::span<const ModifierDescriptor> modifiers;
-  std::span<const OperandLayoutDescriptor> operand_layouts;
+  std::span<const SyntaxModifierDescriptor> modifiers;
+  std::span<const SyntaxOperandLayoutDescriptor> operand_layouts;
 
   int32_t get_required_modifier_num() const;
 };
 
-struct InstructionDescriptor {
+struct SyntaxInstructionDescriptor {
   std::string_view Opcode_name;
-  std::span<const VariantDescriptor> variants;
+  std::span<const SyntaxVariantDescriptor> variants;
+};
+
+struct ResolvedFieldDescriptor {
+  std::string_view field_id;
+  ResolvedValueKind value_kind;
+};
+
+struct ResolvedModifierBindingDescriptor {
+  std::string_view source_kind_id;
+  std::string_view target_field_id;
+};
+
+struct ResolvedOperandBindingDescriptor {
+  std::string_view target_field_id;
+  std::string_view type_expr;
+};
+
+struct ResolvedOperandLayoutDescriptor {
+  std::span<const ResolvedOperandBindingDescriptor> bindings;
+};
+
+struct ResolvedVariantDescriptor {
+  std::string_view variant_name;
+  std::span<const ResolvedFieldDescriptor> fields;
+  std::span<const ResolvedModifierBindingDescriptor> modifier_bindings;
+  std::span<const ResolvedOperandLayoutDescriptor> operand_layouts;
+};
+
+struct ResolvedInstructionDescriptor {
+  std::string_view opcode_name;
+  std::span<const ResolvedVariantDescriptor> variants;
 };
 
 };  // namespace check_end
@@ -193,8 +215,11 @@ concept PtxOperator = requires(T object) {
   requires std::is_scoped_enum_v<typename T::VariantType>;
   { object.check() } -> std::same_as<bool>;
   {
-    T::get_inst_descriptor()
-  } -> std::same_as<const check_end::InstructionDescriptor&>;
+    T::get_syntax_descriptor()
+  } -> std::same_as<const check_end::SyntaxInstructionDescriptor&>;
+  {
+    T::get_resolved_descriptor()
+  } -> std::same_as<const check_end::ResolvedInstructionDescriptor&>;
 };
 
 using ActualModifierTable =
@@ -208,17 +233,17 @@ using ActualModifierTable =
  */
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,
-    const check_end::InstructionDescriptor& instruction);
+    const check_end::SyntaxInstructionDescriptor& instruction);
 
 template <PtxOperator T>
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast) {
-  return collect_actual_modifiers(ast, T::get_inst_descriptor());
+  return collect_actual_modifiers(ast, T::get_syntax_descriptor());
 }
 
-bool matches_variant(const check_end::VariantDescriptor& variant,
+bool matches_variant(const check_end::SyntaxVariantDescriptor& variant,
                      const ActualModifierTable& actual_modifiers);
-bool matches_modifier_slot(const check_end::ModifierDescriptor& descriptor,
+bool matches_modifier_slot(const check_end::SyntaxModifierDescriptor& descriptor,
                            const ActualModifierTable& actual_modifiers);
 
 template <PtxOperator T>
@@ -228,7 +253,7 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
   if (!actual_modifiers)
     return std::unexpected(actual_modifiers.error());
 
-  const auto inst_desc = T::get_inst_descriptor();
+  const auto inst_desc = T::get_syntax_descriptor();
 
   std::optional<size_t> selected_index;
   for (size_t index = 0; index < inst_desc.variants.size(); ++index) {
@@ -275,7 +300,8 @@ std::expected<T, ResolveDiagnostic> resolve(
 
 std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
-    const check_end::InstructionDescriptor& instruction,
+    const check_end::SyntaxInstructionDescriptor& syntax_instruction,
+    const check_end::ResolvedInstructionDescriptor& resolved_instruction,
     std::string_view variant_name);
 
 /**

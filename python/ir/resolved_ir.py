@@ -22,6 +22,16 @@ class ResolvedFieldOrigin(Enum):
     OPERAND = "operand"
 
 
+class ResolvedValueKind(Enum):
+    """Runtime C++ value category produced for one resolved field."""
+
+    BOOL = "Bool"
+    SCALAR_TYPE = "ScalarType"
+    REGISTER = "Register"
+    IMMEDIATE = "Immediate"
+    REG_OR_IMM = "RegOrImm"
+
+
 @dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
@@ -31,6 +41,12 @@ class ResolvedField:
     origin: ResolvedFieldOrigin
     source_name: str
     type_expr: str | None = None
+
+    @property
+    def value_kind(self) -> ResolvedValueKind:
+        """Return the generic resolver category for this output field."""
+
+        return _CPP_TYPE_VALUE_KINDS[self.value_cpp_type]
 
     @property
     def cpp_type(self) -> str:
@@ -46,8 +62,33 @@ class ResolvedVariant:
     variant_id: str
     cpp_name: str
     fields: tuple[ResolvedField, ...]
+    modifier_bindings: tuple["ResolvedModifierBinding", ...]
+    operand_layouts: tuple["ResolvedOperandLayout", ...]
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
+
+
+@dataclass(frozen=True)
+class ResolvedModifierBinding:
+    """Bind one syntax modifier kind to a resolved field."""
+
+    source_kind_id: str
+    target_field_id: str
+
+
+@dataclass(frozen=True)
+class ResolvedOperandBinding:
+    """Bind one positional syntax operand to a resolved field."""
+
+    target_field_id: str
+    type_expr: str | None
+
+
+@dataclass(frozen=True)
+class ResolvedOperandLayout:
+    """One resolved-field binding layout paired by index with syntax layouts."""
+
+    bindings: tuple[ResolvedOperandBinding, ...]
 
 
 @dataclass(frozen=True)
@@ -76,6 +117,14 @@ _OPERAND_VALUE_CPP_TYPES = {
     "reg_or_imm": "RegOrImm",
 }
 
+_CPP_TYPE_VALUE_KINDS = {
+    "bool": ResolvedValueKind.BOOL,
+    "ScalarType": ResolvedValueKind.SCALAR_TYPE,
+    "ResolvedRegisterId": ResolvedValueKind.REGISTER,
+    "ResolvedImmediate": ResolvedValueKind.IMMEDIATE,
+    "RegOrImm": ResolvedValueKind.REG_OR_IMM,
+}
+
 
 def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
     """Build the resolved instruction model from one normalized PTX spec."""
@@ -90,15 +139,35 @@ def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
 
 
 def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
+    modifier_fields = tuple(
+        _build_modifier_field(modifier)
+        for modifier in variant.modifiers
+        if _materializes_resolved_field(modifier)
+    )
+    operand_fields = tuple(_build_operand_field(operand) for operand in variant.operands)
+
     return ResolvedVariant(
         variant_id=variant.name,
         cpp_name=_variant_cpp_name(opcode, variant.name),
-        fields=tuple(
-            _build_modifier_field(modifier)
-            for modifier in variant.modifiers
-            if _materializes_resolved_field(modifier)
-        )
-        + tuple(_build_operand_field(operand) for operand in variant.operands),
+        fields=modifier_fields + operand_fields,
+        modifier_bindings=tuple(
+            ResolvedModifierBinding(
+                source_kind_id=field.source_name,
+                target_field_id=field.name,
+            )
+            for field in modifier_fields
+        ),
+        operand_layouts=(
+            ResolvedOperandLayout(
+                bindings=tuple(
+                    ResolvedOperandBinding(
+                        target_field_id=field.name,
+                        type_expr=field.type_expr,
+                    )
+                    for field in operand_fields
+                )
+            ),
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )

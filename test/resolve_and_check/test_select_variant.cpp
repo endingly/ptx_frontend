@@ -59,13 +59,38 @@ TEST(CollectActualModifiersAdd, TypeAdapterUsesDescriptorImplementation) {
 
   const auto by_type = collect_actual_modifiers<Add>(ast);
   const auto by_descriptor =
-      collect_actual_modifiers(ast, Add::get_inst_descriptor());
+      collect_actual_modifiers(ast, Add::get_syntax_descriptor());
 
   ASSERT_TRUE(by_type.has_value()) << by_type.error().message;
   ASSERT_TRUE(by_descriptor.has_value()) << by_descriptor.error().message;
   EXPECT_EQ(by_type->size(), by_descriptor->size());
   EXPECT_EQ(by_type->at("sat"), by_descriptor->at("sat"));
   EXPECT_EQ(by_type->at("type"), by_descriptor->at("type"));
+}
+
+TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
+  const auto& descriptor = Add::get_resolved_descriptor();
+
+  ASSERT_EQ(descriptor.opcode_name, "add");
+  ASSERT_EQ(descriptor.variants.size(), 5U);
+
+  const auto& packed_optional_sat = descriptor.variants[3];
+  EXPECT_EQ(packed_optional_sat.variant_name, "PackedOptionalSatSm120");
+  ASSERT_EQ(packed_optional_sat.fields.size(), 5U);
+  EXPECT_EQ(packed_optional_sat.fields[0].field_id, "saturate");
+  EXPECT_EQ(packed_optional_sat.fields[0].value_kind,
+            check_end::ResolvedValueKind::Bool);
+
+  ASSERT_EQ(packed_optional_sat.modifier_bindings.size(), 2U);
+  EXPECT_EQ(packed_optional_sat.modifier_bindings[0].source_kind_id, "sat");
+  EXPECT_EQ(packed_optional_sat.modifier_bindings[0].target_field_id,
+            "saturate");
+
+  ASSERT_EQ(packed_optional_sat.operand_layouts.size(), 1U);
+  const auto& bindings = packed_optional_sat.operand_layouts[0].bindings;
+  ASSERT_EQ(bindings.size(), 3U);
+  EXPECT_EQ(bindings[2].target_field_id, "src2");
+  EXPECT_EQ(bindings[2].type_expr, "$type");
 }
 
 TEST(SelectVariantAdd, ReportsUnmatchedModifierCombination) {
@@ -103,11 +128,12 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
             std::get<syntax_ast::AstImmediate>(ast.operands[2]).syntax.range);
 }
 
-TEST(ResolveFieldsAdd, UsesDescriptorSlotIdsAndValueKinds) {
+TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
   const auto ast = parse_instruction("add.u32 %r4, %r5, 6;");
 
   const auto fields =
-      resolve_fields(ast, Add::get_inst_descriptor(), "IntegerNoSat");
+      resolve_fields(ast, Add::get_syntax_descriptor(),
+                     Add::get_resolved_descriptor(), "IntegerNoSat");
 
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
   EXPECT_EQ(fields->variant_name, "IntegerNoSat");

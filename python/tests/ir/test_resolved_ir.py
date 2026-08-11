@@ -106,6 +106,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "get_inst_descriptor() noexcept;",
             source,
         )
+        self.assertIn(
+            "template <>\nstd::expected<Add, ResolveDiagnostic>\n"
+            "resolve<Add>(const syntax_ast::AstInstruction& ast);",
+            source,
+        )
+        self.assertIn("inline std::expected<Add, ResolveDiagnostic>", source)
+        self.assertIn("resolve_fields(", source)
+        self.assertIn("resolved_operand<RegOrImm>(*fields, \"src1\")", source)
         self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
 
 

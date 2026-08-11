@@ -1,5 +1,6 @@
 #pragma once
 #include <fmt/core.h>
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <expected>
@@ -81,10 +82,20 @@ enum class OperandPresence : uint8_t {
   Optional,
 };
 
+enum class ResolvedValueKind : uint8_t {
+  Bool,
+  ScalarType,
+  Register,
+  Immediate,
+  RegOrImm,
+};
+
 struct OperandSlotDescriptor {
   std::string_view field_id;          // "dst", "src1", "src2", "barrier_id"
   OperandSyntaxShape allowed_shapes;  // AST stage allow syntax shape
   OperandPresence presence;
+  ResolvedValueKind value_kind;
+  std::string_view type_expr;  // for example "$type"
 
   // OperandRole role;
   // OperandAccess access;
@@ -111,6 +122,7 @@ struct ModifierDescriptor {
   std::span<const std::string_view> allowed_values;
   PresenceRequirement presence;
   std::string_view kind_id;
+  ResolvedValueKind value_kind;
 
   bool check(std::string modifier_str) const;
 };
@@ -163,6 +175,18 @@ struct ResolvedImmediate {
 
 using RegOrImm = std::variant<ResolvedRegisterId, ResolvedImmediate>;
 
+using ResolvedFieldValue =
+    std::variant<WithLocs<bool>, WithLocs<ScalarType>,
+                 WithLocs<ResolvedRegisterId>, WithLocs<ResolvedImmediate>,
+                 WithLocs<RegOrImm>>;
+using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
+
+struct ResolvedInstructionFields {
+  std::string_view variant_name;
+  ResolvedFieldMap modifiers;
+  ResolvedFieldMap operands;
+};
+
 template <typename T>
 concept PtxOperator = requires(T object) {
   typename T::VariantType;
@@ -173,126 +197,23 @@ concept PtxOperator = requires(T object) {
   } -> std::same_as<const check_end::InstructionDescriptor&>;
 };
 
-template <PtxOperator T>
-std::optional<std::string> get_kind_id(std::string input_str) {
-  struct ModifierKindEntry {
-    std::string_view spelling;
-    std::string_view kind_id;
-  };
-  auto count_modifier_kind_entries =
-      [](const check_end::InstructionDescriptor& instruction) constexpr
-      -> size_t {
-    std::size_t count = 0;
-    for (const auto& variant : instruction.variants) {
-      for (const auto& modifier : variant.modifiers) {
-        for (const std::string_view spelling : modifier.allowed_values) {
-          bool already_seen = false;
-          bool reached_current_entry = false;
-          for (const auto& prior_variant : instruction.variants) {
-            for (const auto& prior_modifier : prior_variant.modifiers) {
-              for (const std::string_view prior_spelling :
-                   prior_modifier.allowed_values) {
-                if (&prior_modifier == &modifier &&
-                    &prior_spelling == &spelling) {
-                  reached_current_entry = true;
-                  break;
-                }
-                if (prior_spelling == spelling) {
-                  if (prior_modifier.kind_id != modifier.kind_id) {
-                    throw "one modifier spelling maps to multiple kind IDs";
-                  }
-                  already_seen = true;
-                }
-              }
-              if (reached_current_entry)
-                break;
-            }
-            if (reached_current_entry)
-              break;
-          }
-          if (!already_seen)
-            ++count;
-        }
-      }
-    }
-    return count;
-  };
-  const check_end::InstructionDescriptor& inst_desc = T::get_inst_descriptor();
-  constexpr size_t count = count_modifier_kind_entries(inst_desc);
-  auto build_modifier_kind_entries =
-      [&count](const check_end::InstructionDescriptor& instruction) constexpr
-      -> std::array<ModifierKindEntry, count> {
-    std::array<ModifierKindEntry, count> result{};
-    std::size_t result_size = 0;
-    for (const auto& variant : instruction.variants) {
-      for (const auto& modifier : variant.modifiers) {
-        for (const std::string_view spelling : modifier.allowed_values) {
-          bool already_seen = false;
-          for (std::size_t index = 0; index < result_size; ++index) {
-            const auto& existing = result[index];
-            if (existing.spelling != spelling)
-              continue;
-            if (existing.kind_id != modifier.kind_id) {
-              throw "one modifier spelling maps to multiple kind IDs";
-            }
-            already_seen = true;
-            break;
-          }
-          if (already_seen)
-            continue;
-          if (result_size == count) {
-            throw "modifier-kind entry count does not match output capacity";
-          }
-          result[result_size++] = ModifierKindEntry{
-              .spelling = spelling,
-              .kind_id = modifier.kind_id,
-          };
-        }
-      }
-    }
-    if (result_size != count) {
-      throw "modifier-kind entry count does not match generated table";
-    }
-    return result;
-  };
-  constexpr std::array<ModifierKindEntry, count> find_map_r =
-      build_modifier_kind_entries(inst_desc);
-
-  for (const auto& entry : find_map_r) {
-    if (entry.spelling == input_str)
-      return std::string(entry.kind_id);
-  }
-  return std::nullopt;
-}
-
 using ActualModifierTable =
     std::unordered_map<std::string, const syntax_ast::AstModifier*>;
+
+/**
+ * Collect source modifiers by descriptor kind ID.
+ *
+ * This is the sole implementation of spelling-to-kind mapping and duplicate
+ * detection.  Type-specific callers should use the template adapter below.
+ */
+std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
+    const syntax_ast::AstInstruction& ast,
+    const check_end::InstructionDescriptor& instruction);
 
 template <PtxOperator T>
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast) {
-  ActualModifierTable result;
-
-  for (const auto& modifier : ast.modifiers) {
-    const auto kind_id = get_kind_id<T>(modifier.syntax.text);
-    if (!kind_id) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = modifier.syntax.range,
-          .message =
-              fmt::format("Unknown modifier '{}'.", modifier.syntax.text),
-      });
-    }
-
-    const auto [_, inserted] = result.emplace(*kind_id, &modifier);
-    if (!inserted) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = modifier.syntax.range,
-          .message = fmt::format("Duplicate '{}' modifier.", *kind_id),
-      });
-    }
-  }
-
-  return result;
+  return collect_actual_modifiers(ast, T::get_inst_descriptor());
 }
 
 bool matches_variant(const check_end::VariantDescriptor& variant,
@@ -346,6 +267,61 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
   }
   return *variant;
 }
+
+/** Resolve one syntax instruction into its opcode-specific resolved IR. */
+template <PtxOperator T>
+std::expected<T, ResolveDiagnostic> resolve(
+    const syntax_ast::AstInstruction& ast);
+
+std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
+    const syntax_ast::AstInstruction& ast,
+    const check_end::InstructionDescriptor& instruction,
+    std::string_view variant_name);
+
+/**
+   * @brief Get a resolved modifier field from the resolved instruction fields.
+   * 
+   * @tparam T target field type, must be one of the types in resolved_ir::<IR>'s members
+   * @param fields 
+   * @param kind_id 
+   * @return const WithLocs<T>& 
+   */
+template <typename T>
+const WithLocs<T>& resolved_modifier(const ResolvedInstructionFields& fields,
+                                     std::string_view kind_id) {
+  const auto it = fields.modifiers.find(std::string(kind_id));
+  if (it == fields.modifiers.end()) {
+    throw ResolveException(
+        fmt::format("Resolved modifier field '{}' is unavailable.", kind_id));
+  }
+  if (const auto* value = std::get_if<WithLocs<T>>(&it->second))
+    return *value;
+  throw ResolveException(fmt::format(
+      "Resolved modifier field '{}' has an unexpected value type.", kind_id));
+}
+
+/**
+ * @brief Get a resolved operand field from the resolved instruction fields.
+ * 
+ * @tparam T target field type, must be one of the types in resolved_ir::<IR>'s members
+ * @param fields 
+ * @param field_id 
+ * @return const WithLocs<T>& 
+ */
+template <typename T>
+const WithLocs<T>& resolved_operand(const ResolvedInstructionFields& fields,
+                                    std::string_view field_id) {
+  const auto it = fields.operands.find(std::string(field_id));
+  if (it == fields.operands.end()) {
+    throw ResolveException(
+        fmt::format("Resolved operand field '{}' is unavailable.", field_id));
+  }
+  if (const auto* value = std::get_if<WithLocs<T>>(&it->second))
+    return *value;
+  throw ResolveException(fmt::format(
+      "Resolved operand field '{}' has an unexpected value type.", field_id));
+}
+
 };  // namespace ptx_frontend::resolved_ir
 
 // Generated instruction definitions.  The generated header also includes this

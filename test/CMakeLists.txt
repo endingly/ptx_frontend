@@ -32,9 +32,23 @@ target_link_libraries(
 )
 gtest_discover_tests(test_syntax)
 
-# target codegen_test
+add_executable(test_resolve_and_check)
+file(GLOB _test_resolve_and_check_src_files resolve_and_check/*.cpp)
+target_sources(
+    test_resolve_and_check
+    PRIVATE ${_test_resolve_and_check_src_files}
+)
+target_link_libraries(
+    test_resolve_and_check
+    PRIVATE
+    ptx_frontend
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(test_resolve_and_check)
+
 add_test(
-    NAME codegen_test
+    NAME python_ir
     COMMAND
     ${Python3_EXECUTABLE}
     -m unittest discover
@@ -43,7 +57,7 @@ add_test(
     -p test_*.py
 )
 set_tests_properties(
-    codegen_test
+    python_ir
     PROPERTIES
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
 )

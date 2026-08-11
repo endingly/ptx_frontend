@@ -23,6 +23,7 @@ from ir.syntax_ast import (
     OperandLayoutKind,
     OperandPresence,
     OperandSyntaxShape,
+    ResolvedValueKind,
 )
 
 
@@ -66,6 +67,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     (".u16", ".u32", ".u64", ".s16", ".s32", ".s64"),
                 ),
             ],
+        )
+        self.assertEqual(
+            integer_no_sat.modifiers[1].resolved_value_kind,
+            ResolvedValueKind.SCALAR_TYPE,
         )
 
         sat_s32 = self.descriptor.variants[1]
@@ -111,6 +116,13 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IDENTIFIER_REF))
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IMMEDIATE))
         self.assertFalse(layout.slots[1].allows(OperandSyntaxShape.ADDRESS))
+        self.assertEqual(
+            layout.slots[0].resolved_value_kind, ResolvedValueKind.REGISTER
+        )
+        self.assertEqual(
+            layout.slots[1].resolved_value_kind, ResolvedValueKind.REG_OR_IMM
+        )
+        self.assertEqual(layout.slots[1].type_expr, "$type")
 
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
         source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
@@ -147,6 +159,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ".layout_id = check_end::OperandLayoutKind::Flat,",
             source,
         )
+        self.assertIn(
+            ".value_kind = check_end::ResolvedValueKind::RegOrImm,",
+            source,
+        )
+        self.assertIn('.type_expr = "$type",', source)
         self.assertIn(
             ".allowed_shapes = check_end::OperandSyntaxShape::Identifier | "
             "check_end::OperandSyntaxShape::Immediate,",

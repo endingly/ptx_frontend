@@ -12,6 +12,7 @@ from ir.syntax_ast import (
     OperandLayoutKind,
     OperandPresence,
     OperandSyntaxShape,
+    ResolvedValueKind,
     SyntaxInstructionDescriptor,
     SyntaxModifierDescriptor,
     SyntaxOperandLayoutDescriptor,
@@ -43,6 +44,14 @@ _CPP_OPERAND_SYNTAX_SHAPES = (
     (OperandSyntaxShape.VECTOR_MEMBER, "check_end::OperandSyntaxShape::VectorMember"),
     (OperandSyntaxShape.VECTOR_PACK, "check_end::OperandSyntaxShape::VectorPack"),
 )
+
+_CPP_RESOLVED_VALUE_KINDS = {
+    ResolvedValueKind.BOOL: "check_end::ResolvedValueKind::Bool",
+    ResolvedValueKind.SCALAR_TYPE: "check_end::ResolvedValueKind::ScalarType",
+    ResolvedValueKind.REGISTER: "check_end::ResolvedValueKind::Register",
+    ResolvedValueKind.IMMEDIATE: "check_end::ResolvedValueKind::Immediate",
+    ResolvedValueKind.REG_OR_IMM: "check_end::ResolvedValueKind::RegOrImm",
+}
 
 
 def generate_syntax_descriptor_header(
@@ -200,6 +209,7 @@ def _emit_modifier_entry(
               .allowed_values = {allowed_values},
               .presence = {_CPP_MODIFIER_PRESENCE[modifier.presence]},
               .kind_id = {_cpp_string(modifier.kind_id)},
+              .value_kind = {_CPP_RESOLVED_VALUE_KINDS[modifier.resolved_value_kind]},
           }}"""
 
 
@@ -247,6 +257,8 @@ def _emit_operand_slot(
               .field_id = {_cpp_string(slot.field_id)},
               .allowed_shapes = {allowed_shapes},
               .presence = {_CPP_OPERAND_PRESENCE[slot.presence]},
+              .value_kind = {_CPP_RESOLVED_VALUE_KINDS[slot.resolved_value_kind]},
+              .type_expr = {_cpp_string(slot.type_expr or "")},
           }}"""
 
 

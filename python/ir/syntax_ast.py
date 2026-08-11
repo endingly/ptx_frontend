@@ -43,11 +43,22 @@ class OperandLayoutKind(Enum):
     FLAT = "Flat"
 
 
+class ResolvedValueKind(Enum):
+    """Semantic value produced by the generic syntax-to-resolved converter."""
+
+    BOOL = "Bool"
+    SCALAR_TYPE = "ScalarType"
+    REGISTER = "Register"
+    IMMEDIATE = "Immediate"
+    REG_OR_IMM = "RegOrImm"
+
+
 @dataclass(frozen=True)
 class SyntaxModifierDescriptor:
     """One modifier kind constraint in one syntax variant."""
 
     kind_id: str
+    resolved_value_kind: ResolvedValueKind
     presence: ModifierPresence
     allowed_spellings: tuple[str, ...]
 
@@ -57,6 +68,8 @@ class SyntaxOperandSlotDescriptor:
     """One positional AST operand constraint in an operand layout."""
 
     field_id: str
+    resolved_value_kind: ResolvedValueKind
+    type_expr: str | None
     allowed_syntax_shapes: OperandSyntaxShape
     presence: OperandPresence
 
@@ -115,6 +128,17 @@ _OPERAND_SYNTAX_SHAPES = {
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
 }
 
+_MODIFIER_RESOLVED_VALUE_KINDS = {
+    "flag": ResolvedValueKind.BOOL,
+    "type": ResolvedValueKind.SCALAR_TYPE,
+}
+
+_OPERAND_RESOLVED_VALUE_KINDS = {
+    "reg": ResolvedValueKind.REGISTER,
+    "imm": ResolvedValueKind.IMMEDIATE,
+    "reg_or_imm": ResolvedValueKind.REG_OR_IMM,
+}
+
 
 def _build_variant_descriptor_view(
     variant: VariantSpec,
@@ -150,6 +174,7 @@ def _build_modifier_descriptor_view(
 
     return SyntaxModifierDescriptor(
         kind_id=modifier.name,
+        resolved_value_kind=_MODIFIER_RESOLVED_VALUE_KINDS[modifier.kind],
         presence=presence,
         allowed_spellings=_modifier_spellings(modifier),
     )
@@ -184,6 +209,8 @@ def _build_operand_slot_descriptor_view(
 
     return SyntaxOperandSlotDescriptor(
         field_id=operand.name,
+        resolved_value_kind=_OPERAND_RESOLVED_VALUE_KINDS[operand.kind],
+        type_expr=operand.type_expr,
         allowed_syntax_shapes=shapes,
         presence=OperandPresence.REQUIRED,
     )

@@ -65,7 +65,7 @@ def emit_resolved_instruction_definition(instruction: ResolvedInstruction) -> st
         _emit_resolved_variant_definition(variant) for variant in instruction.variants
     )
 
-    return f"""\
+    definition = f"""\
 struct {instruction.cpp_name} {{
   enum class VariantType {{
 {variant_enum_values}
@@ -78,7 +78,65 @@ struct {instruction.cpp_name} {{
 
   bool check();
   static const check_end::InstructionDescriptor& get_inst_descriptor() noexcept;
-}};"""
+}};
+
+template <>
+std::expected<{instruction.cpp_name}, ResolveDiagnostic>
+resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast);"""
+    return f"{definition}\n\n{_emit_resolve_binder(instruction)}"
+
+
+def _emit_resolve_binder(instruction: ResolvedInstruction) -> str:
+    variant_cases = "\n".join(
+        _emit_resolve_variant_case(instruction, variant)
+        for variant in instruction.variants
+    )
+    return f"""\
+template <>
+inline std::expected<{instruction.cpp_name}, ResolveDiagnostic>
+resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast) {{
+  const auto selected_variant = selectVariant<{instruction.cpp_name}>(ast);
+  if (!selected_variant)
+    return std::unexpected(selected_variant.error());
+
+  const auto fields = resolve_fields(
+      ast, {instruction.cpp_name}::get_inst_descriptor(),
+      magic_enum::enum_name(*selected_variant));
+  if (!fields)
+    return std::unexpected(fields.error());
+
+{variant_cases}
+
+  throw ResolveException("Unknown {instruction.cpp_name} variant in resolved field table.");
+}}"""
+
+
+def _emit_resolve_variant_case(
+    instruction: ResolvedInstruction,
+    variant: ResolvedVariant,
+) -> str:
+    fields = "\n".join(
+        "          " + _emit_resolve_field_initializer(field)
+        for field in variant.fields
+    )
+    return f"""\
+  if (fields->variant_name == "{variant.cpp_name}") {{
+    return {instruction.cpp_name}{{.variant = {instruction.cpp_name}::{variant.cpp_name}{{
+{fields}
+    }}}};
+  }}"""
+
+
+def _emit_resolve_field_initializer(field: ResolvedField) -> str:
+    accessor = (
+        "resolved_modifier"
+        if field.origin.value == "modifier"
+        else "resolved_operand"
+    )
+    return (
+        f".{field.name} = {accessor}<{field.value_cpp_type}>(*fields, "
+        f'"{field.source_name}"),'
+    )
 
 
 def _emit_resolved_variant_definition(variant: ResolvedVariant) -> str:

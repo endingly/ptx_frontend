@@ -23,4 +23,4 @@ Diagnostics:
     - "ast_file_version_too_old"
 
 Documentation:
-  CommentFormat: Markdown
+  CommentFormat: Doxygen

@@ -43,16 +43,12 @@ FLEX_TARGET(
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
-file(GLOB_RECURSE PTX_BACKEND_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/*.yaml)
 file(GLOB_RECURSE PYTHON_SCRIPTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py)
-file(GLOB_RECURSE PYTHON_TEMPLATES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/templates/*.j2)
 
 execute_process(
     COMMAND
     ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
     --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
-    --backend-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec
-    --template-dir ${CMAKE_CURRENT_SOURCE_DIR}/python/templates
     --output ${CMAKE_CURRENT_BINARY_DIR}/generated
     --list-outputs
     RESULT_VARIABLE PTX_GENERATED_FILES_RESULT
@@ -71,14 +67,10 @@ add_custom_command(
     COMMAND
     ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
     --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
-    --backend-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec
-    --template-dir ${CMAKE_CURRENT_SOURCE_DIR}/python/templates
     --output ${CMAKE_CURRENT_BINARY_DIR}/generated
     DEPENDS
     ${PTX_SPEC_FILES}
-    ${PTX_BACKEND_FILES}
     ${PYTHON_SCRIPTS}
-    ${PYTHON_TEMPLATES}
     COMMENT "Generating PTX frontend code"
 )
 add_custom_target(
@@ -116,15 +108,6 @@ add_dependencies(ptx_frontend auto_gen_code)
 # Test targets
 if(BUILD_TESTING)
     add_subdirectory(test)
-
-    # add_test(
-    #     NAME ptx_codegen_test
-    #     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/python/test_codegen.py
-    # )
-    # set_tests_properties(
-    #     ptx_codegen_test
-    #     PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    # )
 endif()
 
 # ################################################################

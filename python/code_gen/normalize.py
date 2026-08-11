@@ -1,16 +1,20 @@
-from pathlib import Path
+"""Normalization of PTX ISA YAML into the typed code-generation model."""
 
-from code_gen.load_yaml import expand_value_refs, load_yaml
-from code_gen.model import *
+from __future__ import annotations
+
+from typing import Any
+
+from code_gen.load_yaml import expand_value_refs
+from code_gen.model import InstructionSpec, ModifierSpec, OperandSpec, VariantSpec
 
 
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
-    """Normalize a raw operand specification."""
-    type_expr = None
+    """Normalize one operand specification."""
+
     raw_type = raw.get("type")
     if isinstance(raw_type, dict):
         type_expr = raw_type.get("expr")
-    elif isinstance(raw_type, str):
+    else:
         type_expr = raw_type
 
     return OperandSpec(
@@ -25,13 +29,14 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
 def normalize_modifier(
     raw: dict[str, Any], type_sets: dict[str, list[str]]
 ) -> ModifierSpec:
-    """Normalize a raw modifier specification."""
+    """Normalize one modifier and expand its type-set references."""
+
     return ModifierSpec(
         name=raw["name"],
         kind=raw["kind"],
         presence=raw["presence"],
         domain=raw.get("domain"),
-        values=expand_value_refs(raw.get("values", []), type_sets),
+        values=expand_value_refs(raw.get("values", ()), type_sets),
         value=raw.get("value"),
         token=raw.get("token"),
         default=raw.get("default"),
@@ -39,305 +44,42 @@ def normalize_modifier(
 
 
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
+    """Normalize all instruction definitions in one PTX ISA YAML file."""
+
     type_sets = spec.get("type_sets", {})
     operand_patterns = spec.get("operand_patterns", {})
-
     instructions: list[InstructionSpec] = []
 
-    for raw_instr in spec["instructions"]:
-        default_operands_raw = raw_instr.get("operands")
+    for raw_instruction in spec["instructions"]:
+        default_operands = raw_instruction.get("operands")
         variants: list[VariantSpec] = []
 
-        for raw_var in raw_instr["variants"]:
-            operands_raw = raw_var.get("operands", default_operands_raw)
-
+        for raw_variant in raw_instruction["variants"]:
+            operands_raw = raw_variant.get("operands", default_operands)
             if isinstance(operands_raw, str):
                 operands_raw = operand_patterns[operands_raw]
 
-            operands = tuple(normalize_operand(x) for x in operands_raw)
-
-            # normalize layer need keep all info
-            modifiers = tuple(
-                normalize_modifier(x, type_sets) for x in raw_var.get("modifiers", [])
-            )
-
             variants.append(
                 VariantSpec(
-                    name=raw_var["name"],
-                    availability=raw_var["availability"],
-                    modifiers=modifiers,
-                    operands=operands,
-                    rule=raw_var.get("rule"),
+                    name=raw_variant["name"],
+                    availability=raw_variant["availability"],
+                    modifiers=tuple(
+                        normalize_modifier(modifier, type_sets)
+                        for modifier in raw_variant.get("modifiers", ())
+                    ),
+                    operands=tuple(
+                        normalize_operand(operand) for operand in operands_raw
+                    ),
+                    rule=raw_variant.get("rule"),
                 )
             )
 
         instructions.append(
             InstructionSpec(
-                opcode=raw_instr["opcode"],
-                syntax=raw_instr.get("syntax"),
+                opcode=raw_instruction["opcode"],
+                syntax=raw_instruction.get("syntax"),
                 variants=tuple(variants),
             )
         )
 
     return tuple(instructions)
-
-
-def normalize_emit_backend(raw_emit: dict[str, Any], *, opcode: str) -> EmitBackend:
-    kind = raw_emit.get("kind")
-    if kind is None:
-        raise ValueError(f"{opcode}: emit.kind is required")
-
-    alternatives = tuple(
-        EmitAlternativeBackend(
-            name=str(raw_alt["name"]),
-            variants=tuple(str(v) for v in raw_alt.get("variants", ())),
-        )
-        for raw_alt in raw_emit.get("alternatives", ())
-    )
-
-    emit = EmitBackend(
-        kind=str(kind),
-        instance=raw_emit.get("instance"),
-        type=raw_emit.get("type"),
-        alternatives=alternatives,
-    )
-
-    validate_emit_backend_shape(emit, opcode=opcode)
-    return emit
-
-
-def validate_emit_backend_shape(emit: EmitBackend, *, opcode: str) -> None:
-    if emit.kind == "direct":
-        if emit.instance is not None:
-            raise ValueError(f"{opcode}: direct emit must not specify instance")
-        if emit.type is not None:
-            raise ValueError(f"{opcode}: direct emit must not specify type")
-        if emit.alternatives:
-            raise ValueError(f"{opcode}: direct emit must not specify alternatives")
-        return
-
-    if emit.kind == "sub_struct":
-        if emit.instance is None:
-            raise ValueError(f"{opcode}: sub_struct emit requires instance")
-        if emit.type is None:
-            raise ValueError(f"{opcode}: sub_struct emit requires type")
-        if emit.alternatives:
-            raise ValueError(f"{opcode}: sub_struct emit must not specify alternatives")
-        return
-
-    if emit.kind == "sub_variant":
-        if emit.instance is None:
-            raise ValueError(f"{opcode}: sub_variant emit requires instance")
-        if emit.type is None:
-            raise ValueError(f"{opcode}: sub_variant emit requires type")
-        if not emit.alternatives:
-            raise ValueError(f"{opcode}: sub_variant emit requires alternatives")
-
-        alternative_names = [alt.name for alt in emit.alternatives]
-        if emit.type in alternative_names:
-            raise ValueError(
-                f"{opcode}: sub_variant alias {emit.type!r} conflicts with "
-                "an alternative struct name"
-            )
-
-        duplicates = find_duplicates(alternative_names)
-        if duplicates:
-            raise ValueError(
-                f"{opcode}: duplicated sub_variant alternative names: "
-                f"{sorted(duplicates)}"
-            )
-        return
-
-    raise ValueError(f"{opcode}: unknown emit kind {emit.kind!r}")
-
-
-def find_duplicates(items: list[str]) -> set[str]:
-    seen: set[str] = set()
-    duplicates: set[str] = set()
-
-    for item in items:
-        if item in seen:
-            duplicates.add(item)
-        else:
-            seen.add(item)
-
-    return duplicates
-
-
-def normalize_backend(
-    backend: dict[str, Any],
-) -> tuple[str, dict[str, DomainBackend], dict[str, InstructionBackend]]:
-    namespace = backend.get("namespace", "ptx_frontend")
-
-    domains: dict[str, DomainBackend] = {}
-    for name, raw_domain in backend.get("domains", {}).items():
-        values: dict[str, str] = {}
-
-        for k, v in raw_domain["values"].items():
-            if isinstance(v, str):
-                values[k] = v
-            else:
-                values[k] = v["cpp"]
-
-        domains[name] = DomainBackend(
-            cpp_type=raw_domain["cpp_type"],
-            values=values,
-            default=raw_domain.get("default"),
-        )
-
-    common = backend.get("common", {})
-    keyword_rewrites = common.get("keyword_field_rewrites", {})
-
-    instr_backends: dict[str, InstructionBackend] = {}
-
-    for opcode, raw in backend["instructions"].items():
-        modifiers: dict[str, ModifierBackend] = {}
-        for name, raw_mod in raw.get("modifiers", {}).items():
-            modifiers[name] = ModifierBackend(
-                field=raw_mod.get("field", keyword_rewrites.get(name, name)),
-                cpp_type=raw_mod.get("cpp_type"),
-                domain=raw_mod.get("domain"),
-                default=raw_mod.get("default"),
-            )
-
-        operands: dict[str, OperandBackend] = {}
-        for name, raw_op in raw.get("operands", {}).items():
-            operands[name] = OperandBackend(
-                field=raw_op.get("field", name),
-                cpp_type=raw_op.get("cpp_type", "Operand"),
-            )
-
-        type_checker_rule = None
-        if "type_checker" in raw:
-            type_checker_rule = raw["type_checker"].get("rule")
-
-        visitor_name = None
-        if "visitor" in raw:
-            visitor_name = raw["visitor"].get("visit_name")
-
-        printer = raw.get("printer", {})
-
-        instr_backends[opcode] = InstructionBackend(
-            opcode=opcode,
-            cpp=raw["cpp"],
-            emit=normalize_emit_backend(raw["emit"], opcode=opcode),
-            modifiers=modifiers,
-            operands=operands,
-            type_checker_rule=type_checker_rule,
-            visitor_name=visitor_name,
-            modifier_order=tuple(printer.get("modifier_order", ())),
-            operand_order=tuple(printer.get("operand_order", ())),
-        )
-
-    return namespace, domains, instr_backends
-
-
-def validate_sub_variant_mappings(
-    *,
-    instructions: tuple[InstructionSpec, ...],
-    backends: dict[str, InstructionBackend],
-) -> None:
-    for instr in instructions:
-        backend = backends.get(instr.opcode)
-        if backend is None or backend.emit.kind != "sub_variant":
-            continue
-
-        validate_one_sub_variant_mapping(instr=instr, backend=backend)
-
-
-def validate_one_sub_variant_mapping(
-    *,
-    instr: InstructionSpec,
-    backend: InstructionBackend,
-) -> None:
-    alternatives = backend.emit.alternatives
-    if not alternatives:
-        raise ValueError(f"{instr.opcode}: sub_variant requires alternatives")
-
-    spec_variant_names = {variant.name for variant in instr.variants}
-
-    # A single alternative without an explicit variant list covers all PTX variants.
-    if len(alternatives) == 1 and not alternatives[0].variants:
-        return
-
-    for alt in alternatives:
-        if not alt.variants:
-            raise ValueError(
-                f"{instr.opcode}: alternative {alt.name!r} must list variants "
-                "when sub_variant has multiple alternatives or explicit mapping"
-            )
-
-    owner_by_variant: dict[str, str] = {}
-    for alt in alternatives:
-        for variant_name in alt.variants:
-            if variant_name not in spec_variant_names:
-                raise ValueError(
-                    f"{instr.opcode}: alternative {alt.name!r} references "
-                    f"unknown PTX variant {variant_name!r}"
-                )
-
-            existing_owner = owner_by_variant.get(variant_name)
-            if existing_owner is not None:
-                raise ValueError(
-                    f"{instr.opcode}: PTX variant {variant_name!r} is mapped "
-                    f"to both {existing_owner!r} and {alt.name!r}"
-                )
-
-            owner_by_variant[variant_name] = alt.name
-
-    missing = spec_variant_names - set(owner_by_variant)
-    if missing:
-        raise ValueError(
-            f"{instr.opcode}: sub_variant alternatives do not cover PTX "
-            f"variants: {sorted(missing)}"
-        )
-
-
-def resolve_backend_includes(raw_backend: dict[str, Any]) -> tuple[str, ...] | None:
-    raw_includes = raw_backend.get("includes", ())
-
-    # Default includes if not specified in the backend YAML.
-    # if raw_includes is None:
-    #     return (
-    #         "<variant>",
-    #         "<optional>",
-    #         '"ptx_ir/base.hpp"',
-    #         '"ptx_ir/details.hpp"',
-    #         '"ptx_ir/source_loc.hpp"',
-    #     )
-
-    # if not isinstance(raw_includes, list):
-    #     raise TypeError("backend.includes must be a list")
-    if raw_includes is None:
-        return None
-    normalized: list[str] = []
-    for include in raw_includes:
-        include_text = str(include)
-        if include_text.startswith("<"):
-            normalized.append(include_text)
-        elif include_text.startswith('"'):
-            normalized.append(include_text)
-        else:
-            normalized.append(f'"{include_text}"')
-
-    return tuple(normalized)
-
-
-def build_codegen_unit(spec_path: Path, backend_path: Path) -> CodegenUnit:
-    spec = load_yaml(spec_path)
-    backend = load_yaml(backend_path)
-
-    instructions = normalize_instruction_spec(spec)
-    namespace, domains, backends = normalize_backend(backend)
-    validate_sub_variant_mappings(instructions=instructions, backends=backends)
-
-    return CodegenUnit(
-        spec_schema=spec["schema"],
-        backend_schema=backend["schema"],
-        category=spec["category"],
-        namespace=namespace,
-        includes=resolve_backend_includes(backend),
-        instructions=instructions,
-        backends=backends,
-        domains=domains,
-    )

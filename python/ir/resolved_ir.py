@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Any
 
 from code_gen.model import InstructionSpec, ModifierSpec, OperandSpec, VariantSpec
-from code_gen.naming import file_stem_to_pascal_case
+from base.utils import file_stem_to_pascal_case
 
 
 class ResolvedFieldOrigin(Enum):

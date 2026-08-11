@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from code_gen.database import CodegenDatabase
-from code_gen.naming import file_stem_to_pascal_case, to_file_stem
+from base.utils import file_stem_to_pascal_case, to_file_stem
 from ir.syntax_ast import (
     ModifierPresence,
     OperandLayoutKind,
@@ -55,8 +55,8 @@ def generate_syntax_descriptor_header(
     implementations: list[str] = []
     generated_types: set[str] = set()
 
-    for bound_instruction in database.instructions:
-        descriptor = from_InstructionSpec(bound_instruction.spec)
+    for instruction in database.instructions:
+        descriptor = from_InstructionSpec(instruction)
         cpp_instruction_name = file_stem_to_pascal_case(descriptor.opcode)
         if cpp_instruction_name in generated_types:
             raise ValueError(

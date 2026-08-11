@@ -31,10 +31,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
-            backend_dir=REPO_ROOT / "instructions/ptx_cpp_backend_spec",
         )
         add = next(
-            bound.spec for bound in database.instructions if bound.spec.opcode == "add"
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "add"
         )
         cls.descriptor = from_InstructionSpec(add)
 
@@ -157,12 +158,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertTrue(source.endswith("}"))
-        print(source)
 
     def test_generate_private_syntax_descriptor_header(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
-            backend_dir=REPO_ROOT / "instructions/ptx_cpp_backend_spec",
         )
 
         with tempfile.TemporaryDirectory() as directory:

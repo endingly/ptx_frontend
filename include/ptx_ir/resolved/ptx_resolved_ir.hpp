@@ -163,67 +163,6 @@ struct ResolvedImmediate {
 
 using RegOrImm = std::variant<ResolvedRegisterId, ResolvedImmediate>;
 
-struct Add {
-  enum class VariantType {
-    IntegerNoSat,
-    SatS32,
-    SimdNoSatSm90,
-    PackedOptionalSatSm120,
-    SatSm120,
-  };
-
-  struct IntegerNoSat {
-    // no saturation for this variant
-    WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterId> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-
-  // YAML: add_sat_s32
-  struct SatS32 {
-    // saturation is always true for this variant
-    // type is always S32 for this variant
-    WithLocs<ResolvedRegisterId> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-
-  // YAML: add_simd_no_sat_sm90
-  struct SimdNoSatSm90 {
-    // no saturation for this variant
-    WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterId> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-
-  // YAML: add_packed_optional_sat_sm120
-  struct PackedOptionalSatSm120 {
-    WithLocs<ScalarType> type;
-    WithLocs<bool> saturate;
-    WithLocs<ResolvedRegisterId> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-
-  // YAML: add_sat_sm120
-  struct SatSm120 {
-    // saturation is always true for this variant
-    WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterId> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-
-  using Variant = std::variant<IntegerNoSat, SatS32, SimdNoSatSm90,
-                               PackedOptionalSatSm120, SatSm120>;
-  Variant variant;
-
-  bool check();
-  static const check_end::InstructionDescriptor& get_inst_descriptor() noexcept;
-};
-
 template <typename T>
 concept PtxOperator = requires(T object) {
   typename T::VariantType;
@@ -408,3 +347,7 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
   return *variant;
 }
 };  // namespace ptx_frontend::resolved_ir
+
+// Generated instruction definitions.  The generated header also includes this
+// foundational header so it may safely be included directly by clients.
+#include "resolved_ir.gen.hpp"

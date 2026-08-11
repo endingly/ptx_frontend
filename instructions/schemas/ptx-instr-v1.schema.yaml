@@ -13,20 +13,13 @@
 #   schemas/
 #     ptx-instr-v1.schema.yaml
 #
-# Later, C++ backend mapping should use a separate schema, for example:
-#
-#   schemas/
-#     ptx-cpp-backend-v1.schema.yaml
-
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://ptxc.dev/schemas/ptx-instr-v1.schema.yaml"
 
 title: "PTX Instruction Specification Schema"
 description: >
-  Declarative schema for PTX instruction facts. This schema validates
-  PTX-facing instruction specifications only. Backend-specific information,
-  such as C++ IR struct names, enum mappings, generated field names, or visitor
-  behavior, should be stored in a separate backend schema.
+  Declarative schema for PTX instruction facts. The typed Python IR models and
+  C++ generators derive their instruction-specific structure from this input.
 
 type: object
 additionalProperties: false

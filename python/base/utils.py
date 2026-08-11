@@ -2,7 +2,7 @@ import shutil
 import subprocess
 import os
 from typing import Optional
-
+import re
 
 def find_clang_format() -> Optional[str]:
     for name in (
@@ -50,3 +50,21 @@ def format_file_inplace(
     if not clang:
         raise RuntimeError("clang-format not found on PATH")
     subprocess.run([clang, f"-style={style}", "-i", path], check=True)
+
+
+def to_file_stem(value: str) -> str:
+    """Convert arbitrary PTX spelling into a lower-case file-safe stem."""
+
+    result = re.sub(r"[^A-Za-z0-9]+", "_", value)
+    result = re.sub(r"_+", "_", result)
+    return result.strip("_").lower()
+
+
+def file_stem_to_pascal_case(value: str) -> str:
+    """Convert a PTX/file stem such as ``add_s32`` to ``AddS32``."""
+
+    return "".join(
+        part[:1].upper() + part[1:]
+        for part in re.split(r"[^A-Za-z0-9]+", value)
+        if part
+    )

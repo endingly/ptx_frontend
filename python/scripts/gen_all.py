@@ -16,6 +16,9 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from code_gen.database import load_codegen_database
 from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
+from code_gen.gen_resolved_checker_descriptor import (
+    generate_resolved_checker_descriptor_source,
+)
 from code_gen.gen_resolved_ir import generate_resolved_ir_header
 from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
 from base.utils import format_file_inplace
@@ -107,6 +110,17 @@ def main() -> None:
 
     generated_files.append(resolved_descriptor_path)
 
+    checker_descriptor_path = (
+        output_dir / "private/resolved_ir_checker_descriptor.gen.cpp"
+    )
+
+    generate_resolved_checker_descriptor_source(
+        database,
+        output_path=checker_descriptor_path,
+    )
+
+    generated_files.append(checker_descriptor_path)
+
     format_generated_files(generated_files)
 
 
@@ -124,6 +138,7 @@ def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
         output_dir / "public/resolved_ir.gen.hpp",
         output_dir / "private/syntax_descriptor.gen.cpp",
         output_dir / "private/resolved_descriptor.gen.cpp",
+        output_dir / "private/resolved_ir_checker_descriptor.gen.cpp",
     )
 
 

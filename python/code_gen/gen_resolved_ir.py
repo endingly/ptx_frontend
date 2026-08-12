@@ -8,6 +8,7 @@ from pathlib import Path
 from code_gen.database import CodegenDatabase
 from ir.resolved_ir import (
     ResolvedField,
+    ResolvedFieldStorage,
     ResolvedInstruction,
     ResolvedVariant,
     from_instruction_spec,
@@ -42,6 +43,7 @@ def generate_resolved_ir_header(
 #pragma once
 
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
+#include "ptx_ir/ptx_resolved_ir_checker.hpp"
 
 namespace ptx_frontend::resolved_ir {{
 
@@ -76,13 +78,17 @@ struct {instruction.cpp_name} {{
   using Variant = std::variant<{variant_names}>;
   Variant variant;
 
-  bool check();
   static const check_end::SyntaxInstructionDescriptor&
   get_syntax_descriptor() noexcept;
   static const check_end::ResolvedInstructionDescriptor&
   get_resolved_descriptor() noexcept;
+  static const checker::InstructionDescriptor&
+  get_checker_descriptor() noexcept;
 }};"""
-    return f"{definition}\n\n{_emit_resolve_specialization(instruction)}"
+    return (
+        f"{definition}\n\n{_emit_resolve_specialization(instruction)}\n\n"
+        f"{_emit_check_specialization(instruction)}"
+    )
 
 
 def _emit_resolve_specialization(instruction: ResolvedInstruction) -> str:
@@ -118,13 +124,170 @@ def _emit_resolve_variant_case(
     fields = "\n".join(
         "          " + _emit_resolve_field_initializer(field)
         for field in variant.fields
+        if field.storage is ResolvedFieldStorage.INSTANCE
     )
     return f"""\
   if (fields->variant_name == "{variant.cpp_name}") {{
     return {instruction.cpp_name}{{.variant = {instruction.cpp_name}::{variant.cpp_name}{{
+                   .operand_layout = fields->operand_layout,
 {fields}
     }}}};
   }}"""
+
+
+def _emit_check_specialization(instruction: ResolvedInstruction) -> str:
+    variant_lambdas = "\n\n".join(
+        _emit_check_variant_lambda(instruction, index, variant)
+        for index, variant in enumerate(instruction.variants)
+    )
+    visitor_lambdas = ", ".join(
+        _check_lambda_name(instruction, variant) for variant in instruction.variants
+    )
+    return f"""\
+namespace checker {{
+
+template <>
+inline CheckResult check<{instruction.cpp_name}>(
+    const {instruction.cpp_name}& instruction, const Context& context) {{
+{variant_lambdas}
+
+  return std::visit(detail::Overloaded{{{visitor_lambdas}}}, instruction.variant);
+}}
+
+}}  // namespace checker"""
+
+
+def _emit_check_variant_lambda(
+    instruction: ResolvedInstruction,
+    variant_index: int,
+    variant: ResolvedVariant,
+) -> str:
+    modifier_fields = [
+        field for field in variant.fields if field.origin.value == "modifier"
+    ]
+    operand_fields = [
+        field for field in variant.fields if field.origin.value == "operand"
+    ]
+    modifier_views = ",\n".join(
+        _emit_check_modifier_view(instruction, variant, field)
+        for field in modifier_fields
+    )
+    operand_views = ",\n".join(
+        _emit_check_operand_view(field) for field in operand_fields
+    )
+    lambda_name = _check_lambda_name(instruction, variant)
+    return f"""  const auto {lambda_name} =
+      [&](const {instruction.cpp_name}::{variant.cpp_name}& selected) -> CheckResult {{
+          const std::array<FieldView, {len(modifier_fields)}> fields = {{{{
+{modifier_views}
+          }}}};
+          const std::array<OperandView, {len(operand_fields)}> operands = {{{{
+{operand_views}
+          }}}};
+          CheckDiagnostics diagnostics;
+          const auto common = check_common(
+              {instruction.cpp_name}::get_checker_descriptor(), "{variant.cpp_name}",
+              context);
+          if (!common) {{
+            diagnostics.insert(diagnostics.end(), common.error().begin(),
+                               common.error().end());
+          }}
+          const auto& layouts =
+              {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
+                  .operand_layouts;
+          const auto layout_check = check_operand_layout_tag(
+              "{variant.cpp_name}", selected.operand_layout.value, layouts.size(),
+              context);
+          if (!layout_check) {{
+            diagnostics.insert(diagnostics.end(), layout_check.error().begin(),
+                               layout_check.error().end());
+          }} else {{
+            const auto operand_check = check_operands(
+                layouts[selected.operand_layout.value].bindings, fields, operands,
+                context);
+            if (!operand_check) {{
+              diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
+                                 operand_check.error().end());
+            }}
+          }}
+          if (diagnostics.empty())
+            return CheckResult{{}};
+          return std::unexpected(std::move(diagnostics));
+      }};
+  static_assert(detail::VariantCheckFunction<
+      decltype({lambda_name}), {instruction.cpp_name}::{variant.cpp_name}>);"""
+
+
+def _check_lambda_name(
+    instruction: ResolvedInstruction, variant: ResolvedVariant
+) -> str:
+    variant_suffix = variant.variant_id.removeprefix(f"{instruction.opcode}_")
+    return f"check_{variant_suffix}"
+
+
+def _emit_check_modifier_view(
+    instruction: ResolvedInstruction,
+    variant: ResolvedVariant,
+    field: ResolvedField,
+) -> str:
+    if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
+        scalar_type = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "ScalarType"
+            else "std::nullopt"
+        )
+        locations = "std::span<const SourceRange>{}"
+    else:
+        scalar_type = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "ScalarType"
+            else "std::nullopt"
+        )
+        locations = f"selected.{field.name}.locs"
+    return f"""              FieldView{{
+                  .field_id = "{field.name}",
+                  .scalar_type = {scalar_type},
+                  .locations = {locations},
+              }}"""
+
+
+def _emit_check_operand_view(field: ResolvedField) -> str:
+    if field.value_cpp_type == "ResolvedRegisterId":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = OperandShape::Register,
+                  .immediate_type = std::nullopt,
+                  .locations = selected.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedImmediate":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = OperandShape::Immediate,
+                  .immediate_type = selected.{field.name}.value.type,
+                  .locations = selected.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "RegOrImm":
+        return f"""              [&]() -> OperandView {{
+                if (const auto* immediate =
+                        std::get_if<ResolvedImmediate>(&selected.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = OperandShape::Immediate,
+                      .immediate_type = immediate->type,
+                      .locations = selected.{field.name}.locs,
+                  }};
+                }}
+                return OperandView{{
+                    .field_id = "{field.name}",
+                    .actual_shape = OperandShape::Register,
+                    .immediate_type = std::nullopt,
+                    .locations = selected.{field.name}.locs,
+                }};
+              }}()"""
+    raise ValueError(
+        f"operand field {field.name!r}: unsupported checker view type "
+        f"{field.value_cpp_type!r}"
+    )
 
 
 def _emit_resolve_field_initializer(field: ResolvedField) -> str:
@@ -145,11 +308,17 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant) -> str:
     return f"""\
   // YAML: {variant.variant_id}
   struct {variant.cpp_name} {{
+    ResolvedOperandLayoutTag operand_layout;
 {fields}
   }};"""
 
 
 def _emit_resolved_field(field: ResolvedField) -> str:
+    if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
+        return (
+            f"    inline static constexpr {field.cpp_type} {field.name} = "
+            f"{field.cpp_constant_expr};"
+        )
     return f"    {field.cpp_type} {field.name};"
 
 

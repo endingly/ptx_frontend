@@ -91,6 +91,21 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   ASSERT_EQ(bindings.size(), 3U);
   EXPECT_EQ(bindings[2].target_field_id, "src2");
   EXPECT_EQ(bindings[2].type_expr, "$type");
+  EXPECT_EQ(bindings[0].role, check_end::OperandRole::Destination);
+  EXPECT_EQ(bindings[0].access, check_end::OperandAccess::Write);
+  EXPECT_EQ(bindings[0].allowed_shapes, check_end::OperandShape::Register);
+  EXPECT_EQ(bindings[1].role, check_end::OperandRole::Source);
+  EXPECT_EQ(bindings[1].access, check_end::OperandAccess::Read);
+  EXPECT_EQ(bindings[1].allowed_shapes,
+            check_end::OperandShape::Register |
+                check_end::OperandShape::Immediate);
+
+  const auto& sat_s32 = descriptor.variants[1];
+  ASSERT_EQ(sat_s32.modifier_bindings.size(), 2U);
+  EXPECT_EQ(sat_s32.modifier_bindings[0].source_kind_id, "sat");
+  EXPECT_EQ(sat_s32.modifier_bindings[0].target_field_id, "saturate");
+  EXPECT_EQ(sat_s32.modifier_bindings[1].source_kind_id, "type");
+  EXPECT_EQ(sat_s32.modifier_bindings[1].target_field_id, "type");
 }
 
 TEST(SelectVariantAdd, ReportsUnmatchedModifierCombination) {
@@ -112,6 +127,7 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* add = std::get_if<Add::IntegerNoSat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->operand_layout, (ResolvedOperandLayoutTag{0}));
   EXPECT_EQ(add->type.value, ScalarType::S32);
   ASSERT_EQ(add->type.locs.size(), 1U);
   EXPECT_EQ(add->type.locs.front(), ast.modifiers.front().syntax.range);
@@ -128,6 +144,22 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
             std::get<syntax_ast::AstImmediate>(ast.operands[2]).syntax.range);
 }
 
+TEST(ResolveAdd, UsesFixedModifierConstantsForSatS32) {
+  const auto ast = parse_instruction("add.sat.s32 %r4, %r5, -1;");
+
+  const auto resolved = resolve<Add>(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* add = std::get_if<Add::SatS32>(&resolved->variant);
+  ASSERT_NE(add, nullptr);
+  EXPECT_TRUE(Add::SatS32::saturate);
+  EXPECT_EQ(Add::SatS32::type, ScalarType::S32);
+
+  const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
+  ASSERT_NE(immediate, nullptr);
+  EXPECT_EQ(immediate->type, ScalarType::S32);
+}
+
 TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
   const auto ast = parse_instruction("add.u32 %r4, %r5, 6;");
 
@@ -137,6 +169,7 @@ TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
 
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
   EXPECT_EQ(fields->variant_name, "IntegerNoSat");
+  EXPECT_EQ(fields->operand_layout, (ResolvedOperandLayoutTag{0}));
   const auto* type =
       std::get_if<WithLocs<ScalarType>>(&fields->modifiers.at("type"));
   ASSERT_NE(type, nullptr);

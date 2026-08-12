@@ -11,59 +11,16 @@
 #include <span>
 #include <type_traits>
 #include <unordered_set>
+#include "ptx_ir/ptx_resolved_ir_checker.hpp"
 #include "ptx_ir/syntax/ptx_syntax_ast.hpp"
 
 namespace ptx_frontend::resolved_ir {
 
 namespace check_end {
 
-enum class OperandShape : uint16_t {
-  Register = 1 << 0,
-  Immediate = 1 << 1,
-  Address = 1 << 2,
-  Symbol = 1 << 3,
-  Vector = 1 << 4,
-};
-
-template <typename T>
-  requires(std::is_scoped_enum_v<T>)
-constexpr T operator|(T lhs, T rhs) {
-  using under_type = std::underlying_type_t<T>;
-  return static_cast<T>(static_cast<under_type>(lhs) |
-                        static_cast<under_type>(rhs));
-}
-
-template <typename T>
-  requires(std::is_scoped_enum_v<T>)
-constexpr bool valid(T enum_value) {
-  using under_type = std::underlying_type_t<T>;
-  constexpr int32_t bit_num = sizeof(under_type) * 8;
-  bool flag = false;
-  constexpr under_type full_r = 0;
-  for (auto item : magic_enum::enum_values<T>()) {
-    full_r |= item;
-  }
-  under_type enum_value_under = static_cast<under_type>(enum_value);
-  if ((enum_value_under & full_r) == enum_value_under) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
-enum class OperandRole : uint8_t {
-  Destination,
-  Source,
-  Address,
-  Predicate,
-  BranchTarget,
-};
-
-enum class OperandAccess : uint8_t {
-  Read,
-  Write,
-  ReadWrite,
-};
+using OperandShape = checker::OperandShape;
+using OperandRole = checker::OperandRole;
+using OperandAccess = checker::OperandAccess;
 
 enum class OperandSyntaxShape : uint8_t {
   Identifier = 1 << 0,
@@ -73,6 +30,13 @@ enum class OperandSyntaxShape : uint8_t {
   VectorMember = 1 << 4,
   Group = 1 << 5,  // for op call syntax (...)
 };
+
+constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
+                                       OperandSyntaxShape rhs) {
+  using Underlying = std::underlying_type_t<OperandSyntaxShape>;
+  return static_cast<OperandSyntaxShape>(static_cast<Underlying>(lhs) |
+                                         static_cast<Underlying>(rhs));
+}
 
 OperandSyntaxShape get_operand_syntax_shape(
     const syntax_ast::AstOperand& operand);
@@ -141,10 +105,7 @@ struct ResolvedModifierBindingDescriptor {
   std::string_view target_field_id;
 };
 
-struct ResolvedOperandBindingDescriptor {
-  std::string_view target_field_id;
-  std::string_view type_expr;
-};
+using ResolvedOperandBindingDescriptor = checker::OperandDescriptor;
 
 struct ResolvedOperandLayoutDescriptor {
   std::span<const ResolvedOperandBindingDescriptor> bindings;
@@ -195,6 +156,12 @@ struct ResolvedImmediate {
   bool operator==(const ResolvedImmediate&) const = default;
 };
 
+/** The selected operand-layout index within the resolved instruction variant. */
+struct ResolvedOperandLayoutTag {
+  uint16_t value = 0;
+  bool operator==(const ResolvedOperandLayoutTag&) const = default;
+};
+
 using RegOrImm = std::variant<ResolvedRegisterId, ResolvedImmediate>;
 
 using ResolvedFieldValue =
@@ -205,6 +172,7 @@ using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {
   std::string_view variant_name;
+  ResolvedOperandLayoutTag operand_layout;
   ResolvedFieldMap modifiers;
   ResolvedFieldMap operands;
 };
@@ -213,7 +181,6 @@ template <typename T>
 concept PtxOperator = requires(T object) {
   typename T::VariantType;
   requires std::is_scoped_enum_v<typename T::VariantType>;
-  { object.check() } -> std::same_as<bool>;
   {
     T::get_syntax_descriptor()
   } -> std::same_as<const check_end::SyntaxInstructionDescriptor&>;

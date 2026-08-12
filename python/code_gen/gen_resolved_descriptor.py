@@ -11,7 +11,10 @@ from ir.resolved_ir import (
     ResolvedField,
     ResolvedInstruction,
     ResolvedModifierBinding,
+    ResolvedOperandAccess,
     ResolvedOperandLayout,
+    ResolvedOperandRole,
+    ResolvedOperandShape,
     ResolvedVariant,
     ResolvedValueKind,
     from_instruction_spec,
@@ -24,6 +27,28 @@ _CPP_RESOLVED_VALUE_KINDS = {
     ResolvedValueKind.REGISTER: "check_end::ResolvedValueKind::Register",
     ResolvedValueKind.IMMEDIATE: "check_end::ResolvedValueKind::Immediate",
     ResolvedValueKind.REG_OR_IMM: "check_end::ResolvedValueKind::RegOrImm",
+}
+
+_CPP_OPERAND_ROLES = {
+    ResolvedOperandRole.DESTINATION: "check_end::OperandRole::Destination",
+    ResolvedOperandRole.SOURCE: "check_end::OperandRole::Source",
+    ResolvedOperandRole.ADDRESS: "check_end::OperandRole::Address",
+    ResolvedOperandRole.PREDICATE: "check_end::OperandRole::Predicate",
+    ResolvedOperandRole.BRANCH_TARGET: "check_end::OperandRole::BranchTarget",
+}
+
+_CPP_OPERAND_ACCESS = {
+    ResolvedOperandAccess.READ: "check_end::OperandAccess::Read",
+    ResolvedOperandAccess.WRITE: "check_end::OperandAccess::Write",
+    ResolvedOperandAccess.READ_WRITE: "check_end::OperandAccess::ReadWrite",
+}
+
+_CPP_OPERAND_SHAPES = {
+    ResolvedOperandShape.REGISTER: "check_end::OperandShape::Register",
+    ResolvedOperandShape.IMMEDIATE: "check_end::OperandShape::Immediate",
+    ResolvedOperandShape.ADDRESS: "check_end::OperandShape::Address",
+    ResolvedOperandShape.SYMBOL: "check_end::OperandShape::Symbol",
+    ResolvedOperandShape.VECTOR: "check_end::OperandShape::Vector",
 }
 
 
@@ -157,16 +182,25 @@ def _emit_operand_layout_storage(
     layout: ResolvedOperandLayout,
 ) -> str:
     bindings = ",\n".join(
-        f"""          check_end::ResolvedOperandBindingDescriptor{{
-              .target_field_id = "{binding.target_field_id}",
-              .type_expr = "{binding.type_expr or ''}",
-          }}"""
-        for binding in layout.bindings
+        _emit_operand_binding_descriptor(binding) for binding in layout.bindings
     )
     return f"""  static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, {len(layout.bindings)}>
       {variant_name}_operand_layout_{layout_index}_bindings = {{
 {bindings}
       }};"""
+
+
+def _emit_operand_binding_descriptor(binding) -> str:
+    allowed_shapes = " | ".join(
+        _CPP_OPERAND_SHAPES[shape] for shape in binding.allowed_shapes
+    )
+    return f"""          check_end::ResolvedOperandBindingDescriptor{{
+              .target_field_id = "{binding.target_field_id}",
+              .type_expr = "{binding.type_expr or ''}",
+              .role = {_CPP_OPERAND_ROLES[binding.role]},
+              .access = {_CPP_OPERAND_ACCESS[binding.access]},
+              .allowed_shapes = {allowed_shapes},
+          }}"""
 
 
 def _emit_resolved_variant_descriptor(variant: ResolvedVariant) -> str:

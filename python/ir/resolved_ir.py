@@ -32,6 +32,41 @@ class ResolvedValueKind(Enum):
     REG_OR_IMM = "RegOrImm"
 
 
+class ResolvedFieldStorage(Enum):
+    """Whether a field is stored per instruction or fixed by its variant."""
+
+    INSTANCE = "Instance"
+    STATIC_CONSTANT = "StaticConstant"
+
+
+class ResolvedOperandRole(Enum):
+    """Semantic role of one resolved operand."""
+
+    DESTINATION = "Destination"
+    SOURCE = "Source"
+    ADDRESS = "Address"
+    PREDICATE = "Predicate"
+    BRANCH_TARGET = "BranchTarget"
+
+
+class ResolvedOperandAccess(Enum):
+    """Access mode of one resolved operand."""
+
+    READ = "Read"
+    WRITE = "Write"
+    READ_WRITE = "ReadWrite"
+
+
+class ResolvedOperandShape(Enum):
+    """Allowed resolved value shapes for one operand position."""
+
+    REGISTER = "Register"
+    IMMEDIATE = "Immediate"
+    ADDRESS = "Address"
+    SYMBOL = "Symbol"
+    VECTOR = "Vector"
+
+
 @dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
@@ -41,6 +76,11 @@ class ResolvedField:
     origin: ResolvedFieldOrigin
     source_name: str
     type_expr: str | None = None
+    operand_role: ResolvedOperandRole | None = None
+    operand_access: ResolvedOperandAccess | None = None
+    allowed_operand_shapes: tuple[ResolvedOperandShape, ...] = ()
+    storage: ResolvedFieldStorage = ResolvedFieldStorage.INSTANCE
+    constant_value: str | bool | int | None = None
 
     @property
     def value_kind(self) -> ResolvedValueKind:
@@ -52,7 +92,29 @@ class ResolvedField:
     def cpp_type(self) -> str:
         """The C++ member type used by generated resolved instruction structs."""
 
+        if self.storage is ResolvedFieldStorage.STATIC_CONSTANT:
+            return self.value_cpp_type
         return f"WithLocs<{self.value_cpp_type}>"
+
+    @property
+    def cpp_constant_expr(self) -> str:
+        """Return the generated C++ expression for a fixed modifier value."""
+
+        if self.storage is not ResolvedFieldStorage.STATIC_CONSTANT:
+            raise ValueError("only static resolved fields have constant expressions")
+        if self.value_cpp_type == "bool" and isinstance(self.constant_value, bool):
+            return "true" if self.constant_value else "false"
+        if self.value_cpp_type == "ScalarType" and isinstance(self.constant_value, str):
+            try:
+                return f"ScalarType::{_SCALAR_TYPE_ENUM_NAMES[self.constant_value]}"
+            except KeyError as error:
+                raise ValueError(
+                    f"unsupported fixed scalar type {self.constant_value!r}"
+                ) from error
+        raise ValueError(
+            f"field {self.name!r}: unsupported fixed value "
+            f"{self.constant_value!r} for {self.value_cpp_type}"
+        )
 
 
 @dataclass(frozen=True)
@@ -82,6 +144,9 @@ class ResolvedOperandBinding:
 
     target_field_id: str
     type_expr: str | None
+    role: ResolvedOperandRole
+    access: ResolvedOperandAccess
+    allowed_shapes: tuple[ResolvedOperandShape, ...]
 
 
 @dataclass(frozen=True)
@@ -117,12 +182,48 @@ _OPERAND_VALUE_CPP_TYPES = {
     "reg_or_imm": "RegOrImm",
 }
 
+_OPERAND_ALLOWED_SHAPES = {
+    "reg": (ResolvedOperandShape.REGISTER,),
+    "imm": (ResolvedOperandShape.IMMEDIATE,),
+    "reg_or_imm": (
+        ResolvedOperandShape.REGISTER,
+        ResolvedOperandShape.IMMEDIATE,
+    ),
+}
+
+_OPERAND_ROLES = {
+    "dst": ResolvedOperandRole.DESTINATION,
+    "src": ResolvedOperandRole.SOURCE,
+    "src1": ResolvedOperandRole.SOURCE,
+    "src2": ResolvedOperandRole.SOURCE,
+    "address": ResolvedOperandRole.ADDRESS,
+    "predicate": ResolvedOperandRole.PREDICATE,
+    "branch_target": ResolvedOperandRole.BRANCH_TARGET,
+}
+
+_OPERAND_ACCESS = {
+    "read": ResolvedOperandAccess.READ,
+    "write": ResolvedOperandAccess.WRITE,
+    "readwrite": ResolvedOperandAccess.READ_WRITE,
+}
+
 _CPP_TYPE_VALUE_KINDS = {
     "bool": ResolvedValueKind.BOOL,
     "ScalarType": ResolvedValueKind.SCALAR_TYPE,
     "ResolvedRegisterId": ResolvedValueKind.REGISTER,
     "ResolvedImmediate": ResolvedValueKind.IMMEDIATE,
     "RegOrImm": ResolvedValueKind.REG_OR_IMM,
+}
+
+_SCALAR_TYPE_ENUM_NAMES = {
+    "u8": "U8", "u8x4": "U8x4", "u16": "U16", "u16x2": "U16x2",
+    "u32": "U32", "u64": "U64", "s8": "S8", "s8x4": "S8x4",
+    "s16": "S16", "s16x2": "S16x2", "s32": "S32", "s64": "S64",
+    "b8": "B8", "b16": "B16", "b32": "B32", "b64": "B64",
+    "b128": "B128", "f16": "F16", "f16x2": "F16x2", "f32": "F32",
+    "f32x2": "F32x2", "f64": "F64", "bf16": "BF16", "bf16x2": "BF16x2",
+    "e4m3x2": "E4m3x2", "e5m2x2": "E5m2x2", "pred": "Pred", "tf32": "TF32",
+    "e4m3": "E4m3", "e5m2": "E5m2",
 }
 
 
@@ -142,7 +243,7 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
     modifier_fields = tuple(
         _build_modifier_field(modifier)
         for modifier in variant.modifiers
-        if _materializes_resolved_field(modifier)
+        if modifier.presence != "absent"
     )
     operand_fields = tuple(_build_operand_field(operand) for operand in variant.operands)
 
@@ -163,6 +264,9 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
                     ResolvedOperandBinding(
                         target_field_id=field.name,
                         type_expr=field.type_expr,
+                        role=_require_operand_role(field),
+                        access=_require_operand_access(field),
+                        allowed_shapes=field.allowed_operand_shapes,
                     )
                     for field in operand_fields
                 )
@@ -171,12 +275,6 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )
-
-
-def _materializes_resolved_field(modifier: ModifierSpec) -> bool:
-    """Fixed and absent modifiers are represented by the selected variant."""
-
-    return modifier.presence not in {"absent", "fixed"}
 
 
 def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
@@ -193,6 +291,12 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
         value_cpp_type=value_cpp_type,
         origin=ResolvedFieldOrigin.MODIFIER,
         source_name=modifier.name,
+        storage=(
+            ResolvedFieldStorage.STATIC_CONSTANT
+            if modifier.presence == "fixed"
+            else ResolvedFieldStorage.INSTANCE
+        ),
+        constant_value=modifier.value if modifier.presence == "fixed" else None,
     )
 
 
@@ -205,13 +309,44 @@ def _build_operand_field(operand: OperandSpec) -> ResolvedField:
             f"{operand.kind!r}"
         ) from error
 
+    try:
+        role = _OPERAND_ROLES[operand.role or ""]
+    except KeyError as error:
+        raise ValueError(
+            f"operand {operand.name!r}: unsupported resolved operand role "
+            f"{operand.role!r}"
+        ) from error
+
+    try:
+        access = _OPERAND_ACCESS[operand.access or ""]
+    except KeyError as error:
+        raise ValueError(
+            f"operand {operand.name!r}: unsupported resolved operand access "
+            f"{operand.access!r}"
+        ) from error
+
     return ResolvedField(
         name=operand.name,
         value_cpp_type=value_cpp_type,
         origin=ResolvedFieldOrigin.OPERAND,
         source_name=operand.name,
         type_expr=operand.type_expr,
+        operand_role=role,
+        operand_access=access,
+        allowed_operand_shapes=_OPERAND_ALLOWED_SHAPES[operand.kind],
     )
+
+
+def _require_operand_role(field: ResolvedField) -> ResolvedOperandRole:
+    if field.operand_role is None:
+        raise ValueError(f"operand field {field.name!r} has no semantic role")
+    return field.operand_role
+
+
+def _require_operand_access(field: ResolvedField) -> ResolvedOperandAccess:
+    if field.operand_access is None:
+        raise ValueError(f"operand field {field.name!r} has no access mode")
+    return field.operand_access
 
 
 def _variant_cpp_name(opcode: str, variant_id: str) -> str:

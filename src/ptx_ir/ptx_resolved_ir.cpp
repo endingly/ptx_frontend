@@ -487,6 +487,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         "syntax layout index {}.",
         variant_name, selected_layout->index));
   }
+  if (selected_layout->index > std::numeric_limits<uint16_t>::max()) {
+    throw ResolveException(fmt::format(
+        "Operand layout index {} for variant '{}' exceeds the resolved IR "
+        "layout-tag range.",
+        selected_layout->index, variant_name));
+  }
   const auto& resolved_layout =
       resolved_variant.operand_layouts[selected_layout->index];
   if (resolved_layout.bindings.size() !=
@@ -503,7 +509,11 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   if (!actual_modifiers)
     return std::unexpected(actual_modifiers.error());
 
-  ResolvedInstructionFields fields{.variant_name = variant_name};
+  ResolvedInstructionFields fields{
+      .variant_name = variant_name,
+      .operand_layout =
+          ResolvedOperandLayoutTag{static_cast<uint16_t>(selected_layout->index)},
+  };
   for (const auto& binding : resolved_variant.modifier_bindings) {
     const auto& syntax_modifier = find_syntax_modifier_descriptor(
         syntax_variant, binding.source_kind_id);
@@ -512,6 +522,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const auto actual =
         actual_modifiers->find(std::string(binding.source_kind_id));
     const bool present = actual != actual_modifiers->end();
+
+    if (syntax_modifier.presence == check_end::PresenceRequirement::Absent) {
+      throw ResolveException(fmt::format(
+          "Resolved binding '{}' refers to absent syntax modifier '{}'.",
+          binding.target_field_id, binding.source_kind_id));
+    }
 
     switch (field.value_kind) {
       case ResolvedValueKind::Bool:

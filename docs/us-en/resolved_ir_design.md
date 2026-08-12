@@ -1,272 +1,156 @@
-# Resolved PTX IR Design
+# C++ Resolved IR Design
 
-## Status
+## Status and scope
 
-This document defines the target semantic representation produced after a PTX
-Syntax AST has been parsed and resolved. It is the second and final core IR
-layer of this frontend.
+This document describes the implemented Resolved PTX IR, not a future CFG,
+SSA, or backend IR. The frontend's core flow is:
 
 ```text
-PTX source
-  -> lossless token stream
-  -> Syntax AST
-  -> Resolved PTX IR
+PTX source -> Token stream -> Syntax AST -> Resolved IR -> checker
 ```
 
-## Scope and goals
+Syntax AST preserves source spelling, modifier order, and `SourceRange`.
+Resolved IR records the selected instruction variant, resolved operand values,
+and diagnostic locations. Both are stable frontend boundaries. CFG/SSA,
+complete symbol binding, and target lowering are later passes.
 
-Resolved PTX IR represents a program after name binding, instruction-form
-selection, operand validation, and target validation. It must:
+## Locations and primitive values
 
-- contain no unresolved textual references in semantic fields;
-- preserve the exact selected PTX instruction form;
-- represent only well-formed instruction instances;
-- retain instruction- and field-level provenance for diagnostics;
-- be simple to generate from YAML as C++ structs and members;
-- remain close to PTX rather than prematurely becoming CFG or SSA IR.
-
-CFG construction, SSA construction, optimization, interpretation, and target
-lowering are downstream passes, not responsibilities of this representation.
-
-## Module and statement structure
-
-A resolved module retains PTX's source-level linear structure. Labels remain
-explicit and branch operands initially refer to `LabelId`; a later CFG pass may
-replace or supplement them with `BlockId` edges.
+Every independently diagnosable resolved value uses:
 
 ```cpp
-struct ResolvedStatement {
-  std::optional<ResolvedPredicate> predicate;
-  ResolvedInstruction instruction;
-  SourceOrigin origin;
-};
-
-struct ResolvedFunction {
-  FunctionId id;
-  std::vector<ResolvedStatement> body;
-};
-```
-
-The predicate belongs to `ResolvedStatement`, not to every individual
-instruction type. This avoids duplicating a PTX statement property in every
-generated instruction struct.
-
-## Source provenance
-
-Resolved IR must preserve its connection to source syntax because checkers run
-on Resolved IR and must emit source diagnostics. A semantic value can arise
-from one AST node or from several nodes, so a single `SourceRange` is not
-always sufficient.
-
-```cpp
-struct SourceOrigin {
-  SourceRange primary;
-  std::vector<SourceRange> related;
-};
-
 template <typename T>
-struct WithOrigin {
+struct WithLocs {
   T value;
-  SourceOrigin origin;
+  std::vector<SourceRange> locs;
 };
 ```
 
-`primary` identifies the location to underline by default. `related` records
-other source fragments that jointly determine the value. For example, the
-resolved form of `add.sat.u8x4` may use `.u8x4` as its primary location and
-record `.sat` as a related location.
+`locs` can associate one semantic value with several source fragments; an empty
+list denotes no direct source location, such as a compile-time fixed modifier.
+Current primitives include `ResolvedRegisterId`, `ResolvedImmediate`, and
+`RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
+checker never has to reinterpret literal text.
 
-Every resolved statement carries statement-level provenance. Operand and
-form/modifier fields that can independently fail validation carry
-`WithOrigin<T>` as well. This does not require reuse of the old
-`WithLoc<ParsedOp>` representation: the wrapped value is resolved semantic
-data such as `RegisterId` or `ResolvedImmediate`, not an AST value.
+## Opcode-generated structures
 
-## Identity and resolved references
-
-The resolver allocates opaque IDs in the appropriate ownership scope:
-
-```cpp
-struct RegisterId { uint32_t value; };
-struct SymbolId   { uint32_t value; };
-struct LabelId    { uint32_t value; };
-struct FunctionId { uint32_t value; };
-```
-
-The exact representation may use strong typedefs, index classes, or compact
-integer wrappers, but distinct ID categories must not be implicitly
-interchangeable.
-
-The resolver maps textual AST references to IDs according to context. A name
-that appeared as `AstIdentifierRef` can therefore resolve to a register,
-variable, function, label, or other symbol without imposing that decision on
-the Syntax AST.
-
-## Resolved operands
-
-Resolved operands carry semantic identity and value, not source spelling.
-Their exact alternatives will grow with PTX coverage, but the initial model is
-conceptually:
-
-```cpp
-struct ResolvedImmediate {
-  ImmediateBits bits;
-  ScalarType type;
-};
-
-using ResolvedValue = std::variant<RegisterId, ResolvedImmediate>;
-
-struct ResolvedAddress {
-  std::variant<RegisterId, SymbolId> base;
-  int64_t offset;
-  StateSpace space;
-};
-
-struct ResolvedVectorMember {
-  RegisterId base;
-  uint8_t member;
-};
-```
-
-Immediate representation must preserve the information needed by PTX
-semantics, including bit pattern and type. It must not depend on the AST's
-literal spelling. Address space, vector width, and operand category are
-validated during resolution rather than inferred by later consumers.
-
-Operands that can be diagnosed independently are stored with their provenance,
-for example `WithOrigin<RegisterId>` and `WithOrigin<ResolvedValue>`.
-
-## Instructions and forms
-
-`ResolvedInstruction` is a generated global variant whose alternatives are
-organized by opcode:
-
-```cpp
-using ResolvedInstruction = std::variant<Add, Atom, Ld, St, Bra /* ... */>;
-```
-
-An opcode struct records the selected PTX form in the smallest representation
-that preserves semantic distinctions.
-
-### Forms with one operand layout
-
-When all forms of an opcode share the same resolved operand layout, use a form
-tag plus one shared operand struct:
+Every opcode generates one outer struct. `VariantType` and `std::variant`
+represent the variant uniquely selected by the modifier combination:
 
 ```cpp
 struct Add {
-  enum class Form { U32, SatS32, U16x2, SatU8x4 };
+  enum class VariantType { IntegerNoSat, SatS32 /* ... */ };
 
-  struct Operands {
-    WithOrigin<RegisterId> dst;
-    WithOrigin<RegOrImmediate> src1;
-    WithOrigin<RegOrImmediate> src2;
+  struct IntegerNoSat {
+    ResolvedOperandLayoutTag operand_layout;
+    WithLocs<ScalarType> type;
+    WithLocs<ResolvedRegisterId> dst;
+    WithLocs<RegOrImm> src1;
+    WithLocs<RegOrImm> src2;
   };
+  using Variant = std::variant<IntegerNoSat /* ... */>;
+  Variant variant;
+};
+```
 
-  Form form;
+A fixed modifier is not mutable per-instance state. For example,
+`add.sat.s32` generates:
+
+```cpp
+inline static constexpr bool saturate = true;
+inline static constexpr ScalarType type = ScalarType::S32;
+```
+
+This retains selected semantics without forcing later passes to infer the same
+fact again.
+
+## Multiple operand layouts in one variant
+
+The same modifier combination can admit different operand shapes. It must not
+be split into artificial modifier variants. Instead, generate a layout tag and
+a nested payload variant. `bar.sync a{, b}` is represented as:
+
+```cpp
+struct Bar::Sync {
+  ResolvedOperandLayoutTag operand_layout;
+  inline static constexpr bool sync = true;
+  struct BarrierOperands { WithLocs<RegOrImm> barrier; };
+  struct BarrierAndThreadCountOperands {
+    WithLocs<RegOrImm> barrier;
+    WithLocs<RegOrImm> thread_count;
+  };
+  using Operands = std::variant<BarrierOperands,
+                                BarrierAndThreadCountOperands>;
   Operands operands;
 };
 ```
 
-The `Form` determines fixed modifiers such as `.sat` and `.s32`; those facts
-are not redundantly stored as independent fields.
+`ResolvedOperandLayoutTag` is the index of the layout in generated descriptors.
+The checker verifies tag validity, tag/payload-alternative agreement, and every
+operand binding. A disagreement is corrupted Resolved IR and produces
+`OperandLayoutPayloadMismatch`.
 
-### Forms with different operand layouts
+The only implemented layout algorithm is `Flat`: comma-separated positional
+operand slots. Groups, variadics, and call argument lists require a Syntax AST
+extension followed by a new layout kind; they must not be disguised as `Flat`.
 
-When legal forms differ structurally, use an internal semantic variant. Shared
-instruction data remains outside it:
+## Resolution protocol
 
-```cpp
-struct Atom {
-  struct Common {
-    StateSpace space;
-  };
+`resolve<T>(const AstInstruction&)` is a generated opcode-specific thin
+wrapper. Shared logic performs the following steps:
 
-  struct Basic {
-    WithOrigin<RegisterId> dst;
-    WithOrigin<ResolvedAddress> addr;
-    WithOrigin<ResolvedValue> value;
-  };
+1. `collect_actual_modifiers` maps source spellings to descriptor `kind_id`s
+   and diagnoses unknown spellings and duplicate kinds.
+2. `selectVariant<T>` selects exactly one variant from modifier slots only.
+   `absent`, `optional`, and `required/fixed` match by kind and allowed value,
+   never by modifier-list index.
+3. The selected variant chooses exactly one `OperandLayout` from AST shapes and
+   arity.
+4. `resolve_fields` converts modifiers and operands through resolved bindings
+   into location-carrying values.
+5. The generated builder places fields in the selected struct or payload.
 
-  struct CompareAndSwap {
-    RegisterId dst;
-    ResolvedAddress addr;
-    ResolvedValue compare;
-    ResolvedValue replacement;
-  };
+No matching variant/layout is a user diagnostic. Multiple matching layouts, or
+a mismatch between descriptors and generated structures, is a generator bug and
+uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
-  Common common;
-  std::variant<Basic, CompareAndSwap> operands;
-};
-```
+## Three descriptors
 
-This internal variant is part of the semantic model: each alternative has a
-different PTX operand layout. It is not an arbitrary code-generation layout
-option.
+One YAML specification generates three static descriptors with distinct roles:
 
-## Generated C++ model
+| Descriptor | Responsibility |
+| --- | --- |
+| Syntax descriptor | modifier spellings/presence, AST operand shapes, and layout slots |
+| Resolved descriptor | resolved field kinds, modifier/operand bindings, structured type expressions, roles, and access |
+| Checker descriptor | variant/layout PTX/SM/family availability and rule ID |
 
-YAML generates the following resolved-IR artifacts:
+They must not duplicate each other: syntax descriptors do not store resolved C++
+types, resolved descriptors do not recognize modifier spellings, and checker
+descriptors do not redo resolve bindings.
 
-- opcode structs;
-- nested common/operand structs where the semantic model requires them;
-- form enums and internal form variants;
-- category and global `ResolvedInstruction` variants;
-- static descriptors used by the resolver.
+## Checker contract
 
-Every generated member must correspond to a resolved PTX fact. The generator
-must not expose generic layout modes such as `direct`, `sub_struct`, or
-`sub_variant` as user-selected backend mechanisms. The schema describes form
-structure; templates choose the mechanically necessary C++ syntax.
+Each generated `checker::check<T>` wrapper uses common checking for:
 
-Form names are generated from a stable machine-readable YAML form identifier.
-They are not hand-written API obligations. Readable generated names are useful,
-but their generation must be deterministic and collision-checked.
+- minimum PTX version, SM version, and target family for the variant, selected operand layout, and actual modifier value;
+- layout-tag bounds;
+- layout-tag/payload agreement;
+- operand field identity, resolved shape, and immediate types from structured descriptors.
 
-## Resolver contract
+`rule_id` is reserved for typed instruction-specific rules. Register declaration
+types, symbol visibility, address spaces, and cross-instruction constraints need
+a complete symbol table and are outside the current common checker ABI.
 
-The resolver consumes `syntax_ast::AstInstruction` together with a resolution
-context that contains symbol tables and an optional PTX target. It must:
+## Extension rules
 
-1. resolve identifier references to typed IDs;
-2. match opcode, modifier sequence, and complete AST operand shapes;
-3. select exactly one legal semantic form;
-4. validate types, state spaces, arity, and instruction-specific constraints;
-5. validate PTX/SM/family availability, deprecation, and removal;
-6. emit the corresponding generated opcode struct with provenance, or a
-   diagnostic tied to AST source ranges.
+- A YAML semantic variant is defined by its modifier combination; never add a
+  fake variant merely for C++ layout convenience.
+- Every generated member represents a resolved PTX fact or its provenance; do
+  not expose `direct` or `sub_struct` as backend layout switches.
+- Add a Syntax AST shape and syntax descriptor before adding its resolved value.
+- A new multi-layout instruction needs tests for normal resolution, an invalid
+  layout tag, and a tag/payload mismatch.
 
-This is where candidates with the same opcode and modifiers but different
-operand layouts are disambiguated.
-
-## YAML requirements
-
-The instruction specification must provide stable form identifiers and enough
-information to generate resolved fields and resolver descriptors:
-
-```yaml
-forms:
-  - id: sat_s32
-    requires: { sat: true, type: s32 }
-    availability: { ptx: "1.0" }
-    operands:
-      - { name: dst, resolved_type: RegisterId }
-      - { name: src1, resolved_type: RegOrImmediate }
-      - { name: src2, resolved_type: RegOrImmediate }
-```
-
-The normalized Python model must distinguish:
-
-- shared fields of an opcode;
-- form tags with a common operand layout;
-- structurally different form payloads.
-
-## Implementation sequence
-
-1. Define core IDs, resolved operands, statements, and source-origin policy.
-2. Add a hand-written `Add` resolved instruction and resolver pilot.
-3. Extend YAML/schema/normalization with stable form IDs and resolved field
-   descriptors.
-4. Generate one instruction category and its resolver descriptors.
-5. Migrate categories incrementally, with resolver tests for valid forms,
-   operand-layout ambiguity, symbols, and target availability.
+Implementation entry points are `include/ptx_ir/resolved/ptx_resolved_ir.hpp`,
+`include/ptx_ir/ptx_resolved_ir_checker.hpp`, and generated
+`resolved_ir.gen.hpp`.

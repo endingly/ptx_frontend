@@ -1,352 +1,146 @@
-# Resolved PTX IR 设计
+# C++ Resolved IR 设计
 
-## 状态
+## 状态与边界
 
-本文定义 PTX Syntax AST 解析与解析（resolution）之后产出的目标语义表示。它是本
-frontend 的第二层、也是最后一层核心 IR。
+本文描述当前实现的 Resolved PTX IR，而不是一个未来的 CFG、SSA 或后端 IR
+设计。frontend 的核心数据流为：
 
 ```text
-PTX 源码
-  -> 无损 token stream
-  -> Syntax AST
-  -> Resolved PTX IR
+PTX source -> Token stream -> Syntax AST -> Resolved IR -> checker
 ```
 
-## 范围与目标
+Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolved IR 则记录已经
+选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
+CFG、SSA、符号表的完整绑定和目标 lowering 是后续 pass，不应改变此层的结构。
 
-Resolved PTX IR 表示已经完成 name binding、instruction form 选择、operand 验证与
-target 验证后的程序。它必须：
+## 位置与基本值
 
-- 在语义字段中不包含未解析的文本引用；
-- 保留最终选定的 PTX instruction form；
-- 只表示 well-formed instruction instance；
-- 保留 instruction 级和字段级、可关联诊断的 provenance；
-- 便于从 YAML 生成 C++ struct 与 member；
-- 保持接近 PTX，不应过早转换为 CFG 或 SSA IR。
-
-CFG、SSA、optimization、interpretation 与 target lowering 均为下游 pass，不属于
-此表示的职责。
-
-## Module 与 statement 结构
-
-resolved module 保留 PTX 的线性源码结构。label 保持显式存在，branch operand 在
-初始阶段引用 `LabelId`；后续 CFG pass 可将其替换或补充为 `BlockId` edge。
+每个可独立诊断的 resolved 值使用：
 
 ```cpp
-struct ResolvedStatement {
-  std::optional<ResolvedPredicate> predicate;
-  ResolvedInstruction instruction;
-  SourceOrigin origin;
-};
-
-struct ResolvedFunction {
-  FunctionId id;
-  std::vector<ResolvedStatement> body;
-};
-```
-
-predicate 属于 `ResolvedStatement`，而不是每个 instruction 类型的成员。这样避免
-在每个生成 instruction struct 中重复 PTX statement 层属性。
-
-## Source provenance
-
-checker 工作在 Resolved IR 上，且必须产出源码诊断，因此 Resolved IR 必须保留与
-Syntax AST 的来源关联。一个语义值可能来自一个或多个 AST node，单个 `SourceRange`
-并不总是足够。
-
-```cpp
-struct SourceOrigin {
-  SourceRange primary;
-  std::vector<SourceRange> related;
-};
-
 template <typename T>
-struct WithOrigin {
+struct WithLocs {
   T value;
-  SourceOrigin origin;
+  std::vector<SourceRange> locs;
 };
 ```
 
-`primary` 是默认需要标注的位置；`related` 保存共同决定该语义值的其他源码片段。
-例如 `add.sat.u8x4` 的 resolved form 可将 `.u8x4` 作为 `primary`，并将 `.sat`
-保存为 `related`。
+`locs` 允许一个语义值关联多个源码片段；空集合表示没有直接源码位置，例如由 fixed
+modifier 得到的编译期常量。当前基础值包括 `ResolvedRegisterId`、`ResolvedImmediate`
+与 `RegOrImm`。`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
+重新解释 literal 文本。
 
-每个 resolved statement 都保存 statement 级 provenance；可独立触发诊断的 operand
-与 form/modifier field 同时使用 `WithOrigin<T>`。这不是要求复用旧的
-`WithLoc<ParsedOp>` 模型：包装的值是 `RegisterId`、`ResolvedImmediate` 等 resolved
-semantic value，而不是 AST value。
+## 按 opcode 生成的结构
 
-## Identity 与 resolved reference
-
-resolver 在合适的所有权范围内分配 opaque ID：
-
-```cpp
-struct RegisterId { uint32_t value; };
-struct SymbolId   { uint32_t value; };
-struct LabelId    { uint32_t value; };
-struct FunctionId { uint32_t value; };
-```
-
-具体实现可使用 strong typedef、index class 或紧凑整数包装，但不同 ID 类别不能隐式
-互相转换。
-
-resolver 根据上下文将 AST 中的文本引用映射为 ID。因此原本的 `AstIdentifierRef`
-可以解析为 register、variable、function、label 或其他 symbol，而不要求 Syntax AST
-提前作出该语义决定。
-
-## Resolved operand
-
-resolved operand 保存语义 identity 与 value，而不是源码拼写。其具体分支会随 PTX
-覆盖范围扩展，但初始模型可概念化为：
-
-```cpp
-struct ResolvedImmediate {
-  ImmediateBits bits;
-  ScalarType type;
-};
-
-using ResolvedValue = std::variant<RegisterId, ResolvedImmediate>;
-
-struct ResolvedAddress {
-  std::variant<RegisterId, SymbolId> base;
-  int64_t offset;
-  StateSpace space;
-};
-
-struct ResolvedVectorMember {
-  RegisterId base;
-  uint8_t member;
-};
-```
-
-immediate 表示必须保留 PTX 语义所需的信息，包括 bit pattern 与 type，不能依赖 AST
-中的 literal spelling。address space、vector width 与 operand category 均在
-resolution 阶段验证，而非交由后续 consumer 推断。
-
-可独立诊断的 operand 应同时保存 provenance，例如 `WithOrigin<RegisterId>`、
-`WithOrigin<ResolvedValue>`。
-
-## Instruction 与 form
-
-`ResolvedInstruction` 是按 opcode 组织的生成全局 variant：
-
-```cpp
-using ResolvedInstruction = std::variant<Add, Atom, Ld, St, Bra /* ... */>;
-```
-
-每个 opcode struct 以能够保留语义区别的最小方式记录所选 PTX form。
-
-### 只有一种 operand layout 的 form
-
-当一个 opcode 的全部 form 具有相同的 resolved operand layout 时，使用 form tag 与
-共享 operand struct：
+每个 opcode 生成一个外层 struct，并用 `VariantType` 和 `std::variant` 表示由
+modifier 组合唯一确定的 variant：
 
 ```cpp
 struct Add {
-  enum class Form { U32, SatS32, U16x2, SatU8x4 };
+  enum class VariantType { IntegerNoSat, SatS32 /* ... */ };
 
-  struct Operands {
-    WithOrigin<RegisterId> dst;
-    WithOrigin<RegOrImmediate> src1;
-    WithOrigin<RegOrImmediate> src2;
+  struct IntegerNoSat {
+    ResolvedOperandLayoutTag operand_layout;
+    WithLocs<ScalarType> type;
+    WithLocs<ResolvedRegisterId> dst;
+    WithLocs<RegOrImm> src1;
+    WithLocs<RegOrImm> src2;
   };
 
-  Form form;
+  using Variant = std::variant<IntegerNoSat /* ... */>;
+  Variant variant;
+};
+```
+
+fixed modifier 不作为每个 instruction instance 的可写状态保存。例如 `add.sat.s32`
+的 variant 将生成：
+
+```cpp
+inline static constexpr bool saturate = true;
+inline static constexpr ScalarType type = ScalarType::S32;
+```
+
+这既保存了已选语义，也避免后续 pass 对同一事实做重复判定。
+
+## 一个 variant 内的多个 operand layout
+
+modifier 组合相同但 operand 形态不同，不应人为拆成多个 modifier variant。此时生成
+一个 layout tag 和嵌套 payload variant。`bar.sync a{, b}` 的形式为：
+
+```cpp
+struct Bar::Sync {
+  ResolvedOperandLayoutTag operand_layout;
+  inline static constexpr bool sync = true;
+
+  struct BarrierOperands { WithLocs<RegOrImm> barrier; };
+  struct BarrierAndThreadCountOperands {
+    WithLocs<RegOrImm> barrier;
+    WithLocs<RegOrImm> thread_count;
+  };
+  using Operands = std::variant<BarrierOperands,
+                                BarrierAndThreadCountOperands>;
   Operands operands;
 };
 ```
 
-`Form` 唯一决定 `.sat`、`.s32` 等 fixed modifier，不应把这些事实冗余地保存为相互
-独立的字段。
+`ResolvedOperandLayoutTag` 是生成 descriptor 中 layout 的索引。checker 必须同时验证
+tag 合法、tag 与 payload alternative 一致，以及 payload 的每个 operand binding。
+tag/payload 不一致是损坏的 resolved IR，诊断种类为
+`OperandLayoutPayloadMismatch`。
 
-### operand layout 不同的 form
+当前唯一实现的 layout algorithm 是 `Flat`：逗号分隔的、位置固定的 operand slots。
+`Group`、可变参数、call 参数组等需要先扩展 Syntax AST，再增加新的 layout kind；不能
+把它们伪装成 `Flat`。
 
-当合法 form 在结构上不同，使用内部语义 variant；instruction 的共享数据保留在其
-外部：
+## Resolution 协议
 
-```cpp
-struct Atom {
-  struct Common {
-    StateSpace space;
-  };
+`resolve<T>(const AstInstruction&)` 是生成的 opcode 专用薄封装，公共逻辑依次执行：
 
-  struct Basic {
-    WithOrigin<RegisterId> dst;
-    WithOrigin<ResolvedAddress> addr;
-    WithOrigin<ResolvedValue> value;
-  };
+1. `collect_actual_modifiers` 将 modifier spelling 映射为 descriptor `kind_id`，诊断
+   未知 spelling 与重复 kind。
+2. `selectVariant<T>` 只依据 modifier 槽位选择唯一 variant。`absent`、`optional`、
+   `required/fixed` 都按 kind 和允许值匹配，而非按源码中的 modifier 下标匹配。
+3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
+4. `resolve_fields` 按 resolved descriptor 把 modifier 和 operand 转换为带位置的
+   resolved 值。
+5. 生成的 builder 将字段放入对应 C++ struct 或 layout payload。
 
-  struct CompareAndSwap {
-    RegisterId dst;
-    ResolvedAddress addr;
-    ResolvedValue compare;
-    ResolvedValue replacement;
-  };
+零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
+对应是生成器/descriptor bug，使用 `ResolveException` 区分于 `ResolveDiagnostic`。
 
-  Common common;
-  std::variant<Basic, CompareAndSwap> operands;
-};
-```
+## 三份 descriptor
 
-该内部 variant 属于语义模型：每个 alternative 对应不同 PTX operand layout；它不是
-任意的 code-generation layout option。
+同一 YAML spec 生成三份职责不同的静态 descriptor：
 
-## 生成 C++ 模型
+| Descriptor | 用途 |
+| --- | --- |
+| Syntax descriptor | modifier spellings、presence、AST operand shape 与 layout slots |
+| Resolved descriptor | resolved field kind、modifier binding、operand binding、结构化类型表达式与语义 role/access |
+| Checker descriptor | variant/layout 的 PTX/SM/family availability 与 rule ID |
 
-YAML 生成以下 Resolved IR 产物：
+三者不互相复制职责。Syntax descriptor 不应保存 resolved C++ 类型；Resolved descriptor
+不负责 modifier 拼写识别；Checker descriptor 不重新描述 resolve binding。
 
-- opcode struct；
-- 语义模型需要时的嵌套 common/operand struct；
-- form enum 与内部 form variant；
-- category 与全局 `ResolvedInstruction` variant；
-- resolver 使用的静态 descriptor。
+## Checker 契约
 
-每个生成 member 都必须对应一个 resolved PTX fact。生成器不能再将 `direct`、
-`sub_struct`、`sub_variant` 等通用布局模式暴露为用户可选的 backend mechanism。
-schema 描述 form 结构，template 选择必需的 C++ 语法。
+`checker::check<T>` 是每个 opcode 的生成 wrapper，公共 checker 至少检查：
 
-form name 由稳定、machine-readable 的 YAML form identifier 生成，而不是手写 API
-义务。可读的生成名称有价值，但生成过程必须 deterministic，并检查 collision。
+- variant、已选 operand layout 与实际 modifier value 的最低 PTX 版本、SM 版本与 target family；
+- layout tag 的范围；
+- layout tag/payload 一致性；
+- operand 字段 ID、resolved shape 与由结构化 descriptor 约束的 immediate 类型。
 
-## Resolver 契约
+`rule_id` 留给指令特有规则的 typed wrapper。寄存器声明类型、符号可见性、地址空间
+和跨 instruction 约束依赖完整 symbol table，尚不属于当前公共 checker ABI。
 
-resolver 接收 `syntax_ast::AstInstruction`、symbol table 与可选 PTX target，并负责：
+## 扩展规则
 
-1. 将 identifier reference 解析为带类别的 ID；
-2. 结合 opcode、modifier sequence 与完整 AST operand shape 匹配候选；
-3. 选择唯一合法的 semantic form；
-4. 验证 type、state space、arity 与 instruction-specific constraint；
-5. 验证 PTX/SM/family availability、deprecation 与 removal；
-6. 产出带 provenance 的生成 opcode struct，或产出关联到 AST range 的诊断。
+- YAML 的 semantic variant 由 modifier 组合定义；不得因生成方便而增加假 variant。
+- 每个 generated member 必须是一个 resolved PTX fact 或其位置，不生成 `direct`、
+  `sub_struct` 等 C++ 后端布局开关。
+- 新 operand shape 应先加入 Syntax AST 与 syntax descriptor，再加入 resolver 与
+  checker 的对应 resolved value。
+- 新的多 layout 指令必须测试正常 resolution、非法 layout、以及 tag/payload 不一致。
 
-具有相同 opcode/modifier、但 operand layout 不同的候选，应在此层完成消歧。
-
-## modifier variant 与 operand layout 的两阶段选择
-
-当前 resolver 将单条 instruction 的选择拆成两个彼此独立的阶段：
-
-```text
-AstInstruction
-  -> 根据 opcode 与 modifier 选择唯一 Variant
-  -> 在该 Variant 内根据 AST operand 形状选择唯一 OperandLayout
-  -> 解析 operand 并构造对应的 Resolved IR payload
-```
-
-这里的 `Variant` 表示 modifier 组合确定的语义 form；`OperandLayout` 表示同一个
-variant 内 operands 的数量、位置、可选性、分组与语法形状。前者不能根据 operand
-选择，后者也不能重新改变已选定的 variant。
-
-### modifier 规范化与 variant 选择
-
-Syntax AST 保留 modifier 的源码顺序和拼写。selector 首先将每个 modifier 映射到由
-instruction descriptor 定义的 `kind_id`，构造概念上的槽位表：
-
-```text
-add.sat.s32 ...
-
-"saturate" -> ".sat"
-"type"     -> ".s32"
-```
-
-构造该表时应诊断未知 modifier 与同一 `kind_id` 的重复 modifier。随后，对每一个
-候选 variant 按 `kind_id` 而非 AST 列表下标检查其 `ModifierDescriptor`：
-
-- `Absent`：该 kind 不得出现；
-- `Optional`：可不出现；出现时必须属于允许值；
-- `Required`：必须出现，且必须属于允许值。
-
-所有 modifier kind 由 descriptor 显式声明的 variant 才能匹配。零个候选表示用户
-PTX 不合法；多个候选表示生成的 ISA descriptor 重叠，必须报告歧义，不能按声明
-顺序任取一个。
-
-### OperandLayout descriptor
-
-`OperandLayoutKind` 是全 PTX 共享的、手写的匹配策略 enum，不由生成器为每条指令
-生成。生成器只生成某个 layout 的 slots 及其语义约束。初始阶段只需要扁平的逗号
-分隔 operand layout：
-
-```cpp
-enum class OperandLayoutKind : uint8_t {
-  Flat,
-};
-
-enum class OperandPresence : uint8_t {
-  Required,
-  Optional,
-};
-
-struct OperandSlotDescriptor {
-  std::string field_id;
-  OperandSyntaxShape allowed_syntax_shapes;
-  OperandPresence presence;
-
-  OperandRole role;
-  OperandAccess access;
-  OperandShape allowed_resolved_shapes;
-  StateSpace allowed_state_spaces;
-};
-
-struct OperandLayoutDescriptor {
-  OperandLayoutKind kind;
-  std::vector<OperandSlotDescriptor> slots;
-};
-```
-
-`allowed_syntax_shapes` 用于 layout selection：它约束 AST 节点是 identifier、immediate、
-address、vector 或未来的 group。其余字段用于已选择 layout 后的 semantic resolution
-与 checker。`field_id` 是生成器和 builder 使用的稳定字段标识，如 `dst`、`src1`、
-`barrier_id`。
-
-`OperandSyntaxShape` 必须能表达 AST 的每种重要形状；特别是 `AstVectorMember` 不应
-混同于普通 identifier。未来支持 `call` 的 `(...)` 参数组时，应先在 Syntax AST 中
-增加 `AstOperandGroup`，再增加 `Group` shape 和相应的 layout kind。
-
-一个 variant 可以有多个 `operand_layouts`。对于 `bar.sync a {, b}`，一个 `Flat`
-layout 加 optional 尾随 slot 已足够；对于 `call` 的 direct、indirect、带返回值或参数
-组等真正不同结构，可在同一个 modifier variant 下放置多个 layout。layout selector
-必须要求唯一命中。
-
-### 实现顺序
-
-1. 完成 modifier 的 `kind_id -> actual modifier` 规范化表，并按 presence/value 选择
-   唯一 variant。
-2. 将 `OperandLayoutKind` 定义为 `check_end` 的公共 enum，`VariantDescriptor` 使用
-   `operand_layouts` 保存 layout descriptor。
-3. 实现 `AstOperand -> OperandSyntaxShape` 分类函数及 shape 位运算。
-4. 恢复 `Add` 的有效 descriptor：为其整数 variant 描述 required `type` modifier，
-   并提供一个包含 `dst`、`src1`、`src2` 的 `Flat` layout。
-5. 实现 `select_operand_layout(variant, ast.operands)`；它检查 arity、optional slot 与
-   AST shape，并要求唯一命中。
-6. 在通用 resolver 中依次执行 variant 选择、layout 选择与按 slot 解析；最终将已
-   解析字段交给生成的 typed builder 构造 Resolved IR。
-
-## YAML 要求
-
-instruction spec 必须提供稳定 form ID，以及生成 resolved field 和 resolver
-descriptor 所需的信息：
-
-```yaml
-forms:
-  - id: sat_s32
-    requires: { sat: true, type: s32 }
-    availability: { ptx: "1.0" }
-    operands:
-      - { name: dst, resolved_type: RegisterId }
-      - { name: src1, resolved_type: RegOrImmediate }
-      - { name: src2, resolved_type: RegOrImmediate }
-```
-
-normalized Python model 必须区分：
-
-- opcode 的 shared field；
-- 具有相同 operand layout 的 form tag；
-- 结构不同的 form payload。
-
-## 实现顺序
-
-1. 定义核心 ID、resolved operand、statement 与 source-origin policy。
-2. 手写 `Add` resolved instruction 与 resolver pilot。
-3. 扩展 YAML/schema/normalization：加入稳定 form ID 与 resolved field descriptor。
-4. 生成一个 instruction category 及其 resolver descriptor。
-5. 逐 category 迁移，并为合法 form、operand-layout ambiguity、symbol 与 target
-   availability 添加 resolver test。
+实现入口见 `include/ptx_ir/resolved/ptx_resolved_ir.hpp`、
+`include/ptx_ir/ptx_resolved_ir_checker.hpp` 与生成的 `resolved_ir.gen.hpp`。

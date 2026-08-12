@@ -34,6 +34,33 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
                  Add::VariantType::SatSm120);
 }
 
+TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
+  const auto expect_variant = [](std::string_view source,
+                                 Bar::VariantType expected) {
+    const auto ast = parse_instruction(source);
+    const auto selected = selectVariant<Bar>(ast);
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("bar.sync 0;", Bar::VariantType::Sync);
+  expect_variant("bar.cta.sync 0;", Bar::VariantType::CtaSync);
+  expect_variant("bar.arrive 0, 32;", Bar::VariantType::Arrive);
+  expect_variant("bar.cta.arrive 0, 32;", Bar::VariantType::CtaArrive);
+  expect_variant("bar.red.popc.u32 %r0, 1, %p1;",
+                 Bar::VariantType::RedPopcU32);
+  expect_variant("bar.cta.red.popc.u32 %r0, 1, !%p1;",
+                 Bar::VariantType::CtaRedPopcU32);
+  expect_variant("bar.red.and.pred %p0, 1, %p1;",
+                 Bar::VariantType::RedAndPred);
+  expect_variant("bar.cta.red.and.pred %p0, 1, !%p1;",
+                 Bar::VariantType::CtaRedAndPred);
+  expect_variant("bar.red.or.pred %p0, 1, %p1;",
+                 Bar::VariantType::RedOrPred);
+  expect_variant("bar.cta.red.or.pred %p0, 1, !%p1;",
+                 Bar::VariantType::CtaRedOrPred);
+}
+
 TEST(SelectVariantAdd, ReportsUnknownModifier) {
   const auto ast = parse_instruction("add.invalid %r0, %r1, %r2;");
 
@@ -76,7 +103,7 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
 
   const auto& packed_optional_sat = descriptor.variants[3];
   EXPECT_EQ(packed_optional_sat.variant_name, "PackedOptionalSatSm120");
-  ASSERT_EQ(packed_optional_sat.fields.size(), 5U);
+  ASSERT_EQ(packed_optional_sat.fields.size(), 2U);
   EXPECT_EQ(packed_optional_sat.fields[0].field_id, "saturate");
   EXPECT_EQ(packed_optional_sat.fields[0].value_kind,
             check_end::ResolvedValueKind::Bool);
@@ -87,10 +114,15 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
             "saturate");
 
   ASSERT_EQ(packed_optional_sat.operand_layouts.size(), 1U);
-  const auto& bindings = packed_optional_sat.operand_layouts[0].bindings;
+  const auto& layout = packed_optional_sat.operand_layouts[0];
+  ASSERT_EQ(layout.fields.size(), 3U);
+  EXPECT_EQ(layout.fields[0].field_id, "dst");
+  const auto& bindings = layout.bindings;
   ASSERT_EQ(bindings.size(), 3U);
   EXPECT_EQ(bindings[2].target_field_id, "src2");
-  EXPECT_EQ(bindings[2].type_expr, "$type");
+  EXPECT_EQ(bindings[2].type_expression.kind,
+            check_end::OperandTypeExpressionKind::ModifierField);
+  EXPECT_EQ(bindings[2].type_expression.modifier_field_id, "type");
   EXPECT_EQ(bindings[0].role, check_end::OperandRole::Destination);
   EXPECT_EQ(bindings[0].access, check_end::OperandAccess::Write);
   EXPECT_EQ(bindings[0].allowed_shapes, check_end::OperandShape::Register);
@@ -228,6 +260,38 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   ASSERT_EQ(saturated_add->saturate.locs.size(), 1U);
   EXPECT_EQ(saturated_add->saturate.locs.front(),
             saturated_ast.modifiers.front().syntax.range);
+}
+
+TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
+  const auto ast =
+      parse_instruction("bar.cta.red.and.pred %p0, 1, 64, !%p1;");
+
+  const auto resolved = resolve<Bar>(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* bar = std::get_if<Bar::CtaRedAndPred>(&resolved->variant);
+  ASSERT_NE(bar, nullptr);
+  EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{1}));
+  ASSERT_TRUE(std::holds_alternative<
+              Bar::CtaRedAndPred::WithThreadCountOperands>(bar->operands));
+  const auto& operands = std::get<Bar::CtaRedAndPred::WithThreadCountOperands>(
+      bar->operands);
+  EXPECT_EQ(operands.dst.value.register_id, (ResolvedRegisterId{0}));
+  EXPECT_FALSE(operands.dst.value.negated);
+  EXPECT_EQ(std::get<ResolvedImmediate>(operands.barrier.value).bits, 1U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(operands.thread_count.value).bits, 64U);
+  EXPECT_EQ(operands.predicate.value.register_id, (ResolvedRegisterId{1}));
+  EXPECT_TRUE(operands.predicate.value.negated);
+  ASSERT_EQ(operands.predicate.locs.size(), 1U);
+  EXPECT_EQ(operands.predicate.locs.front(),
+            std::get<syntax_ast::AstPredicateOperand>(ast.operands[3])
+                .syntax.range);
+
+  const checker::Context context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 120},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(*resolved, context).has_value());
 }
 
 }  // namespace

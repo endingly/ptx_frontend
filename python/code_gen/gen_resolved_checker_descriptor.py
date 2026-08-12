@@ -6,7 +6,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from code_gen.database import CodegenDatabase
-from ir.resolved_ir import ResolvedInstruction, ResolvedVariant, from_instruction_spec
+from ir.resolved_ir import (
+    ResolvedInstruction,
+    ResolvedModifierValueAvailability,
+    ResolvedOperandLayout,
+    ResolvedVariant,
+    from_instruction_spec,
+)
+
+
+_CPP_MODIFIER_VALUE_KINDS = {
+    "bool": "checker::ModifierValueKind::Bool",
+    "ScalarType": "checker::ModifierValueKind::ScalarType",
+}
+
+_SCALAR_TYPE_ENUM_NAMES = {
+    "u8": "U8", "u8x4": "U8x4", "u16": "U16", "u16x2": "U16x2",
+    "u32": "U32", "u64": "U64", "s8": "S8", "s8x4": "S8x4",
+    "s16": "S16", "s16x2": "S16x2", "s32": "S32", "s64": "S64",
+    "b8": "B8", "b16": "B16", "b32": "B32", "b64": "B64",
+    "b128": "B128", "f16": "F16", "f16x2": "F16x2", "f32": "F32",
+    "f32x2": "F32x2", "f64": "F64", "bf16": "BF16", "bf16x2": "BF16x2",
+    "e4m3x2": "E4m3x2", "e5m2": "E5m2", "e5m2x2": "E5m2x2",
+    "pred": "Pred", "tf32": "TF32", "e4m3": "E4m3", "e5m2": "E5m2",
+}
 
 
 def generate_resolved_checker_descriptor_source(
@@ -51,10 +74,22 @@ namespace generated_detail {{
 
 def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> str:
     storage_name = f"{instruction.cpp_name}CheckerDescriptorStorage"
+    modifier_value_definitions = "\n\n".join(
+        _emit_variant_modifier_value_descriptors(variant)
+        for variant in instruction.variants
+    )
+    layout_definitions = "\n\n".join(
+        _emit_variant_layout_descriptors(variant)
+        for variant in instruction.variants
+    )
     variants = ",\n".join(
         _emit_variant_descriptor(variant) for variant in instruction.variants
     )
     return f"""struct {storage_name} {{
+{modifier_value_definitions}
+
+{layout_definitions}
+
   static constexpr std::array<checker::VariantDescriptor, {len(instruction.variants)}>
       variants = {{
 {variants}
@@ -93,7 +128,84 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .minimum_sm_version = {minimum_sm},
                   .required_family = "{family}",
               }},
+              .modifier_value_availabilities =
+                  {variant.cpp_name}_modifier_value_availabilities,
+              .operand_layouts = {variant.cpp_name}_operand_layouts,
               .rule_id = "{rule_id}",
+          }}"""
+
+
+def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:
+    entries = ",\n".join(
+        _emit_modifier_value_descriptor(entry)
+        for entry in variant.modifier_value_availabilities
+    )
+    return f"""  static constexpr std::array<checker::ModifierValueAvailabilityDescriptor, {len(variant.modifier_value_availabilities)}>
+      {variant.cpp_name}_modifier_value_availabilities = {{
+{entries}
+      }};"""
+
+
+def _emit_modifier_value_descriptor(
+    entry: ResolvedModifierValueAvailability,
+) -> str:
+    availability = dict(entry.availability)
+    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
+    minimum_sm = int(availability.get("sm", 0))
+    family = str(availability.get("family", ""))
+    if entry.value_cpp_type == "bool":
+        bool_value = "true" if entry.value else "false"
+        scalar_type = "ScalarType::Invalid"
+    elif entry.value_cpp_type == "ScalarType":
+        try:
+            scalar_type = f"ScalarType::{_SCALAR_TYPE_ENUM_NAMES[entry.value]}"
+        except KeyError as error:
+            raise ValueError(
+                f"unsupported scalar modifier value {entry.value!r}"
+            ) from error
+        bool_value = "false"
+    else:
+        raise ValueError(
+            f"unsupported modifier availability value type {entry.value_cpp_type!r}"
+        )
+    return f"""          checker::ModifierValueAvailabilityDescriptor{{
+              .kind_id = "{entry.source_kind_id}",
+              .value_kind = {_CPP_MODIFIER_VALUE_KINDS[entry.value_cpp_type]},
+              .bool_value = {bool_value},
+              .scalar_type = {scalar_type},
+              .availability = {{
+                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                  .minimum_sm_version = {minimum_sm},
+                  .required_family = "{family}",
+              }},
+          }}"""
+
+
+def _emit_variant_layout_descriptors(variant: ResolvedVariant) -> str:
+    """Emit checker availability metadata for every layout of one variant."""
+
+    entries = ",\n".join(
+        _emit_operand_layout_descriptor(layout)
+        for layout in variant.operand_layouts
+    )
+    return f"""  static constexpr std::array<checker::OperandLayoutDescriptor, {len(variant.operand_layouts)}>
+      {variant.cpp_name}_operand_layouts = {{
+{entries}
+      }};"""
+
+
+def _emit_operand_layout_descriptor(layout: ResolvedOperandLayout) -> str:
+    availability = dict(layout.availability)
+    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
+    minimum_sm = int(availability.get("sm", 0))
+    family = str(availability.get("family", ""))
+    return f"""          checker::OperandLayoutDescriptor{{
+              .layout_name = "{layout.layout_id}",
+              .availability = {{
+                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                  .minimum_sm_version = {minimum_sm},
+                  .required_family = "{family}",
+              }},
           }}"""
 
 

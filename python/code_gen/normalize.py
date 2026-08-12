@@ -2,34 +2,78 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
+    ModifierValueSpec,
     OperandLayoutSpec,
     OperandSpec,
+    OperandTypeExpression,
+    OperandTypeExpressionKind,
     VariantSpec,
 )
 
 
+_MODIFIER_TYPE_EXPR = re.compile(
+    r"modifier\(([A-Za-z_][A-Za-z0-9_]*)\)"
+)
+_UNSUPPORTED_TYPE_EXPR_FUNCTIONS = ("same_as", "one_of", "same_size_as")
+
+
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     """Normalize one operand specification."""
-
-    raw_type = raw.get("type")
-    if isinstance(raw_type, dict):
-        type_expr = raw_type.get("expr")
-    else:
-        type_expr = raw_type
 
     return OperandSpec(
         name=raw["name"],
         kind=raw["kind"],
         role=raw.get("role"),
         access=raw.get("access"),
-        type_expr=type_expr,
+        type_expression=_normalize_operand_type_expression(raw.get("type")),
     )
+
+
+def _normalize_operand_type_expression(
+    raw_type: object,
+) -> OperandTypeExpression | None:
+    """Parse YAML ``type`` into a typed source-model expression."""
+
+    if raw_type is None:
+        return None
+    if isinstance(raw_type, str):
+        return OperandTypeExpression(
+            kind=OperandTypeExpressionKind.FIXED_SCALAR,
+            scalar_type=raw_type,
+        )
+    if not isinstance(raw_type, dict):
+        raise TypeError("operand type must be a scalar type or type expression")
+
+    expression = raw_type.get("expr")
+    if not isinstance(expression, str):
+        raise TypeError("type expression must be a string")
+    match = _MODIFIER_TYPE_EXPR.fullmatch(expression)
+    if match is not None:
+        return OperandTypeExpression(
+            kind=OperandTypeExpressionKind.MODIFIER,
+            modifier_name=match.group(1),
+        )
+
+    unsupported = next(
+        (
+            function
+            for function in _UNSUPPORTED_TYPE_EXPR_FUNCTIONS
+            if expression.startswith(f"{function}(")
+        ),
+        None,
+    )
+    if unsupported is not None:
+        raise ValueError(
+            f"type expression function {unsupported!r} is not supported yet"
+        )
+    raise ValueError("unsupported type expression; use modifier(<modifier_name>)")
 
 
 def normalize_modifier(
@@ -37,16 +81,62 @@ def normalize_modifier(
 ) -> ModifierSpec:
     """Normalize one modifier and expand its type-set references."""
 
+    raw_values: object = raw.get("values", [])
+    if not isinstance(raw_values, list):
+        raise TypeError("modifier values must be a list")
+
     return ModifierSpec(
         name=raw["name"],
         kind=raw["kind"],
         presence=raw["presence"],
         domain=raw.get("domain"),
-        values=expand_value_refs(raw.get("values", ()), type_sets),
+        values=_normalize_modifier_values(raw_values, type_sets),
         value=raw.get("value"),
         token=raw.get("token"),
         default=raw.get("default"),
     )
+
+
+def _normalize_modifier_values(
+    raw_values: list[Any], type_sets: dict[str, list[str]]
+) -> tuple[ModifierValueSpec, ...]:
+    """Expand value-set references while preserving per-value availability."""
+
+    values: list[ModifierValueSpec] = []
+    seen: set[str | bool | int] = set()
+    for raw_value in raw_values:
+        if isinstance(raw_value, dict):
+            raw_semantic_value = raw_value["value"]
+            token = raw_value.get("token")
+            availability = dict(raw_value.get("availability", {}))
+        else:
+            raw_semantic_value = raw_value
+            token = None
+            availability = {}
+
+        if isinstance(raw_semantic_value, str) and raw_semantic_value.startswith("$"):
+            if token is not None:
+                raise ValueError(
+                    "a modifier value-set reference cannot define one token "
+                    "override for multiple expanded values"
+                )
+            expanded_values: tuple[str | bool | int, ...] = expand_value_refs(
+                [raw_semantic_value], type_sets
+            )
+        else:
+            expanded_values = (raw_semantic_value,)
+        for value in expanded_values:
+            if value in seen:
+                raise ValueError(f"duplicate modifier value {value!r}")
+            seen.add(value)
+            values.append(
+                ModifierValueSpec(
+                    value=value,
+                    token=token,
+                    availability=availability,
+                )
+            )
+    return tuple(values)
 
 
 def normalize_operand_layouts(
@@ -83,6 +173,7 @@ def normalize_operand_layouts(
             OperandLayoutSpec(
                 name=name,
                 operands=_resolve_operands(raw_layout["operands"], operand_patterns),
+                availability=dict(raw_layout.get("availability", {})),
             )
         )
     if not layouts:
@@ -96,8 +187,48 @@ def _resolve_operands(
     if raw_operands is None:
         raise ValueError("variant has neither operands nor inherited instruction operands")
     if isinstance(raw_operands, str):
-        raw_operands = operand_patterns[raw_operands]
+        if not raw_operands.startswith("$"):
+            raise ValueError(
+                "operand-pattern references must use the '$name' form; "
+                "use an explicit operand list for inline operands"
+            )
+        pattern_name = raw_operands[1:]
+        try:
+            raw_operands = operand_patterns[pattern_name]
+        except KeyError as error:
+            raise ValueError(f"unknown operand pattern: {pattern_name}") from error
+    if not isinstance(raw_operands, list):
+        raise TypeError("operands must be an explicit list or a '$name' reference")
     return tuple(normalize_operand(operand) for operand in raw_operands)
+
+
+def _validate_modifier_type_expressions(
+    modifiers: tuple[ModifierSpec, ...],
+    layouts: tuple[OperandLayoutSpec, ...],
+) -> None:
+    """Require ``modifier(name)`` expressions to name an active type modifier."""
+
+    modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
+    for layout in layouts:
+        for operand in layout.operands:
+            expression = operand.type_expression
+            if expression is None:
+                continue
+            if expression.kind is not OperandTypeExpressionKind.MODIFIER:
+                continue
+            assert expression.modifier_name is not None
+            modifier_name = expression.modifier_name
+            modifier = modifiers_by_name.get(modifier_name)
+            if modifier is None:
+                raise ValueError(
+                    f"operand {operand.name!r}: type expression references unknown "
+                    f"modifier {modifier_name!r}"
+                )
+            if modifier.kind != "type" or modifier.presence == "absent":
+                raise ValueError(
+                    f"operand {operand.name!r}: modifier {modifier_name!r} must be "
+                    "an active type modifier"
+                )
 
 
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
@@ -112,17 +243,20 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
         variants: list[VariantSpec] = []
 
         for raw_variant in raw_instruction["variants"]:
+            modifiers = tuple(
+                normalize_modifier(modifier, type_sets)
+                for modifier in raw_variant.get("modifiers", ())
+            )
+            operand_layouts = normalize_operand_layouts(
+                raw_variant, default_operands, operand_patterns
+            )
+            _validate_modifier_type_expressions(modifiers, operand_layouts)
             variants.append(
                 VariantSpec(
                     name=raw_variant["name"],
                     availability=raw_variant["availability"],
-                    modifiers=tuple(
-                        normalize_modifier(modifier, type_sets)
-                        for modifier in raw_variant.get("modifiers", ())
-                    ),
-                    operand_layouts=normalize_operand_layouts(
-                        raw_variant, default_operands, operand_patterns
-                    ),
+                    modifiers=modifiers,
+                    operand_layouts=operand_layouts,
                     rule=raw_variant.get("rule"),
                 )
             )

@@ -11,6 +11,19 @@ namespace {
 
 const SourceRange kInstructionRange{{4, 3}, {4, 17}};
 
+constexpr ModifierValueAvailabilityDescriptor kModifierValueAvailabilities[] = {
+    {
+        .kind_id = "type",
+        .value_kind = ModifierValueKind::ScalarType,
+        .scalar_type = ScalarType::U32,
+        .availability =
+            {
+                .minimum_ptx_version = {2, 0},
+                .minimum_sm_version = 20,
+            },
+    },
+};
+
 constexpr VariantDescriptor kVariants[] = {
     {
         .variant_name = "PackedOptionalSatSm120",
@@ -20,6 +33,7 @@ constexpr VariantDescriptor kVariants[] = {
                 .minimum_sm_version = 120,
                 .required_family = "sm_120f",
             },
+        .modifier_value_availabilities = kModifierValueAvailabilities,
         .rule_id = "integer_arith.add_packed",
     },
 };
@@ -75,6 +89,59 @@ TEST(ResolvedIrChecker, DiagnosesMissingGeneratedVariantDescriptor) {
   ASSERT_EQ(result.error().size(), 1U);
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::MissingVariantDescriptor);
+  EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, ChecksSelectedModifierValueAvailability) {
+  constexpr std::array<ModifierValueView, 1> values{{
+      {
+          .kind_id = "type",
+          .value_kind = ModifierValueKind::ScalarType,
+          .scalar_type = ScalarType::U32,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  const Context context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 10},
+      .instruction_range = {{1, 1}, {1, 8}},
+  };
+
+  const auto result = check_modifier_value_availability(
+      kModifierValueAvailabilities, values, context);
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 2U);
+  EXPECT_EQ(result.error()[0].kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(result.error()[1].kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_EQ(result.error()[0].range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, ChecksFixedScalarOperandTypeDescriptor) {
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "barrier",
+      .type_expression =
+          {
+              .kind = OperandTypeExpressionKind::FixedScalar,
+              .fixed_scalar_type = ScalarType::U32,
+          },
+      .role = OperandRole::Barrier,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Immediate,
+  }};
+  constexpr OperandView operands[] = {{
+      .field_id = "barrier",
+      .actual_shape = OperandShape::Immediate,
+      .immediate_type = ScalarType::S32,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+
+  const auto result = check_operands(descriptors, {}, operands, context);
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 1U);
+  EXPECT_EQ(result.error().front().kind, CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(result.error().front().range, kInstructionRange);
 }
 
@@ -173,7 +240,7 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperRejectsMismatchedLayoutPayload) {
   ASSERT_NE(bar, nullptr);
   ASSERT_TRUE(std::holds_alternative<Bar::Sync::BarrierAndThreadCountOperands>(
       bar->operands));
-  EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{1}));
+  EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{2}));
 
   const Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},
@@ -189,6 +256,40 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperRejectsMismatchedLayoutPayload) {
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::OperandLayoutPayloadMismatch);
   EXPECT_EQ(result.error().front().range, ast->range);
+}
+
+TEST(ResolvedIrChecker, GeneratedBarWrapperChecksLayoutAvailability) {
+  PtxSyntaxParser immediate_parser("bar.sync 1;");
+  const auto immediate_ast = immediate_parser.parseInstruction();
+  ASSERT_TRUE(immediate_ast.has_value()) << immediate_ast.error().message;
+  auto immediate = resolve<Bar>(*immediate_ast);
+  ASSERT_TRUE(immediate.has_value()) << immediate.error().message;
+
+  const Context sm10_context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 10},
+      .instruction_range = immediate_ast->range,
+  };
+  EXPECT_TRUE(check(*immediate, sm10_context).has_value());
+
+  PtxSyntaxParser register_parser("bar.sync %r1;");
+  const auto register_ast = register_parser.parseInstruction();
+  ASSERT_TRUE(register_ast.has_value()) << register_ast.error().message;
+  auto register_barrier = resolve<Bar>(*register_ast);
+  ASSERT_TRUE(register_barrier.has_value()) << register_barrier.error().message;
+
+  const auto unsupported = check(*register_barrier, sm10_context);
+  ASSERT_FALSE(unsupported.has_value());
+  ASSERT_EQ(unsupported.error().size(), 2U);
+  EXPECT_EQ(unsupported.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unsupported.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const Context sm20_context{
+      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+      .instruction_range = register_ast->range,
+  };
+  EXPECT_TRUE(check(*register_barrier, sm20_context).has_value());
 }
 
 }  // namespace

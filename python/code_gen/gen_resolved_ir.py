@@ -12,6 +12,7 @@ from ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedVariant,
     from_instruction_spec,
+    ResolvedOperandLayout
 )
 
 
@@ -218,6 +219,10 @@ def _emit_check_variant_lambda(
         _emit_check_modifier_view(instruction, variant, field)
         for field in modifier_fields
     )
+    modifier_value_views = ",\n".join(
+        _emit_check_modifier_value_view(instruction, variant, field)
+        for field in modifier_fields
+    )
     operand_check = _emit_check_operand_dispatch(
         instruction, variant, variant_index, modifier_fields
     )
@@ -227,6 +232,9 @@ def _emit_check_variant_lambda(
           const std::array<FieldView, {len(modifier_fields)}> fields = {{{{
 {modifier_views}
           }}}};
+          const std::array<ModifierValueView, {len(modifier_fields)}> modifier_values = {{{{
+{modifier_value_views}
+          }}}};
           CheckDiagnostics diagnostics;
           const auto common = check_common(
               {instruction.cpp_name}::get_checker_descriptor(), "{variant.cpp_name}",
@@ -234,6 +242,15 @@ def _emit_check_variant_lambda(
           if (!common) {{
             diagnostics.insert(diagnostics.end(), common.error().begin(),
                                common.error().end());
+          }}
+          const auto modifier_availability = check_modifier_value_availability(
+              {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                  .modifier_value_availabilities,
+              modifier_values, context);
+          if (!modifier_availability) {{
+            diagnostics.insert(diagnostics.end(),
+                               modifier_availability.error().begin(),
+                               modifier_availability.error().end());
           }}
 {operand_check}
           if (diagnostics.empty())
@@ -254,6 +271,9 @@ def _emit_check_operand_dispatch(
         f"{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]"
         ".operand_layouts"
     )
+    checker_variant_expr = (
+        f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
+    )
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -270,6 +290,12 @@ def _emit_check_operand_dispatch(
             diagnostics.insert(diagnostics.end(), layout_check.error().begin(),
                                layout_check.error().end());
           }} else {{
+            const auto availability_check = check_operand_layout_availability(
+                {checker_variant_expr}, selected.operand_layout.value, context);
+            if (!availability_check) {{
+              diagnostics.insert(diagnostics.end(), availability_check.error().begin(),
+                                 availability_check.error().end());
+            }}
             const auto operand_check = check_operands(
                 layouts[selected.operand_layout.value].bindings, fields, operands,
                 context);
@@ -298,6 +324,12 @@ def _emit_check_operand_dispatch(
             diagnostics.insert(diagnostics.end(), layout_check.error().begin(),
                                layout_check.error().end());
           }} else {{
+            const auto availability_check = check_operand_layout_availability(
+                {checker_variant_expr}, selected.operand_layout.value, context);
+            if (!availability_check) {{
+              diagnostics.insert(diagnostics.end(), availability_check.error().begin(),
+                                 availability_check.error().end());
+            }}
             const auto payload_check = std::visit(
                 detail::Overloaded{{{visitor_lambdas}}}, selected.operands);
             if (!payload_check) {{
@@ -382,6 +414,50 @@ def _emit_check_modifier_view(
               }}"""
 
 
+def _emit_check_modifier_value_view(
+    instruction: ResolvedInstruction,
+    variant: ResolvedVariant,
+    field: ResolvedField,
+) -> str:
+    if field.value_cpp_type == "ScalarType":
+        value_kind = "ModifierValueKind::ScalarType"
+        bool_value = "false"
+        scalar_type = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        present = "true"
+    elif field.value_cpp_type == "bool":
+        value_kind = "ModifierValueKind::Bool"
+        bool_value = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        scalar_type = "ScalarType::Invalid"
+        present = bool_value
+    else:
+        raise ValueError(
+            f"modifier field {field.name!r}: unsupported availability view type "
+            f"{field.value_cpp_type!r}"
+        )
+
+    locations = (
+        "std::span<const SourceRange>{}"
+        if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+        else f"selected.{field.name}.locs"
+    )
+    return f"""              ModifierValueView{{
+                  .kind_id = "{field.source_name}",
+                  .value_kind = {value_kind},
+                  .bool_value = {bool_value},
+                  .scalar_type = {scalar_type},
+                  .is_present = {present},
+                  .locations = {locations},
+              }}"""
+
+
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
     if field.value_cpp_type == "ResolvedRegisterId":
         return f"""              OperandView{{
@@ -395,6 +471,13 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = OperandShape::Immediate,
                   .immediate_type = {object_name}.{field.name}.value.type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedPredicate":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = OperandShape::Predicate,
+                  .immediate_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "RegOrImm":

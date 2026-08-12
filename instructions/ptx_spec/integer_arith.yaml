@@ -42,21 +42,21 @@ operand_patterns:
       role: dst
       access: write
       type:
-        expr: "$type"
+        expr: modifier(type)
 
     - name: src1
       kind: reg_or_imm
       role: src1
       access: read
       type:
-        expr: "$type"
+        expr: modifier(type)
 
     - name: src2
       kind: reg_or_imm
       role: src2
       access: read
       type:
-        expr: "$type"
+        expr: modifier(type)
 
 instructions:
   - opcode: add
@@ -64,7 +64,7 @@ instructions:
     section: "9.7.1.1"
     doc: "Integer add."
     syntax: "add{.sat}.{type} dst, src1, src2"
-    operands: binary_arith
+    operands: $binary_arith
 
     variants:
       - name: add_integer_no_sat
@@ -82,7 +82,7 @@ instructions:
             domain: scalar_types
             presence: required
             values:
-              - "$add_integer_scalar"
+              - $add_integer_scalar
         rule: integer_arith.add
 
         examples:
@@ -129,7 +129,7 @@ instructions:
             domain: scalar_types
             presence: required
             values:
-              - "$add_simd_no_sat_sm90"
+              - $add_simd_no_sat_sm90
         rule: integer_arith.add
 
         examples:
@@ -156,7 +156,7 @@ instructions:
             domain: scalar_types
             presence: required
             values:
-              - "$add_packed_optional_sat_sm120"
+              - $add_packed_optional_sat_sm120
         rule: integer_arith.add_packed
 
         examples:
@@ -187,7 +187,7 @@ instructions:
             domain: scalar_types
             presence: required
             values:
-              - "$add_sat_sm120"
+              - $add_sat_sm120
         rule: integer_arith.add_sat_sm120
 
         examples:

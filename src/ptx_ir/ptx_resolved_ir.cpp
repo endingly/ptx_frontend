@@ -43,6 +43,7 @@ using check_end::OperandSyntaxShape;
 using check_end::ResolvedFieldDescriptor;
 using check_end::ResolvedInstructionDescriptor;
 using check_end::ResolvedOperandBindingDescriptor;
+using check_end::ResolvedOperandLayoutDescriptor;
 using check_end::ResolvedValueKind;
 using check_end::ResolvedVariantDescriptor;
 using check_end::SyntaxInstructionDescriptor;
@@ -95,6 +96,38 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
 }
 
 /**
+ * Return whether ``candidate`` accepts a strict subset of ``other`` syntax.
+ *
+ * Availability is deliberately not considered here: resolve has no target
+ * context. This makes an ``imm`` compatibility layout win over a later
+ * ``reg_or_imm`` layout for the same immediate syntax, while still rejecting
+ * layouts that are equally specific or incomparable.
+ */
+bool is_more_specific_operand_layout(
+    const SyntaxOperandLayoutDescriptor& candidate,
+    const SyntaxOperandLayoutDescriptor& other) {
+  if (candidate.slots.size() != other.slots.size())
+    return false;
+
+  using Underlying = std::underlying_type_t<OperandSyntaxShape>;
+  bool strictly_more_specific = false;
+  for (size_t index = 0; index < candidate.slots.size(); ++index) {
+    const auto& candidate_slot = candidate.slots[index];
+    const auto& other_slot = other.slots[index];
+    if (candidate_slot.presence != other_slot.presence)
+      return false;
+
+    const auto candidate_shapes =
+        static_cast<Underlying>(candidate_slot.allowed_shapes);
+    const auto other_shapes = static_cast<Underlying>(other_slot.allowed_shapes);
+    if ((candidate_shapes & other_shapes) != candidate_shapes)
+      return false;
+    strictly_more_specific |= candidate_shapes != other_shapes;
+  }
+  return strictly_more_specific;
+}
+
+/**
  * @brief Select the operand layout descriptor that matches the actual operands of an instruction.
  * 
  * @param variant instruction variant descriptor
@@ -109,25 +142,34 @@ struct SelectedOperandLayout {
 std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
     const SyntaxVariantDescriptor& variant,
     const syntax_ast::AstInstruction& ast) {
-  const SyntaxOperandLayoutDescriptor* selected = nullptr;
-  size_t selected_index = 0;
+  std::vector<SelectedOperandLayout> matches;
   for (size_t index = 0; index < variant.operand_layouts.size(); ++index) {
     const auto& layout = variant.operand_layouts[index];
     if (!matches_operand_layout(layout, ast))
       continue;
-    if (selected != nullptr) {
-      throw ResolveException(fmt::format(
-          "Descriptor variant '{}': multiple operand layouts match one "
-          "syntax instruction.",
-          variant.variant_name));
-    }
-    selected = &layout;
-    selected_index = index;
+    matches.push_back(SelectedOperandLayout{.descriptor = layout,
+                                            .index = index});
   }
 
-  if (selected != nullptr)
-    return SelectedOperandLayout{.descriptor = *selected,
-                                 .index = selected_index};
+  if (matches.size() == 1)
+    return matches.front();
+  if (matches.size() > 1) {
+    for (const auto& candidate : matches) {
+      const bool more_specific_than_all = std::ranges::all_of(
+          matches, [&candidate](const SelectedOperandLayout& other) {
+            return candidate.index == other.index ||
+                   is_more_specific_operand_layout(candidate.descriptor,
+                                                   other.descriptor);
+          });
+      if (more_specific_than_all)
+        return candidate;
+    }
+    throw ResolveException(fmt::format(
+        "Descriptor variant '{}': multiple operand layouts match one syntax "
+        "instruction without a unique most-specific layout.",
+        variant.variant_name));
+  }
+
   return std::unexpected(ResolveDiagnostic{
       .range = ast.range,
       .message = fmt::format(
@@ -240,6 +282,60 @@ std::expected<WithLocs<ResolvedRegisterId>, ResolveDiagnostic> resolve_register(
   }
   return WithLocs<ResolvedRegisterId>{ResolvedRegisterId{value},
                                       identifier->syntax.range};
+}
+
+std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
+    const syntax_ast::AstOperand& operand) {
+  const syntax_ast::AstIdentifierRef* identifier = nullptr;
+  bool negated = false;
+  SourceRange range;
+  if (const auto* plain =
+          std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+    identifier = plain;
+    range = plain->syntax.range;
+  } else if (const auto* predicate =
+                 std::get_if<syntax_ast::AstPredicateOperand>(&operand)) {
+    identifier = &predicate->name;
+    negated = predicate->negated;
+    range = predicate->syntax.range;
+  } else {
+    return std::unexpected(ResolveDiagnostic{
+        .range = std::visit(
+            [](const auto& item) { return item.syntax.range; }, operand),
+        .message = "Expected a predicate operand.",
+    });
+  }
+
+  const std::string_view spelling = identifier->syntax.text;
+  size_t digit_begin = spelling.size();
+  while (digit_begin > 0 &&
+         std::isdigit(static_cast<unsigned char>(spelling[digit_begin - 1]))) {
+    --digit_begin;
+  }
+  if (spelling.size() < 3 || spelling.front() != '%' ||
+      digit_begin == spelling.size() || digit_begin == 1) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format("Expected a numbered predicate register, got '{}'.",
+                               spelling),
+    });
+  }
+
+  uint32_t value = 0;
+  const char* first = spelling.data() + digit_begin;
+  const char* last = spelling.data() + spelling.size();
+  const auto [end, error] = std::from_chars(first, last, value);
+  if (error != std::errc{} || end != last) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format("Predicate register '{}' has an invalid numeric ID.",
+                               spelling),
+    });
+  }
+  return WithLocs<ResolvedPredicate>{
+      ResolvedPredicate{.register_id = ResolvedRegisterId{value},
+                        .negated = negated},
+      range};
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
@@ -355,6 +451,21 @@ const ResolvedFieldDescriptor& find_resolved_field_descriptor(
   return *it;
 }
 
+const ResolvedFieldDescriptor& find_resolved_operand_field_descriptor(
+    const ResolvedOperandLayoutDescriptor& layout,
+    std::string_view field_id) {
+  const auto it = std::ranges::find_if(
+      layout.fields, [field_id](const ResolvedFieldDescriptor& descriptor) {
+        return descriptor.field_id == field_id;
+      });
+  if (it == layout.fields.end()) {
+    throw ResolveException(fmt::format(
+        "Resolved operand layout '{}' has no field named '{}'.",
+        layout.layout_id, field_id));
+  }
+  return *it;
+}
+
 const SyntaxModifierDescriptor& find_syntax_modifier_descriptor(
     const SyntaxVariantDescriptor& variant, std::string_view kind_id) {
   const auto it = std::ranges::find_if(
@@ -372,18 +483,19 @@ const SyntaxModifierDescriptor& find_syntax_modifier_descriptor(
 std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
     const ResolvedOperandBindingDescriptor& binding,
     const ResolvedInstructionFields& fields, const SourceRange& range) {
-  if (binding.type_expr.empty())
+  const auto& expression = binding.type_expression;
+  if (expression.kind == checker::OperandTypeExpressionKind::None)
     return ScalarType::Invalid;
-  if (!binding.type_expr.starts_with('$')) {
-    const auto type = scalar_type_from_ptx_name(binding.type_expr);
-    if (!type) {
-      throw ResolveException(fmt::format(
-          "Resolved operand field '{}' has unsupported type expression '{}'.",
-          binding.target_field_id, binding.type_expr));
-    }
-    return *type;
+  if (expression.kind == checker::OperandTypeExpressionKind::FixedScalar)
+    return expression.fixed_scalar_type;
+  if (expression.kind != checker::OperandTypeExpressionKind::ModifierField ||
+      expression.modifier_field_id.empty()) {
+    throw ResolveException(fmt::format(
+        "Resolved operand field '{}' has an invalid type expression descriptor.",
+        binding.target_field_id));
   }
-  const std::string_view field_id = binding.type_expr.substr(1);
+
+  const std::string_view field_id = expression.modifier_field_id;
   const auto it = fields.modifiers.find(std::string(field_id));
   if (it == fields.modifiers.end()) {
     return std::unexpected(ResolveDiagnostic{
@@ -407,6 +519,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
   switch (field.value_kind) {
     case ResolvedValueKind::Register: {
       auto value = resolve_register(operand);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::Predicate: {
+      auto value = resolve_predicate(operand);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -576,6 +694,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         }
         break;
       case ResolvedValueKind::Register:
+      case ResolvedValueKind::Predicate:
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
         throw ResolveException(
@@ -586,8 +705,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
 
   for (size_t index = 0; index < ast.operands.size(); ++index) {
     const auto& binding = resolved_layout.bindings[index];
-    const auto& field = find_resolved_field_descriptor(resolved_variant,
-                                                       binding.target_field_id);
+    const auto& field = find_resolved_operand_field_descriptor(
+        resolved_layout, binding.target_field_id);
     auto value =
         resolve_operand_value(field, binding, ast.operands[index], fields);
     if (!value)
@@ -613,6 +732,10 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
           return check_end::OperandSyntaxShape::Identifier;
         } else if constexpr (std::same_as<Item, syntax_ast::AstImmediate>) {
           return check_end::OperandSyntaxShape::Immediate;
+
+        } else if constexpr (std::same_as<Item,
+                                          syntax_ast::AstPredicateOperand>) {
+          return check_end::OperandSyntaxShape::Predicate;
 
         } else if constexpr (std::same_as<Item, syntax_ast::AstAddress>) {
           return check_end::OperandSyntaxShape::Address;

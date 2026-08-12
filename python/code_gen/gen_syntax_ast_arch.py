@@ -42,6 +42,7 @@ _CPP_OPERAND_SYNTAX_SHAPES = (
     (OperandSyntaxShape.ADDRESS, "check_end::OperandSyntaxShape::Address"),
     (OperandSyntaxShape.VECTOR_MEMBER, "check_end::OperandSyntaxShape::VectorMember"),
     (OperandSyntaxShape.VECTOR_PACK, "check_end::OperandSyntaxShape::VectorPack"),
+    (OperandSyntaxShape.PREDICATE, "check_end::OperandSyntaxShape::Predicate"),
 )
 
 def generate_syntax_descriptor_source(

@@ -35,6 +35,7 @@ class OperandSyntaxShape(IntFlag):
     ADDRESS = 1 << 2
     VECTOR_MEMBER = 1 << 3
     VECTOR_PACK = 1 << 4
+    PREDICATE = 1 << 5
 
 
 class OperandLayoutKind(Enum):
@@ -113,6 +114,8 @@ _OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    "pred": OperandSyntaxShape.IDENTIFIER_REF,
+    "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
 }
 
 def _build_variant_descriptor_view(
@@ -163,7 +166,10 @@ def _modifier_spellings(modifier: ModifierSpec) -> tuple[str, ...]:
         return (modifier.token,)
 
     if modifier.values:
-        return tuple(f".{value}" for value in modifier.values)
+        return tuple(
+            value.token if value.token is not None else f".{value.value}"
+            for value in modifier.values
+        )
 
     if isinstance(modifier.value, str):
         return (f".{modifier.value}",)

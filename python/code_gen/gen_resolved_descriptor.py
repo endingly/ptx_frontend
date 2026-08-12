@@ -15,6 +15,8 @@ from ir.resolved_ir import (
     ResolvedOperandLayout,
     ResolvedOperandRole,
     ResolvedOperandShape,
+    ResolvedOperandTypeExpression,
+    ResolvedOperandTypeExpressionKind,
     ResolvedVariant,
     ResolvedValueKind,
     from_instruction_spec,
@@ -25,6 +27,7 @@ _CPP_RESOLVED_VALUE_KINDS = {
     ResolvedValueKind.BOOL: "check_end::ResolvedValueKind::Bool",
     ResolvedValueKind.SCALAR_TYPE: "check_end::ResolvedValueKind::ScalarType",
     ResolvedValueKind.REGISTER: "check_end::ResolvedValueKind::Register",
+    ResolvedValueKind.PREDICATE: "check_end::ResolvedValueKind::Predicate",
     ResolvedValueKind.IMMEDIATE: "check_end::ResolvedValueKind::Immediate",
     ResolvedValueKind.REG_OR_IMM: "check_end::ResolvedValueKind::RegOrImm",
 }
@@ -47,10 +50,31 @@ _CPP_OPERAND_ACCESS = {
 
 _CPP_OPERAND_SHAPES = {
     ResolvedOperandShape.REGISTER: "check_end::OperandShape::Register",
+    ResolvedOperandShape.PREDICATE: "check_end::OperandShape::Predicate",
     ResolvedOperandShape.IMMEDIATE: "check_end::OperandShape::Immediate",
     ResolvedOperandShape.ADDRESS: "check_end::OperandShape::Address",
     ResolvedOperandShape.SYMBOL: "check_end::OperandShape::Symbol",
     ResolvedOperandShape.VECTOR: "check_end::OperandShape::Vector",
+}
+
+_CPP_OPERAND_TYPE_EXPRESSION_KINDS = {
+    ResolvedOperandTypeExpressionKind.NONE:
+        "check_end::OperandTypeExpressionKind::None",
+    ResolvedOperandTypeExpressionKind.FIXED_SCALAR:
+        "check_end::OperandTypeExpressionKind::FixedScalar",
+    ResolvedOperandTypeExpressionKind.MODIFIER_FIELD:
+        "check_end::OperandTypeExpressionKind::ModifierField",
+}
+
+_SCALAR_TYPE_ENUM_NAMES = {
+    "u8": "U8", "u8x4": "U8x4", "u16": "U16", "u16x2": "U16x2",
+    "u32": "U32", "u64": "U64", "s8": "S8", "s8x4": "S8x4",
+    "s16": "S16", "s16x2": "S16x2", "s32": "S32", "s64": "S64",
+    "b8": "B8", "b16": "B16", "b32": "B32", "b64": "B64",
+    "b128": "B128", "f16": "F16", "f16x2": "F16x2", "f32": "F32",
+    "f32x2": "F32x2", "f64": "F64", "bf16": "BF16", "bf16x2": "BF16x2",
+    "e4m3x2": "E4m3x2", "e5m2x2": "E5m2x2", "pred": "Pred", "tf32": "TF32",
+    "e4m3": "E4m3", "e5m2": "E5m2",
 }
 
 
@@ -148,7 +172,7 @@ const check_end::ResolvedInstructionDescriptor&
 def _emit_resolved_variant_storage(variant: ResolvedVariant) -> str:
     name = to_file_stem(variant.variant_id)
     fields = ",\n".join(
-        _emit_resolved_field_descriptor(field) for field in variant.fields
+        _emit_resolved_field_descriptor(field) for field in variant.modifier_fields
     )
     modifier_bindings = ",\n".join(
         _emit_modifier_binding_descriptor(binding)
@@ -161,12 +185,13 @@ def _emit_resolved_variant_storage(variant: ResolvedVariant) -> str:
     operand_layouts = ",\n".join(
         f"""check_end::ResolvedOperandLayoutDescriptor{{
               .layout_id = "{layout.layout_id}",
+              .fields = {name}_operand_layout_{index}_fields,
               .bindings = {name}_operand_layout_{index}_bindings,
           }}"""
         for index, layout in enumerate(variant.operand_layouts)
     )
 
-    return f"""  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(variant.fields)}>
+    return f"""  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(variant.modifier_fields)}>
       {name}_fields = {{
 {fields}
       }};
@@ -203,10 +228,18 @@ def _emit_operand_layout_storage(
     layout_index: int,
     layout: ResolvedOperandLayout,
 ) -> str:
+    fields = ",\n".join(
+        _emit_resolved_field_descriptor(field) for field in layout.fields
+    )
     bindings = ",\n".join(
         _emit_operand_binding_descriptor(binding) for binding in layout.bindings
     )
-    return f"""  static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, {len(layout.bindings)}>
+    return f"""  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(layout.fields)}>
+      {variant_name}_operand_layout_{layout_index}_fields = {{
+{fields}
+      }};
+
+  static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, {len(layout.bindings)}>
       {variant_name}_operand_layout_{layout_index}_bindings = {{
 {bindings}
       }};"""
@@ -218,11 +251,32 @@ def _emit_operand_binding_descriptor(binding) -> str:
     )
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
-              .type_expr = "{binding.type_expr or ''}",
+              .type_expression = {_emit_type_expression_descriptor(binding.type_expression)},
               .role = {_CPP_OPERAND_ROLES[binding.role]},
               .access = {_CPP_OPERAND_ACCESS[binding.access]},
               .allowed_shapes = {allowed_shapes},
           }}"""
+
+
+def _emit_type_expression_descriptor(
+    expression: ResolvedOperandTypeExpression,
+) -> str:
+    """Emit the constexpr C++ representation of one normalized type source."""
+
+    fixed_scalar_type = "ScalarType::Invalid"
+    modifier_field_id = '""'
+    if expression.kind is ResolvedOperandTypeExpressionKind.FIXED_SCALAR:
+        assert expression.scalar_type is not None
+        fixed_scalar_type = f"ScalarType::{_SCALAR_TYPE_ENUM_NAMES[expression.scalar_type]}"
+    elif expression.kind is ResolvedOperandTypeExpressionKind.MODIFIER_FIELD:
+        assert expression.modifier_field_id is not None
+        modifier_field_id = f'"{expression.modifier_field_id}"'
+
+    return f"""check_end::TypeExpressionDescriptor{{
+                  .kind = {_CPP_OPERAND_TYPE_EXPRESSION_KINDS[expression.kind]},
+                  .fixed_scalar_type = {fixed_scalar_type},
+                  .modifier_field_id = {modifier_field_id},
+              }}"""
 
 
 def _emit_resolved_variant_descriptor(variant: ResolvedVariant) -> str:

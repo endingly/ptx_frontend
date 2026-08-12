@@ -2,8 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+class OperandTypeExpressionKind(Enum):
+    """The supported source-level ways to determine an operand scalar type."""
+
+    FIXED_SCALAR = "fixed_scalar"
+    MODIFIER = "modifier"
+
+
+@dataclass(frozen=True)
+class OperandTypeExpression:
+    """A parsed operand type expression from the YAML syntax specification."""
+
+    kind: OperandTypeExpressionKind
+    scalar_type: str | None = None
+    modifier_name: str | None = None
+
+
+@dataclass(frozen=True)
+class ModifierValueSpec:
+    """One legal semantic modifier value and its optional target requirement."""
+
+    value: str | bool | int
+    token: str | None = None
+    availability: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -14,7 +40,7 @@ class ModifierSpec:
     kind: str
     presence: str
     domain: str | None = None
-    values: tuple[str, ...] = ()
+    values: tuple[ModifierValueSpec, ...] = ()
     value: str | bool | int | None = None
     token: str | None = None
     default: str | bool | int | None = None
@@ -28,7 +54,7 @@ class OperandSpec:
     kind: str
     role: str | None = None
     access: str | None = None
-    type_expr: str | None = None
+    type_expression: OperandTypeExpression | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +63,9 @@ class OperandLayoutSpec:
 
     name: str
     operands: tuple[OperandSpec, ...]
+    # Empty means that this layout introduces no target requirement beyond its
+    # containing variant's availability.
+    availability: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

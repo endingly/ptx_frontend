@@ -1,9 +1,5 @@
-PyYAML==6.0.3
-attrs==26.1.0
-jsonschema==4.26.0
-jsonschema-specifications==2025.9.1
+# Direct dependencies for the Python code generators and spec validator.
+# Transitive dependencies are resolved by pip; use a lock file when fully
+# reproducible dependency resolution is required.
 -e ./python
-referencing==0.37.0
-rpds-py==2026.5.1
-Jinja2==3.1.6
-MarkupSafe==3.0.3
+jsonschema>=4.26,<5

@@ -21,6 +21,8 @@ namespace check_end {
 using OperandShape = checker::OperandShape;
 using OperandRole = checker::OperandRole;
 using OperandAccess = checker::OperandAccess;
+using OperandTypeExpressionKind = checker::OperandTypeExpressionKind;
+using TypeExpressionDescriptor = checker::TypeExpressionDescriptor;
 
 enum class OperandSyntaxShape : uint8_t {
   Identifier = 1 << 0,
@@ -28,7 +30,8 @@ enum class OperandSyntaxShape : uint8_t {
   Address = 1 << 2,
   VectorPack = 1 << 3,
   VectorMember = 1 << 4,
-  Group = 1 << 5,  // for op call syntax (...)
+  Predicate = 1 << 5,
+  Group = 1 << 6,  // for op call syntax (...)
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
@@ -50,6 +53,7 @@ enum class ResolvedValueKind : uint8_t {
   Bool,
   ScalarType,
   Register,
+  Predicate,
   Immediate,
   RegOrImm,
 };
@@ -110,11 +114,15 @@ using ResolvedOperandBindingDescriptor = checker::OperandDescriptor;
 
 struct ResolvedOperandLayoutDescriptor {
   std::string_view layout_id;
+  std::span<const ResolvedFieldDescriptor> fields;
   std::span<const ResolvedOperandBindingDescriptor> bindings;
 };
 
 struct ResolvedVariantDescriptor {
   std::string_view variant_name;
+  // Modifier fields are shared by all layouts. Operand fields belong to the
+  // selected ResolvedOperandLayoutDescriptor because layouts may give one
+  // semantic role different resolved representations.
   std::span<const ResolvedFieldDescriptor> fields;
   std::span<const ResolvedModifierBindingDescriptor> modifier_bindings;
   std::span<const ResolvedOperandLayoutDescriptor> operand_layouts;
@@ -158,6 +166,12 @@ struct ResolvedImmediate {
   bool operator==(const ResolvedImmediate&) const = default;
 };
 
+struct ResolvedPredicate {
+  ResolvedRegisterId register_id;
+  bool negated{};
+  bool operator==(const ResolvedPredicate&) const = default;
+};
+
 /** The selected operand-layout index within the resolved instruction variant. */
 struct ResolvedOperandLayoutTag {
   uint16_t value = 0;
@@ -169,7 +183,7 @@ using RegOrImm = std::variant<ResolvedRegisterId, ResolvedImmediate>;
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>,
                  WithLocs<ResolvedRegisterId>, WithLocs<ResolvedImmediate>,
-                 WithLocs<RegOrImm>>;
+                 WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {

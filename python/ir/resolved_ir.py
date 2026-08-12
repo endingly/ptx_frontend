@@ -47,6 +47,8 @@ class ResolvedOperandRole(Enum):
     ADDRESS = "Address"
     PREDICATE = "Predicate"
     BRANCH_TARGET = "BranchTarget"
+    BARRIER = "Barrier"
+    THREAD_COUNT = "ThreadCount"
 
 
 class ResolvedOperandAccess(Enum):
@@ -123,11 +125,30 @@ class ResolvedVariant:
 
     variant_id: str
     cpp_name: str
-    fields: tuple[ResolvedField, ...]
+    modifier_fields: tuple[ResolvedField, ...]
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
+
+    @property
+    def fields(self) -> tuple[ResolvedField, ...]:
+        """All fields declared by the variant, in deterministic layout order."""
+
+        fields: list[ResolvedField] = list(self.modifier_fields)
+        by_name = {field.name: field for field in fields}
+        for layout in self.operand_layouts:
+            for field in layout.fields:
+                previous = by_name.get(field.name)
+                if previous is None:
+                    fields.append(field)
+                    by_name[field.name] = field
+                elif previous != field:
+                    raise ValueError(
+                        f"variant {self.variant_id!r} reuses operand field "
+                        f"{field.name!r} with incompatible definitions"
+                    )
+        return tuple(fields)
 
 
 @dataclass(frozen=True)
@@ -153,6 +174,9 @@ class ResolvedOperandBinding:
 class ResolvedOperandLayout:
     """One resolved-field binding layout paired by index with syntax layouts."""
 
+    layout_id: str
+    cpp_name: str
+    fields: tuple[ResolvedField, ...]
     bindings: tuple[ResolvedOperandBinding, ...]
 
 
@@ -199,6 +223,8 @@ _OPERAND_ROLES = {
     "address": ResolvedOperandRole.ADDRESS,
     "predicate": ResolvedOperandRole.PREDICATE,
     "branch_target": ResolvedOperandRole.BRANCH_TARGET,
+    "barrier": ResolvedOperandRole.BARRIER,
+    "thread_count": ResolvedOperandRole.THREAD_COUNT,
 }
 
 _OPERAND_ACCESS = {
@@ -245,12 +271,15 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         for modifier in variant.modifiers
         if modifier.presence != "absent"
     )
-    operand_fields = tuple(_build_operand_field(operand) for operand in variant.operands)
+    operand_layouts = tuple(
+        _build_operand_layout(layout.name, layout.operands)
+        for layout in variant.operand_layouts
+    )
 
     return ResolvedVariant(
         variant_id=variant.name,
         cpp_name=_variant_cpp_name(opcode, variant.name),
-        fields=modifier_fields + operand_fields,
+        modifier_fields=modifier_fields,
         modifier_bindings=tuple(
             ResolvedModifierBinding(
                 source_kind_id=field.source_name,
@@ -258,22 +287,30 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             )
             for field in modifier_fields
         ),
-        operand_layouts=(
-            ResolvedOperandLayout(
-                bindings=tuple(
-                    ResolvedOperandBinding(
-                        target_field_id=field.name,
-                        type_expr=field.type_expr,
-                        role=_require_operand_role(field),
-                        access=_require_operand_access(field),
-                        allowed_shapes=field.allowed_operand_shapes,
-                    )
-                    for field in operand_fields
-                )
-            ),
-        ),
+        operand_layouts=operand_layouts,
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
+    )
+
+
+def _build_operand_layout(
+    layout_id: str, operands: tuple[OperandSpec, ...]
+) -> ResolvedOperandLayout:
+    fields = tuple(_build_operand_field(operand) for operand in operands)
+    return ResolvedOperandLayout(
+        layout_id=layout_id,
+        cpp_name=file_stem_to_pascal_case(layout_id),
+        fields=fields,
+        bindings=tuple(
+            ResolvedOperandBinding(
+                target_field_id=field.name,
+                type_expr=field.type_expr,
+                role=_require_operand_role(field),
+                access=_require_operand_access(field),
+                allowed_shapes=field.allowed_operand_shapes,
+            )
+            for field in fields
+        ),
     )
 
 

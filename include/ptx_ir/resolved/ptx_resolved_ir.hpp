@@ -64,7 +64,8 @@ enum class OperandLayoutKind : uint8_t {
 };
 
 struct SyntaxOperandLayoutDescriptor {
-  OperandLayoutKind layout_id;
+  std::string_view layout_id;
+  OperandLayoutKind kind;
   std::span<const SyntaxOperandSlotDescriptor> slots;
 };
 
@@ -108,6 +109,7 @@ struct ResolvedModifierBindingDescriptor {
 using ResolvedOperandBindingDescriptor = checker::OperandDescriptor;
 
 struct ResolvedOperandLayoutDescriptor {
+  std::string_view layout_id;
   std::span<const ResolvedOperandBindingDescriptor> bindings;
 };
 

@@ -162,5 +162,34 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
   EXPECT_EQ(result.error().front().range, ast->range);
 }
 
+TEST(ResolvedIrChecker, GeneratedBarWrapperRejectsMismatchedLayoutPayload) {
+  PtxSyntaxParser parser("bar.sync 1, 128;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+
+  auto resolved = resolve<Bar>(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  auto* bar = std::get_if<Bar::Sync>(&resolved->variant);
+  ASSERT_NE(bar, nullptr);
+  ASSERT_TRUE(std::holds_alternative<Bar::Sync::BarrierAndThreadCountOperands>(
+      bar->operands));
+  EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{1}));
+
+  const Context context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 120},
+      .instruction_range = ast->range,
+  };
+  EXPECT_TRUE(check(*resolved, context).has_value());
+
+  bar->operand_layout = ResolvedOperandLayoutTag{0};
+  const auto result = check(*resolved, context);
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 1U);
+  EXPECT_EQ(result.error().front().kind,
+            CheckDiagnosticKind::OperandLayoutPayloadMismatch);
+  EXPECT_EQ(result.error().front().range, ast->range);
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir::checker

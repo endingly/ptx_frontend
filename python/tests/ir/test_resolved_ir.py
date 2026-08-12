@@ -14,6 +14,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from code_gen.database import load_codegen_database
+from code_gen.database import CodegenDatabase
 from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
@@ -27,6 +28,13 @@ from ir.resolved_ir import (
     ResolvedOperandShape,
     ResolvedValueKind,
     from_instruction_spec,
+)
+from code_gen.model import (
+    InstructionSpec,
+    ModifierSpec,
+    OperandLayoutSpec,
+    OperandSpec,
+    VariantSpec,
 )
 
 
@@ -71,6 +79,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("src2", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND, "$type"),
             ],
         )
+
         self.assertEqual(
             [field.name for field in variants["SatS32"].fields],
             ["saturate", "type", "dst", "src1", "src2"],
@@ -164,6 +173,50 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
 
+    def test_bar_sync_uses_distinct_modifier_variants_and_operand_layouts(
+        self,
+    ) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        bar = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "bar"
+        )
+        instruction = from_instruction_spec(bar)
+        variants = {variant.cpp_name: variant for variant in instruction.variants}
+
+        self.assertEqual(set(variants), {"Sync", "CtaSync"})
+        self.assertEqual(
+            [layout.layout_id for layout in variants["Sync"].operand_layouts],
+            ["barrier", "barrier_and_thread_count"],
+        )
+        self.assertEqual(
+            [field.name for field in variants["Sync"].modifier_fields],
+            ["sync"],
+        )
+        self.assertEqual(
+            [field.name for field in variants["CtaSync"].modifier_fields],
+            ["cta", "sync"],
+        )
+        self.assertTrue(
+            all(
+                field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+                for field in variants["CtaSync"].modifier_fields
+            )
+        )
+        self.assertEqual(
+            [
+                (binding.target_field_id, binding.type_expr, binding.role)
+                for binding in variants["Sync"].operand_layouts[1].bindings
+            ],
+            [
+                ("barrier", "u32", ResolvedOperandRole.BARRIER),
+                ("thread_count", "u32", ResolvedOperandRole.THREAD_COUNT),
+            ],
+        )
+
     def test_generate_resolved_ir_header(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -182,7 +235,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('#include "ptx_ir/resolved/ptx_resolved_ir.hpp"', source)
         self.assertIn('#include "ptx_ir/ptx_resolved_ir_checker.hpp"', source)
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
+        self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
+        self.assertIn("struct Bar {", source)
         self.assertIn("enum class VariantType {", source)
         self.assertIn("struct IntegerNoSat {", source)
         self.assertIn("ResolvedOperandLayoutTag operand_layout;", source)
@@ -250,11 +305,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("#pragma once", source)
         self.assertIn('#include "ptx_ir/resolved/ptx_resolved_ir.hpp"', source)
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
+        self.assertEqual(source.count("namespace generated_detail {"), 1)
         self.assertIn("struct AddResolvedDescriptorStorage {", source)
+        self.assertIn("struct BarResolvedDescriptorStorage {", source)
         self.assertIn("check_end::ResolvedFieldDescriptor", source)
         self.assertNotIn("ResolvedConstantDescriptor", source)
         self.assertIn("check_end::ResolvedModifierBindingDescriptor", source)
         self.assertIn("check_end::ResolvedOperandBindingDescriptor", source)
+        self.assertIn('.layout_id = "default",', source)
         self.assertIn(".role = check_end::OperandRole::Destination,", source)
         self.assertIn(".access = check_end::OperandAccess::Write,", source)
         self.assertIn(
@@ -286,7 +344,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
 
         self.assertIn('#include "ptx_ir/ptx_resolved_ir_checker.hpp"', source)
+        self.assertEqual(source.count("namespace generated_detail {"), 1)
         self.assertIn("struct AddCheckerDescriptorStorage {", source)
+        self.assertIn("struct BarCheckerDescriptorStorage {", source)
         self.assertIn("checker::VariantDescriptor", source)
         self.assertIn('.minimum_ptx_version = {9, 2},', source)
         self.assertIn('.minimum_sm_version = 120,', source)
@@ -297,6 +357,90 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "Add::get_checker_descriptor() noexcept {",
             source,
         )
+
+    def test_multi_layout_variant_generates_nested_operand_payload(self) -> None:
+        instruction = InstructionSpec(
+            opcode="sample",
+            syntax=None,
+            variants=(
+                VariantSpec(
+                    name="sample_typed",
+                    availability={"ptx": "1.0", "sm": 0},
+                    modifiers=(
+                        ModifierSpec(
+                            name="type",
+                            kind="type",
+                            presence="required",
+                            values=("u32",),
+                        ),
+                    ),
+                    operand_layouts=(
+                        OperandLayoutSpec(
+                            name="binary",
+                            operands=(
+                                OperandSpec(
+                                    name="dst",
+                                    kind="reg",
+                                    role="dst",
+                                    access="write",
+                                    type_expr="$type",
+                                ),
+                                OperandSpec(
+                                    name="src",
+                                    kind="reg_or_imm",
+                                    role="src",
+                                    access="read",
+                                    type_expr="$type",
+                                ),
+                            ),
+                        ),
+                        OperandLayoutSpec(
+                            name="ternary",
+                            operands=(
+                                OperandSpec(
+                                    name="dst",
+                                    kind="reg",
+                                    role="dst",
+                                    access="write",
+                                    type_expr="$type",
+                                ),
+                                OperandSpec(
+                                    name="src1",
+                                    kind="reg_or_imm",
+                                    role="src1",
+                                    access="read",
+                                    type_expr="$type",
+                                ),
+                                OperandSpec(
+                                    name="src2",
+                                    kind="reg_or_imm",
+                                    role="src2",
+                                    access="read",
+                                    type_expr="$type",
+                                ),
+                            ),
+                        ),
+                    ),
+                    rule="sample.typed",
+                ),
+            ),
+        )
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=(instruction,))
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir.gen.hpp"
+            generate_resolved_ir_header(database, output_path=output_path)
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("struct BinaryOperands {", source)
+        self.assertIn("struct TernaryOperands {", source)
+        self.assertIn(
+            "using Operands = std::variant<BinaryOperands, TernaryOperands>;",
+            source,
+        )
+        self.assertIn("Operands operands;", source)
+        self.assertIn("check_sample_typed_binary_operands", source)
+        self.assertIn("check_sample_typed_ternary_operands", source)
 
 
 if __name__ == "__main__":

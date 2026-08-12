@@ -1,0 +1,101 @@
+# PTX parallel synchronization and communication instructions.
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.2"
+category: parallel_synchronization_and_communication
+section: "9.7.12"
+
+operand_patterns:
+  bar_sync_barrier:
+    - name: barrier
+      kind: reg_or_imm
+      role: barrier
+      access: read
+      type: u32
+
+  bar_sync_barrier_and_thread_count:
+    - name: barrier
+      kind: reg_or_imm
+      role: barrier
+      access: read
+      type: u32
+
+    - name: thread_count
+      kind: reg_or_imm
+      role: thread_count
+      access: read
+      type: u32
+
+instructions:
+  - opcode: bar
+    category: parallel_synchronization_and_communication
+    section: "9.7.12.1"
+    doc: >
+      CTA barrier synchronization. The barrier identifier and optional
+      participating-thread count are unsigned 32-bit values.
+    syntax: "bar{.cta}.sync barrier{, thread_count}"
+
+    variants:
+      # The register-barrier and thread-count forms were introduced together
+      # in PTX ISA 2.0 and require sm_20. The older sm_1x immediate-only form
+      # needs operand-layout-specific availability, which is intentionally not
+      # modeled by the current descriptor ABI.
+      - name: bar_sync
+        description: "bar.sync with a CTA barrier identifier and optional thread count."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: cta
+            kind: flag
+            presence: absent
+            token: ".cta"
+
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".sync"
+        operand_layouts:
+          - name: barrier
+            operands: bar_sync_barrier
+          - name: barrier_and_thread_count
+            operands: bar_sync_barrier_and_thread_count
+        rule: parallel_sync_and_communication.bar_sync
+
+        examples:
+          - ptx: "bar.sync 0;"
+            valid: true
+          - ptx: "bar.sync %r1, 128;"
+            valid: true
+
+      - name: bar_cta_sync
+        description: "bar.cta.sync; semantically equivalent CTA-qualified spelling."
+        availability:
+          ptx: "7.8"
+          sm: 20
+        modifiers:
+          - name: cta
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".cta"
+
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".sync"
+        operand_layouts:
+          - name: barrier
+            operands: bar_sync_barrier
+          - name: barrier_and_thread_count
+            operands: bar_sync_barrier_and_thread_count
+        rule: parallel_sync_and_communication.bar_sync
+
+        examples:
+          - ptx: "bar.cta.sync 0;"
+            valid: true
+          - ptx: "bar.cta.sync %r1, %r2;"
+            valid: true

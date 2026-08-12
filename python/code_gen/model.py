@@ -32,13 +32,21 @@ class OperandSpec:
 
 
 @dataclass(frozen=True)
+class OperandLayoutSpec:
+    """One stable operand layout within a modifier-selected variant."""
+
+    name: str
+    operands: tuple[OperandSpec, ...]
+
+
+@dataclass(frozen=True)
 class VariantSpec:
     """One PTX instruction variant."""
 
     name: str
     availability: dict[str, Any]
     modifiers: tuple[ModifierSpec, ...]
-    operands: tuple[OperandSpec, ...]
+    operand_layouts: tuple[OperandLayoutSpec, ...]
     rule: str | None = None
 
 

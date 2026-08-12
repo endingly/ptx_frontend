@@ -67,6 +67,7 @@ class SyntaxOperandSlotDescriptor:
 class SyntaxOperandLayoutDescriptor:
     """One accepted operand layout inside a syntax variant."""
 
+    layout_id: str
     kind: OperandLayoutKind
     slots: tuple[SyntaxOperandSlotDescriptor, ...]
 
@@ -122,14 +123,16 @@ def _build_variant_descriptor_view(
         modifiers=tuple(
             _build_modifier_descriptor_view(modifier) for modifier in variant.modifiers
         ),
-        operand_layouts=(
+        operand_layouts=tuple(
             SyntaxOperandLayoutDescriptor(
-                kind=OperandLayoutKind.FLAT, # TODO: support other layout kinds
+                layout_id=layout.name,
+                kind=OperandLayoutKind.FLAT,  # TODO: support other layout kinds
                 slots=tuple(
                     _build_operand_slot_descriptor_view(operand)
-                    for operand in variant.operands
+                    for operand in layout.operands
                 ),
-            ),
+            )
+            for layout in variant.operand_layouts
         ),
     )
 

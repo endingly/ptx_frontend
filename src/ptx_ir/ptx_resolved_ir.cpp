@@ -40,10 +40,10 @@ namespace {
 
 using check_end::OperandPresence;
 using check_end::OperandSyntaxShape;
-using check_end::ResolvedValueKind;
 using check_end::ResolvedFieldDescriptor;
 using check_end::ResolvedInstructionDescriptor;
 using check_end::ResolvedOperandBindingDescriptor;
+using check_end::ResolvedValueKind;
 using check_end::ResolvedVariantDescriptor;
 using check_end::SyntaxInstructionDescriptor;
 using check_end::SyntaxModifierDescriptor;
@@ -144,8 +144,7 @@ std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
  * @return const SyntaxVariantDescriptor&
  */
 const SyntaxVariantDescriptor& find_syntax_variant_descriptor(
-    const SyntaxInstructionDescriptor& instruction,
-    std::string_view name) {
+    const SyntaxInstructionDescriptor& instruction, std::string_view name) {
   const auto& descriptors = instruction.variants;
   const auto it = std::ranges::find_if(
       descriptors, [name](const SyntaxVariantDescriptor& descriptor) {
@@ -159,8 +158,7 @@ const SyntaxVariantDescriptor& find_syntax_variant_descriptor(
   return *it;
 }
 
-std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
-    const syntax_ast::AstModifier& modifier) {
+std::optional<ScalarType> scalar_type_from_ptx_name(std::string_view spelling) {
   static constexpr std::array<std::pair<std::string_view, ScalarType>, 30>
       scalar_types = {{
           {".u8", ScalarType::U8},         {".u8x4", ScalarType::U8x4},
@@ -181,17 +179,26 @@ std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
       }};
 
   const auto it =
-      std::ranges::find_if(scalar_types, [&modifier](const auto& entry) {
-        return entry.first == modifier.syntax.text;
+      std::ranges::find_if(scalar_types, [spelling](const auto& entry) {
+        return entry.first == spelling || (!spelling.starts_with('.') &&
+                                           entry.first.substr(1) == spelling);
       });
-  if (it == scalar_types.end()) {
+  if (it == scalar_types.end())
+    return std::nullopt;
+  return it->second;
+}
+
+std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
+    const syntax_ast::AstModifier& modifier) {
+  const auto type = scalar_type_from_ptx_name(modifier.syntax.text);
+  if (!type) {
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
         .message =
             fmt::format("Unknown scalar type '{}'.", modifier.syntax.text),
     });
   }
-  return WithLocs<ScalarType>{it->second, modifier.syntax.range};
+  return WithLocs<ScalarType>{*type, modifier.syntax.range};
 }
 
 std::expected<WithLocs<ResolvedRegisterId>, ResolveDiagnostic> resolve_register(
@@ -301,8 +308,7 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
  * @return std::optional<std::string_view> kind ID of the modifier if it matches, std::nullopt otherwise
  */
 std::optional<std::string_view> modifier_kind_id(
-    const SyntaxInstructionDescriptor& instruction,
-    std::string_view spelling) {
+    const SyntaxInstructionDescriptor& instruction, std::string_view spelling) {
   std::optional<std::string_view> result;
   for (const SyntaxVariantDescriptor& variant : instruction.variants) {
     for (const SyntaxModifierDescriptor& modifier : variant.modifiers) {
@@ -322,10 +328,11 @@ std::optional<std::string_view> modifier_kind_id(
 
 const ResolvedVariantDescriptor& find_resolved_variant_descriptor(
     const ResolvedInstructionDescriptor& instruction, std::string_view name) {
-  const auto it = std::ranges::find_if(
-      instruction.variants, [name](const ResolvedVariantDescriptor& descriptor) {
-        return descriptor.variant_name == name;
-      });
+  const auto it =
+      std::ranges::find_if(instruction.variants,
+                           [name](const ResolvedVariantDescriptor& descriptor) {
+                             return descriptor.variant_name == name;
+                           });
   if (it == instruction.variants.end()) {
     throw ResolveException(
         fmt::format("Resolved descriptor for '{}' has no variant named '{}'.",
@@ -341,9 +348,9 @@ const ResolvedFieldDescriptor& find_resolved_field_descriptor(
         return descriptor.field_id == field_id;
       });
   if (it == variant.fields.end()) {
-    throw ResolveException(fmt::format(
-        "Resolved descriptor variant '{}' has no field named '{}'.",
-        variant.variant_name, field_id));
+    throw ResolveException(
+        fmt::format("Resolved descriptor variant '{}' has no field named '{}'.",
+                    variant.variant_name, field_id));
   }
   return *it;
 }
@@ -355,9 +362,9 @@ const SyntaxModifierDescriptor& find_syntax_modifier_descriptor(
         return descriptor.kind_id == kind_id;
       });
   if (it == variant.modifiers.end()) {
-    throw ResolveException(fmt::format(
-        "Syntax descriptor variant '{}' has no modifier kind '{}'.",
-        variant.variant_name, kind_id));
+    throw ResolveException(
+        fmt::format("Syntax descriptor variant '{}' has no modifier kind '{}'.",
+                    variant.variant_name, kind_id));
   }
   return *it;
 }
@@ -368,10 +375,13 @@ std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
   if (binding.type_expr.empty())
     return ScalarType::Invalid;
   if (!binding.type_expr.starts_with('$')) {
-    throw ResolveException(
-        fmt::format("Resolved operand field '{}' has unsupported type expression "
-                    "'{}'.",
-                    binding.target_field_id, binding.type_expr));
+    const auto type = scalar_type_from_ptx_name(binding.type_expr);
+    if (!type) {
+      throw ResolveException(fmt::format(
+          "Resolved operand field '{}' has unsupported type expression '{}'.",
+          binding.target_field_id, binding.type_expr));
+    }
+    return *type;
   }
   const std::string_view field_id = binding.type_expr.substr(1);
   const auto it = fields.modifiers.find(std::string(field_id));
@@ -501,7 +511,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         "Descriptor variant '{}': syntax layout {} has {} slots but resolved "
         "binding layout has {} entries.",
         variant_name, selected_layout->index,
-        selected_layout->descriptor.slots.size(), resolved_layout.bindings.size()));
+        selected_layout->descriptor.slots.size(),
+        resolved_layout.bindings.size()));
   }
 
   const auto actual_modifiers =
@@ -511,14 +522,14 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
 
   ResolvedInstructionFields fields{
       .variant_name = variant_name,
-      .operand_layout =
-          ResolvedOperandLayoutTag{static_cast<uint16_t>(selected_layout->index)},
+      .operand_layout = ResolvedOperandLayoutTag{static_cast<uint16_t>(
+          selected_layout->index)},
   };
   for (const auto& binding : resolved_variant.modifier_bindings) {
-    const auto& syntax_modifier = find_syntax_modifier_descriptor(
-        syntax_variant, binding.source_kind_id);
-    const auto& field = find_resolved_field_descriptor(
-        resolved_variant, binding.target_field_id);
+    const auto& syntax_modifier =
+        find_syntax_modifier_descriptor(syntax_variant, binding.source_kind_id);
+    const auto& field = find_resolved_field_descriptor(resolved_variant,
+                                                       binding.target_field_id);
     const auto actual =
         actual_modifiers->find(std::string(binding.source_kind_id));
     const bool present = actual != actual_modifiers->end();
@@ -575,9 +586,10 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
 
   for (size_t index = 0; index < ast.operands.size(); ++index) {
     const auto& binding = resolved_layout.bindings[index];
-    const auto& field = find_resolved_field_descriptor(
-        resolved_variant, binding.target_field_id);
-    auto value = resolve_operand_value(field, binding, ast.operands[index], fields);
+    const auto& field = find_resolved_field_descriptor(resolved_variant,
+                                                       binding.target_field_id);
+    auto value =
+        resolve_operand_value(field, binding, ast.operands[index], fields);
     if (!value)
       return std::unexpected(value.error());
     const auto [_, inserted] =
@@ -615,8 +627,9 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
       operand);
 }
 
-bool matches_modifier_slot(const check_end::SyntaxModifierDescriptor& descriptor,
-                           const ActualModifierTable& actual_modifiers) {
+bool matches_modifier_slot(
+    const check_end::SyntaxModifierDescriptor& descriptor,
+    const ActualModifierTable& actual_modifiers) {
   const auto it = actual_modifiers.find(std::string(descriptor.kind_id));
   const bool present = it != actual_modifiers.end();
 

@@ -13,6 +13,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from code_gen.database import load_codegen_database
+from code_gen.normalize import normalize_instruction_spec
 from code_gen.gen_syntax_ast_arch import (
     emit_check_end_instruction_descriptor_implementation,
     generate_syntax_descriptor_source,
@@ -83,6 +84,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         layout = self.descriptor.variants[0].operand_layouts[0]
 
         self.assertEqual(layout.kind, OperandLayoutKind.FLAT)
+        self.assertEqual(layout.layout_id, "default")
         self.assertEqual(
             [
                 (slot.allowed_syntax_shapes, slot.presence)
@@ -107,14 +109,58 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IDENTIFIER_REF))
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IMMEDIATE))
         self.assertFalse(layout.slots[1].allows(OperandSyntaxShape.ADDRESS))
+
+    def test_normalize_explicit_operand_layouts(self) -> None:
+        raw_spec = {
+            "instructions": [
+                {
+                    "opcode": "sample",
+                    "variants": [
+                        {
+                            "name": "sample_typed",
+                            "availability": {"ptx": "1.0", "sm": 0},
+                            "operand_layouts": [
+                                {
+                                    "name": "binary",
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": "reg",
+                                            "role": "dst",
+                                            "access": "write",
+                                        },
+                                    ],
+                                },
+                                {
+                                    "name": "unary",
+                                    "operands": [
+                                        {
+                                            "name": "src",
+                                            "kind": "reg_or_imm",
+                                            "role": "src",
+                                            "access": "read",
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+
+        instruction = normalize_instruction_spec(raw_spec)[0]
+        layouts = instruction.variants[0].operand_layouts
+
+        self.assertEqual([layout.name for layout in layouts], ["binary", "unary"])
+        self.assertEqual(
+            [[operand.name for operand in layout.operands] for layout in layouts],
+            [["dst"], ["src"]],
+        )
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
         source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
 
-        self.assertTrue(
-            source.startswith(
-                "namespace {\n\nstruct AddDescriptorStorage {"
-            )
-        )
+        self.assertTrue(source.startswith("struct AddDescriptorStorage {"))
         self.assertIn(
             "inline static constexpr std::array<std::string_view, 6>", source
         )
@@ -139,7 +185,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            ".layout_id = check_end::OperandLayoutKind::Flat,",
+            ".kind = check_end::OperandLayoutKind::Flat,",
             source,
         )
         self.assertNotIn("ResolvedValueKind", source)
@@ -183,7 +229,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
+        self.assertEqual(source.count("namespace {"), 1)
         self.assertIn("struct AddDescriptorStorage {", source)
+        self.assertIn("struct BarDescriptorStorage {", source)
         self.assertIn("Add::get_syntax_descriptor() noexcept", source)
 
 

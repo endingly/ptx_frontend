@@ -54,6 +54,8 @@ enum class OperandRole : uint8_t {
   Address,
   Predicate,
   BranchTarget,
+  Barrier,
+  ThreadCount,
 };
 
 enum class OperandAccess : uint8_t {
@@ -143,6 +145,7 @@ enum class CheckDiagnosticKind : uint8_t {
   UnexpectedOperand,
   UnsupportedOperandShape,
   InvalidOperandLayoutTag,
+  OperandLayoutPayloadMismatch,
   MissingTypeField,
   OperandTypeMismatch,
   RuleViolation,

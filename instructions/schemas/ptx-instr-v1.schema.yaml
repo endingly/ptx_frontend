@@ -643,6 +643,7 @@ $defs:
       - metadata
       - descriptor
       - barrier
+      - thread_count
       - immediate
       - shape
       - layout
@@ -910,6 +911,27 @@ $defs:
   # Instruction variants and instructions
   # ---------------------------------------------------------------------------
 
+  operand_layout:
+    description: >
+      One named operand layout within a modifier-selected instruction variant.
+      Layout names are stable semantic identifiers; they are not C++ backend
+      layout directives.
+    type: object
+    additionalProperties: false
+    required:
+      - name
+      - operands
+    properties:
+      name:
+        $ref: "#/$defs/schema_identifier"
+      operands:
+        description: "A named operand pattern or an explicit operand list."
+        oneOf:
+          - $ref: "#/$defs/schema_identifier"
+          - type: array
+            items:
+              $ref: "#/$defs/operand"
+
   variant:
     description: "A PTX instruction variant."
     type: object
@@ -957,6 +979,16 @@ $defs:
           - type: array
             items:
               $ref: "#/$defs/operand"
+
+      operand_layouts:
+        description: >
+          Explicit operand layouts for this modifier variant. This is mutually
+          exclusive with operands. If omitted, operands are lifted into the
+          implicit layout named default.
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/operand_layout"
 
       rule:
         $ref: "#/$defs/semantic_rule"

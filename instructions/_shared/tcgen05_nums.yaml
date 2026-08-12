@@ -1,0 +1,4 @@
+_tcgen05_nums: &tcgen05_nums
+  - { token: ".x1", cpp: "Tcgen05Num::X1" }
+  - { token: ".x2", cpp: "Tcgen05Num::X2" }
+  - { token: ".x4", cpp: "Tcgen05Num::X4" }

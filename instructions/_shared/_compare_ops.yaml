@@ -1,0 +1,20 @@
+# Shared compare-op values (reused across setp/set)
+_compare_ops: &compare_ops
+  - { token: ".eq", cpp: "SetpCompareInt::Eq" }
+  - { token: ".ne", cpp: "SetpCompareInt::NotEq" }
+  - { token: ".lt", cpp: "SetpCompareInt::SignedLess" }
+  - { token: ".le", cpp: "SetpCompareInt::SignedLessOrEq" }
+  - { token: ".gt", cpp: "SetpCompareInt::SignedGreater" }
+  - { token: ".ge", cpp: "SetpCompareInt::SignedGreaterOrEq" }
+  - { token: ".lo", cpp: "SetpCompareInt::UnsignedLess" }
+  - { token: ".ls", cpp: "SetpCompareInt::UnsignedLessOrEq" }
+  - { token: ".hi", cpp: "SetpCompareInt::UnsignedGreater" }
+  - { token: ".hs", cpp: "SetpCompareInt::UnsignedGreaterOrEq" }
+  - { token: ".equ", cpp: "SetpCompareFloat::NanEq" }
+  - { token: ".neu", cpp: "SetpCompareFloat::NanNotEq" }
+  - { token: ".ltu", cpp: "SetpCompareFloat::NanLess" }
+  - { token: ".leu", cpp: "SetpCompareFloat::NanLessOrEq" }
+  - { token: ".gtu", cpp: "SetpCompareFloat::NanGreater" }
+  - { token: ".geu", cpp: "SetpCompareFloat::NanGreaterOrEq" }
+  - { token: ".num", cpp: "SetpCompareFloat::IsNotNan" }
+  - { token: ".nan", cpp: "SetpCompareFloat::IsAnyNan" }

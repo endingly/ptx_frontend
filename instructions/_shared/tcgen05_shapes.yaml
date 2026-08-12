@@ -1,0 +1,12 @@
+# Shared shape / num values for tcgen05 ld/st
+_tcgen05_shapes: &tcgen05_shapes
+  - { token: ".m64n8k32",   cpp: "Tcgen05Shape::M64n8k32"   }
+  - { token: ".m64n16k32",  cpp: "Tcgen05Shape::M64n16k32"  }
+  - { token: ".m64n32k32",  cpp: "Tcgen05Shape::M64n32k32"  }
+  - { token: ".m64n64k32",  cpp: "Tcgen05Shape::M64n64k32"  }
+  - { token: ".m64n128k32", cpp: "Tcgen05Shape::M64n128k32" }
+  - { token: ".m128n8k32",  cpp: "Tcgen05Shape::M128n8k32"  }
+  - { token: ".m128n16k32", cpp: "Tcgen05Shape::M128n16k32" }
+  - { token: ".m128n32k32", cpp: "Tcgen05Shape::M128n32k32" }
+  - { token: ".m128n64k32", cpp: "Tcgen05Shape::M128n64k32" }
+  - { token: ".m128n128k32",cpp: "Tcgen05Shape::M128n128k32"}

@@ -1,18 +1,126 @@
 cmake_minimum_required(VERSION 3.28.0)
-
+list(PREPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 project(ptx_frontend VERSION 0.0.1 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS ON)
 
-aux_source_directory(src ptx_frontend_srcs)
-add_library(ptx_frontend ${ptx_frontend_srcs})
-target_include_directories(ptx_frontend PUBLIC include)
+option(CCACHE_FOUND "Use ccache to speed up recompilation" ON)
+option(BUILD_TESTING "enable test program building" OFF)
 
-## target ptx_frontend_test
-aux_source_directory(test ptx_frontend_test_files)
-add_executable(ptx_frontend_test ${ptx_frontend_test_files})
-target_link_libraries(ptx_frontend_test PRIVATE ptx_frontend)
-find_package(GTest CONFIG REQUIRED)
-target_link_libraries(ptx_frontend_test PRIVATE GTest::gtest GTest::gtest_main)
+if(CCACHE_FOUND)
+    find_program(CCACHE_FOUND ccache)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+endif(CCACHE_FOUND)
+
+if(BUILD_TESTING)
+    include(CTest)
+    enable_testing()
+    include(GoogleTest)
+endif()
+
+# set public/private include directories
+include(GNUInstallDirs)
+set(PTX_GEN_PUBLIC_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/public)
+set(PTX_GEN_PRIVATE_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/private)
+
+# Flex target
+include(FindFLEX)
+set(PTX_LEXER_IN ${CMAKE_CURRENT_SOURCE_DIR}/src/ptx_lexer.l)
+file(MAKE_DIRECTORY ${PTX_GEN_PRIVATE_DIR})
+set(PTX_LEXER_OUT ${PTX_GEN_PRIVATE_DIR}/_ptx_lexer.cpp)
+set(PTX_LEXER_HDR ${PTX_GEN_PRIVATE_DIR}/_ptx_lexer.hpp)
+FLEX_TARGET(
+    ptx_lexer
+    ${PTX_LEXER_IN}
+    ${PTX_LEXER_OUT}
+    COMPILE_FLAGS "--header-file=${PTX_LEXER_HDR} -w"
+)
+
+# yaml generator target
+# find python
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
+file(GLOB_RECURSE PYTHON_SCRIPTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py)
+
+execute_process(
+    COMMAND
+    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+    --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+    --output ${CMAKE_CURRENT_BINARY_DIR}/generated
+    --list-outputs
+    RESULT_VARIABLE PTX_GENERATED_FILES_RESULT
+    OUTPUT_VARIABLE PTX_GENERATED_FILES_OUTPUT
+    ERROR_VARIABLE PTX_GENERATED_FILES_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if(NOT PTX_GENERATED_FILES_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to determine generated files: ${PTX_GENERATED_FILES_ERROR}")
+endif()
+
+string(REPLACE "\n" ";" PTX_GENERATED_FILES "${PTX_GENERATED_FILES_OUTPUT}")
+add_custom_command(
+    OUTPUT ${PTX_GENERATED_FILES}
+    COMMAND
+    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+    --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+    --output ${CMAKE_CURRENT_BINARY_DIR}/generated
+    DEPENDS
+    ${PTX_SPEC_FILES}
+    ${PYTHON_SCRIPTS}
+    COMMENT "Generating PTX frontend code"
+)
+add_custom_target(
+    auto_gen_code
+    DEPENDS
+    ${PTX_GENERATED_FILES}
+)
+
+# target ptx_frontend
+file(GLOB_RECURSE ptx_frontend_srcs src/*.cpp)
+set(ptx_frontend_generated_srcs ${PTX_GENERATED_FILES})
+list(FILTER ptx_frontend_generated_srcs INCLUDE REGEX "\\.gen\\.cpp$")
+add_library(ptx_frontend ${ptx_frontend_srcs} ${FLEX_ptx_lexer_OUTPUTS} ${ptx_frontend_generated_srcs})
+target_include_directories(
+    ptx_frontend
+    PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PTX_GEN_PUBLIC_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+
+    # ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${PTX_GEN_PRIVATE_DIR}
+)
+target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
+find_package(fmt CONFIG REQUIRED)
+find_package(magic_enum CONFIG REQUIRED)
+target_link_libraries(
+    ptx_frontend 
+    PUBLIC fmt::fmt magic_enum::magic_enum
+)
+
+add_dependencies(ptx_frontend auto_gen_code)
+
+# Test targets
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()
+
+# ################################################################
+# install targets
+# ################################################################
+include(install_project_targets)
+
+install_project_targets(
+    PROJECT ptx_frontend
+    VERSION ${PROJECT_VERSION}
+    TARGETS ptx_frontend
+    EXPORT ptx_frontendTargets
+    INCLUDE_DIRS 
+        ${CMAKE_SOURCE_DIR}/include
+        ${PTX_GEN_PUBLIC_DIR}
+)

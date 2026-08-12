@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../schemas/ptx-cpp-backend-v1.schema.yaml
+
+schema: ptx-cpp-backend/v1
+backend: cpp
+target: all
+spec_schema: ptx-instr/v1
+category: integer_arithmetic
+
+# includes:
+#   - <numeric>
+#   - <optional>
+#   - "ptx_ir/base.hpp"
+#   - "ptx_ir/details.hpp"
+#   - "ptx_ir/source_loc.hpp"
+
+namespace: ptx_frontend::generated
+
+common:
+  default_modifier_field_naming: append_underscore_for_keywords
+  keyword_field_rewrites:
+    type: type_
+
+domains:
+  scalar_types:
+    cpp_type: ScalarType
+    values:
+      u16: ScalarType::U16
+      u32: ScalarType::U32
+      u64: ScalarType::U64
+      s16: ScalarType::S16
+      s32: ScalarType::S32
+      s64: ScalarType::S64
+      u8x4: ScalarType::U8x4
+      s8x4: ScalarType::S8x4
+      u16x2: ScalarType::U16x2
+      s16x2: ScalarType::S16x2
+    default: ScalarType::U32
+
+instructions:
+  add:
+    cpp: InstrIntegerAdd
+    emit:
+      kind: sub_struct
+      instance: data
+      type: Data
+
+    modifiers:
+      sat:
+        field: sat
+        cpp_type: bool
+        default: "false"
+
+      type:
+        field: type_
+        cpp_type: ScalarType
+        domain: scalar_types
+
+    operands:
+      dst:
+        field: dst
+        cpp_type: Operand
+
+      src1:
+        field: src1
+        cpp_type: Operand
+
+      src2:
+        field: src2
+        cpp_type: Operand
+
+    type_checker:
+      rule: integer_arith::check_add
+      diagnostics: detailed
+
+    printer:
+      modifier_order:
+        - sat
+        - type
+      operand_order:
+        - dst
+        - src1
+        - src2
+
+    visitor:
+      visit_name: visitAdd

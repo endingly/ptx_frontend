@@ -36,10 +36,11 @@ Overloaded(Functions...) -> Overloaded<Functions...>;
 
 enum class OperandShape : uint16_t {
   Register = 1 << 0,
-  Immediate = 1 << 1,
-  Address = 1 << 2,
-  Symbol = 1 << 3,
-  Vector = 1 << 4,
+  Predicate = 1 << 1,
+  Immediate = 1 << 2,
+  Address = 1 << 3,
+  Symbol = 1 << 4,
+  Vector = 1 << 5,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -64,10 +65,29 @@ enum class OperandAccess : uint8_t {
   ReadWrite,
 };
 
+/** A compile-time-normalized scalar-type source for one operand. */
+enum class OperandTypeExpressionKind : uint8_t {
+  None,
+  FixedScalar,
+  ModifierField,
+};
+
+/**
+ * Type information generated from YAML rather than parsed at C++ runtime.
+ *
+ * ``modifier_field_id`` names the resolved modifier field for
+ * ``modifier(name)`` expressions.  It is otherwise empty.
+ */
+struct TypeExpressionDescriptor {
+  OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;
+  ScalarType fixed_scalar_type = ScalarType::Invalid;
+  std::string_view modifier_field_id{};
+};
+
 /** Semantic constraints for one operand position in a resolved layout. */
 struct OperandDescriptor {
   std::string_view target_field_id;
-  std::string_view type_expr;
+  TypeExpressionDescriptor type_expression;
   OperandRole role;
   OperandAccess access;
   OperandShape allowed_shapes;
@@ -116,6 +136,37 @@ struct AvailabilityDescriptor {
   std::string_view required_family{};
 };
 
+/** Additional target requirements for one selected operand layout. */
+struct OperandLayoutDescriptor {
+  std::string_view layout_name;
+  AvailabilityDescriptor availability;
+};
+
+/** Runtime representation used to compare modifier availability entries. */
+enum class ModifierValueKind : uint8_t {
+  Bool,
+  ScalarType,
+};
+
+/** Target requirement attached to one legal semantic modifier value. */
+struct ModifierValueAvailabilityDescriptor {
+  std::string_view kind_id;
+  ModifierValueKind value_kind;
+  bool bool_value = false;
+  ScalarType scalar_type = ScalarType::Invalid;
+  AvailabilityDescriptor availability;
+};
+
+/** Selected dynamic modifier value exposed by a generated checker wrapper. */
+struct ModifierValueView {
+  std::string_view kind_id;
+  ModifierValueKind value_kind;
+  bool bool_value = false;
+  ScalarType scalar_type = ScalarType::Invalid;
+  bool is_present = false;
+  std::span<const SourceRange> locations;
+};
+
 /**
  * Checker metadata for one resolved variant.
  *
@@ -127,6 +178,9 @@ struct AvailabilityDescriptor {
 struct VariantDescriptor {
   std::string_view variant_name;
   AvailabilityDescriptor availability;
+  std::span<const ModifierValueAvailabilityDescriptor>
+      modifier_value_availabilities;
+  std::span<const OperandLayoutDescriptor> operand_layouts;
   std::string_view rule_id;
 };
 
@@ -211,9 +265,9 @@ CheckResult check_common(const InstructionDescriptor& instruction,
  *
  * The generated typed wrapper supplies views of the selected resolved layout.
  * Currently this verifies operand-field identity, allowed resolved shape, and
- * the immediate portion of a ``$modifier`` type expression.  Register type
- * and state-space checks will join this entry point once symbol lookup is part
- * of ``Context``.
+ * immediate types constrained by the generated ``TypeExpressionDescriptor``.
+ * Register type and state-space checks will join this entry point once symbol
+ * lookup is part of ``Context``.
  */
 CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
                            std::span<const FieldView> fields,
@@ -225,6 +279,21 @@ CheckResult check_operand_layout_tag(std::string_view variant_name,
                                      uint16_t selected_layout,
                                      size_t layout_count,
                                      const Context& context);
+
+/**
+ * Check target requirements contributed by the selected operand layout.
+ *
+ * A layout without YAML ``availability`` has an empty requirement; the
+ * containing variant's availability is still checked by ``check_common``.
+ */
+CheckResult check_operand_layout_availability(
+    const VariantDescriptor& variant, uint16_t selected_layout,
+    const Context& context);
+
+/** Check availability constraints for the actual dynamic modifier values. */
+CheckResult check_modifier_value_availability(
+    std::span<const ModifierValueAvailabilityDescriptor> descriptors,
+    std::span<const ModifierValueView> actual_values, const Context& context);
 
 /**
  * Check one generated resolved instruction.

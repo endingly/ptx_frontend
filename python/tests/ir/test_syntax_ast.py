@@ -13,6 +13,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from code_gen.database import load_codegen_database
+from code_gen.load_yaml import expand_value_refs
 from code_gen.normalize import normalize_instruction_spec
 from code_gen.gen_syntax_ast_arch import (
     emit_check_end_instruction_descriptor_implementation,
@@ -157,6 +158,167 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [[operand.name for operand in layout.operands] for layout in layouts],
             [["dst"], ["src"]],
         )
+
+    def test_references_and_inline_data_normalize_identically(self) -> None:
+        operands = [
+            {
+                "name": "dst",
+                "kind": "reg",
+                "role": "dst",
+                "access": "write",
+                "type": {"expr": "modifier(type)"},
+            }
+        ]
+        common_instruction = {
+            "opcode": "sample",
+            "variants": [
+                {
+                    "name": "sample_type",
+                    "availability": {"ptx": "1.0", "sm": 0},
+                    "modifiers": [
+                        {
+                            "name": "type",
+                            "kind": "type",
+                            "presence": "required",
+                            "domain": "scalar_types",
+                        }
+                    ],
+                }
+            ],
+        }
+        referenced = {
+            "type_sets": {"numeric": ["u32", "u64"]},
+            "operand_patterns": {"unary": operands},
+            "instructions": [
+                {
+                    **common_instruction,
+                    "operands": "$unary",
+                    "variants": [
+                        {
+                            **common_instruction["variants"][0],
+                            "modifiers": [
+                                {
+                                    **common_instruction["variants"][0]["modifiers"][0],
+                                    "values": ["$numeric"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        inline = {
+            "instructions": [
+                {
+                    **common_instruction,
+                    "operands": operands,
+                    "variants": [
+                        {
+                            **common_instruction["variants"][0],
+                            "modifiers": [
+                                {
+                                    **common_instruction["variants"][0]["modifiers"][0],
+                                    "values": ["u32", "u64"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        self.assertEqual(
+            normalize_instruction_spec(referenced), normalize_instruction_spec(inline)
+        )
+
+    def test_value_set_references_expand_recursively_and_reject_cycles(self) -> None:
+        self.assertEqual(
+            expand_value_refs(
+                ["$extended"],
+                {"base": ["u32"], "extended": ["$base", "u64"]},
+            ),
+            ("u32", "u64"),
+        )
+        with self.assertRaisesRegex(ValueError, "cyclic type-set reference"):
+            expand_value_refs(
+                ["$first"],
+                {"first": ["$second"], "second": ["$first"]},
+            )
+
+    def test_rejects_bare_operand_pattern_name(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must use the '\\$name' form"):
+            normalize_instruction_spec(
+                {
+                    "operand_patterns": {"unary": []},
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "operands": "unary",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+    def test_type_expression_requires_supported_active_type_modifier(self) -> None:
+        def normalize_with_expr(expression: str, modifiers: list[dict[str, object]]):
+            return normalize_instruction_spec(
+                {
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": modifiers,
+                                    "operands": [
+                                        {
+                                            "name": "src",
+                                            "kind": "reg_or_imm",
+                                            "role": "src",
+                                            "access": "read",
+                                            "type": {"expr": expression},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+
+        modifiers = [
+            {
+                "name": "type",
+                "kind": "type",
+                "presence": "required",
+                "domain": "scalar_types",
+                "values": ["u32"],
+            }
+        ]
+        self.assertTrue(normalize_with_expr("modifier(type)", modifiers))
+        with self.assertRaisesRegex(ValueError, "same_as.*not supported"):
+            normalize_with_expr("same_as(src1)", modifiers)
+        with self.assertRaisesRegex(ValueError, "unknown modifier"):
+            normalize_with_expr("modifier(missing)", modifiers)
+        with self.assertRaisesRegex(ValueError, "active type modifier"):
+            normalize_with_expr(
+                "modifier(flag)",
+                [
+                    {
+                        "name": "flag",
+                        "kind": "flag",
+                        "presence": "optional",
+                    }
+                ],
+            )
+
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
         source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
 

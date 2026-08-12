@@ -39,6 +39,13 @@ struct AstIdentifierRef {
   AstSyntax syntax;
 };
 
+/** A predicate operand, optionally complemented with a leading ``!``. */
+struct AstPredicateOperand {
+  AstSyntax syntax;
+  bool negated{};
+  AstIdentifierRef name;
+};
+
 /**
  * A lexical immediate literal, including its original spelling.
  *
@@ -88,8 +95,9 @@ struct AstVectorPack {
  * particular, `AstIdentifierRef` is intentionally not split into register,
  * variable, label, or function references until the resolver runs.
  */
-using AstOperand = std::variant<AstIdentifierRef, AstImmediate, AstAddress,
-                                AstVectorMember, AstVectorPack>;
+using AstOperand = std::variant<AstIdentifierRef, AstPredicateOperand,
+                                AstImmediate, AstAddress, AstVectorMember,
+                                AstVectorPack>;
 
 struct AstPredicate {
   bool negated{};

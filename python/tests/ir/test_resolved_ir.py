@@ -20,20 +20,26 @@ from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
 from code_gen.gen_resolved_ir import generate_resolved_ir_header
+from code_gen.normalize import normalize_instruction_spec
 from ir.resolved_ir import (
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
     ResolvedOperandAccess,
     ResolvedOperandRole,
     ResolvedOperandShape,
+    ResolvedOperandTypeExpression,
+    ResolvedOperandTypeExpressionKind,
     ResolvedValueKind,
     from_instruction_spec,
 )
 from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
+    ModifierValueSpec,
     OperandLayoutSpec,
     OperandSpec,
+    OperandTypeExpression,
+    OperandTypeExpressionKind,
     VariantSpec,
 )
 
@@ -69,14 +75,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                (field.name, field.cpp_type, field.origin, field.type_expr)
+                (field.name, field.cpp_type, field.origin)
                 for field in variants["IntegerNoSat"].fields
             ],
             [
-                ("type", "WithLocs<ScalarType>", ResolvedFieldOrigin.MODIFIER, None),
-                ("dst", "WithLocs<ResolvedRegisterId>", ResolvedFieldOrigin.OPERAND, "$type"),
-                ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND, "$type"),
-                ("src2", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND, "$type"),
+                ("type", "WithLocs<ScalarType>", ResolvedFieldOrigin.MODIFIER),
+                ("dst", "WithLocs<ResolvedRegisterId>", ResolvedFieldOrigin.OPERAND),
+                ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
+                ("src2", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
             ],
         )
 
@@ -135,7 +141,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 (
                     binding.target_field_id,
-                    binding.type_expr,
+                    binding.type_expression,
                     binding.role,
                     binding.access,
                     binding.allowed_shapes,
@@ -145,14 +151,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 (
                     "dst",
-                    "$type",
+                    ResolvedOperandTypeExpression(
+                        kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                        modifier_field_id="type",
+                    ),
                     ResolvedOperandRole.DESTINATION,
                     ResolvedOperandAccess.WRITE,
                     (ResolvedOperandShape.REGISTER,),
                 ),
                 (
                     "src1",
-                    "$type",
+                    ResolvedOperandTypeExpression(
+                        kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                        modifier_field_id="type",
+                    ),
                     ResolvedOperandRole.SOURCE,
                     ResolvedOperandAccess.READ,
                     (
@@ -162,7 +174,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ),
                 (
                     "src2",
-                    "$type",
+                    ResolvedOperandTypeExpression(
+                        kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                        modifier_field_id="type",
+                    ),
                     ResolvedOperandRole.SOURCE,
                     ResolvedOperandAccess.READ,
                     (
@@ -187,10 +202,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
         instruction = from_instruction_spec(bar)
         variants = {variant.cpp_name: variant for variant in instruction.variants}
 
-        self.assertEqual(set(variants), {"Sync", "CtaSync"})
+        self.assertEqual(
+            set(variants),
+            {
+                "Sync",
+                "CtaSync",
+                "Arrive",
+                "CtaArrive",
+                "RedPopcU32",
+                "CtaRedPopcU32",
+                "RedAndPred",
+                "CtaRedAndPred",
+                "RedOrPred",
+                "CtaRedOrPred",
+            },
+        )
         self.assertEqual(
             [layout.layout_id for layout in variants["Sync"].operand_layouts],
-            ["barrier", "barrier_and_thread_count"],
+            [
+                "immediate_barrier",
+                "barrier",
+                "barrier_and_thread_count",
+            ],
+        )
+        self.assertEqual(
+            dict(variants["Sync"].operand_layouts[0].availability),
+            {},
+        )
+        self.assertEqual(
+            dict(variants["Sync"].operand_layouts[1].availability),
+            {"ptx": "2.0", "sm": 20},
         )
         self.assertEqual(
             [field.name for field in variants["Sync"].modifier_fields],
@@ -208,13 +249,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (binding.target_field_id, binding.type_expr, binding.role)
-                for binding in variants["Sync"].operand_layouts[1].bindings
+                (binding.target_field_id, binding.type_expression, binding.role)
+                for binding in variants["Sync"].operand_layouts[2].bindings
             ],
             [
-                ("barrier", "u32", ResolvedOperandRole.BARRIER),
-                ("thread_count", "u32", ResolvedOperandRole.THREAD_COUNT),
+                (
+                    "barrier",
+                    ResolvedOperandTypeExpression(
+                        kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                        scalar_type="u32",
+                    ),
+                    ResolvedOperandRole.BARRIER,
+                ),
+                (
+                    "thread_count",
+                    ResolvedOperandTypeExpression(
+                        kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                        scalar_type="u32",
+                    ),
+                    ResolvedOperandRole.THREAD_COUNT,
+                ),
             ],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in variants["RedPopcU32"].operand_layouts],
+            ["without_thread_count", "with_thread_count"],
+        )
+        self.assertEqual(
+            variants["RedPopcU32"].operand_layouts[0].fields[2].value_cpp_type,
+            "ResolvedPredicate",
+        )
+        self.assertEqual(
+            variants["RedAndPred"].operand_layouts[1].fields[0].value_cpp_type,
+            "ResolvedPredicate",
         )
 
     def test_generate_resolved_ir_header(self) -> None:
@@ -282,6 +349,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("std::visit(detail::Overloaded{", source)
         self.assertIn("const auto operand_check = check_operands(", source)
         self.assertIn("const auto layout_check = check_operand_layout_tag(", source)
+        self.assertIn("check_modifier_value_availability(", source)
         self.assertIn("Add::get_checker_descriptor(), \"IntegerNoSat\"", source)
         self.assertNotIn("AddResolvedDescriptorStorage", source)
         self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
@@ -312,6 +380,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("ResolvedConstantDescriptor", source)
         self.assertIn("check_end::ResolvedModifierBindingDescriptor", source)
         self.assertIn("check_end::ResolvedOperandBindingDescriptor", source)
+        self.assertIn("check_end::TypeExpressionDescriptor", source)
+        self.assertIn(
+            ".kind = check_end::OperandTypeExpressionKind::ModifierField,",
+            source,
+        )
+        self.assertIn(
+            ".kind = check_end::OperandTypeExpressionKind::FixedScalar,",
+            source,
+        )
+        self.assertIn(".fixed_scalar_type = ScalarType::U32,", source)
+        self.assertNotIn("modifier(type)", source)
+        self.assertIn("_operand_layout_0_fields", source)
         self.assertIn('.layout_id = "default",', source)
         self.assertIn(".role = check_end::OperandRole::Destination,", source)
         self.assertIn(".access = check_end::OperandAccess::Write,", source)
@@ -348,6 +428,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct AddCheckerDescriptorStorage {", source)
         self.assertIn("struct BarCheckerDescriptorStorage {", source)
         self.assertIn("checker::VariantDescriptor", source)
+        self.assertIn("checker::OperandLayoutDescriptor", source)
+        self.assertIn('.layout_name = "immediate_barrier",', source)
+        self.assertIn('.layout_name = "barrier_and_thread_count",', source)
         self.assertIn('.minimum_ptx_version = {9, 2},', source)
         self.assertIn('.minimum_sm_version = 120,', source)
         self.assertIn('.required_family = "sm_120f",', source)
@@ -357,6 +440,101 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "Add::get_checker_descriptor() noexcept {",
             source,
         )
+
+    def test_modifier_value_availability_survives_normalization_and_emission(
+        self,
+    ) -> None:
+        specs = normalize_instruction_spec(
+            {
+                "type_sets": {"late_scalar": ["u32", "u64"]},
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_type",
+                                "availability": {"ptx": "1.0", "sm": 0},
+                                "modifiers": [
+                                    {
+                                        "name": "type",
+                                        "kind": "type",
+                                        "presence": "required",
+                                        "domain": "scalar_types",
+                                        "values": [
+                                            {
+                                                "value": "$late_scalar",
+                                                "availability": {
+                                                    "ptx": "2.0",
+                                                    "sm": 20,
+                                                },
+                                            },
+                                        ],
+                                    }
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        resolved = from_instruction_spec(specs[0])
+        entries = resolved.variants[0].modifier_value_availabilities
+        self.assertEqual([entry.source_kind_id for entry in entries], ["type", "type"])
+        self.assertEqual([entry.value for entry in entries], ["u32", "u64"])
+        self.assertTrue(
+            all(dict(entry.availability) == {"ptx": "2.0", "sm": 20}
+                for entry in entries)
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("checker::ModifierValueAvailabilityDescriptor", source)
+        self.assertIn('.kind_id = "type",', source)
+        self.assertIn(".scalar_type = ScalarType::U32,", source)
+        self.assertIn(".scalar_type = ScalarType::U64,", source)
+        self.assertIn(".minimum_ptx_version = {2, 0},", source)
+
+    def test_rejects_token_override_for_value_set_reference(self) -> None:
+        with self.assertRaisesRegex(ValueError, "value-set reference"):
+            normalize_instruction_spec(
+                {
+                    "type_sets": {"scalar": ["u32", "u64"]},
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_type",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [
+                                        {
+                                            "name": "type",
+                                            "kind": "type",
+                                            "presence": "required",
+                                            "domain": "scalar_types",
+                                            "values": [
+                                                {
+                                                    "value": "$scalar",
+                                                    "token": ".scalar",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                    "operands": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
 
     def test_multi_layout_variant_generates_nested_operand_payload(self) -> None:
         instruction = InstructionSpec(
@@ -371,7 +549,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                             name="type",
                             kind="type",
                             presence="required",
-                            values=("u32",),
+                            values=(ModifierValueSpec(value="u32"),),
                         ),
                     ),
                     operand_layouts=(
@@ -383,14 +561,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                     kind="reg",
                                     role="dst",
                                     access="write",
-                                    type_expr="$type",
+                                    type_expression=OperandTypeExpression(
+                                        kind=OperandTypeExpressionKind.MODIFIER,
+                                        modifier_name="type",
+                                    ),
                                 ),
                                 OperandSpec(
                                     name="src",
                                     kind="reg_or_imm",
                                     role="src",
                                     access="read",
-                                    type_expr="$type",
+                                    type_expression=OperandTypeExpression(
+                                        kind=OperandTypeExpressionKind.MODIFIER,
+                                        modifier_name="type",
+                                    ),
                                 ),
                             ),
                         ),
@@ -402,21 +586,30 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                     kind="reg",
                                     role="dst",
                                     access="write",
-                                    type_expr="$type",
+                                    type_expression=OperandTypeExpression(
+                                        kind=OperandTypeExpressionKind.MODIFIER,
+                                        modifier_name="type",
+                                    ),
                                 ),
                                 OperandSpec(
                                     name="src1",
                                     kind="reg_or_imm",
                                     role="src1",
                                     access="read",
-                                    type_expr="$type",
+                                    type_expression=OperandTypeExpression(
+                                        kind=OperandTypeExpressionKind.MODIFIER,
+                                        modifier_name="type",
+                                    ),
                                 ),
                                 OperandSpec(
                                     name="src2",
                                     kind="reg_or_imm",
                                     role="src2",
                                     access="read",
-                                    type_expr="$type",
+                                    type_expression=OperandTypeExpression(
+                                        kind=OperandTypeExpressionKind.MODIFIER,
+                                        modifier_name="type",
+                                    ),
                                 ),
                             ),
                         ),

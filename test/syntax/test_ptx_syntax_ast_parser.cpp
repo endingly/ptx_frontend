@@ -11,6 +11,7 @@ namespace {
 using syntax_ast::AstAddress;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
+using syntax_ast::AstPredicateOperand;
 using syntax_ast::AstVectorMember;
 using syntax_ast::AstVectorPack;
 
@@ -81,6 +82,21 @@ TEST(PtxSyntaxParser, ParsesVectorPack) {
   EXPECT_TRUE(std::holds_alternative<AstIdentifierRef>(pack.elements[0]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[1]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[2]));
+}
+
+TEST(PtxSyntaxParser, ParsesNegatedPredicateOperand) {
+  PtxSyntaxParser parser("bar.red.popc.u32 %r0, 1, !%p1;");
+
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  ASSERT_EQ(result->operands.size(), 3u);
+  ASSERT_TRUE(
+      std::holds_alternative<AstPredicateOperand>(result->operands[2]));
+  const auto& predicate = std::get<AstPredicateOperand>(result->operands[2]);
+  EXPECT_TRUE(predicate.negated);
+  EXPECT_EQ(predicate.syntax.text, "!%p1");
+  EXPECT_EQ(predicate.name.syntax.text, "%p1");
 }
 
 TEST(PtxSyntaxParser, RejectsMissingInstructionTerminator) {

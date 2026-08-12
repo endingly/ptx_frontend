@@ -11,7 +11,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from code_gen.model import InstructionSpec, ModifierSpec, OperandSpec, VariantSpec
+from code_gen.model import (
+    InstructionSpec,
+    ModifierSpec,
+    ModifierValueSpec,
+    OperandSpec,
+    OperandTypeExpression,
+    OperandTypeExpressionKind,
+    VariantSpec,
+)
 from base.utils import file_stem_to_pascal_case
 
 
@@ -28,6 +36,7 @@ class ResolvedValueKind(Enum):
     BOOL = "Bool"
     SCALAR_TYPE = "ScalarType"
     REGISTER = "Register"
+    PREDICATE = "Predicate"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
 
@@ -63,10 +72,28 @@ class ResolvedOperandShape(Enum):
     """Allowed resolved value shapes for one operand position."""
 
     REGISTER = "Register"
+    PREDICATE = "Predicate"
     IMMEDIATE = "Immediate"
     ADDRESS = "Address"
     SYMBOL = "Symbol"
     VECTOR = "Vector"
+
+
+class ResolvedOperandTypeExpressionKind(Enum):
+    """C++ descriptor representation of an operand scalar-type source."""
+
+    NONE = "None"
+    FIXED_SCALAR = "FixedScalar"
+    MODIFIER_FIELD = "ModifierField"
+
+
+@dataclass(frozen=True)
+class ResolvedOperandTypeExpression:
+    """A resolved, descriptor-ready operand scalar-type expression."""
+
+    kind: ResolvedOperandTypeExpressionKind
+    scalar_type: str | None = None
+    modifier_field_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,7 +104,6 @@ class ResolvedField:
     value_cpp_type: str
     origin: ResolvedFieldOrigin
     source_name: str
-    type_expr: str | None = None
     operand_role: ResolvedOperandRole | None = None
     operand_access: ResolvedOperandAccess | None = None
     allowed_operand_shapes: tuple[ResolvedOperandShape, ...] = ()
@@ -128,26 +154,22 @@ class ResolvedVariant:
     modifier_fields: tuple[ResolvedField, ...]
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
+    modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
-        """All fields declared by the variant, in deterministic layout order."""
+        """All fields declared by the variant, in deterministic layout order.
+
+        Operand payloads are layout-local, so layouts may intentionally reuse a
+        semantic field name with different resolved representations.
+        """
 
         fields: list[ResolvedField] = list(self.modifier_fields)
-        by_name = {field.name: field for field in fields}
         for layout in self.operand_layouts:
             for field in layout.fields:
-                previous = by_name.get(field.name)
-                if previous is None:
-                    fields.append(field)
-                    by_name[field.name] = field
-                elif previous != field:
-                    raise ValueError(
-                        f"variant {self.variant_id!r} reuses operand field "
-                        f"{field.name!r} with incompatible definitions"
-                    )
+                fields.append(field)
         return tuple(fields)
 
 
@@ -160,11 +182,21 @@ class ResolvedModifierBinding:
 
 
 @dataclass(frozen=True)
+class ResolvedModifierValueAvailability:
+    """Target requirement attached to one dynamic semantic modifier value."""
+
+    source_kind_id: str
+    value_cpp_type: str
+    value: str | bool | int
+    availability: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class ResolvedOperandBinding:
     """Bind one positional syntax operand to a resolved field."""
 
     target_field_id: str
-    type_expr: str | None
+    type_expression: ResolvedOperandTypeExpression
     role: ResolvedOperandRole
     access: ResolvedOperandAccess
     allowed_shapes: tuple[ResolvedOperandShape, ...]
@@ -178,6 +210,7 @@ class ResolvedOperandLayout:
     cpp_name: str
     fields: tuple[ResolvedField, ...]
     bindings: tuple[ResolvedOperandBinding, ...]
+    availability: tuple[tuple[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -204,6 +237,8 @@ _OPERAND_VALUE_CPP_TYPES = {
     "reg": "ResolvedRegisterId",
     "imm": "ResolvedImmediate",
     "reg_or_imm": "RegOrImm",
+    "pred": "ResolvedPredicate",
+    "pred_or_not": "ResolvedPredicate",
 }
 
 _OPERAND_ALLOWED_SHAPES = {
@@ -213,6 +248,8 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
+    "pred": (ResolvedOperandShape.PREDICATE,),
+    "pred_or_not": (ResolvedOperandShape.PREDICATE,),
 }
 
 _OPERAND_ROLES = {
@@ -239,6 +276,7 @@ _CPP_TYPE_VALUE_KINDS = {
     "ResolvedRegisterId": ResolvedValueKind.REGISTER,
     "ResolvedImmediate": ResolvedValueKind.IMMEDIATE,
     "RegOrImm": ResolvedValueKind.REG_OR_IMM,
+    "ResolvedPredicate": ResolvedValueKind.PREDICATE,
 }
 
 _SCALAR_TYPE_ENUM_NAMES = {
@@ -272,7 +310,12 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         if modifier.presence != "absent"
     )
     operand_layouts = tuple(
-        _build_operand_layout(layout.name, layout.operands)
+        _build_operand_layout(
+            layout.name,
+            layout.operands,
+            layout.availability,
+            {field.source_name: field.name for field in modifier_fields},
+        )
         for layout in variant.operand_layouts
     )
 
@@ -288,13 +331,48 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             for field in modifier_fields
         ),
         operand_layouts=operand_layouts,
+        modifier_value_availabilities=tuple(
+            _build_modifier_value_availability(modifier, value)
+            for modifier in variant.modifiers
+            for value in modifier.values
+            if value.availability
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )
 
 
+def _build_modifier_value_availability(
+    modifier: ModifierSpec, value: ModifierValueSpec
+) -> ResolvedModifierValueAvailability:
+    try:
+        value_cpp_type = _MODIFIER_VALUE_CPP_TYPES[modifier.kind]
+    except KeyError as error:
+        raise ValueError(
+            f"modifier {modifier.name!r}: availability for unsupported modifier "
+            f"kind {modifier.kind!r}"
+        ) from error
+    if value_cpp_type == "ScalarType" and not isinstance(value.value, str):
+        raise ValueError(
+            f"modifier {modifier.name!r}: scalar-type value must be a string"
+        )
+    if value_cpp_type == "bool" and not isinstance(value.value, bool):
+        raise ValueError(
+            f"modifier {modifier.name!r}: flag value must be boolean"
+        )
+    return ResolvedModifierValueAvailability(
+        source_kind_id=modifier.name,
+        value_cpp_type=value_cpp_type,
+        value=value.value,
+        availability=tuple(value.availability.items()),
+    )
+
+
 def _build_operand_layout(
-    layout_id: str, operands: tuple[OperandSpec, ...]
+    layout_id: str,
+    operands: tuple[OperandSpec, ...],
+    availability: dict[str, Any],
+    modifier_field_ids: dict[str, str],
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -304,13 +382,17 @@ def _build_operand_layout(
         bindings=tuple(
             ResolvedOperandBinding(
                 target_field_id=field.name,
-                type_expr=field.type_expr,
+                type_expression=_resolve_operand_type_expression(
+                    operand.type_expression,
+                    modifier_field_ids,
+                ),
                 role=_require_operand_role(field),
                 access=_require_operand_access(field),
                 allowed_shapes=field.allowed_operand_shapes,
             )
-            for field in fields
+            for operand, field in zip(operands, fields, strict=True)
         ),
+        availability=tuple(availability.items()),
     )
 
 
@@ -367,11 +449,46 @@ def _build_operand_field(operand: OperandSpec) -> ResolvedField:
         value_cpp_type=value_cpp_type,
         origin=ResolvedFieldOrigin.OPERAND,
         source_name=operand.name,
-        type_expr=operand.type_expr,
         operand_role=role,
         operand_access=access,
         allowed_operand_shapes=_OPERAND_ALLOWED_SHAPES[operand.kind],
     )
+
+
+def _resolve_operand_type_expression(
+    expression: OperandTypeExpression | None,
+    modifier_field_ids: dict[str, str],
+) -> ResolvedOperandTypeExpression:
+    """Map a source-model type expression to its resolved descriptor form."""
+
+    if expression is None:
+        return ResolvedOperandTypeExpression(
+            kind=ResolvedOperandTypeExpressionKind.NONE,
+        )
+    if expression.kind is OperandTypeExpressionKind.FIXED_SCALAR:
+        assert expression.scalar_type is not None
+        if expression.scalar_type not in _SCALAR_TYPE_ENUM_NAMES:
+            raise ValueError(
+                f"unsupported fixed operand scalar type {expression.scalar_type!r}"
+            )
+        return ResolvedOperandTypeExpression(
+            kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+            scalar_type=expression.scalar_type,
+        )
+    if expression.kind is OperandTypeExpressionKind.MODIFIER:
+        assert expression.modifier_name is not None
+        try:
+            field_id = modifier_field_ids[expression.modifier_name]
+        except KeyError as error:
+            raise ValueError(
+                f"operand type expression references unresolved modifier "
+                f"{expression.modifier_name!r}"
+            ) from error
+        return ResolvedOperandTypeExpression(
+            kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+            modifier_field_id=field_id,
+        )
+    raise AssertionError(f"unhandled operand type expression: {expression.kind}")
 
 
 def _require_operand_role(field: ResolvedField) -> ResolvedOperandRole:

@@ -415,11 +415,14 @@ $defs:
             anyOf:
               - $ref: "#/$defs/symbolic_value"
               - $ref: "#/$defs/ptx_type_name"
+              - $ref: "#/$defs/value_ref"
               - type: boolean
               - type: integer
           token:
             type: string
             pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+          availability:
+            $ref: "#/$defs/availability"
           doc:
             type: string
 
@@ -588,6 +591,7 @@ $defs:
     enum:
       - reg
       - pred
+      - pred_or_not
       - sreg
       - addr
       - imm
@@ -673,9 +677,10 @@ $defs:
 
       type:
         description: >
-          Allowed operand type or type expression. Use a simple string for one
-          type, a list for several types, or a type expression when the operand
-          type depends on modifiers.
+          Allowed operand type or type expression. A simple scalar-type string
+          and ``modifier(name)`` are supported by the generated resolver.
+          The list form remains reserved schema syntax and is rejected by the
+          normalizer until an unambiguous resolution policy is defined.
         oneOf:
           - $ref: "#/$defs/ptx_type_name"
           - type: array
@@ -759,19 +764,32 @@ $defs:
   type_expr:
     description: >
       Type expression used when a simple enum is not enough. The expression is
-      not interpreted by JSON Schema. It should be interpreted by the semantic
-      validator or normalizer.
+      interpreted by the normalizer. ``modifier(name)`` is currently supported.
+      ``same_as``, ``one_of``, and ``same_size_as`` are reserved syntax only and
+      are rejected until their resolver and checker semantics are implemented.
     type: object
     additionalProperties: false
     required:
       - expr
     properties:
       expr:
-        type: string
+        oneOf:
+          - type: string
+            pattern: "^modifier\\([A-Za-z_][A-Za-z0-9_]*\\)$"
+            description: >
+              Supported: read the scalar type of a type modifier in the current
+              variant, for example modifier(type).
+          - type: string
+            pattern: "^same_as\\([A-Za-z_][A-Za-z0-9_]*\\)$"
+            description: "Reserved, not supported yet."
+          - type: string
+            pattern: "^one_of\\(\\$[A-Za-z_][A-Za-z0-9_]*\\)$"
+            description: "Reserved, not supported yet."
+          - type: string
+            pattern: "^same_size_as\\([A-Za-z_][A-Za-z0-9_]*\\)$"
+            description: "Reserved, not supported yet."
         examples:
-          - "$type"
-          - "$atype"
-          - "$dtype"
+          - "modifier(type)"
           - "same_as(type)"
           - "one_of($int_arith_scalar)"
           - "same_size_as(src1)"
@@ -915,7 +933,8 @@ $defs:
     description: >
       One named operand layout within a modifier-selected instruction variant.
       Layout names are stable semantic identifiers; they are not C++ backend
-      layout directives.
+      layout directives. An optional availability block adds target requirements
+      to the containing variant availability for this layout only.
     type: object
     additionalProperties: false
     required:
@@ -925,12 +944,14 @@ $defs:
       name:
         $ref: "#/$defs/schema_identifier"
       operands:
-        description: "A named operand pattern or an explicit operand list."
+        description: "A $name operand-pattern reference or an explicit operand list."
         oneOf:
-          - $ref: "#/$defs/schema_identifier"
+          - $ref: "#/$defs/value_ref"
           - type: array
             items:
               $ref: "#/$defs/operand"
+      availability:
+        $ref: "#/$defs/availability"
 
   variant:
     description: "A PTX instruction variant."
@@ -972,10 +993,10 @@ $defs:
 
       operands:
         description: >
-          Either a named operand pattern or an explicit operand list. If omitted,
+          Either a $name operand-pattern reference or an explicit operand list. If omitted,
           the instruction-level operands are used.
         oneOf:
-          - $ref: "#/$defs/schema_identifier"
+          - $ref: "#/$defs/value_ref"
           - type: array
             items:
               $ref: "#/$defs/operand"
@@ -1048,10 +1069,10 @@ $defs:
 
       operands:
         description: >
-          Default operands for variants. Either a named operand pattern or an
+          Default operands for variants. Either a $name operand-pattern reference or an
           explicit operand list.
         oneOf:
-          - $ref: "#/$defs/schema_identifier"
+          - $ref: "#/$defs/value_ref"
           - type: array
             items:
               $ref: "#/$defs/operand"

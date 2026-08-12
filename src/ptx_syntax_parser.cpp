@@ -186,6 +186,18 @@ PtxSyntaxParser::parseVectorPack(Token open) {
 
 std::expected<PtxSyntaxParser::AstOperand, SyntaxParseDiagnostic>
 PtxSyntaxParser::parseOperand() {
+  if (peek().kind == TokenKind::Exclamation) {
+    Token first = consume();
+    auto name = expect(TokenKind::Ident, "predicate operand");
+    if (!name) {
+      return std::unexpected(name.error());
+    }
+    return AstOperand{syntax_ast::AstPredicateOperand{
+        .syntax = combinedSyntax(first, *name, first.text + name->text),
+        .negated = true,
+        .name = syntax_ast::AstIdentifierRef{syntaxFrom(std::move(*name))},
+    }};
+  }
   if (peek().kind == TokenKind::LBracket) {
     return parseAddress(true, consume());
   }

@@ -28,8 +28,10 @@ struct WithLocs {
 `locs` 允许一个语义值关联多个源码片段；空集合表示没有直接源码位置，例如由 fixed
 modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 注入的实例值。
 后者仍保存在 `WithLocs<T>` 中：`value` 是语义默认值，空 `locs` 表示源码没有显式写出。
-当前基础值包括 `ResolvedRegisterRef`、`ResolvedImmediate`
-与 `RegOrImm`。`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
+当前 modifier 基础值包括 `bool`、`ScalarType` 与 `RoundingMode`；后者使
+`.rn/.rz/.rm/.rp` 成为可静态检查的语义值，而不是运行时字符串。operand 基础值包括
+`ResolvedRegisterRef`、`ResolvedImmediate` 与 `RegOrImm`。
+`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 
 `AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/hex（包括可选 `U`
@@ -76,6 +78,12 @@ WithLocs<ScalarType> type;
 
 这既避免后续 pass 重复判定固定事实，也保留了实际 type 及其源码位置。
 
+一个 variant 可以有多个同 kind 的具名 modifier slot。mixed-precision Add 例如生成
+`static constexpr result_type = F32` 与动态的 `WithLocs<ScalarType> input_type`；三个
+operand 的类型表达式分别引用 `result_type`、`input_type`、`result_type`。slot ID 是
+variant-local 的，因此 `.f32` 在普通 Add 中可以绑定 `type`，在 mixed Add 中绑定
+`result_type`，不会退化为全局字符串到 kind 的映射。
+
 ## 一个 variant 内的多个 operand layout
 
 modifier 组合相同但 operand 形态不同，不应人为拆成多个 modifier variant。此时生成
@@ -110,10 +118,11 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 
 `resolve<T>(const AstInstruction&)` 是生成的 opcode 专用薄封装，公共逻辑依次执行：
 
-1. `collect_actual_modifiers` 将 modifier spelling 映射为 descriptor `kind_id`，诊断
-   未知 spelling 与重复 kind。
-2. `selectVariant<T>` 只依据 modifier 槽位选择唯一 variant。`absent`、`optional`、
-   `required/fixed` 都按 kind 和允许值匹配，而非按源码中的 modifier 下标匹配。
+1. 公共 matcher 先用全部 syntax descriptor 诊断真正未知的 spelling，再分别在每个
+   候选 variant 内把 spelling 绑定到唯一活动 slot。重复占用一个 slot 会被诊断；单个
+   variant 内一个 spelling 归属多个活动 slot 则是 descriptor bug。
+2. `selectVariant<T>` 只依据上述 variant-local 绑定选择唯一 variant。`absent`、
+   `optional`、`required/fixed` 都按 slot 和允许值匹配，不依赖源码 modifier 顺序。
 3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
 4. `resolve_fields` 按 resolved descriptor 把 modifier 和 operand 转换为带位置的
    resolved 值。
@@ -122,12 +131,14 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
 对应是生成器/descriptor bug，使用 `ResolveException` 区分于 `ResolveDiagnostic`。
 
-`selectVariant<T>` 是手写公共 ABI 头中的通用模板实现，任何满足 `PtxOperator` concept
-的类型都可以直接使用。全部 opcode struct 以及 `resolve<T>`、`check<T>` 的显式特化
+`selectVariant<T>` 是手写公共 ABI 头中的通用模板适配器，任何满足 `PtxOperator`
+concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line 的非模板 matcher，
+再把选中的 variant name 转成对应 `VariantType`。全部 opcode struct 以及
+`resolve<T>`、`check<T>` 的显式特化
 声明集中在单一生成头 `resolved_ir.gen.hpp`；后两者的定义不使用 `inline`，而是按 YAML
 category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的
-variant 匹配留在模板中，同时避免每个 consumer translation unit 重复解析和实例化大型
-resolve builder 与 checker visit/lambda，并保留统一公开 include。
+类型适配留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、
+大型 resolve builder 与 checker visit/lambda，并保留统一公开 include。
 
 ## 三份 descriptor
 

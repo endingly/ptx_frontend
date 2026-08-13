@@ -14,11 +14,13 @@ from ir.resolved_ir import (
     from_instruction_spec,
 )
 from ir.scalar_types import SCALAR_TYPE_CPP_ENUM_NAMES
+from ir.rounding_modes import ROUNDING_MODE_CPP_ENUM_NAMES
 
 
 _CPP_MODIFIER_VALUE_KINDS = {
     "bool": "checker::ModifierValueKind::Bool",
     "ScalarType": "checker::ModifierValueKind::ScalarType",
+    "RoundingMode": "checker::ModifierValueKind::RoundingMode",
 }
 
 def generate_resolved_checker_descriptor_source(
@@ -145,6 +147,7 @@ def _emit_modifier_value_descriptor(
     if entry.value_cpp_type == "bool":
         bool_value = "true" if entry.value else "false"
         scalar_type = "ScalarType::Invalid"
+        rounding_mode = "RoundingMode::Invalid"
     elif entry.value_cpp_type == "ScalarType":
         try:
             scalar_type = (
@@ -155,6 +158,18 @@ def _emit_modifier_value_descriptor(
                 f"unsupported scalar modifier value {entry.value!r}"
             ) from error
         bool_value = "false"
+        rounding_mode = "RoundingMode::Invalid"
+    elif entry.value_cpp_type == "RoundingMode":
+        try:
+            rounding_mode = (
+                f"RoundingMode::{ROUNDING_MODE_CPP_ENUM_NAMES[entry.value]}"
+            )
+        except KeyError as error:
+            raise ValueError(
+                f"unsupported rounding modifier value {entry.value!r}"
+            ) from error
+        bool_value = "false"
+        scalar_type = "ScalarType::Invalid"
     else:
         raise ValueError(
             f"unsupported modifier availability value type {entry.value_cpp_type!r}"
@@ -164,6 +179,7 @@ def _emit_modifier_value_descriptor(
               .value_kind = {_CPP_MODIFIER_VALUE_KINDS[entry.value_cpp_type]},
               .bool_value = {bool_value},
               .scalar_type = {scalar_type},
+              .rounding_mode = {rounding_mode},
               .availability = {{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                   .minimum_sm_version = {minimum_sm},

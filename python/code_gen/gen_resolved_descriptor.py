@@ -21,11 +21,13 @@ from ir.resolved_ir import (
     from_instruction_spec,
 )
 from ir.scalar_types import SCALAR_TYPE_CPP_ENUM_NAMES
+from ir.rounding_modes import ROUNDING_MODE_CPP_ENUM_NAMES
 
 
 _CPP_RESOLVED_VALUE_KINDS = {
     ResolvedValueKind.BOOL: "check_end::ResolvedValueKind::Bool",
     ResolvedValueKind.SCALAR_TYPE: "check_end::ResolvedValueKind::ScalarType",
+    ResolvedValueKind.ROUNDING_MODE: "check_end::ResolvedValueKind::RoundingMode",
     ResolvedValueKind.REGISTER: "check_end::ResolvedValueKind::Register",
     ResolvedValueKind.PREDICATE: "check_end::ResolvedValueKind::Predicate",
     ResolvedValueKind.IMMEDIATE: "check_end::ResolvedValueKind::Immediate",
@@ -222,6 +224,7 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .kind = check_end::ResolvedModifierDefaultKind::Bool,
                   .bool_value = {bool_value},
                   .scalar_type = ScalarType::Invalid,
+                  .rounding_mode = RoundingMode::Invalid,
               }}"""
     if default.value_cpp_type == "ScalarType" and isinstance(default.value, str):
         try:
@@ -234,6 +237,22 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .kind = check_end::ResolvedModifierDefaultKind::ScalarType,
                   .bool_value = false,
                   .scalar_type = ScalarType::{scalar_type},
+                  .rounding_mode = RoundingMode::Invalid,
+              }}"""
+    if default.value_cpp_type == "RoundingMode" and isinstance(
+        default.value, str
+    ):
+        try:
+            rounding_mode = ROUNDING_MODE_CPP_ENUM_NAMES[default.value]
+        except KeyError as error:
+            raise ValueError(
+                f"unsupported rounding-mode modifier default {default.value!r}"
+            ) from error
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = check_end::ResolvedModifierDefaultKind::RoundingMode,
+                  .bool_value = false,
+                  .scalar_type = ScalarType::Invalid,
+                  .rounding_mode = RoundingMode::{rounding_mode},
               }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "

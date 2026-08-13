@@ -1,0 +1,343 @@
+# instructions/floating_point.yaml
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.2"
+category: floating_point
+codegen_category: arithmetic
+section: "9.7.3"
+doc: "Floating-point and mixed-precision arithmetic forms."
+
+type_sets:
+  add_half_types:
+    - f16
+    - f16x2
+
+  add_bfloat_types:
+    - bf16
+    - bf16x2
+
+value_sets:
+  rounding_modes:
+    - rn
+    - rz
+    - rm
+    - rp
+
+operand_patterns:
+  binary_float_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type:
+        expr: modifier(type)
+
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type:
+        expr: modifier(type)
+
+  binary_float_register:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+
+    - name: src1
+      kind: reg
+      role: src1
+      access: read
+      type:
+        expr: modifier(type)
+
+    - name: src2
+      kind: reg
+      role: src2
+      access: read
+      type:
+        expr: modifier(type)
+
+  binary_mixed_float_register:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(result_type)
+
+    - name: src
+      kind: reg
+      role: src1
+      access: read
+      type:
+        expr: modifier(input_type)
+
+    - name: addend
+      kind: reg
+      role: src2
+      access: read
+      type:
+        expr: modifier(result_type)
+
+instructions:
+  - opcode: add
+    section: "9.7.3.1"
+    doc: "Standard, half-precision, bfloat, and mixed-precision add."
+    syntax: >-
+      add{.rnd}{.ftz}{.sat}.f32 | add{.rnd}{.ftz}.f32x2 |
+      add{.rnd}.f64 | add{.rn}{.ftz}{.sat}.{f16|f16x2} |
+      add{.rn}.{bf16|bf16x2} dst, src1, src2 |
+      add{.rnd}{.sat}.f32.{f16|bf16} dst, src, addend
+    operands: $binary_float_scalar
+
+    variants:
+      - name: add_float_f32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - rn
+              - rz
+              - value: rm
+                availability:
+                  ptx: "1.0"
+                  sm: 20
+              - value: rp
+                availability:
+                  ptx: "1.0"
+                  sm: 20
+
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        rule: floating_point.add
+
+        examples:
+          - ptx: "add.f32 d, a, b;"
+            valid: true
+          - ptx: "add.rz.ftz.sat.f32 d, a, b;"
+            valid: true
+
+      - name: add_float_f32x2
+        operands: $binary_float_register
+        availability:
+          ptx: "8.6"
+          sm: 100
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - $rounding_modes
+
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32x2
+        rule: floating_point.add
+
+        examples:
+          - ptx: "add.f32x2 d, a, b;"
+            valid: true
+          - ptx: "add.rp.ftz.f32x2 d, a, b;"
+            valid: true
+
+      - name: add_float_f64
+        availability:
+          ptx: "1.0"
+          sm: 13
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - $rounding_modes
+
+          - name: ftz
+            kind: flag
+            presence: absent
+
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f64
+        rule: floating_point.add
+
+        examples:
+          - ptx: "add.f64 d, a, b;"
+            valid: true
+          - ptx: "add.rm.f64 d, a, b;"
+            valid: true
+
+      - name: add_half
+        operands: $binary_float_register
+        availability:
+          ptx: "4.2"
+          sm: 53
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - rn
+
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $add_half_types
+        rule: floating_point.add_half
+
+        examples:
+          - ptx: "add.f16 d, a, b;"
+            valid: true
+          - ptx: "add.rn.ftz.sat.f16x2 d, a, b;"
+            valid: true
+
+      - name: add_bfloat
+        operands: $binary_float_register
+        availability:
+          ptx: "7.8"
+          sm: 90
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - rn
+
+          - name: ftz
+            kind: flag
+            presence: absent
+
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $add_bfloat_types
+        rule: floating_point.add_bfloat
+
+        examples:
+          - ptx: "add.bf16 d, a, b;"
+            valid: true
+          - ptx: "add.rn.bf16x2 d, a, b;"
+            valid: true
+
+      - name: add_mixed_f32
+        operands: $binary_mixed_float_register
+        availability:
+          ptx: "8.6"
+          sm: 100
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - $rounding_modes
+
+          - name: result_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+
+          - name: input_type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - f16
+              - bf16
+
+          - name: ftz
+            kind: flag
+            presence: absent
+
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+        rule: mixed_precision.add
+
+        examples:
+          - ptx: "add.f32.f16 d, a, c;"
+            valid: true
+          - ptx: "add.rz.f32.bf16.sat d, a, c;"
+            valid: true

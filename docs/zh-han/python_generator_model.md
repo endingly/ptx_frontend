@@ -16,11 +16,12 @@ YAML files
 ## 输入数据库
 
 `code_gen.database` 递归发现 `instructions/ptx_spec/**/*.yaml`，按路径排序加载，并
-保证所有文件使用相同 schema 版本及 opcode 全局唯一。`InstructionSpec` 的最小稳定
+保证所有文件使用相同 schema 版本；同 opcode 的定义随后合并。`InstructionSpec` 的最小稳定
 模型位于 `code_gen.model`：
 
 ```python
-InstructionSpec(opcode, syntax, variants)
+InstructionSpec(opcode, variants, syntax_forms, source_categories,
+                codegen_category)
 VariantSpec(name, availability, modifiers, operand_layouts, rule)
 OperandLayoutSpec(name, operands)
 ModifierSpec(name, kind, presence, values, value, token, default)
@@ -30,11 +31,16 @@ OperandSpec(name, kind, role, access, type_expression)
 该模型只保存生成当前 frontend 所需的字段。YAML 中的文档、example、constraint 等
 尚未被 generator 使用的元数据，不应悄悄混入 C++ 表示。
 
+database 在合并 opcode 后验证 selector 语言：每个 variant 内，活动 modifier slot 的
+spelling 集合必须两两不交；不同 variant 接受的无序 spelling 集合必须互斥。slot name
+只在 variant 内有意义，所以同一 spelling 可以跨 variant 绑定不同 slot。校验通过后，
+C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时保持 modifier 顺序无关。
+
 ## Normalization
 
 `code_gen.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
 
-- 展开 type-set 的 `$name` 引用；
+- 统一展开 `type_sets` 与 `value_sets` 的 `$name` 引用，并拒绝两者同名；
 - 将 operand 的 `type: {expr: modifier(type)}` 解析为
   `OperandTypeExpression(MODIFIER, modifier_name="type")`；固定 scalar（如
   `u32`）则解析为 `FIXED_SCALAR`；
@@ -57,7 +63,7 @@ SyntaxModifierDescriptor(kind_id, presence, allowed_spellings)
 SyntaxOperandLayoutDescriptor(layout_id, kind, slots)
 ```
 
-它只回答源码是否能写成该 variant/layout：modifier spelling、presence、AST operand
+它只回答源码是否能写成该 variant/layout：variant-local modifier slot 的 spelling、presence、AST operand
 shape 与 slot 数量。当前 `OperandLayoutKind.FLAT` 和 `reg`、`imm`、`reg_or_imm`、
 `pred`、`pred_or_not` shape 映射已实现；后者保留 `!%pN` 的取反语法。新的 AST shape
 必须先扩展本模型和 C++ 基础 ABI。
@@ -84,7 +90,8 @@ resolver 共用的语义契约，保存目标 field、结构化类型表达式�
 
 optional modifier 的 YAML `default` 会在模型转换时成为 typed
 `ResolvedModifierBinding.default_value`，并进入 resolved descriptor。公共 resolver
-据此构造 `WithLocs<bool>` 或 `WithLocs<ScalarType>`；省略时 `locs` 为空，显式书写时
+据此构造 `WithLocs<bool>`、`WithLocs<ScalarType>` 或
+`WithLocs<RoundingMode>`；省略时 `locs` 为空，显式书写时
 使用源码值与源码位置。Syntax descriptor 只描述 spelling/presence，不复制语义 default。
 
 同一 variant 的多个 layout 可复用同名 field，前提是其定义完全一致；否则模型构建应
@@ -106,8 +113,9 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 生成的公开头在构建树中仍平铺于 `public` include root；CMake 会将这个特定
 文件安装为 `include/ptx_ir/resolved/resolved_ir.gen.hpp`。
 
-公共头不包含生成函数体。每个 YAML instruction 的 category 优先使用 instruction-level
-`category`，未设置时继承文件顶层 `category`；生成脚本据此产生稳定的 category 源文件，
+公共头不包含生成函数体。生成分片使用归一化后的 `codegen_category`；它与记录 PTX
+文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
+`codegen_category`，生成脚本据此产生稳定的 category 源文件，
 并由 CMake 编译进 `ptx_frontend` library。这样 consumer 仍只有一个 include 入口，
 但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
 
@@ -116,8 +124,8 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只
 打开一次对应 namespace。
 
-所有 emitter 从 `ir.scalar_types` 的唯一 registry 获取 PTX scalar spelling 到 C++
-`ScalarType` enumerator 的映射。生成文件不会默认嵌入 wall-clock 时间；若构建环境提供
+所有 emitter 从 `ir.scalar_types` 与 `ir.rounding_modes` 的唯一 registry 获取 PTX
+语义 spelling 到对应 C++ enum 的映射。生成文件不会默认嵌入 wall-clock 时间；若构建环境提供
 标准 `SOURCE_DATE_EPOCH`，生成警告会使用该确定性 UTC 时间，否则明确标记时间已省略。
 因此相同 spec 和生成器输入会产生 byte-identical 内容。
 

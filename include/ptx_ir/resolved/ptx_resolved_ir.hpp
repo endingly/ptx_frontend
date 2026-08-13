@@ -54,6 +54,7 @@ enum class OperandPresence : uint8_t {
 enum class ResolvedValueKind : uint8_t {
   Bool,
   ScalarType,
+  RoundingMode,
   Register,
   Predicate,
   Immediate,
@@ -111,12 +112,14 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   None,
   Bool,
   ScalarType,
+  RoundingMode,
 };
 
 struct ResolvedModifierDefaultDescriptor {
   ResolvedModifierDefaultKind kind = ResolvedModifierDefaultKind::None;
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
+  RoundingMode rounding_mode = RoundingMode::Invalid;
 };
 
 struct ResolvedModifierBindingDescriptor {
@@ -210,7 +213,7 @@ struct ResolvedOperandLayoutTag {
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
 using ResolvedFieldValue =
-    std::variant<WithLocs<bool>, WithLocs<ScalarType>,
+    std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
@@ -237,78 +240,30 @@ concept PtxOperator = requires(T object) {
 using ActualModifierTable =
     std::unordered_map<std::string, const syntax_ast::AstModifier*>;
 
-/**
- * Collect source modifiers by descriptor kind ID.
- *
- * This is the sole implementation of spelling-to-kind mapping and duplicate
- * detection.  Type-specific callers should use the template adapter below.
- */
+/** Collect source modifiers by the slot IDs of one selected variant. */
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,
+    const check_end::SyntaxVariantDescriptor& variant);
+
+/** Select the unique variant whose local modifier slots accept the AST. */
+std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
+    const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& instruction);
-
-template <PtxOperator T>
-std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
-    const syntax_ast::AstInstruction& ast) {
-  return collect_actual_modifiers(ast, T::get_syntax_descriptor());
-}
-
-bool matches_variant(const check_end::SyntaxVariantDescriptor& variant,
-                     const ActualModifierTable& actual_modifiers);
-bool matches_modifier_slot(
-    const check_end::SyntaxModifierDescriptor& descriptor,
-    const ActualModifierTable& actual_modifiers);
 
 template <PtxOperator T>
 std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
     const syntax_ast::AstInstruction& ast) {
   const auto& inst_desc = T::get_syntax_descriptor();
-  if (ast.opcode.syntax.text != inst_desc.Opcode_name) {
-    return std::unexpected(ResolveDiagnostic{
-        .range = ast.opcode.syntax.range,
-        .message = fmt::format("Cannot resolve opcode '{}' as '{}'.",
-                               ast.opcode.syntax.text, inst_desc.Opcode_name),
-    });
-  }
-
-  const auto actual_modifiers = collect_actual_modifiers<T>(ast);
-  if (!actual_modifiers)
-    return std::unexpected(actual_modifiers.error());
-
-  std::optional<size_t> selected_index;
-  for (size_t index = 0; index < inst_desc.variants.size(); ++index) {
-    if (!matches_variant(inst_desc.variants[index], *actual_modifiers))
-      continue;
-
-    if (selected_index) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = ast.range,
-          .message = fmt::format(
-              "Ambiguous modifier combination for instruction '{}'.",
-              ast.opcode.syntax.text),
-      });
-    }
-
-    selected_index = index;
-  }
-
-  if (!selected_index) {
-    return std::unexpected(ResolveDiagnostic{
-        .range = ast.range,
-        .message = fmt::format(
-            "No variant of instruction '{}' accepts this modifier combination.",
-            ast.opcode.syntax.text),
-    });
-  }
-
-  const auto& variant_name = inst_desc.variants[*selected_index].variant_name;
+  const auto variant_name = select_variant_name(ast, inst_desc);
+  if (!variant_name)
+    return std::unexpected(variant_name.error());
 
   const auto variant =
-      magic_enum::enum_cast<typename T::VariantType>(variant_name);
+      magic_enum::enum_cast<typename T::VariantType>(*variant_name);
   if (!variant) {
     throw ResolveException(fmt::format(
         "Descriptor variant '{}.{}' has no matching VariantType enumerator.",
-        utils::type_name<T>(), variant_name));
+        utils::type_name<T>(), *variant_name));
   }
   return *variant;
 }

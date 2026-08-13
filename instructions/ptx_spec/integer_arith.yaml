@@ -4,6 +4,7 @@
 schema: ptx-instr/v1
 ptx_isa: "9.2"
 category: integer_arithmetic
+codegen_category: arithmetic
 section: "9.7.1"
 
 type_sets:
@@ -53,7 +54,6 @@ operand_patterns:
 
 instructions:
   - opcode: add
-    category: integer_arithmetic
     section: "9.7.1.1"
     doc: "Integer add."
     syntax: "add{.sat}.{type} dst, src1, src2"

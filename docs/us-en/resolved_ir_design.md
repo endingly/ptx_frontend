@@ -135,6 +135,16 @@ No matching variant/layout is a user diagnostic. Multiple matching layouts, or
 a mismatch between descriptors and generated structures, is a generator bug and
 uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
+`selectVariant<T>` remains a common template implementation in the handwritten
+public ABI header, so every type satisfying the `PtxOperator` concept can use it
+directly. One generated `resolved_ir.gen.hpp` centralizes all opcode structs and
+the explicit-specialization declarations for `resolve<T>` and `check<T>`.
+Definitions of the latter two are non-inline and emitted by YAML category into
+`resolved_ir_<category>.gen.cpp`, which is compiled into the library. This
+boundary keeps the small generic variant matcher as a template while preventing
+every consumer translation unit from reparsing and instantiating large resolve
+builders and checker visits/lambdas, with one public include entry point.
+
 ## Three descriptors
 
 One YAML specification generates three static descriptors with distinct roles:

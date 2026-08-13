@@ -311,6 +311,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                 opcode=raw_instruction["opcode"],
                 syntax=raw_instruction.get("syntax"),
                 variants=tuple(variants),
+                category=raw_instruction.get(
+                    "category", spec.get("category", "uncategorized")
+                ),
             )
         )
 

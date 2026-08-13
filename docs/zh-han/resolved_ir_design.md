@@ -122,6 +122,13 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
 对应是生成器/descriptor bug，使用 `ResolveException` 区分于 `ResolveDiagnostic`。
 
+`selectVariant<T>` 是手写公共 ABI 头中的通用模板实现，任何满足 `PtxOperator` concept
+的类型都可以直接使用。全部 opcode struct 以及 `resolve<T>`、`check<T>` 的显式特化
+声明集中在单一生成头 `resolved_ir.gen.hpp`；后两者的定义不使用 `inline`，而是按 YAML
+category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的
+variant 匹配留在模板中，同时避免每个 consumer translation unit 重复解析和实例化大型
+resolve builder 与 checker visit/lambda，并保留统一公开 include。
+
 ## 三份 descriptor
 
 同一 YAML spec 生成三份职责不同的静态 descriptor：

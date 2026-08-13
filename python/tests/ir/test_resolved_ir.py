@@ -19,7 +19,10 @@ from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from code_gen.gen_resolved_ir import generate_resolved_ir_header
+from code_gen.gen_resolved_ir import (
+    generate_resolved_ir_header,
+    generate_resolved_ir_source,
+)
 from code_gen.normalize import normalize_instruction_spec
 from ir.resolved_ir import (
     ResolvedFieldOrigin,
@@ -343,18 +346,49 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "  get_checker_descriptor() noexcept;",
             source,
         )
-        self.assertNotIn(
+        self.assertNotIn("selectVariant<Add>", source)
+        self.assertIn(
             "template <>\nstd::expected<Add, ResolveDiagnostic>\n"
             "resolve<Add>(const syntax_ast::AstInstruction& ast);",
             source,
         )
         self.assertIn(
-            "template <>\ninline std::expected<Add, ResolveDiagnostic>\n"
+            "template <>\nCheckResult check<Add>(\n"
+            "    const Add& instruction, const Context& context);",
+            source,
+        )
+        self.assertNotIn("resolve_fields(", source)
+        self.assertNotIn("const auto check_integer_no_sat =", source)
+        self.assertNotIn("std::visit(detail::Overloaded{", source)
+        self.assertNotIn("AddResolvedDescriptorStorage", source)
+        self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
+
+    def test_generate_category_resolved_ir_source(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_integer_arithmetic.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="integer_arithmetic",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("#pragma once", source)
+        self.assertIn('#include "resolved_ir.gen.hpp"', source)
+        self.assertNotIn(
+            "std::expected<Add::VariantType, ResolveDiagnostic>", source
+        )
+        self.assertIn(
+            "std::expected<Add, ResolveDiagnostic>\n"
             "resolve<Add>(const syntax_ast::AstInstruction& ast) {",
             source,
         )
         self.assertIn("resolve_fields(", source)
-        self.assertIn("inline CheckResult check<Add>(", source)
+        self.assertIn("CheckResult check<Add>(", source)
         self.assertIn("const auto check_integer_no_sat =", source)
         self.assertIn("const auto check_packed_optional_sat_sm120 =", source)
         self.assertIn("detail::VariantCheckFunction<", source)
@@ -363,8 +397,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("const auto layout_check = check_operand_layout_tag(", source)
         self.assertIn("check_modifier_value_availability(", source)
         self.assertIn("Add::get_checker_descriptor(), \"IntegerNoSat\"", source)
-        self.assertNotIn("AddResolvedDescriptorStorage", source)
-        self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
+        self.assertNotIn("struct Bar {", source)
 
     def test_generate_private_resolved_descriptor_source(self) -> None:
         database = load_codegen_database(
@@ -637,17 +670,25 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=(instruction,))
 
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_ir.gen.hpp"
-            generate_resolved_ir_header(database, output_path=output_path)
-            source = output_path.read_text(encoding="utf-8")
+            header_path = Path(directory) / "resolved_ir.gen.hpp"
+            source_path = Path(directory) / "resolved_ir_uncategorized.gen.cpp"
+            generate_resolved_ir_header(database, output_path=header_path)
+            generate_resolved_ir_source(
+                database,
+                category="uncategorized",
+                output_path=source_path,
+            )
+            header = header_path.read_text(encoding="utf-8")
+            source = source_path.read_text(encoding="utf-8")
 
-        self.assertIn("struct BinaryOperands {", source)
-        self.assertIn("struct TernaryOperands {", source)
+        self.assertIn("struct BinaryOperands {", header)
+        self.assertIn("struct TernaryOperands {", header)
         self.assertIn(
             "using Operands = std::variant<BinaryOperands, TernaryOperands>;",
-            source,
+            header,
         )
-        self.assertIn("Operands operands;", source)
+        self.assertIn("Operands operands;", header)
+        self.assertNotIn("check_sample_typed_binary_operands", header)
         self.assertIn("check_sample_typed_binary_operands", source)
         self.assertIn("check_sample_typed_ternary_operands", source)
 

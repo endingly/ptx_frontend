@@ -459,7 +459,7 @@ def _emit_check_modifier_value_view(
 
 
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
-    if field.value_cpp_type == "ResolvedRegisterId":
+    if field.value_cpp_type == "ResolvedRegisterRef":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = OperandShape::Register,

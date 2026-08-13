@@ -234,7 +234,7 @@ _MODIFIER_FIELD_NAMES = {
 }
 
 _OPERAND_VALUE_CPP_TYPES = {
-    "reg": "ResolvedRegisterId",
+    "reg": "ResolvedRegisterRef",
     "imm": "ResolvedImmediate",
     "reg_or_imm": "RegOrImm",
     "pred": "ResolvedPredicate",
@@ -273,7 +273,7 @@ _OPERAND_ACCESS = {
 _CPP_TYPE_VALUE_KINDS = {
     "bool": ResolvedValueKind.BOOL,
     "ScalarType": ResolvedValueKind.SCALAR_TYPE,
-    "ResolvedRegisterId": ResolvedValueKind.REGISTER,
+    "ResolvedRegisterRef": ResolvedValueKind.REGISTER,
     "ResolvedImmediate": ResolvedValueKind.IMMEDIATE,
     "RegOrImm": ResolvedValueKind.REG_OR_IMM,
     "ResolvedPredicate": ResolvedValueKind.PREDICATE,

@@ -26,12 +26,10 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
 
   expect_variant("add.u32 %r0, %r1, %r2;", Add::VariantType::IntegerNoSat);
   expect_variant("add.sat.s32 %r0, %r1, %r2;", Add::VariantType::SatS32);
-  expect_variant("add.u16x2 %r0, %r1, %r2;",
-                 Add::VariantType::SimdNoSatSm90);
+  expect_variant("add.u16x2 %r0, %r1, %r2;", Add::VariantType::SimdNoSatSm90);
   expect_variant("add.u8x4 %r0, %r1, %r2;",
                  Add::VariantType::PackedOptionalSatSm120);
-  expect_variant("add.sat.u32 %r0, %r1, %r2;",
-                 Add::VariantType::SatSm120);
+  expect_variant("add.sat.u32 %r0, %r1, %r2;", Add::VariantType::SatSm120);
 }
 
 TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
@@ -47,16 +45,13 @@ TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
   expect_variant("bar.cta.sync 0;", Bar::VariantType::CtaSync);
   expect_variant("bar.arrive 0, 32;", Bar::VariantType::Arrive);
   expect_variant("bar.cta.arrive 0, 32;", Bar::VariantType::CtaArrive);
-  expect_variant("bar.red.popc.u32 %r0, 1, %p1;",
-                 Bar::VariantType::RedPopcU32);
+  expect_variant("bar.red.popc.u32 %r0, 1, %p1;", Bar::VariantType::RedPopcU32);
   expect_variant("bar.cta.red.popc.u32 %r0, 1, !%p1;",
                  Bar::VariantType::CtaRedPopcU32);
-  expect_variant("bar.red.and.pred %p0, 1, %p1;",
-                 Bar::VariantType::RedAndPred);
+  expect_variant("bar.red.and.pred %p0, 1, %p1;", Bar::VariantType::RedAndPred);
   expect_variant("bar.cta.red.and.pred %p0, 1, !%p1;",
                  Bar::VariantType::CtaRedAndPred);
-  expect_variant("bar.red.or.pred %p0, 1, %p1;",
-                 Bar::VariantType::RedOrPred);
+  expect_variant("bar.red.or.pred %p0, 1, %p1;", Bar::VariantType::RedOrPred);
   expect_variant("bar.cta.red.or.pred %p0, 1, !%p1;",
                  Bar::VariantType::CtaRedOrPred);
 }
@@ -88,8 +83,7 @@ TEST(ResolveAdd, RejectsMismatchedOpcode) {
 
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().range, ast.opcode.syntax.range);
-  EXPECT_EQ(resolved.error().message,
-            "Cannot resolve opcode 'sub' as 'add'.");
+  EXPECT_EQ(resolved.error().message, "Cannot resolve opcode 'sub' as 'add'.");
 }
 
 TEST(CollectActualModifiersAdd, TypeAdapterUsesDescriptorImplementation) {
@@ -139,9 +133,8 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   EXPECT_EQ(bindings[0].allowed_shapes, check_end::OperandShape::Register);
   EXPECT_EQ(bindings[1].role, check_end::OperandRole::Source);
   EXPECT_EQ(bindings[1].access, check_end::OperandAccess::Read);
-  EXPECT_EQ(bindings[1].allowed_shapes,
-            check_end::OperandShape::Register |
-                check_end::OperandShape::Immediate);
+  EXPECT_EQ(bindings[1].allowed_shapes, check_end::OperandShape::Register |
+                                            check_end::OperandShape::Immediate);
 
   const auto& sat_s32 = descriptor.variants[1];
   ASSERT_EQ(sat_s32.modifier_bindings.size(), 2U);
@@ -158,8 +151,9 @@ TEST(SelectVariantAdd, ReportsUnmatchedModifierCombination) {
 
   ASSERT_FALSE(selected.has_value());
   EXPECT_EQ(selected.error().range, ast.range);
-  EXPECT_EQ(selected.error().message,
-            "No variant of instruction 'add' accepts this modifier combination.");
+  EXPECT_EQ(
+      selected.error().message,
+      "No variant of instruction 'add' accepts this modifier combination.");
 }
 
 TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
@@ -174,9 +168,13 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
   EXPECT_EQ(add->type.value, ScalarType::S32);
   ASSERT_EQ(add->type.locs.size(), 1U);
   EXPECT_EQ(add->type.locs.front(), ast.modifiers.front().syntax.range);
-  EXPECT_EQ(add->dst.value, (ResolvedRegisterId{4}));
-  EXPECT_EQ(std::get<ResolvedRegisterId>(add->src1.value),
-            (ResolvedRegisterId{5}));
+  EXPECT_EQ(add->dst.value.spelling, "%r4");
+  EXPECT_EQ(add->dst.value.register_class, ResolvedRegisterClass::General);
+  EXPECT_EQ(add->dst.value.index, 4U);
+  const auto& src1 = std::get<ResolvedRegisterRef>(add->src1.value);
+  EXPECT_EQ(src1.spelling, "%r5");
+  EXPECT_EQ(src1.register_class, ResolvedRegisterClass::General);
+  EXPECT_EQ(src1.index, 5U);
 
   const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
@@ -218,16 +216,17 @@ TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
   ASSERT_NE(type, nullptr);
   EXPECT_EQ(type->value, ScalarType::U32);
 
-  const auto* dst = std::get_if<WithLocs<ResolvedRegisterId>>(
-      &fields->operands.at("dst"));
+  const auto* dst =
+      std::get_if<WithLocs<ResolvedRegisterRef>>(&fields->operands.at("dst"));
   ASSERT_NE(dst, nullptr);
-  EXPECT_EQ(dst->value, (ResolvedRegisterId{4}));
+  EXPECT_EQ(dst->value.spelling, "%r4");
+  EXPECT_EQ(dst->value.index, 4U);
 
   const auto* src1 =
       std::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src1"));
   ASSERT_NE(src1, nullptr);
-  EXPECT_EQ(std::get<ResolvedRegisterId>(src1->value),
-            (ResolvedRegisterId{5}));
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).spelling, "%r5");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).index, 5U);
 
   const auto* src2 =
       std::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src2"));
@@ -250,6 +249,36 @@ TEST(ResolveAdd, RejectsOperandLayoutBeforeFieldResolution) {
             "'IntegerNoSat'.");
 }
 
+TEST(ResolveAdd, PreservesRegisterSpellingBeyondNumericIndex) {
+  const auto ast = parse_instruction("add.u64 %r1, %rd1, %r2;");
+
+  const auto resolved = resolve<Add>(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* add = std::get_if<Add::IntegerNoSat>(&resolved->variant);
+  ASSERT_NE(add, nullptr);
+  const auto& dst = add->dst.value;
+  const auto& src1 = std::get<ResolvedRegisterRef>(add->src1.value);
+  EXPECT_EQ(dst.index, 1U);
+  EXPECT_EQ(src1.index, 1U);
+  EXPECT_EQ(dst.spelling, "%r1");
+  EXPECT_EQ(src1.spelling, "%rd1");
+  EXPECT_NE(dst, src1);
+}
+
+TEST(ResolveAdd, RejectsPredicateInGeneralRegisterSlot) {
+  const auto ast = parse_instruction("add.u32 %p1, %r1, %r2;");
+
+  const auto resolved = resolve<Add>(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(
+      resolved.error().range,
+      std::get<syntax_ast::AstIdentifierRef>(ast.operands[0]).syntax.range);
+  EXPECT_EQ(resolved.error().message,
+            "Expected a non-predicate register, got '%p1'.");
+}
+
 TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   const auto unsaturated_ast = parse_instruction("add.u8x4 %r0, %r1, %r2;");
   const auto unsaturated = resolve<Add>(unsaturated_ast);
@@ -260,8 +289,7 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   EXPECT_FALSE(unsaturated_add->saturate.value);
   EXPECT_TRUE(unsaturated_add->saturate.locs.empty());
 
-  const auto saturated_ast =
-      parse_instruction("add.sat.u8x4 %r0, %r1, %r2;");
+  const auto saturated_ast = parse_instruction("add.sat.u8x4 %r0, %r1, %r2;");
   const auto saturated = resolve<Add>(saturated_ast);
   ASSERT_TRUE(saturated.has_value()) << saturated.error().message;
   const auto* saturated_add =
@@ -274,8 +302,7 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
 }
 
 TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
-  const auto ast =
-      parse_instruction("bar.cta.red.and.pred %p0, 1, 64, !%p1;");
+  const auto ast = parse_instruction("bar.cta.red.and.pred %p0, 1, 64, !%p1;");
 
   const auto resolved = resolve<Bar>(ast);
 
@@ -283,26 +310,46 @@ TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
   const auto* bar = std::get_if<Bar::CtaRedAndPred>(&resolved->variant);
   ASSERT_NE(bar, nullptr);
   EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{1}));
-  ASSERT_TRUE(std::holds_alternative<
-              Bar::CtaRedAndPred::WithThreadCountOperands>(bar->operands));
-  const auto& operands = std::get<Bar::CtaRedAndPred::WithThreadCountOperands>(
-      bar->operands);
-  EXPECT_EQ(operands.dst.value.register_id, (ResolvedRegisterId{0}));
+  ASSERT_TRUE(
+      std::holds_alternative<Bar::CtaRedAndPred::WithThreadCountOperands>(
+          bar->operands));
+  const auto& operands =
+      std::get<Bar::CtaRedAndPred::WithThreadCountOperands>(bar->operands);
+  EXPECT_EQ(operands.dst.value.register_ref.spelling, "%p0");
+  EXPECT_EQ(operands.dst.value.register_ref.register_class,
+            ResolvedRegisterClass::Predicate);
+  EXPECT_EQ(operands.dst.value.register_ref.index, 0U);
   EXPECT_FALSE(operands.dst.value.negated);
   EXPECT_EQ(std::get<ResolvedImmediate>(operands.barrier.value).bits, 1U);
   EXPECT_EQ(std::get<ResolvedImmediate>(operands.thread_count.value).bits, 64U);
-  EXPECT_EQ(operands.predicate.value.register_id, (ResolvedRegisterId{1}));
+  EXPECT_EQ(operands.predicate.value.register_ref.spelling, "%p1");
+  EXPECT_EQ(operands.predicate.value.register_ref.register_class,
+            ResolvedRegisterClass::Predicate);
+  EXPECT_EQ(operands.predicate.value.register_ref.index, 1U);
   EXPECT_TRUE(operands.predicate.value.negated);
   ASSERT_EQ(operands.predicate.locs.size(), 1U);
-  EXPECT_EQ(operands.predicate.locs.front(),
-            std::get<syntax_ast::AstPredicateOperand>(ast.operands[3])
-                .syntax.range);
+  EXPECT_EQ(
+      operands.predicate.locs.front(),
+      std::get<syntax_ast::AstPredicateOperand>(ast.operands[3]).syntax.range);
 
   const checker::Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},
       .instruction_range = ast.range,
   };
   EXPECT_TRUE(checker::check(*resolved, context).has_value());
+}
+
+TEST(ResolveBar, RejectsGeneralRegisterInPredicateSlot) {
+  const auto ast = parse_instruction("bar.red.and.pred %p0, 1, %r1;");
+
+  const auto resolved = resolve<Bar>(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(
+      resolved.error().range,
+      std::get<syntax_ast::AstIdentifierRef>(ast.operands[2]).syntax.range);
+  EXPECT_EQ(resolved.error().message,
+            "Expected a predicate register, got '%r1'.");
 }
 
 }  // namespace

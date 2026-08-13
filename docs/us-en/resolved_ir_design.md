@@ -28,9 +28,18 @@ struct WithLocs {
 
 `locs` can associate one semantic value with several source fragments; an empty
 list denotes no direct source location, such as a compile-time fixed modifier.
-Current primitives include `ResolvedRegisterId`, `ResolvedImmediate`, and
+Current primitives include `ResolvedRegisterRef`, `ResolvedImmediate`, and
 `RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
 checker never has to reinterpret literal text.
+
+Until symbol-table declaration binding is available, `ResolvedRegisterRef`
+owns the register's complete source spelling and also records its
+`ResolvedRegisterClass` and numbered-register index. The index is only a
+convenience, not an identity: `%r1` and `%rd1` both have index 1 but retain
+different spellings. The current resolver supports the numbered-register
+subset and distinguishes general registers from `%pN` predicates. A future
+symbol-table pass should augment or replace this lexical reference with a
+declaration `SymbolId`.
 
 ## Opcode-generated structures
 
@@ -44,7 +53,7 @@ struct Add {
   struct IntegerNoSat {
     ResolvedOperandLayoutTag operand_layout;
     WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterId> dst;
+    WithLocs<ResolvedRegisterRef> dst;
     WithLocs<RegOrImm> src1;
     WithLocs<RegOrImm> src2;
   };

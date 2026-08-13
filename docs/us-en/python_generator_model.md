@@ -17,11 +17,12 @@ YAML files
 ## Input database
 
 `code_gen.database` recursively discovers `instructions/ptx_spec/**/*.yaml`,
-loads them in path order, and enforces one schema version and globally unique
-opcodes. The minimal stable model in `code_gen.model` is:
+loads them in path order, enforces one schema version, and then merges
+definitions of the same opcode. The minimal stable model in `code_gen.model` is:
 
 ```python
-InstructionSpec(opcode, syntax, variants)
+InstructionSpec(opcode, variants, syntax_forms, source_categories,
+                codegen_category)
 VariantSpec(name, availability, modifiers, operand_layouts, rule)
 OperandLayoutSpec(name, operands)
 ModifierSpec(name, kind, presence, values, value, token, default)
@@ -32,11 +33,19 @@ The model carries only fields currently consumed by the frontend generator.
 YAML documentation, examples, and constraints that have no generator consumer
 must not silently leak into the C++ representation.
 
+After merging an opcode, the database validates the selector language. Active
+modifier slots within one variant must have disjoint spelling sets, and the
+unordered spelling sets accepted by different variants must not overlap. Slot
+names are variant-local, so one spelling may bind different slots across
+variants. These checks make candidate-local C++ binding deterministic while
+remaining independent of modifier source order.
+
 ## Normalization
 
 `code_gen.normalize` converts different legal YAML spellings into one model:
 
-- expands `$name` type-set references;
+- expands `$name` references from both `type_sets` and `value_sets`, rejecting
+  names defined in both namespaces;
 - parses `type: {expr: modifier(type)}` into an `OperandTypeExpression`
   (`MODIFIER`, `modifier_name="type"`); a fixed scalar such as `u32` becomes
   `FIXED_SCALAR`;
@@ -59,8 +68,9 @@ SyntaxModifierDescriptor(kind_id, presence, allowed_spellings)
 SyntaxOperandLayoutDescriptor(layout_id, kind, slots)
 ```
 
-It answers only whether source can be written as a variant/layout: modifier
-spelling and presence, AST operand shape, and slot count. `Flat` layouts and
+It answers only whether source can be written as a variant/layout:
+variant-local modifier-slot spelling and presence, AST operand shape, and slot
+count. `Flat` layouts and
 the `reg`, `imm`, `reg_or_imm`, `pred`, and `pred_or_not` mappings are
 implemented today; the last preserves the complemented `!%pN` spelling. A new
 AST shape must first extend this model and the C++ foundation ABI.
@@ -88,8 +98,8 @@ allowed shape. Its descriptor form is `None`, `FixedScalar(ScalarType)`, or
 
 During model conversion, an optional modifier's YAML `default` becomes a typed
 `ResolvedModifierBinding.default_value` and is emitted into the resolved
-descriptor. The common resolver uses it to construct `WithLocs<bool>` or
-`WithLocs<ScalarType>`: omitted modifiers have empty `locs`, while explicit
+descriptor. The common resolver uses it to construct `WithLocs<bool>`,
+`WithLocs<ScalarType>`, or `WithLocs<RoundingMode>`: omitted modifiers have empty `locs`, while explicit
 ones use the source value and range. The syntax descriptor retains only
 spelling/presence and does not duplicate the semantic default.
 
@@ -113,9 +123,10 @@ The generated public header remains flat under the build-tree `public` include
 root. CMake installs that specific file as
 `include/ptx_ir/resolved/resolved_ir.gen.hpp`.
 
-The public header contains no generated function bodies. An instruction-level
-`category` overrides the file-level category; otherwise the latter is
-inherited. The generator uses that normalized value to create stable category
+The public header contains no generated function bodies. Generation uses the
+normalized `codegen_category`, which is separate from PTX documentation
+`source_categories`. Every definition of one opcode must use the same
+`codegen_category`. The generator uses that value to create stable category
 sources, which CMake compiles into the `ptx_frontend` library. Consumers retain
 one include entry point, while the complex `std::visit` code, lambdas, and
 resolve builders are compiled only once inside the library.
@@ -126,8 +137,8 @@ anonymous or `generated_detail` namespace; getters are in
 `checker` namespace in the public header, and each category implementation
 likewise opens it only once.
 
-Every emitter obtains the PTX scalar-spelling to C++ `ScalarType` enumerator
-mapping from the single `ir.scalar_types` registry. Generated files do not
+Emitters obtain PTX semantic-spelling mappings from the canonical
+`ir.scalar_types` and `ir.rounding_modes` registries. Generated files do not
 embed wall-clock time by default. If the build environment provides the
 standard `SOURCE_DATE_EPOCH`, the warning uses that deterministic UTC time;
 otherwise it explicitly marks the time as omitted. Identical specs and

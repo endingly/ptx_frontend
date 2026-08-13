@@ -22,6 +22,7 @@ from code_gen.model import (
     VariantSpec,
 )
 from ir.scalar_types import SCALAR_TYPE_CPP_ENUM_NAMES
+from ir.rounding_modes import ROUNDING_MODE_CPP_ENUM_NAMES
 
 
 class ResolvedFieldOrigin(Enum):
@@ -36,6 +37,7 @@ class ResolvedValueKind(Enum):
 
     BOOL = "Bool"
     SCALAR_TYPE = "ScalarType"
+    ROUNDING_MODE = "RoundingMode"
     REGISTER = "Register"
     PREDICATE = "Predicate"
     IMMEDIATE = "Immediate"
@@ -140,6 +142,18 @@ class ResolvedField:
                 raise ValueError(
                     f"unsupported fixed scalar type {self.constant_value!r}"
                 ) from error
+        if self.value_cpp_type == "RoundingMode" and isinstance(
+            self.constant_value, str
+        ):
+            try:
+                return (
+                    "RoundingMode::"
+                    f"{ROUNDING_MODE_CPP_ENUM_NAMES[self.constant_value]}"
+                )
+            except KeyError as error:
+                raise ValueError(
+                    f"unsupported fixed rounding mode {self.constant_value!r}"
+                ) from error
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"
@@ -235,6 +249,7 @@ class ResolvedInstruction:
 _MODIFIER_VALUE_CPP_TYPES = {
     "flag": "bool",
     "type": "ScalarType",
+    "rounding": "RoundingMode",
 }
 
 _MODIFIER_FIELD_NAMES = {
@@ -283,6 +298,7 @@ _OPERAND_ACCESS = {
 _CPP_TYPE_VALUE_KINDS = {
     "bool": ResolvedValueKind.BOOL,
     "ScalarType": ResolvedValueKind.SCALAR_TYPE,
+    "RoundingMode": ResolvedValueKind.ROUNDING_MODE,
     "ResolvedRegisterRef": ResolvedValueKind.REGISTER,
     "ResolvedImmediate": ResolvedValueKind.IMMEDIATE,
     "RegOrImm": ResolvedValueKind.REG_OR_IMM,
@@ -379,6 +395,17 @@ def _build_modifier_default(
                 f"optional type modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
+    if value_cpp_type == "RoundingMode":
+        if not isinstance(modifier.default, str):
+            raise ValueError(
+                f"optional rounding modifier {modifier.name!r} must have a "
+                "string default"
+            )
+        if modifier.default not in ROUNDING_MODE_CPP_ENUM_NAMES:
+            raise ValueError(
+                f"optional rounding modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
     return ResolvedModifierDefault(
         value_cpp_type=value_cpp_type,
         value=modifier.default,
@@ -403,6 +430,16 @@ def _build_modifier_value_availability(
         raise ValueError(
             f"modifier {modifier.name!r}: flag value must be boolean"
         )
+    if value_cpp_type == "RoundingMode":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: rounding value must be a string"
+            )
+        if value.value not in ROUNDING_MODE_CPP_ENUM_NAMES:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported rounding value "
+                f"{value.value!r}"
+            )
     return ResolvedModifierValueAvailability(
         source_kind_id=modifier.name,
         value_cpp_type=value_cpp_type,

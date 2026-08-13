@@ -147,6 +147,7 @@ struct OperandLayoutDescriptor {
 enum class ModifierValueKind : uint8_t {
   Bool,
   ScalarType,
+  RoundingMode,
 };
 
 /** Target requirement attached to one legal semantic modifier value. */
@@ -155,6 +156,7 @@ struct ModifierValueAvailabilityDescriptor {
   ModifierValueKind value_kind;
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
+  RoundingMode rounding_mode = RoundingMode::Invalid;
   AvailabilityDescriptor availability;
 };
 
@@ -164,6 +166,7 @@ struct ModifierValueView {
   ModifierValueKind value_kind;
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
+  RoundingMode rounding_mode = RoundingMode::Invalid;
   bool is_present = false;
   std::span<const SourceRange> locations;
 };

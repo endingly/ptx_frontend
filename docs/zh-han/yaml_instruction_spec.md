@@ -13,6 +13,7 @@
 schema: ptx-instr/v1
 ptx_isa: "9.2"
 category: integer_arithmetic
+codegen_category: arithmetic
 section: "9.7.1"
 ```
 
@@ -22,7 +23,7 @@ variant 不能同时写 `operands` 和 `operand_layouts`。
 ## 预定义数据引用
 
 本 DSL 中 `$name` 是对当前 YAML 文件预定义数据的唯一引用写法，无需引号。`type_sets`
-在 `values` 中通过 `$name` 引用，`operand_patterns` 在 `operands` 中也通过 `$name` 引用；
+与 `value_sets` 在 `values` 中通过 `$name` 引用，`operand_patterns` 在 `operands` 中也通过 `$name` 引用；
 裸字符串不再表示引用。normalizer 在生成前递归展开引用、检测循环，并保证引用与原地写出
 相同数据得到完全相同的 `InstructionSpec`。`$` 不用于 type expression；后者有独立的函数
 语法，避免与预定义数据引用混淆。
@@ -34,12 +35,22 @@ variant 不能同时写 `operands` 和 `operand_layouts`。
 | 字段 | 含义 |
 | --- | --- |
 | `type_sets` | 可由 `$name` 引用的 modifier value 集合 |
+| `value_sets` | 可由 `$name` 引用的非类型 modifier value 集合 |
 | `operand_patterns` | 可由 name 复用的 operand 列表 |
+| `category` | 当前 YAML 对应的 PTX 文档分类 |
+| `codegen_category` | 当前 YAML 内指令的生成源码分区 |
 | `instructions` | 一个或多个 opcode 定义 |
 
 每个 instruction 至少包含 `opcode` 和 `variants`，可以有 instruction-level 的
-`syntax`、`operands`、`category`、`section` 与 `doc`。同一 spec database 中 opcode
-必须全局唯一。
+`syntax`、`operands`、`section` 与 `doc`。`category` 与 `codegen_category` 都是必需的
+文件级字段，不得在 instruction 中重复。一个 opcode 可以自然分散在多个 category YAML
+中；同 opcode 的所有定义必须使用相同的 `codegen_category`。因此浮点与整数 `add`
+可以分别保留在对应规范文件中，最终仍合并成唯一的 C++ `Add`。
+
+合并按 spec 文件路径及文件内声明顺序进行。文件路径本身就是定义来源，不再需要额外的
+`fragment` ID。database 会在发射代码前拒绝重复 variant ID、PascalCase 后冲突的
+C++ variant 名、同一 variant 内一个 spelling 归属多个活动 modifier slot，以及可接受
+同一无序 modifier 集合的重叠 variant。
 
 ## Variant 与 modifier
 
@@ -68,7 +79,8 @@ modifier 的核心字段：
 | `fixed` | 必须出现且 value 固定；resolved struct 生成 static constexpr 成员 |
 
 `optional` modifier 必须显式给出省略时的语义 `default`。default 的类型必须与
-modifier kind 一致：`flag` 使用布尔值；`type` 使用 `values` 中的 scalar type。
+modifier kind 一致：`flag` 使用布尔值；`type` 使用 `values` 中的 scalar type；
+`rounding` 使用 `values` 中的舍入模式（如 `rn`）。
 例如：
 
 ```yaml
@@ -83,6 +95,13 @@ modifier kind 一致：`flag` 使用布尔值；`type` 使用 `values` 中的 sc
   presence: optional
   values: [u32, u64]
   default: u32
+
+- name: rounding
+  kind: rounding
+  domain: rounding_modes
+  presence: optional
+  values: [$rounding_modes]
+  default: rn
 ```
 
 省略 modifier 时，resolver 将 default 写入 resolved field，并令其 `locs` 为空；
@@ -91,8 +110,11 @@ modifier kind 一致：`flag` 使用布尔值；`type` 使用 `values` 中的 sc
 检查；因为没有 modifier 源码位置，相关诊断回退到整条 instruction 的 range。
 
 `flag` 通常给出 `token: ".sat"`；`type` 的 token 通常从 `value` 或 `values` 推导。
-modifier matching 使用 `kind_id`，不依赖源码 modifier 顺序。不同 variant 的 modifier
-组合必须互斥，否则 selector 会报告歧义。
+`name` 是当前 variant 内的 modifier slot ID，`kind` 决定解析后的值类型。同一个
+spelling 可以在不同 variant 绑定不同 slot，例如 `.f32` 在普通 Add 中绑定 `type`，在
+mixed Add 中绑定 `result_type`；但在单个 variant 内必须唯一归属一个活动 slot。
+modifier matching 不依赖源码顺序。不同 variant 接受的无序 modifier 集合必须互斥，
+否则 database 会在生成前拒绝。
 
 `values` 的单项可改写为对象，为某个语义值追加 target availability：
 
@@ -214,13 +236,26 @@ Python 测试。
 resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同或不可比较的候选是 YAML
 建模错误，不能借 availability 消除歧义。
 
+## 浮点 Add 的当前覆盖
+
+`floating_point.yaml` 与 `integer_arith.yaml` 中的 `add` 定义自动合并。当前覆盖标准
+`.f32/.f32x2/.f64`、mixed-precision `.f32.{f16,bf16}` 以及半精度
+`.f16/.f16x2/.bf16/.bf16x2` 形式；舍入模式解析为 `RoundingMode`，`.rm/.rp.f32`
+的 `sm_20` 要求使用 value availability 表达。packed 与 half/bfloat 形式按 PTX 规范
+只接受 register operand。
+
+mixed variant 使用 `result_type` 与 `input_type` 两个具名 slot：前者 fixed 为 `f32`，
+后者接受 `f16/bf16`。operand 的结构化 type expression 分别引用这两个 slot，因此
+resolver 与 checker 无需从 modifier 的位置或字符串重新推断 operand type。该 variant
+要求 PTX 8.6 / sm_100，并允许可选舍入与 `.sat`。
+
 ## 编写原则
 
 1. 记录 PTX 语义事实，而不是生成实现偏好；禁止 `direct`、`sub_struct`、
    `sub_variant` 之类的 C++ storage 选项。
 2. 对 modifier variant 使用稳定且描述性的 name，例如 `add_sat`、`bar_cta_sync`；名称
    不应包含仅由 allowed-value availability 表达的版本后缀。
-3. 优先复用 `type_sets` 与 `operand_patterns`，但不要把语义不同的 operand 强行放入
+3. 优先复用 `type_sets`、`value_sets` 与 `operand_patterns`，但不要把语义不同的 operand 强行放入
    同一 pattern。
 4. 新增 spec 前确认 lexer/AST 能形成所需 operand shape；不能时先扩展语法层。
 5. 新增 layout 必须补 resolver/checker 测试，尤其是 tag 范围与 tag/payload 不一致。

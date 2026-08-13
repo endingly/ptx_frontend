@@ -84,7 +84,7 @@ def generate_resolved_ir_source(
     instructions = tuple(
         from_instruction_spec(instruction)
         for instruction in database.instructions
-        if instruction.category == category
+        if instruction.codegen_category == category
     )
     if not instructions:
         raise ValueError(f"instruction category {category!r} is empty")
@@ -504,6 +504,16 @@ def _emit_check_modifier_value_view(
             else f"selected.{field.name}.value"
         )
         scalar_type = "ScalarType::Invalid"
+        rounding_mode = "RoundingMode::Invalid"
+    elif field.value_cpp_type == "RoundingMode":
+        value_kind = "ModifierValueKind::RoundingMode"
+        bool_value = "false"
+        scalar_type = "ScalarType::Invalid"
+        rounding_mode = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
     else:
         raise ValueError(
             f"modifier field {field.name!r}: unsupported availability view type "
@@ -515,11 +525,14 @@ def _emit_check_modifier_value_view(
         if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
         else f"selected.{field.name}.locs"
     )
+    if field.value_cpp_type != "RoundingMode":
+        rounding_mode = "RoundingMode::Invalid"
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
                   .bool_value = {bool_value},
                   .scalar_type = {scalar_type},
+                  .rounding_mode = {rounding_mode},
                   .is_present = true,
                   .locations = {locations},
               }}"""

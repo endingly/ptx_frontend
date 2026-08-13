@@ -4,6 +4,7 @@
 schema: ptx-instr/v1
 ptx_isa: "9.2"
 category: parallel_synchronization_and_communication
+codegen_category: parallel_synchronization_and_communication
 section: "9.7.12"
 
 operand_patterns:
@@ -108,7 +109,6 @@ operand_patterns:
 
 instructions:
   - opcode: bar
-    category: parallel_synchronization_and_communication
     section: "9.7.12.1"
     doc: >
       CTA barrier synchronization. The barrier identifier and optional

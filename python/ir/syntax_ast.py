@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntFlag
-from code_gen.model import InstructionSpec, ModifierSpec, OperandSpec, VariantSpec
+from code_gen.model import (
+    InstructionSpec,
+    ModifierSpec,
+    OperandSpec,
+    VariantSpec,
+    modifier_spellings,
+)
 
 
 class ModifierPresence(Enum):
@@ -155,26 +161,8 @@ def _build_modifier_descriptor_view(
     return SyntaxModifierDescriptor(
         kind_id=modifier.name,
         presence=presence,
-        allowed_spellings=_modifier_spellings(modifier),
+        allowed_spellings=modifier_spellings(modifier),
     )
-
-
-def _modifier_spellings(modifier: ModifierSpec) -> tuple[str, ...]:
-    """Return the canonical, lexer-facing spelling for modifier values."""
-
-    if modifier.token is not None:
-        return (modifier.token,)
-
-    if modifier.values:
-        return tuple(
-            value.token if value.token is not None else f".{value.value}"
-            for value in modifier.values
-        )
-
-    if isinstance(modifier.value, str):
-        return (f".{modifier.value}",)
-
-    return ()
 
 
 def _build_operand_slot_descriptor_view(

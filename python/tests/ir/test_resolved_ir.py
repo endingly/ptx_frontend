@@ -66,10 +66,67 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [variant.cpp_name for variant in self.instruction.variants],
             [
+                "FloatF32",
+                "FloatF32x2",
+                "FloatF64",
+                "Half",
+                "Bfloat",
+                "MixedF32",
                 "IntegerNoSat",
                 "Sat",
                 "PackedOptionalSat",
             ],
+        )
+
+    def test_floating_add_rounding_defaults_and_availability(self) -> None:
+        variants = {variant.cpp_name: variant for variant in self.instruction.variants}
+        f32 = variants["FloatF32"]
+        self.assertEqual(
+            [
+                (field.name, field.cpp_type, field.storage)
+                for field in f32.modifier_fields
+            ],
+            [
+                ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
+                ("ftz", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+                ("type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
+            ],
+        )
+        rounding_default = f32.modifier_bindings[0].default_value
+        self.assertIsNotNone(rounding_default)
+        assert rounding_default is not None
+        self.assertEqual(rounding_default.value_cpp_type, "RoundingMode")
+        self.assertEqual(rounding_default.value, "rn")
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in f32.modifier_value_availabilities
+            ],
+            [
+                ("rm", {"ptx": "1.0", "sm": 20}),
+                ("rp", {"ptx": "1.0", "sm": 20}),
+            ],
+        )
+        self.assertEqual(variants["FloatF32"].modifier_fields[3].cpp_constant_expr,
+                         "ScalarType::F32")
+
+        mixed = variants["MixedF32"]
+        self.assertEqual(
+            [
+                (field.name, field.cpp_type, field.storage)
+                for field in mixed.modifier_fields
+            ],
+            [
+                ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
+                ("result_type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
+                ("input_type", "WithLocs<ScalarType>", ResolvedFieldStorage.INSTANCE),
+                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+            ],
+        )
+        self.assertEqual(
+            [binding.type_expression.modifier_field_id for binding in mixed.operand_layouts[0].bindings],
+            ["result_type", "input_type", "result_type"],
         )
 
     def test_add_resolved_variant_fields(self) -> None:
@@ -393,10 +450,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_ir_integer_arithmetic.gen.cpp"
+            output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
             generate_resolved_ir_source(
                 database,
-                category="integer_arithmetic",
+                category="arithmetic",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -520,6 +577,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
     ) -> None:
         specs = normalize_instruction_spec(
             {
+                "category": "test",
+                "codegen_category": "test",
                 "type_sets": {"late_scalar": ["u32", "u64"]},
                 "instructions": [
                     {
@@ -580,6 +639,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "value-set reference"):
             normalize_instruction_spec(
                 {
+                    "category": "test",
+                    "codegen_category": "test",
                     "type_sets": {"scalar": ["u32", "u64"]},
                     "instructions": [
                         {
@@ -613,7 +674,6 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_multi_layout_variant_generates_nested_operand_payload(self) -> None:
         instruction = InstructionSpec(
             opcode="sample",
-            syntax=None,
             variants=(
                 VariantSpec(
                     name="sample_typed",

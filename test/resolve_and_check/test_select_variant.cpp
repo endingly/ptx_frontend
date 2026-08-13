@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <string>
 #include <type_traits>
@@ -42,11 +43,23 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
 
   expect_variant("add.u32 %r0, %r1, %r2;", Add::VariantType::IntegerNoSat);
   expect_variant("add.sat.s32 %r0, %r1, %r2;", Add::VariantType::Sat);
-  expect_variant("add.u16x2 %r0, %r1, %r2;",
-                 Add::VariantType::IntegerNoSat);
+  expect_variant("add.u16x2 %r0, %r1, %r2;", Add::VariantType::IntegerNoSat);
   expect_variant("add.u8x4 %r0, %r1, %r2;",
                  Add::VariantType::PackedOptionalSat);
   expect_variant("add.sat.u32 %r0, %r1, %r2;", Add::VariantType::Sat);
+  expect_variant("add.f32 %f0, %f1, %f2;", Add::VariantType::FloatF32);
+  expect_variant("add.rz.ftz.sat.f32 %f0, %f1, %f2;",
+                 Add::VariantType::FloatF32);
+  expect_variant("add.rp.f32x2 %r0, %r1, %r2;", Add::VariantType::FloatF32x2);
+  expect_variant("add.rm.f64 %fd0, %fd1, %fd2;", Add::VariantType::FloatF64);
+  expect_variant("add.rn.ftz.sat.f16x2 %r0, %r1, %r2;", Add::VariantType::Half);
+  expect_variant("add.bf16 %r0, %r1, %r2;", Add::VariantType::Bfloat);
+  expect_variant("add.f32.f16 %f0, %h1, %f2;",
+                 Add::VariantType::MixedF32);
+  expect_variant("add.rz.f32.bf16.sat %f0, %h1, %f2;",
+                 Add::VariantType::MixedF32);
+  expect_variant("add.sat.bf16.f32.rz %f0, %h1, %f2;",
+                 Add::VariantType::MixedF32);
 }
 
 TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
@@ -103,27 +116,37 @@ TEST(ResolveAdd, RejectsMismatchedOpcode) {
   EXPECT_EQ(resolved.error().message, "Cannot resolve opcode 'sub' as 'add'.");
 }
 
-TEST(CollectActualModifiersAdd, TypeAdapterUsesDescriptorImplementation) {
-  const auto ast = parse_instruction("add.sat.u32 %r0, %r1, %r2;");
+TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {
+  const auto ast =
+      parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
+  const auto& instruction = Add::get_syntax_descriptor();
+  const auto mixed = std::ranges::find_if(instruction.variants, [](auto variant) {
+    return variant.variant_name == "MixedF32";
+  });
+  ASSERT_NE(mixed, instruction.variants.end());
 
-  const auto by_type = collect_actual_modifiers<Add>(ast);
-  const auto by_descriptor =
-      collect_actual_modifiers(ast, Add::get_syntax_descriptor());
+  const auto actual = collect_actual_modifiers(ast, *mixed);
 
-  ASSERT_TRUE(by_type.has_value()) << by_type.error().message;
-  ASSERT_TRUE(by_descriptor.has_value()) << by_descriptor.error().message;
-  EXPECT_EQ(by_type->size(), by_descriptor->size());
-  EXPECT_EQ(by_type->at("sat"), by_descriptor->at("sat"));
-  EXPECT_EQ(by_type->at("type"), by_descriptor->at("type"));
+  ASSERT_TRUE(actual.has_value()) << actual.error().message;
+  ASSERT_EQ(actual->size(), 4U);
+  EXPECT_EQ(actual->at("rounding"), &ast.modifiers[0]);
+  EXPECT_EQ(actual->at("result_type"), &ast.modifiers[1]);
+  EXPECT_EQ(actual->at("input_type"), &ast.modifiers[2]);
+  EXPECT_EQ(actual->at("sat"), &ast.modifiers[3]);
 }
 
 TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   const auto& descriptor = Add::get_resolved_descriptor();
 
   ASSERT_EQ(descriptor.opcode_name, "add");
-  ASSERT_EQ(descriptor.variants.size(), 3U);
+  ASSERT_EQ(descriptor.variants.size(), 9U);
 
-  const auto& packed_optional_sat = descriptor.variants[2];
+  const auto packed_optional_sat_it =
+      std::ranges::find_if(descriptor.variants, [](const auto& variant) {
+        return variant.variant_name == "PackedOptionalSat";
+      });
+  ASSERT_NE(packed_optional_sat_it, descriptor.variants.end());
+  const auto& packed_optional_sat = *packed_optional_sat_it;
   EXPECT_EQ(packed_optional_sat.variant_name, "PackedOptionalSat");
   ASSERT_EQ(packed_optional_sat.fields.size(), 2U);
   EXPECT_EQ(packed_optional_sat.fields[0].field_id, "saturate");
@@ -153,12 +176,96 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   EXPECT_EQ(bindings[1].allowed_shapes, check_end::OperandShape::Register |
                                             check_end::OperandShape::Immediate);
 
-  const auto& sat = descriptor.variants[1];
+  const auto sat_it = std::ranges::find_if(
+      descriptor.variants,
+      [](const auto& variant) { return variant.variant_name == "Sat"; });
+  ASSERT_NE(sat_it, descriptor.variants.end());
+  const auto& sat = *sat_it;
   ASSERT_EQ(sat.modifier_bindings.size(), 2U);
   EXPECT_EQ(sat.modifier_bindings[0].source_kind_id, "sat");
   EXPECT_EQ(sat.modifier_bindings[0].target_field_id, "saturate");
   EXPECT_EQ(sat.modifier_bindings[1].source_kind_id, "type");
   EXPECT_EQ(sat.modifier_bindings[1].target_field_id, "type");
+}
+
+TEST(ResolveAdd, BuildsFloatingVariantWithTypedRoundingAndDefaults) {
+  const auto default_ast = parse_instruction("add.f32 %f0, %f1, 1.5;");
+  const auto default_resolved = resolve<Add>(default_ast);
+  ASSERT_TRUE(default_resolved.has_value()) << default_resolved.error().message;
+  const auto* default_add =
+      std::get_if<Add::FloatF32>(&default_resolved->variant);
+  ASSERT_NE(default_add, nullptr);
+  EXPECT_EQ(default_add->rounding.value, RoundingMode::Rn);
+  EXPECT_TRUE(default_add->rounding.locs.empty());
+  EXPECT_FALSE(default_add->ftz.value);
+  EXPECT_TRUE(default_add->ftz.locs.empty());
+  EXPECT_FALSE(default_add->saturate.value);
+  EXPECT_TRUE(default_add->saturate.locs.empty());
+  EXPECT_EQ(Add::FloatF32::type, ScalarType::F32);
+  const auto* immediate =
+      std::get_if<ResolvedImmediate>(&default_add->src2.value);
+  ASSERT_NE(immediate, nullptr);
+  EXPECT_EQ(immediate->type, ScalarType::F32);
+  EXPECT_EQ(immediate->bits, 0x3fc00000U);
+
+  const auto explicit_ast =
+      parse_instruction("add.rz.ftz.sat.f32 %f0, %f1, %f2;");
+  const auto explicit_resolved = resolve<Add>(explicit_ast);
+  ASSERT_TRUE(explicit_resolved.has_value())
+      << explicit_resolved.error().message;
+  const auto* explicit_add =
+      std::get_if<Add::FloatF32>(&explicit_resolved->variant);
+  ASSERT_NE(explicit_add, nullptr);
+  EXPECT_EQ(explicit_add->rounding.value, RoundingMode::Rz);
+  ASSERT_EQ(explicit_add->rounding.locs.size(), 1U);
+  EXPECT_EQ(explicit_add->rounding.locs.front(),
+            explicit_ast.modifiers[0].syntax.range);
+  EXPECT_TRUE(explicit_add->ftz.value);
+  EXPECT_TRUE(explicit_add->saturate.value);
+}
+
+TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
+  const auto ast =
+      parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
+
+  const auto resolved = resolve<Add>(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* add = std::get_if<Add::MixedF32>(&resolved->variant);
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->rounding.value, RoundingMode::Rz);
+  EXPECT_EQ(Add::MixedF32::result_type, ScalarType::F32);
+  EXPECT_EQ(add->input_type.value, ScalarType::BF16);
+  EXPECT_TRUE(add->saturate.value);
+  EXPECT_EQ(add->dst.value.spelling, "%f0");
+  EXPECT_EQ(add->src.value.spelling, "%h1");
+  EXPECT_EQ(add->addend.value.spelling, "%f2");
+  EXPECT_EQ(add->input_type.locs.front(), ast.modifiers[2].syntax.range);
+}
+
+TEST(SelectVariantAdd, RejectsFloatingModifierOutsideItsForm) {
+  const auto ast = parse_instruction("add.ftz.f64 %fd0, %fd1, %fd2;");
+  const auto selected = selectVariant<Add>(ast);
+  ASSERT_FALSE(selected.has_value());
+  EXPECT_EQ(selected.error().message,
+            "No variant of instruction 'add' accepts this modifier "
+            "combination.");
+
+  const auto mixed_ast =
+      parse_instruction("add.ftz.f32.f16 %f0, %h1, %f2;");
+  const auto mixed_selected = selectVariant<Add>(mixed_ast);
+  ASSERT_FALSE(mixed_selected.has_value());
+  EXPECT_EQ(mixed_selected.error().message,
+            "No variant of instruction 'add' accepts this modifier "
+            "combination.");
+}
+
+TEST(ResolveAdd, RejectsImmediateForRegisterOnlyPackedFloatingForm) {
+  const auto ast = parse_instruction("add.f16 %h0, %h1, 1.0;");
+  const auto resolved = resolve<Add>(ast);
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().message,
+            "Operands do not match any layout of instruction variant 'Half'.");
 }
 
 TEST(SelectVariantAdd, ReportsUnmatchedModifierCombination) {

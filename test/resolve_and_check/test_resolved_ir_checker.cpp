@@ -237,6 +237,104 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   EXPECT_TRUE(check(*sat, supported_sat_target).has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
+  PtxSyntaxParser parser("add.rm.f32 %f0, %f1, %f2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  const auto resolved = resolve<Add>(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* add = std::get_if<Add::FloatF32>(&resolved->variant);
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->rounding.value, RoundingMode::Rm);
+
+  const Context sm10_context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 10},
+      .instruction_range = ast->range,
+  };
+  const auto unsupported = check(*resolved, sm10_context);
+  ASSERT_FALSE(unsupported.has_value());
+  ASSERT_EQ(unsupported.error().size(), 1U);
+  EXPECT_EQ(unsupported.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_EQ(unsupported.error().front().range,
+            ast->modifiers.front().syntax.range);
+
+  const Context sm20_context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 20},
+      .instruction_range = ast->range,
+  };
+  EXPECT_TRUE(check(*resolved, sm20_context).has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
+  PtxSyntaxParser f64_parser("add.f64 %fd0, %fd1, %fd2;");
+  const auto f64_ast = f64_parser.parseInstruction();
+  ASSERT_TRUE(f64_ast.has_value()) << f64_ast.error().message;
+  const auto f64 = resolve<Add>(*f64_ast);
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+
+  const Context sm12_context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 12},
+      .instruction_range = f64_ast->range,
+  };
+  const auto unsupported_f64 = check(*f64, sm12_context);
+  ASSERT_FALSE(unsupported_f64.has_value());
+  ASSERT_EQ(unsupported_f64.error().size(), 1U);
+  EXPECT_EQ(unsupported_f64.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  PtxSyntaxParser half_parser("add.f16 %h0, %h1, %h2;");
+  const auto half_ast = half_parser.parseInstruction();
+  ASSERT_TRUE(half_ast.has_value()) << half_ast.error().message;
+  const auto half = resolve<Add>(*half_ast);
+  ASSERT_TRUE(half.has_value()) << half.error().message;
+
+  const Context old_half_context{
+      .target = {.ptx_version = {4, 1}, .sm_version = 52},
+      .instruction_range = half_ast->range,
+  };
+  const auto unsupported_half = check(*half, old_half_context);
+  ASSERT_FALSE(unsupported_half.has_value());
+  ASSERT_EQ(unsupported_half.error().size(), 2U);
+  EXPECT_EQ(unsupported_half.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unsupported_half.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const Context supported_half_context{
+      .target = {.ptx_version = {4, 2}, .sm_version = 53},
+      .instruction_range = half_ast->range,
+  };
+  EXPECT_TRUE(check(*half, supported_half_context).has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
+  PtxSyntaxParser parser("add.rz.f32.bf16.sat %f0, %h1, %f2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  const auto resolved = resolve<Add>(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Add::MixedF32>(&resolved->variant), nullptr);
+
+  const Context old_target{
+      .target = {.ptx_version = {8, 5}, .sm_version = 90},
+      .instruction_range = ast->range,
+  };
+  const auto unsupported = check(*resolved, old_target);
+  ASSERT_FALSE(unsupported.has_value());
+  ASSERT_EQ(unsupported.error().size(), 2U);
+  EXPECT_EQ(unsupported.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unsupported.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const Context supported_target{
+      .target = {.ptx_version = {8, 6}, .sm_version = 100},
+      .instruction_range = ast->range,
+  };
+  EXPECT_TRUE(check(*resolved, supported_target).has_value());
+}
+
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
   PtxSyntaxParser parser("add.s32 %r0, %r1, 7;");
   const auto ast = parser.parseInstruction();

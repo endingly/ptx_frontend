@@ -28,6 +28,7 @@ required:
   - schema
   - ptx_isa
   - category
+  - codegen_category
   - instructions
 
 properties:
@@ -51,6 +52,16 @@ properties:
       - control_flow
       - synchronization
       - matrix
+
+  codegen_category:
+    description: >
+      Stable generated-source partition for every instruction definition in
+      this file. Definitions of one opcode in different category files must
+      use the same value.
+    $ref: "#/$defs/schema_identifier"
+    examples:
+      - arithmetic
+      - parallel_synchronization_and_communication
 
   section:
     description: "Optional PTX ISA document section for this category."
@@ -213,6 +224,7 @@ $defs:
       # Floating point types
       - f16
       - f32
+      - f32x2
       - f64
 
       # Packed / alternate FP
@@ -1049,10 +1061,6 @@ $defs:
           spellings into opcode + modifiers in the spec.
         type: string
         pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]+)*$"
-
-      category:
-        description: "Optional instruction-level category override."
-        $ref: "#/$defs/schema_identifier"
 
       section:
         description: "Optional PTX document section for this instruction."

@@ -57,6 +57,8 @@ bool matches_modifier_value(
       return descriptor.bool_value == actual.bool_value;
     case ModifierValueKind::ScalarType:
       return descriptor.scalar_type == actual.scalar_type;
+    case ModifierValueKind::RoundingMode:
+      return descriptor.rounding_mode == actual.rounding_mode;
   }
   return false;
 }

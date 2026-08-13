@@ -42,6 +42,15 @@ enum class ScalarType : uint8_t {
 
 enum class ScalarKind { Invalid, Bit, Unsigned, Signed, Float, Pred };
 
+/** Semantic value of a PTX floating-point rounding modifier. */
+enum class RoundingMode : uint8_t {
+  Invalid = 0,
+  Rn,
+  Rz,
+  Rm,
+  Rp,
+};
+
 template <typename Enum>
   requires std::is_enum_v<Enum>
 std::string to_string(Enum e) {

@@ -489,11 +489,11 @@ $defs:
         description: >
           Default semantic value when presence=optional and the modifier is
           omitted.
-        oneOf:
-          - type: string
+        anyOf:
+          - $ref: "#/$defs/symbolic_value"
+          - $ref: "#/$defs/ptx_type_name"
           - type: boolean
           - type: integer
-          - type: "null"
 
       order:
         description: >
@@ -533,13 +533,17 @@ $defs:
           required:
             - presence
         then:
+          required:
+            - default
           anyOf:
             - required:
                 - values
             - required:
                 - token
-            - required:
-                - default
+        else:
+          not:
+            required:
+              - default
 
       - if:
           properties:

@@ -105,9 +105,22 @@ struct ResolvedFieldDescriptor {
   ResolvedValueKind value_kind;
 };
 
+enum class ResolvedModifierDefaultKind : uint8_t {
+  None,
+  Bool,
+  ScalarType,
+};
+
+struct ResolvedModifierDefaultDescriptor {
+  ResolvedModifierDefaultKind kind = ResolvedModifierDefaultKind::None;
+  bool bool_value = false;
+  ScalarType scalar_type = ScalarType::Invalid;
+};
+
 struct ResolvedModifierBindingDescriptor {
   std::string_view source_kind_id;
   std::string_view target_field_id;
+  ResolvedModifierDefaultDescriptor default_value;
 };
 
 using ResolvedOperandBindingDescriptor = checker::OperandDescriptor;

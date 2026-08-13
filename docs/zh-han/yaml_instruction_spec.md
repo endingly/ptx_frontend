@@ -66,6 +66,29 @@ modifier 的核心字段：
 | `required` | 必须出现并匹配一个 `values` spelling |
 | `fixed` | 必须出现且 value 固定；resolved struct 生成 static constexpr 成员 |
 
+`optional` modifier 必须显式给出省略时的语义 `default`。default 的类型必须与
+modifier kind 一致：`flag` 使用布尔值；`type` 使用 `values` 中的 scalar type。
+例如：
+
+```yaml
+- name: sat
+  kind: flag
+  presence: optional
+  token: .sat
+  default: false
+
+- name: type
+  kind: type
+  presence: optional
+  values: [u32, u64]
+  default: u32
+```
+
+省略 modifier 时，resolver 将 default 写入 resolved field，并令其 `locs` 为空；
+显式 modifier 会覆盖 default，并保存其源码位置。`absent`、`required` 与 `fixed`
+不得书写 `default`。default 仍是有效语义值，因此其 value availability 仍会被 checker
+检查；因为没有 modifier 源码位置，相关诊断回退到整条 instruction 的 range。
+
 `flag` 通常给出 `token: ".sat"`；`type` 的 token 通常从 `value` 或 `values` 推导。
 modifier matching 使用 `kind_id`，不依赖源码 modifier 顺序。不同 variant 的 modifier
 组合必须互斥，否则 selector 会报告歧义。

@@ -85,16 +85,61 @@ def normalize_modifier(
     if not isinstance(raw_values, list):
         raise TypeError("modifier values must be a list")
 
+    values = _normalize_modifier_values(raw_values, type_sets)
+    _validate_modifier_default(raw, values)
+
     return ModifierSpec(
         name=raw["name"],
         kind=raw["kind"],
         presence=raw["presence"],
         domain=raw.get("domain"),
-        values=_normalize_modifier_values(raw_values, type_sets),
+        values=values,
         value=raw.get("value"),
         token=raw.get("token"),
         default=raw.get("default"),
     )
+
+
+def _validate_modifier_default(
+    raw: dict[str, Any], values: tuple[ModifierValueSpec, ...]
+) -> None:
+    """Validate the semantic value used when an optional modifier is omitted."""
+
+    presence = raw["presence"]
+    has_default = "default" in raw
+    if presence != "optional":
+        if has_default:
+            raise ValueError(
+                f"modifier {raw['name']!r}: default is only valid for optional "
+                "modifiers"
+            )
+        return
+    if not has_default:
+        raise ValueError(
+            f"optional modifier {raw['name']!r} must define default"
+        )
+
+    default = raw["default"]
+    kind = raw["kind"]
+    if kind == "flag":
+        if type(default) is not bool:
+            raise ValueError(
+                f"optional flag modifier {raw['name']!r} must have a boolean "
+                "default"
+            )
+        return
+    if kind == "type":
+        if not isinstance(default, str):
+            raise ValueError(
+                f"optional type modifier {raw['name']!r} must have a string "
+                "default"
+            )
+        allowed_values = {value.value for value in values}
+        if default not in allowed_values:
+            raise ValueError(
+                f"optional type modifier {raw['name']!r} has default "
+                f"{default!r} outside its allowed values"
+            )
 
 
 def _normalize_modifier_values(

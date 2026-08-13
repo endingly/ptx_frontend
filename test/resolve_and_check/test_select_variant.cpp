@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <array>
+
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
 #include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
@@ -364,6 +366,90 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   ASSERT_EQ(saturated_add->saturate.locs.size(), 1U);
   EXPECT_EQ(saturated_add->saturate.locs.front(),
             saturated_ast.modifiers.front().syntax.range);
+}
+
+TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
+  const std::array<std::string_view, 2> allowed_types = {".u32", ".u64"};
+  const std::array<check_end::SyntaxModifierDescriptor, 1> syntax_modifiers = {
+      {{
+          .allowed_values = allowed_types,
+          .presence = check_end::PresenceRequirement::Optional,
+          .kind_id = "type",
+      }}};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 0> syntax_slots{};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{{
+          .layout_id = "default",
+          .kind = check_end::OperandLayoutKind::Flat,
+          .slots = syntax_slots,
+      }}};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{{
+      .variant_name = "Defaulted",
+      .modifiers = syntax_modifiers,
+      .operand_layouts = syntax_layouts,
+  }}};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+
+  const std::array<check_end::ResolvedFieldDescriptor, 1> resolved_fields = {{{
+      .field_id = "type",
+      .value_kind = check_end::ResolvedValueKind::ScalarType,
+  }}};
+  const std::array<check_end::ResolvedModifierBindingDescriptor, 1>
+      modifier_bindings = {{{
+          .source_kind_id = "type",
+          .target_field_id = "type",
+          .default_value =
+              {
+                  .kind = check_end::ResolvedModifierDefaultKind::ScalarType,
+                  .bool_value = false,
+                  .scalar_type = ScalarType::U32,
+              },
+      }}};
+  const std::array<check_end::ResolvedFieldDescriptor, 0> operand_fields{};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 0>
+      operand_bindings{};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1>
+      resolved_layouts = {{{
+          .layout_id = "default",
+          .fields = operand_fields,
+          .bindings = operand_bindings,
+      }}};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{{
+          .variant_name = "Defaulted",
+          .fields = resolved_fields,
+          .modifier_bindings = modifier_bindings,
+          .operand_layouts = resolved_layouts,
+      }}};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = resolved_variants,
+  };
+
+  const auto implicit_ast = parse_instruction("sample;");
+  const auto implicit = resolve_fields(implicit_ast, syntax_descriptor,
+                                       resolved_descriptor, "Defaulted");
+  ASSERT_TRUE(implicit.has_value()) << implicit.error().message;
+  const auto* implicit_type =
+      std::get_if<WithLocs<ScalarType>>(&implicit->modifiers.at("type"));
+  ASSERT_NE(implicit_type, nullptr);
+  EXPECT_EQ(implicit_type->value, ScalarType::U32);
+  EXPECT_TRUE(implicit_type->locs.empty());
+
+  const auto explicit_ast = parse_instruction("sample.u64;");
+  const auto explicit_value = resolve_fields(explicit_ast, syntax_descriptor,
+                                             resolved_descriptor, "Defaulted");
+  ASSERT_TRUE(explicit_value.has_value()) << explicit_value.error().message;
+  const auto* explicit_type =
+      std::get_if<WithLocs<ScalarType>>(&explicit_value->modifiers.at("type"));
+  ASSERT_NE(explicit_type, nullptr);
+  EXPECT_EQ(explicit_type->value, ScalarType::U64);
+  ASSERT_EQ(explicit_type->locs.size(), 1U);
+  EXPECT_EQ(explicit_type->locs.front(),
+            explicit_ast.modifiers.front().syntax.range);
 }
 
 TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {

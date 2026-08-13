@@ -26,7 +26,9 @@ struct WithLocs {
 ```
 
 `locs` 允许一个语义值关联多个源码片段；空集合表示没有直接源码位置，例如由 fixed
-modifier 得到的编译期常量。当前基础值包括 `ResolvedRegisterRef`、`ResolvedImmediate`
+modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 注入的实例值。
+后者仍保存在 `WithLocs<T>` 中：`value` 是语义默认值，空 `locs` 表示源码没有显式写出。
+当前基础值包括 `ResolvedRegisterRef`、`ResolvedImmediate`
 与 `RegOrImm`。`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 

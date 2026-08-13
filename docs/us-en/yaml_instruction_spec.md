@@ -70,6 +70,31 @@ Core modifier fields are:
 | `required` | it must occur and match one of `values` |
 | `fixed` | it must occur with one fixed value; the resolved struct emits a static constexpr member |
 
+An `optional` modifier must explicitly define its semantic `default` when it is
+omitted. The default type must agree with the modifier kind: `flag` uses a
+Boolean, while `type` uses one scalar type from `values`. For example:
+
+```yaml
+- name: sat
+  kind: flag
+  presence: optional
+  token: .sat
+  default: false
+
+- name: type
+  kind: type
+  presence: optional
+  values: [u32, u64]
+  default: u32
+```
+
+When the modifier is omitted, the resolver stores this default in the resolved
+field with empty `locs`. An explicit modifier overrides it and retains its
+source location. `absent`, `required`, and `fixed` modifiers must not define
+`default`. A default remains an active semantic value, so the checker still
+applies its value availability. Because no modifier source range exists, such
+a diagnostic falls back to the whole instruction range.
+
 `flag` normally provides `token: ".sat"`; a type token is normally derived
 from `value` or `values`. Matching uses `kind_id`, not source modifier order.
 Modifier combinations of distinct variants must be mutually exclusive.

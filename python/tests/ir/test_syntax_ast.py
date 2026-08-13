@@ -315,8 +315,59 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         "name": "flag",
                         "kind": "flag",
                         "presence": "optional",
+                        "default": False,
                     }
                 ],
+            )
+
+    def test_optional_modifier_requires_typed_default(self) -> None:
+        def normalize_modifier_entry(modifier: dict[str, object]) -> None:
+            normalize_instruction_spec(
+                {
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0", "sm": 0},
+                                    "modifiers": [modifier],
+                                    "operands": [],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "must define default"):
+            normalize_modifier_entry(
+                {
+                    "name": "sat",
+                    "kind": "flag",
+                    "presence": "optional",
+                    "token": ".sat",
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "boolean default"):
+            normalize_modifier_entry(
+                {
+                    "name": "sat",
+                    "kind": "flag",
+                    "presence": "optional",
+                    "token": ".sat",
+                    "default": "false",
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "outside its allowed values"):
+            normalize_modifier_entry(
+                {
+                    "name": "type",
+                    "kind": "type",
+                    "presence": "optional",
+                    "values": ["u32", "u64"],
+                    "default": "s32",
+                }
             )
 
     def test_emit_add_check_end_descriptor_implementation(self) -> None:

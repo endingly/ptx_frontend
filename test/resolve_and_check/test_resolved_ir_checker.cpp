@@ -178,6 +178,39 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
 }
 
+TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
+  PtxSyntaxParser parser("sub.sat.u8x4 %r0, %r1, %r2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+
+  const auto resolved = resolve<Sub>(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Sub::OptionalSat>(&resolved->variant), nullptr);
+
+  constexpr std::array<std::string_view, 1> family{"sm_120f"};
+  const Context unsupported_context{
+      .target = {.ptx_version = {9, 1},
+                 .sm_version = 100,
+                 .families = family},
+      .instruction_range = ast->range,
+  };
+  const auto unsupported = check(*resolved, unsupported_context);
+  ASSERT_FALSE(unsupported.has_value());
+  ASSERT_EQ(unsupported.error().size(), 2U);
+  EXPECT_EQ(unsupported.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unsupported.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const Context supported_context{
+      .target = {.ptx_version = {9, 2},
+                 .sm_version = 120,
+                 .families = family},
+      .instruction_range = ast->range,
+  };
+  EXPECT_TRUE(check(*resolved, supported_context).has_value());
+}
+
 TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   PtxSyntaxParser simd_parser("add.u16x2 %r0, %r1, %r2;");
   const auto simd_ast = simd_parser.parseInstruction();

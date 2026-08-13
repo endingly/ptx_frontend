@@ -15,6 +15,11 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from code_gen.database import CodegenDatabase, load_codegen_database
+from code_gen.cpp_backend import (
+    DEFAULT_CPP_BACKEND_SPEC,
+    configure_cpp_backend,
+    get_cpp_backend,
+)
 from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
@@ -50,6 +55,13 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--backend-spec",
+        type=Path,
+        default=DEFAULT_CPP_BACKEND_SPEC,
+        help="C++ backend mapping YAML (defaults to the repository spec).",
+    )
+
+    parser.add_argument(
         "--list-outputs",
         action="store_true",
         help="Print generated output paths without writing files.",
@@ -63,10 +75,19 @@ def main() -> None:
 
     spec_dir: Path = args.spec_dir.resolve()
     output_dir: Path = args.output.resolve()
+    backend_spec: Path = args.backend_spec.resolve()
 
     validate_directory(spec_dir, "--spec-dir")
+    validate_file(backend_spec, "--backend-spec")
+    configure_cpp_backend(backend_spec)
+    backend = get_cpp_backend()
 
     database = load_codegen_database(spec_dir=spec_dir)
+    if backend.spec_schema != database.spec_schema:
+        raise ValueError(
+            "C++ backend expects spec schema "
+            f"{backend.spec_schema!r}, got {database.spec_schema!r}"
+        )
 
     if args.list_outputs:
         for path in expected_generated_files(database, output_dir):
@@ -148,6 +169,13 @@ def validate_directory(path: Path, argument_name: str) -> None:
 
     if not path.is_dir():
         raise NotADirectoryError(f"{argument_name} is not a directory: {path}")
+
+
+def validate_file(path: Path, argument_name: str) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f"{argument_name} does not exist: {path}")
+    if not path.is_file():
+        raise IsADirectoryError(f"{argument_name} is not a file: {path}")
 
 
 def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:

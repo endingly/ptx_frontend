@@ -9,6 +9,7 @@ from base.utils import (
     generated_at_comment,
     to_file_stem,
 )
+from code_gen.cpp_backend import CppDomain, cpp_value
 from code_gen.database import CodegenDatabase
 from ir.syntax_ast import (
     ModifierPresence,
@@ -23,30 +24,6 @@ from ir.syntax_ast import (
     from_InstructionSpec,
 )
 
-
-_CPP_MODIFIER_PRESENCE = {
-    ModifierPresence.ABSENT: "check_end::PresenceRequirement::Absent",
-    ModifierPresence.OPTIONAL: "check_end::PresenceRequirement::Optional",
-    ModifierPresence.REQUIRED: "check_end::PresenceRequirement::Required",
-}
-
-_CPP_OPERAND_PRESENCE = {
-    OperandPresence.REQUIRED: "check_end::OperandPresence::Required",
-    OperandPresence.OPTIONAL: "check_end::OperandPresence::Optional",
-}
-
-_CPP_OPERAND_LAYOUT_KIND = {
-    OperandLayoutKind.FLAT: "check_end::OperandLayoutKind::Flat",
-}
-
-_CPP_OPERAND_SYNTAX_SHAPES = (
-    (OperandSyntaxShape.IDENTIFIER_REF, "check_end::OperandSyntaxShape::Identifier"),
-    (OperandSyntaxShape.IMMEDIATE, "check_end::OperandSyntaxShape::Immediate"),
-    (OperandSyntaxShape.ADDRESS, "check_end::OperandSyntaxShape::Address"),
-    (OperandSyntaxShape.VECTOR_MEMBER, "check_end::OperandSyntaxShape::VectorMember"),
-    (OperandSyntaxShape.VECTOR_PACK, "check_end::OperandSyntaxShape::VectorPack"),
-    (OperandSyntaxShape.PREDICATE, "check_end::OperandSyntaxShape::Predicate"),
-)
 
 def generate_syntax_descriptor_source(
     database: CodegenDatabase,
@@ -224,7 +201,7 @@ def _emit_modifier_entry(
     return f"""\
           check_end::SyntaxModifierDescriptor{{
               .allowed_values = {allowed_values},
-              .presence = {_CPP_MODIFIER_PRESENCE[modifier.presence]},
+              .presence = {cpp_value(CppDomain.SYNTAX_MODIFIER_PRESENCE, modifier.presence.value)},
               .kind_id = {_cpp_string(modifier.kind_id)},
           }}"""
 
@@ -253,7 +230,7 @@ def _emit_operand_layout_array(
         f"""\
           check_end::SyntaxOperandLayoutDescriptor{{
               .layout_id = {_cpp_string(layout.layout_id)},
-              .kind = {_CPP_OPERAND_LAYOUT_KIND[layout.kind]},
+              .kind = {cpp_value(CppDomain.SYNTAX_OPERAND_LAYOUT_KINDS, layout.kind.value)},
               .slots = {variant_name}_layout_{index}_slots,
           }}"""
         for index, layout in enumerate(layouts)
@@ -272,7 +249,7 @@ def _emit_operand_slot(
     return f"""\
           check_end::SyntaxOperandSlotDescriptor{{
               .allowed_shapes = {allowed_shapes},
-              .presence = {_CPP_OPERAND_PRESENCE[slot.presence]},
+              .presence = {cpp_value(CppDomain.SYNTAX_OPERAND_PRESENCE, slot.presence.value)},
           }}"""
 
 
@@ -291,8 +268,8 @@ def _emit_variant_descriptor(
 
 def _cpp_operand_syntax_shape(shape: OperandSyntaxShape) -> str:
     values = [
-        cpp_name
-        for flag, cpp_name in _CPP_OPERAND_SYNTAX_SHAPES
+        cpp_value(CppDomain.SYNTAX_OPERAND_SHAPES, flag.name)
+        for flag in OperandSyntaxShape
         if shape & flag
     ]
     if not values:

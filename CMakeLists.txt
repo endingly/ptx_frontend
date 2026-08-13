@@ -47,6 +47,12 @@ FLEX_TARGET(
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
+set(PTX_CPP_BACKEND_SPEC
+    ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml
+)
+set(PTX_CPP_BACKEND_SCHEMA
+    ${CMAKE_CURRENT_SOURCE_DIR}/instructions/schemas/ptx-cpp-backend-v1.schema.yaml
+)
 file(GLOB_RECURSE PYTHON_CODEGEN_MODULES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/python/base/*.py
     ${CMAKE_CURRENT_SOURCE_DIR}/python/code_gen/*.py
@@ -60,6 +66,7 @@ execute_process(
     COMMAND
     ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
     --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+    --backend-spec ${PTX_CPP_BACKEND_SPEC}
     --output ${CMAKE_CURRENT_BINARY_DIR}/generated
     --list-outputs
     RESULT_VARIABLE PTX_GENERATED_FILES_RESULT
@@ -78,9 +85,12 @@ add_custom_command(
     COMMAND
     ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
     --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+    --backend-spec ${PTX_CPP_BACKEND_SPEC}
     --output ${CMAKE_CURRENT_BINARY_DIR}/generated
     DEPENDS
     ${PTX_SPEC_FILES}
+    ${PTX_CPP_BACKEND_SPEC}
+    ${PTX_CPP_BACKEND_SCHEMA}
     ${PYTHON_CODEGEN_MODULES}
     ${PYTHON_CODEGEN_SCRIPTS}
     COMMENT "Generating PTX frontend code"

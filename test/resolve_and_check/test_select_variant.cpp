@@ -1,7 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <limits>
-
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
 #include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
@@ -13,6 +11,12 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   auto ast = parser.parseInstruction();
   EXPECT_TRUE(ast.has_value()) << ast.error().message;
   return std::move(*ast);
+}
+
+syntax_ast::AstImmediate parse_immediate(std::string_view literal) {
+  const auto ast = parse_instruction(std::string("add.u32 %r0, %r1, ") +
+                                     std::string(literal) + ";");
+  return std::get<syntax_ast::AstImmediate>(ast.operands.back());
 }
 
 TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
@@ -178,7 +182,7 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
 
   const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
-  EXPECT_EQ(immediate->bits, std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(immediate->bits, 0xffffffffU);
   EXPECT_EQ(immediate->type, ScalarType::S32);
   ASSERT_EQ(add->src2.locs.size(), 1U);
   EXPECT_EQ(add->src2.locs.front(),
@@ -277,6 +281,67 @@ TEST(ResolveAdd, RejectsPredicateInGeneralRegisterSlot) {
       std::get<syntax_ast::AstIdentifierRef>(ast.operands[0]).syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Expected a non-predicate register, got '%p1'.");
+}
+
+TEST(ResolveImmediateLiteral, SupportsIntegerSuffixesAndTargetWidth) {
+  const auto decimal = parse_immediate("123U");
+  EXPECT_EQ(decimal.kind, syntax_ast::AstImmediateKind::DecimalInteger);
+  const auto decimal_value =
+      resolve_immediate_literal(decimal, ScalarType::U16);
+  ASSERT_TRUE(decimal_value.has_value()) << decimal_value.error().message;
+  EXPECT_EQ(decimal_value->bits, 123U);
+
+  const auto hexadecimal = parse_immediate("0x10U");
+  EXPECT_EQ(hexadecimal.kind, syntax_ast::AstImmediateKind::HexInteger);
+  const auto hexadecimal_value =
+      resolve_immediate_literal(hexadecimal, ScalarType::U16);
+  ASSERT_TRUE(hexadecimal_value.has_value())
+      << hexadecimal_value.error().message;
+  EXPECT_EQ(hexadecimal_value->bits, 16U);
+
+  const auto negative = parse_immediate("-1");
+  const auto negative_value =
+      resolve_immediate_literal(negative, ScalarType::S16);
+  ASSERT_TRUE(negative_value.has_value()) << negative_value.error().message;
+  EXPECT_EQ(negative_value->bits, 0xffffU);
+
+  const auto out_of_range = parse_immediate("65536");
+  const auto rejected =
+      resolve_immediate_literal(out_of_range, ScalarType::U16);
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().range, out_of_range.syntax.range);
+  EXPECT_EQ(rejected.error().message,
+            "Integer literal '65536' is out of range for scalar type 'U16'.");
+}
+
+TEST(ResolveImmediateLiteral, SupportsFloatingLexicalForms) {
+  const auto decimal = parse_immediate("1.5");
+  EXPECT_EQ(decimal.kind, syntax_ast::AstImmediateKind::DecimalFloat);
+  const auto decimal_value =
+      resolve_immediate_literal(decimal, ScalarType::F32);
+  ASSERT_TRUE(decimal_value.has_value()) << decimal_value.error().message;
+  EXPECT_EQ(decimal_value->bits, 0x3fc00000U);
+
+  const auto f32_hex = parse_immediate("0f3f800000");
+  EXPECT_EQ(f32_hex.kind, syntax_ast::AstImmediateKind::F32Hex);
+  const auto f32_hex_value =
+      resolve_immediate_literal(f32_hex, ScalarType::F32);
+  ASSERT_TRUE(f32_hex_value.has_value()) << f32_hex_value.error().message;
+  EXPECT_EQ(f32_hex_value->bits, 0x3f800000U);
+
+  const auto f64_hex = parse_immediate("0d3ff0000000000000");
+  EXPECT_EQ(f64_hex.kind, syntax_ast::AstImmediateKind::F64Hex);
+  const auto f64_hex_value =
+      resolve_immediate_literal(f64_hex, ScalarType::F64);
+  ASSERT_TRUE(f64_hex_value.has_value()) << f64_hex_value.error().message;
+  EXPECT_EQ(f64_hex_value->bits, 0x3ff0000000000000ULL);
+
+  const auto incompatible = resolve_immediate_literal(decimal, ScalarType::U32);
+  ASSERT_FALSE(incompatible.has_value());
+  EXPECT_EQ(incompatible.error().range, decimal.syntax.range);
+  EXPECT_EQ(incompatible.error().message,
+            "Decimal floating literal '1.5' is incompatible with scalar type "
+            "'U32'.");
 }
 
 TEST(ResolveAdd, PreservesOptionalModifierPresence) {

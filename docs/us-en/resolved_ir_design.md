@@ -32,6 +32,15 @@ Current primitives include `ResolvedRegisterRef`, `ResolvedImmediate`, and
 `RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
 checker never has to reinterpret literal text.
 
+`AstImmediateKind` retains the lexer's literal classification. Decimal and hex
+integers, including their optional `U` suffix, are range-checked against the
+target integer or bit type. Negative values are stored in `bits` as the
+target-width two's-complement representation rather than being unconditionally
+extended to 64 bits. Decimal floats currently convert to `F32` and `F64`, while
+`0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
+respectively. Other floating formats require explicit quantization rules and
+must not silently take the integer path.
+
 Until symbol-table declaration binding is available, `ResolvedRegisterRef`
 owns the register's complete source spelling and also records its
 `ResolvedRegisterClass` and numbered-register index. The index is only a

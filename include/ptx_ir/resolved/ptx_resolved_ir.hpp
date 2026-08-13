@@ -303,6 +303,10 @@ template <PtxOperator T>
 std::expected<T, ResolveDiagnostic> resolve(
     const syntax_ast::AstInstruction& ast);
 
+/** Resolve one lexer-classified immediate literal for a selected scalar type. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
+    const syntax_ast::AstImmediate& immediate, ScalarType type);
+
 std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,

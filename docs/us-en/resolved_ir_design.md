@@ -60,7 +60,7 @@ represent the variant uniquely selected by the modifier combination:
 
 ```cpp
 struct Add {
-  enum class VariantType { IntegerNoSat, SatS32 /* ... */ };
+  enum class VariantType { IntegerNoSat, Sat, PackedOptionalSat };
 
   struct IntegerNoSat {
     ResolvedOperandLayoutTag operand_layout;
@@ -74,16 +74,17 @@ struct Add {
 };
 ```
 
-A fixed modifier is not mutable per-instance state. For example,
-`add.sat.s32` generates:
+A fixed modifier is not mutable per-instance state. In the merged `Add::Sat`,
+`.sat` is fixed while the type is an allowed value with its own availability,
+so it generates:
 
 ```cpp
 inline static constexpr bool saturate = true;
-inline static constexpr ScalarType type = ScalarType::S32;
+WithLocs<ScalarType> type;
 ```
 
-This retains selected semantics without forcing later passes to infer the same
-fact again.
+This avoids re-inferring the fixed fact while retaining the selected type and
+its source location.
 
 ## Multiple operand layouts in one variant
 

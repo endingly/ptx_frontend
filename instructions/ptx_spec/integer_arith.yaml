@@ -15,22 +15,15 @@ type_sets:
     - s32
     - s64
 
-  add_integer_scalar_no_s32:
-    - u16
-    - u32
-    - u64
-    - s16
-    - s64
-
-  add_simd_no_sat_sm90:
+  add_simd_no_sat:
     - u16x2
     - s16x2
 
-  add_packed_optional_sat_sm120:
+  add_packed_optional_sat:
     - u8x4
     - s8x4
 
-  add_sat_sm120:
+  add_late_sat:
     - u16x2
     - s16x2
     - u32
@@ -68,7 +61,7 @@ instructions:
 
     variants:
       - name: add_integer_no_sat
-        description: "add integer no-sat, universal scalar integer form."
+        description: "add integer no-sat scalar and SIMD forms."
         availability:
           ptx: "1.0"
           sm: 0
@@ -83,6 +76,10 @@ instructions:
             presence: required
             values:
               - $add_integer_scalar
+              - value: $add_simd_no_sat
+                availability:
+                  ptx: "8.0"
+                  sm: 90
         rule: integer_arith.add
 
         examples:
@@ -90,9 +87,13 @@ instructions:
             valid: true
           - ptx: "add.s32 r1, r2, 1;"
             valid: true
+          - ptx: "add.u16x2 r1, r2, r3;"
+            valid: true
+          - ptx: "add.s16x2 r1, r2, r3;"
+            valid: true
 
-      - name: add_sat_s32
-        description: "add.sat.s32, universal signed 32-bit saturating add."
+      - name: add_sat
+        description: "add.sat with scalar and packed integer types."
         availability:
           ptx: "1.0"
           sm: 0
@@ -106,39 +107,27 @@ instructions:
           - name: type
             kind: type
             domain: scalar_types
-            presence: fixed
-            value: s32
-        rule: integer_arith.add_sat_s32
+            presence: required
+            values:
+              - s32
+              - value: $add_late_sat
+                availability:
+                  ptx: "9.2"
+                  sm: 120
+                  family: sm_120f
+        rule: integer_arith.add_sat
 
         examples:
           - ptx: "add.sat.s32 r1, r2, r3;"
             valid: true
-
-      - name: add_simd_no_sat_sm90
-        description: "add.u16x2 / add.s16x2 no-sat SIMD form."
-        availability:
-          ptx: "8.0"
-          sm: 90
-        modifiers:
-          - name: sat
-            kind: flag
-            presence: absent
-
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: required
-            values:
-              - $add_simd_no_sat_sm90
-        rule: integer_arith.add
-
-        examples:
-          - ptx: "add.u16x2 r1, r2, r3;"
+          - ptx: "add.sat.u16x2 r1, r2, r3;"
             valid: true
-          - ptx: "add.s16x2 r1, r2, r3;"
+          - ptx: "add.sat.s16x2 r1, r2, r3;"
+            valid: true
+          - ptx: "add.sat.u32 r1, r2, r3;"
             valid: true
 
-      - name: add_packed_optional_sat_sm120
+      - name: add_packed_optional_sat
         description: "add{.sat}.u8x4 / add{.sat}.s8x4 packed integer form."
         availability:
           ptx: "9.2"
@@ -156,7 +145,7 @@ instructions:
             domain: scalar_types
             presence: required
             values:
-              - $add_packed_optional_sat_sm120
+              - $add_packed_optional_sat
         rule: integer_arith.add_packed
 
         examples:
@@ -167,33 +156,4 @@ instructions:
           - ptx: "add.s8x4 r1, r2, r3;"
             valid: true
           - ptx: "add.sat.s8x4 r1, r2, r3;"
-            valid: true
-
-      - name: add_sat_sm120
-        description: "add.sat.u16x2 / add.sat.s16x2 / add.sat.u32."
-        availability:
-          ptx: "9.2"
-          sm: 120
-          family: sm_120f
-        modifiers:
-          - name: sat
-            kind: flag
-            presence: fixed
-            value: true
-            token: ".sat"
-
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: required
-            values:
-              - $add_sat_sm120
-        rule: integer_arith.add_sat_sm120
-
-        examples:
-          - ptx: "add.sat.u16x2 r1, r2, r3;"
-            valid: true
-          - ptx: "add.sat.s16x2 r1, r2, r3;"
-            valid: true
-          - ptx: "add.sat.u32 r1, r2, r3;"
             valid: true

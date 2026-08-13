@@ -62,6 +62,38 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
                  Add::VariantType::MixedF32);
 }
 
+TEST(SelectVariantSub, SelectsEveryGeneratedVariant) {
+  const auto expect_variant = [](std::string_view source,
+                                 Sub::VariantType expected) {
+    const auto ast = parse_instruction(source);
+    const auto selected = selectVariant<Sub>(ast);
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("sub.u32 %r0, %r1, %r2;", Sub::VariantType::IntegerNoSat);
+  expect_variant("sub.s32 %r0, %r1, %r2;", Sub::VariantType::OptionalSat);
+  expect_variant("sub.sat.s32 %r0, %r1, %r2;",
+                 Sub::VariantType::OptionalSat);
+  expect_variant("sub.u8x4 %r0, %r1, %r2;",
+                 Sub::VariantType::OptionalSat);
+  expect_variant("sub.sat.s8x4 %r0, %r1, %r2;",
+                 Sub::VariantType::OptionalSat);
+  expect_variant("sub.rz.ftz.sat.f32 %f0, %f1, %f2;",
+                 Sub::VariantType::FloatF32);
+  expect_variant("sub.rp.f32x2 %r0, %r1, %r2;",
+                 Sub::VariantType::FloatF32x2);
+  expect_variant("sub.rm.f64 %fd0, %fd1, %fd2;",
+                 Sub::VariantType::FloatF64);
+  expect_variant("sub.rn.ftz.sat.f16x2 %r0, %r1, %r2;",
+                 Sub::VariantType::Half);
+  expect_variant("sub.bf16 %r0, %r1, %r2;", Sub::VariantType::Bfloat);
+  expect_variant("sub.f32.f16 %f0, %h1, %f2;",
+                 Sub::VariantType::MixedF32);
+  expect_variant("sub.rz.f32.bf16.sat %f0, %h1, %f2;",
+                 Sub::VariantType::MixedF32);
+}
+
 TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
   const auto expect_variant = [](std::string_view source,
                                  Bar::VariantType expected) {
@@ -241,6 +273,34 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
   EXPECT_EQ(add->src.value.spelling, "%h1");
   EXPECT_EQ(add->addend.value.spelling, "%f2");
   EXPECT_EQ(add->input_type.locs.front(), ast.modifiers[2].syntax.range);
+}
+
+TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
+  const auto integer_ast = parse_instruction("sub.sat.s32 %r4, %r5, -1;");
+  const auto integer_resolved = resolve<Sub>(integer_ast);
+  ASSERT_TRUE(integer_resolved.has_value())
+      << integer_resolved.error().message;
+  const auto* integer =
+      std::get_if<Sub::OptionalSat>(&integer_resolved->variant);
+  ASSERT_NE(integer, nullptr);
+  EXPECT_TRUE(integer->saturate.value);
+  ASSERT_EQ(integer->saturate.locs.size(), 1U);
+  EXPECT_EQ(integer->type.value, ScalarType::S32);
+  const auto* immediate = std::get_if<ResolvedImmediate>(&integer->src2.value);
+  ASSERT_NE(immediate, nullptr);
+  EXPECT_EQ(immediate->type, ScalarType::S32);
+
+  const auto mixed_ast =
+      parse_instruction("sub.rz.f32.bf16.sat %f0, %h1, %f2;");
+  const auto mixed_resolved = resolve<Sub>(mixed_ast);
+  ASSERT_TRUE(mixed_resolved.has_value()) << mixed_resolved.error().message;
+  const auto* mixed = std::get_if<Sub::MixedF32>(&mixed_resolved->variant);
+  ASSERT_NE(mixed, nullptr);
+  EXPECT_EQ(mixed->rounding.value, RoundingMode::Rz);
+  EXPECT_EQ(Sub::MixedF32::result_type, ScalarType::F32);
+  EXPECT_EQ(mixed->input_type.value, ScalarType::BF16);
+  EXPECT_TRUE(mixed->saturate.value);
+  EXPECT_EQ(mixed->subtrahend.value.spelling, "%f2");
 }
 
 TEST(SelectVariantAdd, RejectsFloatingModifierOutsideItsForm) {

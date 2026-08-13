@@ -341,3 +341,273 @@ instructions:
             valid: true
           - ptx: "add.rz.f32.bf16.sat d, a, c;"
             valid: true
+
+  - opcode: sub
+    section: "9.7.3.4"
+    doc: "Standard, half-precision, bfloat, and mixed-precision subtract."
+    syntax: >-
+      sub{.rnd}{.ftz}{.sat}.f32 | sub{.rnd}{.ftz}.f32x2 |
+      sub{.rnd}.f64 | sub{.rn}{.ftz}{.sat}.{f16|f16x2} |
+      sub{.rn}.{bf16|bf16x2} dst, src1, src2 |
+      sub{.rnd}{.sat}.f32.{f16|bf16} dst, src, subtrahend
+    operands: $binary_float_scalar
+
+    variants:
+      - name: sub_float_f32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - rn
+              - rz
+              - value: rm
+                availability:
+                  ptx: "1.0"
+                  sm: 20
+              - value: rp
+                availability:
+                  ptx: "1.0"
+                  sm: 20
+
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        rule: floating_point.sub
+
+        examples:
+          - ptx: "sub.f32 d, a, b;"
+            valid: true
+          - ptx: "sub.rz.ftz.sat.f32 d, a, b;"
+            valid: true
+
+      - name: sub_float_f32x2
+        operands: $binary_float_register
+        availability:
+          ptx: "8.6"
+          sm: 100
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - $rounding_modes
+
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32x2
+        rule: floating_point.sub
+
+        examples:
+          - ptx: "sub.f32x2 d, a, b;"
+            valid: true
+          - ptx: "sub.rp.ftz.f32x2 d, a, b;"
+            valid: true
+
+      - name: sub_float_f64
+        availability:
+          ptx: "1.0"
+          sm: 13
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - $rounding_modes
+
+          - name: ftz
+            kind: flag
+            presence: absent
+
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f64
+        rule: floating_point.sub
+
+        examples:
+          - ptx: "sub.f64 d, a, b;"
+            valid: true
+          - ptx: "sub.rm.f64 d, a, b;"
+            valid: true
+
+      - name: sub_half
+        operands: $binary_float_register
+        availability:
+          ptx: "4.2"
+          sm: 53
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - rn
+
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $add_half_types
+        rule: floating_point.sub_half
+
+        examples:
+          - ptx: "sub.f16 d, a, b;"
+            valid: true
+          - ptx: "sub.rn.ftz.sat.f16x2 d, a, b;"
+            valid: true
+
+      - name: sub_bfloat
+        operands: $binary_float_register
+        availability:
+          ptx: "7.8"
+          sm: 90
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - rn
+
+          - name: ftz
+            kind: flag
+            presence: absent
+
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $add_bfloat_types
+        rule: floating_point.sub_bfloat
+
+        examples:
+          - ptx: "sub.bf16 d, a, b;"
+            valid: true
+          - ptx: "sub.rn.bf16x2 d, a, b;"
+            valid: true
+
+      - name: sub_mixed_f32
+        operands:
+          - name: dst
+            kind: reg
+            role: dst
+            access: write
+            type:
+              expr: modifier(result_type)
+
+          - name: src
+            kind: reg
+            role: src1
+            access: read
+            type:
+              expr: modifier(input_type)
+
+          - name: subtrahend
+            kind: reg
+            role: src2
+            access: read
+            type:
+              expr: modifier(result_type)
+        availability:
+          ptx: "8.6"
+          sm: 100
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: optional
+            default: rn
+            values:
+              - $rounding_modes
+
+          - name: result_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+
+          - name: input_type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - f16
+              - bf16
+
+          - name: ftz
+            kind: flag
+            presence: absent
+
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+        rule: mixed_precision.sub
+
+        examples:
+          - ptx: "sub.f32.f16 d, a, c;"
+            valid: true
+          - ptx: "sub.rz.f32.bf16.sat d, a, c;"
+            valid: true

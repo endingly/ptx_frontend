@@ -81,6 +81,17 @@ TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   EXPECT_EQ(selected.error().message, "Duplicate 'type' modifier.");
 }
 
+TEST(ResolveAdd, RejectsMismatchedOpcode) {
+  const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
+
+  const auto resolved = resolve<Add>(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().range, ast.opcode.syntax.range);
+  EXPECT_EQ(resolved.error().message,
+            "Cannot resolve opcode 'sub' as 'add'.");
+}
+
 TEST(CollectActualModifiersAdd, TypeAdapterUsesDescriptorImplementation) {
   const auto ast = parse_instruction("add.sat.u32 %r0, %r1, %r2;");
 

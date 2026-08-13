@@ -14,6 +14,12 @@ class OperandTypeExpressionKind(Enum):
     MODIFIER = "modifier"
 
 
+class RuntimeLookupKind(str, Enum):
+    """Runtime C++ lookup forms emitted for backend value domains."""
+
+    PTX_SUFFIX = "ptx_suffix"
+
+
 @dataclass(frozen=True)
 class OperandTypeExpression:
     """A parsed operand type expression from the YAML syntax specification."""
@@ -124,6 +130,7 @@ class DomainBackend:
     cpp_type: str
     values: dict[str, str]
     default: str | None = None
+    runtime_lookup: RuntimeLookupKind | None = None
 
 
 @dataclass(frozen=True)

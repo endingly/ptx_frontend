@@ -47,6 +47,14 @@ FLEX_TARGET(
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
+# The generator's output list contains one resolved-IR source per
+# ``codegen_category``.  A category change does not alter the GLOB result, so
+# list every discovered spec as a configure dependency as well: CMake must
+# rerun ``--list-outputs`` before choosing the library's generated sources.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PTX_SPEC_FILES})
+set(PTX_INSTRUCTION_SCHEMA
+    ${CMAKE_CURRENT_SOURCE_DIR}/instructions/schemas/ptx-instr-v1.schema.yaml
+)
 set(PTX_CPP_BACKEND_SPEC
     ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml
 )
@@ -89,6 +97,7 @@ add_custom_command(
     --output ${CMAKE_CURRENT_BINARY_DIR}/generated
     DEPENDS
     ${PTX_SPEC_FILES}
+    ${PTX_INSTRUCTION_SCHEMA}
     ${PTX_CPP_BACKEND_SPEC}
     ${PTX_CPP_BACKEND_SCHEMA}
     ${PYTHON_CODEGEN_MODULES}

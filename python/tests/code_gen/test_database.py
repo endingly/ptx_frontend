@@ -34,6 +34,7 @@ def _spec(
 ) -> dict[str, object]:
     return {
         "schema": "ptx-instr/v1",
+        "ptx_isa": "9.2",
         "category": category,
         "codegen_category": codegen_category,
         "instructions": [
@@ -97,7 +98,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             type_value="u32",
         )
         del missing_category["category"]
-        with self.assertRaisesRegex(ValueError, "top-level category"):
+        with self.assertRaisesRegex(ValueError, "category"):
             self._load(missing_category)
 
         missing_codegen_category = _spec(
@@ -107,8 +108,20 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             type_value="u32",
         )
         del missing_codegen_category["codegen_category"]
-        with self.assertRaisesRegex(ValueError, "top-level codegen_category"):
+        with self.assertRaisesRegex(ValueError, "codegen_category"):
             self._load(missing_codegen_category)
+
+    def test_rejects_schema_violation_before_normalization(self) -> None:
+        invalid = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_integer",
+            type_value="u32",
+        )
+        invalid["unexpected"] = True
+
+        with self.assertRaisesRegex(ValueError, "unexpected"):
+            self._load(invalid)
 
     def test_rejects_codegen_category_disagreement(self) -> None:
         with self.assertRaisesRegex(ValueError, "disagree on codegen_category"):
@@ -148,10 +161,10 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "collide in C\\+\\+"):
             self._load(
                 _spec(
-                    category="integer_arithmetic",
-                    codegen_category="arithmetic",
-                    variant_name="add_a-b",
-                    type_value="u32",
+                category="integer_arithmetic",
+                codegen_category="arithmetic",
+                variant_name="add_a__b",
+                type_value="u32",
                 ),
                 _spec(
                     category="floating_point",

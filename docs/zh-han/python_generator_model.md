@@ -148,6 +148,12 @@ backend spec 不应重复表达 `ptx_spec` 中的 PTX ISA 语义，也不应影�
 domain 是否齐全；缺失 domain/value 必须在生成期报告 `ValueError`。CMake 将 backend
 YAML 与 schema 都列为生成依赖，修改任何 C++ 映射都会触发重新生成。
 
+需要在运行期从 PTX 源码 suffix 解析值的 domain 声明
+`runtime_lookup: ptx_suffix`。生成器会把对应映射生成到 private 的
+`resolved_value_domains.gen.hpp`，并以 `inline constexpr std::array` 保存。
+手写 resolver 只保留一份通用 suffix 查找算法，不再重复 scalar type 或 rounding mode
+的映射数据；未标记的 domain 仍仅用于生成期，不会产生运行期查找表。
+
 ## 生成规则
 
 - YAML identifier 经统一转换得到 deterministic PascalCase C++ 名称；碰撞必须报错。

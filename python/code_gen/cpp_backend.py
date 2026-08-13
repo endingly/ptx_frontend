@@ -18,6 +18,7 @@ from code_gen.model import (
     InstructionBackend,
     ModifierBackend,
     OperandBackend,
+    RuntimeLookupKind,
 )
 
 
@@ -215,10 +216,26 @@ def _normalize_domains(
         default = raw_domain_object.get("default")
         if default is not None and not isinstance(default, str):
             raise TypeError(f"{path}: domain {name!r} default must be a string")
+        raw_runtime_lookup = raw_domain_object.get("runtime_lookup")
+        if raw_runtime_lookup is None:
+            runtime_lookup = None
+        elif not isinstance(raw_runtime_lookup, str):
+            raise TypeError(
+                f"{path}: domain {name!r} runtime_lookup must be a string"
+            )
+        else:
+            try:
+                runtime_lookup = RuntimeLookupKind(raw_runtime_lookup)
+            except ValueError as error:
+                raise ValueError(
+                    f"{path}: domain {name!r} has unsupported runtime lookup "
+                    f"{raw_runtime_lookup!r}"
+                ) from error
         domains[str(name)] = DomainBackend(
             cpp_type=cpp_type,
             values=values,
             default=default,
+            runtime_lookup=runtime_lookup,
         )
     return domains
 

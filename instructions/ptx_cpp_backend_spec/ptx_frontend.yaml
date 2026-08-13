@@ -7,12 +7,13 @@ spec_schema: ptx-instr/v1
 category: common
 namespace: ptx_frontend::resolved_ir
 
-# This file owns C++ spellings only. PTX legality, variants, layouts, and
-# availability remain in instructions/ptx_spec.
+# This file owns C++ spellings and explicitly declared runtime lookup tables.
+# PTX legality, variants, layouts, and availability remain in instructions/ptx_spec.
 domains:
   scalar_types:
     cpp_type: ScalarType
     default: ScalarType::Invalid
+    runtime_lookup: ptx_suffix
     values:
       u8: ScalarType::U8
       u8x4: ScalarType::U8x4
@@ -48,6 +49,7 @@ domains:
   rounding_modes:
     cpp_type: RoundingMode
     default: RoundingMode::Invalid
+    runtime_lookup: ptx_suffix
     values:
       rn: RoundingMode::Rn
       rz: RoundingMode::Rz

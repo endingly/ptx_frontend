@@ -197,6 +197,15 @@ $defs:
         description: "Optional default C++ expression for this domain."
         $ref: "#/$defs/cpp_expr"
 
+      runtime_lookup:
+        description: >
+          Optional runtime lookup table to generate for this domain. This is
+          only for values parsed from PTX source text; ordinary generation-only
+          mappings must omit it.
+        type: string
+        enum:
+          - ptx_suffix
+
   value_mapping:
     description: "Mapping for one semantic value."
     oneOf:

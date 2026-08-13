@@ -167,6 +167,13 @@ checking that every domain required by the active generation path exists.
 CMake tracks both the backend YAML and its schema as generation dependencies,
 so changing a C++ mapping regenerates all affected artifacts.
 
+Domains that must parse PTX source suffixes at runtime declare
+`runtime_lookup: ptx_suffix`. The generator emits their mappings as private
+`inline constexpr std::array` tables in `resolved_value_domains.gen.hpp`.
+The handwritten resolver owns one generic suffix-search algorithm and does not
+repeat scalar-type or rounding-mode mapping data. Domains without this marker
+remain generation-only mappings and do not produce runtime tables.
+
 ## Generation rules
 
 - YAML identifiers deterministically become PascalCase C++ names; collisions

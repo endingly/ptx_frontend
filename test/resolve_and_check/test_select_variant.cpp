@@ -1,12 +1,22 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <string>
+#include <type_traits>
 
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
 #include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
+
+static_assert(!std::is_nothrow_constructible_v<WithLocs<std::string>,
+                                               std::string&&, SourceRange>);
+
+TEST(ScalarTypeMetadata, InvalidHasInvalidKindAndZeroSize) {
+  EXPECT_EQ(scalar_kind(ScalarType::Invalid), ScalarKind::Invalid);
+  EXPECT_EQ(scalar_size_of(ScalarType::Invalid), 0U);
+}
 
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   PtxSyntaxParser parser(source);

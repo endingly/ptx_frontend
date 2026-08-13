@@ -1,5 +1,7 @@
 #pragma once
+#include <concepts>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -103,11 +105,7 @@ struct WithLocs {
 
   WithLocs(const T& v, SourceRange l) : value(v) { locs.push_back(l); }
 
-  WithLocs(T&& v,
-           SourceRange l) noexcept(std::is_nothrow_move_constructible_v<T>)
-      : value(std::move(v)) {
-    locs.push_back(l);
-  }
+  WithLocs(T&& v, SourceRange l) : value(std::move(v)) { locs.push_back(l); }
 
   WithLocs(const T& v) : value(v), locs{} {}
 

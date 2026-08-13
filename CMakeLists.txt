@@ -6,14 +6,18 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
-option(CCACHE_FOUND "Use ccache to speed up recompilation" ON)
+option(PTX_USE_CCACHE "Use ccache to speed up compilation" ON)
 option(BUILD_TESTING "enable test program building" OFF)
 
-if(CCACHE_FOUND)
-    find_program(CCACHE_FOUND ccache)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-endif(CCACHE_FOUND)
+if(PTX_USE_CCACHE)
+    find_program(CCACHE_EXECUTABLE ccache)
+    if(CCACHE_EXECUTABLE)
+        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_EXECUTABLE})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_EXECUTABLE})
+    else()
+        message(WARNING "PTX_USE_CCACHE is ON, but ccache was not found")
+    endif()
+endif()
 
 if(BUILD_TESTING)
     include(CTest)
@@ -43,7 +47,14 @@ FLEX_TARGET(
 # find python
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml)
-file(GLOB_RECURSE PYTHON_SCRIPTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/python/*.py)
+file(GLOB_RECURSE PYTHON_CODEGEN_MODULES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/base/*.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/code_gen/*.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/ir/*.py
+)
+set(PYTHON_CODEGEN_SCRIPTS
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+)
 
 execute_process(
     COMMAND
@@ -70,7 +81,8 @@ add_custom_command(
     --output ${CMAKE_CURRENT_BINARY_DIR}/generated
     DEPENDS
     ${PTX_SPEC_FILES}
-    ${PYTHON_SCRIPTS}
+    ${PYTHON_CODEGEN_MODULES}
+    ${PYTHON_CODEGEN_SCRIPTS}
     COMMENT "Generating PTX frontend code"
 )
 add_custom_target(

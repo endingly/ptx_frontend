@@ -126,6 +126,29 @@ anonymous or `generated_detail` namespace; getters are in
 `checker` namespace in the public header, and each category implementation
 likewise opens it only once.
 
+Every emitter obtains the PTX scalar-spelling to C++ `ScalarType` enumerator
+mapping from the single `ir.scalar_types` registry. Generated files do not
+embed wall-clock time by default. If the build environment provides the
+standard `SOURCE_DATE_EPOCH`, the warning uses that deterministic UTC time;
+otherwise it explicitly marks the time as omitted. Identical specs and
+generator inputs therefore produce byte-identical content.
+
+### Backend configuration boundary
+
+`instructions/ptx_cpp_backend_spec/*.yaml` and
+`instructions/schemas/ptx-cpp-backend-v1.schema.yaml` are retained as a
+separate C++ backend configuration layer. The current generation pipeline does
+not consume this layer yet. In the future, C++ spelling tables, enum/array
+mappings, and other emission-only policies currently embedded in Python
+emitters can move there incrementally.
+
+A backend spec must not duplicate PTX ISA semantics from `ptx_spec` or alter
+the normalized `InstructionSpec`. `code_gen.model` reserves strongly typed
+models including `DomainBackend`, `InstructionBackend`, `EmitBackend`, and
+`CodegenUnit`, but the generation path does not consume them yet. Connecting
+this layer requires a separate loader and semantic validation in addition to
+schema validation; emitters must not read raw YAML dictionaries directly.
+
 ## Generation rules
 
 - YAML identifiers deterministically become PascalCase C++ names; collisions

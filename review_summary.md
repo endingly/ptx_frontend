@@ -114,18 +114,16 @@
   `PtxOperator` 的类型都能直接使用。保留单一公开生成头是有意的 API 取舍，consumer
   不再重复编译大型 resolve/check 函数体。
 
-  10. 其他应清理的问题
+  10. 已解决：基础代码与生成工程细节已清理
 
-  - include/ptx_ir/source_loc.hpp:106 的 move constructor 标记 noexcept，但内部 vector::push_back 可能抛异常。
-  - src/ptx_ir/base.cpp:5 对 ScalarType::Invalid 返回 Bit，虽然枚举中已有 ScalarKind::Invalid。
-  - include/ptx_ir/base.hpp:55 返回会分配内存的 std::string，却标记为 noexcept。
-  - base.hpp 中旧 ParsedOperand、Variable、MethodDeclaration 等类型没有外部使用，应拆除或迁移，避免与新 IR 并存。
-  - instructions/ptx_cpp_backend_spec、旧 backend schema 和 _shared 数据目前没有消费者，应删除或明确标记为未来设计。
-  - ScalarType 的 Python→C++ 映射在多个生成器中重复，应集中为唯一 registry。
-  - 生成文件写入当前时间，破坏可复现生成；所有 Python 文件（包括测试）又都是 codegen 依赖，会造成不必要的全量重新生
-    成。
-
-  - CMakeLists.txt:9 混用了 CCACHE_FOUND option 与 find_program 结果，应拆成 PTX_USE_CCACHE 和 CCACHE_EXECUTABLE。
+  `WithLocs` 的 throwing constructor 和 enum `to_string` 已移除错误的 `noexcept`；
+  `ScalarType::Invalid` 现在映射到 `ScalarKind::Invalid`。`base.hpp` 中无消费者的旧
+  AST/IR 类型与 `_shared` 数据已删除；C++ backend spec/schema 作为未来集中承载
+  emitter policy/data 的独立配置层予以保留，当前不进入 instruction semantic
+  database。Python scalar 映射集中到唯一 registry；生成时间遵循
+  `SOURCE_DATE_EPOCH`，默认不嵌入 wall-clock 时间。CMake codegen 依赖已排除 Python
+  tests，并将 ccache option/program 分为 `PTX_USE_CCACHE` 与
+  `CCACHE_EXECUTABLE`。
 
   ## 建议执行顺序
 
@@ -134,7 +132,7 @@
   3. 建立 register/symbol identity 和 rule checker ABI。
   4. 强制 schema 校验，并执行 YAML examples。
   5. 将 generated resolve/check 实现迁出公共头，再开始批量扩展指令。
-  6. 最后清除旧 IR/backend 资产与重复映射。
+  6. 最后清除无消费者的旧 IR/`_shared` 资产与重复映射；保留独立 backend 配置层。
 
   当前 Debug、Release 各 51 项 CTest 均通过，两份现有 YAML 也通过 schema validator，git diff --check 无错误。我没有修
   改工作区源码。

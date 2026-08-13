@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "ptx_ir/base.hpp"
+#include "ptx_ir/source_loc.hpp"
 
 namespace ptx_frontend::resolved_ir::checker {
 
@@ -257,8 +258,7 @@ CheckResult check_availability(const VariantDescriptor& variant,
  * common stage.
  */
 CheckResult check_common(const InstructionDescriptor& instruction,
-                         std::string_view variant_name,
-                         const Context& context);
+                         std::string_view variant_name, const Context& context);
 
 /**
  * Check operand constraints independent of a particular opcode.
@@ -286,9 +286,9 @@ CheckResult check_operand_layout_tag(std::string_view variant_name,
  * A layout without YAML ``availability`` has an empty requirement; the
  * containing variant's availability is still checked by ``check_common``.
  */
-CheckResult check_operand_layout_availability(
-    const VariantDescriptor& variant, uint16_t selected_layout,
-    const Context& context);
+CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
+                                              uint16_t selected_layout,
+                                              const Context& context);
 
 /** Check availability constraints for the actual dynamic modifier values. */
 CheckResult check_modifier_value_availability(

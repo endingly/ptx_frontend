@@ -92,11 +92,13 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 
 ## C++ emitter 与产物
 
-`python/scripts/gen_all.py` 协调生成，输出固定为：
+`python/scripts/gen_all.py` 协调生成一个公共声明头、按 category 分片的实现源以及
+三份 descriptor 源文件：
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | opcode structs、`resolve<T>`、`check<T>` 特化 |
+| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | 全部 opcode structs，以及 `resolve<T>`、`check<T>` 的显式特化声明 |
+| `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | 该 category 下两组显式特化的 out-of-line 定义 |
 | `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source syntax descriptors 与 getter |
 | `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors 与 getter |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors 与 getter |
@@ -104,9 +106,15 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 生成的公开头在构建树中仍平铺于 `public` include root；CMake 会将这个特定
 文件安装为 `include/ptx_ir/resolved/resolved_ir.gen.hpp`。
 
+公共头不包含生成函数体。每个 YAML instruction 的 category 优先使用 instruction-level
+`category`，未设置时继承文件顶层 `category`；生成脚本据此产生稳定的 category 源文件，
+并由 CMake 编译进 `ptx_frontend` library。这样 consumer 仍只有一个 include 入口，
+但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
+
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
-`generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；所有 generated
-checker specialization 位于单一 `checker` namespace。
+`generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；checker
+specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只
+打开一次对应 namespace。
 
 ## 生成规则
 

@@ -86,3 +86,4 @@ class InstructionSpec:
     opcode: str
     syntax: str | None
     variants: tuple[VariantSpec, ...]
+    category: str = "uncategorized"

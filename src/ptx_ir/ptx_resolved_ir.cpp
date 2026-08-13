@@ -1,4 +1,5 @@
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
+#include "resolved_value_domains.gen.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -205,34 +206,22 @@ const SyntaxVariantDescriptor& find_syntax_variant_descriptor(
   return *it;
 }
 
-std::optional<ScalarType> scalar_type_from_ptx_name(std::string_view spelling) {
-  static constexpr std::array<std::pair<std::string_view, ScalarType>, 30>
-      scalar_types = {{
-          {".u8", ScalarType::U8},         {".u8x4", ScalarType::U8x4},
-          {".u16", ScalarType::U16},       {".u16x2", ScalarType::U16x2},
-          {".u32", ScalarType::U32},       {".u64", ScalarType::U64},
-          {".s8", ScalarType::S8},         {".s8x4", ScalarType::S8x4},
-          {".s16", ScalarType::S16},       {".s16x2", ScalarType::S16x2},
-          {".s32", ScalarType::S32},       {".s64", ScalarType::S64},
-          {".b8", ScalarType::B8},         {".b16", ScalarType::B16},
-          {".b32", ScalarType::B32},       {".b64", ScalarType::B64},
-          {".b128", ScalarType::B128},     {".f16", ScalarType::F16},
-          {".f16x2", ScalarType::F16x2},   {".f32", ScalarType::F32},
-          {".f32x2", ScalarType::F32x2},   {".f64", ScalarType::F64},
-          {".bf16", ScalarType::BF16},     {".bf16x2", ScalarType::BF16x2},
-          {".e4m3x2", ScalarType::E4m3x2}, {".e5m2x2", ScalarType::E5m2x2},
-          {".pred", ScalarType::Pred},     {".tf32", ScalarType::TF32},
-          {".e4m3", ScalarType::E4m3},     {".e5m2", ScalarType::E5m2},
-      }};
+template <typename T, size_t N>
+constexpr std::optional<T> lookup_ptx_suffix(
+    const std::array<generated_detail::PtxSuffixEntry<T>, N>& entries,
+    std::string_view spelling) {
+  if (spelling.starts_with('.'))
+    spelling.remove_prefix(1);
+  for (const auto& entry : entries) {
+    if (entry.suffix == spelling)
+      return entry.value;
+  }
+  return std::nullopt;
+}
 
-  const auto it =
-      std::ranges::find_if(scalar_types, [spelling](const auto& entry) {
-        return entry.first == spelling || (!spelling.starts_with('.') &&
-                                           entry.first.substr(1) == spelling);
-      });
-  if (it == scalar_types.end())
-    return std::nullopt;
-  return it->second;
+std::optional<ScalarType> scalar_type_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kScalarTypes, spelling);
 }
 
 std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
@@ -250,17 +239,7 @@ std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
 
 std::optional<RoundingMode> rounding_mode_from_ptx_name(
     std::string_view spelling) {
-  static constexpr std::array<std::pair<std::string_view, RoundingMode>, 4>
-      rounding_modes = {{{".rn", RoundingMode::Rn},
-                         {".rz", RoundingMode::Rz},
-                         {".rm", RoundingMode::Rm},
-                         {".rp", RoundingMode::Rp}}};
-  const auto it =
-      std::ranges::find_if(rounding_modes, [spelling](const auto& entry) {
-        return entry.first == spelling || (!spelling.starts_with('.') &&
-                                           entry.first.substr(1) == spelling);
-      });
-  return it == rounding_modes.end() ? std::nullopt : std::optional{it->second};
+  return lookup_ptx_suffix(generated_detail::kRoundingModes, spelling);
 }
 
 std::expected<WithLocs<RoundingMode>, ResolveDiagnostic> resolve_rounding_mode(

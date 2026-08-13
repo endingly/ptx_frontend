@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from base.utils import file_stem_to_pascal_case
 from code_gen.load_yaml import load_yaml
 from code_gen.model import InstructionSpec, VariantSpec, modifier_spellings
 from code_gen.normalize import normalize_instruction_spec
+from jsonschema import Draft202012Validator
+
+
+PTX_INSTRUCTION_SCHEMA = (
+    Path(__file__).resolve().parents[2]
+    / "instructions/schemas/ptx-instr-v1.schema.yaml"
+)
 
 
 @dataclass(frozen=True)
@@ -40,14 +48,17 @@ def load_codegen_database(*, spec_dir: Path) -> CodegenDatabase:
     if not spec_files:
         raise ValueError(f"no PTX instruction specs found in {spec_dir}")
 
-    specs = tuple(load_yaml(path) for path in spec_files)
-    schema_versions = {str(spec["schema"]) for spec in specs}
+    specs = tuple((path, load_yaml(path)) for path in spec_files)
+    for path, spec in specs:
+        _validate_instruction_schema(path, spec)
+
+    schema_versions = {str(spec["schema"]) for _, spec in specs}
     if len(schema_versions) != 1:
         raise ValueError(f"mixed PTX spec schema versions: {sorted(schema_versions)}")
 
     definitions = tuple(
         instruction
-        for spec in specs
+        for _, spec in specs
         for instruction in normalize_instruction_spec(spec)
     )
     instructions = _merge_instruction_definitions(definitions)
@@ -55,6 +66,28 @@ def load_codegen_database(*, spec_dir: Path) -> CodegenDatabase:
         spec_schema=next(iter(schema_versions)),
         instructions=instructions,
     )
+
+
+@cache
+def _instruction_schema_validator() -> Draft202012Validator:
+    """Load the ISA schema once for a database-loading process."""
+
+    return Draft202012Validator(load_yaml(PTX_INSTRUCTION_SCHEMA))
+
+
+def _validate_instruction_schema(path: Path, spec: dict[str, Any]) -> None:
+    """Reject a malformed ISA spec before semantic normalization begins."""
+
+    errors = sorted(
+        _instruction_schema_validator().iter_errors(spec),
+        key=lambda error: list(error.path),
+    )
+    if not errors:
+        return
+
+    error = errors[0]
+    location = ".".join(str(piece) for piece in error.path) or "<root>"
+    raise ValueError(f"{path}:{location}: {error.message}")
 
 
 def _merge_instruction_definitions(

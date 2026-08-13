@@ -28,6 +28,9 @@ from code_gen.gen_resolved_ir import (
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
+from code_gen.gen_resolved_value_domains import (
+    generate_resolved_value_domain_header,
+)
 from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
 from base.utils import format_file_inplace
 
@@ -98,6 +101,19 @@ def main() -> None:
     remove_legacy_generated_files(output_dir)
 
     generated_files: list[Path] = []
+
+    # -------------------------------------------------------------------------
+    # Private runtime lookup tables for resolver-owned value domains
+    # -------------------------------------------------------------------------
+
+    resolved_value_domains_path = (
+        output_dir / "private/resolved_value_domains.gen.hpp"
+    )
+    generate_resolved_value_domain_header(
+        backend,
+        output_path=resolved_value_domains_path,
+    )
+    generated_files.append(resolved_value_domains_path)
 
     # -------------------------------------------------------------------------
     # Public generated Resolved IR instruction declarations
@@ -181,6 +197,7 @@ def validate_file(path: Path, argument_name: str) -> None:
 def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
     return (
         output_dir / "public/resolved_ir.gen.hpp",
+        output_dir / "private/resolved_value_domains.gen.hpp",
         *(
             resolved_ir_category_source_path(output_dir, category)
             for category in instruction_categories(database)

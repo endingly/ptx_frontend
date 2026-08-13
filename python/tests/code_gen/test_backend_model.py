@@ -20,6 +20,7 @@ from code_gen.model import (
     InstructionBackend,
     ModifierBackend,
     OperandBackend,
+    RuntimeLookupKind,
 )
 from ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage
 
@@ -100,6 +101,13 @@ class BackendModelTests(unittest.TestCase):
                 "Source"
             ],
             "check_end::OperandRole::Source",
+        )
+        self.assertIs(
+            unit.domains[CppDomain.SCALAR_TYPES.value].runtime_lookup,
+            RuntimeLookupKind.PTX_SUFFIX,
+        )
+        self.assertIsNone(
+            unit.domains[CppDomain.RESOLVED_OPERAND_ROLES.value].runtime_lookup
         )
         self.assertEqual(
             set(unit.domains), {domain.value for domain in CppDomain}

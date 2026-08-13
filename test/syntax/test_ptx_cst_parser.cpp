@@ -1,0 +1,281 @@
+#include <gtest/gtest.h>
+
+#include <string_view>
+#include <variant>
+
+#include "ptx_ir/cst/ptx_cst_parser.hpp"
+
+namespace ptx_frontend {
+namespace {
+
+using syntax_cst::CstAddress;
+using syntax_cst::CstVectorMember;
+using syntax_cst::CstVectorPack;
+
+TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
+  constexpr std::string_view source =
+      "  // lead\n@!%p add /* type */ .u32 "
+      "[%rd1 /* op */ + 16], {%r1, -2} /* tail */ ;\n// eof";
+  PtxCstParser parser(source);
+
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_EQ(result->module(), nullptr);
+  EXPECT_EQ(result->sourceText(), source);
+  EXPECT_EQ(result->token(instruction->opcode).text, "add");
+  ASSERT_TRUE(instruction->predicate.has_value());
+  EXPECT_TRUE(instruction->predicate->exclamation_token.has_value());
+  ASSERT_EQ(instruction->modifiers.size(), 1u);
+  EXPECT_EQ(result->token(instruction->modifiers[0]).text, ".u32");
+  ASSERT_EQ(instruction->operands.size(), 2u);
+  EXPECT_TRUE(instruction->operands[0].trailing_comma.has_value());
+  EXPECT_EQ(result->token(*instruction->operands[0].trailing_comma).kind,
+            TokenKind::Comma);
+  EXPECT_EQ(result->token(instruction->semicolon).kind, TokenKind::Semicolon);
+
+  const auto& eof = result->tokens.back();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  ASSERT_EQ(eof.leading_trivia.size(), 2u);
+  EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
+}
+
+TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
+  PtxCstParser parser("mov.b32 [%rd1-4], %r2.x, {%r3, 1};");
+
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->operands.size(), 3u);
+
+  const auto& address = std::get<CstAddress>(instruction->operands[0].operand);
+  ASSERT_TRUE(address.left_bracket.has_value());
+  ASSERT_TRUE(address.right_bracket.has_value());
+  ASSERT_TRUE(address.offset.has_value());
+  EXPECT_EQ(result->token(*address.left_bracket).kind, TokenKind::LBracket);
+  EXPECT_EQ(result->token(address.offset->operator_token).kind,
+            TokenKind::Minus);
+  EXPECT_EQ(result->token(*address.right_bracket).kind, TokenKind::RBracket);
+
+  const auto& member =
+      std::get<CstVectorMember>(instruction->operands[1].operand);
+  EXPECT_EQ(result->token(member.selector).text, ".x");
+
+  const auto& pack = std::get<CstVectorPack>(instruction->operands[2].operand);
+  EXPECT_EQ(result->token(pack.left_brace).kind, TokenKind::LBrace);
+  EXPECT_EQ(result->token(pack.right_brace).kind, TokenKind::RBrace);
+  ASSERT_EQ(pack.commas.size(), 1u);
+}
+
+TEST(PtxCstParser, RejectsTrailingSignificantInput) {
+  PtxCstParser parser("add.u32 %r1, %r2, %r3; sub.u32 %r4, %r5, %r6;");
+
+  auto result = parser.parseInstruction();
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error().message, "expected end of input");
+}
+
+TEST(CstFile, DistinguishesInstructionFragmentAndModuleRoots) {
+  syntax_cst::CstFile module_file{
+      .tokens = {},
+      .root = syntax_cst::CstModule{.items = {}, .token_range = {}},
+  };
+
+  EXPECT_EQ(module_file.instruction(), nullptr);
+  ASSERT_NE(module_file.module(), nullptr);
+  EXPECT_TRUE(module_file.module()->items.empty());
+}
+
+TEST(PtxCstParser, ParsesAndRoundTripsMinimalModule) {
+  constexpr std::string_view source = R"ptx(.version 8.0
+.target sm_80, debug
+.address_size 64
+
+.visible .entry kernel() {
+  add.u32 %r0, %r1, %r2;
+  ret;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_NE(result->module(), nullptr);
+  EXPECT_EQ(result->instruction(), nullptr);
+  const auto& items = result->module()->items;
+  ASSERT_EQ(items.size(), 4u);
+
+  const auto& version = std::get<syntax_cst::CstModuleDirective>(items[0]);
+  EXPECT_EQ(result->token(version.keyword).kind, TokenKind::DotVersion);
+  ASSERT_EQ(version.arguments.size(), 1u);
+  EXPECT_EQ(result->token(version.arguments[0]).text, "8.0");
+
+  const auto& target = std::get<syntax_cst::CstModuleDirective>(items[1]);
+  ASSERT_EQ(target.arguments.size(), 2u);
+  ASSERT_EQ(target.separators.size(), 1u);
+  EXPECT_EQ(result->token(target.arguments[0]).text, "sm_80");
+  EXPECT_EQ(result->token(target.arguments[1]).text, "debug");
+  EXPECT_EQ(result->token(target.separators[0]).kind, TokenKind::Comma);
+
+  const auto& function = std::get<syntax_cst::CstFunction>(items[3]);
+  ASSERT_EQ(function.qualifiers.size(), 1u);
+  EXPECT_EQ(result->token(function.qualifiers[0]).kind, TokenKind::DotVisible);
+  EXPECT_EQ(result->token(function.directive).kind, TokenKind::DotEntry);
+  EXPECT_EQ(result->token(function.name).text, "kernel");
+  ASSERT_EQ(function.body.size(), 2u);
+  EXPECT_EQ(
+      result
+          ->token(std::get<syntax_cst::CstInstruction>(function.body[0]).opcode)
+          .text,
+      "add");
+  EXPECT_EQ(
+      result
+          ->token(std::get<syntax_cst::CstInstruction>(function.body[1]).opcode)
+          .text,
+      "ret");
+}
+
+TEST(PtxCstParser, FindsFuncNameAfterReturnParameterList) {
+  constexpr std::string_view source =
+      ".func (.param .b32 result) helper(.param .b32 input) { ret; }";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_NE(result->module(), nullptr);
+  ASSERT_EQ(result->module()->items.size(), 1u);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+  EXPECT_EQ(result->token(function.directive).kind, TokenKind::DotFunc);
+  EXPECT_EQ(result->token(function.name).text, "helper");
+  ASSERT_TRUE(function.return_parameters.has_value());
+  ASSERT_EQ(function.return_parameters->parameters.size(), 1u);
+  EXPECT_EQ(result->token(function.return_parameters->parameters[0].name).text,
+            "result");
+  ASSERT_TRUE(function.parameters.has_value());
+  ASSERT_EQ(function.parameters->parameters.size(), 1u);
+  EXPECT_EQ(result->token(function.parameters->parameters[0].name).text,
+            "input");
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
+  constexpr std::string_view source =
+      ".extern .func sink(.param .align 8 .b8 blob[], "
+      ".param .u64 .ptr .global .align 16 ptr) .noreturn;";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+  EXPECT_FALSE(function.left_brace.has_value());
+  EXPECT_FALSE(function.right_brace.has_value());
+  EXPECT_TRUE(function.terminator.has_value());
+  EXPECT_TRUE(function.noreturn_directive.has_value());
+  ASSERT_TRUE(function.parameters.has_value());
+  ASSERT_EQ(function.parameters->parameters.size(), 2u);
+
+  const auto& blob = function.parameters->parameters[0];
+  EXPECT_EQ(result->token(blob.state_space).kind, TokenKind::DotParam);
+  ASSERT_TRUE(blob.alignment.has_value());
+  EXPECT_EQ(result->token(*blob.alignment).text, "8");
+  EXPECT_EQ(result->token(blob.type).text, ".b8");
+  EXPECT_TRUE(blob.left_bracket.has_value());
+  EXPECT_FALSE(blob.array_size.has_value());
+
+  const auto& pointer = function.parameters->parameters[1];
+  EXPECT_TRUE(pointer.pointer_directive.has_value());
+  ASSERT_TRUE(pointer.pointer_space.has_value());
+  EXPECT_EQ(result->token(*pointer.pointer_space).kind, TokenKind::DotGlobal);
+  ASSERT_TRUE(pointer.pointer_alignment.has_value());
+  EXPECT_EQ(result->token(*pointer.pointer_alignment).text, "16");
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
+  constexpr std::string_view source =
+      ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+  ASSERT_EQ(function.body.size(), 3u);
+
+  const auto& declaration =
+      std::get<syntax_cst::CstVariableDeclaration>(function.body[0]);
+  ASSERT_TRUE(declaration.alignment.has_value());
+  EXPECT_EQ(result->token(*declaration.alignment).text, "16");
+  EXPECT_EQ(result->token(declaration.type).text, ".u32");
+  ASSERT_EQ(declaration.declarators.size(), 2u);
+  EXPECT_EQ(result->token(declaration.declarators[0].name).text, "%r");
+  ASSERT_TRUE(declaration.declarators[0].register_count.has_value());
+  EXPECT_EQ(result->token(*declaration.declarators[0].register_count).text,
+            "3");
+  EXPECT_EQ(result->token(declaration.declarators[1].name).text, "%tmp");
+  ASSERT_EQ(declaration.commas.size(), 1u);
+
+  const auto& label = std::get<syntax_cst::CstLabel>(function.body[1]);
+  EXPECT_EQ(result->token(label.name).text, "loop");
+  EXPECT_EQ(result->token(label.colon).kind, TokenKind::Colon);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(function.body[2]));
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
+  constexpr std::string_view source =
+      ".visible .global .align 16 .v4 .f32 values[2][3];\n"
+      ".entry kernel() {\n"
+      "  .shared .v2 .u16 tile[8];\n"
+      "  .local .u32 scratch[19][19];\n"
+      "  .param .align 8 .b8 argument[12];\n"
+      "  ret;\n"
+      "}";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_EQ(result->module()->items.size(), 2u);
+  const auto& global =
+      std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
+  ASSERT_EQ(global.qualifiers.size(), 1u);
+  EXPECT_EQ(result->token(global.qualifiers[0]).kind, TokenKind::DotVisible);
+  EXPECT_EQ(result->token(global.state_space).kind, TokenKind::DotGlobal);
+  ASSERT_TRUE(global.vector_type.has_value());
+  EXPECT_EQ(result->token(*global.vector_type).text, ".v4");
+  ASSERT_EQ(global.declarators[0].array_dimensions.size(), 2u);
+  EXPECT_EQ(
+      result->token(global.declarators[0].array_dimensions[1].size_tokens[0])
+          .text,
+      "3");
+
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items[1]);
+  ASSERT_EQ(function.body.size(), 4u);
+  const auto& shared =
+      std::get<syntax_cst::CstVariableDeclaration>(function.body[0]);
+  EXPECT_EQ(result->token(shared.state_space).kind, TokenKind::DotShared);
+  const auto& local =
+      std::get<syntax_cst::CstVariableDeclaration>(function.body[1]);
+  EXPECT_EQ(result->token(local.state_space).kind, TokenKind::DotLocal);
+  ASSERT_EQ(local.declarators[0].array_dimensions.size(), 2u);
+  const auto& parameter =
+      std::get<syntax_cst::CstVariableDeclaration>(function.body[2]);
+  EXPECT_EQ(result->token(parameter.state_space).kind, TokenKind::DotParam);
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+}  // namespace
+}  // namespace ptx_frontend

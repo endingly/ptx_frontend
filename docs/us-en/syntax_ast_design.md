@@ -1,69 +1,109 @@
-# Syntax AST design and source-fidelity boundary
+# CST and Syntax AST design
 
-## Current responsibility
+## Frontend layers
 
-The current `syntax_ast` is the syntax-structure layer between the lexer and
-Resolved IR. It represents opcodes, modifiers, predicates, operands, and their
-syntax shapes, while retaining `SourceRange`, node text, and selected leading
-trivia for diagnostics.
-
-Its purpose is to support:
-
-- syntax and resolve diagnostic locations;
-- YAML-descriptor-driven variant and operand-layout selection;
-- semantic `Syntax AST -> Resolved IR` resolution.
-
-## It is not currently source-faithful
-
-`syntax_ast` is **not a lossless AST or a CST**. It is not the backing format
-for a formatter or source-preserving rewriting, and `parse -> print` is not
-guaranteed to reproduce byte-identical PTX.
-
-The parser rebuilds text for composite nodes such as addresses, immediates,
-vector packs, and predicates. Those nodes retain only the leading trivia of
-their first token. Whitespace and comments between tokens, trivia adjacent to
-commas, semicolons, or delimiters, and complete token boundaries are therefore
-not stably represented in the AST.
-
-For example, the comments and layout in this source cannot be reconstructed
-from the current AST alone:
-
-```ptx
-add /* opcode-type */ .u32 %r1 /* before comma */, %r2, 1 /* trailing */ ;
-```
-
-`AstSyntax::text` is for diagnostics, lexical literal interpretation, and
-unbound identifier spelling. It is not a formatting API or a resolved symbol
-name.
-
-## Relationship to lexer tokens
-
-Each `PtxToken` retains its text and leading trivia, and the EOF token retains
-trailing trivia. The lexer can therefore produce a lossless token sequence.
-The current streaming parser consumes that sequence without retaining the full
-buffer or token spans in `AstInstruction`; source fidelity is lost at that AST
-boundary.
-
-## Future CST direction
-
-When the project needs formatting, automated fixes, or source-level rewrites,
-it should introduce a dedicated CST layer:
+The frontend now separates concrete source representation from the syntax
+model consumed by resolution:
 
 ```text
-source -> token buffer -> CST -> Syntax AST -> Resolved IR
+source -> lexer token buffer -> CST -> Syntax AST -> Resolved IR
 ```
 
-The recommended minimum design is:
+- The CST owns source fidelity: tokens, punctuation, delimiters, comments,
+  whitespace, original spellings, and token ranges.
+- Syntax AST owns normalized grammar shapes needed by instruction matching and
+  resolution.
+- Resolved IR owns selected variants, typed modifiers and operands, semantic
+  values, and target checking metadata.
 
-- `SyntaxFile` owns immutable source text and the complete token buffer;
-- CST nodes retain token ranges for opcodes, modifiers, operands, punctuation,
-  and delimiters;
-- `SourceRange` gains a source ID and byte offsets, with line/column retained
-  for presentation;
-- Syntax AST is projected from the CST while retaining its current
-  resolution-friendly structure;
-- formatting and source rewrites operate as CST/token edits rather than asking
-  Resolved IR to recover source layout.
+## CST ownership and representation
 
-Until that layer exists, new AST APIs must not claim lossless round-tripping or
-formatter support.
+Public CST headers live under `include/ptx_ir/cst`. A `syntax_cst::CstFile`
+owns the complete `PtxToken` buffer. Its `CstRoot` distinguishes a standalone
+instruction fragment from a `CstModule`; nodes refer to the file buffer with
+`TokenId`, and composite nodes also store half-open `CstTokenRange` values.
+
+`CstModule`, `CstModuleDirective`, and `CstFunction` establish module-level
+ownership without duplicating token buffers. `parseModule()` currently parses
+`.version`, `.target`, and `.address_size`, plus `.entry` and `.func`
+definitions, `.func` prototypes, structured formal parameters, `.reg`
+and other variable declarations, and labels. Function bodies contain
+syntax supported by the instruction parser. Variable declarations structurally
+retain linkage qualifiers, state space, optional alignment and vector type,
+base type, comma-separated names, register-bank `<count>` syntax, and
+multi-dimensional array declarators. Function qualifiers and the complete
+header token sequence remain in the CST; the entry/function kind and name are
+also identified explicitly.
+
+The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
+selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the
+EOF token retains final trivia. Therefore `CstFile::sourceText()`
+can reproduce the parsed input byte-for-byte.
+
+```cpp
+PtxCstParser parser(source);
+auto cst = parser.parseInstruction();
+if (cst)
+  assert(cst->sourceText() == source);
+```
+
+`parseInstruction()` accepts exactly one complete instruction fragment, while
+`parseModule()` requires a module root. The module grammar does not yet accept
+variable initializers, fixed variable addresses, complete array constant
+expressions, debug directives, nested statement scopes, recovery nodes,
+missing-token insertion, or a token-edit API. These are explicit later
+extensions rather than syntax that is silently treated as an instruction.
+
+## CST to Syntax AST lowering
+
+`lowerSyntaxInstruction()` and `lowerSyntaxModule()` are the explicit
+CST-to-AST boundaries:
+
+```cpp
+auto ast = lowerSyntaxInstruction(cst);
+auto module = lowerSyntaxModule(module_cst);
+```
+
+The resulting AST does not refer to CST token IDs and remains valid after the
+CST is destroyed. Leaf spellings required by resolution are copied together
+with their `SourceRange`.
+
+`PtxSyntaxParser` remains as a convenience facade. Its `parseInstruction()`
+and `parseModule()` perform source -> CST -> AST for fragment and module
+clients respectively.
+
+`AstFile` mirrors the same root distinction and `AstModule` provides typed
+containers for the supported module directives and functions. `AstFunction`
+contains the function kind, qualifiers, name, and an ordered body variant of
+`AstVariableDeclaration`, `AstLabel`, and `AstInstruction`. Return and input
+parameters retain state space, alignment, type, pointer attributes, array form,
+name, and range. Initializers, fixed addresses, and symbol identity remain
+outside the AST until their grammar and binding rules are implemented.
+
+## Narrowed Syntax AST responsibility
+
+Syntax AST no longer stores trivia, punctuation tokens, or reconstructed text
+for composite operands. It retains only:
+
+- opcode, modifier, identifier, literal, and selector spellings;
+- lexical immediate kind;
+- predicate negation;
+- address base, offset operation, and bracketed grammar form;
+- vector member and vector pack structure;
+- source ranges for diagnostics;
+- operand grammar alternatives required by generated layout descriptors.
+
+This structure must not classify an identifier as a register, symbol, label,
+or function, decode a literal without its selected scalar type, select an
+instruction variant, or enforce PTX/SM availability. Those remain resolution
+and checker responsibilities.
+
+Formatting, source-preserving rewriting, and future automated fixes must use
+the CST/token buffer. They must not attempt to recover source layout from
+Syntax AST or Resolved IR.
+
+## Remaining location work
+
+`SourceRange` currently stores line and column only. A future multi-file CST
+and robust edit system should extend locations with a source identity and byte
+offsets. This does not require widening the Syntax AST responsibility.

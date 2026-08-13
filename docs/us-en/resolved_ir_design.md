@@ -14,6 +14,24 @@ Resolved IR records the selected instruction variant, resolved operand values,
 and diagnostic locations. Both are stable frontend boundaries. CFG/SSA,
 complete symbol binding, and target lowering are later passes.
 
+The generated public layer also provides an opcode-independent boundary:
+
+```cpp
+using ResolvedInstruction = std::variant<Add, Sub, Bar /* ... */>;
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast);
+```
+
+`resolveInstruction` is generated from the instruction database and dispatches
+to the existing `resolve<T>` specialization. This keeps opcode dispatch out of
+callers while retaining the strongly typed per-opcode structures. Initial
+`ResolvedFunction` and `ResolvedModule` containers group resolved instructions
+at file scope. They intentionally do not yet model directives, declarations,
+labels, or symbols. The syntax layer now parses an initial module grammar, but
+these facts must enter Resolved IR together with the binding pass rather than
+being copied as unresolved strings.
+
 ## Locations and primitive values
 
 Every independently diagnosable resolved value uses:

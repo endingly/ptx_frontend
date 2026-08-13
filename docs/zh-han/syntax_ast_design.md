@@ -1,55 +1,92 @@
-# Syntax AST 设计与源码保真边界
+# CST 与 Syntax AST 设计
 
-## 当前职责
+## 前端分层
 
-当前 `syntax_ast` 是 lexer 与 Resolved IR 之间的语法结构层。它表达 opcode、modifier、
-predicate、operand 及其语法形态，并保留用于诊断的 `SourceRange`、节点 text 与部分
-leading trivia。
-
-它的目标是支持：
-
-- 语法错误与 resolve diagnostic 的定位；
-- 基于 YAML descriptor 的 variant 与 operand-layout 选择；
-- `Syntax AST -> Resolved IR` 的语义解析。
-
-## 当前不保证源码保真
-
-`syntax_ast` **不是 lossless AST，也不是 CST**。它不能作为 formatter 或源码重写的
-底档，且不保证 `parse -> print` 得到逐字节相同的 PTX。
-
-原因是 parser 会为 address、immediate、vector pack、predicate 等组合节点重建 text；
-这些节点只保留首个 token 的 leading trivia。token 间的空白和注释、逗号/分号/括号周边
-的 trivia，以及完整 token 边界不会稳定地保存在 AST 中。
-
-例如下列源码中的注释和布局不能仅由当前 AST 还原：
-
-```ptx
-add /* opcode-type */ .u32 %r1 /* before comma */, %r2, 1 /* trailing */ ;
-```
-
-`AstSyntax::text` 的用途是诊断、词法 literal 解析与尚未绑定的标识符拼写；它不是格式化
-接口，也不是已解析符号名。
-
-## 与 lexer token 的关系
-
-`PtxToken` 本身保留其 text 和 leading trivia，EOF token 承接尾部 trivia。因此 lexer
-可以产生无损 token 序列。当前 parser 以流式方式消费该序列，但不会把完整 token 序列或
-token span 保存到 `AstInstruction`；这正是源码保真在 AST 边界丢失的地方。
-
-## 未来 CST 演进
-
-当工程需要 formatter、自动修复或源码级重写时，引入独立的 CST 层：
+当前前端已经把具体源码表示与供 resolve 使用的语法模型分开：
 
 ```text
-source -> token buffer -> CST -> Syntax AST -> Resolved IR
+source -> lexer token buffer -> CST -> Syntax AST -> Resolved IR
 ```
 
-推荐的最小设计为：
+- CST 负责源码保真：token、标点、delimiter、注释、空白、原始拼写与 token range；
+- Syntax AST 负责 instruction matching 与 resolve 所需的规范化 grammar shape；
+- Resolved IR 负责选中的 variant、带类型的 modifier/operand、语义值和目标检查元数据。
 
-- `SyntaxFile` 持有不可变 source 与完整 token buffer；
-- CST 节点持有 token range，覆盖 opcode、modifier、operand、标点与 delimiter；
-- `SourceRange` 扩展为 source id 与 byte offset，行列仅作为展示信息；
-- Syntax AST 从 CST 投影得到，保留现有的 resolution-friendly 结构；
-- formatter 与源码 rewrite 在 CST/token edit 层工作，Resolved IR 不反向承担源码布局。
+## CST 的所有权与表示
 
-在该层落地前，新增 AST 字段不应声称可支持无损 round-trip 或 formatter。
+公共 CST 头文件位于 `include/ptx_ir/cst`。`syntax_cst::CstFile` 持有完整
+`PtxToken` buffer；其 `CstRoot` 区分独立 instruction fragment 与 `CstModule`。节点通过
+`TokenId` 引用 file buffer，组合节点另外保存半开区间 `CstTokenRange`。
+
+`CstModule`、`CstModuleDirective` 与 `CstFunction` 已建立 module-level 所有权，且不会
+重复持有 token buffer。`parseModule()` 当前支持 `.version`、`.target`、
+`.address_size`，以及函数体由现有 instruction parser 可处理指令构成的 `.entry/.func`
+definition、`.func` prototype、结构化 formal parameter、通用 variable declaration 与
+label。function
+body 中的 instruction 由现有 instruction parser 处理。variable declaration 会结构化
+保留 linkage qualifier、state space、可选 alignment/vector type、base type、逗号分隔的
+名称、register-bank `<count>` 语法和多维 array declarator。CST 同时保留 function
+qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
+
+CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
+token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此
+`CstFile::sourceText()` 可以逐字节还原已解析输入：
+
+```cpp
+PtxCstParser parser(source);
+auto cst = parser.parseInstruction();
+if (cst)
+  assert(cst->sourceText() == source);
+```
+
+`parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
+module root。当前 module grammar 尚不接受 variable initializer、fixed variable address、
+完整 array constant expression、debug directive、嵌套 statement scope、错误恢复节点、
+missing-token 插入或 token edit API。这些都是明确的后续扩展，不会被静默当成
+instruction 解析。
+
+## CST 到 Syntax AST lowering
+
+`lowerSyntaxInstruction()` 与 `lowerSyntaxModule()` 是明确的 CST→AST 边界：
+
+```cpp
+auto ast = lowerSyntaxInstruction(cst);
+auto module = lowerSyntaxModule(module_cst);
+```
+
+生成的 AST 不引用 CST 的 `TokenId`，所以 CST 销毁后 AST 仍可独立使用。resolve 所需
+的 leaf spelling 会连同 `SourceRange` 一起复制到 AST。
+
+`PtxSyntaxParser` 继续作为便利 facade；`parseInstruction()` 与 `parseModule()` 分别为
+fragment client 与 module client 执行 source→CST→AST。
+
+`AstFile` 采用相同的 root 区分方式，`AstModule` 则为 module directive 与 function
+提供 typed container。`AstFunction` 当前包含 function 类别、qualifier、名称，以及由
+`AstVariableDeclaration`、`AstLabel` 和 `AstInstruction` 组成的有序 body variant；
+返回与输入 parameter 会保留 state space、alignment、type、pointer attribute、array
+形式、名称与 range。initializer、fixed address 和 symbol identity 要等对应 grammar 与
+绑定规则实现后再进入 AST。
+
+## 收窄后的 Syntax AST 职责
+
+Syntax AST 不再保存 trivia、标点 token 或组合 operand 的重建文本，只保留：
+
+- opcode、modifier、identifier、literal 与 selector 的 spelling；
+- immediate 的词法类别；
+- predicate 是否取反；
+- address base、offset operation 与是否有括号这一 grammar form；
+- vector member/vector pack 结构；
+- diagnostic 所需的 source range；
+- generated layout descriptor 需要的 operand grammar alternative。
+
+Syntax AST 不负责把 identifier 分类为 register/symbol/label/function，不应在选定 scalar
+type 之前解码 literal，也不负责选择 instruction variant 或检查 PTX/SM availability；
+这些仍属于 resolve/checker。
+
+formatter、源码保真 rewrite 与未来自动修复必须工作在 CST/token buffer 上，不能从
+Syntax AST 或 Resolved IR 反向恢复源码布局。
+
+## 尚待完善的位置模型
+
+`SourceRange` 目前只有行列信息。未来支持多文件 CST 与可靠 edit 时，应增加 source
+identity 与 byte offset；这不需要重新扩大 Syntax AST 的职责。

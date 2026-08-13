@@ -155,9 +155,23 @@ class ResolveException : public std::runtime_error {
   std::source_location where_;
 };
 
-struct ResolvedRegisterId {
-  uint32_t value;
-  bool operator==(const ResolvedRegisterId&) const = default;
+enum class ResolvedRegisterClass : uint8_t {
+  General,
+  Predicate,
+};
+
+/**
+ * Register identity before declaration binding is available.
+ *
+ * `spelling` is owned so the resolved IR does not depend on the Syntax AST
+ * lifetime. `index` is retained for the currently supported numbered-register
+ * syntax, but it is not the register's identity by itself.
+ */
+struct ResolvedRegisterRef {
+  std::string spelling;
+  ResolvedRegisterClass register_class;
+  uint32_t index;
+  bool operator==(const ResolvedRegisterRef&) const = default;
 };
 
 struct ResolvedImmediate {
@@ -167,7 +181,7 @@ struct ResolvedImmediate {
 };
 
 struct ResolvedPredicate {
-  ResolvedRegisterId register_id;
+  ResolvedRegisterRef register_ref;
   bool negated{};
   bool operator==(const ResolvedPredicate&) const = default;
 };
@@ -178,11 +192,11 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 
-using RegOrImm = std::variant<ResolvedRegisterId, ResolvedImmediate>;
+using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>,
-                 WithLocs<ResolvedRegisterId>, WithLocs<ResolvedImmediate>,
+                 WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
@@ -226,8 +240,9 @@ std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
 
 bool matches_variant(const check_end::SyntaxVariantDescriptor& variant,
                      const ActualModifierTable& actual_modifiers);
-bool matches_modifier_slot(const check_end::SyntaxModifierDescriptor& descriptor,
-                           const ActualModifierTable& actual_modifiers);
+bool matches_modifier_slot(
+    const check_end::SyntaxModifierDescriptor& descriptor,
+    const ActualModifierTable& actual_modifiers);
 
 template <PtxOperator T>
 std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(

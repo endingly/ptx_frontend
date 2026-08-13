@@ -26,9 +26,15 @@ struct WithLocs {
 ```
 
 `locs` 允许一个语义值关联多个源码片段；空集合表示没有直接源码位置，例如由 fixed
-modifier 得到的编译期常量。当前基础值包括 `ResolvedRegisterId`、`ResolvedImmediate`
+modifier 得到的编译期常量。当前基础值包括 `ResolvedRegisterRef`、`ResolvedImmediate`
 与 `RegOrImm`。`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
+
+在符号表与声明绑定完成之前，`ResolvedRegisterRef` 会拥有寄存器的完整源码拼写，并
+同时保存 `ResolvedRegisterClass` 和 numbered-register index。index 只是便捷属性，不能
+单独充当身份：例如 `%r1` 与 `%rd1` 的 index 都是 1，但它们的 spelling 不同。当前
+resolver 支持 numbered-register 子集，并区分普通寄存器和 `%pN` predicate；未来接入
+符号表后，应以 declaration `SymbolId` 补充或替换这层词法引用。
 
 ## 按 opcode 生成的结构
 
@@ -42,7 +48,7 @@ struct Add {
   struct IntegerNoSat {
     ResolvedOperandLayoutTag operand_layout;
     WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterId> dst;
+    WithLocs<ResolvedRegisterRef> dst;
     WithLocs<RegOrImm> src1;
     WithLocs<RegOrImm> src2;
   };

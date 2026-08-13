@@ -15,18 +15,17 @@
 #   instructions/
 #     integer_arith.yaml
 #
-#   instructions_backend/
-#     cpp/
-#       integer_arith.yaml
+#   ptx_cpp_backend_spec/
+#     ptx_frontend.yaml
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://ptxc.dev/schemas/ptx-cpp-backend-v1.schema.yaml"
 
 title: "PTX C++ Backend Mapping Schema"
 description: >
-  Schema for C++ code-generation backend mappings. This file maps declarative
-  PTX instruction specs to generated C++ IR structs, enum values, fields,
-  emit policies, and optional backend-specific generation hints.
+  Schema for C++ code-generation backend mappings. Domains map normalized
+  frontend semantic values to C++ types and expressions. Optional
+  per-instruction sections are reserved for future backend overrides.
 
 type: object
 additionalProperties: false
@@ -121,9 +120,11 @@ properties:
       $ref: "#/$defs/emit_kind_mapping"
 
   instructions:
-    description: "Per-instruction C++ backend mappings, keyed by PTX opcode."
+    description: >
+      Optional per-instruction C++ backend mappings, keyed by PTX opcode.
+      The current resolved-IR generator derives instruction structure from
+      PTX ISA YAML, so this mapping may be empty.
     type: object
-    minProperties: 1
     additionalProperties:
       $ref: "#/$defs/instruction_backend"
 

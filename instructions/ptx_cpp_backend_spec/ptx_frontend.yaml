@@ -1,0 +1,179 @@
+# yaml-language-server: $schema=../schemas/ptx-cpp-backend-v1.schema.yaml
+
+schema: ptx-cpp-backend/v1
+backend: cpp
+target: all
+spec_schema: ptx-instr/v1
+category: common
+namespace: ptx_frontend::resolved_ir
+
+# This file owns C++ spellings only. PTX legality, variants, layouts, and
+# availability remain in instructions/ptx_spec.
+domains:
+  scalar_types:
+    cpp_type: ScalarType
+    default: ScalarType::Invalid
+    values:
+      u8: ScalarType::U8
+      u8x4: ScalarType::U8x4
+      u16: ScalarType::U16
+      u16x2: ScalarType::U16x2
+      u32: ScalarType::U32
+      u64: ScalarType::U64
+      s8: ScalarType::S8
+      s8x4: ScalarType::S8x4
+      s16: ScalarType::S16
+      s16x2: ScalarType::S16x2
+      s32: ScalarType::S32
+      s64: ScalarType::S64
+      b8: ScalarType::B8
+      b16: ScalarType::B16
+      b32: ScalarType::B32
+      b64: ScalarType::B64
+      b128: ScalarType::B128
+      f16: ScalarType::F16
+      f16x2: ScalarType::F16x2
+      f32: ScalarType::F32
+      f32x2: ScalarType::F32x2
+      f64: ScalarType::F64
+      bf16: ScalarType::BF16
+      bf16x2: ScalarType::BF16x2
+      e4m3x2: ScalarType::E4m3x2
+      e5m2x2: ScalarType::E5m2x2
+      pred: ScalarType::Pred
+      tf32: ScalarType::TF32
+      e4m3: ScalarType::E4m3
+      e5m2: ScalarType::E5m2
+
+  rounding_modes:
+    cpp_type: RoundingMode
+    default: RoundingMode::Invalid
+    values:
+      rn: RoundingMode::Rn
+      rz: RoundingMode::Rz
+      rm: RoundingMode::Rm
+      rp: RoundingMode::Rp
+
+  modifier_value_cpp_types:
+    cpp_type: CppType
+    values:
+      flag: bool
+      type: ScalarType
+      rounding: RoundingMode
+
+  operand_value_cpp_types:
+    cpp_type: CppType
+    values:
+      reg: ResolvedRegisterRef
+      imm: ResolvedImmediate
+      reg_or_imm: RegOrImm
+      pred: ResolvedPredicate
+      pred_or_not: ResolvedPredicate
+
+  resolved_value_cpp_types:
+    cpp_type: CppType
+    values:
+      Bool: bool
+      ScalarType: ScalarType
+      RoundingMode: RoundingMode
+      Register: ResolvedRegisterRef
+      Predicate: ResolvedPredicate
+      Immediate: ResolvedImmediate
+      RegOrImm: RegOrImm
+
+  modifier_field_names:
+    cpp_type: CppIdentifier
+    values:
+      sat: saturate
+
+  syntax_modifier_presence:
+    cpp_type: check_end::PresenceRequirement
+    values:
+      Absent: check_end::PresenceRequirement::Absent
+      Optional: check_end::PresenceRequirement::Optional
+      Required: check_end::PresenceRequirement::Required
+
+  syntax_operand_presence:
+    cpp_type: check_end::OperandPresence
+    values:
+      Required: check_end::OperandPresence::Required
+      Optional: check_end::OperandPresence::Optional
+
+  syntax_operand_layout_kinds:
+    cpp_type: check_end::OperandLayoutKind
+    values:
+      Flat: check_end::OperandLayoutKind::Flat
+
+  syntax_operand_shapes:
+    cpp_type: check_end::OperandSyntaxShape
+    values:
+      IDENTIFIER_REF: check_end::OperandSyntaxShape::Identifier
+      IMMEDIATE: check_end::OperandSyntaxShape::Immediate
+      ADDRESS: check_end::OperandSyntaxShape::Address
+      VECTOR_MEMBER: check_end::OperandSyntaxShape::VectorMember
+      VECTOR_PACK: check_end::OperandSyntaxShape::VectorPack
+      PREDICATE: check_end::OperandSyntaxShape::Predicate
+
+  resolved_value_kinds:
+    cpp_type: check_end::ResolvedValueKind
+    values:
+      Bool: check_end::ResolvedValueKind::Bool
+      ScalarType: check_end::ResolvedValueKind::ScalarType
+      RoundingMode: check_end::ResolvedValueKind::RoundingMode
+      Register: check_end::ResolvedValueKind::Register
+      Predicate: check_end::ResolvedValueKind::Predicate
+      Immediate: check_end::ResolvedValueKind::Immediate
+      RegOrImm: check_end::ResolvedValueKind::RegOrImm
+
+  resolved_operand_roles:
+    cpp_type: check_end::OperandRole
+    values:
+      Destination: check_end::OperandRole::Destination
+      Source: check_end::OperandRole::Source
+      Address: check_end::OperandRole::Address
+      Predicate: check_end::OperandRole::Predicate
+      BranchTarget: check_end::OperandRole::BranchTarget
+      Barrier: check_end::OperandRole::Barrier
+      ThreadCount: check_end::OperandRole::ThreadCount
+
+  resolved_operand_access:
+    cpp_type: check_end::OperandAccess
+    values:
+      Read: check_end::OperandAccess::Read
+      Write: check_end::OperandAccess::Write
+      ReadWrite: check_end::OperandAccess::ReadWrite
+
+  resolved_operand_shapes:
+    cpp_type: check_end::OperandShape
+    values:
+      Register: check_end::OperandShape::Register
+      Predicate: check_end::OperandShape::Predicate
+      Immediate: check_end::OperandShape::Immediate
+      Address: check_end::OperandShape::Address
+      Symbol: check_end::OperandShape::Symbol
+      Vector: check_end::OperandShape::Vector
+
+  resolved_operand_type_expression_kinds:
+    cpp_type: check_end::OperandTypeExpressionKind
+    values:
+      None: check_end::OperandTypeExpressionKind::None
+      FixedScalar: check_end::OperandTypeExpressionKind::FixedScalar
+      ModifierField: check_end::OperandTypeExpressionKind::ModifierField
+
+  resolved_modifier_default_kinds:
+    cpp_type: check_end::ResolvedModifierDefaultKind
+    values:
+      Bool: check_end::ResolvedModifierDefaultKind::Bool
+      ScalarType: check_end::ResolvedModifierDefaultKind::ScalarType
+      RoundingMode: check_end::ResolvedModifierDefaultKind::RoundingMode
+
+  checker_modifier_value_kinds:
+    cpp_type: checker::ModifierValueKind
+    values:
+      bool: checker::ModifierValueKind::Bool
+      ScalarType: checker::ModifierValueKind::ScalarType
+      RoundingMode: checker::ModifierValueKind::RoundingMode
+
+# Per-instruction C++ overrides remain available in the model/schema, but the
+# current resolved-IR generator derives instruction structure from ISA YAML.
+instructions: {}

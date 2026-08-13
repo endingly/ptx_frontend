@@ -12,6 +12,12 @@ from enum import Enum
 from typing import Any
 
 from base.utils import file_stem_to_pascal_case
+from code_gen.cpp_backend import (
+    CppDomain,
+    cpp_domain,
+    cpp_optional_value,
+    cpp_value,
+)
 from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
@@ -21,8 +27,6 @@ from code_gen.model import (
     OperandTypeExpressionKind,
     VariantSpec,
 )
-from ir.scalar_types import SCALAR_TYPE_CPP_ENUM_NAMES
-from ir.rounding_modes import ROUNDING_MODE_CPP_ENUM_NAMES
 
 
 class ResolvedFieldOrigin(Enum):
@@ -117,7 +121,16 @@ class ResolvedField:
     def value_kind(self) -> ResolvedValueKind:
         """Return the generic resolver category for this output field."""
 
-        return _CPP_TYPE_VALUE_KINDS[self.value_cpp_type]
+        for kind in ResolvedValueKind:
+            if (
+                cpp_value(CppDomain.RESOLVED_VALUE_CPP_TYPES, kind.value)
+                == self.value_cpp_type
+            ):
+                return kind
+        raise ValueError(
+            f"C++ backend does not assign resolved value kind to "
+            f"{self.value_cpp_type!r}"
+        )
 
     @property
     def cpp_type(self) -> str:
@@ -136,24 +149,11 @@ class ResolvedField:
         if self.value_cpp_type == "bool" and isinstance(self.constant_value, bool):
             return "true" if self.constant_value else "false"
         if self.value_cpp_type == "ScalarType" and isinstance(self.constant_value, str):
-            try:
-                return f"ScalarType::{SCALAR_TYPE_CPP_ENUM_NAMES[self.constant_value]}"
-            except KeyError as error:
-                raise ValueError(
-                    f"unsupported fixed scalar type {self.constant_value!r}"
-                ) from error
+            return cpp_value(CppDomain.SCALAR_TYPES, self.constant_value)
         if self.value_cpp_type == "RoundingMode" and isinstance(
             self.constant_value, str
         ):
-            try:
-                return (
-                    "RoundingMode::"
-                    f"{ROUNDING_MODE_CPP_ENUM_NAMES[self.constant_value]}"
-                )
-            except KeyError as error:
-                raise ValueError(
-                    f"unsupported fixed rounding mode {self.constant_value!r}"
-                ) from error
+            return cpp_value(CppDomain.ROUNDING_MODES, self.constant_value)
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"
@@ -246,26 +246,6 @@ class ResolvedInstruction:
     variants: tuple[ResolvedVariant, ...]
 
 
-_MODIFIER_VALUE_CPP_TYPES = {
-    "flag": "bool",
-    "type": "ScalarType",
-    "rounding": "RoundingMode",
-}
-
-_MODIFIER_FIELD_NAMES = {
-    # ``.sat`` is represented semantically as the boolean property rather
-    # than as its source spelling.
-    "sat": "saturate",
-}
-
-_OPERAND_VALUE_CPP_TYPES = {
-    "reg": "ResolvedRegisterRef",
-    "imm": "ResolvedImmediate",
-    "reg_or_imm": "RegOrImm",
-    "pred": "ResolvedPredicate",
-    "pred_or_not": "ResolvedPredicate",
-}
-
 _OPERAND_ALLOWED_SHAPES = {
     "reg": (ResolvedOperandShape.REGISTER,),
     "imm": (ResolvedOperandShape.IMMEDIATE,),
@@ -293,16 +273,6 @@ _OPERAND_ACCESS = {
     "read": ResolvedOperandAccess.READ,
     "write": ResolvedOperandAccess.WRITE,
     "readwrite": ResolvedOperandAccess.READ_WRITE,
-}
-
-_CPP_TYPE_VALUE_KINDS = {
-    "bool": ResolvedValueKind.BOOL,
-    "ScalarType": ResolvedValueKind.SCALAR_TYPE,
-    "RoundingMode": ResolvedValueKind.ROUNDING_MODE,
-    "ResolvedRegisterRef": ResolvedValueKind.REGISTER,
-    "ResolvedImmediate": ResolvedValueKind.IMMEDIATE,
-    "RegOrImm": ResolvedValueKind.REG_OR_IMM,
-    "ResolvedPredicate": ResolvedValueKind.PREDICATE,
 }
 
 def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
@@ -372,8 +342,10 @@ def _build_modifier_default(
         )
 
     try:
-        value_cpp_type = _MODIFIER_VALUE_CPP_TYPES[modifier.kind]
-    except KeyError as error:
+        value_cpp_type = cpp_value(
+            CppDomain.MODIFIER_VALUE_CPP_TYPES, modifier.kind
+        )
+    except ValueError as error:
         raise ValueError(
             f"optional modifier {modifier.name!r}: unsupported default for "
             f"modifier kind {modifier.kind!r}"
@@ -390,7 +362,7 @@ def _build_modifier_default(
                 f"optional type modifier {modifier.name!r} must have a string "
                 "default"
             )
-        if modifier.default not in SCALAR_TYPE_CPP_ENUM_NAMES:
+        if modifier.default not in cpp_domain(CppDomain.SCALAR_TYPES).values:
             raise ValueError(
                 f"optional type modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
@@ -401,7 +373,7 @@ def _build_modifier_default(
                 f"optional rounding modifier {modifier.name!r} must have a "
                 "string default"
             )
-        if modifier.default not in ROUNDING_MODE_CPP_ENUM_NAMES:
+        if modifier.default not in cpp_domain(CppDomain.ROUNDING_MODES).values:
             raise ValueError(
                 f"optional rounding modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
@@ -416,8 +388,10 @@ def _build_modifier_value_availability(
     modifier: ModifierSpec, value: ModifierValueSpec
 ) -> ResolvedModifierValueAvailability:
     try:
-        value_cpp_type = _MODIFIER_VALUE_CPP_TYPES[modifier.kind]
-    except KeyError as error:
+        value_cpp_type = cpp_value(
+            CppDomain.MODIFIER_VALUE_CPP_TYPES, modifier.kind
+        )
+    except ValueError as error:
         raise ValueError(
             f"modifier {modifier.name!r}: availability for unsupported modifier "
             f"kind {modifier.kind!r}"
@@ -435,7 +409,7 @@ def _build_modifier_value_availability(
             raise ValueError(
                 f"modifier {modifier.name!r}: rounding value must be a string"
             )
-        if value.value not in ROUNDING_MODE_CPP_ENUM_NAMES:
+        if value.value not in cpp_domain(CppDomain.ROUNDING_MODES).values:
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported rounding value "
                 f"{value.value!r}"
@@ -478,15 +452,18 @@ def _build_operand_layout(
 
 def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
     try:
-        value_cpp_type = _MODIFIER_VALUE_CPP_TYPES[modifier.kind]
-    except KeyError as error:
+        value_cpp_type = cpp_value(
+            CppDomain.MODIFIER_VALUE_CPP_TYPES, modifier.kind
+        )
+    except ValueError as error:
         raise ValueError(
             f"modifier {modifier.name!r}: unsupported resolved modifier kind "
             f"{modifier.kind!r}"
         ) from error
 
     return ResolvedField(
-        name=_MODIFIER_FIELD_NAMES.get(modifier.name, modifier.name),
+        name=cpp_optional_value(CppDomain.MODIFIER_FIELD_NAMES, modifier.name)
+        or modifier.name,
         value_cpp_type=value_cpp_type,
         origin=ResolvedFieldOrigin.MODIFIER,
         source_name=modifier.name,
@@ -501,8 +478,10 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
 
 def _build_operand_field(operand: OperandSpec) -> ResolvedField:
     try:
-        value_cpp_type = _OPERAND_VALUE_CPP_TYPES[operand.kind]
-    except KeyError as error:
+        value_cpp_type = cpp_value(
+            CppDomain.OPERAND_VALUE_CPP_TYPES, operand.kind
+        )
+    except ValueError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported resolved operand kind "
             f"{operand.kind!r}"
@@ -547,7 +526,7 @@ def _resolve_operand_type_expression(
         )
     if expression.kind is OperandTypeExpressionKind.FIXED_SCALAR:
         assert expression.scalar_type is not None
-        if expression.scalar_type not in SCALAR_TYPE_CPP_ENUM_NAMES:
+        if expression.scalar_type not in cpp_domain(CppDomain.SCALAR_TYPES).values:
             raise ValueError(
                 f"unsupported fixed operand scalar type {expression.scalar_type!r}"
             )

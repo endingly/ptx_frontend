@@ -124,23 +124,29 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只
 打开一次对应 namespace。
 
-所有 emitter 从 `ir.scalar_types` 与 `ir.rounding_modes` 的唯一 registry 获取 PTX
-语义 spelling 到对应 C++ enum 的映射。生成文件不会默认嵌入 wall-clock 时间；若构建环境提供
+所有 emitter 从规范化后的 C++ backend domain 获取语义值对应的 C++ 类型与表达式。
+生成文件不会默认嵌入 wall-clock 时间；若构建环境提供
 标准 `SOURCE_DATE_EPOCH`，生成警告会使用该确定性 UTC 时间，否则明确标记时间已省略。
-因此相同 spec 和生成器输入会产生 byte-identical 内容。
+因此相同 ISA spec、backend spec 和生成器输入会产生 byte-identical 内容。
 
 ### Backend 配置边界
 
-`instructions/ptx_cpp_backend_spec/*.yaml` 及其
+`instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 及其
 `instructions/schemas/ptx-cpp-backend-v1.schema.yaml` 作为独立的 C++ backend
-配置层予以保留。当前生成流程尚不读取该层；以后可把目前嵌入 Python emitter 的 C++
-拼写表、enum/array 映射及其他纯生成策略逐步迁入其中。
+配置层。`code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
+checker emitter 只通过 typed lookup 读取 C++ 拼写。查询接口的 domain 参数必须使用
+`CppDomain` 枚举成员，例如 `CppDomain.SCALAR_TYPES`，不接受裸字符串。当前 domain
+覆盖 scalar type、
+rounding mode、resolved value type/kind、modifier presence、operand role/access/shape、
+type-expression kind 与 checker modifier kind。
 
 backend spec 不应重复表达 `ptx_spec` 中的 PTX ISA 语义，也不应影响
-`InstructionSpec` 的规范化结果。`code_gen.model` 已预留 `DomainBackend`、
-`InstructionBackend`、`EmitBackend` 与 `CodegenUnit` 等强类型模型，但它们当前不被
-生成路径消费。正式接入时应补充独立 loader 与语义校验，并先通过 schema 校验，而不是
-让 emitter 直接读取原始 YAML 字典。
+`InstructionSpec` 的规范化结果。`DomainBackend` 与 `CodegenUnit` 已进入当前生成路径；
+`InstructionBackend` 与 `EmitBackend` 仍为未来的 per-instruction override 保留，当前
+`instructions` mapping 为空，也不能改变 resolved IR 的 variant/layout 结构。emitter
+不得直接读取原始 YAML 字典。loader 会先执行 JSON Schema 校验，再检查当前生成路径所需
+domain 是否齐全；缺失 domain/value 必须在生成期报告 `ValueError`。CMake 将 backend
+YAML 与 schema 都列为生成依赖，修改任何 C++ 映射都会触发重新生成。
 
 ## 生成规则
 

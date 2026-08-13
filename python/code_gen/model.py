@@ -108,14 +108,13 @@ class InstructionSpec:
 
 
 # -----------------------------------------------------------------------------
-# Reserved C++ backend model
+# C++ backend model
 # -----------------------------------------------------------------------------
 #
-# These types intentionally are not consumed by the current generation path.
-# They preserve the typed boundary for a future loader of
-# instructions/ptx_cpp_backend_spec, where C++-only spelling tables and emit
-# policy can be moved out of the Python emitters without entering the PTX ISA
-# semantic model above.
+# ``DomainBackend`` is consumed by the current generation path for all
+# semantic-value-to-C++ spelling/type mappings.  Per-instruction emit policy
+# remains modeled for future consumers, but does not control the current
+# resolved-IR structure.
 
 
 @dataclass(frozen=True)
@@ -180,11 +179,12 @@ class InstructionBackend:
 
 @dataclass(frozen=True)
 class CodegenUnit:
-    """Detached aggregate of normalized PTX semantics and C++ backend data.
+    """Aggregate normalized PTX semantics and C++ backend data.
 
-    This restores the pre-refactor model contract for future backend work.  The
-    active generators continue to consume :class:`CodegenDatabase` and do not
-    construct this aggregate yet.
+    The backend loader currently returns a backend-only unit with an empty
+    ``instructions`` tuple; the ISA database continues to own merged
+    instructions. This keeps C++ mappings typed without coupling PTX database
+    discovery to one backend.
     """
 
     spec_schema: str

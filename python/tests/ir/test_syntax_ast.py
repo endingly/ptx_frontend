@@ -50,10 +50,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [variant.variant_id for variant in self.descriptor.variants],
             [
                 "add_integer_no_sat",
-                "add_sat_s32",
-                "add_simd_no_sat_sm90",
-                "add_packed_optional_sat_sm120",
-                "add_sat_sm120",
+                "add_sat",
+                "add_packed_optional_sat",
             ],
         )
 
@@ -68,19 +66,32 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 (
                     "type",
                     ModifierPresence.REQUIRED,
-                    (".u16", ".u32", ".u64", ".s16", ".s32", ".s64"),
+                    (
+                        ".u16",
+                        ".u32",
+                        ".u64",
+                        ".s16",
+                        ".s32",
+                        ".s64",
+                        ".u16x2",
+                        ".s16x2",
+                    ),
                 ),
             ],
         )
-        sat_s32 = self.descriptor.variants[1]
+        sat = self.descriptor.variants[1]
         self.assertEqual(
             [
                 (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
-                for modifier in sat_s32.modifiers
+                for modifier in sat.modifiers
             ],
             [
                 ("sat", ModifierPresence.REQUIRED, (".sat",)),
-                ("type", ModifierPresence.REQUIRED, (".s32",)),
+                (
+                    "type",
+                    ModifierPresence.REQUIRED,
+                    (".s32", ".u16x2", ".s16x2", ".u32"),
+                ),
             ],
         )
 
@@ -378,7 +389,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
 
         self.assertTrue(source.startswith("struct AddDescriptorStorage {"))
         self.assertIn(
-            "inline static constexpr std::array<std::string_view, 6>", source
+            "inline static constexpr std::array<std::string_view, 8>", source
         )
         self.assertIn(
             "inline static constexpr std::array<check_end::SyntaxModifierDescriptor, 2>",
@@ -390,8 +401,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
         self.assertIn('.Opcode_name = "add",', source)
         self.assertIn('.variant_name = "IntegerNoSat",', source)
-        self.assertIn('.variant_name = "SatS32",', source)
-        self.assertIn('.variant_name = "PackedOptionalSatSm120",', source)
+        self.assertIn('.variant_name = "Sat",', source)
+        self.assertIn('.variant_name = "PackedOptionalSat",', source)
         self.assertIn(
             ".allowed_values = add_integer_no_sat_modifier_1_allowed_values,",
             source,

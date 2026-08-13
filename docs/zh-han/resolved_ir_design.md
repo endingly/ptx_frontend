@@ -51,7 +51,7 @@ modifier 组合唯一确定的 variant：
 
 ```cpp
 struct Add {
-  enum class VariantType { IntegerNoSat, SatS32 /* ... */ };
+  enum class VariantType { IntegerNoSat, Sat, PackedOptionalSat };
 
   struct IntegerNoSat {
     ResolvedOperandLayoutTag operand_layout;
@@ -66,15 +66,15 @@ struct Add {
 };
 ```
 
-fixed modifier 不作为每个 instruction instance 的可写状态保存。例如 `add.sat.s32`
-的 variant 将生成：
+fixed modifier 不作为每个 instruction instance 的可写状态保存。合并后的 `Add::Sat`
+中，`.sat` 固定，而 type 是带独立 availability 的 allowed value，因此生成：
 
 ```cpp
 inline static constexpr bool saturate = true;
-inline static constexpr ScalarType type = ScalarType::S32;
+WithLocs<ScalarType> type;
 ```
 
-这既保存了已选语义，也避免后续 pass 对同一事实做重复判定。
+这既避免后续 pass 重复判定固定事实，也保留了实际 type 及其源码位置。
 
 ## 一个 variant 内的多个 operand layout
 

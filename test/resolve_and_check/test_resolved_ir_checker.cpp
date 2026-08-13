@@ -26,7 +26,7 @@ constexpr ModifierValueAvailabilityDescriptor kModifierValueAvailabilities[] = {
 
 constexpr VariantDescriptor kVariants[] = {
     {
-        .variant_name = "PackedOptionalSatSm120",
+        .variant_name = "PackedOptionalSat",
         .availability =
             {
                 .minimum_ptx_version = {9, 2},
@@ -53,7 +53,7 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   };
 
   const auto result =
-      check_common(kInstruction, "PackedOptionalSatSm120", context);
+      check_common(kInstruction, "PackedOptionalSat", context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
@@ -69,7 +69,7 @@ TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   };
 
   const auto result =
-      check_common(kInstruction, "PackedOptionalSatSm120", context);
+      check_common(kInstruction, "PackedOptionalSat", context);
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 3U);
@@ -176,6 +176,65 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
       .instruction_range = ast->range,
   };
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
+}
+
+TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
+  PtxSyntaxParser simd_parser("add.u16x2 %r0, %r1, %r2;");
+  const auto simd_ast = simd_parser.parseInstruction();
+  ASSERT_TRUE(simd_ast.has_value()) << simd_ast.error().message;
+
+  const auto simd = resolve<Add>(*simd_ast);
+  ASSERT_TRUE(simd.has_value()) << simd.error().message;
+  ASSERT_NE(std::get_if<Add::IntegerNoSat>(&simd->variant), nullptr);
+
+  const Context old_simd_target{
+      .target = {.ptx_version = {7, 9}, .sm_version = 80},
+      .instruction_range = simd_ast->range,
+  };
+  const auto unsupported_simd = check(*simd, old_simd_target);
+  ASSERT_FALSE(unsupported_simd.has_value());
+  ASSERT_EQ(unsupported_simd.error().size(), 2U);
+  EXPECT_EQ(unsupported_simd.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unsupported_simd.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const Context supported_simd_target{
+      .target = {.ptx_version = {8, 0}, .sm_version = 90},
+      .instruction_range = simd_ast->range,
+  };
+  EXPECT_TRUE(check(*simd, supported_simd_target).has_value());
+
+  PtxSyntaxParser sat_parser("add.sat.u32 %r0, %r1, %r2;");
+  const auto sat_ast = sat_parser.parseInstruction();
+  ASSERT_TRUE(sat_ast.has_value()) << sat_ast.error().message;
+
+  const auto sat = resolve<Add>(*sat_ast);
+  ASSERT_TRUE(sat.has_value()) << sat.error().message;
+  ASSERT_NE(std::get_if<Add::Sat>(&sat->variant), nullptr);
+
+  constexpr std::array<std::string_view, 1> families{"sm_120f"};
+  const Context old_sat_target{
+      .target = {.ptx_version = {9, 1},
+                 .sm_version = 100,
+                 .families = families},
+      .instruction_range = sat_ast->range,
+  };
+  const auto unsupported_sat = check(*sat, old_sat_target);
+  ASSERT_FALSE(unsupported_sat.has_value());
+  ASSERT_EQ(unsupported_sat.error().size(), 2U);
+  EXPECT_EQ(unsupported_sat.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unsupported_sat.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const Context supported_sat_target{
+      .target = {.ptx_version = {9, 2},
+                 .sm_version = 120,
+                 .families = families},
+      .instruction_range = sat_ast->range,
+  };
+  EXPECT_TRUE(check(*sat, supported_sat_target).has_value());
 }
 
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {

@@ -48,8 +48,10 @@ globally unique within one spec database.
 ## Variants and modifiers
 
 A variant `name` is a stable machine-readable identifier. It generates the C++
-variant name and descriptor key. In the current model, a variant is determined
-by an exact modifier kind/value combination, never by operand count.
+variant name and descriptor key. In the current model, a variant represents a
+mutually exclusive set of modifier slots/presence and value constraints. It is
+not determined by operand count or a target-version interval. Forms that differ
+only because later targets add allowed values belong to one variant.
 
 Core modifier fields are:
 
@@ -114,6 +116,12 @@ A value without availability adds no requirement beyond its variant. When
 requirements after variant/layout checks and anchors a diagnostic at that
 modifier. Value availability can only add requirements; it cannot lower the
 variant availability.
+
+When later PTX versions add values to an existing modifier form, set the
+variant availability to the common baseline and attach the additional
+requirements to those values. For example, `add.u32` and `add.u16x2` share the
+no-sat variant, while the latter value requires PTX 8.0 / sm_90. Do not create
+an `add_simd_no_sat_sm90` variant solely for that version difference.
 
 ## Operands and operand patterns
 
@@ -230,8 +238,9 @@ ambiguity.
 
 1. Record PTX semantic facts, not generation preferences; never use C++ storage
    options such as `direct`, `sub_struct`, or `sub_variant`.
-2. Use stable descriptive variant names, for example `add_sat_s32` and
-   `bar_cta_sync`.
+2. Use stable descriptive variant names, for example `add_sat` and
+   `bar_cta_sync`; do not encode a version suffix that belongs to allowed-value
+   availability.
 3. Reuse `type_sets` and `operand_patterns`, but do not force semantically
    different operands into one pattern.
 4. Confirm that lexer/AST can form the needed operand shape before adding a

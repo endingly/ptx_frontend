@@ -148,6 +148,31 @@ TEST(ResolveAdd, RejectsMismatchedOpcode) {
   EXPECT_EQ(resolved.error().message, "Cannot resolve opcode 'sub' as 'add'.");
 }
 
+TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
+  const ResolvedModule empty_module{};
+  EXPECT_TRUE(empty_module.functions.empty());
+
+  const auto add_ast = parse_instruction("add.u32 %r0, %r1, %r2;");
+  const auto add = resolveInstruction(add_ast);
+  ASSERT_TRUE(add.has_value()) << add.error().message;
+  EXPECT_TRUE(std::holds_alternative<Add>(*add));
+
+  const auto sub_ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
+  const auto sub = resolveInstruction(sub_ast);
+  ASSERT_TRUE(sub.has_value()) << sub.error().message;
+  EXPECT_TRUE(std::holds_alternative<Sub>(*sub));
+}
+
+TEST(ResolveInstruction, RejectsUnknownOpcode) {
+  const auto ast = parse_instruction("unknown.u32 %r0, %r1, %r2;");
+
+  const auto resolved = resolveInstruction(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().range, ast.opcode.syntax.range);
+  EXPECT_EQ(resolved.error().message, "Unknown PTX opcode 'unknown'.");
+}
+
 TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {
   const auto ast =
       parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
@@ -661,7 +686,7 @@ TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
   ASSERT_EQ(operands.predicate.locs.size(), 1U);
   EXPECT_EQ(
       operands.predicate.locs.front(),
-      std::get<syntax_ast::AstPredicateOperand>(ast.operands[3]).syntax.range);
+      std::get<syntax_ast::AstPredicateOperand>(ast.operands[3]).range);
 
   const checker::Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},

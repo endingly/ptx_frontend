@@ -2,7 +2,7 @@ find_package(GTest CONFIG REQUIRED)
 
 # target test_lexer
 add_executable(test_lexer)
-file(GLOB _test_lexer_src_files lexer/*.cpp)
+file(GLOB _test_lexer_src_files CONFIGURE_DEPENDS lexer/*.cpp)
 target_sources(
     test_lexer
     PRIVATE ${_test_lexer_src_files}
@@ -18,7 +18,7 @@ gtest_discover_tests(test_lexer)
 
 # target test_syntax
 add_executable(test_syntax)
-file(GLOB _test_syntax_src_files syntax/*.cpp)
+file(GLOB _test_syntax_src_files CONFIGURE_DEPENDS syntax/*.cpp)
 target_sources(
     test_syntax
     PRIVATE ${_test_syntax_src_files}
@@ -33,7 +33,7 @@ target_link_libraries(
 gtest_discover_tests(test_syntax)
 
 add_executable(test_resolve_and_check)
-file(GLOB _test_resolve_and_check_src_files resolve_and_check/*.cpp)
+file(GLOB _test_resolve_and_check_src_files CONFIGURE_DEPENDS resolve_and_check/*.cpp)
 target_sources(
     test_resolve_and_check
     PRIVATE ${_test_resolve_and_check_src_files}

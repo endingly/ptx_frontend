@@ -20,6 +20,7 @@ from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
 from code_gen.gen_resolved_ir import (
+    generate_resolved_dispatch_source,
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
@@ -462,6 +463,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
         self.assertIn("struct Bar {", source)
+        self.assertIn("using ResolvedInstruction = std::variant<", source)
+        self.assertIn("struct ResolvedFunction {", source)
+        self.assertIn("struct ResolvedModule {", source)
+        self.assertIn("resolveInstruction(", source)
         self.assertIn("enum class VariantType {", source)
         self.assertIn("struct IntegerNoSat {", source)
         self.assertIn("ResolvedOperandLayoutTag operand_layout;", source)
@@ -502,6 +507,28 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("std::visit(detail::Overloaded{", source)
         self.assertNotIn("AddResolvedDescriptorStorage", source)
         self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
+
+    def test_generate_resolved_instruction_dispatch_source(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_dispatch.gen.cpp"
+            generate_resolved_dispatch_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn('#include "resolved_ir.gen.hpp"', source)
+        self.assertIn("resolveInstruction(const syntax_ast::AstInstruction& ast)", source)
+        self.assertIn('ast.opcode.syntax.text == "add"', source)
+        self.assertIn("resolve<Add>(ast)", source)
+        self.assertIn('ast.opcode.syntax.text == "sub"', source)
+        self.assertIn("resolve<Sub>(ast)", source)
+        self.assertIn('ast.opcode.syntax.text == "bar"', source)
+        self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = load_codegen_database(

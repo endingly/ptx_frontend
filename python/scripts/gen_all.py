@@ -25,6 +25,7 @@ from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
 from code_gen.gen_resolved_ir import (
+    generate_resolved_dispatch_source,
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
@@ -128,6 +129,13 @@ def main() -> None:
 
     generated_files.append(resolved_ir_path)
 
+    resolved_dispatch_path = output_dir / "private/resolved_ir_dispatch.gen.cpp"
+    generate_resolved_dispatch_source(
+        database,
+        output_path=resolved_dispatch_path,
+    )
+    generated_files.append(resolved_dispatch_path)
+
     # -------------------------------------------------------------------------
     # Category-partitioned Resolved IR resolve/check implementations
     # -------------------------------------------------------------------------
@@ -198,6 +206,7 @@ def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
     return (
         output_dir / "public/resolved_ir.gen.hpp",
         output_dir / "private/resolved_value_domains.gen.hpp",
+        output_dir / "private/resolved_ir_dispatch.gen.cpp",
         *(
             resolved_ir_category_source_path(output_dir, category)
             for category in instruction_categories(database)

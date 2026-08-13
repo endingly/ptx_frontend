@@ -13,6 +13,22 @@ Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolve
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
 CFG、SSA、符号表的完整绑定和目标 lowering 是后续 pass，不应改变此层的结构。
 
+生成的公共层还提供了一个与具体 opcode 无关的边界：
+
+```cpp
+using ResolvedInstruction = std::variant<Add, Sub, Bar /* ... */>;
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast);
+```
+
+`resolveInstruction` 根据指令数据库生成，并分发到现有的 `resolve<T>` 特化。调用者不再
+需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。当前还提供初始的
+`ResolvedFunction` 与 `ResolvedModule` 容器，用于在文件范围内组织 resolved
+instruction。它们暂不虚构 directive、声明、label 或 symbol 字段；这些内容应当等真实
+绑定 pass 建立后再一并加入。syntax 层目前已经能够解析初始 module grammar，但这些事实
+不应以未解析字符串直接复制到 Resolved IR。
+
 ## 位置与基本值
 
 每个可独立诊断的 resolved 值使用：

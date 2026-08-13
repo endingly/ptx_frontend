@@ -301,8 +301,7 @@ resolve_register(const syntax_ast::AstOperand& operand) {
   const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
   if (identifier == nullptr) {
     return std::unexpected(ResolveDiagnostic{
-        .range = std::visit([](const auto& item) { return item.syntax.range; },
-                            operand),
+        .range = syntax_ast::sourceRange(operand),
         .message = "Expected a register operand.",
     });
   }
@@ -340,11 +339,10 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
                  std::get_if<syntax_ast::AstPredicateOperand>(&operand)) {
     identifier = &predicate->name;
     negated = predicate->negated;
-    range = predicate->syntax.range;
+    range = predicate->range;
   } else {
     return std::unexpected(ResolveDiagnostic{
-        .range = std::visit([](const auto& item) { return item.syntax.range; },
-                            operand),
+        .range = syntax_ast::sourceRange(operand),
         .message = "Expected a predicate operand.",
     });
   }
@@ -554,8 +552,7 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     return WithLocs<RegOrImm>{RegOrImm{*value}, immediate->syntax.range};
   }
   return std::unexpected(ResolveDiagnostic{
-      .range = std::visit([](const auto& item) { return item.syntax.range; },
-                          operand),
+      .range = syntax_ast::sourceRange(operand),
       .message = "Expected a register or immediate operand.",
   });
 }
@@ -749,8 +746,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
       if (immediate == nullptr) {
         return std::unexpected(ResolveDiagnostic{
-            .range = std::visit(
-                [](const auto& item) { return item.syntax.range; }, operand),
+            .range = syntax_ast::sourceRange(operand),
             .message = "Expected an immediate operand.",
         });
       }
@@ -765,10 +761,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           std::move(*value), immediate->syntax.range}};
     }
     case ResolvedValueKind::RegOrImm: {
-      const auto type = type_for_operand(
-          binding, fields,
-          std::visit([](const auto& item) { return item.syntax.range; },
-                     operand));
+      const auto type =
+          type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
       auto value = resolve_reg_or_imm(operand, *type);

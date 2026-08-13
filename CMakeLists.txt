@@ -69,6 +69,13 @@ file(GLOB_RECURSE PYTHON_CODEGEN_MODULES CONFIGURE_DEPENDS
 set(PYTHON_CODEGEN_SCRIPTS
     ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
 )
+# Generator changes can alter the declared output topology (for example by
+# adding a new generated translation unit). Reconfigure before consuming the
+# output list so such files are also attached to the library target.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${PYTHON_CODEGEN_MODULES}
+    ${PYTHON_CODEGEN_SCRIPTS}
+)
 
 execute_process(
     COMMAND

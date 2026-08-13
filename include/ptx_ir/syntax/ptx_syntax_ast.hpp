@@ -1,27 +1,21 @@
 #pragma once
 
+#include <concepts>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
-#include "ptx_ir/lex/ptx_token.hpp"
+#include "ptx_ir/source_loc.hpp"
 
 namespace ptx_frontend::syntax_ast {
 
-/**
- * Source-derived spelling of one syntax node or token sequence.
- *
- * `text`, `range`, and leading trivia support diagnostics and resolution. This
- * is not a lossless source representation: trivia between combined tokens and
- * punctuation trivia are not retained. Formatting and source-preserving
- * rewriting require the future CST layer.
- */
+/** Source spelling retained by a semantic syntax leaf. */
 struct AstSyntax {
   std::string text;
   SourceRange range;
-  std::vector<Trivia> leading_trivia;
 };
 
 struct AstOpcode {
@@ -32,21 +26,16 @@ struct AstModifier {
   AstSyntax syntax;
 };
 
-/**
- * An unresolved identifier reference.
- *
- * This deliberately represents both `%r1` and `foo`. Whether a spelling names
- * a register, variable, function, or label is a resolution concern.
- */
+/** An unresolved register, variable, function, label, or symbol reference. */
 struct AstIdentifierRef {
   AstSyntax syntax;
 };
 
 /** A predicate operand, optionally complemented with a leading ``!``. */
 struct AstPredicateOperand {
-  AstSyntax syntax;
   bool negated{};
   AstIdentifierRef name;
+  SourceRange range;
 };
 
 /** Lexical category of the literal token underlying an immediate. */
@@ -58,59 +47,59 @@ enum class AstImmediateKind : uint8_t {
   DecimalFloat,
 };
 
-/**
- * A lexical immediate literal, including its parsed spelling.
- *
- * The AST does not decode it to an integer or floating-point value. That may
- * depend on the selected instruction form and is performed during resolution.
- */
+/** A lexical literal whose semantic value is decoded during resolution. */
 struct AstImmediate {
   AstSyntax syntax;
   AstImmediateKind kind = AstImmediateKind::DecimalInteger;
 };
 
 struct AstAddressOffset {
-  AstSyntax operator_token;  // "+" or "-"
+  enum class Operator : uint8_t { Add, Subtract };
+
+  Operator operation = Operator::Add;
   AstImmediate magnitude;
   SourceRange range;
 };
 
-/**
- * A bracketed or unbracketed PTX address expression.
- *
- * The base is still syntactic: it has not been resolved to a register or a
- * symbol, and the AST does not assign an address space.
- */
+/** An unresolved bracketed or unbracketed PTX address expression. */
 struct AstAddress {
-  AstSyntax syntax;
   std::variant<AstIdentifierRef, AstImmediate> base;
   std::optional<AstAddressOffset> offset;
   bool bracketed{};
+  SourceRange range;
 };
 
 struct AstVectorMember {
-  AstSyntax syntax;
   AstIdentifierRef base;
-  AstSyntax selector;  // for example, ".x"
+  AstSyntax selector;
+  SourceRange range;
 };
 
 using AstVectorElement = std::variant<AstIdentifierRef, AstImmediate>;
 
 struct AstVectorPack {
-  AstSyntax syntax;
   std::vector<AstVectorElement> elements;
+  SourceRange range;
 };
 
-/**
- * One PTX instruction operand, represented by its grammar shape.
- *
- * These alternatives are syntax facts, not semantic operand categories. In
- * particular, `AstIdentifierRef` is intentionally not split into register,
- * variable, label, or function references until the resolver runs.
- */
+/** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
                  AstAddress, AstVectorMember, AstVectorPack>;
+
+/** Return the source range shared by every operand alternative. */
+inline SourceRange sourceRange(const AstOperand& operand) {
+  return std::visit(
+      [](const auto& value) {
+        using Value = std::remove_cvref_t<decltype(value)>;
+        if constexpr (std::same_as<Value, AstIdentifierRef> ||
+                      std::same_as<Value, AstImmediate>)
+          return value.syntax.range;
+        else
+          return value.range;
+      },
+      operand);
+}
 
 struct AstPredicate {
   bool negated{};
@@ -124,6 +113,109 @@ struct AstInstruction {
   std::vector<AstOperand> operands;
   std::optional<AstPredicate> predicate;
   SourceRange range;
+};
+
+struct AstVersionDirective {
+  AstSyntax version;
+  SourceRange range;
+};
+
+struct AstTargetDirective {
+  std::vector<AstSyntax> targets;
+  SourceRange range;
+};
+
+struct AstAddressSizeDirective {
+  AstSyntax bit_width;
+  SourceRange range;
+};
+
+struct AstArrayDimension {
+  std::vector<AstSyntax> size_tokens;
+  SourceRange range;
+};
+
+struct AstVariableDeclarator {
+  AstIdentifierRef name;
+  std::optional<AstSyntax> register_count;
+  std::vector<AstArrayDimension> array_dimensions;
+  SourceRange range;
+};
+
+enum class AstStateSpace : uint8_t {
+  Register,
+  Parameter,
+  Local,
+  Shared,
+  Global,
+  Constant,
+};
+
+struct AstVariableDeclaration {
+  std::vector<AstSyntax> qualifiers;
+  AstStateSpace state_space{};
+  std::optional<AstSyntax> alignment;
+  std::optional<AstSyntax> vector_type;
+  AstSyntax type;
+  std::vector<AstVariableDeclarator> declarators;
+  SourceRange range;
+};
+
+struct AstLabel {
+  AstIdentifierRef name;
+  SourceRange range;
+};
+
+using AstFunctionBodyItem =
+    std::variant<AstVariableDeclaration, AstLabel, AstInstruction>;
+
+struct AstFunctionParameter {
+  AstStateSpace state_space{};
+  std::optional<AstSyntax> alignment;
+  AstSyntax type;
+  bool is_pointer{};
+  std::optional<AstSyntax> pointer_space;
+  std::optional<AstSyntax> pointer_alignment;
+  AstIdentifierRef name;
+  bool is_array{};
+  std::optional<AstSyntax> array_size;
+  SourceRange range;
+};
+
+/** Initial function container; declarations and parameters refine this later. */
+struct AstFunction {
+  bool is_entry{};
+  bool is_prototype{};
+  bool is_noreturn{};
+  std::vector<AstSyntax> qualifiers;
+  AstIdentifierRef name;
+  std::vector<AstFunctionParameter> return_parameters;
+  std::vector<AstFunctionParameter> parameters;
+  std::vector<AstFunctionBodyItem> body;
+  SourceRange range;
+};
+
+using AstModuleItem =
+    std::variant<AstVersionDirective, AstTargetDirective,
+                 AstAddressSizeDirective, AstVariableDeclaration, AstFunction>;
+
+struct AstModule {
+  std::vector<AstModuleItem> items;
+  SourceRange range;
+};
+
+using AstRoot = std::variant<AstInstruction, AstModule>;
+
+struct AstFile {
+  AstRoot root;
+
+  [[nodiscard]] const AstInstruction* instruction() const noexcept {
+    return std::get_if<AstInstruction>(&root);
+  }
+
+  [[nodiscard]] const AstModule* module() const noexcept {
+    return std::get_if<AstModule>(&root);
+  }
 };
 
 }  // namespace ptx_frontend::syntax_ast

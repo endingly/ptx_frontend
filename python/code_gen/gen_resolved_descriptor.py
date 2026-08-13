@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from base.utils import generated_at_comment, to_file_stem
+from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from code_gen.database import CodegenDatabase
 from ir.resolved_ir import (
     ResolvedField,
@@ -20,53 +21,6 @@ from ir.resolved_ir import (
     ResolvedValueKind,
     from_instruction_spec,
 )
-from ir.scalar_types import SCALAR_TYPE_CPP_ENUM_NAMES
-from ir.rounding_modes import ROUNDING_MODE_CPP_ENUM_NAMES
-
-
-_CPP_RESOLVED_VALUE_KINDS = {
-    ResolvedValueKind.BOOL: "check_end::ResolvedValueKind::Bool",
-    ResolvedValueKind.SCALAR_TYPE: "check_end::ResolvedValueKind::ScalarType",
-    ResolvedValueKind.ROUNDING_MODE: "check_end::ResolvedValueKind::RoundingMode",
-    ResolvedValueKind.REGISTER: "check_end::ResolvedValueKind::Register",
-    ResolvedValueKind.PREDICATE: "check_end::ResolvedValueKind::Predicate",
-    ResolvedValueKind.IMMEDIATE: "check_end::ResolvedValueKind::Immediate",
-    ResolvedValueKind.REG_OR_IMM: "check_end::ResolvedValueKind::RegOrImm",
-}
-
-_CPP_OPERAND_ROLES = {
-    ResolvedOperandRole.DESTINATION: "check_end::OperandRole::Destination",
-    ResolvedOperandRole.SOURCE: "check_end::OperandRole::Source",
-    ResolvedOperandRole.ADDRESS: "check_end::OperandRole::Address",
-    ResolvedOperandRole.PREDICATE: "check_end::OperandRole::Predicate",
-    ResolvedOperandRole.BRANCH_TARGET: "check_end::OperandRole::BranchTarget",
-    ResolvedOperandRole.BARRIER: "check_end::OperandRole::Barrier",
-    ResolvedOperandRole.THREAD_COUNT: "check_end::OperandRole::ThreadCount",
-}
-
-_CPP_OPERAND_ACCESS = {
-    ResolvedOperandAccess.READ: "check_end::OperandAccess::Read",
-    ResolvedOperandAccess.WRITE: "check_end::OperandAccess::Write",
-    ResolvedOperandAccess.READ_WRITE: "check_end::OperandAccess::ReadWrite",
-}
-
-_CPP_OPERAND_SHAPES = {
-    ResolvedOperandShape.REGISTER: "check_end::OperandShape::Register",
-    ResolvedOperandShape.PREDICATE: "check_end::OperandShape::Predicate",
-    ResolvedOperandShape.IMMEDIATE: "check_end::OperandShape::Immediate",
-    ResolvedOperandShape.ADDRESS: "check_end::OperandShape::Address",
-    ResolvedOperandShape.SYMBOL: "check_end::OperandShape::Symbol",
-    ResolvedOperandShape.VECTOR: "check_end::OperandShape::Vector",
-}
-
-_CPP_OPERAND_TYPE_EXPRESSION_KINDS = {
-    ResolvedOperandTypeExpressionKind.NONE:
-        "check_end::OperandTypeExpressionKind::None",
-    ResolvedOperandTypeExpressionKind.FIXED_SCALAR:
-        "check_end::OperandTypeExpressionKind::FixedScalar",
-    ResolvedOperandTypeExpressionKind.MODIFIER_FIELD:
-        "check_end::OperandTypeExpressionKind::ModifierField",
-}
 
 def generate_resolved_descriptor_source(
     database: CodegenDatabase,
@@ -202,7 +156,7 @@ def _emit_resolved_variant_storage(variant: ResolvedVariant) -> str:
 def _emit_resolved_field_descriptor(field: ResolvedField) -> str:
     return f"""          check_end::ResolvedFieldDescriptor{{
               .field_id = "{field.name}",
-              .value_kind = {_CPP_RESOLVED_VALUE_KINDS[field.value_kind]},
+              .value_kind = {cpp_value(CppDomain.RESOLVED_VALUE_KINDS, field.value_kind.value)},
           }}"""
 
 
@@ -221,38 +175,28 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
     if default.value_cpp_type == "bool" and type(default.value) is bool:
         bool_value = "true" if default.value else "false"
         return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = check_end::ResolvedModifierDefaultKind::Bool,
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "Bool")},
                   .bool_value = {bool_value},
-                  .scalar_type = ScalarType::Invalid,
-                  .rounding_mode = RoundingMode::Invalid,
+                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
+                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
               }}"""
     if default.value_cpp_type == "ScalarType" and isinstance(default.value, str):
-        try:
-            scalar_type = SCALAR_TYPE_CPP_ENUM_NAMES[default.value]
-        except KeyError as error:
-            raise ValueError(
-                f"unsupported scalar-type modifier default {default.value!r}"
-            ) from error
+        scalar_type = cpp_value(CppDomain.SCALAR_TYPES, default.value)
         return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = check_end::ResolvedModifierDefaultKind::ScalarType,
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "ScalarType")},
                   .bool_value = false,
-                  .scalar_type = ScalarType::{scalar_type},
-                  .rounding_mode = RoundingMode::Invalid,
+                  .scalar_type = {scalar_type},
+                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
               }}"""
     if default.value_cpp_type == "RoundingMode" and isinstance(
         default.value, str
     ):
-        try:
-            rounding_mode = ROUNDING_MODE_CPP_ENUM_NAMES[default.value]
-        except KeyError as error:
-            raise ValueError(
-                f"unsupported rounding-mode modifier default {default.value!r}"
-            ) from error
+        rounding_mode = cpp_value(CppDomain.ROUNDING_MODES, default.value)
         return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = check_end::ResolvedModifierDefaultKind::RoundingMode,
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "RoundingMode")},
                   .bool_value = false,
-                  .scalar_type = ScalarType::Invalid,
-                  .rounding_mode = RoundingMode::{rounding_mode},
+                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
+                  .rounding_mode = {rounding_mode},
               }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "
@@ -284,13 +228,14 @@ def _emit_operand_layout_storage(
 
 def _emit_operand_binding_descriptor(binding) -> str:
     allowed_shapes = " | ".join(
-        _CPP_OPERAND_SHAPES[shape] for shape in binding.allowed_shapes
+        cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
+        for shape in binding.allowed_shapes
     )
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
               .type_expression = {_emit_type_expression_descriptor(binding.type_expression)},
-              .role = {_CPP_OPERAND_ROLES[binding.role]},
-              .access = {_CPP_OPERAND_ACCESS[binding.access]},
+              .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
+              .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
               .allowed_shapes = {allowed_shapes},
           }}"""
 
@@ -300,19 +245,17 @@ def _emit_type_expression_descriptor(
 ) -> str:
     """Emit the constexpr C++ representation of one normalized type source."""
 
-    fixed_scalar_type = "ScalarType::Invalid"
+    fixed_scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
     modifier_field_id = '""'
     if expression.kind is ResolvedOperandTypeExpressionKind.FIXED_SCALAR:
         assert expression.scalar_type is not None
-        fixed_scalar_type = (
-            f"ScalarType::{SCALAR_TYPE_CPP_ENUM_NAMES[expression.scalar_type]}"
-        )
+        fixed_scalar_type = cpp_value(CppDomain.SCALAR_TYPES, expression.scalar_type)
     elif expression.kind is ResolvedOperandTypeExpressionKind.MODIFIER_FIELD:
         assert expression.modifier_field_id is not None
         modifier_field_id = f'"{expression.modifier_field_id}"'
 
     return f"""check_end::TypeExpressionDescriptor{{
-                  .kind = {_CPP_OPERAND_TYPE_EXPRESSION_KINDS[expression.kind]},
+                  .kind = {cpp_value(CppDomain.RESOLVED_OPERAND_TYPE_EXPRESSION_KINDS, expression.kind.value)},
                   .fixed_scalar_type = {fixed_scalar_type},
                   .modifier_field_id = {modifier_field_id},
               }}"""

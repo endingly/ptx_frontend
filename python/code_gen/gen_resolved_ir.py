@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from base.utils import generated_at_comment
+from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from code_gen.database import CodegenDatabase
 from ir.resolved_ir import (
     ResolvedField,
@@ -489,7 +490,9 @@ def _emit_check_modifier_value_view(
     field: ResolvedField,
 ) -> str:
     if field.value_cpp_type == "ScalarType":
-        value_kind = "ModifierValueKind::ScalarType"
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "ScalarType"
+        )
         bool_value = "false"
         scalar_type = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
@@ -497,18 +500,22 @@ def _emit_check_modifier_value_view(
             else f"selected.{field.name}.value"
         )
     elif field.value_cpp_type == "bool":
-        value_kind = "ModifierValueKind::Bool"
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "bool"
+        )
         bool_value = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
         )
-        scalar_type = "ScalarType::Invalid"
-        rounding_mode = "RoundingMode::Invalid"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
     elif field.value_cpp_type == "RoundingMode":
-        value_kind = "ModifierValueKind::RoundingMode"
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "RoundingMode"
+        )
         bool_value = "false"
-        scalar_type = "ScalarType::Invalid"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
@@ -526,7 +533,7 @@ def _emit_check_modifier_value_view(
         else f"selected.{field.name}.locs"
     )
     if field.value_cpp_type != "RoundingMode":
-        rounding_mode = "RoundingMode::Invalid"
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
@@ -542,21 +549,21 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
     if field.value_cpp_type == "ResolvedRegisterRef":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
-                  .actual_shape = OperandShape::Register,
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                   .immediate_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedImmediate":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
-                  .actual_shape = OperandShape::Immediate,
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                   .immediate_type = {object_name}.{field.name}.value.type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicate":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
-                  .actual_shape = OperandShape::Predicate,
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -566,14 +573,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                         std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
                   return OperandView{{
                       .field_id = "{field.name}",
-                      .actual_shape = OperandShape::Immediate,
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                       .immediate_type = immediate->type,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
                 return OperandView{{
                     .field_id = "{field.name}",
-                    .actual_shape = OperandShape::Register,
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                     .immediate_type = std::nullopt,
                     .locations = {object_name}.{field.name}.locs,
                 }};

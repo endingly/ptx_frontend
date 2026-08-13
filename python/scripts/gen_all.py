@@ -14,12 +14,15 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from code_gen.database import load_codegen_database
+from code_gen.database import CodegenDatabase, load_codegen_database
 from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from code_gen.gen_resolved_ir import generate_resolved_ir_header
+from code_gen.gen_resolved_ir import (
+    generate_resolved_ir_header,
+    generate_resolved_ir_source,
+)
 from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
 from base.utils import format_file_inplace
 
@@ -89,6 +92,21 @@ def main() -> None:
     generated_files.append(resolved_ir_path)
 
     # -------------------------------------------------------------------------
+    # Category-partitioned Resolved IR resolve/check implementations
+    # -------------------------------------------------------------------------
+
+    for category in instruction_categories(database):
+        category_source_path = resolved_ir_category_source_path(
+            output_dir, category
+        )
+        generate_resolved_ir_source(
+            database,
+            category=category,
+            output_path=category_source_path,
+        )
+        generated_files.append(category_source_path)
+
+    # -------------------------------------------------------------------------
     # Descriptor storage and getter definitions
     # -------------------------------------------------------------------------
 
@@ -133,13 +151,28 @@ def validate_directory(path: Path, argument_name: str) -> None:
 
 
 def expected_generated_files(database, output_dir: Path) -> tuple[Path, ...]:
-    del database
     return (
         output_dir / "public/resolved_ir.gen.hpp",
+        *(
+            resolved_ir_category_source_path(output_dir, category)
+            for category in instruction_categories(database)
+        ),
         output_dir / "private/syntax_descriptor.gen.cpp",
         output_dir / "private/resolved_descriptor.gen.cpp",
         output_dir / "private/resolved_ir_checker_descriptor.gen.cpp",
     )
+
+
+def instruction_categories(database: CodegenDatabase) -> tuple[str, ...]:
+    """Return stable category names used to partition generated definitions."""
+
+    return tuple(
+        sorted({instruction.category for instruction in database.instructions})
+    )
+
+
+def resolved_ir_category_source_path(output_dir: Path, category: str) -> Path:
+    return output_dir / f"private/resolved_ir_{category}.gen.cpp"
 
 
 def remove_legacy_generated_files(output_dir: Path) -> None:
@@ -154,6 +187,11 @@ def remove_legacy_generated_files(output_dir: Path) -> None:
     )
     for pattern in legacy_patterns:
         for path in output_dir.glob(pattern):
+            path.unlink()
+
+    checker_descriptor_name = "resolved_ir_checker_descriptor.gen.cpp"
+    for path in (output_dir / "private").glob("resolved_ir_*.gen.cpp"):
+        if path.name != checker_descriptor_name:
             path.unlink()
 
 

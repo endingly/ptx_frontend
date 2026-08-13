@@ -106,18 +106,13 @@
 
   YAML example → parse → selectVariant → resolve → check
 
-  9. 中优先级：生成头文件尚未具备完整 PTX 的编译规模
+  9. 已解决：生成函数实现已移出公共头
 
-  当前只有 Add 和 Bar，公开生成头已经约 3200 行、128 KiB，而且把所有 resolve<T> 与 check<T> 实现 inline 到公共头文件
-  中。
-
-  完整 PTX 后会明显增加每个 consumer TU 的解析和模板实例化成本。建议在继续扩展前调整为：
-
-  - 公共头只生成结构体和显式特化声明；
-  - 特化实现放入按 category 分片的 .gen.cpp；
-  - 按指令类别拆分 generated header，并提供可选 umbrella header。
-
-  这里需要恢复显式特化声明：当特化定义位于 .cpp 时，声明必须在调用点可见，以避免编译器尝试实例化主模板。
+  公共 `resolved_ir.gen.hpp` 现在只包含全部 opcode struct 和 `resolve<T>`、`check<T>`
+  的显式特化声明，定义按 YAML category 生成到 `resolved_ir_<category>.gen.cpp` 并编译
+  进 library。体积较小的通用 `selectVariant<T>` 实现保留在手写 ABI 头中，使所有满足
+  `PtxOperator` 的类型都能直接使用。保留单一公开生成头是有意的 API 取舍，consumer
+  不再重复编译大型 resolve/check 函数体。
 
   10. 其他应清理的问题
 

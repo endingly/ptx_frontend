@@ -98,11 +98,13 @@ Otherwise model construction fails instead of generating ambiguous code.
 
 ## C++ emitters and artifacts
 
-`python/scripts/gen_all.py` coordinates four fixed outputs:
+`python/scripts/gen_all.py` coordinates one public declaration header,
+category-partitioned implementation sources, and three descriptor sources:
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | opcode structs plus `resolve<T>` and `check<T>` specializations |
+| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | all opcode structs plus explicit-specialization declarations for `resolve<T>` and `check<T>` |
+| `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | out-of-line definitions of those two specialization sets for one category |
 | `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source-syntax descriptors and getters |
 | `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors and getters |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors and getters |
@@ -111,10 +113,18 @@ The generated public header remains flat under the build-tree `public` include
 root. CMake installs that specific file as
 `include/ptx_ir/resolved/resolved_ir.gen.hpp`.
 
+The public header contains no generated function bodies. An instruction-level
+`category` overrides the file-level category; otherwise the latter is
+inherited. The generator uses that normalized value to create stable category
+sources, which CMake compiles into the `ptx_frontend` library. Consumers retain
+one include entry point, while the complex `std::visit` code, lambdas, and
+resolve builders are compiled only once inside the library.
+
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in
-`ptx_frontend::resolved_ir`; generated checker specializations share one
-`checker` namespace.
+`ptx_frontend::resolved_ir`. Checker specialization declarations share one
+`checker` namespace in the public header, and each category implementation
+likewise opens it only once.
 
 ## Generation rules
 

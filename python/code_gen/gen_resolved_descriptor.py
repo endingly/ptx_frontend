@@ -220,7 +220,37 @@ def _emit_modifier_binding_descriptor(binding: ResolvedModifierBinding) -> str:
     return f"""          check_end::ResolvedModifierBindingDescriptor{{
               .source_kind_id = "{binding.source_kind_id}",
               .target_field_id = "{binding.target_field_id}",
+              .default_value = {_emit_modifier_default_descriptor(binding)},
           }}"""
+
+
+def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
+    default = binding.default_value
+    if default is None:
+        return "check_end::ResolvedModifierDefaultDescriptor{}"
+    if default.value_cpp_type == "bool" and type(default.value) is bool:
+        bool_value = "true" if default.value else "false"
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = check_end::ResolvedModifierDefaultKind::Bool,
+                  .bool_value = {bool_value},
+                  .scalar_type = ScalarType::Invalid,
+              }}"""
+    if default.value_cpp_type == "ScalarType" and isinstance(default.value, str):
+        try:
+            scalar_type = _SCALAR_TYPE_ENUM_NAMES[default.value]
+        except KeyError as error:
+            raise ValueError(
+                f"unsupported scalar-type modifier default {default.value!r}"
+            ) from error
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = check_end::ResolvedModifierDefaultKind::ScalarType,
+                  .bool_value = false,
+                  .scalar_type = ScalarType::{scalar_type},
+              }}"""
+    raise ValueError(
+        f"unsupported modifier default {default.value!r} for "
+        f"{default.value_cpp_type}"
+    )
 
 
 def _emit_operand_layout_storage(

@@ -44,6 +44,8 @@ using check_end::OperandPresence;
 using check_end::OperandSyntaxShape;
 using check_end::ResolvedFieldDescriptor;
 using check_end::ResolvedInstructionDescriptor;
+using check_end::ResolvedModifierBindingDescriptor;
+using check_end::ResolvedModifierDefaultKind;
 using check_end::ResolvedOperandBindingDescriptor;
 using check_end::ResolvedOperandLayoutDescriptor;
 using check_end::ResolvedValueKind;
@@ -724,6 +726,40 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
   throw ResolveException("Unknown ResolvedValueKind.");
 }
 
+ResolvedFieldValue resolve_default_modifier_value(
+    const ResolvedFieldDescriptor& field,
+    const ResolvedModifierBindingDescriptor& binding) {
+  const auto& default_value = binding.default_value;
+  switch (field.value_kind) {
+    case ResolvedValueKind::Bool:
+      if (default_value.kind != ResolvedModifierDefaultKind::Bool) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a boolean default for resolved "
+            "field '{}'.",
+            binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<bool>{default_value.bool_value}};
+    case ResolvedValueKind::ScalarType:
+      if (default_value.kind != ResolvedModifierDefaultKind::ScalarType ||
+          default_value.scalar_type == ScalarType::Invalid) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a scalar-type default for "
+            "resolved field '{}'.",
+            binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{
+          WithLocs<ScalarType>{default_value.scalar_type}};
+    case ResolvedValueKind::Register:
+    case ResolvedValueKind::Predicate:
+    case ResolvedValueKind::Immediate:
+    case ResolvedValueKind::RegOrImm:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' targets non-modifier resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
+  }
+  throw ResolveException("Unknown ResolvedValueKind.");
+}
+
 }  // namespace
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
@@ -818,41 +854,31 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
           binding.target_field_id, binding.source_kind_id));
     }
 
+    if (!present) {
+      if (syntax_modifier.presence ==
+          check_end::PresenceRequirement::Optional) {
+        fields.modifiers.emplace(
+            field.field_id, resolve_default_modifier_value(field, binding));
+        continue;
+      }
+      return std::unexpected(ResolveDiagnostic{
+          .range = ast.range,
+          .message = fmt::format("Resolved variant requires '{}' modifier.",
+                                 binding.source_kind_id),
+      });
+    }
+
     switch (field.value_kind) {
       case ResolvedValueKind::Bool:
-        if (present) {
-          fields.modifiers.emplace(
-              field.field_id,
-              WithLocs<bool>{true, actual->second->syntax.range});
-        } else if (syntax_modifier.presence ==
-                   check_end::PresenceRequirement::Optional) {
-          fields.modifiers.emplace(field.field_id, WithLocs<bool>{false});
-        } else {
-          return std::unexpected(ResolveDiagnostic{
-              .range = ast.range,
-              .message = fmt::format("Resolved variant requires '{}' modifier.",
-                                     binding.source_kind_id),
-          });
-        }
+        fields.modifiers.emplace(
+            field.field_id, WithLocs<bool>{true, actual->second->syntax.range});
         break;
-      case ResolvedValueKind::ScalarType:
-        if (!present) {
-          if (syntax_modifier.presence ==
-              check_end::PresenceRequirement::Optional)
-            break;
-          return std::unexpected(ResolveDiagnostic{
-              .range = ast.range,
-              .message = fmt::format("Resolved variant requires '{}' modifier.",
-                                     binding.source_kind_id),
-          });
-        }
-        {
-          auto value = resolve_scalar_type(*actual->second);
-          if (!value)
-            return std::unexpected(value.error());
-          fields.modifiers.emplace(field.field_id, std::move(*value));
-        }
-        break;
+      case ResolvedValueKind::ScalarType: {
+        auto value = resolve_scalar_type(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
       case ResolvedValueKind::Register:
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::Immediate:

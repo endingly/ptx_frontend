@@ -72,6 +72,7 @@ ResolvedVariant(variant_id, modifier_fields, modifier_bindings,
                 operand_layouts, availability, rule)
 ResolvedOperandLayout(layout_id, cpp_name, fields, bindings)
 ResolvedField(name, value_cpp_type, origin, storage, ...)
+ResolvedModifierBinding(source_kind_id, target_field_id, default_value)
 ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 ```
 
@@ -80,6 +81,11 @@ ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 resolver 共用的语义契约，保存目标 field、结构化类型表达式、role、access 和允许 shape。
 其 descriptor 只有 `None`、`FixedScalar(ScalarType)` 与 `ModifierField(field_id)`；
 因此两个 C++ 消费者都不再解析 YAML 表达式字符串。
+
+optional modifier 的 YAML `default` 会在模型转换时成为 typed
+`ResolvedModifierBinding.default_value`，并进入 resolved descriptor。公共 resolver
+据此构造 `WithLocs<bool>` 或 `WithLocs<ScalarType>`；省略时 `locs` 为空，显式书写时
+使用源码值与源码位置。Syntax descriptor 只描述 spelling/presence，不复制语义 default。
 
 同一 variant 的多个 layout 可复用同名 field，前提是其定义完全一致；否则模型构建应
 失败，而不是让生成结果含糊。

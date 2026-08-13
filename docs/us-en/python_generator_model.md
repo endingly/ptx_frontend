@@ -75,6 +75,7 @@ ResolvedVariant(variant_id, modifier_fields, modifier_bindings,
                 operand_layouts, availability, rule)
 ResolvedOperandLayout(layout_id, cpp_name, fields, bindings)
 ResolvedField(name, value_cpp_type, origin, storage, ...)
+ResolvedModifierBinding(source_kind_id, target_field_id, default_value)
 ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 ```
 
@@ -84,6 +85,13 @@ per-instance `WithLocs<T>` from a fixed modifier `STATIC_CONSTANT`.
 and checker: target field, structured type expression, role, access, and
 allowed shape. Its descriptor form is `None`, `FixedScalar(ScalarType)`, or
 `ModifierField(field_id)`, so neither C++ consumer parses YAML expression text.
+
+During model conversion, an optional modifier's YAML `default` becomes a typed
+`ResolvedModifierBinding.default_value` and is emitted into the resolved
+descriptor. The common resolver uses it to construct `WithLocs<bool>` or
+`WithLocs<ScalarType>`: omitted modifiers have empty `locs`, while explicit
+ones use the source value and range. The syntax descriptor retains only
+spelling/presence and does not duplicate the semantic default.
 
 Layouts may reuse a field name only when its complete definition is identical.
 Otherwise model construction fails instead of generating ambiguous code.

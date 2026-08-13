@@ -27,7 +27,10 @@ struct WithLocs {
 ```
 
 `locs` can associate one semantic value with several source fragments; an empty
-list denotes no direct source location, such as a compile-time fixed modifier.
+list denotes no direct source location, such as a compile-time fixed modifier
+or an instance value injected from an optional modifier's YAML `default`. The
+latter remains a `WithLocs<T>`: `value` holds the semantic default and empty
+`locs` means it was not written explicitly.
 Current primitives include `ResolvedRegisterRef`, `ResolvedImmediate`, and
 `RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
 checker never has to reinterpret literal text.

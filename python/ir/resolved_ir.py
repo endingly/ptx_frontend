@@ -179,6 +179,15 @@ class ResolvedModifierBinding:
 
     source_kind_id: str
     target_field_id: str
+    default_value: "ResolvedModifierDefault | None" = None
+
+
+@dataclass(frozen=True)
+class ResolvedModifierDefault:
+    """Typed semantic value used when an optional modifier is omitted."""
+
+    value_cpp_type: str
+    value: str | bool | int
 
 
 @dataclass(frozen=True)
@@ -304,10 +313,12 @@ def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
 
 
 def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
+    active_modifiers = tuple(
+        modifier for modifier in variant.modifiers if modifier.presence != "absent"
+    )
     modifier_fields = tuple(
         _build_modifier_field(modifier)
-        for modifier in variant.modifiers
-        if modifier.presence != "absent"
+        for modifier in active_modifiers
     )
     operand_layouts = tuple(
         _build_operand_layout(
@@ -327,8 +338,11 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             ResolvedModifierBinding(
                 source_kind_id=field.source_name,
                 target_field_id=field.name,
+                default_value=_build_modifier_default(modifier),
             )
-            for field in modifier_fields
+            for modifier, field in zip(
+                active_modifiers, modifier_fields, strict=True
+            )
         ),
         operand_layouts=operand_layouts,
         modifier_value_availabilities=tuple(
@@ -339,6 +353,46 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
+    )
+
+
+def _build_modifier_default(
+    modifier: ModifierSpec,
+) -> ResolvedModifierDefault | None:
+    if modifier.presence != "optional":
+        return None
+    if modifier.default is None:
+        raise ValueError(
+            f"optional modifier {modifier.name!r} has no normalized default"
+        )
+
+    try:
+        value_cpp_type = _MODIFIER_VALUE_CPP_TYPES[modifier.kind]
+    except KeyError as error:
+        raise ValueError(
+            f"optional modifier {modifier.name!r}: unsupported default for "
+            f"modifier kind {modifier.kind!r}"
+        ) from error
+
+    if value_cpp_type == "bool" and type(modifier.default) is not bool:
+        raise ValueError(
+            f"optional flag modifier {modifier.name!r} must have a boolean "
+            "default"
+        )
+    if value_cpp_type == "ScalarType":
+        if not isinstance(modifier.default, str):
+            raise ValueError(
+                f"optional type modifier {modifier.name!r} must have a string "
+                "default"
+            )
+        if modifier.default not in _SCALAR_TYPE_ENUM_NAMES:
+            raise ValueError(
+                f"optional type modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    return ResolvedModifierDefault(
+        value_cpp_type=value_cpp_type,
+        value=modifier.default,
     )
 
 

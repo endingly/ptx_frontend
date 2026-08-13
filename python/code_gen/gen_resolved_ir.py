@@ -427,7 +427,6 @@ def _emit_check_modifier_value_view(
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
         )
-        present = "true"
     elif field.value_cpp_type == "bool":
         value_kind = "ModifierValueKind::Bool"
         bool_value = (
@@ -436,7 +435,6 @@ def _emit_check_modifier_value_view(
             else f"selected.{field.name}.value"
         )
         scalar_type = "ScalarType::Invalid"
-        present = bool_value
     else:
         raise ValueError(
             f"modifier field {field.name!r}: unsupported availability view type "
@@ -453,7 +451,7 @@ def _emit_check_modifier_value_view(
                   .value_kind = {value_kind},
                   .bool_value = {bool_value},
                   .scalar_type = {scalar_type},
-                  .is_present = {present},
+                  .is_present = true,
                   .locations = {locations},
               }}"""
 

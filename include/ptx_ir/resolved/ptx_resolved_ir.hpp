@@ -12,7 +12,9 @@
 #include <type_traits>
 #include <unordered_set>
 #include "ptx_ir/ptx_resolved_ir_checker.hpp"
+#include "ptx_ir/source_loc.hpp"
 #include "ptx_ir/syntax/ptx_syntax_ast.hpp"
+#include "utils.hpp"
 
 namespace ptx_frontend::resolved_ir {
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from base.utils import file_stem_to_pascal_case
 from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
@@ -20,7 +21,7 @@ from code_gen.model import (
     OperandTypeExpressionKind,
     VariantSpec,
 )
-from base.utils import file_stem_to_pascal_case
+from ir.scalar_types import SCALAR_TYPE_CPP_ENUM_NAMES
 
 
 class ResolvedFieldOrigin(Enum):
@@ -134,7 +135,7 @@ class ResolvedField:
             return "true" if self.constant_value else "false"
         if self.value_cpp_type == "ScalarType" and isinstance(self.constant_value, str):
             try:
-                return f"ScalarType::{_SCALAR_TYPE_ENUM_NAMES[self.constant_value]}"
+                return f"ScalarType::{SCALAR_TYPE_CPP_ENUM_NAMES[self.constant_value]}"
             except KeyError as error:
                 raise ValueError(
                     f"unsupported fixed scalar type {self.constant_value!r}"
@@ -288,18 +289,6 @@ _CPP_TYPE_VALUE_KINDS = {
     "ResolvedPredicate": ResolvedValueKind.PREDICATE,
 }
 
-_SCALAR_TYPE_ENUM_NAMES = {
-    "u8": "U8", "u8x4": "U8x4", "u16": "U16", "u16x2": "U16x2",
-    "u32": "U32", "u64": "U64", "s8": "S8", "s8x4": "S8x4",
-    "s16": "S16", "s16x2": "S16x2", "s32": "S32", "s64": "S64",
-    "b8": "B8", "b16": "B16", "b32": "B32", "b64": "B64",
-    "b128": "B128", "f16": "F16", "f16x2": "F16x2", "f32": "F32",
-    "f32x2": "F32x2", "f64": "F64", "bf16": "BF16", "bf16x2": "BF16x2",
-    "e4m3x2": "E4m3x2", "e5m2x2": "E5m2x2", "pred": "Pred", "tf32": "TF32",
-    "e4m3": "E4m3", "e5m2": "E5m2",
-}
-
-
 def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
     """Build the resolved instruction model from one normalized PTX spec."""
 
@@ -385,7 +374,7 @@ def _build_modifier_default(
                 f"optional type modifier {modifier.name!r} must have a string "
                 "default"
             )
-        if modifier.default not in _SCALAR_TYPE_ENUM_NAMES:
+        if modifier.default not in SCALAR_TYPE_CPP_ENUM_NAMES:
             raise ValueError(
                 f"optional type modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
@@ -521,7 +510,7 @@ def _resolve_operand_type_expression(
         )
     if expression.kind is OperandTypeExpressionKind.FIXED_SCALAR:
         assert expression.scalar_type is not None
-        if expression.scalar_type not in _SCALAR_TYPE_ENUM_NAMES:
+        if expression.scalar_type not in SCALAR_TYPE_CPP_ENUM_NAMES:
             raise ValueError(
                 f"unsupported fixed operand scalar type {expression.scalar_type!r}"
             )

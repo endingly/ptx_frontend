@@ -4,6 +4,8 @@ namespace ptx_frontend {
 
 ScalarKind scalar_kind(ScalarType t) {
   switch (t) {
+    case ScalarType::Invalid:
+      return ScalarKind::Invalid;
     case ScalarType::U8:
     case ScalarType::U8x4:
     case ScalarType::U16:
@@ -40,11 +42,13 @@ ScalarKind scalar_kind(ScalarType t) {
     case ScalarType::Pred:
       return ScalarKind::Pred;
   }
-  return ScalarKind::Bit;  // unreachable
+  return ScalarKind::Invalid;
 }
 
 uint8_t scalar_size_of(ScalarType t) {
   switch (t) {
+    case ScalarType::Invalid:
+      return 0;
     case ScalarType::U8:
     case ScalarType::S8:
     case ScalarType::B8:
@@ -82,16 +86,6 @@ uint8_t scalar_size_of(ScalarType t) {
       return 16;
   }
   return 0;
-}
-
-std::string to_string(bool v) {
-  return v ? "true" : "false";
-}
-
-std::string to_string(std::optional<bool> t) {
-  if (!t.has_value())
-    return "nullopt";
-  return t.value() ? "true" : "false";
 }
 
 };  // namespace ptx_frontend

@@ -29,6 +29,18 @@ type_sets:
     - s16x2
     - u32
 
+  sub_integer_scalar:
+    - u16
+    - u32
+    - u64
+    - s16
+    - s64
+
+  sub_optional_sat:
+    - s32
+    - u8x4
+    - s8x4
+
 operand_patterns:
   binary_arith:
     - name: dst
@@ -156,4 +168,75 @@ instructions:
           - ptx: "add.s8x4 r1, r2, r3;"
             valid: true
           - ptx: "add.sat.s8x4 r1, r2, r3;"
+            valid: true
+
+  - opcode: sub
+    section: "9.7.1.2"
+    doc: "Integer subtract."
+    syntax: "sub{.sat}.{type} dst, src1, src2"
+    operands: $binary_arith
+
+    variants:
+      - name: sub_integer_no_sat
+        description: "Scalar integer subtract forms without saturation."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: sat
+            kind: flag
+            presence: absent
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $sub_integer_scalar
+        rule: integer_arith.sub
+
+        examples:
+          - ptx: "sub.u32 r1, r2, r3;"
+            valid: true
+          - ptx: "sub.s16 r1, r2, 1;"
+            valid: true
+
+      - name: sub_optional_sat
+        description: "sub{.sat}.s32 and packed byte subtract forms."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - s32
+              - value: u8x4
+                availability:
+                  ptx: "9.2"
+                  sm: 120
+                  family: sm_120f
+              - value: s8x4
+                availability:
+                  ptx: "9.2"
+                  sm: 120
+                  family: sm_120f
+        rule: integer_arith.sub_sat
+
+        examples:
+          - ptx: "sub.s32 r1, r2, r3;"
+            valid: true
+          - ptx: "sub.sat.s32 r1, r2, r3;"
+            valid: true
+          - ptx: "sub.u8x4 r1, r2, r3;"
+            valid: true
+          - ptx: "sub.sat.s8x4 r1, r2, r3;"
             valid: true

@@ -42,7 +42,13 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "add"
         )
+        sub = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "sub"
+        )
         cls.descriptor = from_InstructionSpec(add)
+        cls.sub_descriptor = from_InstructionSpec(sub)
 
     def test_add_variants_and_modifier_constraints(self) -> None:
         self.assertEqual(self.descriptor.opcode, "add")
@@ -175,6 +181,69 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IDENTIFIER_REF))
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IMMEDIATE))
         self.assertFalse(layout.slots[1].allows(OperandSyntaxShape.ADDRESS))
+
+    def test_sub_variants_and_modifier_constraints(self) -> None:
+        self.assertEqual(self.sub_descriptor.opcode, "sub")
+        self.assertEqual(
+            [variant.variant_id for variant in self.sub_descriptor.variants],
+            [
+                "sub_float_f32",
+                "sub_float_f32x2",
+                "sub_float_f64",
+                "sub_half",
+                "sub_bfloat",
+                "sub_mixed_f32",
+                "sub_integer_no_sat",
+                "sub_optional_sat",
+            ],
+        )
+
+        variants = {
+            variant.variant_id: variant
+            for variant in self.sub_descriptor.variants
+        }
+        integer = variants["sub_integer_no_sat"]
+        self.assertEqual(
+            [
+                (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
+                for modifier in integer.modifiers
+            ],
+            [
+                ("sat", ModifierPresence.ABSENT, ()),
+                (
+                    "type",
+                    ModifierPresence.REQUIRED,
+                    (".u16", ".u32", ".u64", ".s16", ".s64"),
+                ),
+            ],
+        )
+        optional_sat = variants["sub_optional_sat"]
+        self.assertEqual(
+            [
+                (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
+                for modifier in optional_sat.modifiers
+            ],
+            [
+                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
+                (
+                    "type",
+                    ModifierPresence.REQUIRED,
+                    (".s32", ".u8x4", ".s8x4"),
+                ),
+            ],
+        )
+        mixed = variants["sub_mixed_f32"]
+        self.assertEqual(
+            [
+                (slot.allowed_syntax_shapes, slot.presence)
+                for slot in mixed.operand_layouts[0].slots
+            ],
+            [
+                (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
+                (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
+                (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
+            ],
+        )
 
     def test_normalize_explicit_operand_layouts(self) -> None:
         raw_spec = {

@@ -58,7 +58,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "add"
         )
+        sub = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "sub"
+        )
         cls.instruction = from_instruction_spec(add)
+        cls.sub_instruction = from_instruction_spec(sub)
 
     def test_add_variant_names(self) -> None:
         self.assertEqual(self.instruction.opcode, "add")
@@ -76,6 +82,59 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "Sat",
                 "PackedOptionalSat",
             ],
+        )
+
+    def test_sub_variant_names_and_fields(self) -> None:
+        self.assertEqual(self.sub_instruction.opcode, "sub")
+        self.assertEqual(self.sub_instruction.cpp_name, "Sub")
+        self.assertEqual(
+            [variant.cpp_name for variant in self.sub_instruction.variants],
+            [
+                "FloatF32",
+                "FloatF32x2",
+                "FloatF64",
+                "Half",
+                "Bfloat",
+                "MixedF32",
+                "IntegerNoSat",
+                "OptionalSat",
+            ],
+        )
+
+        variants = {
+            variant.cpp_name: variant
+            for variant in self.sub_instruction.variants
+        }
+        optional_sat = variants["OptionalSat"]
+        self.assertEqual(
+            [field.name for field in optional_sat.fields],
+            ["saturate", "type", "dst", "src1", "src2"],
+        )
+        self.assertEqual(
+            optional_sat.modifier_bindings[0].default_value.value,
+            False,
+        )
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in optional_sat.modifier_value_availabilities
+            ],
+            [
+                (
+                    "u8x4",
+                    {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
+                ),
+                (
+                    "s8x4",
+                    {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
+                ),
+            ],
+        )
+
+        mixed = variants["MixedF32"]
+        self.assertEqual(
+            [field.name for field in mixed.operand_layouts[0].fields],
+            ["dst", "src", "subtrahend"],
         )
 
     def test_floating_add_rounding_defaults_and_availability(self) -> None:

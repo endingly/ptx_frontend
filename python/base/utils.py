@@ -1,8 +1,31 @@
+import os
+import re
 import shutil
 import subprocess
-import os
+from datetime import datetime, timezone
 from typing import Optional
-import re
+
+
+def generated_at_comment() -> str:
+    """Return reproducible generation metadata.
+
+    Reproducible builds may provide the conventional ``SOURCE_DATE_EPOCH``.
+    Without it, do not embed wall-clock time into generated artifacts.
+    """
+
+    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if raw_epoch is None:
+        return (
+            "// Generated at: omitted "
+            "(set SOURCE_DATE_EPOCH for a reproducible timestamp)"
+        )
+    try:
+        epoch = int(raw_epoch)
+    except ValueError as error:
+        raise ValueError("SOURCE_DATE_EPOCH must be an integer") from error
+    timestamp = datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
+    return f"// Generated at: {timestamp}"
+
 
 def find_clang_format() -> Optional[str]:
     for name in (

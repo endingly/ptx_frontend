@@ -116,6 +116,24 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只
 打开一次对应 namespace。
 
+所有 emitter 从 `ir.scalar_types` 的唯一 registry 获取 PTX scalar spelling 到 C++
+`ScalarType` enumerator 的映射。生成文件不会默认嵌入 wall-clock 时间；若构建环境提供
+标准 `SOURCE_DATE_EPOCH`，生成警告会使用该确定性 UTC 时间，否则明确标记时间已省略。
+因此相同 spec 和生成器输入会产生 byte-identical 内容。
+
+### Backend 配置边界
+
+`instructions/ptx_cpp_backend_spec/*.yaml` 及其
+`instructions/schemas/ptx-cpp-backend-v1.schema.yaml` 作为独立的 C++ backend
+配置层予以保留。当前生成流程尚不读取该层；以后可把目前嵌入 Python emitter 的 C++
+拼写表、enum/array 映射及其他纯生成策略逐步迁入其中。
+
+backend spec 不应重复表达 `ptx_spec` 中的 PTX ISA 语义，也不应影响
+`InstructionSpec` 的规范化结果。`code_gen.model` 已预留 `DomainBackend`、
+`InstructionBackend`、`EmitBackend` 与 `CodegenUnit` 等强类型模型，但它们当前不被
+生成路径消费。正式接入时应补充独立 loader 与语义校验，并先通过 schema 校验，而不是
+让 emitter 直接读取原始 YAML 字典。
+
 ## 生成规则
 
 - YAML identifier 经统一转换得到 deterministic PascalCase C++ 名称；碰撞必须报错。

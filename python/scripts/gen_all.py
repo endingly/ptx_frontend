@@ -167,7 +167,12 @@ def instruction_categories(database: CodegenDatabase) -> tuple[str, ...]:
     """Return stable category names used to partition generated definitions."""
 
     return tuple(
-        sorted({instruction.category for instruction in database.instructions})
+        sorted(
+            {
+                instruction.codegen_category
+                for instruction in database.instructions
+            }
+        )
     )
 
 

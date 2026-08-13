@@ -31,8 +31,10 @@ list denotes no direct source location, such as a compile-time fixed modifier
 or an instance value injected from an optional modifier's YAML `default`. The
 latter remains a `WithLocs<T>`: `value` holds the semantic default and empty
 `locs` means it was not written explicitly.
-Current primitives include `ResolvedRegisterRef`, `ResolvedImmediate`, and
-`RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
+Modifier primitives include `bool`, `ScalarType`, and `RoundingMode`; the latter
+turns `.rn/.rz/.rm/.rp` into statically checkable values instead of runtime
+strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
+and `RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
 checker never has to reinterpret literal text.
 
 `AstImmediateKind` retains the lexer's literal classification. Decimal and hex
@@ -86,6 +88,13 @@ WithLocs<ScalarType> type;
 This avoids re-inferring the fixed fact while retaining the selected type and
 its source location.
 
+One variant may have multiple named modifier slots of the same value kind. The
+mixed-precision Add, for example, emits a static `result_type = F32` and a
+dynamic `WithLocs<ScalarType> input_type`; its three operand type expressions
+refer to `result_type`, `input_type`, and `result_type`. Slot IDs are local to a
+variant, so `.f32` may bind `type` in standard Add and `result_type` in mixed
+Add without becoming a global spelling-to-kind map.
+
 ## Multiple operand layouts in one variant
 
 The same modifier combination can admit different operand shapes. It must not
@@ -121,11 +130,13 @@ extension followed by a new layout kind; they must not be disguised as `Flat`.
 `resolve<T>(const AstInstruction&)` is a generated opcode-specific thin
 wrapper. Shared logic performs the following steps:
 
-1. `collect_actual_modifiers` maps source spellings to descriptor `kind_id`s
-   and diagnoses unknown spellings and duplicate kinds.
-2. `selectVariant<T>` selects exactly one variant from modifier slots only.
-   `absent`, `optional`, and `required/fixed` match by kind and allowed value,
-   never by modifier-list index.
+1. The common matcher diagnoses spellings unknown to the whole syntax
+   descriptor, then binds spellings to unique active slots separately inside
+   each candidate variant. Reusing one slot is a user diagnostic; one spelling
+   owned by multiple active slots in a variant is a descriptor bug.
+2. `selectVariant<T>` selects exactly one variant from those variant-local
+   bindings. `absent`, `optional`, and `required/fixed` match by slot and
+   allowed value, independent of source modifier order.
 3. The selected variant chooses exactly one `OperandLayout` from AST shapes and
    arity.
 4. `resolve_fields` converts modifiers and operands through resolved bindings
@@ -136,15 +147,17 @@ No matching variant/layout is a user diagnostic. Multiple matching layouts, or
 a mismatch between descriptors and generated structures, is a generator bug and
 uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
-`selectVariant<T>` remains a common template implementation in the handwritten
-public ABI header, so every type satisfying the `PtxOperator` concept can use it
-directly. One generated `resolved_ir.gen.hpp` centralizes all opcode structs and
+`selectVariant<T>` remains a common template adapter in the handwritten public
+ABI header, so every type satisfying the `PtxOperator` concept can use it
+directly. It passes the descriptor to an out-of-line non-template matcher and
+converts the selected variant name to the opcode's `VariantType`. One generated
+`resolved_ir.gen.hpp` centralizes all opcode structs and
 the explicit-specialization declarations for `resolve<T>` and `check<T>`.
 Definitions of the latter two are non-inline and emitted by YAML category into
 `resolved_ir_<category>.gen.cpp`, which is compiled into the library. This
-boundary keeps the small generic variant matcher as a template while preventing
-every consumer translation unit from reparsing and instantiating large resolve
-builders and checker visits/lambdas, with one public include entry point.
+boundary keeps only the small type adapter as a template while preventing every
+consumer translation unit from reparsing the matcher or instantiating large
+resolve builders and checker visits/lambdas, with one public include entry point.
 
 ## Three descriptors
 

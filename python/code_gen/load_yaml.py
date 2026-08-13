@@ -12,7 +12,7 @@ def load_yaml(path: Path) -> dict[str, Any]:
 
 
 def expand_value_refs(
-    values: list[Any], type_sets: dict[str, list[str]]
+    values: list[Any], value_sets: dict[str, list[str]]
 ) -> tuple[str, ...]:
     """Recursively expand ``$name`` references to named value sets."""
 
@@ -21,15 +21,15 @@ def expand_value_refs(
             return [str(value)]
 
         set_name = value[1:]
-        if set_name not in type_sets:
-            raise ValueError(f"unknown type set: {set_name}")
+        if set_name not in value_sets:
+            raise ValueError(f"unknown value set: {set_name}")
         if set_name in active_sets:
             cycle = " -> ".join((*active_sets, set_name))
-            raise ValueError(f"cyclic type-set reference: {cycle}")
+            raise ValueError(f"cyclic value-set reference: {cycle}")
 
         return [
             expanded
-            for member in type_sets[set_name]
+            for member in value_sets[set_name]
             for expanded in expand_one(member, (*active_sets, set_name))
         ]
 

@@ -14,6 +14,7 @@ Every file uses `instructions/schemas/ptx-instr-v1.schema.yaml`:
 schema: ptx-instr/v1
 ptx_isa: "9.2"
 category: integer_arithmetic
+codegen_category: arithmetic
 section: "9.7.1"
 ```
 
@@ -24,8 +25,8 @@ both `operands` and `operand_layouts`.
 ## Predefined-data references
 
 `$name` is the sole DSL spelling for a reference to predefined data in the
-current YAML file, and it needs no quotes. `type_sets` are referenced as
-`$name` in `values`; `operand_patterns` are likewise referenced as `$name` in
+current YAML file, and it needs no quotes. `type_sets` and `value_sets` are
+referenced as `$name` in `values`; `operand_patterns` are likewise referenced as `$name` in
 `operands`. A bare string is no longer a reference. The normalizer recursively
 expands references, detects cycles, and guarantees that a reference and its
 inline expansion produce identical `InstructionSpec` data. `$` is not used by
@@ -38,12 +39,25 @@ Common top-level fields are:
 | Field | Meaning |
 | --- | --- |
 | `type_sets` | modifier-value sets referenced as `$name` |
+| `value_sets` | non-type modifier-value sets referenced as `$name` |
 | `operand_patterns` | reusable named operand lists |
+| `category` | PTX documentation category represented by this YAML file |
+| `codegen_category` | generated-source partition for this file's instructions |
 | `instructions` | one or more opcode definitions |
 
 An instruction requires `opcode` and `variants`; it may also have instruction-
-level `syntax`, `operands`, `category`, `section`, and `doc`. An opcode is
-globally unique within one spec database.
+level `syntax`, `operands`, `section`, and `doc`. Both `category` and
+`codegen_category` are required file-level fields and must not be repeated on
+an instruction. An opcode may naturally occur in several category YAML files,
+but all its definitions must use the same `codegen_category`. Floating-point
+and integer `add` can therefore remain in their respective spec files while
+producing one C++ `Add`.
+
+Merging follows sorted spec-path and in-file declaration order. The file path is
+already the definition source, so no separate `fragment` ID is needed. Before
+emission, the database rejects duplicate variant IDs, PascalCase C++ variant
+name collisions, a spelling owned by multiple active modifier slots within one
+variant, and variants whose accepted unordered modifier sets overlap.
 
 ## Variants and modifiers
 
@@ -74,7 +88,8 @@ Core modifier fields are:
 
 An `optional` modifier must explicitly define its semantic `default` when it is
 omitted. The default type must agree with the modifier kind: `flag` uses a
-Boolean, while `type` uses one scalar type from `values`. For example:
+Boolean, `type` uses one scalar type from `values`, and `rounding` uses a
+rounding-mode value such as `rn`. For example:
 
 ```yaml
 - name: sat
@@ -88,6 +103,13 @@ Boolean, while `type` uses one scalar type from `values`. For example:
   presence: optional
   values: [u32, u64]
   default: u32
+
+- name: rounding
+  kind: rounding
+  domain: rounding_modes
+  presence: optional
+  values: [$rounding_modes]
+  default: rn
 ```
 
 When the modifier is omitted, the resolver stores this default in the resolved
@@ -98,8 +120,13 @@ applies its value availability. Because no modifier source range exists, such
 a diagnostic falls back to the whole instruction range.
 
 `flag` normally provides `token: ".sat"`; a type token is normally derived
-from `value` or `values`. Matching uses `kind_id`, not source modifier order.
-Modifier combinations of distinct variants must be mutually exclusive.
+from `value` or `values`. `name` is the modifier-slot ID local to one variant,
+while `kind` determines the resolved value type. The same spelling may bind a
+different slot in another variant: `.f32` binds `type` in standard Add and
+`result_type` in mixed Add. Within one variant, each spelling must have one
+unique active owner. Matching ignores source order, and distinct variants must
+accept disjoint unordered modifier sets; the database rejects overlap before
+emission.
 
 One `values` item may be an object to add target availability for a semantic
 value:
@@ -234,6 +261,21 @@ unique layout with strictly more specific operand shapes. Equal or incomparable
 candidates are a YAML modeling error; availability cannot resolve the syntax
 ambiguity.
 
+## Current floating Add coverage
+
+The `add` definitions in `floating_point.yaml` and `integer_arith.yaml` merge
+automatically. They cover the standard `.f32/.f32x2/.f64` forms,
+mixed-precision `.f32.{f16,bf16}`, and the half-precision
+`.f16/.f16x2/.bf16/.bf16x2` forms. Rounding resolves to `RoundingMode`, and
+value availability expresses the `sm_20` requirement of `.rm/.rp.f32`.
+Packed and half/bfloat forms accept register operands as required by PTX.
+
+The mixed variant has two named slots: `result_type` is fixed to `f32`, while
+`input_type` accepts `f16/bf16`. Structured operand type expressions refer to
+those slots directly, so neither resolver nor checker re-infers operand types
+from modifier position or text. The variant requires PTX 8.6 / sm_100 and
+supports optional rounding and `.sat`.
+
 ## Authoring principles
 
 1. Record PTX semantic facts, not generation preferences; never use C++ storage
@@ -241,7 +283,7 @@ ambiguity.
 2. Use stable descriptive variant names, for example `add_sat` and
    `bar_cta_sync`; do not encode a version suffix that belongs to allowed-value
    availability.
-3. Reuse `type_sets` and `operand_patterns`, but do not force semantically
+3. Reuse `type_sets`, `value_sets`, and `operand_patterns`, but do not force semantically
    different operands into one pattern.
 4. Confirm that lexer/AST can form the needed operand shape before adding a
    spec; otherwise extend the syntax layer first.

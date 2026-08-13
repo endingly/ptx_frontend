@@ -46,6 +46,23 @@ class ModifierSpec:
     default: str | bool | int | None = None
 
 
+def modifier_spellings(modifier: ModifierSpec) -> tuple[str, ...]:
+    """Return every canonical lexer-facing spelling accepted by a modifier."""
+
+    if modifier.token is not None:
+        return (modifier.token,)
+    if modifier.values:
+        return tuple(
+            value.token if value.token is not None else f".{value.value}"
+            for value in modifier.values
+        )
+    if isinstance(modifier.value, str):
+        return (f".{modifier.value}",)
+    if modifier.value is True:
+        return (f".{modifier.name}",)
+    return ()
+
+
 @dataclass(frozen=True)
 class OperandSpec:
     """One normalized source-level PTX operand."""
@@ -81,12 +98,13 @@ class VariantSpec:
 
 @dataclass(frozen=True)
 class InstructionSpec:
-    """All PTX variants for one opcode."""
+    """All merged YAML definitions and variants for one opcode."""
 
     opcode: str
-    syntax: str | None
     variants: tuple[VariantSpec, ...]
-    category: str = "uncategorized"
+    syntax_forms: tuple[str, ...] = ()
+    source_categories: tuple[str, ...] = ()
+    codegen_category: str = "uncategorized"
 
 
 # -----------------------------------------------------------------------------

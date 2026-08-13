@@ -49,13 +49,22 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(
             [variant.variant_id for variant in self.descriptor.variants],
             [
+                "add_float_f32",
+                "add_float_f32x2",
+                "add_float_f64",
+                "add_half",
+                "add_bfloat",
+                "add_mixed_f32",
                 "add_integer_no_sat",
                 "add_sat",
                 "add_packed_optional_sat",
             ],
         )
 
-        integer_no_sat = self.descriptor.variants[0]
+        variants = {
+            variant.variant_id: variant for variant in self.descriptor.variants
+        }
+        integer_no_sat = variants["add_integer_no_sat"]
         self.assertEqual(
             [
                 (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
@@ -79,7 +88,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 ),
             ],
         )
-        sat = self.descriptor.variants[1]
+        sat = variants["add_sat"]
         self.assertEqual(
             [
                 (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
@@ -95,8 +104,50 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ],
         )
 
+        f32 = variants["add_float_f32"]
+        self.assertEqual(
+            [
+                (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
+                for modifier in f32.modifiers
+            ],
+            [
+                (
+                    "rounding",
+                    ModifierPresence.OPTIONAL,
+                    (".rn", ".rz", ".rm", ".rp"),
+                ),
+                ("ftz", ModifierPresence.OPTIONAL, (".ftz",)),
+                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
+                ("type", ModifierPresence.REQUIRED, (".f32",)),
+            ],
+        )
+
+        mixed = variants["add_mixed_f32"]
+        self.assertEqual(
+            [
+                (modifier.kind_id, modifier.presence, modifier.allowed_spellings)
+                for modifier in mixed.modifiers
+            ],
+            [
+                (
+                    "rounding",
+                    ModifierPresence.OPTIONAL,
+                    (".rn", ".rz", ".rm", ".rp"),
+                ),
+                ("result_type", ModifierPresence.REQUIRED, (".f32",)),
+                ("input_type", ModifierPresence.REQUIRED, (".f16", ".bf16")),
+                ("ftz", ModifierPresence.ABSENT, ()),
+                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
+            ],
+        )
+
     def test_add_binary_flat_operand_layout(self) -> None:
-        layout = self.descriptor.variants[0].operand_layouts[0]
+        variant = next(
+            variant
+            for variant in self.descriptor.variants
+            if variant.variant_id == "add_integer_no_sat"
+        )
+        layout = variant.operand_layouts[0]
 
         self.assertEqual(layout.kind, OperandLayoutKind.FLAT)
         self.assertEqual(layout.layout_id, "default")
@@ -127,6 +178,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
 
     def test_normalize_explicit_operand_layouts(self) -> None:
         raw_spec = {
+            "category": "test",
+            "codegen_category": "test",
             "instructions": [
                 {
                     "opcode": "sample",
@@ -201,6 +254,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ],
         }
         referenced = {
+            "category": "test",
+            "codegen_category": "test",
             "type_sets": {"numeric": ["u32", "u64"]},
             "operand_patterns": {"unary": operands},
             "instructions": [
@@ -222,6 +277,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ],
         }
         inline = {
+            "category": "test",
+            "codegen_category": "test",
             "instructions": [
                 {
                     **common_instruction,
@@ -253,7 +310,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ),
             ("u32", "u64"),
         )
-        with self.assertRaisesRegex(ValueError, "cyclic type-set reference"):
+        with self.assertRaisesRegex(ValueError, "cyclic value-set reference"):
             expand_value_refs(
                 ["$first"],
                 {"first": ["$second"], "second": ["$first"]},
@@ -263,6 +320,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must use the '\\$name' form"):
             normalize_instruction_spec(
                 {
+                    "category": "test",
+                    "codegen_category": "test",
                     "operand_patterns": {"unary": []},
                     "instructions": [
                         {
@@ -283,6 +342,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         def normalize_with_expr(expression: str, modifiers: list[dict[str, object]]):
             return normalize_instruction_spec(
                 {
+                    "category": "test",
+                    "codegen_category": "test",
                     "instructions": [
                         {
                             "opcode": "sample",
@@ -338,6 +399,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         def normalize_modifier_entry(modifier: dict[str, object]) -> None:
             normalize_instruction_spec(
                 {
+                    "category": "test",
+                    "codegen_category": "test",
                     "instructions": [
                         {
                             "opcode": "sample",

@@ -248,6 +248,34 @@ std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
   return WithLocs<ScalarType>{*type, modifier.syntax.range};
 }
 
+std::optional<RoundingMode> rounding_mode_from_ptx_name(
+    std::string_view spelling) {
+  static constexpr std::array<std::pair<std::string_view, RoundingMode>, 4>
+      rounding_modes = {{{".rn", RoundingMode::Rn},
+                         {".rz", RoundingMode::Rz},
+                         {".rm", RoundingMode::Rm},
+                         {".rp", RoundingMode::Rp}}};
+  const auto it =
+      std::ranges::find_if(rounding_modes, [spelling](const auto& entry) {
+        return entry.first == spelling || (!spelling.starts_with('.') &&
+                                           entry.first.substr(1) == spelling);
+      });
+  return it == rounding_modes.end() ? std::nullopt : std::optional{it->second};
+}
+
+std::expected<WithLocs<RoundingMode>, ResolveDiagnostic> resolve_rounding_mode(
+    const syntax_ast::AstModifier& modifier) {
+  const auto mode = rounding_mode_from_ptx_name(modifier.syntax.text);
+  if (!mode) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown rounding mode '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<RoundingMode>{*mode, modifier.syntax.range};
+}
+
 struct ParsedNumberedRegister {
   std::string_view prefix;
   uint32_t index;
@@ -553,30 +581,82 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
   });
 }
 
+struct ModifierBindingAttempt {
+  std::optional<ActualModifierTable> modifiers;
+  const syntax_ast::AstModifier* duplicate = nullptr;
+  std::string_view duplicate_slot;
+};
+
 /**
- * @brief Check if the actual modifiers of an instruction match the variant descriptor.
- * 
- * @param instruction instruction descriptor
- * @param spelling actual modifier spelling
- * @return std::optional<std::string_view> kind ID of the modifier if it matches, std::nullopt otherwise
+ * Bind source modifier spellings to the slots of one candidate variant.
+ *
+ * Slot IDs are variant-local. The same spelling may therefore denote `type`
+ * in one variant and `result_type` in another. Within one variant, however,
+ * every spelling must have exactly one active owner; the Python database
+ * validator enforces this invariant and a violation here is a compiler bug.
  */
-std::optional<std::string_view> modifier_kind_id(
-    const SyntaxInstructionDescriptor& instruction, std::string_view spelling) {
-  std::optional<std::string_view> result;
-  for (const SyntaxVariantDescriptor& variant : instruction.variants) {
-    for (const SyntaxModifierDescriptor& modifier : variant.modifiers) {
-      if (!std::ranges::contains(modifier.allowed_values, spelling))
-        continue;
-      if (result && *result != modifier.kind_id) {
-        throw ResolveException(fmt::format(
-            "Descriptor for '{}' maps modifier spelling '{}' to both '{}' "
-            "and '{}'.",
-            instruction.Opcode_name, spelling, *result, modifier.kind_id));
-      }
-      result = modifier.kind_id;
+ModifierBindingAttempt bind_variant_modifiers(
+    const syntax_ast::AstInstruction& ast,
+    const SyntaxVariantDescriptor& variant) {
+  std::unordered_set<std::string_view> slot_ids;
+  for (const auto& descriptor : variant.modifiers) {
+    if (!slot_ids.insert(descriptor.kind_id).second) {
+      throw ResolveException(
+          fmt::format("Variant '{}' contains duplicate modifier slot '{}'.",
+                      variant.variant_name, descriptor.kind_id));
     }
   }
-  return result;
+
+  ActualModifierTable result;
+  for (const auto& actual : ast.modifiers) {
+    const SyntaxModifierDescriptor* owner = nullptr;
+    for (const auto& descriptor : variant.modifiers) {
+      if (descriptor.presence == check_end::PresenceRequirement::Absent ||
+          !std::ranges::contains(descriptor.allowed_values,
+                                 actual.syntax.text)) {
+        continue;
+      }
+      if (owner != nullptr) {
+        throw ResolveException(fmt::format(
+            "Variant '{}' maps modifier spelling '{}' to both '{}' and '{}'.",
+            variant.variant_name, actual.syntax.text, owner->kind_id,
+            descriptor.kind_id));
+      }
+      owner = &descriptor;
+    }
+
+    if (owner == nullptr)
+      return {};
+
+    const auto [_, inserted] =
+        result.emplace(std::string(owner->kind_id), &actual);
+    if (!inserted) {
+      return ModifierBindingAttempt{
+          .duplicate = &actual,
+          .duplicate_slot = owner->kind_id,
+      };
+    }
+  }
+
+  for (const auto& descriptor : variant.modifiers) {
+    if (descriptor.presence == check_end::PresenceRequirement::Required &&
+        !result.contains(std::string(descriptor.kind_id))) {
+      return {};
+    }
+  }
+
+  return ModifierBindingAttempt{.modifiers = std::move(result)};
+}
+
+bool is_known_modifier_spelling(const SyntaxInstructionDescriptor& instruction,
+                                std::string_view spelling) {
+  return std::ranges::any_of(
+      instruction.variants, [spelling](const auto& variant) {
+        return std::ranges::any_of(
+            variant.modifiers, [spelling](const auto& modifier) {
+              return std::ranges::contains(modifier.allowed_values, spelling);
+            });
+      });
 }
 
 const ResolvedVariantDescriptor& find_resolved_variant_descriptor(
@@ -719,6 +799,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
+    case ResolvedValueKind::RoundingMode:
       throw ResolveException(fmt::format(
           "Operand slot '{}' has a non-operand resolved value kind.",
           field.field_id));
@@ -749,6 +830,16 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{
           WithLocs<ScalarType>{default_value.scalar_type}};
+    case ResolvedValueKind::RoundingMode:
+      if (default_value.kind != ResolvedModifierDefaultKind::RoundingMode ||
+          default_value.rounding_mode == RoundingMode::Invalid) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a rounding-mode default for "
+            "resolved field '{}'.",
+            binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{
+          WithLocs<RoundingMode>{default_value.rounding_mode}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::Immediate:
@@ -769,27 +860,85 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
 
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,
-    const check_end::SyntaxInstructionDescriptor& instruction) {
-  ActualModifierTable result;
-  for (const auto& modifier : ast.modifiers) {
-    const auto kind_id = modifier_kind_id(instruction, modifier.syntax.text);
-    if (!kind_id) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = modifier.syntax.range,
-          .message =
-              fmt::format("Unknown modifier '{}'.", modifier.syntax.text),
-      });
-    }
+    const check_end::SyntaxVariantDescriptor& variant) {
+  auto attempt = bind_variant_modifiers(ast, variant);
+  if (attempt.modifiers)
+    return std::move(*attempt.modifiers);
+  if (attempt.duplicate != nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = attempt.duplicate->syntax.range,
+        .message =
+            fmt::format("Duplicate '{}' modifier.", attempt.duplicate_slot),
+    });
+  }
+  return std::unexpected(ResolveDiagnostic{
+      .range = ast.range,
+      .message = fmt::format(
+          "Modifier combination does not match instruction variant '{}'.",
+          variant.variant_name),
+  });
+}
 
-    const auto [_, inserted] = result.emplace(std::string(*kind_id), &modifier);
-    if (!inserted) {
+std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
+    const syntax_ast::AstInstruction& ast,
+    const check_end::SyntaxInstructionDescriptor& instruction) {
+  if (ast.opcode.syntax.text != instruction.Opcode_name) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = ast.opcode.syntax.range,
+        .message = fmt::format("Cannot resolve opcode '{}' as '{}'.",
+                               ast.opcode.syntax.text,
+                               instruction.Opcode_name),
+    });
+  }
+
+  for (const auto& modifier : ast.modifiers) {
+    if (!is_known_modifier_spelling(instruction, modifier.syntax.text)) {
       return std::unexpected(ResolveDiagnostic{
           .range = modifier.syntax.range,
-          .message = fmt::format("Duplicate '{}' modifier.", *kind_id),
+          .message = fmt::format("Unknown modifier '{}'.",
+                                 modifier.syntax.text),
       });
     }
   }
-  return result;
+
+  std::optional<std::string_view> selected;
+  const syntax_ast::AstModifier* duplicate = nullptr;
+  std::string_view duplicate_slot;
+  for (const auto& variant : instruction.variants) {
+    auto attempt = bind_variant_modifiers(ast, variant);
+    if (!attempt.modifiers) {
+      if (duplicate == nullptr && attempt.duplicate != nullptr) {
+        duplicate = attempt.duplicate;
+        duplicate_slot = attempt.duplicate_slot;
+      }
+      continue;
+    }
+
+    if (selected) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = ast.range,
+          .message = fmt::format(
+              "Ambiguous modifier combination for instruction '{}'.",
+              ast.opcode.syntax.text),
+      });
+    }
+    selected = variant.variant_name;
+  }
+
+  if (selected)
+    return *selected;
+  if (duplicate != nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = duplicate->syntax.range,
+        .message = fmt::format("Duplicate '{}' modifier.", duplicate_slot),
+    });
+  }
+  return std::unexpected(ResolveDiagnostic{
+      .range = ast.range,
+      .message = fmt::format(
+          "No variant of instruction '{}' accepts this modifier combination.",
+          ast.opcode.syntax.text),
+  });
 }
 
 std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
@@ -829,8 +978,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         resolved_layout.bindings.size()));
   }
 
-  const auto actual_modifiers =
-      collect_actual_modifiers(ast, syntax_instruction);
+  const auto actual_modifiers = collect_actual_modifiers(ast, syntax_variant);
   if (!actual_modifiers)
     return std::unexpected(actual_modifiers.error());
 
@@ -875,6 +1023,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         break;
       case ResolvedValueKind::ScalarType: {
         auto value = resolve_scalar_type(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::RoundingMode: {
+        auto value = resolve_rounding_mode(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));
@@ -934,58 +1088,6 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
         }
       },
       operand);
-}
-
-bool matches_modifier_slot(
-    const check_end::SyntaxModifierDescriptor& descriptor,
-    const ActualModifierTable& actual_modifiers) {
-  const auto it = actual_modifiers.find(std::string(descriptor.kind_id));
-  const bool present = it != actual_modifiers.end();
-
-  switch (descriptor.presence) {
-    case check_end::PresenceRequirement::Absent:
-      return !present;
-
-    case check_end::PresenceRequirement::Optional:
-      if (!present)
-        return true;
-      return std::ranges::contains(descriptor.allowed_values,
-                                   it->second->syntax.text);
-    case check_end::PresenceRequirement::Required:
-      if (!present)
-        return false;
-      return std::ranges::contains(descriptor.allowed_values,
-                                   it->second->syntax.text);
-  }
-
-  throw ResolveException("Unknown PresenceRequirement.");
-}
-
-bool matches_variant(const check_end::SyntaxVariantDescriptor& variant,
-                     const ActualModifierTable& actual_modifiers) {
-  std::unordered_set<std::string> declared_kinds;
-
-  for (const auto& descriptor : variant.modifiers) {
-    const auto [_, inserted] =
-        declared_kinds.insert(std::string(descriptor.kind_id));
-    if (!inserted) {
-      throw ResolveException(
-          fmt::format("Variant '{}' contains duplicate modifier kind '{}'.",
-                      variant.variant_name, descriptor.kind_id));
-    }
-
-    if (!matches_modifier_slot(descriptor, actual_modifiers))
-      return false;
-  }
-
-  // In the current model where "modifier combinations precisely determine variant",
-  // each kind in actual must be explicitly described by this variant.
-  for (const auto& [actual_kind, _] : actual_modifiers) {
-    if (!declared_kinds.contains(actual_kind))
-      return false;
-  }
-
-  return true;
 }
 
 };  // namespace ptx_frontend::resolved_ir

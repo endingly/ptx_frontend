@@ -77,15 +77,15 @@ def _normalize_operand_type_expression(
 
 
 def normalize_modifier(
-    raw: dict[str, Any], type_sets: dict[str, list[str]]
+    raw: dict[str, Any], reusable_value_sets: dict[str, list[str]]
 ) -> ModifierSpec:
-    """Normalize one modifier and expand its type-set references."""
+    """Normalize one modifier and expand its reusable value-set references."""
 
     raw_values: object = raw.get("values", [])
     if not isinstance(raw_values, list):
         raise TypeError("modifier values must be a list")
 
-    values = _normalize_modifier_values(raw_values, type_sets)
+    values = _normalize_modifier_values(raw_values, reusable_value_sets)
     _validate_modifier_default(raw, values)
 
     return ModifierSpec(
@@ -140,10 +140,23 @@ def _validate_modifier_default(
                 f"optional type modifier {raw['name']!r} has default "
                 f"{default!r} outside its allowed values"
             )
+        return
+    if kind == "rounding":
+        if not isinstance(default, str):
+            raise ValueError(
+                f"optional rounding modifier {raw['name']!r} must have a "
+                "string default"
+            )
+        allowed_values = {value.value for value in values}
+        if default not in allowed_values:
+            raise ValueError(
+                f"optional rounding modifier {raw['name']!r} has default "
+                f"{default!r} outside its allowed values"
+            )
 
 
 def _normalize_modifier_values(
-    raw_values: list[Any], type_sets: dict[str, list[str]]
+    raw_values: list[Any], reusable_value_sets: dict[str, list[str]]
 ) -> tuple[ModifierValueSpec, ...]:
     """Expand value-set references while preserving per-value availability."""
 
@@ -166,7 +179,7 @@ def _normalize_modifier_values(
                     "override for multiple expanded values"
                 )
             expanded_values: tuple[str | bool | int, ...] = expand_value_refs(
-                [raw_semantic_value], type_sets
+                [raw_semantic_value], reusable_value_sets
             )
         else:
             expanded_values = (raw_semantic_value,)
@@ -279,7 +292,22 @@ def _validate_modifier_type_expressions(
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
+    source_category = spec.get("category")
+    codegen_category = spec.get("codegen_category")
+    if not isinstance(source_category, str):
+        raise ValueError("PTX spec file must define top-level category")
+    if not isinstance(codegen_category, str):
+        raise ValueError("PTX spec file must define top-level codegen_category")
+
     type_sets = spec.get("type_sets", {})
+    value_sets = spec.get("value_sets", {})
+    duplicate_set_names = set(type_sets) & set(value_sets)
+    if duplicate_set_names:
+        raise ValueError(
+            "type_sets and value_sets define the same names: "
+            f"{sorted(duplicate_set_names)}"
+        )
+    reusable_value_sets = {**type_sets, **value_sets}
     operand_patterns = spec.get("operand_patterns", {})
     instructions: list[InstructionSpec] = []
 
@@ -289,7 +317,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
 
         for raw_variant in raw_instruction["variants"]:
             modifiers = tuple(
-                normalize_modifier(modifier, type_sets)
+                normalize_modifier(modifier, reusable_value_sets)
                 for modifier in raw_variant.get("modifiers", ())
             )
             operand_layouts = normalize_operand_layouts(
@@ -309,11 +337,12 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
         instructions.append(
             InstructionSpec(
                 opcode=raw_instruction["opcode"],
-                syntax=raw_instruction.get("syntax"),
                 variants=tuple(variants),
-                category=raw_instruction.get(
-                    "category", spec.get("category", "uncategorized")
-                ),
+                syntax_forms=(raw_instruction["syntax"],)
+                if "syntax" in raw_instruction
+                else (),
+                source_categories=(source_category,),
+                codegen_category=codegen_category,
             )
         )
 

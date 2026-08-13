@@ -466,7 +466,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("using ResolvedInstruction = std::variant<", source)
         self.assertIn("struct ResolvedFunction {", source)
         self.assertIn("struct ResolvedModule {", source)
+        self.assertIn("binding::SymbolTable symbols;", source)
+        self.assertIn("binding::SymbolId symbol_id;", source)
         self.assertIn("resolveInstruction(", source)
+        self.assertIn("const ResolveContext& context);", source)
+        self.assertIn("resolveModule(const syntax_ast::AstModule& ast);", source)
         self.assertIn("enum class VariantType {", source)
         self.assertIn("struct IntegerNoSat {", source)
         self.assertIn("ResolvedOperandLayoutTag operand_layout;", source)
@@ -494,7 +498,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("selectVariant<Add>", source)
         self.assertIn(
             "template <>\nstd::expected<Add, ResolveDiagnostic>\n"
-            "resolve<Add>(const syntax_ast::AstInstruction& ast);",
+            "resolve<Add>(const syntax_ast::AstInstruction& ast,\n"
+            "    const ResolveContext* context);",
             source,
         )
         self.assertIn(
@@ -524,9 +529,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('#include "resolved_ir.gen.hpp"', source)
         self.assertIn("resolveInstruction(const syntax_ast::AstInstruction& ast)", source)
         self.assertIn('ast.opcode.syntax.text == "add"', source)
-        self.assertIn("resolve<Add>(ast)", source)
+        self.assertIn("resolve<Add>(ast, context)", source)
+        self.assertIn("namespace {", source)
         self.assertIn('ast.opcode.syntax.text == "sub"', source)
-        self.assertIn("resolve<Sub>(ast)", source)
+        self.assertIn("resolve<Sub>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "bar"', source)
         self.assertIn("Unknown PTX opcode", source)
 
@@ -551,10 +557,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(
             "std::expected<Add, ResolveDiagnostic>\n"
-            "resolve<Add>(const syntax_ast::AstInstruction& ast) {",
+            "resolve<Add>(const syntax_ast::AstInstruction& ast,\n"
+            "    const ResolveContext* context) {",
             source,
         )
         self.assertIn("resolve_fields(", source)
+        self.assertIn(
+            ".register_type = selected.dst.value.declared_type", source
+        )
         self.assertIn("CheckResult check<Add>(", source)
         self.assertIn("const auto check_integer_no_sat =", source)
         self.assertIn("const auto check_sat =", source)

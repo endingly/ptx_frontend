@@ -29,8 +29,8 @@ const SourceRange& diagnostic_range(std::span<const SourceRange> locations,
 
 const FieldView* find_field(std::span<const FieldView> fields,
                             std::string_view field_id) noexcept {
-  const auto it = std::ranges::find_if(
-      fields, [field_id](const FieldView& field) {
+  const auto it =
+      std::ranges::find_if(fields, [field_id](const FieldView& field) {
         return field.field_id == field_id;
       });
   return it == fields.end() ? nullptr : &*it;
@@ -38,8 +38,8 @@ const FieldView* find_field(std::span<const FieldView> fields,
 
 const OperandView* find_operand(std::span<const OperandView> operands,
                                 std::string_view field_id) noexcept {
-  const auto it = std::ranges::find_if(
-      operands, [field_id](const OperandView& operand) {
+  const auto it =
+      std::ranges::find_if(operands, [field_id](const OperandView& operand) {
         return operand.field_id == field_id;
       });
   return it == operands.end() ? nullptr : &*it;
@@ -203,9 +203,9 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::MissingTypeField,
           .range = diagnostic_range(operand->locations, context),
-          .message = fmt::format(
-              "Resolved operand '{}' has an invalid type expression descriptor.",
-              descriptor.target_field_id),
+          .message = fmt::format("Resolved operand '{}' has an invalid type "
+                                 "expression descriptor.",
+                                 descriptor.target_field_id),
       });
       continue;
     }
@@ -218,6 +218,17 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
               "Immediate operand '{}' has type '{}' but instruction type "
               "source '{}' is '{}'.",
               descriptor.target_field_id, to_string(*operand->immediate_type),
+              expected_type_source, to_string(expected_type)),
+      });
+    } else if (operand->register_type &&
+               *operand->register_type != expected_type) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::OperandTypeMismatch,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Register operand '{}' has declared type '{}' but instruction "
+              "type source '{}' is '{}'.",
+              descriptor.target_field_id, to_string(*operand->register_type),
               expected_type_source, to_string(expected_type)),
       });
     }
@@ -260,9 +271,9 @@ CheckResult check_operand_layout_tag(std::string_view variant_name,
   }});
 }
 
-CheckResult check_operand_layout_availability(
-    const VariantDescriptor& variant, uint16_t selected_layout,
-    const Context& context) {
+CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
+                                              uint16_t selected_layout,
+                                              const Context& context) {
   if (selected_layout >= variant.operand_layouts.size()) {
     return check_operand_layout_tag(variant.variant_name, selected_layout,
                                     variant.operand_layouts.size(), context);
@@ -325,7 +336,8 @@ CheckResult check_modifier_value_availability(
       continue;
 
     const auto it = std::ranges::find_if(
-        descriptors, [&actual](const ModifierValueAvailabilityDescriptor& entry) {
+        descriptors,
+        [&actual](const ModifierValueAvailabilityDescriptor& entry) {
           return matches_modifier_value(entry, actual);
         });
     if (it == descriptors.end())
@@ -350,7 +362,8 @@ CheckResult check_modifier_value_availability(
           .range = range,
           .message = fmt::format(
               "Modifier '{}' requires SM >= {}, but target SM is {}.",
-              actual.kind_id, availability.minimum_sm_version, target.sm_version),
+              actual.kind_id, availability.minimum_sm_version,
+              target.sm_version),
       });
     }
     if (!availability.required_family.empty() &&
@@ -359,8 +372,7 @@ CheckResult check_modifier_value_availability(
           .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
           .range = range,
           .message = fmt::format("Modifier '{}' requires target family '{}'.",
-                                 actual.kind_id,
-                                 availability.required_family),
+                                 actual.kind_id, availability.required_family),
       });
     }
   }

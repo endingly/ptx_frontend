@@ -106,14 +106,30 @@ def generate_resolved_dispatch_source(
 
 namespace ptx_frontend::resolved_ir {{
 
+namespace {{
+
 std::expected<ResolvedInstruction, ResolveDiagnostic>
-resolveInstruction(const syntax_ast::AstInstruction& ast) {{
+resolve_instruction(const syntax_ast::AstInstruction& ast,
+                    const ResolveContext* context) {{
 {branches}
 
   return std::unexpected(ResolveDiagnostic{{
       .range = ast.opcode.syntax.range,
       .message = "Unknown PTX opcode '" + ast.opcode.syntax.text + "'.",
   }});
+}}
+
+}}  // namespace
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast) {{
+  return resolve_instruction(ast, nullptr);
+}}
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast,
+                   const ResolveContext& context) {{
+  return resolve_instruction(ast, &context);
 }}
 
 }}  // namespace ptx_frontend::resolved_ir
@@ -133,25 +149,37 @@ def _emit_resolved_module_containers(
 using ResolvedInstruction = std::variant<{alternatives}>;
 
 struct ResolvedFunction {{
-  // Function spelling is temporary identity until symbol binding is added.
+  binding::SymbolId symbol_id;
   std::string name;
+  bool is_entry{{}};
+  bool is_prototype{{}};
   std::vector<ResolvedInstruction> body;
   SourceRange range;
 }};
 
 struct ResolvedModule {{
+  binding::SymbolTable symbols;
   std::vector<ResolvedFunction> functions;
   SourceRange range;
 }};
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
-resolveInstruction(const syntax_ast::AstInstruction& ast);"""
+resolveInstruction(const syntax_ast::AstInstruction& ast);
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast,
+                   const ResolveContext& context);
+
+using ModuleResolveDiagnostics = std::vector<ResolveDiagnostic>;
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics>
+resolveModule(const syntax_ast::AstModule& ast);"""
 
 
 def _emit_resolved_dispatch_branch(instruction: ResolvedInstruction) -> str:
     return f"""\
   if (ast.opcode.syntax.text == "{instruction.opcode}") {{
-    auto resolved = resolve<{instruction.cpp_name}>(ast);
+    auto resolved = resolve<{instruction.cpp_name}>(ast, context);
     if (!resolved)
       return std::unexpected(resolved.error());
     return ResolvedInstruction{{std::in_place_type<{instruction.cpp_name}>,
@@ -243,7 +271,8 @@ def _emit_resolve_specialization_declaration(
     return f"""\
 template <>
 std::expected<{instruction.cpp_name}, ResolveDiagnostic>
-resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast);"""
+resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
+    const ResolveContext* context);"""
 
 
 def _emit_check_specialization_declaration(
@@ -263,7 +292,8 @@ def _emit_resolve_specialization(instruction: ResolvedInstruction) -> str:
     return f"""\
 template <>
 std::expected<{instruction.cpp_name}, ResolveDiagnostic>
-resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast) {{
+resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
+    const ResolveContext* context) {{
   const auto selected_variant = selectVariant<{instruction.cpp_name}>(ast);
   if (!selected_variant)
     return std::unexpected(selected_variant.error());
@@ -271,7 +301,7 @@ resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast) {{
   const auto fields = resolve_fields(
       ast, {instruction.cpp_name}::get_syntax_descriptor(),
       {instruction.cpp_name}::get_resolved_descriptor(),
-      magic_enum::enum_name(*selected_variant));
+      magic_enum::enum_name(*selected_variant), context);
   if (!fields)
     return std::unexpected(fields.error());
 
@@ -636,6 +666,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                   .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedImmediate":
@@ -643,6 +674,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                   .immediate_type = {object_name}.{field.name}.value.type,
+                  .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicate":
@@ -650,6 +682,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "RegOrImm":
@@ -660,13 +693,17 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .field_id = "{field.name}",
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                       .immediate_type = immediate->type,
+                      .register_type = std::nullopt,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
+                const auto& register_ref =
+                    std::get<ResolvedRegisterRef>({object_name}.{field.name}.value);
                 return OperandView{{
                     .field_id = "{field.name}",
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                     .immediate_type = std::nullopt,
+                    .register_type = register_ref.declared_type,
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

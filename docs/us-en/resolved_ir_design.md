@@ -6,13 +6,15 @@ This document describes the implemented Resolved PTX IR, not a future CFG,
 SSA, or backend IR. The frontend's core flow is:
 
 ```text
-PTX source -> Token stream -> Syntax AST -> Resolved IR -> checker
+PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> checker
 ```
 
 Syntax AST preserves source spelling, modifier order, and `SourceRange`.
 Resolved IR records the selected instruction variant, resolved operand values,
 and diagnostic locations. Both are stable frontend boundaries. CFG/SSA,
-complete symbol binding, and target lowering are later passes.
+Lexical symbol binding is now connected to module resolution. Complete
+special/external-symbol classification, address semantics, CFG/SSA, and target
+lowering remain later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -21,16 +23,21 @@ using ResolvedInstruction = std::variant<Add, Sub, Bar /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics>
+resolveModule(const syntax_ast::AstModule& ast);
 ```
 
 `resolveInstruction` is generated from the instruction database and dispatches
 to the existing `resolve<T>` specialization. This keeps opcode dispatch out of
-callers while retaining the strongly typed per-opcode structures. Initial
-`ResolvedFunction` and `ResolvedModule` containers group resolved instructions
-at file scope. They intentionally do not yet model directives, declarations,
-labels, or symbols. The syntax layer now parses an initial module grammar, but
-these facts must enter Resolved IR together with the binding pass rather than
-being copied as unresolved strings.
+callers while retaining the strongly typed per-opcode structures.
+`resolveModule` first builds a `SymbolTable`, then constructs an explicit
+`ResolveContext` for each function scope. The resulting `ResolvedModule` owns
+that table, and each `ResolvedFunction` is identified by its function
+`SymbolId`. Standalone `resolveInstruction` and `resolve<T>` remain
+declaration-free for single-instruction tools. Directives, declarations, and
+labels remain in the Syntax AST/symbol table instead of being copied into
+Resolved IR as unresolved string fields.
 
 ## Locations and primitive values
 
@@ -64,14 +71,13 @@ extended to 64 bits. Decimal floats currently convert to `F32` and `F64`, while
 respectively. Other floating formats require explicit quantization rules and
 must not silently take the integer path.
 
-Until symbol-table declaration binding is available, `ResolvedRegisterRef`
-owns the register's complete source spelling and also records its
-`ResolvedRegisterClass` and numbered-register index. The index is only a
-convenience, not an identity: `%r1` and `%rd1` both have index 1 but retain
-different spellings. The current resolver supports the numbered-register
-subset and distinguishes general registers from `%pN` predicates. A future
-symbol-table pass should augment or replace this lexical reference with a
-declaration `SymbolId`.
+`ResolvedRegisterRef` owns the complete source spelling and its
+`ResolvedRegisterClass`. During module resolution it also stores the
+declaration `SymbolId`, optional parameterized-member index, and declared
+`ScalarType`, giving named registers such as `%tmp` and `name<count>` members a
+stable identity. A numbered-register index remains an optional convenience,
+not an identity. The context-free standalone resolver preserves its previous
+boundary: it accepts numbered registers and leaves symbol/type fields empty.
 
 ## Opcode-generated structures
 
@@ -145,8 +151,8 @@ extension followed by a new layout kind; they must not be disguised as `Flat`.
 
 ## Resolution protocol
 
-`resolve<T>(const AstInstruction&)` is a generated opcode-specific thin
-wrapper. Shared logic performs the following steps:
+`resolve<T>(const AstInstruction&)` and its `ResolveContext` overload share one
+generated opcode-specific implementation. Shared logic performs these steps:
 
 1. The common matcher diagnoses spellings unknown to the whole syntax
    descriptor, then binds spellings to unique active slots separately inside
@@ -158,7 +164,9 @@ wrapper. Shared logic performs the following steps:
 3. The selected variant chooses exactly one `OperandLayout` from AST shapes and
    arity.
 4. `resolve_fields` converts modifiers and operands through resolved bindings
-   into location-carrying values.
+   into location-carrying values. With a binding context, each register must
+   resolve to a `.reg` declaration visible from the lexical scope, and its
+   `SymbolId` and declaration type are recorded.
 5. The generated builder places fields in the selected struct or payload.
 
 No matching variant/layout is a user diagnostic. Multiple matching layouts, or
@@ -198,11 +206,12 @@ Each generated `checker::check<T>` wrapper uses common checking for:
 - minimum PTX version, SM version, and target family for the variant, selected operand layout, and actual modifier value;
 - layout-tag bounds;
 - layout-tag/payload agreement;
-- operand field identity, resolved shape, and immediate types from structured descriptors.
+- operand field identity, resolved shape, and immediate or bound-register
+  declaration types from structured descriptors.
 
-`rule_id` is reserved for typed instruction-specific rules. Register declaration
-types, symbol visibility, address spaces, and cross-instruction constraints need
-a complete symbol table and are outside the current common checker ABI.
+`rule_id` is reserved for typed instruction-specific rules. Register visibility
+and `.reg` state space are checked during module resolution; address spaces and
+cross-instruction constraints remain outside the current common checker ABI.
 
 ## Extension rules
 

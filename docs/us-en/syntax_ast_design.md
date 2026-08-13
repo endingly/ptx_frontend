@@ -6,13 +6,15 @@ The frontend now separates concrete source representation from the syntax
 model consumed by resolution:
 
 ```text
-source -> lexer token buffer -> CST -> Syntax AST -> Resolved IR
+source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved IR
 ```
 
 - The CST owns source fidelity: tokens, punctuation, delimiters, comments,
   whitespace, original spellings, and token ranges.
 - Syntax AST owns normalized grammar shapes needed by instruction matching and
   resolution.
+- Symbol binding builds module/function scopes and associates identifier
+  references with declarations.
 - Resolved IR owns selected variants, typed modifiers and operands, semantic
   values, and target checking metadata.
 
@@ -30,8 +32,11 @@ definitions, `.func` prototypes, structured formal parameters, `.reg`
 and other variable declarations, and labels. Function bodies contain
 syntax supported by the instruction parser. Variable declarations structurally
 retain linkage qualifiers, state space, optional alignment and vector type,
-base type, comma-separated names, register-bank `<count>` syntax, and
-multi-dimensional array declarators. Function qualifiers and the complete
+base type, comma-separated names, parameterized-name `<count>` syntax, and
+multi-dimensional array declarators, optional equals signs, and initializers.
+Array dimensions and scalar initializers use structured constant-expression
+trees; brace initializers recursively retain every brace level, element, and
+comma. Function qualifiers and the complete
 header token sequence remain in the CST; the entry/function kind and name are
 also identified explicitly.
 
@@ -49,10 +54,11 @@ if (cst)
 
 `parseInstruction()` accepts exactly one complete instruction fragment, while
 `parseModule()` requires a module root. The module grammar does not yet accept
-variable initializers, fixed variable addresses, complete array constant
-expressions, debug directives, nested statement scopes, recovery nodes,
-missing-token insertion, or a token-edit API. These are explicit later
-extensions rather than syntax that is silently treated as an instruction.
+debug directives, nested statement scopes, recovery
+nodes, missing-token insertion, or a token-edit API. Initializers currently
+receive grammar-shape and state-space/linkage validation only; types, array
+dimensions, and element counts belong to the future binding/semantic stage.
+Unsupported constructs are not silently treated as instructions.
 
 ## CST to Syntax AST lowering
 
@@ -77,8 +83,12 @@ containers for the supported module directives and functions. `AstFunction`
 contains the function kind, qualifiers, name, and an ordered body variant of
 `AstVariableDeclaration`, `AstLabel`, and `AstInstruction`. Return and input
 parameters retain state space, alignment, type, pointer attributes, array form,
-name, and range. Initializers, fixed addresses, and symbol identity remain
-outside the AST until their grammar and binding rules are implemented.
+name, and range. `AstConstantExpression` represents literals/symbols,
+parentheses, casts, unary/binary/conditional expressions, and initializer
+operators. `AstInitializer` distinguishes scalar expressions from recursive
+lists. Symbol identity is not written back into the AST; a separate
+`SymbolTable` associates references by source range, as described in
+`symbol_binding_design.md`.
 
 ## Narrowed Syntax AST responsibility
 
@@ -90,6 +100,8 @@ for composite operands. It retains only:
 - predicate negation;
 - address base, offset operation, and bracketed grammar form;
 - vector member and vector pack structure;
+- declaration array dimensions, constant expressions, and recursive
+  initializer structure;
 - source ranges for diagnostics;
 - operand grammar alternatives required by generated layout descriptors.
 

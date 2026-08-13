@@ -11,6 +11,7 @@
 #include <span>
 #include <type_traits>
 #include <unordered_set>
+#include "ptx_ir/bind/ptx_symbol_table.hpp"
 #include "ptx_ir/ptx_resolved_ir_checker.hpp"
 #include "ptx_ir/source_loc.hpp"
 #include "ptx_ir/syntax/ptx_syntax_ast.hpp"
@@ -178,17 +179,14 @@ enum class ResolvedRegisterClass : uint8_t {
   Predicate,
 };
 
-/**
- * Register identity before declaration binding is available.
- *
- * `spelling` is owned so the resolved IR does not depend on the Syntax AST
- * lifetime. `index` is retained for the currently supported numbered-register
- * syntax, but it is not the register's identity by itself.
- */
+/** A register reference, optionally bound to its declaration in a module. */
 struct ResolvedRegisterRef {
   std::string spelling;
   ResolvedRegisterClass register_class;
-  uint32_t index;
+  std::optional<uint32_t> index;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<uint32_t> parameterized_index;
+  std::optional<ScalarType> declared_type;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
 
@@ -240,6 +238,12 @@ concept PtxOperator = requires(T object) {
 using ActualModifierTable =
     std::unordered_map<std::string, const syntax_ast::AstModifier*>;
 
+/** Declaration context used while resolving an instruction inside a module. */
+struct ResolveContext {
+  const binding::SymbolTable& symbols;
+  binding::ScopeId scope;
+};
+
 /** Collect source modifiers by the slot IDs of one selected variant. */
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,
@@ -268,10 +272,24 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
   return *variant;
 }
 
-/** Resolve one syntax instruction into its opcode-specific resolved IR. */
+/** Implementation entry specialized by each generated opcode. */
 template <PtxOperator T>
 std::expected<T, ResolveDiagnostic> resolve(
-    const syntax_ast::AstInstruction& ast);
+    const syntax_ast::AstInstruction& ast, const ResolveContext* context);
+
+/** Resolve one standalone instruction without declaration binding. */
+template <PtxOperator T>
+std::expected<T, ResolveDiagnostic> resolve(
+    const syntax_ast::AstInstruction& ast) {
+  return resolve<T>(ast, nullptr);
+}
+
+/** Resolve one instruction against an explicit module binding context. */
+template <PtxOperator T>
+std::expected<T, ResolveDiagnostic> resolve(
+    const syntax_ast::AstInstruction& ast, const ResolveContext& context) {
+  return resolve<T>(ast, &context);
+}
 
 /** Resolve one lexer-classified immediate literal for a selected scalar type. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
@@ -281,7 +299,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
-    std::string_view variant_name);
+    std::string_view variant_name, const ResolveContext* context = nullptr);
 
 /**
    * @brief Get a resolved modifier field from the resolved instruction fields.

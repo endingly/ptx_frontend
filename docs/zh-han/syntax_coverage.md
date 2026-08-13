@@ -11,10 +11,13 @@
 | 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、vector member 与 vector pack |
 | Module header | 支持子集 | `.version`、`.target`、`.address_size` |
 | Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回与输入参数列表、`.noreturn` |
-| Formal parameter | 支持子集 | `.reg/.param`、alignment、scalar type、pointer space/alignment、有长度与无长度 array |
-| Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、alignment、vector/base type、register bank 与多维 array |
+| Formal parameter | 支持子集 | `.reg/.param`、alignment、scalar type、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
+| Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、alignment、vector/base type、parameterized name、多维 array，以及 `.global/.const` initializer |
 | Function body | 支持子集 | variable declaration、label 与当前 instruction grammar |
-| Declaration 扩展 | 尚未支持 | initializer、fixed address 与完整解析的 array constant expression |
+| Constant expression | 支持子集 | literal/symbol、括号、`.s64/.u64` cast、一元/二元/三元运算、`generic(symbol)` 与 mask initializer operator |
+| Initializer | 支持子集 | scalar expression、递归 brace list、未定长首维；拒绝 `.extern`、parameterized name 及非 `.global/.const` initializer |
+| Symbol binding | 支持子集 | module/function scope、变量/参数/函数/label、局部遮蔽、parameterized member、instruction/initializer/dimension reference |
+| Declaration 语义 | 尚未支持 | initializer 的类型、维度和元素数量校验，以及 linkage-compatible redeclaration |
 | 其他 directive | 尚未支持 | debug、section、pragma、module variable 与结构化 kernel-tuning directive |
 | 结构化控制语法 | 尚未支持 | nested scope 与由 directive 驱动的 control-flow metadata |
 | 恢复与编辑 | 尚未支持 | missing token、recovery node、多错误解析与 token edit |
@@ -25,8 +28,12 @@ Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留
 
 ## 近期实现顺序
 
-1. 增加 declaration initializer、fixed address 与 constant expression；
-2. 增加 call 与 branch 的专用 operand grammar；
-3. 表示 kernel tuning 与其余 module directive；
-4. 等 declaration 与 parameter 语法稳定后建立 symbol table；
+1. 将绑定后的 register/symbol `SymbolId` 接入 Resolved IR 与 checker；
+2. 校验 initializer 类型、array shape 和元素数量；
+3. 增加 call 与 branch 的专用 operand grammar；
+4. 表示 kernel tuning 与其余 module directive；
 5. PTX module grammar 与 YAML instruction coverage 分别独立扩展。
+
+PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立
+语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的
+`ptxas` 行为后才会增加对应节点。

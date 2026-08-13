@@ -106,6 +106,7 @@ struct OperandView {
   std::string_view field_id;
   OperandShape actual_shape;
   std::optional<ScalarType> immediate_type;
+  std::optional<ScalarType> register_type;
   std::span<const SourceRange> locations;
 };
 
@@ -267,10 +268,9 @@ CheckResult check_common(const InstructionDescriptor& instruction,
  * Check operand constraints independent of a particular opcode.
  *
  * The generated typed wrapper supplies views of the selected resolved layout.
- * Currently this verifies operand-field identity, allowed resolved shape, and
- * immediate types constrained by the generated ``TypeExpressionDescriptor``.
- * Register type and state-space checks will join this entry point once symbol
- * lookup is part of ``Context``.
+ * This verifies operand-field identity, allowed resolved shape, and immediate
+ * or declaration-bound register types constrained by the generated
+ * ``TypeExpressionDescriptor``.
  */
 CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
                            std::span<const FieldView> fields,

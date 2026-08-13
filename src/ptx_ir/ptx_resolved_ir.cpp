@@ -1,5 +1,4 @@
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
-#include "resolved_value_domains.gen.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -9,6 +8,7 @@
 #include <limits>
 #include <string_view>
 #include <vector>
+#include "resolved_value_domains.gen.hpp"
 
 namespace ptx_frontend::resolved_ir::check_end {
 
@@ -219,8 +219,7 @@ constexpr std::optional<T> lookup_ptx_suffix(
   return std::nullopt;
 }
 
-std::optional<ScalarType> scalar_type_from_ptx_name(
-    std::string_view spelling) {
+std::optional<ScalarType> scalar_type_from_ptx_name(std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kScalarTypes, spelling);
 }
 
@@ -296,14 +295,107 @@ parse_numbered_register(const syntax_ast::AstIdentifierRef& identifier,
   };
 }
 
+std::optional<uint32_t> numbered_register_index(std::string_view spelling) {
+  size_t digit_begin = spelling.size();
+  while (digit_begin > 0 &&
+         std::isdigit(static_cast<unsigned char>(spelling[digit_begin - 1]))) {
+    --digit_begin;
+  }
+  if (digit_begin == spelling.size())
+    return std::nullopt;
+
+  uint32_t index = 0;
+  const auto [end, error] = std::from_chars(
+      spelling.data() + digit_begin, spelling.data() + spelling.size(), index);
+  if (error != std::errc{} || end != spelling.data() + spelling.size())
+    return std::nullopt;
+  return index;
+}
+
+std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
+    const syntax_ast::AstIdentifierRef& identifier,
+    ResolvedRegisterClass register_class, const ResolveContext& context,
+    SourceRange range) {
+  const auto lookup =
+      context.symbols.lookup(context.scope, identifier.syntax.text);
+  if (!lookup) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message =
+            fmt::format("Unresolved register '{}'.", identifier.syntax.text),
+    });
+  }
+
+  const binding::Symbol& symbol = context.symbols.symbol(lookup->symbol);
+  if (symbol.kind != binding::SymbolKind::Variable ||
+      symbol.state_space != syntax_ast::AstStateSpace::Register) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format("Symbol '{}' is not a .reg variable.",
+                               identifier.syntax.text),
+    });
+  }
+  if (!symbol.type) {
+    throw ResolveException(fmt::format(
+        "Register symbol '{}' has no declaration type.", symbol.name));
+  }
+  const auto declared_type = scalar_type_from_ptx_name(*symbol.type);
+  if (!declared_type) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = symbol.declaration_range,
+        .message =
+            fmt::format("Register '{}' has unsupported declared type '{}'.",
+                        symbol.name, *symbol.type),
+    });
+  }
+
+  const bool is_predicate = *declared_type == ScalarType::Pred;
+  if (register_class == ResolvedRegisterClass::Predicate && !is_predicate) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Expected a predicate register, but '{}' is declared '{}'.",
+            identifier.syntax.text, *symbol.type),
+    });
+  }
+  if (register_class == ResolvedRegisterClass::General && is_predicate) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Expected a non-predicate register, but '{}' is declared '.pred'.",
+            identifier.syntax.text),
+    });
+  }
+
+  return ResolvedRegisterRef{
+      .spelling = identifier.syntax.text,
+      .register_class = register_class,
+      .index = numbered_register_index(identifier.syntax.text),
+      .symbol_id = lookup->symbol,
+      .parameterized_index = lookup->parameterized_index,
+      .declared_type = *declared_type,
+  };
+}
+
 std::expected<WithLocs<ResolvedRegisterRef>, ResolveDiagnostic>
-resolve_register(const syntax_ast::AstOperand& operand) {
+resolve_register(const syntax_ast::AstOperand& operand,
+                 const ResolveContext* context) {
   const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
   if (identifier == nullptr) {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
         .message = "Expected a register operand.",
     });
+  }
+
+  if (context != nullptr) {
+    auto value =
+        resolve_bound_register(*identifier, ResolvedRegisterClass::General,
+                               *context, identifier->syntax.range);
+    if (!value)
+      return std::unexpected(value.error());
+    return WithLocs<ResolvedRegisterRef>{std::move(*value),
+                                         identifier->syntax.range};
   }
 
   const auto parsed = parse_numbered_register(
@@ -317,7 +409,6 @@ resolve_register(const syntax_ast::AstOperand& operand) {
                                identifier->syntax.text),
     });
   }
-
   return WithLocs<ResolvedRegisterRef>{
       ResolvedRegisterRef{
           .spelling = identifier->syntax.text,
@@ -328,7 +419,7 @@ resolve_register(const syntax_ast::AstOperand& operand) {
 }
 
 std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
-    const syntax_ast::AstOperand& operand) {
+    const syntax_ast::AstOperand& operand, const ResolveContext* context) {
   const syntax_ast::AstIdentifierRef* identifier = nullptr;
   bool negated = false;
   SourceRange range;
@@ -347,27 +438,37 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
     });
   }
 
-  const auto parsed = parse_numbered_register(*identifier, range,
-                                              "a numbered predicate register");
-  if (!parsed)
-    return std::unexpected(parsed.error());
-  if (parsed->prefix != "p") {
-    return std::unexpected(ResolveDiagnostic{
-        .range = range,
-        .message = fmt::format("Expected a predicate register, got '{}'.",
-                               identifier->syntax.text),
-    });
+  ResolvedRegisterRef register_ref{
+      .register_class = ResolvedRegisterClass::Predicate,
+  };
+  if (context != nullptr) {
+    auto value = resolve_bound_register(
+        *identifier, ResolvedRegisterClass::Predicate, *context, range);
+    if (!value)
+      return std::unexpected(value.error());
+    register_ref = std::move(*value);
+  } else {
+    const auto parsed = parse_numbered_register(
+        *identifier, range, "a numbered predicate register");
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    if (parsed->prefix != "p") {
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = fmt::format("Expected a predicate register, got '{}'.",
+                                 identifier->syntax.text),
+      });
+    }
+    register_ref = ResolvedRegisterRef{
+        .spelling = identifier->syntax.text,
+        .register_class = ResolvedRegisterClass::Predicate,
+        .index = parsed->index,
+    };
   }
 
   return WithLocs<ResolvedPredicate>{
-      ResolvedPredicate{
-          .register_ref =
-              ResolvedRegisterRef{
-                  .spelling = identifier->syntax.text,
-                  .register_class = ResolvedRegisterClass::Predicate,
-                  .index = parsed->index,
-              },
-          .negated = negated},
+      ResolvedPredicate{.register_ref = std::move(register_ref),
+                        .negated = negated},
       range};
 }
 
@@ -536,10 +637,11 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
 }
 
 std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
-    const syntax_ast::AstOperand& operand, ScalarType type) {
+    const syntax_ast::AstOperand& operand, ScalarType type,
+    const ResolveContext* context) {
   if (const auto* identifier =
           std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
-    auto register_ref = resolve_register(operand);
+    auto register_ref = resolve_register(operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
     return WithLocs<RegOrImm>{RegOrImm{register_ref->value},
@@ -728,16 +830,16 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const ResolvedFieldDescriptor& field,
     const ResolvedOperandBindingDescriptor& binding,
     const syntax_ast::AstOperand& operand,
-    const ResolvedInstructionFields& fields) {
+    const ResolvedInstructionFields& fields, const ResolveContext* context) {
   switch (field.value_kind) {
     case ResolvedValueKind::Register: {
-      auto value = resolve_register(operand);
+      auto value = resolve_register(operand, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::Predicate: {
-      auto value = resolve_predicate(operand);
+      auto value = resolve_predicate(operand, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -765,7 +867,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      auto value = resolve_reg_or_imm(operand, *type);
+      auto value = resolve_reg_or_imm(operand, *type, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -859,8 +961,7 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
     return std::unexpected(ResolveDiagnostic{
         .range = ast.opcode.syntax.range,
         .message = fmt::format("Cannot resolve opcode '{}' as '{}'.",
-                               ast.opcode.syntax.text,
-                               instruction.Opcode_name),
+                               ast.opcode.syntax.text, instruction.Opcode_name),
     });
   }
 
@@ -868,8 +969,8 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
     if (!is_known_modifier_spelling(instruction, modifier.syntax.text)) {
       return std::unexpected(ResolveDiagnostic{
           .range = modifier.syntax.range,
-          .message = fmt::format("Unknown modifier '{}'.",
-                                 modifier.syntax.text),
+          .message =
+              fmt::format("Unknown modifier '{}'.", modifier.syntax.text),
       });
     }
   }
@@ -918,7 +1019,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
-    std::string_view variant_name) {
+    std::string_view variant_name, const ResolveContext* context) {
   const SyntaxVariantDescriptor& syntax_variant =
       find_syntax_variant_descriptor(syntax_instruction, variant_name);
   const ResolvedVariantDescriptor& resolved_variant =
@@ -1020,8 +1121,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const auto& binding = resolved_layout.bindings[index];
     const auto& field = find_resolved_operand_field_descriptor(
         resolved_layout, binding.target_field_id);
-    auto value =
-        resolve_operand_value(field, binding, ast.operands[index], fields);
+    auto value = resolve_operand_value(field, binding, ast.operands[index],
+                                       fields, context);
     if (!value)
       return std::unexpected(value.error());
     const auto [_, inserted] =

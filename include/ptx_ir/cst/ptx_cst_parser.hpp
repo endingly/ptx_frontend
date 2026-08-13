@@ -43,6 +43,14 @@ class PtxCstParser {
       TokenId open);
   std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
   parseInstructionNode(std::optional<TokenId> opcode = std::nullopt);
+  std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
+  parseConstantExpression(int minimum_precedence = 0);
+  std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
+  parseConstantUnary();
+  std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
+  parseConstantPrimary();
+  std::expected<syntax_cst::CstInitializer, CstParseDiagnostic>
+  parseInitializer();
   std::expected<syntax_cst::CstVariableDeclaration, CstParseDiagnostic>
   parseVariableDeclaration(std::vector<TokenId> qualifiers = {},
                            std::optional<TokenId> first_token = std::nullopt);

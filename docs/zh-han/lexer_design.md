@@ -135,11 +135,12 @@ return Token{kind, std::string(sval.sv), sval.range};
 每个标点字符具有独立的 token kind，包括：
 
 ```text
-, . : ; @ | ! ( ) [ ] { } < > - + =
+, . : ; @ ( ) [ ] { } < > <= >= << >> - + * / % & && ^ | || ! ~ ? = == !=
 ```
 
 正负号不属于数值 token。例如，`-1` 会产生一个 `Minus`，随后产生一个
-`Decimal`。
+`Decimal`。多字符运算符拥有独立 token kind，供 declaration constant-expression
+parser 保留准确的运算符和优先级。
 
 ### 字面量
 
@@ -293,6 +294,7 @@ Lexer 测试构建为独立的 `ptx_lexer_test` 可执行程序，不与更高�
 - 复合点号标识符和以数字开头的点号标识符。
 - 专用 module、function、visibility 和 declaration directive。
 - 寄存器声明、内存 operand 和 predicate 标点。
+- constant expression 的单字符与多字符运算符。
 - 整数、十六进制、浮点 bit-pattern、十进制浮点和字符串字面量。
 - 空白和注释跳过。
 - 未终止块注释错误。

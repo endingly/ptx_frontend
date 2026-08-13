@@ -1,50 +1,25 @@
-已将专用 .reg declaration 重构为通用 variable declaration，设计参考 NVIDIA 官方 PTX Variables 语法
-  (https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#variables)。
+已完成 binding-aware module resolution 阶段：
 
-  当前支持：
+  - 新增 resolveModule()，模块持有 SymbolTable，函数使用 SymbolId：src/ptx_ir/
+    ptx_resolved_module.cpp:7
 
-  - Module scope 与 function scope declaration
-  - .reg
-  - .param
-  - .local
-  - .shared
-  - .global
-  - .const
-  - .visible、.extern、.weak linkage qualifier
-  - .align
-  - .v2 / .v4 vector type
-  - %r<3> register bank
-  - 多维 array，例如 scratch[19][19]
-  - 无长度 array
-  - 简单 array dimension token expression
+  - ResolvedRegisterRef 现在携带声明 SymbolId、parameterized index 和声明类型，
+    同时支持 named register：include/ptx_ir/resolved/ptx_resolved_ir.hpp:182
 
-  主要公共类型现在是：
+  - 生成器支持带 ResolveContext 的 opcode 分派，standalone resolver 保持兼容：
+    python/code_gen/gen_resolved_ir.py:107
 
-  - CstVariableDeclaration
-  - CstVariableDeclarator
-  - CstArrayDimension
-  - AstVariableDeclaration
-  - AstVariableDeclarator
-  - AstArrayDimension
-  - AstStateSpace
+  - module resolution 会诊断未声明寄存器、非 .reg symbol 和 predicate 类型不匹
+    配。
 
-  原来的 CstRegisterDeclaration、AstRegisterDeclaration 等专用类型已删除，没有保留重复兼容层。
+  - checker 已能校验寄存器声明类型。
+  - 安装后 package consumer 也覆盖了 resolveModule()。
+  - 补充 named、parameterized、predicate、类型错误和 standalone 行为测试：test/
+    resolve_and_check/test_resolved_module.cpp:23
 
-  主要实现位于：
+  - 中英文设计文档与 next_step.md:40 已更新。
 
-  - include/ptx_ir/cst/ptx_cst.hpp
-  - src/ptx_cst_parser.cpp
-  - include/ptx_ir/syntax/ptx_syntax_ast.hpp
-  - src/ptx_syntax_lower.cpp
+  验证结果：Debug CTest 108/108 全部通过，git diff --check 通过。
 
-  覆盖矩阵和设计文档也已更新。
-
-  验证结果：
-
-  - Python：43/43
-  - Debug CTest：90/90
-  - package consumer：通过
-  - git diff --check：通过
-
-  目前 variable declaration 尚缺 initializer、fixed address，以及真正结构化的 constant-expression AST。下一步可
-  优先补 initializer 和 constant expression；完成后 declaration grammar 才基本足以支撑正式符号表。
+  下一阶段是 special register/external symbol 分类，以及真正未声明 reference 的
+  精确诊断。

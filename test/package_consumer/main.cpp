@@ -1,6 +1,7 @@
 #include <string_view>
 #include <variant>
 
+#include <ptx_ir/bind/ptx_symbol_table.hpp>
 #include <ptx_ir/cst/ptx_cst_parser.hpp>
 #include <ptx_ir/resolved/ptx_resolved_ir.hpp>
 #include <ptx_ir/syntax/ptx_syntax_parser.hpp>
@@ -35,5 +36,29 @@ int main() {
     return 4;
   const auto& function =
       std::get<ptx_frontend::syntax_ast::AstFunction>(module->items[4]);
-  return function.parameters.size() == 1 && function.body.size() == 3 ? 0 : 5;
+  if (function.parameters.size() != 1 || function.body.size() != 3)
+    return 5;
+
+  const auto symbols = ptx_frontend::binding::bindSymbols(*module);
+  if (!symbols.diagnostics.empty() || symbols.table.scopes().size() != 2)
+    return 6;
+  const auto kernel =
+      symbols.table.lookup(symbols.table.moduleScope(), "kernel");
+  if (!kernel)
+    return 7;
+  const auto function_scope = symbols.table.symbol(kernel->symbol).owned_scope;
+  if (!function_scope || !symbols.table.lookup(*function_scope, "%r1"))
+    return 8;
+
+  const auto resolved_module =
+      ptx_frontend::resolved_ir::resolveModule(*module);
+  if (!resolved_module || resolved_module->functions.size() != 1 ||
+      resolved_module->functions.front().body.size() != 1)
+    return 9;
+  const auto& resolved_add = std::get<ptx_frontend::resolved_ir::Add>(
+      resolved_module->functions.front().body.front());
+  const auto& integer_add =
+      std::get<ptx_frontend::resolved_ir::Add::IntegerNoSat>(
+          resolved_add.variant);
+  return integer_add.dst.value.symbol_id ? 0 : 10;
 }

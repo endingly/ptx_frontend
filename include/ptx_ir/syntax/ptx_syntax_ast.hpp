@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -45,6 +46,7 @@ enum class AstImmediateKind : uint8_t {
   F32Hex,
   F64Hex,
   DecimalFloat,
+  WarpSize,
 };
 
 /** A lexical literal whose semantic value is decoded during resolution. */
@@ -130,15 +132,108 @@ struct AstAddressSizeDirective {
   SourceRange range;
 };
 
+struct AstConstantExpression;
+using AstConstantExpressionPtr = std::unique_ptr<AstConstantExpression>;
+
+enum class AstConstantUnaryOperator : uint8_t {
+  Plus,
+  Minus,
+  LogicalNot,
+  BitwiseNot,
+};
+
+enum class AstConstantBinaryOperator : uint8_t {
+  Multiply,
+  Divide,
+  Remainder,
+  Add,
+  Subtract,
+  ShiftLeft,
+  ShiftRight,
+  Less,
+  LessEqual,
+  Greater,
+  GreaterEqual,
+  Equal,
+  NotEqual,
+  BitwiseAnd,
+  BitwiseXor,
+  BitwiseOr,
+  LogicalAnd,
+  LogicalOr,
+};
+
+struct AstConstantLiteral {
+  AstImmediate value;
+};
+
+struct AstConstantSymbol {
+  AstIdentifierRef name;
+};
+
+struct AstConstantParenthesized {
+  AstConstantExpressionPtr expression;
+};
+
+struct AstConstantCall {
+  AstConstantExpressionPtr callee;
+  AstConstantExpressionPtr argument;
+};
+
+struct AstConstantCast {
+  AstSyntax type;
+  AstConstantExpressionPtr operand;
+};
+
+struct AstConstantUnary {
+  AstConstantUnaryOperator operation{};
+  AstConstantExpressionPtr operand;
+};
+
+struct AstConstantBinary {
+  AstConstantExpressionPtr left;
+  AstConstantBinaryOperator operation{};
+  AstConstantExpressionPtr right;
+};
+
+struct AstConstantConditional {
+  AstConstantExpressionPtr condition;
+  AstConstantExpressionPtr true_expression;
+  AstConstantExpressionPtr false_expression;
+};
+
+using AstConstantExpressionNode =
+    std::variant<AstConstantLiteral, AstConstantSymbol,
+                 AstConstantParenthesized, AstConstantCall, AstConstantCast,
+                 AstConstantUnary, AstConstantBinary, AstConstantConditional>;
+
+struct AstConstantExpression {
+  AstConstantExpressionNode node;
+  SourceRange range;
+};
+
+struct AstInitializer;
+
+struct AstInitializerList {
+  std::vector<AstInitializer> elements;
+  SourceRange range;
+};
+
+struct AstInitializer {
+  std::variant<AstConstantExpression, AstInitializerList> value;
+  SourceRange range;
+};
+
 struct AstArrayDimension {
-  std::vector<AstSyntax> size_tokens;
+  std::optional<AstConstantExpression> size;
   SourceRange range;
 };
 
 struct AstVariableDeclarator {
   AstIdentifierRef name;
-  std::optional<AstSyntax> register_count;
+  std::optional<AstSyntax> parameterized_count;
   std::vector<AstArrayDimension> array_dimensions;
+  std::optional<AstInitializer> initializer;
   SourceRange range;
 };
 
@@ -178,7 +273,7 @@ struct AstFunctionParameter {
   std::optional<AstSyntax> pointer_alignment;
   AstIdentifierRef name;
   bool is_array{};
-  std::optional<AstSyntax> array_size;
+  std::optional<AstConstantExpression> array_size;
   SourceRange range;
 };
 

@@ -99,6 +99,10 @@ Otherwise model construction fails instead of generating ambiguous code.
 | `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors and getters |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors and getters |
 
+The generated public header remains flat under the build-tree `public` include
+root. CMake installs that specific file as
+`include/ptx_ir/resolved/resolved_ir.gen.hpp`.
+
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in
 `ptx_frontend::resolved_ir`; generated checker specializations share one

@@ -95,7 +95,6 @@ target_include_directories(
     # ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${PTX_GEN_PRIVATE_DIR}
 )
-target_link_libraries(ptx_frontend PRIVATE ${FLEX_LIBRARIES})
 find_package(fmt CONFIG REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(
@@ -122,5 +121,12 @@ install_project_targets(
     EXPORT ptx_frontendTargets
     INCLUDE_DIRS 
         ${CMAKE_SOURCE_DIR}/include
-        ${PTX_GEN_PUBLIC_DIR}
+    DEPENDENCIES
+        "fmt CONFIG"
+        "magic_enum CONFIG"
+)
+
+install(
+    FILES ${PTX_GEN_PUBLIC_DIR}/resolved_ir.gen.hpp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ptx_ir/resolved
 )

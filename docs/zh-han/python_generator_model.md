@@ -95,6 +95,9 @@ resolver 共用的语义契约，保存目标 field、结构化类型表达式�
 | `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors 与 getter |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors 与 getter |
 
+生成的公开头在构建树中仍平铺于 `public` include root；CMake 会将这个特定
+文件安装为 `include/ptx_ir/resolved/resolved_ir.gen.hpp`。
+
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
 `generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；所有 generated
 checker specialization 位于单一 `checker` namespace。

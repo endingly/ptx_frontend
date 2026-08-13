@@ -15,7 +15,8 @@ include_guard(GLOBAL)
 # This function:
 # - installs given targets and headers
 # - exports targets to a .cmake file and installs Config files
-# - installs headers under ${prefix}/include/<PROJECT> (so consumers can #include <PROJECT/xxx.hpp>)
+# - installs the contents of each include root under ${prefix}/include, matching
+#   the include paths exposed by the build-tree target
 #
 function(install_project_targets)
     cmake_parse_arguments(
@@ -56,27 +57,16 @@ function(install_project_targets)
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin
-        INCLUDES DESTINATION include
     )
 
     # 2) install headers
-    # We want consumers to do "#include <project/header.hpp>".
-    # Expectation: Either source headers are organized under include/<project>/...
-    # or caller provided include dirs containing headers; we will install contents into include/<project>.
+    # INCLUDE_DIRS are include roots, not directories to preserve as another
+    # path component.  Installing their contents directly keeps build-tree and
+    # install-tree includes identical (for example <ptx_ir/base.hpp>).
     foreach(_inc ${INSTALL_PROJECT_INCLUDE_DIRS})
-        # if _inc already ends with /<project>, install its CONTENTS (preserve filenames)
-        get_filename_component(_basename ${_inc} NAME)
-
-        if(_basename STREQUAL "${INSTALL_PROJECT_PROJECT}")
-            install(DIRECTORY ${_inc}
-                DESTINATION include
-                FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl" PATTERN "*.ipp" PATTERN "*.def")
-        else()
-            # otherwise install the directory into include/<project>/<relative...>
-            install(DIRECTORY ${_inc}/
-                DESTINATION include/${INSTALL_PROJECT_PROJECT}
-                FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl" PATTERN "*.ipp" PATTERN "*.def")
-        endif()
+        install(DIRECTORY ${_inc}/
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl" PATTERN "*.ipp" PATTERN "*.def")
     endforeach()
 
     export(EXPORT ${INSTALL_PROJECT_PROJECT}Targets
@@ -90,15 +80,24 @@ function(install_project_targets)
     set(_config_out "${CMAKE_CURRENT_BINARY_DIR}/${INSTALL_PROJECT_PROJECT}Config.cmake")
     set(_version_out "${CMAKE_CURRENT_BINARY_DIR}/${INSTALL_PROJECT_PROJECT}ConfigVersion.cmake")
 
-    # configure_package_config_file expects a template; we try to find one in ${CMAKE_CURRENT_SOURCE_DIR}/cmake
+    set(PACKAGE_DEPENDENCY_CALLS "")
+    foreach(_dependency IN LISTS INSTALL_PROJECT_DEPENDENCIES)
+        string(APPEND PACKAGE_DEPENDENCY_CALLS "find_dependency(${_dependency})\n")
+    endforeach()
+
+    # configure_package_config_file expects a template; use a project-specific
+    # one when present, otherwise create a relocatable generic template.
     set(_template "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${INSTALL_PROJECT_PROJECT}Config.cmake.in")
 
     if(NOT EXISTS ${_template})
-        # Fallback: use a small inline template if none provided.
-        file(WRITE "${CMAKE_BINARY_DIR}/${INSTALL_PROJECT_PROJECT}Config.cmake.in"
-            "@PACKAGE_INIT@\n
-include(\"${CMAKE_CURRENT_LIST_DIR}/${INSTALL_PROJECT_PROJECT}Targets.cmake\")\n
-set(${INSTALL_PROJECT_PROJECT}_VERSION \"@PROJECT_VERSION@\")\n")
+        file(WRITE "${CMAKE_BINARY_DIR}/${INSTALL_PROJECT_PROJECT}Config.cmake.in" [=[
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+@PACKAGE_DEPENDENCY_CALLS@
+include("${CMAKE_CURRENT_LIST_DIR}/@PACKAGE_NAME@Targets.cmake")
+set(@PACKAGE_NAME@_VERSION "@PROJECT_VERSION@")
+]=])
         set(_template "${CMAKE_BINARY_DIR}/${INSTALL_PROJECT_PROJECT}Config.cmake.in")
     endif()
 

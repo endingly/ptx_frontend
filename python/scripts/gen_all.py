@@ -146,6 +146,7 @@ def remove_legacy_generated_files(output_dir: Path) -> None:
     """Remove artifacts from the retired direct-IR/parser generator path."""
 
     legacy_patterns = (
+        "public/ptx_ir/resolved/resolved_ir.gen.hpp",
         "public/ptx_ir_*.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",

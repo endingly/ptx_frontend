@@ -61,3 +61,16 @@ set_tests_properties(
     PROPERTIES
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
 )
+
+add_test(
+    NAME package_consumer
+    COMMAND
+    ${CMAKE_COMMAND}
+    -DPTX_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+    -DPTX_BINARY_DIR=${PROJECT_BINARY_DIR}
+    -DPTX_TEST_CONFIG=$<CONFIG>
+    -DPTX_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+    -DPTX_FMT_DIR=${fmt_DIR}
+    -DPTX_MAGIC_ENUM_DIR=${magic_enum_DIR}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/package_consumer/run_test.cmake
+)

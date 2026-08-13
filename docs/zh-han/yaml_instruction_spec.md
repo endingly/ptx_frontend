@@ -44,8 +44,9 @@ variant 不能同时写 `operands` 和 `operand_layouts`。
 ## Variant 与 modifier
 
 variant 的 `name` 是稳定 machine-readable identifier；它生成 C++ variant 名与
-descriptor key。当前模型中，一个 variant 由确切的 modifier kind/value 组合确定，
-而不是由 operand 数量确定。
+descriptor key。当前模型中，一个 variant 表示一组互斥的 modifier slot/presence 与
+value 约束，而不是由 operand 数量或版本区间确定。只有 allowed value 不同、其余形式
+相同的版本演进应合并到同一 variant。
 
 modifier 的核心字段：
 
@@ -105,6 +106,11 @@ values:
 未写 availability 的值不增加 variant 的要求；选中 `u64` 时，checker 会在 variant/layout
 之后额外检查此值的 PTX、SM 与 family 要求，并将诊断定位到该 modifier。value availability
 只能追加要求，不能降低 variant availability。
+
+若一种 modifier 形式的部分 allowed values 在较晚版本才加入，应把 variant 的
+`availability` 设为所有 value 共有的最低要求，再把新增要求写到对应 value 上。例如
+`add.u32` 与 `add.u16x2` 同属 no-sat variant，后者单独要求 PTX 8.0 / sm_90；不得仅因
+该版本差异复制一个 `add_simd_no_sat_sm90` variant。
 
 ## Operand 与 operand pattern
 
@@ -212,7 +218,8 @@ resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同
 
 1. 记录 PTX 语义事实，而不是生成实现偏好；禁止 `direct`、`sub_struct`、
    `sub_variant` 之类的 C++ storage 选项。
-2. 对 modifier variant 使用稳定且描述性的 name，例如 `add_sat_s32`、`bar_cta_sync`。
+2. 对 modifier variant 使用稳定且描述性的 name，例如 `add_sat`、`bar_cta_sync`；名称
+   不应包含仅由 allowed-value availability 表达的版本后缀。
 3. 优先复用 `type_sets` 与 `operand_patterns`，但不要把语义不同的 operand 强行放入
    同一 pattern。
 4. 新增 spec 前确认 lexer/AST 能形成所需 operand shape；不能时先扩展语法层。

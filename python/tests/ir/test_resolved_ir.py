@@ -67,12 +67,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [variant.cpp_name for variant in self.instruction.variants],
             [
                 "IntegerNoSat",
-                "SatS32",
-                "SimdNoSatSm90",
-                "PackedOptionalSatSm120",
-                "SatSm120",
+                "Sat",
+                "PackedOptionalSat",
             ],
         )
+
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}
 
@@ -90,43 +89,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            [field.name for field in variants["SatS32"].fields],
+            [field.name for field in variants["Sat"].fields],
             ["saturate", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
-            [field.storage for field in variants["SatS32"].fields[:2]],
+            [field.storage for field in variants["Sat"].fields[:2]],
             [
                 ResolvedFieldStorage.STATIC_CONSTANT,
-                ResolvedFieldStorage.STATIC_CONSTANT,
+                ResolvedFieldStorage.INSTANCE,
             ],
         )
         self.assertEqual(
-            [field.cpp_constant_expr for field in variants["SatS32"].fields[:2]],
-            ["true", "ScalarType::S32"],
+            variants["Sat"].fields[0].cpp_constant_expr,
+            "true",
         )
         self.assertEqual(
             [
                 (binding.source_kind_id, binding.target_field_id)
-                for binding in variants["SatS32"].modifier_bindings
+                for binding in variants["Sat"].modifier_bindings
             ],
             [("sat", "saturate"), ("type", "type")],
         )
-        optional_sat_binding = variants[
-            "PackedOptionalSatSm120"
-        ].modifier_bindings[0]
+        optional_sat_binding = variants["PackedOptionalSat"].modifier_bindings[0]
         self.assertIsNotNone(optional_sat_binding.default_value)
         assert optional_sat_binding.default_value is not None
         self.assertEqual(optional_sat_binding.default_value.value_cpp_type, "bool")
         self.assertIs(optional_sat_binding.default_value.value, False)
         self.assertIsNone(
-            variants["PackedOptionalSatSm120"]
-            .modifier_bindings[1]
-            .default_value
+            variants["PackedOptionalSat"].modifier_bindings[1].default_value
         )
         self.assertEqual(
             [
                 (field.name, field.cpp_type, field.origin)
-                for field in variants["PackedOptionalSatSm120"].fields
+                for field in variants["PackedOptionalSat"].fields
             ],
             [
                 ("saturate", "WithLocs<bool>", ResolvedFieldOrigin.MODIFIER),
@@ -148,7 +143,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [
                 (binding.source_kind_id, binding.target_field_id)
-                for binding in variants["PackedOptionalSatSm120"].modifier_bindings
+                for binding in variants["PackedOptionalSat"].modifier_bindings
             ],
             [("sat", "saturate"), ("type", "type")],
         )
@@ -199,6 +194,37 @@ class ResolvedIrBuildTest(unittest.TestCase):
                         ResolvedOperandShape.REGISTER,
                         ResolvedOperandShape.IMMEDIATE,
                     ),
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in variants["IntegerNoSat"].modifier_value_availabilities
+            ],
+            [
+                ("u16x2", {"ptx": "8.0", "sm": 90}),
+                ("s16x2", {"ptx": "8.0", "sm": 90}),
+            ],
+        )
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in variants["Sat"].modifier_value_availabilities
+            ],
+            [
+                (
+                    "u16x2",
+                    {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
+                ),
+                (
+                    "s16x2",
+                    {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
+                ),
+                (
+                    "u32",
+                    {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
                 ),
             ],
         )
@@ -326,10 +352,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("WithLocs<ScalarType> type;", source)
         self.assertIn("WithLocs<bool> saturate;", source)
         self.assertIn("inline static constexpr bool saturate = true;", source)
-        self.assertIn(
-            "inline static constexpr ScalarType type = ScalarType::S32;",
-            source,
-        )
+        self.assertIn("struct Sat {", source)
+        self.assertNotIn("struct SatS32 {", source)
         self.assertIn("using Variant = std::variant<", source)
         self.assertIn(
             "static const check_end::SyntaxInstructionDescriptor&\n"
@@ -390,7 +414,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve_fields(", source)
         self.assertIn("CheckResult check<Add>(", source)
         self.assertIn("const auto check_integer_no_sat =", source)
-        self.assertIn("const auto check_packed_optional_sat_sm120 =", source)
+        self.assertIn("const auto check_sat =", source)
+        self.assertIn("const auto check_packed_optional_sat =", source)
         self.assertIn("detail::VariantCheckFunction<", source)
         self.assertIn("std::visit(detail::Overloaded{", source)
         self.assertIn("const auto operand_check = check_operands(", source)

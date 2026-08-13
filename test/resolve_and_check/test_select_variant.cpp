@@ -41,11 +41,12 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
   };
 
   expect_variant("add.u32 %r0, %r1, %r2;", Add::VariantType::IntegerNoSat);
-  expect_variant("add.sat.s32 %r0, %r1, %r2;", Add::VariantType::SatS32);
-  expect_variant("add.u16x2 %r0, %r1, %r2;", Add::VariantType::SimdNoSatSm90);
+  expect_variant("add.sat.s32 %r0, %r1, %r2;", Add::VariantType::Sat);
+  expect_variant("add.u16x2 %r0, %r1, %r2;",
+                 Add::VariantType::IntegerNoSat);
   expect_variant("add.u8x4 %r0, %r1, %r2;",
-                 Add::VariantType::PackedOptionalSatSm120);
-  expect_variant("add.sat.u32 %r0, %r1, %r2;", Add::VariantType::SatSm120);
+                 Add::VariantType::PackedOptionalSat);
+  expect_variant("add.sat.u32 %r0, %r1, %r2;", Add::VariantType::Sat);
 }
 
 TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
@@ -120,10 +121,10 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   const auto& descriptor = Add::get_resolved_descriptor();
 
   ASSERT_EQ(descriptor.opcode_name, "add");
-  ASSERT_EQ(descriptor.variants.size(), 5U);
+  ASSERT_EQ(descriptor.variants.size(), 3U);
 
-  const auto& packed_optional_sat = descriptor.variants[3];
-  EXPECT_EQ(packed_optional_sat.variant_name, "PackedOptionalSatSm120");
+  const auto& packed_optional_sat = descriptor.variants[2];
+  EXPECT_EQ(packed_optional_sat.variant_name, "PackedOptionalSat");
   ASSERT_EQ(packed_optional_sat.fields.size(), 2U);
   EXPECT_EQ(packed_optional_sat.fields[0].field_id, "saturate");
   EXPECT_EQ(packed_optional_sat.fields[0].value_kind,
@@ -152,12 +153,12 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   EXPECT_EQ(bindings[1].allowed_shapes, check_end::OperandShape::Register |
                                             check_end::OperandShape::Immediate);
 
-  const auto& sat_s32 = descriptor.variants[1];
-  ASSERT_EQ(sat_s32.modifier_bindings.size(), 2U);
-  EXPECT_EQ(sat_s32.modifier_bindings[0].source_kind_id, "sat");
-  EXPECT_EQ(sat_s32.modifier_bindings[0].target_field_id, "saturate");
-  EXPECT_EQ(sat_s32.modifier_bindings[1].source_kind_id, "type");
-  EXPECT_EQ(sat_s32.modifier_bindings[1].target_field_id, "type");
+  const auto& sat = descriptor.variants[1];
+  ASSERT_EQ(sat.modifier_bindings.size(), 2U);
+  EXPECT_EQ(sat.modifier_bindings[0].source_kind_id, "sat");
+  EXPECT_EQ(sat.modifier_bindings[0].target_field_id, "saturate");
+  EXPECT_EQ(sat.modifier_bindings[1].source_kind_id, "type");
+  EXPECT_EQ(sat.modifier_bindings[1].target_field_id, "type");
 }
 
 TEST(SelectVariantAdd, ReportsUnmatchedModifierCombination) {
@@ -201,16 +202,18 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
             std::get<syntax_ast::AstImmediate>(ast.operands[2]).syntax.range);
 }
 
-TEST(ResolveAdd, UsesFixedModifierConstantsForSatS32) {
+TEST(ResolveAdd, UsesFixedSatAndResolvedTypeForSatVariant) {
   const auto ast = parse_instruction("add.sat.s32 %r4, %r5, -1;");
 
   const auto resolved = resolve<Add>(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add = std::get_if<Add::SatS32>(&resolved->variant);
+  const auto* add = std::get_if<Add::Sat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
-  EXPECT_TRUE(Add::SatS32::saturate);
-  EXPECT_EQ(Add::SatS32::type, ScalarType::S32);
+  EXPECT_TRUE(Add::Sat::saturate);
+  EXPECT_EQ(add->type.value, ScalarType::S32);
+  ASSERT_EQ(add->type.locs.size(), 1U);
+  EXPECT_EQ(add->type.locs.front(), ast.modifiers[1].syntax.range);
 
   const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
@@ -361,7 +364,7 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   const auto unsaturated = resolve<Add>(unsaturated_ast);
   ASSERT_TRUE(unsaturated.has_value()) << unsaturated.error().message;
   const auto* unsaturated_add =
-      std::get_if<Add::PackedOptionalSatSm120>(&unsaturated->variant);
+      std::get_if<Add::PackedOptionalSat>(&unsaturated->variant);
   ASSERT_NE(unsaturated_add, nullptr);
   EXPECT_FALSE(unsaturated_add->saturate.value);
   EXPECT_TRUE(unsaturated_add->saturate.locs.empty());
@@ -370,7 +373,7 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   const auto saturated = resolve<Add>(saturated_ast);
   ASSERT_TRUE(saturated.has_value()) << saturated.error().message;
   const auto* saturated_add =
-      std::get_if<Add::PackedOptionalSatSm120>(&saturated->variant);
+      std::get_if<Add::PackedOptionalSat>(&saturated->variant);
   ASSERT_NE(saturated_add, nullptr);
   EXPECT_TRUE(saturated_add->saturate.value);
   ASSERT_EQ(saturated_add->saturate.locs.size(), 1U);

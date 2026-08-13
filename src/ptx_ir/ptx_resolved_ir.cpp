@@ -1,8 +1,10 @@
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <limits>
 #include <string_view>
 #include <vector>
@@ -362,6 +364,145 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
       range};
 }
 
+ResolveDiagnostic invalid_immediate(const syntax_ast::AstImmediate& immediate,
+                                    std::string message) {
+  return ResolveDiagnostic{
+      .range = immediate.syntax.range,
+      .message = std::move(message),
+  };
+}
+
+std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
+    const syntax_ast::AstImmediate& immediate, std::string_view text,
+    int base) {
+  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
+    text.remove_suffix(1);
+
+  uint64_t value = 0;
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value, base);
+  if (text.empty() || error != std::errc{} ||
+      end != text.data() + text.size()) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format("Invalid integer literal '{}'.", immediate.syntax.text)));
+  }
+  return value;
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
+    const syntax_ast::AstImmediate& immediate, ScalarType type,
+    std::string_view text, bool negative, int base) {
+  const ScalarKind kind = scalar_kind(type);
+  if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
+      kind != ScalarKind::Bit) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format(
+            "Integer literal '{}' is incompatible with scalar type '{}'.",
+            immediate.syntax.text, to_string(type))));
+  }
+
+  const uint8_t byte_size = scalar_size_of(type);
+  if (byte_size == 0 || byte_size > sizeof(uint64_t)) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format("Immediate type '{}' is not representable in 64 bits.",
+                    to_string(type))));
+  }
+  const uint8_t bit_width = byte_size * 8;
+  const uint64_t bit_mask = bit_width == 64
+                                ? std::numeric_limits<uint64_t>::max()
+                                : (uint64_t{1} << bit_width) - 1;
+
+  if (base == 16 && (text.starts_with("0x") || text.starts_with("0X")))
+    text.remove_prefix(2);
+  const auto magnitude = parse_unsigned_literal(immediate, text, base);
+  if (!magnitude)
+    return std::unexpected(magnitude.error());
+
+  uint64_t limit = bit_mask;
+  if (kind == ScalarKind::Signed) {
+    limit = negative ? (uint64_t{1} << (bit_width - 1))
+                     : (uint64_t{1} << (bit_width - 1)) - 1;
+  }
+  if (*magnitude > limit) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format(
+            "Integer literal '{}' is out of range for scalar type '{}'.",
+            immediate.syntax.text, to_string(type))));
+  }
+
+  const uint64_t bits =
+      negative ? (uint64_t{0} - *magnitude) & bit_mask : *magnitude;
+  return ResolvedImmediate{.bits = bits, .type = type};
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
+    const syntax_ast::AstImmediate& immediate, ScalarType type,
+    std::string_view text, bool negative, uint8_t bit_width) {
+  if (negative) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
+                    immediate.syntax.text)));
+  }
+  const ScalarType expected_type =
+      bit_width == 32 ? ScalarType::F32 : ScalarType::F64;
+  if (type != expected_type) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format(
+            "Floating bit-pattern literal '{}' requires scalar type '{}'.",
+            immediate.syntax.text, to_string(expected_type))));
+  }
+
+  text.remove_prefix(2);  // 0f or 0d
+  const auto bits = parse_unsigned_literal(immediate, text, 16);
+  if (!bits)
+    return std::unexpected(bits.error());
+  return ResolvedImmediate{.bits = *bits, .type = type};
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic>
+resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
+                              ScalarType type, std::string_view text) {
+  if (type != ScalarType::F32 && type != ScalarType::F64) {
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format("Decimal floating literal '{}' is incompatible with scalar "
+                    "type '{}'.",
+                    immediate.syntax.text, to_string(type))));
+  }
+
+  double value = 0.0;
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value,
+                      std::chars_format::general);
+  if (text.empty() || error != std::errc{} ||
+      end != text.data() + text.size() || !std::isfinite(value)) {
+    return std::unexpected(invalid_immediate(
+        immediate, fmt::format("Invalid decimal floating literal '{}'.",
+                               immediate.syntax.text)));
+  }
+
+  if (type == ScalarType::F32) {
+    const float narrowed = static_cast<float>(value);
+    if (!std::isfinite(narrowed)) {
+      return std::unexpected(invalid_immediate(
+          immediate,
+          fmt::format("Decimal floating literal '{}' is out of range for "
+                      "scalar type '{}'.",
+                      immediate.syntax.text, to_string(type))));
+    }
+    return ResolvedImmediate{.bits = std::bit_cast<uint32_t>(narrowed),
+                             .type = type};
+  }
+  return ResolvedImmediate{.bits = std::bit_cast<uint64_t>(value),
+                           .type = type};
+}
+
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type) {
   std::string_view text = immediate.syntax.text;
@@ -371,30 +512,20 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     text.remove_prefix(1);
   }
 
-  int base = 10;
-  if (text.starts_with("0x") || text.starts_with("0X")) {
-    base = 16;
-    text.remove_prefix(2);
-  } else if (text.starts_with("0f") || text.starts_with("0F") ||
-             text.starts_with("0d") || text.starts_with("0D")) {
-    base = 16;
-    text.remove_prefix(2);
+  switch (immediate.kind) {
+    case syntax_ast::AstImmediateKind::DecimalInteger:
+      return resolve_integer_literal(immediate, type, text, negative, 10);
+    case syntax_ast::AstImmediateKind::HexInteger:
+      return resolve_integer_literal(immediate, type, text, negative, 16);
+    case syntax_ast::AstImmediateKind::F32Hex:
+      return resolve_float_bits_literal(immediate, type, text, negative, 32);
+    case syntax_ast::AstImmediateKind::F64Hex:
+      return resolve_float_bits_literal(immediate, type, text, negative, 64);
+    case syntax_ast::AstImmediateKind::DecimalFloat:
+      return resolve_decimal_float_literal(immediate, type,
+                                           immediate.syntax.text);
   }
-
-  uint64_t bits = 0;
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), bits, base);
-  if (text.empty() || error != std::errc{} ||
-      end != text.data() + text.size()) {
-    return std::unexpected(ResolveDiagnostic{
-        .range = immediate.syntax.range,
-        .message = fmt::format("Unsupported immediate literal '{}'.",
-                               immediate.syntax.text),
-    });
-  }
-  if (negative)
-    bits = uint64_t{0} - bits;
-  return ResolvedImmediate{.bits = bits, .type = type};
+  throw ResolveException("Unknown AstImmediateKind.");
 }
 
 std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
@@ -594,6 +725,11 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
 }
 
 }  // namespace
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
+    const syntax_ast::AstImmediate& immediate, ScalarType type) {
+  return resolve_immediate_value(immediate, type);
+}
 
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,

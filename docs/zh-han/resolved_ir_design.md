@@ -30,6 +30,12 @@ modifier 得到的编译期常量。当前基础值包括 `ResolvedRegisterRef`�
 与 `RegOrImm`。`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 
+`AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/hex（包括可选 `U`
+后缀）按目标整数或 bit type 的位宽做范围检查；负数以该目标宽度的二进制补码存入
+`bits`，不会再无条件扩展为 64 位。decimal float 目前支持转换至 `F32` 与 `F64`；
+`0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
+其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
+
 在符号表与声明绑定完成之前，`ResolvedRegisterRef` 会拥有寄存器的完整源码拼写，并
 同时保存 `ResolvedRegisterClass` 和 numbered-register index。index 只是便捷属性，不能
 单独充当身份：例如 `%r1` 与 `%rd1` 的 index 都是 1，但它们的 spelling 不同。当前

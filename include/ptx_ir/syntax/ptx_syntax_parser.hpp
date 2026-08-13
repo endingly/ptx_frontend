@@ -40,6 +40,7 @@ class PtxSyntaxParser {
   std::expected<AstOperand, SyntaxParseDiagnostic> parseVectorPack(Token open);
 
   static syntax_ast::AstSyntax syntaxFrom(Token token);
+  static syntax_ast::AstImmediateKind immediateKindFrom(TokenKind kind);
   static syntax_ast::AstSyntax combinedSyntax(const Token& first,
                                               const Token& last,
                                               std::string text);

@@ -1,5 +1,6 @@
 #include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
+#include <stdexcept>
 #include <utility>
 
 namespace ptx_frontend {
@@ -28,9 +29,13 @@ bool isModifier(TokenKind kind) {
 
 PtxSyntaxParser::PtxSyntaxParser(std::string_view source) : lexer_(source) {}
 
-PtxSyntaxParser::Token PtxSyntaxParser::peek() { return lexer_.peek(); }
+PtxSyntaxParser::Token PtxSyntaxParser::peek() {
+  return lexer_.peek();
+}
 
-PtxSyntaxParser::Token PtxSyntaxParser::consume() { return lexer_.consume(); }
+PtxSyntaxParser::Token PtxSyntaxParser::consume() {
+  return lexer_.consume();
+}
 
 bool PtxSyntaxParser::atImmediateStart() {
   const Token token = peek();
@@ -53,9 +58,27 @@ syntax_ast::AstSyntax PtxSyntaxParser::syntaxFrom(Token token) {
                                std::move(token.leading_trivia)};
 }
 
+syntax_ast::AstImmediateKind PtxSyntaxParser::immediateKindFrom(
+    TokenKind kind) {
+  switch (kind) {
+    case TokenKind::Decimal:
+      return syntax_ast::AstImmediateKind::DecimalInteger;
+    case TokenKind::Hex:
+      return syntax_ast::AstImmediateKind::HexInteger;
+    case TokenKind::F32Hex:
+      return syntax_ast::AstImmediateKind::F32Hex;
+    case TokenKind::F64Hex:
+      return syntax_ast::AstImmediateKind::F64Hex;
+    case TokenKind::F64:
+      return syntax_ast::AstImmediateKind::DecimalFloat;
+    default:
+      throw std::logic_error("non-immediate token has no AstImmediateKind");
+  }
+}
+
 syntax_ast::AstSyntax PtxSyntaxParser::combinedSyntax(const Token& first,
-                                                       const Token& last,
-                                                       std::string text) {
+                                                      const Token& last,
+                                                      std::string text) {
   return syntax_ast::AstSyntax{std::move(text),
                                SourceRange{first.range.start, last.range.end},
                                first.leading_trivia};
@@ -65,8 +88,8 @@ std::expected<syntax_ast::AstImmediate, SyntaxParseDiagnostic>
 PtxSyntaxParser::parseImmediate(bool allow_sign) {
   Token first = peek();
   std::string text;
-  if (allow_sign && (first.kind == TokenKind::Plus ||
-                     first.kind == TokenKind::Minus)) {
+  if (allow_sign &&
+      (first.kind == TokenKind::Plus || first.kind == TokenKind::Minus)) {
     first = consume();
     text = first.text;
   }
@@ -77,7 +100,10 @@ PtxSyntaxParser::parseImmediate(bool allow_sign) {
         SyntaxParseDiagnostic{literal.range, "expected immediate literal"});
   }
   text += literal.text;
-  return syntax_ast::AstImmediate{combinedSyntax(first, literal, std::move(text))};
+  return syntax_ast::AstImmediate{
+      combinedSyntax(first, literal, std::move(text)),
+      immediateKindFrom(literal.kind),
+  };
 }
 
 std::expected<PtxSyntaxParser::AstOperand, SyntaxParseDiagnostic>
@@ -130,9 +156,9 @@ PtxSyntaxParser::parseAddress(bool bracketed, Token open) {
     text += close->text;
   }
 
-  return AstOperand{syntax_ast::AstAddress{
-      combinedSyntax(first, last, std::move(text)), std::move(base),
-      std::move(offset), bracketed}};
+  return AstOperand{
+      syntax_ast::AstAddress{combinedSyntax(first, last, std::move(text)),
+                             std::move(base), std::move(offset), bracketed}};
 }
 
 std::expected<PtxSyntaxParser::AstOperand, SyntaxParseDiagnostic>
@@ -232,14 +258,16 @@ PtxSyntaxParser::parseOperand() {
     if (!magnitude) {
       return std::unexpected(magnitude.error());
     }
-    const SourceRange range{base_token.range.start, magnitude->syntax.range.end};
+    const SourceRange range{base_token.range.start,
+                            magnitude->syntax.range.end};
     return AstOperand{syntax_ast::AstAddress{
-        syntax_ast::AstSyntax{base.syntax.text + op.text + magnitude->syntax.text,
-                              range, base.syntax.leading_trivia},
+        syntax_ast::AstSyntax{
+            base.syntax.text + op.text + magnitude->syntax.text, range,
+            base.syntax.leading_trivia},
         std::move(base),
-        syntax_ast::AstAddressOffset{
-            syntaxFrom(std::move(op)), std::move(*magnitude),
-            SourceRange{offset_start, range.end}},
+        syntax_ast::AstAddressOffset{syntaxFrom(std::move(op)),
+                                     std::move(*magnitude),
+                                     SourceRange{offset_start, range.end}},
         false}};
   }
   return AstOperand{std::move(base)};

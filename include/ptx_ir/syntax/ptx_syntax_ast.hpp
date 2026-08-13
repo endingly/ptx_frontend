@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -48,6 +49,15 @@ struct AstPredicateOperand {
   AstIdentifierRef name;
 };
 
+/** Lexical category of the literal token underlying an immediate. */
+enum class AstImmediateKind : uint8_t {
+  DecimalInteger,
+  HexInteger,
+  F32Hex,
+  F64Hex,
+  DecimalFloat,
+};
+
 /**
  * A lexical immediate literal, including its parsed spelling.
  *
@@ -56,6 +66,7 @@ struct AstPredicateOperand {
  */
 struct AstImmediate {
   AstSyntax syntax;
+  AstImmediateKind kind = AstImmediateKind::DecimalInteger;
 };
 
 struct AstAddressOffset {
@@ -97,9 +108,9 @@ struct AstVectorPack {
  * particular, `AstIdentifierRef` is intentionally not split into register,
  * variable, label, or function references until the resolver runs.
  */
-using AstOperand = std::variant<AstIdentifierRef, AstPredicateOperand,
-                                AstImmediate, AstAddress, AstVectorMember,
-                                AstVectorPack>;
+using AstOperand =
+    std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
+                 AstAddress, AstVectorMember, AstVectorPack>;
 
 struct AstPredicate {
   bool negated{};

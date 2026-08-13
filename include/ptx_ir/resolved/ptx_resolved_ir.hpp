@@ -232,11 +232,18 @@ bool matches_modifier_slot(const check_end::SyntaxModifierDescriptor& descriptor
 template <PtxOperator T>
 std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
     const syntax_ast::AstInstruction& ast) {
+  const auto& inst_desc = T::get_syntax_descriptor();
+  if (ast.opcode.syntax.text != inst_desc.Opcode_name) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = ast.opcode.syntax.range,
+        .message = fmt::format("Cannot resolve opcode '{}' as '{}'.",
+                               ast.opcode.syntax.text, inst_desc.Opcode_name),
+    });
+  }
+
   const auto actual_modifiers = collect_actual_modifiers<T>(ast);
   if (!actual_modifiers)
     return std::unexpected(actual_modifiers.error());
-
-  const auto inst_desc = T::get_syntax_descriptor();
 
   std::optional<size_t> selected_index;
   for (size_t index = 0; index < inst_desc.variants.size(); ++index) {

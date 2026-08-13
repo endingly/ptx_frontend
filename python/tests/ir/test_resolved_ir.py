@@ -108,6 +108,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
             [("sat", "saturate"), ("type", "type")],
         )
+        optional_sat_binding = variants[
+            "PackedOptionalSatSm120"
+        ].modifier_bindings[0]
+        self.assertIsNotNone(optional_sat_binding.default_value)
+        assert optional_sat_binding.default_value is not None
+        self.assertEqual(optional_sat_binding.default_value.value_cpp_type, "bool")
+        self.assertIs(optional_sat_binding.default_value.value, False)
+        self.assertIsNone(
+            variants["PackedOptionalSatSm120"]
+            .modifier_bindings[1]
+            .default_value
+        )
         self.assertEqual(
             [
                 (field.name, field.cpp_type, field.origin)
@@ -401,6 +413,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn('.target_field_id = "saturate",', source)
+        self.assertIn(
+            ".kind = check_end::ResolvedModifierDefaultKind::Bool,", source
+        )
+        self.assertIn(".bool_value = false,", source)
         self.assertNotIn("ResolvedConstantDescriptor", source)
         self.assertIn(
             "const check_end::ResolvedInstructionDescriptor&\n"

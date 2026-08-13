@@ -14,7 +14,7 @@ struct SyntaxParseDiagnostic {
   std::string message;
 };
 
-/** Parses source-faithful PTX syntax without resolving its meaning. */
+/** Parses PTX instruction syntax for diagnostics and semantic resolution. */
 class PtxSyntaxParser {
  public:
   explicit PtxSyntaxParser(std::string_view source);

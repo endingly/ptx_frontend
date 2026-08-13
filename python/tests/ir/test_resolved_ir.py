@@ -80,7 +80,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
             [
                 ("type", "WithLocs<ScalarType>", ResolvedFieldOrigin.MODIFIER),
-                ("dst", "WithLocs<ResolvedRegisterId>", ResolvedFieldOrigin.OPERAND),
+                ("dst", "WithLocs<ResolvedRegisterRef>", ResolvedFieldOrigin.OPERAND),
                 ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
                 ("src2", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
             ],
@@ -116,7 +116,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 ("saturate", "WithLocs<bool>", ResolvedFieldOrigin.MODIFIER),
                 ("type", "WithLocs<ScalarType>", ResolvedFieldOrigin.MODIFIER),
-                ("dst", "WithLocs<ResolvedRegisterId>", ResolvedFieldOrigin.OPERAND),
+                ("dst", "WithLocs<ResolvedRegisterRef>", ResolvedFieldOrigin.OPERAND),
                 ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
                 ("src2", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
             ],

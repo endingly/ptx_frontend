@@ -119,7 +119,8 @@ bool is_more_specific_operand_layout(
 
     const auto candidate_shapes =
         static_cast<Underlying>(candidate_slot.allowed_shapes);
-    const auto other_shapes = static_cast<Underlying>(other_slot.allowed_shapes);
+    const auto other_shapes =
+        static_cast<Underlying>(other_slot.allowed_shapes);
     if ((candidate_shapes & other_shapes) != candidate_shapes)
       return false;
     strictly_more_specific |= candidate_shapes != other_shapes;
@@ -147,8 +148,8 @@ std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
     const auto& layout = variant.operand_layouts[index];
     if (!matches_operand_layout(layout, ast))
       continue;
-    matches.push_back(SelectedOperandLayout{.descriptor = layout,
-                                            .index = index});
+    matches.push_back(
+        SelectedOperandLayout{.descriptor = layout, .index = index});
   }
 
   if (matches.size() == 1)
@@ -243,8 +244,49 @@ std::expected<WithLocs<ScalarType>, ResolveDiagnostic> resolve_scalar_type(
   return WithLocs<ScalarType>{*type, modifier.syntax.range};
 }
 
-std::expected<WithLocs<ResolvedRegisterId>, ResolveDiagnostic> resolve_register(
-    const syntax_ast::AstOperand& operand) {
+struct ParsedNumberedRegister {
+  std::string_view prefix;
+  uint32_t index;
+};
+
+std::expected<ParsedNumberedRegister, ResolveDiagnostic>
+parse_numbered_register(const syntax_ast::AstIdentifierRef& identifier,
+                        SourceRange diagnostic_range,
+                        std::string_view expected_description) {
+  const std::string_view spelling = identifier.syntax.text;
+  size_t digit_begin = spelling.size();
+  while (digit_begin > 0 &&
+         std::isdigit(static_cast<unsigned char>(spelling[digit_begin - 1]))) {
+    --digit_begin;
+  }
+  if (spelling.size() < 3 || spelling.front() != '%' ||
+      digit_begin == spelling.size() || digit_begin == 1) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = diagnostic_range,
+        .message = fmt::format("Expected {}, got '{}'.", expected_description,
+                               spelling),
+    });
+  }
+
+  uint32_t index = 0;
+  const char* first = spelling.data() + digit_begin;
+  const char* last = spelling.data() + spelling.size();
+  const auto [end, error] = std::from_chars(first, last, index);
+  if (error != std::errc{} || end != last) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = diagnostic_range,
+        .message =
+            fmt::format("Register '{}' has an invalid numeric ID.", spelling),
+    });
+  }
+  return ParsedNumberedRegister{
+      .prefix = spelling.substr(1, digit_begin - 1),
+      .index = index,
+  };
+}
+
+std::expected<WithLocs<ResolvedRegisterRef>, ResolveDiagnostic>
+resolve_register(const syntax_ast::AstOperand& operand) {
   const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
   if (identifier == nullptr) {
     return std::unexpected(ResolveDiagnostic{
@@ -254,34 +296,25 @@ std::expected<WithLocs<ResolvedRegisterId>, ResolveDiagnostic> resolve_register(
     });
   }
 
-  const std::string_view spelling = identifier->syntax.text;
-  size_t digit_begin = spelling.size();
-  while (digit_begin > 0 &&
-         std::isdigit(static_cast<unsigned char>(spelling[digit_begin - 1]))) {
-    --digit_begin;
-  }
-  if (spelling.size() < 3 || spelling.front() != '%' ||
-      digit_begin == spelling.size() || digit_begin == 1) {
+  const auto parsed = parse_numbered_register(
+      *identifier, identifier->syntax.range, "a numbered register");
+  if (!parsed)
+    return std::unexpected(parsed.error());
+  if (parsed->prefix == "p") {
     return std::unexpected(ResolveDiagnostic{
         .range = identifier->syntax.range,
-        .message =
-            fmt::format("Expected a numbered register, got '{}'.", spelling),
+        .message = fmt::format("Expected a non-predicate register, got '{}'.",
+                               identifier->syntax.text),
     });
   }
 
-  uint32_t value = 0;
-  const char* first = spelling.data() + digit_begin;
-  const char* last = spelling.data() + spelling.size();
-  const auto [end, error] = std::from_chars(first, last, value);
-  if (error != std::errc{} || end != last) {
-    return std::unexpected(ResolveDiagnostic{
-        .range = identifier->syntax.range,
-        .message =
-            fmt::format("Register '{}' has an invalid numeric ID.", spelling),
-    });
-  }
-  return WithLocs<ResolvedRegisterId>{ResolvedRegisterId{value},
-                                      identifier->syntax.range};
+  return WithLocs<ResolvedRegisterRef>{
+      ResolvedRegisterRef{
+          .spelling = identifier->syntax.text,
+          .register_class = ResolvedRegisterClass::General,
+          .index = parsed->index,
+      },
+      identifier->syntax.range};
 }
 
 std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
@@ -289,8 +322,7 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
   const syntax_ast::AstIdentifierRef* identifier = nullptr;
   bool negated = false;
   SourceRange range;
-  if (const auto* plain =
-          std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+  if (const auto* plain = std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
     identifier = plain;
     range = plain->syntax.range;
   } else if (const auto* predicate =
@@ -300,41 +332,33 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
     range = predicate->syntax.range;
   } else {
     return std::unexpected(ResolveDiagnostic{
-        .range = std::visit(
-            [](const auto& item) { return item.syntax.range; }, operand),
+        .range = std::visit([](const auto& item) { return item.syntax.range; },
+                            operand),
         .message = "Expected a predicate operand.",
     });
   }
 
-  const std::string_view spelling = identifier->syntax.text;
-  size_t digit_begin = spelling.size();
-  while (digit_begin > 0 &&
-         std::isdigit(static_cast<unsigned char>(spelling[digit_begin - 1]))) {
-    --digit_begin;
-  }
-  if (spelling.size() < 3 || spelling.front() != '%' ||
-      digit_begin == spelling.size() || digit_begin == 1) {
+  const auto parsed = parse_numbered_register(*identifier, range,
+                                              "a numbered predicate register");
+  if (!parsed)
+    return std::unexpected(parsed.error());
+  if (parsed->prefix != "p") {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
-        .message = fmt::format("Expected a numbered predicate register, got '{}'.",
-                               spelling),
+        .message = fmt::format("Expected a predicate register, got '{}'.",
+                               identifier->syntax.text),
     });
   }
 
-  uint32_t value = 0;
-  const char* first = spelling.data() + digit_begin;
-  const char* last = spelling.data() + spelling.size();
-  const auto [end, error] = std::from_chars(first, last, value);
-  if (error != std::errc{} || end != last) {
-    return std::unexpected(ResolveDiagnostic{
-        .range = range,
-        .message = fmt::format("Predicate register '{}' has an invalid numeric ID.",
-                               spelling),
-    });
-  }
   return WithLocs<ResolvedPredicate>{
-      ResolvedPredicate{.register_id = ResolvedRegisterId{value},
-                        .negated = negated},
+      ResolvedPredicate{
+          .register_ref =
+              ResolvedRegisterRef{
+                  .spelling = identifier->syntax.text,
+                  .register_class = ResolvedRegisterClass::Predicate,
+                  .index = parsed->index,
+              },
+          .negated = negated},
       range};
 }
 
@@ -377,10 +401,10 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     const syntax_ast::AstOperand& operand, ScalarType type) {
   if (const auto* identifier =
           std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
-    auto register_id = resolve_register(operand);
-    if (!register_id)
-      return std::unexpected(register_id.error());
-    return WithLocs<RegOrImm>{RegOrImm{register_id->value},
+    auto register_ref = resolve_register(operand);
+    if (!register_ref)
+      return std::unexpected(register_ref.error());
+    return WithLocs<RegOrImm>{RegOrImm{register_ref->value},
                               identifier->syntax.range};
   }
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
@@ -452,16 +476,15 @@ const ResolvedFieldDescriptor& find_resolved_field_descriptor(
 }
 
 const ResolvedFieldDescriptor& find_resolved_operand_field_descriptor(
-    const ResolvedOperandLayoutDescriptor& layout,
-    std::string_view field_id) {
+    const ResolvedOperandLayoutDescriptor& layout, std::string_view field_id) {
   const auto it = std::ranges::find_if(
       layout.fields, [field_id](const ResolvedFieldDescriptor& descriptor) {
         return descriptor.field_id == field_id;
       });
   if (it == layout.fields.end()) {
-    throw ResolveException(fmt::format(
-        "Resolved operand layout '{}' has no field named '{}'.",
-        layout.layout_id, field_id));
+    throw ResolveException(
+        fmt::format("Resolved operand layout '{}' has no field named '{}'.",
+                    layout.layout_id, field_id));
   }
   return *it;
 }
@@ -490,9 +513,10 @@ std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
     return expression.fixed_scalar_type;
   if (expression.kind != checker::OperandTypeExpressionKind::ModifierField ||
       expression.modifier_field_id.empty()) {
-    throw ResolveException(fmt::format(
-        "Resolved operand field '{}' has an invalid type expression descriptor.",
-        binding.target_field_id));
+    throw ResolveException(
+        fmt::format("Resolved operand field '{}' has an invalid type "
+                    "expression descriptor.",
+                    binding.target_field_id));
   }
 
   const std::string_view field_id = expression.modifier_field_id;

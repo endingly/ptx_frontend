@@ -10,10 +10,12 @@
 namespace ptx_frontend::syntax_ast {
 
 /**
- * Source-faithful spelling of one syntax node or token sequence.
+ * Source-derived spelling of one syntax node or token sequence.
  *
- * `text` is retained for source formatting and diagnostics. Its interpretation
- * belongs to parsing or resolution; it is never a resolved symbol name.
+ * `text`, `range`, and leading trivia support diagnostics and resolution. This
+ * is not a lossless source representation: trivia between combined tokens and
+ * punctuation trivia are not retained. Formatting and source-preserving
+ * rewriting require the future CST layer.
  */
 struct AstSyntax {
   std::string text;
@@ -47,7 +49,7 @@ struct AstPredicateOperand {
 };
 
 /**
- * A lexical immediate literal, including its original spelling.
+ * A lexical immediate literal, including its parsed spelling.
  *
  * The AST does not decode it to an integer or floating-point value. That may
  * depend on the selected instruction form and is performed during resolution.

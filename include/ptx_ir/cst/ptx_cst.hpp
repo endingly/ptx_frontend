@@ -74,9 +74,41 @@ struct CstVectorPack {
   CstTokenRange token_range;
 };
 
+enum class CstCallParameterListKind : uint8_t {
+  Return,
+  Input,
+};
+
+using CstCallParameter = std::variant<CstIdentifier, CstImmediate>;
+
+struct CstCallParameterList {
+  CstCallParameterListKind kind{};
+  TokenId left_paren{};
+  std::vector<CstCallParameter> parameters;
+  std::vector<TokenId> commas;
+  TokenId right_paren{};
+  CstTokenRange token_range;
+};
+
+struct CstCallTarget {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
+struct CstCallTargetSet {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
+struct CstBranchTarget {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstImmediate, CstAddress,
-                 CstVectorMember, CstVectorPack>;
+                 CstVectorMember, CstVectorPack, CstCallParameterList,
+                 CstCallTarget, CstCallTargetSet, CstBranchTarget>;
 
 struct CstOperandElement {
   CstOperand operand;

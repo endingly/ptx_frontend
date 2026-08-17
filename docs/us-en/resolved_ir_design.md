@@ -12,9 +12,10 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 Syntax AST preserves source spelling, modifier order, and `SourceRange`.
 Resolved IR records the selected instruction variant, resolved operand values,
 and diagnostic locations. Both are stable frontend boundaries. CFG/SSA,
-Lexical symbol binding is now connected to module resolution. Complete
-special/external-symbol classification, address semantics, CFG/SSA, and target
-lowering remain later work.
+Lexical symbol binding is connected to module resolution, and special
+registers, external symbols, and genuinely undeclared references are now
+distinct. Complete special-register operands, address semantics, CFG/SSA, and
+target lowering remain later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -146,8 +147,9 @@ operand binding. A disagreement is corrupted Resolved IR and produces
 `OperandLayoutPayloadMismatch`.
 
 The only implemented layout algorithm is `Flat`: comma-separated positional
-operand slots. Groups, variadics, and call argument lists require a Syntax AST
-extension followed by a new layout kind; they must not be disguised as `Flat`.
+operand slots. Syntax AST can now represent groups and call parameter lists,
+but descriptors/resolution still need a new layout kind to consume them.
+Variadics and call groups must not be disguised as `Flat`.
 
 ## Resolution protocol
 

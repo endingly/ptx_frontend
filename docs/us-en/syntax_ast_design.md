@@ -100,6 +100,8 @@ for composite operands. It retains only:
 - predicate negation;
 - address base, offset operation, and bracketed grammar form;
 - vector member and vector pack structure;
+- call return/input parameter groups, callees, and target-set/prototype symbols;
+- direct branch label targets;
 - declaration array dimensions, constant expressions, and recursive
   initializer structure;
 - source ranges for diagnostics;

@@ -41,6 +41,12 @@ class PtxCstParser {
   parseBracketedAddress(TokenId open);
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic> parseVectorPack(
       TokenId open);
+  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+  parseCallParameterList(syntax_cst::CstCallParameterListKind kind);
+  std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+  parseCallOperands();
+  std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+  parseBranchOperands();
   std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
   parseInstructionNode(std::optional<TokenId> opcode = std::nullopt);
   std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>

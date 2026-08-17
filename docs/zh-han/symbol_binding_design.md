@@ -28,8 +28,9 @@ function scope。当前收集：
 - label。
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
-parameter 的 state space/type。function symbol 通过 `owned_scope` 指向其 function
-scope。
+parameter 的 state space/type。`SymbolLinkage` 直接记录 `.extern/.visible/.weak`；function
+symbol 通过 `owned_scope` 指向其 function scope。若同一 function 同时存在 prototype 与
+definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 
 同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
 因此 function-local declaration 可以遮蔽 module symbol。
@@ -49,22 +50,42 @@ binding pass 会访问：
 
 - instruction predicate 与各种 operand shape 中的 identifier；
 - array dimension constant expression；
-- scalar/递归 initializer 内的 symbol expression。
+- scalar/递归 initializer 内的 symbol expression；
+- call target/return/input/target-set 与 direct branch target。
 
-每个 `SymbolReference` 保留 spelling、range、引用种类和可选 target。成功解析的
-parameterized reference 同时保存成员 index。未解析引用仍进入表但 `target` 为空，供后续
-结合 opcode、special register 集合和链接规则产生准确诊断；本 pass 不会把所有未知 `%`
-名称误报为普通未声明寄存器。
+每个 `SymbolReference` 保留 spelling、range、引用种类、可选 target，并具有明确的
+`ReferenceClassification`：
+
+- `DeclaredSymbol`：当前 module 中的普通 declaration；
+- `ExternalSymbol`：绑定到当前 module 的显式 `.extern` declaration；
+- `SpecialRegister`：PTX 预定义 special register，不需要用户 declaration；
+- `Unresolved`：以上均不匹配，是真正未声明的 reference。
+
+成功解析的 parameterized declaration reference 同时保存成员 index。special register
+依据 PTX ISA 的预定义集合精确识别；`%envreg<32>`、`%pm<8>`、`%pm0_64..%pm7_64` 与
+`%reserved_smem_offset_<2>` 使用有界匹配，不以任意 `%` 前缀代替。`%tid.x` 等 vector
+member 在 AST 中绑定其 `%tid` base。`WARP_SZ` 已由 lexer 表示为 immediate，不进入
+symbol-reference 路径。
+
+`.extern` 表示 declaration 的定义位于其他 module，不等于允许无 declaration 的名称。
+因此 external reference 仍有正常的 `SymbolId` target，只是 classification 与 symbol
+linkage 明确标记为 external。
 
 `generic()` 是 initializer operator，不作为 symbol reference；其 argument 仍正常绑定。
 mask operator 的 callee 是 literal，同样只绑定其 argument。
 
+call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 callee 是 function 或
+`.reg` function pointer、call parameter 属于 `.reg/.param`，以及 direct branch target 是
+当前 function 的 label。详见 `control_flow_syntax_design.md`。
+
 ## 当前诊断与边界
 
-当前累积诊断包括同 scope duplicate symbol 和无效/为零的 parameterized count。后续语义
-阶段仍需完成：
+当前累积诊断包括 function-local same-scope duplicate symbol、无效/为零的 parameterized
+count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
+declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
+redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
+与 unresolved reference 的区别；在尚未实现 special-register resolved operand 的 opcode
+中，前者得到“已识别但不支持”的诊断，而不是“未声明”。declaration semantic pass 的
+设计见 `declaration_semantics_design.md`。后续语义阶段仍需完成：
 
-- linkage-compatible redeclaration 与 function prototype/definition 合并；
-- special register 与外部 symbol 分类；
-- initializer type、array shape 和元素数量校验；
-- 将绑定后的 register/symbol `SymbolId` 接入 Resolved IR 与 checker。
+- execution predicate、address/symbol operand 与 special register 的完整 Resolved IR 表示。

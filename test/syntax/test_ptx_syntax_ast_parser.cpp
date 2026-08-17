@@ -11,6 +11,10 @@ namespace {
 
 using syntax_ast::AstAddress;
 using syntax_ast::AstAddressOffset;
+using syntax_ast::AstBranchTarget;
+using syntax_ast::AstCallParameterList;
+using syntax_ast::AstCallTarget;
+using syntax_ast::AstCallTargetSet;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstPredicateOperand;
@@ -77,6 +81,38 @@ TEST(PtxSyntaxParser, ParsesVectorPack) {
   EXPECT_TRUE(std::holds_alternative<AstIdentifierRef>(pack.elements[0]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[1]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[2]));
+}
+
+TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
+  PtxSyntaxParser call_parser(
+      "call.uni (%result), %callee, (%arg, 4), targets;");
+  auto call = call_parser.parseInstruction();
+  ASSERT_TRUE(call.has_value()) << call.error().message;
+  ASSERT_EQ(call->operands.size(), 4u);
+
+  const auto& returns = std::get<AstCallParameterList>(call->operands[0]);
+  EXPECT_EQ(returns.kind, syntax_ast::AstCallParameterListKind::Return);
+  ASSERT_EQ(returns.parameters.size(), 1u);
+  EXPECT_EQ(std::get<AstIdentifierRef>(returns.parameters[0]).syntax.text,
+            "%result");
+  EXPECT_EQ(std::get<AstCallTarget>(call->operands[1]).name.syntax.text,
+            "%callee");
+
+  const auto& inputs = std::get<AstCallParameterList>(call->operands[2]);
+  EXPECT_EQ(inputs.kind, syntax_ast::AstCallParameterListKind::Input);
+  ASSERT_EQ(inputs.parameters.size(), 2u);
+  EXPECT_EQ(std::get<AstIdentifierRef>(inputs.parameters[0]).syntax.text,
+            "%arg");
+  EXPECT_EQ(std::get<AstImmediate>(inputs.parameters[1]).syntax.text, "4");
+  EXPECT_EQ(std::get<AstCallTargetSet>(call->operands[3]).name.syntax.text,
+            "targets");
+
+  PtxSyntaxParser branch_parser("bra done;");
+  auto branch = branch_parser.parseInstruction();
+  ASSERT_TRUE(branch.has_value()) << branch.error().message;
+  ASSERT_EQ(branch->operands.size(), 1u);
+  EXPECT_EQ(std::get<AstBranchTarget>(branch->operands[0]).name.syntax.text,
+            "done");
 }
 
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {

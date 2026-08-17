@@ -30,8 +30,10 @@ scope whose parent is the module scope. The initial pass collects:
 
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
-parameter. A function symbol points to its function scope through
-`owned_scope`.
+parameter. `SymbolLinkage` directly records `.extern`, `.visible`, or `.weak`.
+A function symbol points to its function scope through `owned_scope`. When a
+prototype and definition coexist, each item still has a distinct scope and
+`owned_scope` prefers the definition.
 
 Lookup checks exact names first, parameterized names second, and then walks to
 the parent scope. A function-local declaration therefore shadows a module
@@ -54,26 +56,51 @@ The pass visits:
 
 - instruction predicates and identifiers in every operand shape;
 - constant expressions used as array dimensions;
-- symbol expressions in scalar and recursive initializers.
+- symbol expressions in scalar and recursive initializers;
+- call targets/returns/arguments/target sets and direct branch targets.
 
-Each `SymbolReference` retains its spelling, range, reference kind, and an
-optional target. A parameterized target also retains its member index.
-Unresolved references remain in the table with an empty target so a later pass
-can diagnose them with opcode, special-register, and linkage context. This
-pass deliberately does not classify every unknown `%` name as an undeclared
-ordinary register.
+Each `SymbolReference` retains its spelling, range, reference kind, optional
+target, and an explicit `ReferenceClassification`:
+
+- `DeclaredSymbol` for an ordinary declaration in this module;
+- `ExternalSymbol` for a reference bound to an explicit `.extern` declaration;
+- `SpecialRegister` for a predefined PTX special register that needs no user
+  declaration;
+- `Unresolved` when none of the above matches.
+
+A parameterized declaration target also retains its member index. Special
+registers are recognized from the PTX ISA predefined set. Bounded families
+such as `%envreg<32>`, `%pm<8>`, `%pm0_64..%pm7_64`, and
+`%reserved_smem_offset_<2>` are range-checked rather than approximated by a
+generic `%` prefix. Vector members such as `%tid.x` bind their `%tid` AST base.
+`WARP_SZ` is already an immediate kind in the lexer and does not enter the
+symbol-reference path.
+
+`.extern` says that a declaration is defined in another module; it does not
+make undeclared names legal. An external reference therefore has a normal
+`SymbolId` target plus explicit external classification and linkage.
 
 `generic()` is an initializer operator rather than a symbol reference; its
 argument is still bound normally. A mask operator has a literal callee, so only
 its argument contributes references as well.
 
+Dedicated call/branch AST nodes produce distinct reference kinds. Binding now
+checks that a callee is a function or `.reg` function pointer, call parameters
+belong to `.reg`/`.param`, and a direct branch target is a label in the current
+function. See `control_flow_syntax_design.md`.
+
 ## Current diagnostics and boundary
 
-The pass currently accumulates same-scope duplicate-symbol and invalid/zero
-parameterized-count diagnostics. Remaining semantic work includes:
+The pass now accumulates diagnostics for function-local same-scope duplicates,
+invalid or zero parameterized counts, conflicting linkage qualifiers, and
+genuinely unresolved references. Same-name module declarations first share a
+stable `SymbolId`; the declaration semantic pass then classifies them as a
+legal redeclaration, signature conflict, or multiple definition. Module
+resolution preserves the distinction between special and unresolved names:
+until an opcode has a special-register resolved operand, the former reports
+“recognized but unsupported,” not “undeclared.” See
+`declaration_semantics_design.md` for the following pass. Remaining work
+includes:
 
-- linkage-compatible redeclarations and function prototype/definition merging;
-- special-register and external-symbol classification;
-- initializer type, array-shape, and element-count validation;
-- carrying bound register/symbol `SymbolId` values into Resolved IR and the
-  checker.
+- full Resolved IR support for execution predicates, address/symbol operands,
+  and special registers.

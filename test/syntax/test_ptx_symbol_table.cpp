@@ -109,7 +109,7 @@ start:
   EXPECT_EQ(local_reference->target->symbol, local_values->symbol);
 
   const auto* label =
-      findReference(table, "start", binding::ReferenceKind::InstructionOperand);
+      findReference(table, "start", binding::ReferenceKind::BranchTarget);
   ASSERT_NE(label, nullptr);
   ASSERT_TRUE(label->target.has_value());
   EXPECT_EQ(table.symbol(label->target->symbol).kind,
@@ -118,7 +118,8 @@ start:
 
 TEST(PtxSymbolTable, SupportsParameterizedNamesOutsideRegisterSpace) {
   PtxSyntaxParser parser(
-      ".global .u32 item<2>; .entry kernel() { ld.u32 %r0, item1; }");
+      ".global .u32 item<2>; .entry kernel() { .reg .u32 %r0; "
+      "ld.u32 %r0, item1; }");
   const auto module = parser.parseModule();
   ASSERT_TRUE(module.has_value()) << module.error().message;
 
@@ -137,7 +138,7 @@ TEST(PtxSymbolTable, SupportsParameterizedNamesOutsideRegisterSpace) {
             syntax_ast::AstStateSpace::Global);
 }
 
-TEST(PtxSymbolTable, RetainsUnresolvedReferencesForLaterDiagnostics) {
+TEST(PtxSymbolTable, DiagnosesTrulyUnresolvedReferences) {
   PtxSyntaxParser parser(
       ".entry kernel() { .reg .u32 %r<1>; add.u32 %r0, %missing, 1; }");
   const auto module = parser.parseModule();
@@ -150,12 +151,154 @@ TEST(PtxSymbolTable, RetainsUnresolvedReferencesForLaterDiagnostics) {
                     binding::ReferenceKind::InstructionOperand);
   ASSERT_NE(unresolved, nullptr);
   EXPECT_FALSE(unresolved->target.has_value());
+  EXPECT_EQ(unresolved->classification,
+            binding::ReferenceClassification::Unresolved);
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::UnresolvedReference);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Unresolved instruction operand '%missing'.");
+}
+
+TEST(PtxSymbolTable, ClassifiesSpecialRegistersAndExternalSymbols) {
+  constexpr std::string_view source = R"ptx(
+.extern .global .u32 external_value;
+.extern .func external_function();
+.entry kernel() {
+  .reg .u32 %r;
+  add.u32 %r, external_value, %laneid;
+  add.u32 %r, %envreg31, %pm7_64;
+  add.u32 %r, %reserved_smem_offset_1, %tid.x;
+  call external_function;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  EXPECT_TRUE(binding_result.diagnostics.empty());
+  const auto external = binding_result.table.lookup(
+      binding_result.table.moduleScope(), "external_value");
+  ASSERT_TRUE(external.has_value());
+  EXPECT_EQ(binding_result.table.symbol(external->symbol).linkage,
+            binding::SymbolLinkage::External);
+  const auto* external_reference =
+      findReference(binding_result.table, "external_value",
+                    binding::ReferenceKind::InstructionOperand);
+  ASSERT_NE(external_reference, nullptr);
+  EXPECT_EQ(external_reference->classification,
+            binding::ReferenceClassification::ExternalSymbol);
+  ASSERT_TRUE(external_reference->target.has_value());
+  EXPECT_EQ(external_reference->target->symbol, external->symbol);
+  const auto external_function = binding_result.table.lookup(
+      binding_result.table.moduleScope(), "external_function");
+  ASSERT_TRUE(external_function.has_value());
+  EXPECT_EQ(binding_result.table.symbol(external_function->symbol).linkage,
+            binding::SymbolLinkage::External);
+  const auto* function_reference =
+      findReference(binding_result.table, "external_function",
+                    binding::ReferenceKind::CallTarget);
+  ASSERT_NE(function_reference, nullptr);
+  EXPECT_EQ(function_reference->classification,
+            binding::ReferenceClassification::ExternalSymbol);
+
+  for (const std::string_view spelling :
+       {"%laneid", "%envreg31", "%pm7_64", "%reserved_smem_offset_1", "%tid"}) {
+    const auto* reference =
+        findReference(binding_result.table, spelling,
+                      binding::ReferenceKind::InstructionOperand);
+    ASSERT_NE(reference, nullptr) << spelling;
+    EXPECT_EQ(reference->classification,
+              binding::ReferenceClassification::SpecialRegister)
+        << spelling;
+    EXPECT_FALSE(reference->target.has_value()) << spelling;
+  }
+}
+
+TEST(PtxSymbolTable, BindsDedicatedCallAndBranchReferences) {
+  constexpr std::string_view source = R"ptx(
+.func callee(.reg .u32 input);
+.entry kernel() {
+  .reg .u32 %result, %argument;
+  .param .u32 parameter;
+again:
+  call (%result), callee, (%argument, parameter, 4);
+  bra again;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  EXPECT_TRUE(binding_result.diagnostics.empty());
+  for (const auto [spelling, kind] : std::initializer_list<
+           std::pair<std::string_view, binding::ReferenceKind>>{
+           {"%result", binding::ReferenceKind::CallReturnParameter},
+           {"callee", binding::ReferenceKind::CallTarget},
+           {"%argument", binding::ReferenceKind::CallArgument},
+           {"parameter", binding::ReferenceKind::CallArgument},
+           {"again", binding::ReferenceKind::BranchTarget}}) {
+    const auto* reference = findReference(binding_result.table, spelling, kind);
+    ASSERT_NE(reference, nullptr) << spelling;
+    EXPECT_TRUE(reference->target.has_value()) << spelling;
+  }
+}
+
+TEST(PtxSymbolTable, DiagnosesInvalidCallAndBranchTargetKinds) {
+  constexpr std::string_view source = R"ptx(
+.global .u32 global_value;
+.func callee();
+.entry kernel() {
+  .reg .u32 %register;
+  .local .u32 local_value;
+  call global_value;
+  call (local_value), callee, (global_value);
+  bra %register;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  EXPECT_EQ(std::ranges::count_if(
+                binding_result.diagnostics,
+                [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         binding::BindDiagnosticKind::InvalidReferenceTarget;
+                }),
+            4u);
+}
+
+TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
+  EXPECT_TRUE(binding::isSpecialRegister("%tid.x"));
+  EXPECT_TRUE(binding::isSpecialRegister("%envreg0"));
+  EXPECT_TRUE(binding::isSpecialRegister("%envreg31"));
+  EXPECT_TRUE(binding::isSpecialRegister("%pm0"));
+  EXPECT_TRUE(binding::isSpecialRegister("%pm7_64"));
+  EXPECT_TRUE(binding::isSpecialRegister("%reserved_smem_offset_1"));
+
+  EXPECT_FALSE(binding::isSpecialRegister("%tid.q"));
+  EXPECT_FALSE(binding::isSpecialRegister("%envreg32"));
+  EXPECT_FALSE(binding::isSpecialRegister("%envreg01"));
+  EXPECT_FALSE(binding::isSpecialRegister("%pm8"));
+  EXPECT_FALSE(binding::isSpecialRegister("%pm00"));
+  EXPECT_FALSE(binding::isSpecialRegister("%pm8_64"));
+  EXPECT_FALSE(binding::isSpecialRegister("%reserved_smem_offset_2"));
+  EXPECT_FALSE(binding::isSpecialRegister("%tid.w"));
+  EXPECT_FALSE(binding::isSpecialRegister("%made_up"));
 }
 
 TEST(PtxSymbolTable, DiagnosesDuplicateSymbolsAndInvalidCount) {
   constexpr std::string_view source = R"ptx(
 .global .u32 value;
 .global .u32 value;
+.extern .visible .global .u32 linked;
 .entry kernel(.param .u32 input, .param .u32 input) {
   .reg .u32 %r<0>;
 loop:
@@ -175,7 +318,7 @@ loop:
                   return diagnostic.kind ==
                          binding::BindDiagnosticKind::DuplicateSymbol;
                 }),
-            3);
+            2);
   EXPECT_EQ(std::ranges::count_if(
                 binding_result.diagnostics,
                 [](const auto& diagnostic) {
@@ -183,6 +326,14 @@ loop:
                          binding::BindDiagnosticKind::InvalidParameterizedCount;
                 }),
             1);
+  EXPECT_EQ(
+      std::ranges::count_if(
+          binding_result.diagnostics,
+          [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   binding::BindDiagnosticKind::ConflictingLinkageQualifiers;
+          }),
+      1);
   for (const auto& diagnostic : binding_result.diagnostics) {
     if (diagnostic.kind == binding::BindDiagnosticKind::DuplicateSymbol)
       EXPECT_TRUE(diagnostic.previous_range.has_value());

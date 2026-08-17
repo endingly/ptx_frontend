@@ -34,11 +34,30 @@ enum class SymbolKind : uint8_t {
   Label,
 };
 
+enum class SymbolLinkage : uint8_t {
+  None,
+  External,
+  Visible,
+  Weak,
+};
+
 enum class ReferenceKind : uint8_t {
   InstructionOperand,
   Predicate,
   Initializer,
   ArrayDimension,
+  CallTarget,
+  CallReturnParameter,
+  CallArgument,
+  CallTargetSet,
+  BranchTarget,
+};
+
+enum class ReferenceClassification : uint8_t {
+  DeclaredSymbol,
+  ExternalSymbol,
+  SpecialRegister,
+  Unresolved,
 };
 
 struct Scope {
@@ -54,6 +73,7 @@ struct Symbol {
   SymbolKind kind{};
   std::string name;
   SourceRange declaration_range;
+  SymbolLinkage linkage{};
   std::optional<syntax_ast::AstStateSpace> state_space;
   std::optional<std::string> type;
   std::optional<uint32_t> parameterized_count;
@@ -70,12 +90,16 @@ struct SymbolReference {
   ReferenceKind kind{};
   std::string spelling;
   SourceRange range;
+  ReferenceClassification classification = ReferenceClassification::Unresolved;
   std::optional<SymbolLookup> target;
 };
 
 enum class BindDiagnosticKind : uint8_t {
   DuplicateSymbol,
   InvalidParameterizedCount,
+  ConflictingLinkageQualifiers,
+  UnresolvedReference,
+  InvalidReferenceTarget,
 };
 
 struct BindDiagnostic {
@@ -123,5 +147,8 @@ struct SymbolBinding {
 
 /** Collect declarations and lexically bind references in a Syntax AST module. */
 [[nodiscard]] SymbolBinding bindSymbols(const syntax_ast::AstModule& module);
+
+/** Return whether a spelling is a predefined PTX special register. */
+[[nodiscard]] bool isSpecialRegister(std::string_view spelling) noexcept;
 
 }  // namespace ptx_frontend::binding

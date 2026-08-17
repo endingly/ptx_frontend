@@ -1,5 +1,7 @@
 #include "ptx_ir/bind/ptx_symbol_table.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <stdexcept>
@@ -32,7 +34,115 @@ bool isInitializerOperator(std::string_view spelling) {
   return spelling == "generic";
 }
 
+bool isIndexedSpecialRegister(std::string_view spelling,
+                              std::string_view prefix, uint32_t count,
+                              std::string_view suffix = {}) {
+  if (!spelling.starts_with(prefix) || !spelling.ends_with(suffix) ||
+      spelling.size() <= prefix.size() + suffix.size()) {
+    return false;
+  }
+  const std::string_view index_text = spelling.substr(
+      prefix.size(), spelling.size() - prefix.size() - suffix.size());
+  if (index_text.size() > 1 && index_text.front() == '0')
+    return false;
+  uint32_t index = 0;
+  const auto [end, error] = std::from_chars(
+      index_text.data(), index_text.data() + index_text.size(), index);
+  return error == std::errc{} && end == index_text.data() + index_text.size() &&
+         index < count;
+}
+
+SymbolLinkage linkageFromSpelling(std::string_view spelling) {
+  if (spelling == ".extern")
+    return SymbolLinkage::External;
+  if (spelling == ".visible")
+    return SymbolLinkage::Visible;
+  if (spelling == ".weak")
+    return SymbolLinkage::Weak;
+  return SymbolLinkage::None;
+}
+
+std::string_view referenceDescription(ReferenceKind kind) {
+  switch (kind) {
+    case ReferenceKind::InstructionOperand:
+      return "instruction operand";
+    case ReferenceKind::Predicate:
+      return "predicate";
+    case ReferenceKind::Initializer:
+      return "initializer";
+    case ReferenceKind::ArrayDimension:
+      return "array dimension";
+    case ReferenceKind::CallTarget:
+      return "call target";
+    case ReferenceKind::CallReturnParameter:
+      return "call return parameter";
+    case ReferenceKind::CallArgument:
+      return "call argument";
+    case ReferenceKind::CallTargetSet:
+      return "call target set or prototype";
+    case ReferenceKind::BranchTarget:
+      return "branch target";
+  }
+  return "symbol";
+}
+
 }  // namespace
+
+bool isSpecialRegister(std::string_view spelling) noexcept {
+  constexpr std::array exact_names{
+      std::string_view{"%laneid"},
+      std::string_view{"%warpid"},
+      std::string_view{"%nwarpid"},
+      std::string_view{"%smid"},
+      std::string_view{"%nsmid"},
+      std::string_view{"%gridid"},
+      std::string_view{"%is_explicit_cluster"},
+      std::string_view{"%cluster_ctarank"},
+      std::string_view{"%cluster_nctarank"},
+      std::string_view{"%lanemask_eq"},
+      std::string_view{"%lanemask_le"},
+      std::string_view{"%lanemask_lt"},
+      std::string_view{"%lanemask_ge"},
+      std::string_view{"%lanemask_gt"},
+      std::string_view{"%clock"},
+      std::string_view{"%clock_hi"},
+      std::string_view{"%clock64"},
+      std::string_view{"%globaltimer"},
+      std::string_view{"%globaltimer_lo"},
+      std::string_view{"%globaltimer_hi"},
+      std::string_view{"%reserved_smem_offset_begin"},
+      std::string_view{"%reserved_smem_offset_end"},
+      std::string_view{"%reserved_smem_offset_cap"},
+      std::string_view{"%total_smem_size"},
+      std::string_view{"%aggr_smem_size"},
+      std::string_view{"%dynamic_smem_size"},
+      std::string_view{"%current_graph_exec"},
+  };
+  if (std::ranges::contains(exact_names, spelling))
+    return true;
+
+  constexpr std::array vector_names{
+      std::string_view{"%tid"},           std::string_view{"%ntid"},
+      std::string_view{"%ctaid"},         std::string_view{"%nctaid"},
+      std::string_view{"%clusterid"},     std::string_view{"%nclusterid"},
+      std::string_view{"%cluster_ctaid"}, std::string_view{"%cluster_nctaid"},
+  };
+  for (const std::string_view name : vector_names) {
+    if (spelling == name)
+      return true;
+    if (spelling.starts_with(name) && spelling.size() == name.size() + 2 &&
+        spelling[name.size()] == '.' &&
+        (spelling.back() == 'x' || spelling.back() == 'y' ||
+         spelling.back() == 'z')) {
+      return true;
+    }
+  }
+
+  return isIndexedSpecialRegister(spelling, "%pm", 8) ||
+         isIndexedSpecialRegister(spelling, "%pm", 8, "_64") ||
+         isIndexedSpecialRegister(spelling, "%envreg", 32) ||
+         isIndexedSpecialRegister(spelling, "%reserved_smem_offset_", 2);
+}
 
 const Scope& SymbolTable::scope(ScopeId id) const {
   return scopes_.at(id.value);
@@ -83,7 +193,7 @@ struct SymbolTableBuilder {
     });
   }
 
-  ScopeId addFunctionScope(std::optional<SymbolId> owner) {
+  ScopeId addFunctionScope(SymbolId owner, bool prefer_as_owned_scope) {
     const ScopeId id{static_cast<uint32_t>(result.table.scopes_.size())};
     result.table.scopes_.push_back(Scope{
         .id = id,
@@ -91,8 +201,9 @@ struct SymbolTableBuilder {
         .parent = result.table.moduleScope(),
         .owner = owner,
     });
-    if (owner)
-      result.table.symbols_[owner->value].owned_scope = id;
+    Symbol& symbol = result.table.symbols_[owner.value];
+    if (!symbol.owned_scope || prefer_as_owned_scope)
+      symbol.owned_scope = id;
     return id;
   }
 
@@ -108,18 +219,22 @@ struct SymbolTableBuilder {
   SymbolId addSymbol(
       ScopeId scope, SymbolKind kind, std::string_view name,
       SourceRange declaration_range,
+      SymbolLinkage linkage = SymbolLinkage::None,
       std::optional<syntax_ast::AstStateSpace> state_space = std::nullopt,
       std::optional<std::string_view> type = std::nullopt,
-      std::optional<uint32_t> parameterized_count = std::nullopt) {
+      std::optional<uint32_t> parameterized_count = std::nullopt,
+      bool allow_redeclaration = false) {
     if (const auto previous = exactSymbol(scope, name)) {
       const Symbol& existing = result.table.symbol(*previous);
-      result.diagnostics.push_back(BindDiagnostic{
-          .kind = BindDiagnosticKind::DuplicateSymbol,
-          .range = declaration_range,
-          .previous_range = existing.declaration_range,
-          .message =
-              fmt::format("Duplicate symbol '{}' in the same scope.", name),
-      });
+      if (!allow_redeclaration) {
+        result.diagnostics.push_back(BindDiagnostic{
+            .kind = BindDiagnosticKind::DuplicateSymbol,
+            .range = declaration_range,
+            .previous_range = existing.declaration_range,
+            .message =
+                fmt::format("Duplicate symbol '{}' in the same scope.", name),
+        });
+      }
       return *previous;
     }
 
@@ -130,6 +245,7 @@ struct SymbolTableBuilder {
         .kind = kind,
         .name = std::string{name},
         .declaration_range = declaration_range,
+        .linkage = linkage,
         .state_space = state_space,
         .type = type ? std::optional<std::string>{std::string{*type}}
                      : std::nullopt,
@@ -137,6 +253,29 @@ struct SymbolTableBuilder {
         .owned_scope = std::nullopt,
     });
     return id;
+  }
+
+  SymbolLinkage linkage(const std::vector<syntax_ast::AstSyntax>& qualifiers,
+                        SourceRange declaration_range) {
+    SymbolLinkage result_linkage = SymbolLinkage::None;
+    std::optional<SourceRange> first_linkage_range;
+    for (const syntax_ast::AstSyntax& qualifier : qualifiers) {
+      const SymbolLinkage candidate = linkageFromSpelling(qualifier.text);
+      if (candidate == SymbolLinkage::None)
+        continue;
+      if (result_linkage != SymbolLinkage::None) {
+        result.diagnostics.push_back(BindDiagnostic{
+            .kind = BindDiagnosticKind::ConflictingLinkageQualifiers,
+            .range = qualifier.range,
+            .previous_range = first_linkage_range.value_or(declaration_range),
+            .message = "A declaration may have only one linkage qualifier.",
+        });
+        continue;
+      }
+      result_linkage = candidate;
+      first_linkage_range = qualifier.range;
+    }
+    return result_linkage;
   }
 
   std::optional<uint32_t> parameterizedCount(
@@ -165,32 +304,38 @@ struct SymbolTableBuilder {
 
   void collectVariableDeclaration(
       ScopeId scope, const syntax_ast::AstVariableDeclaration& declaration) {
+    const SymbolLinkage declaration_linkage =
+        linkage(declaration.qualifiers, declaration.range);
     for (const auto& declarator : declaration.declarators) {
       addSymbol(scope, SymbolKind::Variable, declarator.name.syntax.text,
-                declarator.name.syntax.range, declaration.state_space,
-                declaration.type.text, parameterizedCount(declarator));
+                declarator.name.syntax.range, declaration_linkage,
+                declaration.state_space, declaration.type.text,
+                parameterizedCount(declarator),
+                scope == result.table.moduleScope());
     }
   }
 
   void collectFunction(const syntax_ast::AstFunction& function) {
-    const auto previous =
-        exactSymbol(result.table.moduleScope(), function.name.syntax.text);
     const SymbolId function_symbol =
         addSymbol(result.table.moduleScope(), SymbolKind::Function,
-                  function.name.syntax.text, function.name.syntax.range);
-    const ScopeId function_scope = addFunctionScope(
-        previous ? std::nullopt : std::optional{function_symbol});
+                  function.name.syntax.text, function.name.syntax.range,
+                  linkage(function.qualifiers, function.range), std::nullopt,
+                  std::nullopt, std::nullopt, true);
+    const ScopeId function_scope =
+        addFunctionScope(function_symbol, !function.is_prototype);
     functions.push_back(FunctionContext{&function, function_scope});
 
     for (const auto& parameter : function.return_parameters) {
       addSymbol(function_scope, SymbolKind::ReturnParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
-                parameter.state_space, parameter.type.text);
+                SymbolLinkage::None, parameter.state_space,
+                parameter.type.text);
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
-                parameter.state_space, parameter.type.text);
+                SymbolLinkage::None, parameter.state_space,
+                parameter.type.text);
     }
     for (const auto& item : function.body) {
       if (const auto* declaration =
@@ -203,15 +348,61 @@ struct SymbolTableBuilder {
     }
   }
 
-  void addReference(ScopeId scope, ReferenceKind kind,
-                    const syntax_ast::AstIdentifierRef& identifier) {
+  const SymbolReference& addReference(
+      ScopeId scope, ReferenceKind kind,
+      const syntax_ast::AstIdentifierRef& identifier) {
+    std::optional<SymbolLookup> target;
+    ReferenceClassification classification =
+        ReferenceClassification::Unresolved;
+    if (isSpecialRegister(identifier.syntax.text)) {
+      classification = ReferenceClassification::SpecialRegister;
+    } else if ((target = result.table.lookup(scope, identifier.syntax.text))) {
+      classification =
+          result.table.symbol(target->symbol).linkage == SymbolLinkage::External
+              ? ReferenceClassification::ExternalSymbol
+              : ReferenceClassification::DeclaredSymbol;
+    }
     result.table.references_.push_back(SymbolReference{
         .scope = scope,
         .kind = kind,
         .spelling = identifier.syntax.text,
         .range = identifier.syntax.range,
-        .target = result.table.lookup(scope, identifier.syntax.text),
+        .classification = classification,
+        .target = target,
     });
+    if (classification == ReferenceClassification::Unresolved) {
+      result.diagnostics.push_back(BindDiagnostic{
+          .kind = BindDiagnosticKind::UnresolvedReference,
+          .range = identifier.syntax.range,
+          .previous_range = std::nullopt,
+          .message =
+              fmt::format("Unresolved {} '{}'.", referenceDescription(kind),
+                          identifier.syntax.text),
+      });
+    }
+    return result.table.references_.back();
+  }
+
+  bool isRegisterOrParameter(const Symbol& symbol) const {
+    const bool supported_kind = symbol.kind == SymbolKind::Variable ||
+                                symbol.kind == SymbolKind::InputParameter ||
+                                symbol.kind == SymbolKind::ReturnParameter;
+    return supported_kind && symbol.state_space &&
+           (*symbol.state_space == syntax_ast::AstStateSpace::Register ||
+            *symbol.state_space == syntax_ast::AstStateSpace::Parameter);
+  }
+
+  void diagnoseInvalidTarget(const SymbolReference& reference,
+                             bool valid_target, std::string message) {
+    if (reference.target && !valid_target) {
+      result.diagnostics.push_back(BindDiagnostic{
+          .kind = BindDiagnosticKind::InvalidReferenceTarget,
+          .range = reference.range,
+          .previous_range =
+              result.table.symbol(reference.target->symbol).declaration_range,
+          .message = std::move(message),
+      });
+    }
   }
 
   void bindConstantExpression(
@@ -303,13 +494,67 @@ struct SymbolTableBuilder {
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstVectorMember>) {
             addReference(scope, ReferenceKind::InstructionOperand, value.base);
-          } else {
+          } else if constexpr (std::same_as<Value, syntax_ast::AstVectorPack>) {
             for (const auto& element : value.elements) {
               if (const auto* identifier =
                       std::get_if<syntax_ast::AstIdentifierRef>(&element)) {
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
               }
+            }
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstCallParameterList>) {
+            const ReferenceKind kind =
+                value.kind == syntax_ast::AstCallParameterListKind::Return
+                    ? ReferenceKind::CallReturnParameter
+                    : ReferenceKind::CallArgument;
+            for (const auto& parameter : value.parameters) {
+              const auto* identifier =
+                  std::get_if<syntax_ast::AstIdentifierRef>(&parameter);
+              if (identifier == nullptr)
+                continue;
+              const SymbolReference& reference =
+                  addReference(scope, kind, *identifier);
+              if (reference.target) {
+                const Symbol& symbol =
+                    result.table.symbol(reference.target->symbol);
+                diagnoseInvalidTarget(
+                    reference, isRegisterOrParameter(symbol),
+                    fmt::format("Call parameter '{}' must name a .reg or "
+                                ".param variable.",
+                                identifier->syntax.text));
+              }
+            }
+          } else if constexpr (std::same_as<Value, syntax_ast::AstCallTarget>) {
+            const SymbolReference& reference =
+                addReference(scope, ReferenceKind::CallTarget, value.name);
+            if (reference.target) {
+              const Symbol& symbol =
+                  result.table.symbol(reference.target->symbol);
+              diagnoseInvalidTarget(
+                  reference,
+                  symbol.kind == SymbolKind::Function ||
+                      (isRegisterOrParameter(symbol) &&
+                       symbol.state_space ==
+                           syntax_ast::AstStateSpace::Register),
+                  fmt::format("Call target '{}' must name a function or a "
+                              ".reg function pointer.",
+                              value.name.syntax.text));
+            }
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstCallTargetSet>) {
+            addReference(scope, ReferenceKind::CallTargetSet, value.name);
+          } else {
+            const SymbolReference& reference =
+                addReference(scope, ReferenceKind::BranchTarget, value.name);
+            if (reference.target) {
+              const Symbol& symbol =
+                  result.table.symbol(reference.target->symbol);
+              diagnoseInvalidTarget(
+                  reference, symbol.kind == SymbolKind::Label,
+                  fmt::format("Branch target '{}' must name a label in the "
+                              "current function.",
+                              value.name.syntax.text));
             }
           }
         },

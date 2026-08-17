@@ -182,6 +182,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IMMEDIATE))
         self.assertFalse(layout.slots[1].allows(OperandSyntaxShape.ADDRESS))
 
+    def test_control_flow_shapes_have_distinct_descriptor_flags(self) -> None:
+        self.assertEqual(OperandSyntaxShape.CALL_PARAMETER_LIST.value, 1 << 6)
+        self.assertEqual(OperandSyntaxShape.CALL_TARGET.value, 1 << 7)
+        self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
+        self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
+
     def test_sub_variants_and_modifier_constraints(self) -> None:
         self.assertEqual(self.sub_descriptor.opcode, "sub")
         self.assertEqual(

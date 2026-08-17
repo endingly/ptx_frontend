@@ -255,6 +255,141 @@ PtxCstParser::parseVectorPack(TokenId open) {
 }
 
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+PtxCstParser::parseCallParameterList(
+    syntax_cst::CstCallParameterListKind kind) {
+  using syntax_cst::CstCallParameterList;
+  using syntax_cst::CstCallParameterListKind;
+
+  auto open = expect(TokenKind::LParen, "'(' in call parameter list");
+  if (!open)
+    return std::unexpected(open.error());
+
+  std::vector<syntax_cst::CstCallParameter> parameters;
+  std::vector<TokenId> commas;
+  if (kind == CstCallParameterListKind::Return) {
+    auto parameter = expect(TokenKind::Ident, "call return parameter");
+    if (!parameter)
+      return std::unexpected(parameter.error());
+    parameters.emplace_back(syntax_cst::CstIdentifier{*parameter});
+    if (token(peek()).kind == TokenKind::Comma) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "a call return parameter list must contain exactly one name"});
+    }
+  } else {
+    while (token(peek()).kind != TokenKind::RParen) {
+      if (token(peek()).kind == TokenKind::Ident) {
+        parameters.emplace_back(syntax_cst::CstIdentifier{consume()});
+      } else if (atImmediateStart()) {
+        auto parameter = parseImmediate();
+        if (!parameter)
+          return std::unexpected(parameter.error());
+        parameters.emplace_back(std::move(*parameter));
+      } else {
+        return std::unexpected(CstParseDiagnostic{
+            token(peek()).range,
+            "expected identifier or immediate call argument"});
+      }
+      if (token(peek()).kind != TokenKind::Comma)
+        break;
+      commas.push_back(consume());
+      if (token(peek()).kind == TokenKind::RParen) {
+        return std::unexpected(CstParseDiagnostic{
+            token(peek()).range,
+            "call argument list cannot end with a trailing comma"});
+      }
+    }
+  }
+
+  auto close = expect(TokenKind::RParen, "')' in call parameter list");
+  if (!close)
+    return std::unexpected(close.error());
+  return syntax_cst::CstOperand{CstCallParameterList{
+      .kind = kind,
+      .left_paren = *open,
+      .parameters = std::move(parameters),
+      .commas = std::move(commas),
+      .right_paren = *close,
+      .token_range = {*open, *close + 1},
+  }};
+}
+
+std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+PtxCstParser::parseCallOperands() {
+  using syntax_cst::CstCallParameterListKind;
+  std::vector<syntax_cst::CstOperandElement> operands;
+  const bool has_return_parameters = token(peek()).kind == TokenKind::LParen;
+  if (has_return_parameters) {
+    auto returns = parseCallParameterList(CstCallParameterListKind::Return);
+    if (!returns)
+      return std::unexpected(returns.error());
+    operands.push_back({std::move(*returns), std::nullopt});
+    auto comma = expect(TokenKind::Comma, "',' after call return parameter");
+    if (!comma)
+      return std::unexpected(comma.error());
+    operands.back().trailing_comma = *comma;
+  }
+
+  auto target = expect(TokenKind::Ident, "call target");
+  if (!target)
+    return std::unexpected(target.error());
+  operands.push_back(
+      {syntax_cst::CstCallTarget{syntax_cst::CstIdentifier{*target},
+                                 {*target, *target + 1}},
+       std::nullopt});
+
+  if (token(peek()).kind != TokenKind::Comma) {
+    if (has_return_parameters) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "a call with a return parameter requires an input parameter list"});
+    }
+    return operands;
+  }
+
+  operands.back().trailing_comma = consume();
+  if (token(peek()).kind == TokenKind::LParen) {
+    auto inputs = parseCallParameterList(CstCallParameterListKind::Input);
+    if (!inputs)
+      return std::unexpected(inputs.error());
+    operands.push_back({std::move(*inputs), std::nullopt});
+    if (token(peek()).kind != TokenKind::Comma)
+      return operands;
+    operands.back().trailing_comma = consume();
+  } else if (has_return_parameters) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "expected call input parameter list after the target"});
+  }
+
+  auto target_set = expect(TokenKind::Ident, "call target set or prototype");
+  if (!target_set)
+    return std::unexpected(target_set.error());
+  operands.push_back(
+      {syntax_cst::CstCallTargetSet{syntax_cst::CstIdentifier{*target_set},
+                                    {*target_set, *target_set + 1}},
+       std::nullopt});
+  return operands;
+}
+
+std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+PtxCstParser::parseBranchOperands() {
+  auto target = expect(TokenKind::Ident, "branch label target");
+  if (!target)
+    return std::unexpected(target.error());
+  if (token(peek()).kind == TokenKind::Comma) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "direct branch accepts exactly one label target"});
+  }
+  std::vector<syntax_cst::CstOperandElement> operands;
+  operands.push_back(
+      {syntax_cst::CstBranchTarget{syntax_cst::CstIdentifier{*target},
+                                   {*target, *target + 1}},
+       std::nullopt});
+  return operands;
+}
+
+std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseOperand() {
   if (token(peek()).kind == TokenKind::Exclamation) {
     const TokenId exclamation = consume();
@@ -334,7 +469,17 @@ PtxCstParser::parseInstructionNode(std::optional<TokenId> supplied_opcode) {
     modifiers.push_back(consume());
 
   std::vector<syntax_cst::CstOperandElement> operands;
-  if (token(peek()).kind != TokenKind::Semicolon) {
+  if (token(*opcode).text == "call") {
+    auto parsed_operands = parseCallOperands();
+    if (!parsed_operands)
+      return std::unexpected(parsed_operands.error());
+    operands = std::move(*parsed_operands);
+  } else if (token(*opcode).text == "bra") {
+    auto parsed_operands = parseBranchOperands();
+    if (!parsed_operands)
+      return std::unexpected(parsed_operands.error());
+    operands = std::move(*parsed_operands);
+  } else if (token(peek()).kind != TokenKind::Semicolon) {
     for (;;) {
       auto operand = parseOperand();
       if (!operand)

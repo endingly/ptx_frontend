@@ -56,16 +56,49 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - standalone `resolveInstruction`/`resolve<T>` 仍可无 symbol table 使用，保持原有单指令
   边界。
 
+## 已完成：reference classification
+
+- `Symbol` 记录 `.extern/.visible/.weak` linkage；
+- `SymbolReference` 区分 declared、external、special-register 与 unresolved；
+- `.extern` reference 仍绑定本 module 中的 declaration `SymbolId`；
+- special register 按 PTX ISA 预定义名称和有界 family 精确匹配；
+- 真正 unresolved 的 predicate、instruction operand、initializer 与 array-dimension
+  reference 会产生按来源区分的 binding diagnostic；
+- module resolution 对 special register 给出“已识别但当前 operand 不支持”的独立诊断。
+
+## 已完成：declaration semantics
+
+新增公开的 `declaration_semantics::checkDeclarations(module, symbols)` pass，并接入
+`resolveModule()`：
+
+- array dimension 必须求值为正整数 constant；未定长仅允许第一维且由 initializer 推导；
+- array/vector initializer 的 brace nesting 与各维元素上限会被校验，同时保留 PTX
+  允许少填并补零的规则；
+- scalar initializer 区分 integer、floating 与 symbol address，并限制 address target 与
+  destination type；
+- module scope 同名 declaration 共享稳定 `SymbolId`，随后校验 variable/function signature、
+  linkage、prototype/definition 组合与 multiple definition；
+- function symbol 的 `owned_scope` 在存在 definition 时指向 definition scope。
+
+## 已完成：call/branch 专用 operand grammar
+
+- `call` 的 return/input group、callee 和 target-set/prototype 现在拥有独立 CST/AST 节点；
+- direct `bra` target 现在是独立 label-target node；
+- parser 按 opcode 校验 call/branch layout，不再把 call group 当成 vector pack；
+- binding 使用独立 reference kind，并校验 function/function-pointer、`.reg/.param` call
+  parameter 与 function-local label；
+- descriptor-facing operand shape 已同步到 C++ 与 Python model，但尚未把非 `Flat` call
+  layout 伪装成 generated opcode。
+
 ## 下一步
 
-1. 分类 special register、external symbol，并区分真正未声明的 reference；
-2. 增加 declaration semantic pass，校验 initializer type、array shape/元素数量以及
-   linkage-compatible redeclaration；
-3. 推进 call/branch 专用 operand grammar 与其余 module directive；
-4. 为 execution predicate 与后续 address/symbol operand 增加对应的 binding-aware
-   Resolved IR 表示。
+1. 为 execution predicate、control-flow/address/symbol operand 与 special register 增加
+   binding-aware Resolved IR；
+2. 为 call group/variadic operand 增加非 `Flat` descriptor layout algorithm，并将
+   `call/bra` 接入统一 dispatch/checker；
+3. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
 
 ## 验证结果
 
-- Debug CTest：108/108（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：125/125（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

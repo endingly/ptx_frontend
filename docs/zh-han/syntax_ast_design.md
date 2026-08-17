@@ -81,6 +81,8 @@ Syntax AST 不再保存 trivia、标点 token 或组合 operand 的重建文本�
 - predicate 是否取反；
 - address base、offset operation 与是否有括号这一 grammar form；
 - vector member/vector pack 结构；
+- call return/input parameter group、callee、target-set/prototype symbol；
+- direct branch label target；
 - declaration array dimension、constant expression 与递归 initializer 结构；
 - diagnostic 所需的 source range；
 - generated layout descriptor 需要的 operand grammar alternative。

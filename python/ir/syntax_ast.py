@@ -42,6 +42,10 @@ class OperandSyntaxShape(IntFlag):
     VECTOR_MEMBER = 1 << 3
     VECTOR_PACK = 1 << 4
     PREDICATE = 1 << 5
+    CALL_PARAMETER_LIST = 1 << 6
+    CALL_TARGET = 1 << 7
+    CALL_TARGET_SET = 1 << 8
+    BRANCH_TARGET = 1 << 9
 
 
 class OperandLayoutKind(Enum):

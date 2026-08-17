@@ -205,6 +205,20 @@ syntax_ast::AstVectorElement lowerVectorElement(
       element);
 }
 
+syntax_ast::AstCallParameter lowerCallParameter(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstCallParameter& parameter) {
+  return std::visit(
+      [&cst](const auto& value) -> syntax_ast::AstCallParameter {
+        using Value = std::remove_cvref_t<decltype(value)>;
+        if constexpr (std::same_as<Value, syntax_cst::CstIdentifier>)
+          return lowerIdentifier(cst, value);
+        else
+          return lowerImmediate(cst, value);
+      },
+      parameter);
+}
+
 syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                                     const syntax_cst::CstOperand& operand) {
   return std::visit(
@@ -250,13 +264,38 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
               cst.sourceRange(value.token_range)};
-        } else {
+        } else if constexpr (std::same_as<Value, syntax_cst::CstVectorPack>) {
           std::vector<syntax_ast::AstVectorElement> elements;
           elements.reserve(value.elements.size());
           for (const auto& element : value.elements)
             elements.push_back(lowerVectorElement(cst, element));
           return syntax_ast::AstVectorPack{std::move(elements),
                                            cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstCallParameterList>) {
+          std::vector<syntax_ast::AstCallParameter> parameters;
+          parameters.reserve(value.parameters.size());
+          for (const auto& parameter : value.parameters)
+            parameters.push_back(lowerCallParameter(cst, parameter));
+          return syntax_ast::AstCallParameterList{
+              .kind = value.kind == syntax_cst::CstCallParameterListKind::Return
+                          ? syntax_ast::AstCallParameterListKind::Return
+                          : syntax_ast::AstCallParameterListKind::Input,
+              .parameters = std::move(parameters),
+              .range = cst.sourceRange(value.token_range),
+          };
+        } else if constexpr (std::same_as<Value, syntax_cst::CstCallTarget>) {
+          return syntax_ast::AstCallTarget{lowerIdentifier(cst, value.name),
+                                           cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstCallTargetSet>) {
+          return syntax_ast::AstCallTargetSet{
+              lowerIdentifier(cst, value.name),
+              cst.sourceRange(value.token_range)};
+        } else {
+          return syntax_ast::AstBranchTarget{
+              lowerIdentifier(cst, value.name),
+              cst.sourceRange(value.token_range)};
         }
       },
       operand);

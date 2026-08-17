@@ -19,6 +19,28 @@ TEST(ScalarTypeMetadata, InvalidHasInvalidKindAndZeroSize) {
   EXPECT_EQ(scalar_size_of(ScalarType::Invalid), 0U);
 }
 
+TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
+  PtxSyntaxParser call_parser("call (%result), callee, (%argument), targets;");
+  const auto call = call_parser.parseInstruction();
+  ASSERT_TRUE(call.has_value()) << call.error().message;
+  ASSERT_EQ(call->operands.size(), 4u);
+  EXPECT_EQ(check_end::get_operand_syntax_shape(call->operands[0]),
+            check_end::OperandSyntaxShape::Group);
+  EXPECT_EQ(check_end::get_operand_syntax_shape(call->operands[1]),
+            check_end::OperandSyntaxShape::CallTarget);
+  EXPECT_EQ(check_end::get_operand_syntax_shape(call->operands[2]),
+            check_end::OperandSyntaxShape::Group);
+  EXPECT_EQ(check_end::get_operand_syntax_shape(call->operands[3]),
+            check_end::OperandSyntaxShape::CallTargetSet);
+
+  PtxSyntaxParser branch_parser("bra done;");
+  const auto branch = branch_parser.parseInstruction();
+  ASSERT_TRUE(branch.has_value()) << branch.error().message;
+  ASSERT_EQ(branch->operands.size(), 1u);
+  EXPECT_EQ(check_end::get_operand_syntax_shape(branch->operands[0]),
+            check_end::OperandSyntaxShape::BranchTarget);
+}
+
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto ast = parser.parseInstruction();
@@ -54,8 +76,7 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
   expect_variant("add.rm.f64 %fd0, %fd1, %fd2;", Add::VariantType::FloatF64);
   expect_variant("add.rn.ftz.sat.f16x2 %r0, %r1, %r2;", Add::VariantType::Half);
   expect_variant("add.bf16 %r0, %r1, %r2;", Add::VariantType::Bfloat);
-  expect_variant("add.f32.f16 %f0, %h1, %f2;",
-                 Add::VariantType::MixedF32);
+  expect_variant("add.f32.f16 %f0, %h1, %f2;", Add::VariantType::MixedF32);
   expect_variant("add.rz.f32.bf16.sat %f0, %h1, %f2;",
                  Add::VariantType::MixedF32);
   expect_variant("add.sat.bf16.f32.rz %f0, %h1, %f2;",
@@ -73,23 +94,16 @@ TEST(SelectVariantSub, SelectsEveryGeneratedVariant) {
 
   expect_variant("sub.u32 %r0, %r1, %r2;", Sub::VariantType::IntegerNoSat);
   expect_variant("sub.s32 %r0, %r1, %r2;", Sub::VariantType::OptionalSat);
-  expect_variant("sub.sat.s32 %r0, %r1, %r2;",
-                 Sub::VariantType::OptionalSat);
-  expect_variant("sub.u8x4 %r0, %r1, %r2;",
-                 Sub::VariantType::OptionalSat);
-  expect_variant("sub.sat.s8x4 %r0, %r1, %r2;",
-                 Sub::VariantType::OptionalSat);
+  expect_variant("sub.sat.s32 %r0, %r1, %r2;", Sub::VariantType::OptionalSat);
+  expect_variant("sub.u8x4 %r0, %r1, %r2;", Sub::VariantType::OptionalSat);
+  expect_variant("sub.sat.s8x4 %r0, %r1, %r2;", Sub::VariantType::OptionalSat);
   expect_variant("sub.rz.ftz.sat.f32 %f0, %f1, %f2;",
                  Sub::VariantType::FloatF32);
-  expect_variant("sub.rp.f32x2 %r0, %r1, %r2;",
-                 Sub::VariantType::FloatF32x2);
-  expect_variant("sub.rm.f64 %fd0, %fd1, %fd2;",
-                 Sub::VariantType::FloatF64);
-  expect_variant("sub.rn.ftz.sat.f16x2 %r0, %r1, %r2;",
-                 Sub::VariantType::Half);
+  expect_variant("sub.rp.f32x2 %r0, %r1, %r2;", Sub::VariantType::FloatF32x2);
+  expect_variant("sub.rm.f64 %fd0, %fd1, %fd2;", Sub::VariantType::FloatF64);
+  expect_variant("sub.rn.ftz.sat.f16x2 %r0, %r1, %r2;", Sub::VariantType::Half);
   expect_variant("sub.bf16 %r0, %r1, %r2;", Sub::VariantType::Bfloat);
-  expect_variant("sub.f32.f16 %f0, %h1, %f2;",
-                 Sub::VariantType::MixedF32);
+  expect_variant("sub.f32.f16 %f0, %h1, %f2;", Sub::VariantType::MixedF32);
   expect_variant("sub.rz.f32.bf16.sat %f0, %h1, %f2;",
                  Sub::VariantType::MixedF32);
 }
@@ -174,12 +188,11 @@ TEST(ResolveInstruction, RejectsUnknownOpcode) {
 }
 
 TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {
-  const auto ast =
-      parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
+  const auto ast = parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
   const auto& instruction = Add::get_syntax_descriptor();
-  const auto mixed = std::ranges::find_if(instruction.variants, [](auto variant) {
-    return variant.variant_name == "MixedF32";
-  });
+  const auto mixed = std::ranges::find_if(
+      instruction.variants,
+      [](auto variant) { return variant.variant_name == "MixedF32"; });
   ASSERT_NE(mixed, instruction.variants.end());
 
   const auto actual = collect_actual_modifiers(ast, *mixed);
@@ -282,8 +295,7 @@ TEST(ResolveAdd, BuildsFloatingVariantWithTypedRoundingAndDefaults) {
 }
 
 TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
-  const auto ast =
-      parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
+  const auto ast = parse_instruction("add.rz.f32.bf16.sat %f0, %h1, %f2;");
 
   const auto resolved = resolve<Add>(ast);
 
@@ -303,8 +315,7 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
 TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
   const auto integer_ast = parse_instruction("sub.sat.s32 %r4, %r5, -1;");
   const auto integer_resolved = resolve<Sub>(integer_ast);
-  ASSERT_TRUE(integer_resolved.has_value())
-      << integer_resolved.error().message;
+  ASSERT_TRUE(integer_resolved.has_value()) << integer_resolved.error().message;
   const auto* integer =
       std::get_if<Sub::OptionalSat>(&integer_resolved->variant);
   ASSERT_NE(integer, nullptr);
@@ -336,8 +347,7 @@ TEST(SelectVariantAdd, RejectsFloatingModifierOutsideItsForm) {
             "No variant of instruction 'add' accepts this modifier "
             "combination.");
 
-  const auto mixed_ast =
-      parse_instruction("add.ftz.f32.f16 %f0, %h1, %f2;");
+  const auto mixed_ast = parse_instruction("add.ftz.f32.f16 %f0, %h1, %f2;");
   const auto mixed_selected = selectVariant<Add>(mixed_ast);
   ASSERT_FALSE(mixed_selected.has_value());
   EXPECT_EQ(mixed_selected.error().message,
@@ -684,9 +694,8 @@ TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
   EXPECT_EQ(operands.predicate.value.register_ref.index, 1U);
   EXPECT_TRUE(operands.predicate.value.negated);
   ASSERT_EQ(operands.predicate.locs.size(), 1U);
-  EXPECT_EQ(
-      operands.predicate.locs.front(),
-      std::get<syntax_ast::AstPredicateOperand>(ast.operands[3]).range);
+  EXPECT_EQ(operands.predicate.locs.front(),
+            std::get<syntax_ast::AstPredicateOperand>(ast.operands[3]).range);
 
   const checker::Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},

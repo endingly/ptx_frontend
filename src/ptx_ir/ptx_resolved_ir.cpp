@@ -316,6 +316,14 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
     const syntax_ast::AstIdentifierRef& identifier,
     ResolvedRegisterClass register_class, const ResolveContext& context,
     SourceRange range) {
+  if (binding::isSpecialRegister(identifier.syntax.text)) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Special register '{}' is not supported by this resolved operand.",
+            identifier.syntax.text),
+    });
+  }
   const auto lookup =
       context.symbols.lookup(context.scope, identifier.syntax.text);
   if (!lookup) {
@@ -1159,6 +1167,15 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
 
         } else if constexpr (std::same_as<Item, syntax_ast::AstVectorMember>) {
           return check_end::OperandSyntaxShape::VectorMember;
+        } else if constexpr (std::same_as<Item,
+                                          syntax_ast::AstCallParameterList>) {
+          return check_end::OperandSyntaxShape::Group;
+        } else if constexpr (std::same_as<Item, syntax_ast::AstCallTarget>) {
+          return check_end::OperandSyntaxShape::CallTarget;
+        } else if constexpr (std::same_as<Item, syntax_ast::AstCallTargetSet>) {
+          return check_end::OperandSyntaxShape::CallTargetSet;
+        } else {
+          return check_end::OperandSyntaxShape::BranchTarget;
         }
       },
       operand);

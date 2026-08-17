@@ -1,5 +1,7 @@
 #include "ptx_ir/resolved/ptx_resolved_ir.hpp"
 
+#include "ptx_ir/semantic/ptx_declaration_semantics.hpp"
+
 #include <utility>
 
 namespace ptx_frontend::resolved_ir {
@@ -11,6 +13,13 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
   ModuleResolveDiagnostics diagnostics;
   diagnostics.reserve(binding_result.diagnostics.size());
   for (const binding::BindDiagnostic& diagnostic : binding_result.diagnostics) {
+    diagnostics.push_back(ResolveDiagnostic{
+        .range = diagnostic.range,
+        .message = diagnostic.message,
+    });
+  }
+  for (const auto& diagnostic :
+       declaration_semantics::checkDeclarations(ast, binding_result.table)) {
     diagnostics.push_back(ResolveDiagnostic{
         .range = diagnostic.range,
         .message = diagnostic.message,

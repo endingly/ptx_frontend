@@ -11,8 +11,9 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 
 Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolved IR 则记录已经
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
-lexical symbol binding 与 module resolution 已接通；完整的 special/external symbol
-分类、地址语义、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+lexical symbol binding 与 module resolution 已接通，special register、external symbol
+和真正未声明 reference 已能区分；完整的 special-register operand、地址语义、CFG、SSA
+和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -132,8 +133,8 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 `OperandLayoutPayloadMismatch`。
 
 当前唯一实现的 layout algorithm 是 `Flat`：逗号分隔的、位置固定的 operand slots。
-`Group`、可变参数、call 参数组等需要先扩展 Syntax AST，再增加新的 layout kind；不能
-把它们伪装成 `Flat`。
+Syntax AST 已能表示 `Group` 和 call 参数组，但 descriptor/resolver 仍需增加新的 layout
+kind 才能消费它们；可变参数与 call group 不能伪装成 `Flat`。
 
 ## Resolution 协议
 

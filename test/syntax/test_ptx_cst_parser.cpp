@@ -9,6 +9,10 @@ namespace ptx_frontend {
 namespace {
 
 using syntax_cst::CstAddress;
+using syntax_cst::CstBranchTarget;
+using syntax_cst::CstCallParameterList;
+using syntax_cst::CstCallTarget;
+using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -68,6 +72,73 @@ TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
   EXPECT_EQ(result->token(pack.left_brace).kind, TokenKind::LBrace);
   EXPECT_EQ(result->token(pack.right_brace).kind, TokenKind::RBrace);
   ASSERT_EQ(pack.commas.size(), 1u);
+}
+
+TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
+  constexpr std::string_view source =
+      "@%p call.uni (%result), %callee, (%arg, -4), targets;";
+  PtxCstParser parser(source);
+
+  auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->operands.size(), 4u);
+
+  const auto& returns =
+      std::get<CstCallParameterList>(instruction->operands[0].operand);
+  EXPECT_EQ(returns.kind, syntax_cst::CstCallParameterListKind::Return);
+  ASSERT_EQ(returns.parameters.size(), 1u);
+  EXPECT_EQ(result->token(returns.left_paren).kind, TokenKind::LParen);
+  EXPECT_EQ(result->token(returns.right_paren).kind, TokenKind::RParen);
+
+  const auto& target =
+      std::get<CstCallTarget>(instruction->operands[1].operand);
+  EXPECT_EQ(result->token(target.name.token).text, "%callee");
+
+  const auto& inputs =
+      std::get<CstCallParameterList>(instruction->operands[2].operand);
+  EXPECT_EQ(inputs.kind, syntax_cst::CstCallParameterListKind::Input);
+  ASSERT_EQ(inputs.parameters.size(), 2u);
+  ASSERT_EQ(inputs.commas.size(), 1u);
+
+  const auto& target_set =
+      std::get<CstCallTargetSet>(instruction->operands[3].operand);
+  EXPECT_EQ(result->token(target_set.name.token).text, "targets");
+}
+
+TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
+  PtxCstParser parser("@%p bra.uni done;");
+
+  auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->operands.size(), 1u);
+  const auto& target =
+      std::get<CstBranchTarget>(instruction->operands[0].operand);
+  EXPECT_EQ(result->token(target.name.token).text, "done");
+}
+
+TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {"call (%r0, %r1), helper, ();",
+            "a call return parameter list must contain exactly one name"},
+           {"call (%r0), helper;",
+            "a call with a return parameter requires an input parameter list"},
+           {"call helper, (%r0,);",
+            "call argument list cannot end with a trailing comma"},
+           {"bra first, second;",
+            "direct branch accepts exactly one label target"}}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseInstruction();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
 }
 
 TEST(PtxCstParser, RejectsTrailingSignificantInput) {

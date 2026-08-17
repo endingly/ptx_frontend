@@ -115,6 +115,10 @@ domains:
       VECTOR_MEMBER: check_end::OperandSyntaxShape::VectorMember
       VECTOR_PACK: check_end::OperandSyntaxShape::VectorPack
       PREDICATE: check_end::OperandSyntaxShape::Predicate
+      CALL_PARAMETER_LIST: check_end::OperandSyntaxShape::Group
+      CALL_TARGET: check_end::OperandSyntaxShape::CallTarget
+      CALL_TARGET_SET: check_end::OperandSyntaxShape::CallTargetSet
+      BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
 
   resolved_value_kinds:
     cpp_type: check_end::ResolvedValueKind

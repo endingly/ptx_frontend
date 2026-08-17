@@ -75,7 +75,24 @@ TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().message,
-            "Unresolved register '%missing'.");
+            "Unresolved instruction operand '%missing'.");
+}
+
+TEST(ResolvedModule, DistinguishesSpecialRegistersFromMissingDeclarations) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %dst;
+  add.u32 %dst, %laneid, %dst;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "Special register '%laneid' is not supported by this resolved "
+            "operand.");
 }
 
 TEST(ResolvedModule, RejectsNonRegisterSymbolsInRegisterOperands) {
@@ -165,6 +182,47 @@ TEST(ResolvedModule, StandaloneResolutionRemainsDeclarationFree) {
   EXPECT_FALSE(add.dst.value.symbol_id.has_value());
   EXPECT_FALSE(add.dst.value.declared_type.has_value());
   EXPECT_EQ(add.dst.value.index, 0u);
+}
+
+TEST(ResolvedModule, RunsDeclarationSemanticsBeforeInstructionResolution) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 values[2] = {1, 2, 3};
+.entry kernel() { ret; }
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "Initializer dimension contains 3 elements but its declared "
+            "extent is 2.");
+}
+
+TEST(ResolvedModule, ResolvesACompatibleFunctionDefinitionScope) {
+  const auto ast = parseModule(R"ptx(
+.func helper(.reg .u32 input);
+.func helper(.reg .u32 input) {
+  .reg .u32 %result;
+  .reg .u32 %source;
+  add.u32 %result, %source, 1;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.size(), 2u);
+  EXPECT_TRUE(resolved->functions.front().is_prototype);
+  EXPECT_TRUE(resolved->functions.front().body.empty());
+  EXPECT_FALSE(resolved->functions.back().is_prototype);
+  ASSERT_EQ(resolved->functions.back().body.size(), 1u);
+  const auto& add =
+      std::get<Add>(resolved->functions.back().body.front()).variant;
+  const auto& integer = std::get<Add::IntegerNoSat>(add);
+  EXPECT_TRUE(integer.dst.value.symbol_id.has_value());
+  EXPECT_TRUE(
+      std::get<ResolvedRegisterRef>(integer.src1.value).symbol_id.has_value());
 }
 
 }  // namespace

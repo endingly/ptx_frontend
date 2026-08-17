@@ -27,7 +27,7 @@ using OperandAccess = checker::OperandAccess;
 using OperandTypeExpressionKind = checker::OperandTypeExpressionKind;
 using TypeExpressionDescriptor = checker::TypeExpressionDescriptor;
 
-enum class OperandSyntaxShape : uint8_t {
+enum class OperandSyntaxShape : uint16_t {
   Identifier = 1 << 0,
   Immediate = 1 << 1,
   Address = 1 << 2,
@@ -35,6 +35,9 @@ enum class OperandSyntaxShape : uint8_t {
   VectorMember = 1 << 4,
   Predicate = 1 << 5,
   Group = 1 << 6,  // for op call syntax (...)
+  CallTarget = 1 << 7,
+  CallTargetSet = 1 << 8,
+  BranchTarget = 1 << 9,
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,

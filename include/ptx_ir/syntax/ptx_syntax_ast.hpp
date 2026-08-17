@@ -84,10 +84,40 @@ struct AstVectorPack {
   SourceRange range;
 };
 
+enum class AstCallParameterListKind : uint8_t {
+  Return,
+  Input,
+};
+
+using AstCallParameter = std::variant<AstIdentifierRef, AstImmediate>;
+
+struct AstCallParameterList {
+  AstCallParameterListKind kind{};
+  std::vector<AstCallParameter> parameters;
+  SourceRange range;
+};
+
+struct AstCallTarget {
+  AstIdentifierRef name;
+  SourceRange range;
+};
+
+struct AstCallTargetSet {
+  AstIdentifierRef name;
+  SourceRange range;
+};
+
+struct AstBranchTarget {
+  AstIdentifierRef name;
+  SourceRange range;
+};
+
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
-                 AstAddress, AstVectorMember, AstVectorPack>;
+                 AstAddress, AstVectorMember, AstVectorPack,
+                 AstCallParameterList, AstCallTarget, AstCallTargetSet,
+                 AstBranchTarget>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {

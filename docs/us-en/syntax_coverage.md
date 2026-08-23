@@ -22,7 +22,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Other directives | Not supported (rejected) | Debug, section, pragma, module variable, and structured kernel-tuning directives; unmodeled function-header tokens never silently enter the AST |
 | Structured control syntax | Not supported | Nested scopes and directive-driven control-flow metadata |
 | Recovery/editing | Not supported | Missing tokens, recovery nodes, multi-error parsing, and token edits |
-| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, and `bar` |
+| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, and `bra`, with binding-aware execution predicates retained and direct branch targets bound to current-function labels |
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be
@@ -30,10 +30,11 @@ lowered to Resolved IR.
 
 ## Near-term order
 
-1. Add binding-aware Resolved IR for execution predicates, control-flow/address/symbol operands, and special registers.
-2. Add a non-`Flat` descriptor layout algorithm for call groups and variadic operands.
-3. Represent `.calltargets`/`.callprototype`/`.branchtargets` and remaining module/function directives.
-4. Expand YAML instruction coverage independently of module grammar work.
+1. Add binding-aware Resolved IR for special registers together with the first consuming opcode.
+2. Add address/symbol Resolved IR together with the first load/store/move-class opcode.
+3. Add a non-`Flat` descriptor layout algorithm for call groups and variadic operands, then integrate `call`.
+4. Represent `.calltargets`/`.callprototype`/`.branchtargets` and remaining module/function directives.
+5. Expand YAML instruction coverage independently of module grammar work.
 
 The PTX ISA variable-declaration overview mentions an optional fixed address,
 but the current specification provides no separate grammar, constraints, or

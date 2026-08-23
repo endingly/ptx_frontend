@@ -426,49 +426,33 @@ resolve_register(const syntax_ast::AstOperand& operand,
       identifier->syntax.range};
 }
 
-std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
-    const syntax_ast::AstOperand& operand, const ResolveContext* context) {
-  const syntax_ast::AstIdentifierRef* identifier = nullptr;
-  bool negated = false;
-  SourceRange range;
-  if (const auto* plain = std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
-    identifier = plain;
-    range = plain->syntax.range;
-  } else if (const auto* predicate =
-                 std::get_if<syntax_ast::AstPredicateOperand>(&operand)) {
-    identifier = &predicate->name;
-    negated = predicate->negated;
-    range = predicate->range;
-  } else {
-    return std::unexpected(ResolveDiagnostic{
-        .range = syntax_ast::sourceRange(operand),
-        .message = "Expected a predicate operand.",
-    });
-  }
-
+std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic>
+resolve_predicate_identifier(const syntax_ast::AstIdentifierRef& identifier,
+                             bool negated, SourceRange range,
+                             const ResolveContext* context) {
   ResolvedRegisterRef register_ref{
       .register_class = ResolvedRegisterClass::Predicate,
   };
   if (context != nullptr) {
     auto value = resolve_bound_register(
-        *identifier, ResolvedRegisterClass::Predicate, *context, range);
+        identifier, ResolvedRegisterClass::Predicate, *context, range);
     if (!value)
       return std::unexpected(value.error());
     register_ref = std::move(*value);
   } else {
     const auto parsed = parse_numbered_register(
-        *identifier, range, "a numbered predicate register");
+        identifier, range, "a numbered predicate register");
     if (!parsed)
       return std::unexpected(parsed.error());
     if (parsed->prefix != "p") {
       return std::unexpected(ResolveDiagnostic{
           .range = range,
           .message = fmt::format("Expected a predicate register, got '{}'.",
-                                 identifier->syntax.text),
+                                 identifier.syntax.text),
       });
     }
     register_ref = ResolvedRegisterRef{
-        .spelling = identifier->syntax.text,
+        .spelling = identifier.syntax.text,
         .register_class = ResolvedRegisterClass::Predicate,
         .index = parsed->index,
     };
@@ -478,6 +462,61 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
       ResolvedPredicate{.register_ref = std::move(register_ref),
                         .negated = negated},
       range};
+}
+
+std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
+    const syntax_ast::AstOperand& operand, const ResolveContext* context) {
+  if (const auto* plain = std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+    return resolve_predicate_identifier(*plain, false, plain->syntax.range,
+                                        context);
+  }
+  if (const auto* predicate =
+          std::get_if<syntax_ast::AstPredicateOperand>(&operand)) {
+    return resolve_predicate_identifier(predicate->name, predicate->negated,
+                                        predicate->range, context);
+  }
+  return std::unexpected(ResolveDiagnostic{
+      .range = syntax_ast::sourceRange(operand),
+      .message = "Expected a predicate operand.",
+  });
+}
+
+std::expected<WithLocs<ResolvedBranchTarget>, ResolveDiagnostic>
+resolve_branch_target(const syntax_ast::AstOperand& operand,
+                      const ResolveContext* context) {
+  const auto* target = std::get_if<syntax_ast::AstBranchTarget>(&operand);
+  if (target == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a direct branch target.",
+    });
+  }
+
+  ResolvedBranchTarget resolved{.spelling = target->name.syntax.text};
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, target->name.syntax.text);
+    if (!lookup) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target->range,
+          .message = fmt::format("Unresolved branch target '{}'.",
+                                 target->name.syntax.text),
+      });
+    }
+    const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+    if (symbol.kind != binding::SymbolKind::Label ||
+        symbol.scope != context->scope) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target->range,
+          .message = fmt::format(
+              "Branch target '{}' must name a label in the current function.",
+              target->name.syntax.text),
+      });
+    }
+    resolved.symbol_id = lookup->symbol;
+  }
+
+  return WithLocs<ResolvedBranchTarget>{std::move(resolved), target->range};
 }
 
 ResolveDiagnostic invalid_immediate(const syntax_ast::AstImmediate& immediate,
@@ -880,6 +919,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::BranchTarget: {
+      auto value = resolve_branch_target(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
@@ -927,6 +972,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
+    case ResolvedValueKind::BranchTarget:
       throw ResolveException(fmt::format(
           "Optional modifier '{}' targets non-modifier resolved field '{}'.",
           binding.source_kind_id, field.field_id));
@@ -1069,6 +1115,14 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       .operand_layout = ResolvedOperandLayoutTag{static_cast<uint16_t>(
           selected_layout->index)},
   };
+  if (ast.predicate) {
+    auto predicate = resolve_predicate_identifier(
+        ast.predicate->name, ast.predicate->negated, ast.predicate->range,
+        context);
+    if (!predicate)
+      return std::unexpected(predicate.error());
+    fields.execution_predicate = std::move(*predicate);
+  }
   for (const auto& binding : resolved_variant.modifier_bindings) {
     const auto& syntax_modifier =
         find_syntax_modifier_descriptor(syntax_variant, binding.source_kind_id);
@@ -1119,6 +1173,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
+      case ResolvedValueKind::BranchTarget:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

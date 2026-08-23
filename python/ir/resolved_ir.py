@@ -46,6 +46,7 @@ class ResolvedValueKind(Enum):
     PREDICATE = "Predicate"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
+    BRANCH_TARGET = "BranchTarget"
 
 
 class ResolvedFieldStorage(Enum):
@@ -73,6 +74,7 @@ class ResolvedOperandAccess(Enum):
     READ = "Read"
     WRITE = "Write"
     READ_WRITE = "ReadWrite"
+    CONTROL = "Control"
 
 
 class ResolvedOperandShape(Enum):
@@ -84,6 +86,7 @@ class ResolvedOperandShape(Enum):
     ADDRESS = "Address"
     SYMBOL = "Symbol"
     VECTOR = "Vector"
+    BRANCH_TARGET = "BranchTarget"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -255,6 +258,7 @@ _OPERAND_ALLOWED_SHAPES = {
     ),
     "pred": (ResolvedOperandShape.PREDICATE,),
     "pred_or_not": (ResolvedOperandShape.PREDICATE,),
+    "label": (ResolvedOperandShape.BRANCH_TARGET,),
 }
 
 _OPERAND_ROLES = {
@@ -265,6 +269,7 @@ _OPERAND_ROLES = {
     "address": ResolvedOperandRole.ADDRESS,
     "predicate": ResolvedOperandRole.PREDICATE,
     "branch_target": ResolvedOperandRole.BRANCH_TARGET,
+    "label": ResolvedOperandRole.BRANCH_TARGET,
     "barrier": ResolvedOperandRole.BARRIER,
     "thread_count": ResolvedOperandRole.THREAD_COUNT,
 }
@@ -273,6 +278,7 @@ _OPERAND_ACCESS = {
     "read": ResolvedOperandAccess.READ,
     "write": ResolvedOperandAccess.WRITE,
     "readwrite": ResolvedOperandAccess.READ_WRITE,
+    "control": ResolvedOperandAccess.CONTROL,
 }
 
 def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:

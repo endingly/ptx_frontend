@@ -442,6 +442,41 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "ResolvedPredicate",
         )
 
+    def test_bra_uses_a_binding_aware_branch_target(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        bra = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "bra"
+        )
+        instruction = from_instruction_spec(bra)
+
+        self.assertEqual(instruction.cpp_name, "Bra")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Direct")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("uni", "WithLocs<bool>"),
+                ("target", "WithLocs<ResolvedBranchTarget>"),
+            ],
+        )
+        binding = variant.operand_layouts[0].bindings[0]
+        self.assertEqual(binding.role, ResolvedOperandRole.BRANCH_TARGET)
+        self.assertEqual(binding.access, ResolvedOperandAccess.CONTROL)
+        self.assertEqual(
+            binding.allowed_shapes,
+            (ResolvedOperandShape.BRANCH_TARGET,),
+        )
+        self.assertEqual(
+            binding.type_expression.kind,
+            ResolvedOperandTypeExpressionKind.NONE,
+        )
+        self.assertEqual(variant.rule, "control_flow.bra")
+
     def test_generate_resolved_ir_header(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -457,12 +492,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("// Generated at: ", source)
         self.assertIn("#pragma once", source)
+        self.assertIn("#include <optional>", source)
         self.assertIn('#include "ptx_ir/resolved/ptx_resolved_ir.hpp"', source)
         self.assertIn('#include "ptx_ir/ptx_resolved_ir_checker.hpp"', source)
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
         self.assertIn("struct Bar {", source)
+        self.assertIn("struct Bra {", source)
+        self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
+        self.assertIn(
+            "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",
+            source,
+        )
         self.assertIn("using ResolvedInstruction = std::variant<", source)
         self.assertIn("struct ResolvedFunction {", source)
         self.assertIn("struct ResolvedModule {", source)
@@ -534,7 +576,30 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('ast.opcode.syntax.text == "sub"', source)
         self.assertIn("resolve<Sub>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "bar"', source)
+        self.assertIn('ast.opcode.syntax.text == "bra"', source)
+        self.assertIn("resolve<Bra>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
+
+    def test_generate_control_flow_resolved_ir_source(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="control_flow",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("std::expected<Bra, ResolveDiagnostic>", source)
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::BranchTarget", source
+        )
+        self.assertIn(".target = resolved_operand<ResolvedBranchTarget>", source)
+        self.assertIn("CheckResult check<Bra>(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = load_codegen_database(
@@ -562,6 +627,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn("resolve_fields(", source)
+        self.assertIn(
+            ".execution_predicate = std::move(fields->execution_predicate)",
+            source,
+        )
         self.assertIn(
             ".register_type = selected.dst.value.declared_type", source
         )

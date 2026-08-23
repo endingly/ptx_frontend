@@ -53,6 +53,7 @@ def generate_resolved_ir_header(
 {generated_at_comment()}
 #pragma once
 
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -253,6 +254,7 @@ struct {instruction.cpp_name} {{
 {variant_definitions}
 
   using Variant = std::variant<{variant_names}>;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   Variant variant;
 
   static const check_end::SyntaxInstructionDescriptor&
@@ -298,7 +300,7 @@ resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
   if (!selected_variant)
     return std::unexpected(selected_variant.error());
 
-  const auto fields = resolve_fields(
+  auto fields = resolve_fields(
       ast, {instruction.cpp_name}::get_syntax_descriptor(),
       {instruction.cpp_name}::get_resolved_descriptor(),
       magic_enum::enum_name(*selected_variant), context);
@@ -323,7 +325,9 @@ def _emit_resolve_variant_case(
         )
         return f"""\
   if (fields->variant_name == "{variant.cpp_name}") {{
-    return {instruction.cpp_name}{{.variant = {instruction.cpp_name}::{variant.cpp_name}{{
+    return {instruction.cpp_name}{{
+        .execution_predicate = std::move(fields->execution_predicate),
+        .variant = {instruction.cpp_name}::{variant.cpp_name}{{
                    .operand_layout = fields->operand_layout,
 {fields}
     }}}};
@@ -362,7 +366,9 @@ def _emit_resolve_multi_layout_case(
         if field.storage is ResolvedFieldStorage.INSTANCE
     )
     return f"""    if (fields->operand_layout.value == {layout_index}) {{
-      return {instruction.cpp_name}{{.variant = {instruction.cpp_name}::{variant.cpp_name}{{
+      return {instruction.cpp_name}{{
+          .execution_predicate = std::move(fields->execution_predicate),
+          .variant = {instruction.cpp_name}::{variant.cpp_name}{{
               .operand_layout = fields->operand_layout,
 {modifier_fields}
               .operands = {instruction.cpp_name}::{variant.cpp_name}::Operands{{
@@ -683,6 +689,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedBranchTarget":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "BranchTarget")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "RegOrImm":

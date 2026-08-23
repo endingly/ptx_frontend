@@ -71,6 +71,7 @@ domains:
       reg_or_imm: RegOrImm
       pred: ResolvedPredicate
       pred_or_not: ResolvedPredicate
+      label: ResolvedBranchTarget
 
   resolved_value_cpp_types:
     cpp_type: CppType
@@ -82,6 +83,7 @@ domains:
       Predicate: ResolvedPredicate
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
+      BranchTarget: ResolvedBranchTarget
 
   modifier_field_names:
     cpp_type: CppIdentifier
@@ -130,6 +132,7 @@ domains:
       Predicate: check_end::ResolvedValueKind::Predicate
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      BranchTarget: check_end::ResolvedValueKind::BranchTarget
 
   resolved_operand_roles:
     cpp_type: check_end::OperandRole
@@ -148,6 +151,7 @@ domains:
       Read: check_end::OperandAccess::Read
       Write: check_end::OperandAccess::Write
       ReadWrite: check_end::OperandAccess::ReadWrite
+      Control: check_end::OperandAccess::Control
 
   resolved_operand_shapes:
     cpp_type: check_end::OperandShape
@@ -158,6 +162,7 @@ domains:
       Address: check_end::OperandShape::Address
       Symbol: check_end::OperandShape::Symbol
       Vector: check_end::OperandShape::Vector
+      BranchTarget: check_end::OperandShape::BranchTarget
 
   resolved_operand_type_expression_kinds:
     cpp_type: check_end::OperandTypeExpressionKind

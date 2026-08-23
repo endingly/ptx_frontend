@@ -42,6 +42,7 @@ enum class OperandShape : uint16_t {
   Address = 1 << 3,
   Symbol = 1 << 4,
   Vector = 1 << 5,
+  BranchTarget = 1 << 6,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -64,6 +65,7 @@ enum class OperandAccess : uint8_t {
   Read,
   Write,
   ReadWrite,
+  Control,
 };
 
 /** A compile-time-normalized scalar-type source for one operand. */

@@ -126,6 +126,7 @@ _OPERAND_SYNTAX_SHAPES = {
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
     "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
+    "label": OperandSyntaxShape.BRANCH_TARGET,
 }
 
 def _build_variant_descriptor_view(

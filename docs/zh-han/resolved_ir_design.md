@@ -11,14 +11,15 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 
 Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolved IR 则记录已经
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
-lexical symbol binding 与 module resolution 已接通，special register、external symbol
-和真正未声明 reference 已能区分；完整的 special-register operand、地址语义、CFG、SSA
-和目标 lowering 仍是后续 pass，不应改变此层的结构。
+lexical symbol binding 与 module resolution 已接通，execution predicate 会解析为带声明
+身份的值，special register、external symbol 和真正未声明 reference 也已能区分；完整的
+special-register operand、地址语义、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变
+此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
-using ResolvedInstruction = std::variant<Add, Sub, Bar /* ... */>;
+using ResolvedInstruction = std::variant<Add, Sub, Bar, Bra /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
@@ -52,7 +53,8 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 后者仍保存在 `WithLocs<T>` 中：`value` 是语义默认值，空 `locs` 表示源码没有显式写出。
 当前 modifier 基础值包括 `bool`、`ScalarType` 与 `RoundingMode`；后者使
 `.rn/.rz/.rm/.rp` 成为可静态检查的语义值，而不是运行时字符串。operand 基础值包括
-`ResolvedRegisterRef`、`ResolvedImmediate` 与 `RegOrImm`。
+`ResolvedRegisterRef`、`ResolvedImmediate`、`ResolvedPredicate`、
+`ResolvedBranchTarget` 与 `RegOrImm`。
 `ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 
@@ -67,6 +69,11 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 `ScalarType`；因此 named register（如 `%tmp`）与 `name<count>` member 都有稳定身份。
 numbered-register index 仍只是可选便捷属性，不能单独充当身份。无 binding context 的
 standalone resolver 保留旧边界：只接受 numbered register，并令 symbol/type 字段为空。
+instruction 的可选 execution predicate 作为 opcode 外层公共字段
+`std::optional<WithLocs<ResolvedPredicate>>` 保存；module resolution 要求其绑定到 `.pred`
+register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarget` 同样区分两种
+边界：module resolution 保存当前 function label 的 `SymbolId`，standalone resolution 保存
+源码 spelling 而令 identity 为空。
 
 ## 按 opcode 生成的结构
 
@@ -86,6 +93,7 @@ struct Add {
   };
 
   using Variant = std::variant<IntegerNoSat /* ... */>;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   Variant variant;
 };
 ```
@@ -147,9 +155,10 @@ kind 才能消费它们；可变参数与 call group 不能伪装成 `Flat`。
 2. `selectVariant<T>` 只依据上述 variant-local 绑定选择唯一 variant。`absent`、
    `optional`、`required/fixed` 都按 slot 和允许值匹配，不依赖源码 modifier 顺序。
 3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
-4. `resolve_fields` 按 resolved descriptor 把 modifier 和 operand 转换为带位置的
-   resolved 值；有 binding context 时，寄存器必须解析到当前 lexical scope 的 `.reg`
-   declaration，并写入 `SymbolId` 与声明类型。
+4. `resolve_fields` 解析公共 execution predicate，并按 resolved descriptor 把 modifier 和
+   operand 转换为带位置的 resolved 值；有 binding context 时，guard 必须绑定到 `.pred`
+   register，普通寄存器必须解析到当前 lexical scope 的 `.reg` declaration，两者都会写入
+   `SymbolId` 与声明类型，direct branch target 必须绑定到当前 function 的 label。
 5. 生成的 builder 将字段放入对应 C++ struct 或 layout payload。
 
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法

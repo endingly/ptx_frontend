@@ -100,15 +100,44 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - descriptor-facing operand shape 已同步到 C++ 与 Python model，但尚未把非 `Flat` call
   layout 伪装成 generated opcode。
 
-## 下一步
+## 已完成：binding-aware execution predicate
 
-1. 为 execution predicate、control-flow/address/symbol operand 与 special register 增加
-   binding-aware Resolved IR；
-2. 为 call group/variadic operand 增加非 `Flat` descriptor layout algorithm，并将
-   `call/bra` 接入统一 dispatch/checker；
-3. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
+- 每个 generated opcode 外层保存可选的 `WithLocs<ResolvedPredicate>`，不再在
+  AST→Resolved IR 时丢失 `@%p/@!%p`；
+- module resolution 要求 guard 绑定到当前 scope 的 `.pred` declaration，并保存
+  `SymbolId`、声明类型、negation 与 source range；
+- standalone resolver 继续支持无需 symbol table 的 numbered `%pN` guard。
+
+## 已完成：binding-aware direct branch resolution
+
+- 新增 `bra` YAML 规格并接入 generated public type、private resolve/check 实现及三类
+  descriptor；
+- `ResolvedBranchTarget` 保存源码 spelling，module resolution 还保存当前 function label 的
+  稳定 `SymbolId`；
+- `.uni` 与 execution predicate 都会保留，checker 校验独立的 branch-target operand shape；
+- standalone `resolveInstruction("bra target;")` 保持无 symbol table 可用，目标 identity 为空。
+
+## 下一步评审与调整
+
+原计划的方向正确，但依赖顺序需要拆开：
+
+- `bra` 已有专用 AST operand 与完整 label binding，并且是单一平坦 operand layout；它不依赖
+  `call` 所需的 group/variadic layout algorithm，应先独立接入 generated dispatch/checker；
+- address/symbol Resolved IR 应和首个实际消费它们的 opcode 一起落地，避免先建立没有 descriptor
+  使用者的悬空表示；
+- `call` 的参数组、可选返回组和 target-set/prototype 才真正需要非 `Flat` layout，应在
+  flat control-flow 闭环稳定后单独设计。
+
+本阶段已据此先完成 `bra` 闭环；剩余顺序是：
+
+1. 为 special register 增加带类型和可用性信息的 binding-aware Resolved IR，并接入首个消费
+   它的 opcode；
+2. 为 address/symbol operand 增加 Resolved IR，同时加入首个 load/store/move 类 opcode；
+3. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
+   接入统一 dispatch/checker；
+4. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
 
 ## 验证结果
 
-- Debug CTest：128/128（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：132/132（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

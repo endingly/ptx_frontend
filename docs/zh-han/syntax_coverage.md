@@ -21,17 +21,18 @@
 | 其他 directive | 尚未支持（直接拒绝） | debug、section、pragma、module variable 与结构化 kernel-tuning directive；未建模 function-header token 不会静默进入 AST |
 | 结构化控制语法 | 尚未支持 | nested scope 与由 directive 驱动的 control-flow metadata |
 | 恢复与编辑 | 尚未支持 | missing token、recovery node、多错误解析与 token edit |
-| Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 `add`、`sub`、`bar` |
+| Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 `add`、`sub`、`bar`、`bra`，保留 binding-aware execution predicate，并将 direct branch target 绑定到当前 function label |
 
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。
 
 ## 近期实现顺序
 
-1. 为 execution predicate、control-flow/address/symbol operand 与 special register 增加 binding-aware Resolved IR；
-2. 为 call group/variadic operand 增加非 `Flat` descriptor layout algorithm；
-3. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive；
-4. PTX module grammar 与 YAML instruction coverage 分别独立扩展。
+1. 为 special register 增加 binding-aware Resolved IR，并接入首个消费它的 opcode；
+2. 为 address/symbol operand 增加 Resolved IR，并同步加入首个 load/store/move 类 opcode；
+3. 为 call group/variadic operand 增加非 `Flat` descriptor layout algorithm，并接入 `call`；
+4. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive；
+5. PTX module grammar 与 YAML instruction coverage 分别独立扩展。
 
 PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立
 语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的

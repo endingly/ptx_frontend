@@ -41,6 +41,7 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   ASSERT_EQ(function.body.size(), 1u);
 
   const Add::IntegerNoSat& add = resolvedIntegerAdd(function.body.front());
+  EXPECT_FALSE(std::get<Add>(function.body.front()).execution_predicate);
   const ResolvedRegisterRef& dst = add.dst.value;
   const auto& src1 = std::get<ResolvedRegisterRef>(add.src1.value);
   const auto& src2 = std::get<ResolvedRegisterRef>(add.src2.value);
@@ -170,14 +171,131 @@ TEST(ResolvedModule, BindsPredicateOperandsByDeclarationType) {
   EXPECT_TRUE(operands.predicate.value.negated);
 }
 
-TEST(ResolvedModule, StandaloneResolutionRemainsDeclarationFree) {
-  PtxSyntaxParser parser("add.u32 %r0, %r1, %r2;");
+TEST(ResolvedModule, PreservesAndBindsExecutionPredicate) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %condition;
+  .reg .u32 %r<3>;
+  @!%condition add.u32 %r0, %r1, %r2;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& add = std::get<Add>(resolved->functions.front().body.front());
+  ASSERT_TRUE(add.execution_predicate.has_value());
+  const ResolvedPredicate& predicate = add.execution_predicate->value;
+  EXPECT_TRUE(predicate.negated);
+  EXPECT_EQ(predicate.register_ref.spelling, "%condition");
+  EXPECT_EQ(predicate.register_ref.register_class,
+            ResolvedRegisterClass::Predicate);
+  EXPECT_EQ(predicate.register_ref.declared_type, ScalarType::Pred);
+  ASSERT_TRUE(predicate.register_ref.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*predicate.register_ref.symbol_id).name,
+            "%condition");
+
+  const auto& function = std::get<syntax_ast::AstFunction>(ast.items.front());
+  const auto& instruction =
+      std::get<syntax_ast::AstInstruction>(function.body.back());
+  ASSERT_TRUE(instruction.predicate.has_value());
+  ASSERT_EQ(add.execution_predicate->locs.size(), 1u);
+  EXPECT_EQ(add.execution_predicate->locs.front(),
+            instruction.predicate->range);
+}
+
+TEST(ResolvedModule, RejectsNonPredicateExecutionGuard) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %condition;
+  .reg .u32 %r<3>;
+  @%condition add.u32 %r0, %r1, %r2;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "Expected a predicate register, but '%condition' is declared "
+            "'.u32'.");
+}
+
+TEST(ResolvedModule, ResolvesPredicatedDirectBranchTarget) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %condition;
+  @!%condition bra.uni done;
+done:
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.front().body.size(), 1u);
+  const auto& bra = std::get<Bra>(resolved->functions.front().body.front());
+  ASSERT_TRUE(bra.execution_predicate.has_value());
+  EXPECT_TRUE(bra.execution_predicate->value.negated);
+
+  const auto& direct = std::get<Bra::Direct>(bra.variant);
+  EXPECT_TRUE(direct.uni.value);
+  EXPECT_EQ(direct.target.value.spelling, "done");
+  ASSERT_TRUE(direct.target.value.symbol_id.has_value());
+  const binding::Symbol& label =
+      resolved->symbols.symbol(*direct.target.value.symbol_id);
+  EXPECT_EQ(label.kind, binding::SymbolKind::Label);
+  EXPECT_EQ(label.name, "done");
+  const binding::Symbol& function_symbol =
+      resolved->symbols.symbol(resolved->functions.front().symbol_id);
+  ASSERT_TRUE(function_symbol.owned_scope.has_value());
+  EXPECT_EQ(label.scope, *function_symbol.owned_scope);
+  ASSERT_EQ(direct.target.locs.size(), 1u);
+
+  const checker::Context check_context{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{1, 0},
+              .sm_version = 0,
+          },
+      .instruction_range = direct.target.locs.front(),
+  };
+  const auto checked = checker::check(bra, check_context);
+  EXPECT_TRUE(checked.has_value());
+}
+
+TEST(ResolvedModule, StandaloneBranchTargetRemainsUnbound) {
+  PtxSyntaxParser parser("bra target;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.error().message;
 
   const auto resolved = resolveInstruction(*ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto& bra = std::get<Bra>(*resolved);
+  EXPECT_FALSE(bra.execution_predicate.has_value());
+  const auto& direct = std::get<Bra::Direct>(bra.variant);
+  EXPECT_FALSE(direct.uni.value);
+  EXPECT_TRUE(direct.uni.locs.empty());
+  EXPECT_EQ(direct.target.value.spelling, "target");
+  EXPECT_FALSE(direct.target.value.symbol_id.has_value());
+}
+
+TEST(ResolvedModule, StandaloneResolutionRemainsDeclarationFree) {
+  PtxSyntaxParser parser("@!%p7 add.u32 %r0, %r1, %r2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+
+  const auto resolved = resolveInstruction(*ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto& instruction = std::get<Add>(*resolved);
+  ASSERT_TRUE(instruction.execution_predicate.has_value());
+  EXPECT_TRUE(instruction.execution_predicate->value.negated);
+  EXPECT_EQ(instruction.execution_predicate->value.register_ref.index, 7u);
+  EXPECT_FALSE(instruction.execution_predicate->value.register_ref.symbol_id
+                   .has_value());
   const Add::IntegerNoSat& add = resolvedIntegerAdd(*resolved);
   EXPECT_FALSE(add.dst.value.symbol_id.has_value());
   EXPECT_FALSE(add.dst.value.declared_type.has_value());

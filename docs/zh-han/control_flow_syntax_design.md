@@ -34,9 +34,12 @@ unresolved target-set diagnostic。
 ## Descriptor 与 Resolved IR 边界
 
 `OperandSyntaxShape` 已提供 `Group`、`CallTarget`、`CallTargetSet` 与 `BranchTarget`，Python
-descriptor model 和 C++ backend domain 使用相同 bit。现有 YAML opcode 都是 `Flat`
-layout，`call/bra` 尚未作为不完整的 flat opcode 加入生成数据库。
+descriptor model 和 C++ backend domain 使用相同 bit。`bra` 只有一个 direct label target，
+因此合法地使用现有 `Flat` layout，并已进入 YAML database、统一 dispatch 与 checker。
+`ResolvedBranchTarget` 在 module resolution 中保存当前 function label 的稳定 `SymbolId`；
+standalone resolution 只保存源码 spelling。`.uni` 和 execution predicate 也分别作为
+generated modifier field 与 opcode 公共字段保留。
 
-下一阶段需要先引入能描述 call group/可变参数的 layout algorithm，并为 execution
-predicate、function/label symbol target 和 call parameter 增加 binding-aware Resolved IR，
-再把 control-flow opcode 接入统一 dispatch/checker。
+`call` 仍不能伪装成 `Flat`。下一阶段需要引入能描述 call group/可变参数的 layout
+algorithm，并为 function target、call parameter 和 target-set/prototype 增加 binding-aware
+Resolved IR，之后才能把 `call` 接入统一 dispatch/checker。

@@ -63,6 +63,7 @@ enum class ResolvedValueKind : uint8_t {
   Predicate,
   Immediate,
   RegOrImm,
+  BranchTarget,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -205,6 +206,13 @@ struct ResolvedPredicate {
   bool operator==(const ResolvedPredicate&) const = default;
 };
 
+/** A direct branch label, optionally bound to its declaration in a module. */
+struct ResolvedBranchTarget {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  bool operator==(const ResolvedBranchTarget&) const = default;
+};
+
 /** The selected operand-layout index within the resolved instruction variant. */
 struct ResolvedOperandLayoutTag {
   uint16_t value = 0;
@@ -216,12 +224,14 @@ using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
-                 WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>>;
+                 WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>,
+                 WithLocs<ResolvedBranchTarget>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {
   std::string_view variant_name;
   ResolvedOperandLayoutTag operand_layout;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   ResolvedFieldMap modifiers;
   ResolvedFieldMap operands;
 };

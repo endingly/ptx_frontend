@@ -44,11 +44,14 @@ specific unresolved target-set diagnostic.
 
 `OperandSyntaxShape` now provides `Group`, `CallTarget`, `CallTargetSet`, and
 `BranchTarget`, with matching bits in the Python descriptor model and C++
-backend domain. Existing YAML opcodes still use `Flat` layouts; `call` and
-`bra` have not been added to the generated database as incomplete flat
-instructions.
+backend domain. Because `bra` has one direct label target, it legitimately uses
+the existing `Flat` layout and is now part of the YAML database, unified
+dispatch, and checking. During module resolution, `ResolvedBranchTarget` stores
+the current function label's stable `SymbolId`; standalone resolution retains
+only the source spelling. `.uni` and the execution predicate are preserved as
+a generated modifier field and an opcode-common field respectively.
 
-The next phase needs a layout algorithm for call groups and variadic operands,
-plus binding-aware Resolved IR for execution predicates, function/label
-targets, and call parameters, before control-flow opcodes join unified dispatch
-and checking.
+`call` still cannot be disguised as `Flat`. It needs a layout algorithm for
+groups and variadic operands, plus binding-aware resolved values for function
+targets, call parameters, and target-set/prototype symbols, before it can join
+unified dispatch and checking.

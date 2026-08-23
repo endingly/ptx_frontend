@@ -11,16 +11,17 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 
 Syntax AST preserves source spelling, modifier order, and `SourceRange`.
 Resolved IR records the selected instruction variant, resolved operand values,
-and diagnostic locations. Both are stable frontend boundaries. CFG/SSA,
-Lexical symbol binding is connected to module resolution, and special
-registers, external symbols, and genuinely undeclared references are now
-distinct. Complete special-register operands, address semantics, CFG/SSA, and
-target lowering remain later work.
+and diagnostic locations. Both are stable frontend boundaries. Lexical symbol
+binding is connected to module resolution, execution predicates resolve to
+declaration-aware values, and special registers, external symbols, and
+genuinely undeclared references are distinct. Complete special-register
+operands, address semantics, `call` groups, CFG/SSA, and target lowering remain
+later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
 ```cpp
-using ResolvedInstruction = std::variant<Add, Sub, Bar /* ... */>;
+using ResolvedInstruction = std::variant<Add, Sub, Bar, Bra /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
@@ -60,8 +61,8 @@ latter remains a `WithLocs<T>`: `value` holds the semantic default and empty
 Modifier primitives include `bool`, `ScalarType`, and `RoundingMode`; the latter
 turns `.rn/.rz/.rm/.rp` into statically checkable values instead of runtime
 strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
-and `RegOrImm`. A `ResolvedImmediate` stores integer bits and `ScalarType`, so the
-checker never has to reinterpret literal text.
+`ResolvedPredicate`, `ResolvedBranchTarget`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
+and `ScalarType`, so the checker never has to reinterpret literal text.
 
 `AstImmediateKind` retains the lexer's literal classification. Decimal and hex
 integers, including their optional `U` suffix, are range-checked against the
@@ -79,6 +80,12 @@ declaration `SymbolId`, optional parameterized-member index, and declared
 stable identity. A numbered-register index remains an optional convenience,
 not an identity. The context-free standalone resolver preserves its previous
 boundary: it accepts numbered registers and leaves symbol/type fields empty.
+An instruction's optional execution predicate is stored as the opcode-level
+common field `std::optional<WithLocs<ResolvedPredicate>>`. Module resolution
+requires it to bind to a `.pred` register, while standalone resolution accepts
+a numbered `%pN` guard. `ResolvedBranchTarget` follows the same two-boundary
+rule: module resolution stores the current function label's `SymbolId`, while
+standalone resolution retains the source spelling with no symbol identity.
 
 ## Opcode-generated structures
 
@@ -97,6 +104,7 @@ struct Add {
     WithLocs<RegOrImm> src2;
   };
   using Variant = std::variant<IntegerNoSat /* ... */>;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   Variant variant;
 };
 ```
@@ -165,10 +173,12 @@ generated opcode-specific implementation. Shared logic performs these steps:
    allowed value, independent of source modifier order.
 3. The selected variant chooses exactly one `OperandLayout` from AST shapes and
    arity.
-4. `resolve_fields` converts modifiers and operands through resolved bindings
-   into location-carrying values. With a binding context, each register must
-   resolve to a `.reg` declaration visible from the lexical scope, and its
-   `SymbolId` and declaration type are recorded.
+4. `resolve_fields` resolves the common execution predicate and converts
+   modifiers and operands through resolved bindings into location-carrying
+   values. With a binding context, a guard must bind to a `.pred` register and
+   ordinary registers must resolve to visible `.reg` declarations; both retain
+   their `SymbolId` and declaration type, while a direct branch target must bind
+   to a label in the current function.
 5. The generated builder places fields in the selected struct or payload.
 
 No matching variant/layout is a user diagnostic. Multiple matching layouts, or

@@ -188,6 +188,55 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
 
+    def test_mov_sreg_layout_accepts_identifier_or_vector_member(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mov = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mov"
+        )
+        descriptor = from_InstructionSpec(mov)
+        layout = descriptor.variants[0].operand_layouts[0]
+
+        self.assertEqual(
+            layout.slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
+        )
+        self.assertEqual(
+            layout.slots[1].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF
+            | OperandSyntaxShape.VECTOR_MEMBER,
+        )
+
+        symbol_layout = descriptor.variants[1].operand_layouts[0]
+        self.assertEqual(
+            symbol_layout.slots[1].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
+        )
+
+    def test_ld_layout_requires_address_syntax(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ld = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ld"
+        )
+        descriptor = from_InstructionSpec(ld)
+        layout = descriptor.variants[0].operand_layouts[0]
+
+        self.assertEqual(
+            layout.slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
+        )
+        self.assertEqual(
+            layout.slots[1].allowed_syntax_shapes,
+            OperandSyntaxShape.ADDRESS,
+        )
+
     def test_sub_variants_and_modifier_constraints(self) -> None:
         self.assertEqual(self.sub_descriptor.opcode, "sub")
         self.assertEqual(

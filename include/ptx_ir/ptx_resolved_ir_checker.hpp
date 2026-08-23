@@ -43,6 +43,7 @@ enum class OperandShape : uint16_t {
   Symbol = 1 << 4,
   Vector = 1 << 5,
   BranchTarget = 1 << 6,
+  SpecialRegister = 1 << 7,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -103,21 +104,31 @@ struct FieldView {
   std::span<const SourceRange> locations;
 };
 
-/** A non-owning semantic view of one resolved operand field. */
-struct OperandView {
-  std::string_view field_id;
-  OperandShape actual_shape;
-  std::optional<ScalarType> immediate_type;
-  std::optional<ScalarType> register_type;
-  std::span<const SourceRange> locations;
-};
-
 /** A PTX ISA version used by both checker descriptors and compilation targets. */
 struct PtxVersion {
   uint16_t major = 0;
   uint16_t minor = 0;
 
   constexpr auto operator<=>(const PtxVersion&) const = default;
+};
+
+/** Target requirements attached to a variant, layout, modifier, or value. */
+struct AvailabilityDescriptor {
+  PtxVersion minimum_ptx_version{};
+  uint32_t minimum_sm_version = 0;
+  std::string_view required_family{};
+};
+
+/** A non-owning semantic view of one resolved operand field. */
+struct OperandView {
+  std::string_view field_id;
+  OperandShape actual_shape;
+  std::optional<ScalarType> immediate_type;
+  std::optional<ScalarType> register_type;
+  std::optional<ScalarType> special_register_type;
+  std::optional<AvailabilityDescriptor> value_availability;
+  std::string_view value_name{};
+  std::span<const SourceRange> locations;
 };
 
 /**
@@ -131,13 +142,6 @@ struct TargetInfo {
   PtxVersion ptx_version{};
   uint32_t sm_version = 0;
   std::span<const std::string_view> families{};
-};
-
-/** Per-variant target requirements generated from YAML ``availability``. */
-struct AvailabilityDescriptor {
-  PtxVersion minimum_ptx_version{};
-  uint32_t minimum_sm_version = 0;
-  std::string_view required_family{};
 };
 
 /** Additional target requirements for one selected operand layout. */

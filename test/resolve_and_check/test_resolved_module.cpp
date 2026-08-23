@@ -96,6 +96,256 @@ TEST(ResolvedModule, DistinguishesSpecialRegistersFromMissingDeclarations) {
             "operand.");
 }
 
+TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %dst;
+  mov.u32 %dst, %laneid;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
+  const auto& u32 = std::get<Mov::U32>(mov.variant);
+  EXPECT_EQ(u32.src.value.spelling, "%laneid");
+  EXPECT_EQ(u32.src.value.info.element_type, ScalarType::U32);
+  EXPECT_EQ(u32.src.value.info.vector_width, 1u);
+  EXPECT_EQ(u32.src.value.info.minimum_ptx_major, 1u);
+  EXPECT_EQ(u32.src.value.info.minimum_ptx_minor, 3u);
+  EXPECT_EQ(u32.src.value.info.minimum_sm, 0u);
+
+  const checker::Context too_old{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{1, 2},
+              .sm_version = 10,
+          },
+      .instruction_range = u32.src.locs.front(),
+  };
+  const auto rejected = checker::check(mov, too_old);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error().front().message,
+            "Operand value '%laneid' requires PTX ISA >= 1.3, but target PTX "
+            "ISA is 1.2.");
+
+  checker::Context supported = too_old;
+  supported.target.ptx_version = checker::PtxVersion{1, 3};
+  EXPECT_TRUE(checker::check(mov, supported).has_value());
+}
+
+TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
+  PtxSyntaxParser cluster_parser("mov.u32 %r0, %cluster_ctarank;");
+  const auto cluster_ast = cluster_parser.parseInstruction();
+  ASSERT_TRUE(cluster_ast.has_value()) << cluster_ast.error().message;
+  const auto cluster_resolved = resolveInstruction(*cluster_ast);
+  ASSERT_TRUE(cluster_resolved.has_value()) << cluster_resolved.error().message;
+  const auto& cluster_mov = std::get<Mov>(*cluster_resolved);
+  const auto cluster_check = checker::check(
+      cluster_mov, checker::Context{
+                       .target =
+                           checker::TargetInfo{
+                               .ptx_version = checker::PtxVersion{7, 8},
+                               .sm_version = 80,
+                           },
+                       .instruction_range = cluster_ast->range,
+                   });
+  ASSERT_FALSE(cluster_check.has_value());
+  ASSERT_EQ(cluster_check.error().size(), 1u);
+  EXPECT_EQ(cluster_check.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  PtxSyntaxParser wide_parser("mov.u32 %r0, %clock64;");
+  const auto wide_ast = wide_parser.parseInstruction();
+  ASSERT_TRUE(wide_ast.has_value()) << wide_ast.error().message;
+  const auto wide_resolved = resolveInstruction(*wide_ast);
+  ASSERT_TRUE(wide_resolved.has_value()) << wide_resolved.error().message;
+  const auto wide_check =
+      checker::check(std::get<Mov>(*wide_resolved),
+                     checker::Context{
+                         .target =
+                             checker::TargetInfo{
+                                 .ptx_version = checker::PtxVersion{9, 3},
+                                 .sm_version = 120,
+                             },
+                         .instruction_range = wide_ast->range,
+                     });
+  ASSERT_FALSE(wide_check.has_value());
+  ASSERT_EQ(wide_check.error().size(), 1u);
+  EXPECT_EQ(wide_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(wide_check.error().front().message,
+            "Special-register operand 'src' has declared type 'U64' but "
+            "instruction type source 'fixed scalar type' is 'U32'.");
+}
+
+TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
+  PtxSyntaxParser component_parser("mov.u32 %r0, %tid.x;");
+  const auto component_ast = component_parser.parseInstruction();
+  ASSERT_TRUE(component_ast.has_value()) << component_ast.error().message;
+  const auto component_resolved = resolveInstruction(*component_ast);
+  ASSERT_TRUE(component_resolved.has_value())
+      << component_resolved.error().message;
+  const auto& component =
+      std::get<Mov::U32>(std::get<Mov>(*component_resolved).variant).src.value;
+  EXPECT_EQ(component.spelling, "%tid.x");
+  EXPECT_EQ(component.info.vector_width, 1u);
+  EXPECT_EQ(component.info.minimum_ptx_major, 2u);
+
+  PtxSyntaxParser vector_parser("mov.u32 %r0, %tid;");
+  const auto vector_ast = vector_parser.parseInstruction();
+  ASSERT_TRUE(vector_ast.has_value()) << vector_ast.error().message;
+  const auto vector_resolved = resolveInstruction(*vector_ast);
+  ASSERT_FALSE(vector_resolved.has_value());
+  EXPECT_EQ(vector_resolved.error().message,
+            "Special register '%tid' is a vector; select a scalar component.");
+}
+
+TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u64 %rd<2>;
+  .reg .u32 %r<3>;
+  mov.u64 %rd0, global_value;
+  ld.u32 %r0, [global_value+4];
+  ld.u32 %r1, [%rd0-8];
+  ld.u32 %r2, [240];
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+
+  const auto& mov = std::get<Mov>(body[0]);
+  const auto& mov_symbol = std::get<Mov::U64Symbol>(mov.variant).src.value;
+  ASSERT_TRUE(mov_symbol.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*mov_symbol.symbol_id).name,
+            "global_value");
+  EXPECT_EQ(mov_symbol.state_space, syntax_ast::AstStateSpace::Global);
+  EXPECT_EQ(mov_symbol.declared_type, ScalarType::U32);
+
+  const auto& symbol_address =
+      std::get<Ld::GenericU32>(std::get<Ld>(body[1]).variant).address.value;
+  const auto& symbol_base = std::get<ResolvedSymbolRef>(symbol_address.base);
+  EXPECT_EQ(symbol_base.symbol_id, mov_symbol.symbol_id);
+  ASSERT_TRUE(symbol_address.offset.has_value());
+  EXPECT_EQ(symbol_address.offset->operation,
+            ResolvedAddressOffsetOperator::Add);
+  EXPECT_EQ(symbol_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(symbol_address.offset->value.bits, 4u);
+
+  const auto& register_address =
+      std::get<Ld::GenericU32>(std::get<Ld>(body[2]).variant).address.value;
+  const auto& register_base =
+      std::get<ResolvedRegisterRef>(register_address.base);
+  ASSERT_TRUE(register_base.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*register_base.symbol_id).name, "%rd");
+  EXPECT_EQ(register_base.parameterized_index, 0u);
+  ASSERT_TRUE(register_address.offset.has_value());
+  EXPECT_EQ(register_address.offset->operation,
+            ResolvedAddressOffsetOperator::Subtract);
+  EXPECT_EQ(register_address.offset->value.bits, 8u);
+
+  const auto& immediate_address =
+      std::get<Ld::GenericU32>(std::get<Ld>(body[3]).variant).address.value;
+  const auto& immediate_base =
+      std::get<ResolvedImmediate>(immediate_address.base);
+  EXPECT_EQ(immediate_base.type, ScalarType::U64);
+  EXPECT_EQ(immediate_base.bits, 240u);
+}
+
+TEST(ResolvedModule, ChecksGenericLoadAvailability) {
+  PtxSyntaxParser parser("ld.u32 %r0, [%rd0+4];");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  const auto resolved = resolveInstruction(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto& load = std::get<Ld>(*resolved);
+
+  const auto rejected =
+      checker::check(load, checker::Context{
+                               .target =
+                                   checker::TargetInfo{
+                                       .ptx_version = checker::PtxVersion{1, 5},
+                                       .sm_version = 10,
+                                   },
+                               .instruction_range = ast->range,
+                           });
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2u);
+  EXPECT_EQ(rejected.error()[0].kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  EXPECT_TRUE(
+      checker::check(load,
+                     checker::Context{
+                         .target =
+                             checker::TargetInfo{
+                                 .ptx_version = checker::PtxVersion{2, 0},
+                                 .sm_version = 20,
+                             },
+                         .instruction_range = ast->range,
+                     })
+          .has_value());
+}
+
+TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
+  PtxSyntaxParser mov_parser("mov.u64 %rd0, global_value;");
+  const auto mov_ast = mov_parser.parseInstruction();
+  ASSERT_TRUE(mov_ast.has_value()) << mov_ast.error().message;
+  const auto mov_resolved = resolveInstruction(*mov_ast);
+  ASSERT_TRUE(mov_resolved.has_value()) << mov_resolved.error().message;
+  const auto& symbol =
+      std::get<Mov::U64Symbol>(std::get<Mov>(*mov_resolved).variant).src.value;
+  EXPECT_EQ(symbol.spelling, "global_value");
+  EXPECT_FALSE(symbol.symbol_id.has_value());
+  EXPECT_FALSE(symbol.state_space.has_value());
+
+  PtxSyntaxParser load_parser("ld.u32 %r0, [%rd0+4];");
+  const auto load_ast = load_parser.parseInstruction();
+  ASSERT_TRUE(load_ast.has_value()) << load_ast.error().message;
+  const auto load_resolved = resolveInstruction(*load_ast);
+  ASSERT_TRUE(load_resolved.has_value()) << load_resolved.error().message;
+  const auto& address =
+      std::get<Ld::GenericU32>(std::get<Ld>(*load_resolved).variant)
+          .address.value;
+  const auto& base = std::get<ResolvedRegisterRef>(address.base);
+  EXPECT_EQ(base.spelling, "%rd0");
+  EXPECT_FALSE(base.symbol_id.has_value());
+}
+
+TEST(ResolvedModule, RejectsInvalidSymbolAndUnbracketedLoadAddress) {
+  const auto module = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd<2>;
+  mov.u64 %rd0, %rd1;
+}
+)ptx");
+  const auto invalid_symbol = resolveModule(module);
+  ASSERT_FALSE(invalid_symbol.has_value());
+  ASSERT_EQ(invalid_symbol.error().size(), 1u);
+  EXPECT_EQ(invalid_symbol.error().front().message,
+            "Symbol '%rd1' is not an addressable data symbol.");
+
+  PtxSyntaxParser parser("ld.u32 %r0, %rd0+4;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  const auto invalid_address = resolveInstruction(*ast);
+  ASSERT_FALSE(invalid_address.has_value());
+  EXPECT_EQ(invalid_address.error().message,
+            "Expected a bracketed address operand.");
+}
+
 TEST(ResolvedModule, RejectsNonRegisterSymbolsInRegisterOperands) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

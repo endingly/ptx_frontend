@@ -47,6 +47,9 @@ class ResolvedValueKind(Enum):
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
     BRANCH_TARGET = "BranchTarget"
+    SPECIAL_REGISTER = "SpecialRegister"
+    SYMBOL = "Symbol"
+    ADDRESS = "Address"
 
 
 class ResolvedFieldStorage(Enum):
@@ -87,6 +90,7 @@ class ResolvedOperandShape(Enum):
     SYMBOL = "Symbol"
     VECTOR = "Vector"
     BRANCH_TARGET = "BranchTarget"
+    SPECIAL_REGISTER = "SpecialRegister"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -259,6 +263,9 @@ _OPERAND_ALLOWED_SHAPES = {
     "pred": (ResolvedOperandShape.PREDICATE,),
     "pred_or_not": (ResolvedOperandShape.PREDICATE,),
     "label": (ResolvedOperandShape.BRANCH_TARGET,),
+    "sreg": (ResolvedOperandShape.SPECIAL_REGISTER,),
+    "symbol": (ResolvedOperandShape.SYMBOL,),
+    "addr": (ResolvedOperandShape.ADDRESS,),
 }
 
 _OPERAND_ROLES = {
@@ -266,6 +273,7 @@ _OPERAND_ROLES = {
     "src": ResolvedOperandRole.SOURCE,
     "src1": ResolvedOperandRole.SOURCE,
     "src2": ResolvedOperandRole.SOURCE,
+    "addr": ResolvedOperandRole.ADDRESS,
     "address": ResolvedOperandRole.ADDRESS,
     "predicate": ResolvedOperandRole.PREDICATE,
     "branch_target": ResolvedOperandRole.BRANCH_TARGET,

@@ -699,6 +699,39 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedSpecialRegisterRef":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .special_register_type = {object_name}.{field.name}.value.info.element_type,
+                  .value_availability = AvailabilityDescriptor{{
+                      .minimum_ptx_version = {{
+                          {object_name}.{field.name}.value.info.minimum_ptx_major,
+                          {object_name}.{field.name}.value.info.minimum_ptx_minor,
+                      }},
+                      .minimum_sm_version = {object_name}.{field.name}.value.info.minimum_sm,
+                  }},
+                  .value_name = {object_name}.{field.name}.value.spelling,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedSymbolRef":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedAddress":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "RegOrImm":
         return f"""              [&]() -> OperandView {{
                 if (const auto* immediate =

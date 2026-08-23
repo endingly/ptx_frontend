@@ -117,6 +117,33 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - `.uni` 与 execution predicate 都会保留，checker 校验独立的 branch-target operand shape；
 - standalone `resolveInstruction("bra target;")` 保持无 symbol table 可用，目标 identity 为空。
 
+## 已完成：binding-aware special-register resolution
+
+- 新增独立的 `special_registers` 语义注册表，以预定义名称为键记录 element type、vector
+  width、最低 PTX ISA 与最低 SM；binding 的分类逻辑复用该注册表，不复制名称集合；
+- 新增 `ResolvedSpecialRegisterRef`，同时保存源码 spelling 与注册表元数据；vector family
+  仅在选择 `.x/.y/.z` 标量 component 后进入当前 scalar operand；
+- checker 除 operand shape/type 外，还按具体 special-register value 检查 PTX/SM 可用性；
+- 新增首个消费该表示的 `mov.u32 d, sreg` generated variant，覆盖 standalone 与
+  binding-aware module resolution；其他 `mov` source form 与 type width 不被这一小步伪装为已支持。
+
+当前注册表描述 PTX 9.x 的现行类型。早期 ISA 中 `%tid` 的 `.u16`、`%gridid` 的
+`.u16/.u32` 等历史读取形式尚未建模，应在扩展相应 `mov` type variant 时显式表示，而不是
+放宽当前 `.u32` checker。
+
+## 已完成：binding-aware address/symbol resolution
+
+- 新增 `ResolvedSymbolRef`，module resolution 保存稳定 `SymbolId`、parameterized member、
+  state space 与可表示的 declaration scalar type；standalone resolution 保留 spelling 并令
+  declaration identity 为空；
+- 新增 `ResolvedAddress`，base 明确区分 register、immediate address 与 data symbol，offset
+  保留加减运算及已解析的 signed 64-bit value；
+- `mov.u64 d, symbol` 首先覆盖非参数 addressable data variable 的取地址形式；function
+  address、parameter address 与 symbol+offset 仍保持未支持；
+- `ld.u32 d, [address]` 首先覆盖 generic scalar load，并要求方括号解引用；address base
+  支持 register、immediate 与 binding-aware data symbol；
+- generic `ld` 的 PTX 2.0 / SM 20 可用性由 generated checker 统一检查。
+
 ## 下一步评审与调整
 
 原计划的方向正确，但依赖顺序需要拆开：
@@ -128,16 +155,17 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - `call` 的参数组、可选返回组和 target-set/prototype 才真正需要非 `Flat` layout，应在
   flat control-flow 闭环稳定后单独设计。
 
-本阶段已据此先完成 `bra` 闭环；剩余顺序是：
+`bra`、special-register consumer 与首个 address/symbol consumer 已完成闭环；剩余顺序是：
 
-1. 为 special register 增加带类型和可用性信息的 binding-aware Resolved IR，并接入首个消费
-   它的 opcode；
-2. 为 address/symbol operand 增加 Resolved IR，同时加入首个 load/store/move 类 opcode；
+1. 逐步补齐 `mov` 的 register/immediate、symbol+offset、parameter/function-address source
+   form，并按明确的历史 ISA 规则扩展 special-register type width；
+2. 为 `ld/st` 增加 state-space、memory consistency/cache modifier 与更多 scalar/vector type，
+   同时把 state-space compatibility 纳入 checker；
 3. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
    接入统一 dispatch/checker；
 4. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
 
 ## 验证结果
 
-- Debug CTest：132/132（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：140/140（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

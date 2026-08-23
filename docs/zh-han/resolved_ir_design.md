@@ -12,14 +12,16 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolved IR 则记录已经
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
 lexical symbol binding 与 module resolution 已接通，execution predicate 会解析为带声明
-身份的值，special register、external symbol 和真正未声明 reference 也已能区分；完整的
-special-register operand、地址语义、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变
-此层的结构。
+身份的值，special register、external symbol 和真正未声明 reference 也已能区分。
+`mov.u32 d, sreg`、`mov.u64 d, symbol` 与 `ld.u32 d, [address]` 已分别接入
+special-register、symbol 与 address operand；其余 type/source form、完整 memory qualifier、
+`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
-using ResolvedInstruction = std::variant<Add, Sub, Bar, Bra /* ... */>;
+using ResolvedInstruction =
+    std::variant<Add, Sub, Bar, Bra, Mov, Ld /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
@@ -54,7 +56,8 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 当前 modifier 基础值包括 `bool`、`ScalarType` 与 `RoundingMode`；后者使
 `.rn/.rz/.rm/.rp` 成为可静态检查的语义值，而不是运行时字符串。operand 基础值包括
 `ResolvedRegisterRef`、`ResolvedImmediate`、`ResolvedPredicate`、
-`ResolvedBranchTarget` 与 `RegOrImm`。
+`ResolvedBranchTarget`、`ResolvedSpecialRegisterRef`、`ResolvedSymbolRef`、
+`ResolvedAddress` 与 `RegOrImm`。
 `ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 
@@ -74,6 +77,25 @@ instruction 的可选 execution predicate 作为 opcode 外层公共字段
 register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarget` 同样区分两种
 边界：module resolution 保存当前 function label 的 `SymbolId`，standalone resolution 保存
 源码 spelling 而令 identity 为空。
+
+`ResolvedSpecialRegisterRef` 保存准确 spelling 与 `special_registers::Info`。独立的
+special-register 语义注册表是名称、现行 element type、vector width 及最低 PTX/SM 的单一
+事实来源；binding 只复用它做分类。scalar operand 接受标量 special register 或
+`%tid.x` 一类 component，不接受未选 component 的 vector base。checker 使用值携带的
+元数据执行动态 type/target 检查，因此 instruction descriptor 不需要复制每个预定义名称的
+可用性。当前首个 consumer 是 `mov.u32 d, sreg`。
+
+`ResolvedSymbolRef` 保存源码 spelling；module resolution 还保存 declaration `SymbolId`、
+parameterized member、state space 与可表示的 declaration scalar type。standalone resolution
+无法完成 lexical binding，因此和 branch target 一样保留空 identity。当前直接 consumer
+`mov.u64 d, symbol` 有意只接受非参数 addressable data variable；function/parameter address
+需要各自的 availability 与规则后再扩展。
+
+`ResolvedAddress` 的 base 是 `ResolvedRegisterRef`、`ResolvedImmediate` 或
+`ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
+value。首个 consumer `ld.u32 d, [address]` 要求方括号解引用，覆盖 generic addressing
+的 register、immediate 与 bound-symbol base；explicit state space 与完整 memory qualifier
+仍不在这一子集中。
 
 ## 按 opcode 生成的结构
 

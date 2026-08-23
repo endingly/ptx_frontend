@@ -68,7 +68,9 @@ binding pass 会访问：
 - `Unresolved`：以上均不匹配，是真正未声明的 reference。
 
 成功解析的 parameterized declaration reference 同时保存成员 index。special register
-依据 PTX ISA 的预定义集合精确识别；`%envreg<32>`、`%pm<8>`、`%pm0_64..%pm7_64` 与
+通过独立的 `special_registers` 语义注册表精确识别；该注册表同时保存现行 element type、
+vector width 与最低 PTX/SM，是名称分类与 Resolved IR 检查的单一事实来源。
+`%envreg<32>`、`%pm<8>`、`%pm0_64..%pm7_64` 与
 `%reserved_smem_offset_<2>` 使用有界匹配，不以任意 `%` 前缀代替。`%tid.x` 等 vector
 member 在 AST 中绑定其 `%tid` base。`WARP_SZ` 已由 lexer 表示为 immediate，不进入
 symbol-reference 路径。
@@ -90,8 +92,15 @@ call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 
 的 parameterized count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
 declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
 redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
-与 unresolved reference 的区别；在尚未实现 special-register resolved operand 的 opcode
-中，前者得到“已识别但不支持”的诊断，而不是“未声明”。declaration semantic pass 的
-设计见 `declaration_semantics_design.md`。后续语义阶段仍需完成：
+与 unresolved reference 的区别；`mov.u32 d, sreg` 已将前者解析为带类型和 target
+availability 的 `ResolvedSpecialRegisterRef`。尚未声明 special-register shape 的 opcode
+仍会得到 operand 不支持诊断，而不是“未声明”。declaration semantic pass 的设计见
+`declaration_semantics_design.md`。
 
-- execution predicate、address/symbol operand 与 special register 的完整 Resolved IR 表示。
+`mov.u64 d, symbol` 与 `ld.u32 d, [address]` 也已消费 binding identity：前者生成
+`ResolvedSymbolRef`，后者在 symbol address base 中嵌入同一表示。module resolution 保存
+稳定 `SymbolId`、parameterized member 与 state space；standalone resolution 只保留 spelling。
+后续语义阶段仍需完成：
+
+- function/parameter address、state-space compatibility，以及其余 special-register/type/source
+  form。

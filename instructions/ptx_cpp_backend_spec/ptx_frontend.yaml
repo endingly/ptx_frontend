@@ -72,6 +72,9 @@ domains:
       pred: ResolvedPredicate
       pred_or_not: ResolvedPredicate
       label: ResolvedBranchTarget
+      sreg: ResolvedSpecialRegisterRef
+      symbol: ResolvedSymbolRef
+      addr: ResolvedAddress
 
   resolved_value_cpp_types:
     cpp_type: CppType
@@ -84,6 +87,9 @@ domains:
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
       BranchTarget: ResolvedBranchTarget
+      SpecialRegister: ResolvedSpecialRegisterRef
+      Symbol: ResolvedSymbolRef
+      Address: ResolvedAddress
 
   modifier_field_names:
     cpp_type: CppIdentifier
@@ -133,6 +139,9 @@ domains:
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
       BranchTarget: check_end::ResolvedValueKind::BranchTarget
+      SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
+      Symbol: check_end::ResolvedValueKind::Symbol
+      Address: check_end::ResolvedValueKind::Address
 
   resolved_operand_roles:
     cpp_type: check_end::OperandRole
@@ -163,6 +172,7 @@ domains:
       Symbol: check_end::OperandShape::Symbol
       Vector: check_end::OperandShape::Vector
       BranchTarget: check_end::OperandShape::BranchTarget
+      SpecialRegister: check_end::OperandShape::SpecialRegister
 
   resolved_operand_type_expression_kinds:
     cpp_type: check_end::OperandTypeExpressionKind

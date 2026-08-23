@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "ptx_ir/bind/ptx_symbol_table.hpp"
+#include "ptx_ir/semantic/ptx_special_register.hpp"
 #include "ptx_ir/syntax/ptx_syntax_parser.hpp"
 
 namespace ptx_frontend {
@@ -294,6 +295,42 @@ TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
   EXPECT_FALSE(binding::isSpecialRegister("%reserved_smem_offset_2"));
   EXPECT_FALSE(binding::isSpecialRegister("%tid.w"));
   EXPECT_FALSE(binding::isSpecialRegister("%made_up"));
+}
+
+TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
+  const auto laneid = special_registers::lookup("%laneid");
+  ASSERT_TRUE(laneid.has_value());
+  EXPECT_EQ(laneid->element_type, ScalarType::U32);
+  EXPECT_EQ(laneid->vector_width, 1u);
+  EXPECT_EQ(laneid->minimum_ptx_major, 1u);
+  EXPECT_EQ(laneid->minimum_ptx_minor, 3u);
+  EXPECT_EQ(laneid->minimum_sm, 0u);
+
+  const auto tid = special_registers::lookup("%tid");
+  const auto tid_x = special_registers::lookup("%tid.x");
+  ASSERT_TRUE(tid.has_value());
+  ASSERT_TRUE(tid_x.has_value());
+  EXPECT_EQ(tid->element_type, ScalarType::U32);
+  EXPECT_EQ(tid->vector_width, 4u);
+  EXPECT_EQ(tid_x->vector_width, 1u);
+  EXPECT_EQ(tid_x->minimum_ptx_major, 2u);
+
+  const auto pm3 = special_registers::lookup("%pm3");
+  const auto pm4 = special_registers::lookup("%pm4");
+  ASSERT_TRUE(pm3.has_value());
+  ASSERT_TRUE(pm4.has_value());
+  EXPECT_EQ(pm3->minimum_ptx_major, 1u);
+  EXPECT_EQ(pm3->minimum_ptx_minor, 3u);
+  EXPECT_EQ(pm3->minimum_sm, 0u);
+  EXPECT_EQ(pm4->minimum_ptx_major, 3u);
+  EXPECT_EQ(pm4->minimum_sm, 20u);
+
+  const auto cluster = special_registers::lookup("%cluster_ctarank");
+  ASSERT_TRUE(cluster.has_value());
+  EXPECT_EQ(cluster->element_type, ScalarType::U32);
+  EXPECT_EQ(cluster->minimum_ptx_major, 7u);
+  EXPECT_EQ(cluster->minimum_ptx_minor, 8u);
+  EXPECT_EQ(cluster->minimum_sm, 90u);
 }
 
 TEST(PtxSymbolTable, DiagnosesDuplicateSymbolsAndInvalidCount) {

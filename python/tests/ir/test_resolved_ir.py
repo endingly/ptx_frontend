@@ -477,6 +477,99 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.rule, "control_flow.bra")
 
+    def test_mov_u32_uses_special_register_metadata(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mov = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mov"
+        )
+        instruction = from_instruction_spec(mov)
+
+        self.assertEqual(instruction.cpp_name, "Mov")
+        self.assertEqual(len(instruction.variants), 2)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "U32")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedSpecialRegisterRef>"),
+            ],
+        )
+        source_binding = variant.operand_layouts[0].bindings[1]
+        self.assertEqual(source_binding.role, ResolvedOperandRole.SOURCE)
+        self.assertEqual(source_binding.access, ResolvedOperandAccess.READ)
+        self.assertEqual(
+            source_binding.allowed_shapes,
+            (ResolvedOperandShape.SPECIAL_REGISTER,),
+        )
+        self.assertEqual(
+            source_binding.type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                scalar_type="u32",
+            ),
+        )
+
+        symbol_variant = instruction.variants[1]
+        self.assertEqual(symbol_variant.cpp_name, "U64Symbol")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in symbol_variant.fields],
+            [
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedSymbolRef>"),
+            ],
+        )
+        symbol_binding = symbol_variant.operand_layouts[0].bindings[1]
+        self.assertEqual(
+            symbol_binding.allowed_shapes,
+            (ResolvedOperandShape.SYMBOL,),
+        )
+        self.assertEqual(
+            symbol_binding.type_expression.kind,
+            ResolvedOperandTypeExpressionKind.NONE,
+        )
+
+    def test_ld_generic_u32_uses_resolved_address(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ld = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ld"
+        )
+        instruction = from_instruction_spec(ld)
+
+        self.assertEqual(instruction.cpp_name, "Ld")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "GenericU32")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        address_binding = variant.operand_layouts[0].bindings[1]
+        self.assertEqual(address_binding.role, ResolvedOperandRole.ADDRESS)
+        self.assertEqual(address_binding.access, ResolvedOperandAccess.READ)
+        self.assertEqual(
+            address_binding.allowed_shapes,
+            (ResolvedOperandShape.ADDRESS,),
+        )
+        self.assertEqual(
+            address_binding.type_expression.kind,
+            ResolvedOperandTypeExpressionKind.NONE,
+        )
+
     def test_generate_resolved_ir_header(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -500,7 +593,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Add {", source)
         self.assertIn("struct Bar {", source)
         self.assertIn("struct Bra {", source)
+        self.assertIn("struct Mov {", source)
+        self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
+        self.assertIn("WithLocs<ResolvedSpecialRegisterRef> src;", source)
+        self.assertIn("WithLocs<ResolvedSymbolRef> src;", source)
+        self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",
             source,
@@ -578,6 +676,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('ast.opcode.syntax.text == "bar"', source)
         self.assertIn('ast.opcode.syntax.text == "bra"', source)
         self.assertIn("resolve<Bra>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "mov"', source)
+        self.assertIn("resolve<Mov>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "ld"', source)
+        self.assertIn("resolve<Ld>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:
@@ -600,6 +702,48 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".target = resolved_operand<ResolvedBranchTarget>", source)
         self.assertIn("CheckResult check<Bra>(", source)
+
+    def test_generate_data_movement_resolved_ir_source(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="data_movement",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("std::expected<Mov, ResolveDiagnostic>", source)
+        self.assertIn(
+            ".src = resolved_operand<ResolvedSpecialRegisterRef>", source
+        )
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::SpecialRegister", source
+        )
+        self.assertIn(
+            ".special_register_type = selected.src.value.info.element_type",
+            source,
+        )
+        self.assertIn(".value_availability = AvailabilityDescriptor", source)
+        self.assertIn("CheckResult check<Mov>(", source)
+        self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
+        self.assertIn(
+            ".src = resolved_operand<ResolvedSymbolRef>", source
+        )
+        self.assertIn(
+            ".address = resolved_operand<ResolvedAddress>", source
+        )
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::Symbol", source
+        )
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::Address", source
+        )
+        self.assertIn("CheckResult check<Ld>(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = load_codegen_database(

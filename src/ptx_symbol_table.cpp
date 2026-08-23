@@ -10,6 +10,8 @@
 
 #include <fmt/format.h>
 
+#include "ptx_ir/semantic/ptx_special_register.hpp"
+
 namespace ptx_frontend::binding {
 namespace {
 
@@ -65,24 +67,6 @@ bool isInitializerOperator(std::string_view spelling) {
   return spelling == "generic";
 }
 
-bool isIndexedSpecialRegister(std::string_view spelling,
-                              std::string_view prefix, uint32_t count,
-                              std::string_view suffix = {}) {
-  if (!spelling.starts_with(prefix) || !spelling.ends_with(suffix) ||
-      spelling.size() <= prefix.size() + suffix.size()) {
-    return false;
-  }
-  const std::string_view index_text = spelling.substr(
-      prefix.size(), spelling.size() - prefix.size() - suffix.size());
-  if (index_text.size() > 1 && index_text.front() == '0')
-    return false;
-  uint32_t index = 0;
-  const auto [end, error] = std::from_chars(
-      index_text.data(), index_text.data() + index_text.size(), index);
-  return error == std::errc{} && end == index_text.data() + index_text.size() &&
-         index < count;
-}
-
 SymbolLinkage linkageFromSpelling(std::string_view spelling) {
   if (spelling == ".extern")
     return SymbolLinkage::External;
@@ -120,59 +104,7 @@ std::string_view referenceDescription(ReferenceKind kind) {
 }  // namespace
 
 bool isSpecialRegister(std::string_view spelling) noexcept {
-  constexpr std::array exact_names{
-      std::string_view{"%laneid"},
-      std::string_view{"%warpid"},
-      std::string_view{"%nwarpid"},
-      std::string_view{"%smid"},
-      std::string_view{"%nsmid"},
-      std::string_view{"%gridid"},
-      std::string_view{"%is_explicit_cluster"},
-      std::string_view{"%cluster_ctarank"},
-      std::string_view{"%cluster_nctarank"},
-      std::string_view{"%lanemask_eq"},
-      std::string_view{"%lanemask_le"},
-      std::string_view{"%lanemask_lt"},
-      std::string_view{"%lanemask_ge"},
-      std::string_view{"%lanemask_gt"},
-      std::string_view{"%clock"},
-      std::string_view{"%clock_hi"},
-      std::string_view{"%clock64"},
-      std::string_view{"%globaltimer"},
-      std::string_view{"%globaltimer_lo"},
-      std::string_view{"%globaltimer_hi"},
-      std::string_view{"%reserved_smem_offset_begin"},
-      std::string_view{"%reserved_smem_offset_end"},
-      std::string_view{"%reserved_smem_offset_cap"},
-      std::string_view{"%total_smem_size"},
-      std::string_view{"%aggr_smem_size"},
-      std::string_view{"%dynamic_smem_size"},
-      std::string_view{"%current_graph_exec"},
-  };
-  if (std::ranges::contains(exact_names, spelling))
-    return true;
-
-  constexpr std::array vector_names{
-      std::string_view{"%tid"},           std::string_view{"%ntid"},
-      std::string_view{"%ctaid"},         std::string_view{"%nctaid"},
-      std::string_view{"%clusterid"},     std::string_view{"%nclusterid"},
-      std::string_view{"%cluster_ctaid"}, std::string_view{"%cluster_nctaid"},
-  };
-  for (const std::string_view name : vector_names) {
-    if (spelling == name)
-      return true;
-    if (spelling.starts_with(name) && spelling.size() == name.size() + 2 &&
-        spelling[name.size()] == '.' &&
-        (spelling.back() == 'x' || spelling.back() == 'y' ||
-         spelling.back() == 'z')) {
-      return true;
-    }
-  }
-
-  return isIndexedSpecialRegister(spelling, "%pm", 8) ||
-         isIndexedSpecialRegister(spelling, "%pm", 8, "_64") ||
-         isIndexedSpecialRegister(spelling, "%envreg", 32) ||
-         isIndexedSpecialRegister(spelling, "%reserved_smem_offset_", 2);
+  return special_registers::lookup(spelling).has_value();
 }
 
 const Scope& SymbolTable::scope(ScopeId id) const {

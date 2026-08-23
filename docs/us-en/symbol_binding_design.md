@@ -77,7 +77,10 @@ target, and an explicit `ReferenceClassification`:
 - `Unresolved` when none of the above matches.
 
 A parameterized declaration target also retains its member index. Special
-registers are recognized from the PTX ISA predefined set. Bounded families
+registers are recognized through the independent `special_registers` semantic
+registry. It also records current element types, vector widths, and minimum
+PTX/SM targets, making it the single source of truth for name classification
+and Resolved IR checks. Bounded families
 such as `%envreg<32>`, `%pm<8>`, `%pm0_64..%pm7_64`, and
 `%reserved_smem_offset_<2>` are range-checked rather than approximated by a
 generic `%` prefix. Vector members such as `%tid.x` bind their `%tid` AST base.
@@ -104,11 +107,17 @@ name-set overlaps, invalid or zero parameterized counts, conflicting linkage
 qualifiers, and genuinely unresolved references. Same-name module declarations first share a
 stable `SymbolId`; the declaration semantic pass then classifies them as a
 legal redeclaration, signature conflict, or multiple definition. Module
-resolution preserves the distinction between special and unresolved names:
-until an opcode has a special-register resolved operand, the former reports
-“recognized but unsupported,” not “undeclared.” See
-`declaration_semantics_design.md` for the following pass. Remaining work
-includes:
+resolution preserves the distinction between special and unresolved names.
+`mov.u32 d, sreg` resolves the former to a `ResolvedSpecialRegisterRef` carrying
+type and target availability. Opcodes without a declared special-register
+shape still report an unsupported operand rather than an undeclared name. See
+`declaration_semantics_design.md` for the following pass.
 
-- full Resolved IR support for execution predicates, address/symbol operands,
-  and special registers.
+`mov.u64 d, symbol` and `ld.u32 d, [address]` now consume binding identity as
+well. The former produces a `ResolvedSymbolRef`; a symbol address base in the
+latter embeds the same representation. Module resolution retains a stable
+`SymbolId`, parameterized member, and state space, while standalone resolution
+keeps spelling only. Remaining work includes:
+
+- function/parameter addresses, state-space compatibility, and the remaining
+  special-register/type/source forms.

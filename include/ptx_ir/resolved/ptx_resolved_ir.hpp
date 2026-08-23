@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include "ptx_ir/bind/ptx_symbol_table.hpp"
 #include "ptx_ir/ptx_resolved_ir_checker.hpp"
+#include "ptx_ir/semantic/ptx_special_register.hpp"
 #include "ptx_ir/source_loc.hpp"
 #include "ptx_ir/syntax/ptx_syntax_ast.hpp"
 #include "utils.hpp"
@@ -64,6 +65,9 @@ enum class ResolvedValueKind : uint8_t {
   Immediate,
   RegOrImm,
   BranchTarget,
+  SpecialRegister,
+  Symbol,
+  Address,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -213,6 +217,44 @@ struct ResolvedBranchTarget {
   bool operator==(const ResolvedBranchTarget&) const = default;
 };
 
+/** A predefined read-only PTX special register and its ISA metadata. */
+struct ResolvedSpecialRegisterRef {
+  std::string spelling;
+  special_registers::Info info;
+  bool operator==(const ResolvedSpecialRegisterRef&) const = default;
+};
+
+/** An addressable data symbol, optionally bound to a module declaration. */
+struct ResolvedSymbolRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<uint32_t> parameterized_index;
+  std::optional<syntax_ast::AstStateSpace> state_space;
+  std::optional<ScalarType> declared_type;
+  bool operator==(const ResolvedSymbolRef&) const = default;
+};
+
+enum class ResolvedAddressOffsetOperator : uint8_t {
+  Add,
+  Subtract,
+};
+
+struct ResolvedAddressOffset {
+  ResolvedAddressOffsetOperator operation = ResolvedAddressOffsetOperator::Add;
+  ResolvedImmediate value;
+  bool operator==(const ResolvedAddressOffset&) const = default;
+};
+
+using ResolvedAddressBase =
+    std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedSymbolRef>;
+
+/** A dereferenced PTX address with a resolved base and optional byte offset. */
+struct ResolvedAddress {
+  ResolvedAddressBase base;
+  std::optional<ResolvedAddressOffset> offset;
+  bool operator==(const ResolvedAddress&) const = default;
+};
+
 /** The selected operand-layout index within the resolved instruction variant. */
 struct ResolvedOperandLayoutTag {
   uint16_t value = 0;
@@ -225,7 +267,9 @@ using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>,
-                 WithLocs<ResolvedBranchTarget>>;
+                 WithLocs<ResolvedBranchTarget>,
+                 WithLocs<ResolvedSpecialRegisterRef>,
+                 WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {

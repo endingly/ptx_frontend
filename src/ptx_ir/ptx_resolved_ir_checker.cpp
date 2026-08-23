@@ -45,6 +45,49 @@ const OperandView* find_operand(std::span<const OperandView> operands,
   return it == operands.end() ? nullptr : &*it;
 }
 
+void append_value_availability_diagnostics(const OperandView& operand,
+                                           const Context& context,
+                                           CheckDiagnostics& diagnostics) {
+  if (!operand.value_availability)
+    return;
+
+  const AvailabilityDescriptor& availability = *operand.value_availability;
+  const SourceRange& range = diagnostic_range(operand.locations, context);
+  if (context.target.ptx_version < availability.minimum_ptx_version) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = range,
+        .message = fmt::format(
+            "Operand value '{}' requires PTX ISA >= {}, but target PTX ISA is "
+            "{}.",
+            operand.value_name,
+            format_version(availability.minimum_ptx_version),
+            format_version(context.target.ptx_version)),
+    });
+  }
+  if (context.target.sm_version < availability.minimum_sm_version) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+        .range = range,
+        .message = fmt::format(
+            "Operand value '{}' requires SM >= {}, but target SM is {}.",
+            operand.value_name, availability.minimum_sm_version,
+            context.target.sm_version),
+    });
+  }
+  if (!availability.required_family.empty() &&
+      !has_family(context.target.families, availability.required_family)) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
+        .range = range,
+        .message =
+            fmt::format("Operand value '{}' requires target family "
+                        "'{}'.",
+                        operand.value_name, availability.required_family),
+    });
+  }
+}
+
 bool matches_modifier_value(
     const ModifierValueAvailabilityDescriptor& descriptor,
     const ModifierValueView& actual) noexcept {
@@ -176,6 +219,8 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
       });
     }
 
+    append_value_availability_diagnostics(*operand, context, diagnostics);
+
     const auto& expression = descriptor.type_expression;
     if (expression.kind == OperandTypeExpressionKind::None)
       continue;
@@ -230,6 +275,18 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
               "type source '{}' is '{}'.",
               descriptor.target_field_id, to_string(*operand->register_type),
               expected_type_source, to_string(expected_type)),
+      });
+    } else if (operand->special_register_type &&
+               *operand->special_register_type != expected_type) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::OperandTypeMismatch,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Special-register operand '{}' has declared type '{}' but "
+              "instruction type source '{}' is '{}'.",
+              descriptor.target_field_id,
+              to_string(*operand->special_register_type), expected_type_source,
+              to_string(expected_type)),
       });
     }
   }

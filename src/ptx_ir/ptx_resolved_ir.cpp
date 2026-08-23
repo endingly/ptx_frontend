@@ -519,6 +519,190 @@ resolve_branch_target(const syntax_ast::AstOperand& operand,
   return WithLocs<ResolvedBranchTarget>{std::move(resolved), target->range};
 }
 
+std::expected<WithLocs<ResolvedSpecialRegisterRef>, ResolveDiagnostic>
+resolve_special_register(const syntax_ast::AstOperand& operand) {
+  std::string spelling;
+  SourceRange range;
+  if (const auto* identifier =
+          std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+    spelling = identifier->syntax.text;
+    range = identifier->syntax.range;
+  } else if (const auto* member =
+                 std::get_if<syntax_ast::AstVectorMember>(&operand)) {
+    spelling = member->base.syntax.text + member->selector.text;
+    range = member->range;
+  } else {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a special-register operand.",
+    });
+  }
+
+  const auto info = special_registers::lookup(spelling);
+  if (!info) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format("Unknown special register '{}'.", spelling),
+    });
+  }
+  if (info->vector_width != 1) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Special register '{}' is a vector; select a scalar component.",
+            spelling),
+    });
+  }
+  return WithLocs<ResolvedSpecialRegisterRef>{
+      ResolvedSpecialRegisterRef{.spelling = std::move(spelling),
+                                 .info = *info},
+      range};
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const syntax_ast::AstImmediate& immediate, ScalarType type);
+
+bool is_addressable_data_symbol(const binding::Symbol& symbol,
+                                bool allow_parameters) {
+  if (symbol.kind == binding::SymbolKind::Variable) {
+    return symbol.state_space == syntax_ast::AstStateSpace::Local ||
+           symbol.state_space == syntax_ast::AstStateSpace::Shared ||
+           symbol.state_space == syntax_ast::AstStateSpace::Global ||
+           symbol.state_space == syntax_ast::AstStateSpace::Constant;
+  }
+  return allow_parameters &&
+         (symbol.kind == binding::SymbolKind::InputParameter ||
+          symbol.kind == binding::SymbolKind::ReturnParameter) &&
+         symbol.state_space == syntax_ast::AstStateSpace::Parameter;
+}
+
+std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
+    const syntax_ast::AstIdentifierRef& identifier,
+    const ResolveContext* context, bool allow_parameters) {
+  ResolvedSymbolRef resolved{.spelling = identifier.syntax.text};
+  if (context == nullptr)
+    return resolved;
+
+  if (binding::isSpecialRegister(identifier.syntax.text)) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier.syntax.range,
+        .message = fmt::format("Special register '{}' is not a data symbol.",
+                               identifier.syntax.text),
+    });
+  }
+  const auto lookup =
+      context->symbols.lookup(context->scope, identifier.syntax.text);
+  if (!lookup) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier.syntax.range,
+        .message =
+            fmt::format("Unresolved data symbol '{}'.", identifier.syntax.text),
+    });
+  }
+  const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+  if (!is_addressable_data_symbol(symbol, allow_parameters)) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier.syntax.range,
+        .message = fmt::format("Symbol '{}' is not an addressable data symbol.",
+                               identifier.syntax.text),
+    });
+  }
+
+  resolved.symbol_id = lookup->symbol;
+  resolved.parameterized_index = lookup->parameterized_index;
+  resolved.state_space = symbol.state_space;
+  if (symbol.type)
+    resolved.declared_type = scalar_type_from_ptx_name(*symbol.type);
+  return resolved;
+}
+
+std::expected<WithLocs<ResolvedSymbolRef>, ResolveDiagnostic> resolve_symbol(
+    const syntax_ast::AstOperand& operand, const ResolveContext* context) {
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a data-symbol operand.",
+    });
+  }
+  auto resolved = resolve_data_symbol(*identifier, context, false);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  return WithLocs<ResolvedSymbolRef>{std::move(*resolved),
+                                     identifier->syntax.range};
+}
+
+std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
+    const syntax_ast::AstOperand& operand, const ResolveContext* context) {
+  const auto* address = std::get_if<syntax_ast::AstAddress>(&operand);
+  if (address == nullptr || !address->bracketed) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a bracketed address operand.",
+    });
+  }
+
+  std::optional<ResolvedAddressBase> base;
+  if (const auto* identifier =
+          std::get_if<syntax_ast::AstIdentifierRef>(&address->base)) {
+    if (context != nullptr) {
+      const auto lookup =
+          context->symbols.lookup(context->scope, identifier->syntax.text);
+      if (lookup &&
+          context->symbols.symbol(lookup->symbol).kind ==
+              binding::SymbolKind::Variable &&
+          context->symbols.symbol(lookup->symbol).state_space ==
+              syntax_ast::AstStateSpace::Register) {
+        auto register_ref =
+            resolve_bound_register(*identifier, ResolvedRegisterClass::General,
+                                   *context, identifier->syntax.range);
+        if (!register_ref)
+          return std::unexpected(register_ref.error());
+        base = std::move(*register_ref);
+      } else {
+        auto symbol = resolve_data_symbol(*identifier, context, true);
+        if (!symbol)
+          return std::unexpected(symbol.error());
+        base = std::move(*symbol);
+      }
+    } else if (identifier->syntax.text.starts_with('%')) {
+      const syntax_ast::AstOperand base_operand = *identifier;
+      auto register_ref = resolve_register(base_operand, nullptr);
+      if (!register_ref)
+        return std::unexpected(register_ref.error());
+      base = std::move(register_ref->value);
+    } else {
+      auto symbol = resolve_data_symbol(*identifier, nullptr, true);
+      base = std::move(*symbol);
+    }
+  } else {
+    const auto& immediate = std::get<syntax_ast::AstImmediate>(address->base);
+    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U64);
+    if (!immediate_base)
+      return std::unexpected(immediate_base.error());
+    base = std::move(*immediate_base);
+  }
+
+  std::optional<ResolvedAddressOffset> offset;
+  if (address->offset) {
+    auto value =
+        resolve_immediate_value(address->offset->magnitude, ScalarType::S64);
+    if (!value)
+      return std::unexpected(value.error());
+    offset = ResolvedAddressOffset{
+        .operation = address->offset->operation ==
+                             syntax_ast::AstAddressOffset::Operator::Subtract
+                         ? ResolvedAddressOffsetOperator::Subtract
+                         : ResolvedAddressOffsetOperator::Add,
+        .value = std::move(*value),
+    };
+  }
+
+  return WithLocs<ResolvedAddress>{
+      ResolvedAddress{.base = std::move(*base), .offset = std::move(offset)},
+      address->range};
+}
+
 ResolveDiagnostic invalid_immediate(const syntax_ast::AstImmediate& immediate,
                                     std::string message) {
   return ResolveDiagnostic{
@@ -925,6 +1109,24 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::SpecialRegister: {
+      auto value = resolve_special_register(operand);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::Symbol: {
+      auto value = resolve_symbol(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::Address: {
+      auto value = resolve_address(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
@@ -973,6 +1175,9 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
     case ResolvedValueKind::BranchTarget:
+    case ResolvedValueKind::SpecialRegister:
+    case ResolvedValueKind::Symbol:
+    case ResolvedValueKind::Address:
       throw ResolveException(fmt::format(
           "Optional modifier '{}' targets non-modifier resolved field '{}'.",
           binding.source_kind_id, field.field_id));
@@ -1174,6 +1379,9 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
       case ResolvedValueKind::BranchTarget:
+      case ResolvedValueKind::SpecialRegister:
+      case ResolvedValueKind::Symbol:
+      case ResolvedValueKind::Address:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

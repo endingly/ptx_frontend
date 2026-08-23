@@ -1,0 +1,119 @@
+# PTX data-movement instructions.
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.2"
+category: data_movement_and_conversion
+codegen_category: data_movement
+section: "9.7.9"
+
+operand_patterns:
+  mov_u32_sreg:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+    - name: src
+      kind: sreg
+      role: src
+      access: read
+      type: u32
+
+  mov_u64_symbol:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u64
+    - name: src
+      kind: symbol
+      role: src
+      access: read
+
+  ld_u32_address:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+
+instructions:
+  - opcode: mov
+    section: "9.7.9.3"
+    doc: >
+      Move from a scalar u32 special register or take a non-parameter data
+      variable address into a u64 register. Register, immediate,
+      symbol-plus-offset, function, parameter, predicate, and other-width
+      forms remain separate coverage.
+    syntax: "mov.u32 dst, sreg | mov.u64 dst, symbol"
+
+    variants:
+      - name: mov_u32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $mov_u32_sreg
+        rule: data_movement.mov
+
+        examples:
+          - ptx: "mov.u32 %r0, %laneid;"
+            valid: true
+          - ptx: "mov.u32 %r0, %tid.x;"
+            valid: true
+
+      - name: mov_u64_symbol
+        description: "Take the address of an addressable data variable."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        operands: $mov_u64_symbol
+        rule: data_movement.mov_symbol_address
+
+        examples:
+          - ptx: "mov.u64 %rd0, global_value;"
+            valid: true
+
+  - opcode: ld
+    section: "9.7.9.8"
+    doc: >
+      Scalar u32 load through a generic address. Explicit state spaces,
+      cache/consistency qualifiers, vectors, and other data widths remain
+      separate coverage.
+    syntax: "ld.u32 dst, [address]"
+
+    variants:
+      - name: ld_generic_u32
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_u32_address
+        rule: data_movement.ld_generic
+
+        examples:
+          - ptx: "ld.u32 %r0, [%rd0+4];"
+            valid: true
+          - ptx: "ld.u32 %r0, [global_value];"
+            valid: true

@@ -22,7 +22,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Other directives | Not supported (rejected) | Debug, section, pragma, module variable, and structured kernel-tuning directives; unmodeled function-header tokens never silently enter the AST |
 | Structured control syntax | Not supported | Nested scopes and directive-driven control-flow metadata |
 | Recovery/editing | Not supported | Missing tokens, recovery nodes, multi-error parsing, and token edits |
-| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, and `bra`, with binding-aware execution predicates retained and direct branch targets bound to current-function labels |
+| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, `bra`, `mov.u32 d, sreg`, `mov.u64 d, symbol`, and generic `ld.u32 d, [address]`, retaining binding-aware predicate/label/special-register/symbol identity and the corresponding target checks |
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be
@@ -30,8 +30,10 @@ lowered to Resolved IR.
 
 ## Near-term order
 
-1. Add binding-aware Resolved IR for special registers together with the first consuming opcode.
-2. Add address/symbol Resolved IR together with the first load/store/move-class opcode.
+1. Complete `mov` register/immediate, symbol-plus-offset, function/parameter
+   address, and remaining special-register type-width forms.
+2. Extend `ld/st` state spaces, memory qualifiers, and scalar/vector types,
+   including state-space compatibility checks.
 3. Add a non-`Flat` descriptor layout algorithm for call groups and variadic operands, then integrate `call`.
 4. Represent `.calltargets`/`.callprototype`/`.branchtargets` and remaining module/function directives.
 5. Expand YAML instruction coverage independently of module grammar work.

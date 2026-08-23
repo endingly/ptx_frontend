@@ -19,7 +19,8 @@ auto result = ptx_frontend::binding::bindSymbols(module);
 - function local 对 module symbol 的 lexical shadowing；
 - instruction predicate/operand、initializer symbol、array-dimension symbol reference；
 - `name<count>` 的紧凑表示和成员 lookup，不展开成大量 symbol；
-- same-scope duplicate symbol 与非法/零 parameterized count 诊断；
+- same-scope duplicate symbol、parameterized name-set overlap 与非法/零
+  parameterized count 诊断；
 - 未解析 reference 的保留，供后续 special-register/linkage/opcode-aware 诊断。
 
 公共类型位于 `include/ptx_ir/bind/ptx_symbol_table.hpp`，设计说明位于：
@@ -80,6 +81,15 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
   linkage、prototype/definition 组合与 multiple definition；
 - function symbol 的 `owned_scope` 在存在 definition 时指向 definition scope。
 
+## 已完成：P1 correctness hardening
+
+- integer constant evaluator 现在保存 `.s64/.u64` 类型与完整 64-bit bit pattern，支持负数
+  中间值、cast、usual arithmetic conversion 和 signed shift；
+- 未建模的 function-header token 在 CST parser 直接报错，不再经 `header_tokens` 进入 CST
+  后由 AST lowering 静默丢弃；
+- parameterized declaration 会与 explicit/generated name set 检查 overlap，lookup 只接受
+  无前导零的规范成员后缀，同时允许 parameterized base 与同名 explicit symbol 共存。
+
 ## 已完成：call/branch 专用 operand grammar
 
 - `call` 的 return/input group、callee 和 target-set/prototype 现在拥有独立 CST/AST 节点；
@@ -100,5 +110,5 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 ## 验证结果
 
-- Debug CTest：125/125（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：128/128（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

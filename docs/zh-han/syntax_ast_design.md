@@ -28,8 +28,10 @@ body 中的 instruction 由现有 instruction parser 处理。variable declarati
 保留 linkage qualifier、state space、可选 alignment/vector type、base type、逗号分隔的
 名称、parameterized-name `<count>` 语法、多维 array declarator、可选等号与 initializer。
 array dimension 与 scalar initializer 使用结构化 constant-expression tree；brace
-initializer 则递归保留每一层花括号、元素和逗号。CST 同时保留 function
-qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
+initializer 则递归保留每一层花括号、元素和逗号。CST 同时保留受支持 function grammar
+的 qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
+尚未结构化建模的 function header token（例如 `.maxntid`）会在 CST 边界直接报错，不会
+作为 opaque token 被接受后再由 AST lowering 静默丢弃。
 
 CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
 token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此
@@ -43,10 +45,10 @@ if (cst)
 ```
 
 `parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
-module root。当前 module grammar 尚不接受 debug directive、
+module root。当前 module grammar 尚不接受 debug directive、kernel-tuning directive、
 嵌套 statement scope、错误恢复节点、missing-token 插入或 token edit API。initializer
-目前只做 grammar shape 和 state-space/linkage 约束；类型、array 维度及元素数量要在未来
-的绑定/语义阶段校验。这些未实现部分不会被静默当成 instruction 解析。
+的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
+由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 
 ## CST 到 Syntax AST lowering
 

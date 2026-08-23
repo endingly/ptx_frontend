@@ -40,6 +40,12 @@ definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 def
 `name<count>` 依 PTX 语法表示 `name0` 到 `name(count-1)`。symbol table 不展开这些名称，
 而是保存 base name 与 count；lookup `%r2` 会返回同一个 declaration `SymbolId`，并在
 `SymbolLookup::parameterized_index` 中记录 `2`。这样不会因较大的 count 生成大量 symbol。
+成员后缀使用规范十进制拼写：`%r<3>` 匹配 `%r0..%r2`，但不匹配 `%r02`。
+
+收集 declaration 时会比较其实际名称集合。parameterized declaration 与 explicit name，
+以及两个不同 base 的 parameterized declaration，只要展开后存在同 scope 成员重叠，都会
+产生带 previous range 的 duplicate diagnostic；parameterized base 本身不属于展开集合，
+所以 `name<2>` 与 explicit `name` 仍是两个不同 symbol。
 
 Parameterized name 可用于任意 state space，但不能同时声明 array 或 initializer。原先
 只允许 `.reg` 的限制已移除，公共 CST/AST 字段也统一命名为 `parameterized_count`。
@@ -80,8 +86,8 @@ call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 
 
 ## 当前诊断与边界
 
-当前累积诊断包括 function-local same-scope duplicate symbol、无效/为零的 parameterized
-count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
+当前累积诊断包括 same-scope duplicate symbol、parameterized name-set overlap、无效/为零
+的 parameterized count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
 declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
 redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
 与 unresolved reference 的区别；在尚未实现 special-register resolved operand 的 opcode

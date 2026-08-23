@@ -36,9 +36,11 @@ base type, comma-separated names, parameterized-name `<count>` syntax, and
 multi-dimensional array declarators, optional equals signs, and initializers.
 Array dimensions and scalar initializers use structured constant-expression
 trees; brace initializers recursively retain every brace level, element, and
-comma. Function qualifiers and the complete
-header token sequence remain in the CST; the entry/function kind and name are
-also identified explicitly.
+comma. Function qualifiers and the complete token sequence for the supported
+header grammar remain in the CST; the entry/function kind and name are also
+identified explicitly. An unmodeled function-header token such as `.maxntid`
+is rejected at the CST boundary instead of being accepted as an opaque token
+and silently discarded during AST lowering.
 
 The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
 selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the
@@ -54,10 +56,10 @@ if (cst)
 
 `parseInstruction()` accepts exactly one complete instruction fragment, while
 `parseModule()` requires a module root. The module grammar does not yet accept
-debug directives, nested statement scopes, recovery
-nodes, missing-token insertion, or a token-edit API. Initializers currently
-receive grammar-shape and state-space/linkage validation only; types, array
-dimensions, and element counts belong to the future binding/semantic stage.
+debug or kernel-tuning directives, nested statement scopes, recovery nodes,
+missing-token insertion, or a token-edit API. The parser validates initializer
+grammar shape and state-space/linkage constraints; the following declaration
+semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
 
 ## CST to Syntax AST lowering

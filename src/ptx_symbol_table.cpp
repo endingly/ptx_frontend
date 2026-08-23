@@ -18,6 +18,8 @@ std::optional<uint32_t> parseParameterizedIndex(std::string_view base,
   if (!name.starts_with(base) || name.size() == base.size())
     return std::nullopt;
   const std::string_view suffix = name.substr(base.size());
+  if (suffix.size() > 1 && suffix.front() == '0')
+    return std::nullopt;
   for (const char character : suffix) {
     if (!std::isdigit(static_cast<unsigned char>(character)))
       return std::nullopt;
@@ -28,6 +30,35 @@ std::optional<uint32_t> parseParameterizedIndex(std::string_view base,
   if (error != std::errc{} || end != suffix.data() + suffix.size())
     return std::nullopt;
   return index;
+}
+
+bool parameterizedNameContains(std::string_view base, uint32_t count,
+                               std::string_view name) {
+  const auto index = parseParameterizedIndex(base, name);
+  return index && *index < count;
+}
+
+bool symbolNameSetsOverlap(const Symbol& existing, std::string_view name,
+                           std::optional<uint32_t> parameterized_count) {
+  if (existing.parameterized_count &&
+      parameterizedNameContains(existing.name, *existing.parameterized_count,
+                                name)) {
+    return true;
+  }
+  if (parameterized_count &&
+      parameterizedNameContains(name, *parameterized_count, existing.name)) {
+    return true;
+  }
+  if (!existing.parameterized_count || !parameterized_count)
+    return false;
+
+  // For distinct bases, an overlap can only begin at the zero element of one
+  // of the two parameterized declarations.
+  const std::string existing_first = existing.name + "0";
+  const std::string candidate_first = std::string{name} + "0";
+  return parameterizedNameContains(existing.name, *existing.parameterized_count,
+                                   candidate_first) ||
+         parameterizedNameContains(name, *parameterized_count, existing_first);
 }
 
 bool isInitializerOperator(std::string_view spelling) {
@@ -207,11 +238,15 @@ struct SymbolTableBuilder {
     return id;
   }
 
-  std::optional<SymbolId> exactSymbol(ScopeId scope,
-                                      std::string_view name) const {
+  std::optional<SymbolId> exactSymbol(
+      ScopeId scope, std::string_view name,
+      std::optional<uint32_t> parameterized_count) const {
     for (const Symbol& symbol : result.table.symbols_) {
-      if (symbol.scope == scope && symbol.name == name)
+      if (symbol.scope == scope && symbol.name == name &&
+          symbol.parameterized_count.has_value() ==
+              parameterized_count.has_value()) {
         return symbol.id;
+      }
     }
     return std::nullopt;
   }
@@ -224,7 +259,7 @@ struct SymbolTableBuilder {
       std::optional<std::string_view> type = std::nullopt,
       std::optional<uint32_t> parameterized_count = std::nullopt,
       bool allow_redeclaration = false) {
-    if (const auto previous = exactSymbol(scope, name)) {
+    if (const auto previous = exactSymbol(scope, name, parameterized_count)) {
       const Symbol& existing = result.table.symbol(*previous);
       if (!allow_redeclaration) {
         result.diagnostics.push_back(BindDiagnostic{
@@ -236,6 +271,23 @@ struct SymbolTableBuilder {
         });
       }
       return *previous;
+    }
+
+    for (const Symbol& existing : result.table.symbols_) {
+      if (existing.scope != scope ||
+          !symbolNameSetsOverlap(existing, name, parameterized_count)) {
+        continue;
+      }
+      result.diagnostics.push_back(BindDiagnostic{
+          .kind = BindDiagnosticKind::DuplicateSymbol,
+          .range = declaration_range,
+          .previous_range = existing.declaration_range,
+          .message = fmt::format(
+              "Declarations '{}' and '{}' produce overlapping symbol names "
+              "in the same scope.",
+              name, existing.name),
+      });
+      break;
     }
 
     const SymbolId id{static_cast<uint32_t>(result.table.symbols_.size())};

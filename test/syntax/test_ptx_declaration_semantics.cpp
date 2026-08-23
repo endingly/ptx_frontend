@@ -37,6 +37,9 @@ TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
 .global .s32 matrix[3][2] = {{1, 2}, {3}};
 .global .v4 .f32 vector = {1.0, 2.0, 3.0};
 .global .u64 pointer = generic(inferred) + 4;
+.global .u32 masked = 0xff(inferred) + 1;
+.global .u32 compact<2>;
+.global .u32 compact;
 )ptx");
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
@@ -65,6 +68,25 @@ TEST(PtxDeclarationSemantics, ValidatesArrayDimensionsAndInitializerShape) {
   EXPECT_EQ(
       diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
       2u);
+}
+
+TEST(PtxDeclarationSemantics,
+     EvaluatesTypedSignedAndUnsignedIntegerDimensions) {
+  const CheckedModule result = check(R"ptx(
+.global .u32 signed_sum[-1 + 2];
+.global .u32 double_negative[-(-2)];
+.global .u32 signed_comparison[-1 < 0];
+.global .u32 unsigned_comparison[((.u64)-1 > 0) ? 2 : 0];
+.global .u32 implicit_unsigned[0xffffffffffffffff > 0];
+.global .u32 usual_conversion[-1 + 2U];
+.global .u32 unsigned_remainder[((-1 % 3) == 0) ? 2 : 0];
+.global .u32 signed_division[-6 / -3];
+.global .u32 unsigned_complement[~0 > 0];
+.global .u32 signed_shift[(-4 >> 1) + 3];
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_TRUE(result.diagnostics.empty());
 }
 
 TEST(PtxDeclarationSemantics, ValidatesInitializerExpressionTypes) {

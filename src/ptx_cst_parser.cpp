@@ -1055,14 +1055,15 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     header_tokens.push_back(*noreturn_directive);
   }
 
-  while (token(peek()).kind != TokenKind::LBrace &&
-         token(peek()).kind != TokenKind::Semicolon) {
-    const TokenId id = consume();
-    if (token(id).kind == TokenKind::Eof) {
-      return std::unexpected(CstParseDiagnostic{
-          token(id).range, "expected function body or prototype terminator"});
-    }
-    header_tokens.push_back(id);
+  if (token(peek()).kind == TokenKind::Eof) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "expected function body or prototype terminator"});
+  }
+  if (token(peek()).kind != TokenKind::LBrace &&
+      token(peek()).kind != TokenKind::Semicolon) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "unsupported function header token '" +
+                                 std::string{token(peek()).text} + "'"});
   }
 
   if (token(peek()).kind == TokenKind::Semicolon) {

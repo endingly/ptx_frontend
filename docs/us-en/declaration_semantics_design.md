@@ -17,11 +17,13 @@ their diagnostics before resolving any instruction.
 
 ## Arrays and initializers
 
-An array dimension must evaluate to a positive integer constant. `WARP_SZ` and
-expressions composed from integer literals, casts, and unary, binary, or
-conditional operators are evaluated here; a symbol address is not an array
-extent. Only the first dimension may be omitted, only when an initializer can
-infer it from its outermost list.
+An array dimension must evaluate to a positive integer constant. The evaluator
+retains a 64-bit bit pattern plus `.s64`/`.u64` signedness for every integer
+subexpression. It therefore supports negative intermediate values, casts,
+usual arithmetic conversions, and unary, binary, and conditional operations
+without rejecting expressions such as `-1 + 2`. `WARP_SZ` is evaluated here as
+well; a symbol address is not an array extent. Only the first dimension may be
+omitted, only when an initializer can infer it from its outermost list.
 
 Initializer brace nesting must match the array rank. A vector declaration adds
 an innermost aggregate extent of two or four. A list may contain fewer elements
@@ -56,6 +58,7 @@ resolution uses the parameters and locals belonging to the body it resolves.
 ## Current boundary
 
 This pass does not perform opcode-specific instruction type checking or
-link-time selection across modules. Constant-expression handling covers the
-current AST grammar and the implemented `.s64`/`.u64` evaluation subset; new
-constant operators must extend classification and evaluation together.
+link-time selection across modules. Integer constant-expression handling
+covers the current AST grammar and propagates PTX `.s64`/`.u64` types; new
+constant operators must extend classification, signedness propagation, and
+evaluation together.

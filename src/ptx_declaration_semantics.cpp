@@ -1,5 +1,6 @@
 #include "ptx_ir/semantic/ptx_declaration_semantics.hpp"
 
+#include <bit>
 #include <charconv>
 #include <limits>
 #include <string_view>
@@ -25,12 +26,25 @@ enum class ExpressionCategory : uint8_t {
 
 struct ExpressionInfo {
   ExpressionCategory category = ExpressionCategory::Invalid;
-  std::optional<uint64_t> nonnegative_value;
+  enum class IntegerType : uint8_t {
+    Signed,
+    Unsigned,
+  };
+
+  struct IntegerValue {
+    uint64_t bits{};
+    IntegerType type = IntegerType::Signed;
+    bool operator==(const IntegerValue&) const = default;
+  };
+
+  std::optional<IntegerValue> integer_value;
 };
 
-std::optional<uint64_t> parseIntegerLiteral(std::string_view spelling,
-                                            int base) {
-  if (!spelling.empty() && (spelling.back() == 'u' || spelling.back() == 'U')) {
+std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
+    std::string_view spelling, int base) {
+  const bool explicitly_unsigned =
+      !spelling.empty() && (spelling.back() == 'u' || spelling.back() == 'U');
+  if (explicitly_unsigned) {
     spelling.remove_suffix(1);
   }
   if (base == 16 && spelling.size() >= 2)
@@ -40,19 +54,162 @@ std::optional<uint64_t> parseIntegerLiteral(std::string_view spelling,
       spelling.data(), spelling.data() + spelling.size(), value, base);
   if (error != std::errc{} || end != spelling.data() + spelling.size())
     return std::nullopt;
-  return value;
+  return ExpressionInfo::IntegerValue{
+      .bits = value,
+      .type = explicitly_unsigned ||
+                      value > static_cast<uint64_t>(
+                                  std::numeric_limits<int64_t>::max())
+                  ? ExpressionInfo::IntegerType::Unsigned
+                  : ExpressionInfo::IntegerType::Signed,
+  };
 }
 
-std::optional<uint64_t> checkedAdd(uint64_t left, uint64_t right) {
-  if (left > std::numeric_limits<uint64_t>::max() - right)
-    return std::nullopt;
-  return left + right;
+int64_t asSigned(ExpressionInfo::IntegerValue value) {
+  return std::bit_cast<int64_t>(value.bits);
 }
 
-std::optional<uint64_t> checkedMultiply(uint64_t left, uint64_t right) {
-  if (right != 0 && left > std::numeric_limits<uint64_t>::max() / right)
+ExpressionInfo::IntegerValue signedBoolean(bool value) {
+  return {
+      .bits = static_cast<uint64_t>(value),
+      .type = ExpressionInfo::IntegerType::Signed,
+  };
+}
+
+ExpressionInfo::IntegerType usualIntegerType(
+    ExpressionInfo::IntegerValue left, ExpressionInfo::IntegerValue right) {
+  return left.type == ExpressionInfo::IntegerType::Unsigned ||
+                 right.type == ExpressionInfo::IntegerType::Unsigned
+             ? ExpressionInfo::IntegerType::Unsigned
+             : ExpressionInfo::IntegerType::Signed;
+}
+
+std::optional<uint64_t> nonnegativeIntegerValue(const ExpressionInfo& info) {
+  if (info.category != ExpressionCategory::Integer || !info.integer_value)
     return std::nullopt;
-  return left * right;
+  if (info.integer_value->type == ExpressionInfo::IntegerType::Unsigned)
+    return info.integer_value->bits;
+  const int64_t value = asSigned(*info.integer_value);
+  return value < 0 ? std::nullopt
+                   : std::optional<uint64_t>{static_cast<uint64_t>(value)};
+}
+
+ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
+                                     ExpressionInfo::IntegerValue left,
+                                     ExpressionInfo::IntegerValue right) {
+  using IntegerType = ExpressionInfo::IntegerType;
+  using IntegerValue = ExpressionInfo::IntegerValue;
+  using Operator = AstConstantBinaryOperator;
+
+  if (operation == Operator::ShiftLeft || operation == Operator::ShiftRight) {
+    if (right.bits >= 64)
+      return {};
+    const uint32_t amount = static_cast<uint32_t>(right.bits);
+    if (operation == Operator::ShiftLeft) {
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits << amount, left.type}};
+    }
+    uint64_t result = left.bits >> amount;
+    if (left.type == IntegerType::Signed && amount != 0 && asSigned(left) < 0) {
+      result |= ~uint64_t{0} << (64 - amount);
+    }
+    return {ExpressionCategory::Integer, IntegerValue{result, left.type}};
+  }
+
+  const IntegerType converted_type = usualIntegerType(left, right);
+  const auto converted = [converted_type](IntegerValue value) {
+    value.type = converted_type;
+    return value;
+  };
+  left = converted(left);
+  right = converted(right);
+
+  switch (operation) {
+    case Operator::Less:
+    case Operator::LessEqual:
+    case Operator::Greater:
+    case Operator::GreaterEqual:
+    case Operator::Equal:
+    case Operator::NotEqual: {
+      bool result = false;
+      if (operation == Operator::Equal || operation == Operator::NotEqual) {
+        result = left.bits == right.bits;
+        if (operation == Operator::NotEqual)
+          result = !result;
+      } else if (converted_type == IntegerType::Unsigned) {
+        if (operation == Operator::Less)
+          result = left.bits < right.bits;
+        else if (operation == Operator::LessEqual)
+          result = left.bits <= right.bits;
+        else if (operation == Operator::Greater)
+          result = left.bits > right.bits;
+        else
+          result = left.bits >= right.bits;
+      } else {
+        const int64_t lhs = asSigned(left);
+        const int64_t rhs = asSigned(right);
+        if (operation == Operator::Less)
+          result = lhs < rhs;
+        else if (operation == Operator::LessEqual)
+          result = lhs <= rhs;
+        else if (operation == Operator::Greater)
+          result = lhs > rhs;
+        else
+          result = lhs >= rhs;
+      }
+      return {ExpressionCategory::Integer, signedBoolean(result)};
+    }
+    case Operator::LogicalAnd:
+      return {ExpressionCategory::Integer,
+              signedBoolean(left.bits != 0 && right.bits != 0)};
+    case Operator::LogicalOr:
+      return {ExpressionCategory::Integer,
+              signedBoolean(left.bits != 0 || right.bits != 0)};
+    case Operator::BitwiseAnd:
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits & right.bits, IntegerType::Unsigned}};
+    case Operator::BitwiseXor:
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits ^ right.bits, IntegerType::Unsigned}};
+    case Operator::BitwiseOr:
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits | right.bits, IntegerType::Unsigned}};
+    case Operator::Remainder:
+      if (right.bits == 0)
+        return {};
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits % right.bits, IntegerType::Signed}};
+    case Operator::ShiftLeft:
+    case Operator::ShiftRight:
+      return {};
+    case Operator::Add:
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits + right.bits, converted_type}};
+    case Operator::Subtract:
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits - right.bits, converted_type}};
+    case Operator::Multiply:
+      return {ExpressionCategory::Integer,
+              IntegerValue{left.bits * right.bits, converted_type}};
+    case Operator::Divide: {
+      if (right.bits == 0)
+        return {};
+      if (converted_type == IntegerType::Unsigned) {
+        return {ExpressionCategory::Integer,
+                IntegerValue{left.bits / right.bits, converted_type}};
+      }
+      const bool negative = (asSigned(left) < 0) != (asSigned(right) < 0);
+      const uint64_t left_magnitude =
+          asSigned(left) < 0 ? uint64_t{0} - left.bits : left.bits;
+      const uint64_t right_magnitude =
+          asSigned(right) < 0 ? uint64_t{0} - right.bits : right.bits;
+      uint64_t quotient = left_magnitude / right_magnitude;
+      if (negative)
+        quotient = uint64_t{0} - quotient;
+      return {ExpressionCategory::Integer,
+              IntegerValue{quotient, converted_type}};
+    }
+  }
+  return {};
 }
 
 ExpressionInfo classifyExpression(const AstConstantExpression& expression);
@@ -61,6 +218,13 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary) {
   const ExpressionInfo left = classifyExpression(*binary.left);
   const ExpressionInfo right = classifyExpression(*binary.right);
   using Operator = AstConstantBinaryOperator;
+
+  const bool comparison = binary.operation == Operator::Less ||
+                          binary.operation == Operator::LessEqual ||
+                          binary.operation == Operator::Greater ||
+                          binary.operation == Operator::GreaterEqual ||
+                          binary.operation == Operator::Equal ||
+                          binary.operation == Operator::NotEqual;
 
   if (binary.operation == Operator::Add ||
       binary.operation == Operator::Subtract) {
@@ -75,42 +239,9 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary) {
     }
   }
 
-  const bool comparison = binary.operation == Operator::Less ||
-                          binary.operation == Operator::LessEqual ||
-                          binary.operation == Operator::Greater ||
-                          binary.operation == Operator::GreaterEqual ||
-                          binary.operation == Operator::Equal ||
-                          binary.operation == Operator::NotEqual;
-  if (comparison && left.category == right.category &&
-      left.category != ExpressionCategory::Invalid) {
-    std::optional<uint64_t> value;
-    if (left.nonnegative_value && right.nonnegative_value) {
-      const uint64_t lhs = *left.nonnegative_value;
-      const uint64_t rhs = *right.nonnegative_value;
-      switch (binary.operation) {
-        case Operator::Less:
-          value = lhs < rhs;
-          break;
-        case Operator::LessEqual:
-          value = lhs <= rhs;
-          break;
-        case Operator::Greater:
-          value = lhs > rhs;
-          break;
-        case Operator::GreaterEqual:
-          value = lhs >= rhs;
-          break;
-        case Operator::Equal:
-          value = lhs == rhs;
-          break;
-        case Operator::NotEqual:
-          value = lhs != rhs;
-          break;
-        default:
-          break;
-      }
-    }
-    return {ExpressionCategory::Integer, value};
+  if (comparison && left.category == ExpressionCategory::Address &&
+      right.category == ExpressionCategory::Address) {
+    return {ExpressionCategory::Integer, std::nullopt};
   }
 
   if (left.category != right.category ||
@@ -120,6 +251,8 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary) {
   }
 
   if (left.category == ExpressionCategory::Floating) {
+    if (comparison)
+      return {ExpressionCategory::Integer, std::nullopt};
     switch (binary.operation) {
       case Operator::Multiply:
       case Operator::Divide:
@@ -131,57 +264,10 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary) {
     }
   }
 
-  std::optional<uint64_t> value;
-  if (left.nonnegative_value && right.nonnegative_value) {
-    const uint64_t lhs = *left.nonnegative_value;
-    const uint64_t rhs = *right.nonnegative_value;
-    switch (binary.operation) {
-      case Operator::Multiply:
-        value = checkedMultiply(lhs, rhs);
-        break;
-      case Operator::Divide:
-        if (rhs != 0)
-          value = lhs / rhs;
-        break;
-      case Operator::Remainder:
-        if (rhs != 0)
-          value = lhs % rhs;
-        break;
-      case Operator::Add:
-        value = checkedAdd(lhs, rhs);
-        break;
-      case Operator::Subtract:
-        if (lhs >= rhs)
-          value = lhs - rhs;
-        break;
-      case Operator::ShiftLeft:
-        if (rhs < 64 && lhs <= (std::numeric_limits<uint64_t>::max() >> rhs))
-          value = lhs << rhs;
-        break;
-      case Operator::ShiftRight:
-        if (rhs < 64)
-          value = lhs >> rhs;
-        break;
-      case Operator::BitwiseAnd:
-        value = lhs & rhs;
-        break;
-      case Operator::BitwiseXor:
-        value = lhs ^ rhs;
-        break;
-      case Operator::BitwiseOr:
-        value = lhs | rhs;
-        break;
-      case Operator::LogicalAnd:
-        value = lhs != 0 && rhs != 0;
-        break;
-      case Operator::LogicalOr:
-        value = lhs != 0 || rhs != 0;
-        break;
-      default:
-        break;
-    }
-  }
-  return {ExpressionCategory::Integer, value};
+  if (!left.integer_value || !right.integer_value)
+    return {ExpressionCategory::Integer, std::nullopt};
+  return evaluateIntegerBinary(binary.operation, *left.integer_value,
+                               *right.integer_value);
 }
 
 ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
@@ -197,7 +283,11 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
               return {ExpressionCategory::Integer,
                       parseIntegerLiteral(value.value.syntax.text, 16)};
             case syntax_ast::AstImmediateKind::WarpSize:
-              return {ExpressionCategory::Integer, 32};
+              return {ExpressionCategory::Integer,
+                      ExpressionInfo::IntegerValue{
+                          .bits = 32,
+                          .type = ExpressionInfo::IntegerType::Signed,
+                      }};
             case syntax_ast::AstImmediateKind::F32Hex:
             case syntax_ast::AstImmediateKind::F64Hex:
             case syntax_ast::AstImmediateKind::DecimalFloat:
@@ -232,10 +322,16 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
           }
           return {};
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCast>) {
-          const ExpressionInfo operand = classifyExpression(*value.operand);
-          return operand.category == ExpressionCategory::Integer
-                     ? operand
-                     : ExpressionInfo{};
+          ExpressionInfo operand = classifyExpression(*value.operand);
+          if (operand.category != ExpressionCategory::Integer)
+            return {};
+          if (operand.integer_value) {
+            operand.integer_value->type =
+                value.type.text == ".u64"
+                    ? ExpressionInfo::IntegerType::Unsigned
+                    : ExpressionInfo::IntegerType::Signed;
+          }
+          return operand;
         } else if constexpr (std::same_as<Value,
                                           syntax_ast::AstConstantUnary>) {
           ExpressionInfo operand = classifyExpression(*value.operand);
@@ -246,18 +342,24 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
               return {};
             }
             if (value.operation == AstConstantUnaryOperator::Minus &&
-                operand.nonnegative_value && *operand.nonnegative_value != 0) {
-              operand.nonnegative_value.reset();
+                operand.integer_value) {
+              operand.integer_value->bits =
+                  uint64_t{0} - operand.integer_value->bits;
             }
             return operand;
           }
           if (operand.category != ExpressionCategory::Integer)
             return {};
           if (value.operation == AstConstantUnaryOperator::LogicalNot) {
-            if (operand.nonnegative_value)
-              operand.nonnegative_value = *operand.nonnegative_value == 0;
-          } else {
-            operand.nonnegative_value.reset();
+            if (operand.integer_value) {
+              operand.integer_value =
+                  signedBoolean(operand.integer_value->bits == 0);
+            }
+          } else if (operand.integer_value) {
+            operand.integer_value = ExpressionInfo::IntegerValue{
+                .bits = ~operand.integer_value->bits,
+                .type = ExpressionInfo::IntegerType::Unsigned,
+            };
           }
           return operand;
         } else if constexpr (std::same_as<Value,
@@ -265,20 +367,29 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
           return classifyBinary(value);
         } else {
           const ExpressionInfo condition = classifyExpression(*value.condition);
-          const ExpressionInfo true_value =
+          ExpressionInfo true_value =
               classifyExpression(*value.true_expression);
-          const ExpressionInfo false_value =
+          ExpressionInfo false_value =
               classifyExpression(*value.false_expression);
           if (condition.category != ExpressionCategory::Integer ||
               true_value.category != false_value.category) {
             return {};
           }
-          if (condition.nonnegative_value) {
-            return *condition.nonnegative_value != 0 ? true_value : false_value;
+          if (true_value.category == ExpressionCategory::Integer) {
+            if (!true_value.integer_value || !false_value.integer_value)
+              return {ExpressionCategory::Integer, std::nullopt};
+            const auto result_type = usualIntegerType(
+                *true_value.integer_value, *false_value.integer_value);
+            true_value.integer_value->type = result_type;
+            false_value.integer_value->type = result_type;
+          }
+          if (condition.integer_value) {
+            return condition.integer_value->bits != 0 ? true_value
+                                                      : false_value;
           }
           return {true_value.category,
-                  true_value.nonnegative_value == false_value.nonnegative_value
-                      ? true_value.nonnegative_value
+                  true_value.integer_value == false_value.integer_value
+                      ? true_value.integer_value
                       : std::nullopt};
         }
         return {};
@@ -325,10 +436,8 @@ std::string expressionKey(const AstConstantExpression& expression) {
 
 std::string dimensionKey(const AstConstantExpression& expression) {
   const ExpressionInfo value = classifyExpression(expression);
-  if (value.category == ExpressionCategory::Integer &&
-      value.nonnegative_value) {
-    return fmt::format("#{}", *value.nonnegative_value);
-  }
+  if (const auto integer = nonnegativeIntegerValue(value))
+    return fmt::format("#{}", *integer);
   return expressionKey(expression);
 }
 
@@ -452,13 +561,14 @@ class Checker {
     });
   }
 
-  void rememberDeclaration(std::string_view name, std::string signature,
+  void rememberDeclaration(std::string key, std::string_view name,
+                           std::string signature,
                            binding::SymbolLinkage linkage, bool is_definition,
                            SourceRange range) {
-    auto iterator = declarations_.find(std::string{name});
+    auto iterator = declarations_.find(key);
     if (iterator == declarations_.end()) {
       declarations_.emplace(
-          std::string{name},
+          std::move(key),
           SeenDeclaration{.signature = std::move(signature),
                           .linkage = linkage,
                           .range = range,
@@ -494,7 +604,10 @@ class Checker {
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
         const auto linkage = declarationLinkage(declaration->qualifiers);
         for (const auto& declarator : declaration->declarators) {
-          rememberDeclaration(declarator.name.syntax.text,
+          const std::string declaration_key =
+              std::string{declarator.parameterized_count ? "p:" : "e:"} +
+              declarator.name.syntax.text;
+          rememberDeclaration(declaration_key, declarator.name.syntax.text,
                               variableSignature(*declaration, declarator),
                               linkage,
                               linkage != binding::SymbolLinkage::External,
@@ -513,7 +626,8 @@ class Checker {
                  fmt::format("External function '{}' cannot have a body.",
                              function->name.syntax.text));
       }
-      rememberDeclaration(function->name.syntax.text,
+      rememberDeclaration("e:" + function->name.syntax.text,
+                          function->name.syntax.text,
                           functionSignature(*function), linkage,
                           !function->is_prototype, function->name.syntax.range);
     }
@@ -521,8 +635,8 @@ class Checker {
 
   void checkDimension(const AstConstantExpression& expression) {
     const ExpressionInfo value = classifyExpression(expression);
-    if (value.category != ExpressionCategory::Integer ||
-        !value.nonnegative_value || *value.nonnegative_value == 0) {
+    const auto integer = nonnegativeIntegerValue(value);
+    if (!integer || *integer == 0) {
       diagnose(DeclarationDiagnosticKind::InvalidArrayDimension,
                expression.range,
                "Array dimension must evaluate to a positive integer constant.");
@@ -562,15 +676,15 @@ class Checker {
           continue;
         }
         const ExpressionInfo value = classifyExpression(*dimension.size);
-        if (value.category != ExpressionCategory::Integer ||
-            !value.nonnegative_value || *value.nonnegative_value == 0) {
+        const auto integer = nonnegativeIntegerValue(value);
+        if (!integer || *integer == 0) {
           diagnose(
               DeclarationDiagnosticKind::InvalidArrayDimension,
               dimension.size->range,
               "Array dimension must evaluate to a positive integer constant.");
           extents.push_back(std::nullopt);
         } else {
-          extents.push_back(value.nonnegative_value);
+          extents.push_back(integer);
         }
       }
       if (declaration.vector_type) {

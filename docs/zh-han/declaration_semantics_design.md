@@ -15,8 +15,10 @@ pass，并在解析 instruction 前累积两者的诊断。
 
 ## Array 与 initializer
 
-array dimension 必须能求值为正整数 constant。`WARP_SZ` 以及由整数 literal、cast 和
-一元/二元/三元运算组成的表达式会在此阶段求值；symbol address 不能作为 dimension。
+array dimension 必须能求值为正整数 constant。求值器以带 `.s64/.u64` signedness 的
+64-bit bit pattern 保存每个整数子表达式，支持负数中间值、cast、usual arithmetic
+conversion，以及一元/二元/三元运算；因此 `-1 + 2` 等合法表达式不会在中间阶段被
+误判。`WARP_SZ` 同样在此阶段求值；symbol address 不能作为 dimension。
 只有带 initializer 的第一维可以省略，其长度由最外层 initializer list 推导。
 
 initializer 的 brace nesting 必须与 array 维数一致；vector declaration 额外形成长度为
@@ -48,5 +50,6 @@ function prototype 与 definition 各自仍拥有 lexical scope。function symbo
 ## 当前边界
 
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module
-symbol 选择。constant expression 当前覆盖已有 AST grammar 和 PTX 的 `.s64/.u64` 求值
-子集；后续若增加新的 constant operator，需要同时扩展分类与求值逻辑。
+symbol 选择。integer constant expression 当前覆盖已有 AST grammar，并按 PTX 的
+`.s64/.u64` 类型传播规则求值；后续若增加新的 constant operator，需要同时扩展分类、
+signedness 传播与求值逻辑。

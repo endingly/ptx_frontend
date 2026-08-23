@@ -45,6 +45,14 @@ PTX `name<count>` denotes `name0` through `name(count-1)`. The symbol table
 stores the base and count instead of expanding them. Looking up `%r2` returns
 the declaration's `SymbolId` plus `2` in
 `SymbolLookup::parameterized_index`, avoiding potentially large symbol lists.
+Member suffixes use canonical decimal spelling: `%r<3>` matches `%r0` through
+`%r2`, but does not match `%r02`.
+
+Declaration collection compares the represented name sets. A parameterized
+declaration that overlaps an explicit name, or another parameterized
+declaration with a different base, produces a same-scope duplicate diagnostic
+with the previous range. The base itself is not a generated member, so
+`name<2>` and an explicit `name` remain distinct symbols.
 
 Parameterized names are valid in every state space, but cannot also declare an
 array or initializer. The previous `.reg`-only restriction was removed, and
@@ -91,9 +99,9 @@ function. See `control_flow_syntax_design.md`.
 
 ## Current diagnostics and boundary
 
-The pass now accumulates diagnostics for function-local same-scope duplicates,
-invalid or zero parameterized counts, conflicting linkage qualifiers, and
-genuinely unresolved references. Same-name module declarations first share a
+The pass now accumulates diagnostics for same-scope duplicates, parameterized
+name-set overlaps, invalid or zero parameterized counts, conflicting linkage
+qualifiers, and genuinely unresolved references. Same-name module declarations first share a
 stable `SymbolId`; the declaration semantic pass then classifies them as a
 legal redeclaration, signature conflict, or multiple definition. Module
 resolution preserves the distinction between special and unresolved names:

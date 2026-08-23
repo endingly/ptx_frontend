@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 
 #include "ptx_ir/bind/ptx_symbol_table.hpp"
@@ -64,6 +65,7 @@ start:
   EXPECT_EQ(bank_member->parameterized_index, 2u);
   EXPECT_EQ(table.symbol(bank_member->symbol).name, "%r");
   EXPECT_FALSE(table.lookup(function_scope, "%r3").has_value());
+  EXPECT_FALSE(table.lookup(function_scope, "%r02").has_value());
 
   const auto local_values = table.lookup(function_scope, "values");
   ASSERT_TRUE(local_values.has_value());
@@ -337,6 +339,39 @@ loop:
   for (const auto& diagnostic : binding_result.diagnostics) {
     if (diagnostic.kind == binding::BindDiagnosticKind::DuplicateSymbol)
       EXPECT_TRUE(diagnostic.previous_range.has_value());
+  }
+}
+
+TEST(PtxSymbolTable, DiagnosesOverlappingParameterizedNameSets) {
+  constexpr std::string_view source = R"ptx(
+.global .u32 item<3>;
+.global .u32 item2;
+.global .u32 value2;
+.global .u32 value<3>;
+.global .u32 distinct<2>;
+.global .u32 distinct;
+.entry kernel() {
+  .reg .u32 %r<11>;
+  .reg .u32 %r1<2>;
+  ret;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  const auto duplicates = std::ranges::count_if(
+      binding_result.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind == binding::BindDiagnosticKind::DuplicateSymbol;
+      });
+  EXPECT_EQ(duplicates, 3u);
+  for (const auto& diagnostic : binding_result.diagnostics) {
+    EXPECT_EQ(diagnostic.kind, binding::BindDiagnosticKind::DuplicateSymbol);
+    EXPECT_TRUE(diagnostic.previous_range.has_value());
+    EXPECT_NE(diagnostic.message.find("overlapping symbol names"),
+              std::string::npos);
   }
 }
 

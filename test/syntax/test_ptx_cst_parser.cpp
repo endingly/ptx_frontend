@@ -271,6 +271,22 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(result->sourceText(), source);
 }
 
+TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
+  for (const std::string_view source : {
+           ".entry kernel() .maxntid 128, 1, 1 {}",
+           ".func helper() unexpected;",
+       }) {
+    PtxCstParser parser(source);
+
+    const auto result = parser.parseModule();
+
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_TRUE(
+        result.error().message.starts_with("unsupported function header token"))
+        << source;
+  }
+}
+
 TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
   constexpr std::string_view source =
       ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }";

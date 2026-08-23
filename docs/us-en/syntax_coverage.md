@@ -19,7 +19,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Initializers | Supported subset | Scalar expressions, recursive brace lists, and an unsized first dimension; `.extern`, parameterized-name, and non-`.global`/`.const` initializers are rejected |
 | Symbol binding | Supported subset | Module/function scopes, variables/parameters/functions/labels, local shadowing, parameterized members, and instruction/initializer/dimension/control-flow references |
 | Declaration semantics | Supported subset | Positive array extents, inferred first extent, initializer type/brace shape/element limits, symbol addresses, and module linkage-compatible redeclarations |
-| Other directives | Not supported | Debug, section, pragma, module variable, and structured kernel-tuning directives |
+| Other directives | Not supported (rejected) | Debug, section, pragma, module variable, and structured kernel-tuning directives; unmodeled function-header tokens never silently enter the AST |
 | Structured control syntax | Not supported | Nested scopes and directive-driven control-flow metadata |
 | Recovery/editing | Not supported | Missing tokens, recovery nodes, multi-error parsing, and token edits |
 | Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, and `bar` |

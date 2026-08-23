@@ -477,7 +477,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.rule, "control_flow.bra")
 
-    def test_mov_u32_uses_special_register_metadata(self) -> None:
+    def test_mov_uses_classified_scalar_source(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
@@ -497,7 +497,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
-                ("src", "WithLocs<ResolvedSpecialRegisterRef>"),
+                ("src", "WithLocs<ResolvedMovSource>"),
             ],
         )
         source_binding = variant.operand_layouts[0].bindings[1]
@@ -505,7 +505,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(source_binding.access, ResolvedOperandAccess.READ)
         self.assertEqual(
             source_binding.allowed_shapes,
-            (ResolvedOperandShape.SPECIAL_REGISTER,),
+            (
+                ResolvedOperandShape.REGISTER,
+                ResolvedOperandShape.IMMEDIATE,
+                ResolvedOperandShape.SPECIAL_REGISTER,
+            ),
         )
         self.assertEqual(
             source_binding.type_expression,
@@ -515,24 +519,33 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ),
         )
 
-        symbol_variant = instruction.variants[1]
-        self.assertEqual(symbol_variant.cpp_name, "U64Symbol")
+        address_variant = instruction.variants[1]
+        self.assertEqual(address_variant.cpp_name, "U64")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in symbol_variant.fields],
+            [(field.name, field.cpp_type) for field in address_variant.fields],
             [
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
-                ("src", "WithLocs<ResolvedSymbolRef>"),
+                ("src", "WithLocs<ResolvedMovSource>"),
             ],
         )
-        symbol_binding = symbol_variant.operand_layouts[0].bindings[1]
+        source_binding = address_variant.operand_layouts[0].bindings[1]
         self.assertEqual(
-            symbol_binding.allowed_shapes,
-            (ResolvedOperandShape.SYMBOL,),
+            source_binding.allowed_shapes,
+            (
+                ResolvedOperandShape.REGISTER,
+                ResolvedOperandShape.IMMEDIATE,
+                ResolvedOperandShape.SPECIAL_REGISTER,
+                ResolvedOperandShape.SYMBOL,
+                ResolvedOperandShape.ADDRESS,
+            ),
         )
         self.assertEqual(
-            symbol_binding.type_expression.kind,
-            ResolvedOperandTypeExpressionKind.NONE,
+            source_binding.type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                scalar_type="u64",
+            ),
         )
 
     def test_ld_generic_u32_uses_resolved_address(self) -> None:
@@ -596,8 +609,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
-        self.assertIn("WithLocs<ResolvedSpecialRegisterRef> src;", source)
-        self.assertIn("WithLocs<ResolvedSymbolRef> src;", source)
+        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 2)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",
@@ -719,21 +731,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertIn("std::expected<Mov, ResolveDiagnostic>", source)
         self.assertIn(
-            ".src = resolved_operand<ResolvedSpecialRegisterRef>", source
+            ".src = resolved_operand<ResolvedMovSource>", source
         )
         self.assertIn(
             ".actual_shape = check_end::OperandShape::SpecialRegister", source
         )
         self.assertIn(
-            ".special_register_type = selected.src.value.info.element_type",
+            ".special_register_type = special_register->info.element_type",
             source,
         )
         self.assertIn(".value_availability = AvailabilityDescriptor", source)
         self.assertIn("CheckResult check<Mov>(", source)
         self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
-        self.assertIn(
-            ".src = resolved_operand<ResolvedSymbolRef>", source
-        )
         self.assertIn(
             ".address = resolved_operand<ResolvedAddress>", source
         )

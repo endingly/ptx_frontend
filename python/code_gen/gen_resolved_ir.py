@@ -754,6 +754,66 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
+    if field.value_cpp_type == "ResolvedMovSource":
+        return f"""              [&]() -> OperandView {{
+                if (const auto* immediate =
+                        std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
+                      .immediate_type = immediate->type,
+                      .register_type = std::nullopt,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* register_ref =
+                        std::get_if<ResolvedRegisterRef>(&{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                      .immediate_type = std::nullopt,
+                      .register_type = register_ref->declared_type,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* special_register =
+                        std::get_if<ResolvedSpecialRegisterRef>(
+                            &{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .special_register_type = special_register->info.element_type,
+                      .value_availability = AvailabilityDescriptor{{
+                          .minimum_ptx_version = {{
+                              special_register->info.minimum_ptx_major,
+                              special_register->info.minimum_ptx_minor,
+                          }},
+                          .minimum_sm_version = special_register->info.minimum_sm,
+                      }},
+                      .value_name = special_register->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (std::holds_alternative<ResolvedSymbolRef>(
+                        {object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                return OperandView{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
+                    .immediate_type = std::nullopt,
+                    .register_type = std::nullopt,
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+              }}()"""
     raise ValueError(
         f"operand field {field.name!r}: unsupported checker view type "
         f"{field.value_cpp_type!r}"

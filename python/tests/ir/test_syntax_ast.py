@@ -188,7 +188,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
 
-    def test_mov_sreg_layout_accepts_identifier_or_vector_member(self) -> None:
+    def test_mov_source_layouts_cover_data_and_address_forms(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
@@ -207,13 +207,17 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(
             layout.slots[1].allowed_syntax_shapes,
             OperandSyntaxShape.IDENTIFIER_REF
+            | OperandSyntaxShape.IMMEDIATE
             | OperandSyntaxShape.VECTOR_MEMBER,
         )
 
-        symbol_layout = descriptor.variants[1].operand_layouts[0]
+        address_layout = descriptor.variants[1].operand_layouts[0]
         self.assertEqual(
-            symbol_layout.slots[1].allowed_syntax_shapes,
-            OperandSyntaxShape.IDENTIFIER_REF,
+            address_layout.slots[1].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF
+            | OperandSyntaxShape.IMMEDIATE
+            | OperandSyntaxShape.ADDRESS
+            | OperandSyntaxShape.VECTOR_MEMBER,
         )
 
     def test_ld_layout_requires_address_syntax(self) -> None:

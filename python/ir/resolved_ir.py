@@ -46,6 +46,7 @@ class ResolvedValueKind(Enum):
     PREDICATE = "Predicate"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
+    MOV_SOURCE = "MovSource"
     BRANCH_TARGET = "BranchTarget"
     SPECIAL_REGISTER = "SpecialRegister"
     SYMBOL = "Symbol"
@@ -259,6 +260,18 @@ _OPERAND_ALLOWED_SHAPES = {
     "reg_or_imm": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
+    ),
+    "mov_data_src": (
+        ResolvedOperandShape.REGISTER,
+        ResolvedOperandShape.IMMEDIATE,
+        ResolvedOperandShape.SPECIAL_REGISTER,
+    ),
+    "mov_address_src": (
+        ResolvedOperandShape.REGISTER,
+        ResolvedOperandShape.IMMEDIATE,
+        ResolvedOperandShape.SPECIAL_REGISTER,
+        ResolvedOperandShape.SYMBOL,
+        ResolvedOperandShape.ADDRESS,
     ),
     "pred": (ResolvedOperandShape.PREDICATE,),
     "pred_or_not": (ResolvedOperandShape.PREDICATE,),

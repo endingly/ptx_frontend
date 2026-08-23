@@ -108,16 +108,17 @@ qualifiers, and genuinely unresolved references. Same-name module declarations f
 stable `SymbolId`; the declaration semantic pass then classifies them as a
 legal redeclaration, signature conflict, or multiple definition. Module
 resolution preserves the distinction between special and unresolved names.
-`mov.u32 d, sreg` resolves the former to a `ResolvedSpecialRegisterRef` carrying
-type and target availability. Opcodes without a declared special-register
+The unified `mov.u32/.u64` source resolves the former to a
+`ResolvedSpecialRegisterRef` carrying type and target availability. Opcodes without a declared special-register
 shape still report an unsupported operand rather than an undeclared name. See
 `declaration_semantics_design.md` for the following pass.
 
-`mov.u64 d, symbol` and `ld.u32 d, [address]` now consume binding identity as
-well. The former produces a `ResolvedSymbolRef`; a symbol address base in the
-latter embeds the same representation. Module resolution retains a stable
-`SymbolId`, parameterized member, and state space, while standalone resolution
-keeps spelling only. Remaining work includes:
+`mov.u64 d, symbol[+offset]` and `ld.u32 d, [address]` now consume binding
+identity as well. A direct symbol in the former produces a `ResolvedSymbolRef`;
+its offset form embeds that representation as a `ResolvedAddress` base. Symbol
+address bases in the latter use the same representation. Module resolution
+retains a stable `SymbolId`, parameterized member, and state space, while
+standalone resolution keeps spelling only. Remaining work includes:
 
 - function/parameter addresses, state-space compatibility, and the remaining
-  special-register/type/source forms.
+  special-register/type forms.

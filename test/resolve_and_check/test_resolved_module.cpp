@@ -109,12 +109,13 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
   const auto& u32 = std::get<Mov::U32>(mov.variant);
-  EXPECT_EQ(u32.src.value.spelling, "%laneid");
-  EXPECT_EQ(u32.src.value.info.element_type, ScalarType::U32);
-  EXPECT_EQ(u32.src.value.info.vector_width, 1u);
-  EXPECT_EQ(u32.src.value.info.minimum_ptx_major, 1u);
-  EXPECT_EQ(u32.src.value.info.minimum_ptx_minor, 3u);
-  EXPECT_EQ(u32.src.value.info.minimum_sm, 0u);
+  const auto& special = std::get<ResolvedSpecialRegisterRef>(u32.src.value);
+  EXPECT_EQ(special.spelling, "%laneid");
+  EXPECT_EQ(special.info.element_type, ScalarType::U32);
+  EXPECT_EQ(special.info.vector_width, 1u);
+  EXPECT_EQ(special.info.minimum_ptx_major, 1u);
+  EXPECT_EQ(special.info.minimum_ptx_minor, 3u);
+  EXPECT_EQ(special.info.minimum_sm, 0u);
 
   const checker::Context too_old{
       .target =
@@ -190,8 +191,8 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
   const auto component_resolved = resolveInstruction(*component_ast);
   ASSERT_TRUE(component_resolved.has_value())
       << component_resolved.error().message;
-  const auto& component =
-      std::get<Mov::U32>(std::get<Mov>(*component_resolved).variant).src.value;
+  const auto& component = std::get<ResolvedSpecialRegisterRef>(
+      std::get<Mov::U32>(std::get<Mov>(*component_resolved).variant).src.value);
   EXPECT_EQ(component.spelling, "%tid.x");
   EXPECT_EQ(component.info.vector_width, 1u);
   EXPECT_EQ(component.info.minimum_ptx_major, 2u);
@@ -225,7 +226,8 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
   ASSERT_EQ(body.size(), 4u);
 
   const auto& mov = std::get<Mov>(body[0]);
-  const auto& mov_symbol = std::get<Mov::U64Symbol>(mov.variant).src.value;
+  const auto& mov_symbol =
+      std::get<ResolvedSymbolRef>(std::get<Mov::U64>(mov.variant).src.value);
   ASSERT_TRUE(mov_symbol.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*mov_symbol.symbol_id).name,
             "global_value");
@@ -299,14 +301,106 @@ TEST(ResolvedModule, ChecksGenericLoadAvailability) {
           .has_value());
 }
 
+TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<3>;
+  .reg .u64 %rd<2>;
+  mov.u32 %r0, %r1;
+  mov.u32 %r2, 42;
+  mov.u64 %rd0, global_value+8;
+  mov.u64 %rd1, %clock64;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+
+  const auto& register_source = std::get<ResolvedRegisterRef>(
+      std::get<Mov::U32>(std::get<Mov>(body[0]).variant).src.value);
+  EXPECT_EQ(register_source.spelling, "%r1");
+  EXPECT_EQ(register_source.parameterized_index, 1u);
+  EXPECT_EQ(register_source.declared_type, ScalarType::U32);
+
+  const auto& immediate_source = std::get<ResolvedImmediate>(
+      std::get<Mov::U32>(std::get<Mov>(body[1]).variant).src.value);
+  EXPECT_EQ(immediate_source.type, ScalarType::U32);
+  EXPECT_EQ(immediate_source.bits, 42u);
+
+  const auto& address_source = std::get<ResolvedAddress>(
+      std::get<Mov::U64>(std::get<Mov>(body[2]).variant).src.value);
+  const auto& symbol = std::get<ResolvedSymbolRef>(address_source.base);
+  ASSERT_TRUE(symbol.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*symbol.symbol_id).name, "global_value");
+  ASSERT_TRUE(address_source.offset.has_value());
+  EXPECT_EQ(address_source.offset->operation,
+            ResolvedAddressOffsetOperator::Add);
+  EXPECT_EQ(address_source.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(address_source.offset->value.bits, 8u);
+
+  const auto& special_source = std::get<ResolvedSpecialRegisterRef>(
+      std::get<Mov::U64>(std::get<Mov>(body[3]).variant).src.value);
+  EXPECT_EQ(special_source.spelling, "%clock64");
+  EXPECT_EQ(special_source.info.element_type, ScalarType::U64);
+}
+
+TEST(ResolvedModule, ChecksMovRegisterSourceType) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0;
+  .reg .u64 %rd0;
+  mov.u32 %r0, %rd0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
+  const auto checked =
+      checker::check(mov, checker::Context{
+                              .target =
+                                  checker::TargetInfo{
+                                      .ptx_version = checker::PtxVersion{9, 2},
+                                      .sm_version = 120,
+                                  },
+                              .instruction_range = ast.range,
+                          });
+  ASSERT_FALSE(checked.has_value());
+  ASSERT_EQ(checked.error().size(), 1u);
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+TEST(ResolvedModule, RejectsU32MovSymbolAddressSource) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  mov.u32 %r0, global_value;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "This mov variant does not accept the resolved source operand "
+            "shape.");
+}
+
 TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   PtxSyntaxParser mov_parser("mov.u64 %rd0, global_value;");
   const auto mov_ast = mov_parser.parseInstruction();
   ASSERT_TRUE(mov_ast.has_value()) << mov_ast.error().message;
   const auto mov_resolved = resolveInstruction(*mov_ast);
   ASSERT_TRUE(mov_resolved.has_value()) << mov_resolved.error().message;
-  const auto& symbol =
-      std::get<Mov::U64Symbol>(std::get<Mov>(*mov_resolved).variant).src.value;
+  const auto& symbol = std::get<ResolvedSymbolRef>(
+      std::get<Mov::U64>(std::get<Mov>(*mov_resolved).variant).src.value);
   EXPECT_EQ(symbol.spelling, "global_value");
   EXPECT_FALSE(symbol.symbol_id.has_value());
   EXPECT_FALSE(symbol.state_space.has_value());
@@ -324,19 +418,7 @@ TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   EXPECT_FALSE(base.symbol_id.has_value());
 }
 
-TEST(ResolvedModule, RejectsInvalidSymbolAndUnbracketedLoadAddress) {
-  const auto module = parseModule(R"ptx(
-.entry kernel() {
-  .reg .u64 %rd<2>;
-  mov.u64 %rd0, %rd1;
-}
-)ptx");
-  const auto invalid_symbol = resolveModule(module);
-  ASSERT_FALSE(invalid_symbol.has_value());
-  ASSERT_EQ(invalid_symbol.error().size(), 1u);
-  EXPECT_EQ(invalid_symbol.error().front().message,
-            "Symbol '%rd1' is not an addressable data symbol.");
-
+TEST(ResolvedModule, RejectsUnbracketedLoadAddress) {
   PtxSyntaxParser parser("ld.u32 %r0, %rd0+4;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.error().message;

@@ -69,6 +69,8 @@ domains:
       reg: ResolvedRegisterRef
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
+      mov_data_src: ResolvedMovSource
+      mov_address_src: ResolvedMovSource
       pred: ResolvedPredicate
       pred_or_not: ResolvedPredicate
       label: ResolvedBranchTarget
@@ -86,6 +88,7 @@ domains:
       Predicate: ResolvedPredicate
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
+      MovSource: ResolvedMovSource
       BranchTarget: ResolvedBranchTarget
       SpecialRegister: ResolvedSpecialRegisterRef
       Symbol: ResolvedSymbolRef
@@ -138,6 +141,7 @@ domains:
       Predicate: check_end::ResolvedValueKind::Predicate
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      MovSource: check_end::ResolvedValueKind::MovSource
       BranchTarget: check_end::ResolvedValueKind::BranchTarget
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
       Symbol: check_end::ResolvedValueKind::Symbol

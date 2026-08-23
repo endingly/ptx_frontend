@@ -8,28 +8,29 @@ codegen_category: data_movement
 section: "9.7.9"
 
 operand_patterns:
-  mov_u32_sreg:
+  mov_u32:
     - name: dst
       kind: reg
       role: dst
       access: write
       type: u32
     - name: src
-      kind: sreg
+      kind: mov_data_src
       role: src
       access: read
       type: u32
 
-  mov_u64_symbol:
+  mov_u64:
     - name: dst
       kind: reg
       role: dst
       access: write
       type: u64
     - name: src
-      kind: symbol
+      kind: mov_address_src
       role: src
       access: read
+      type: u64
 
   ld_u32_address:
     - name: dst
@@ -46,11 +47,12 @@ instructions:
   - opcode: mov
     section: "9.7.9.3"
     doc: >
-      Move from a scalar u32 special register or take a non-parameter data
-      variable address into a u64 register. Register, immediate,
-      symbol-plus-offset, function, parameter, predicate, and other-width
-      forms remain separate coverage.
-    syntax: "mov.u32 dst, sreg | mov.u64 dst, symbol"
+      Move a scalar register, immediate, or compatible special register into
+      a u32/u64 register. The u64 form additionally accepts a non-parameter
+      data-variable address, with an optional constant byte offset. Function,
+      parameter, predicate, vector, and other-width forms remain separate
+      coverage.
+    syntax: "mov.u32 dst, src | mov.u64 dst, src"
 
     variants:
       - name: mov_u32
@@ -63,7 +65,7 @@ instructions:
             domain: scalar_types
             presence: fixed
             value: u32
-        operands: $mov_u32_sreg
+        operands: $mov_u32
         rule: data_movement.mov
 
         examples:
@@ -71,9 +73,15 @@ instructions:
             valid: true
           - ptx: "mov.u32 %r0, %tid.x;"
             valid: true
+          - ptx: "mov.u32 %r0, %r1;"
+            valid: true
+          - ptx: "mov.u32 %r0, 42;"
+            valid: true
 
-      - name: mov_u64_symbol
-        description: "Take the address of an addressable data variable."
+      - name: mov_u64
+        description: >
+          Move scalar data or take the address of an addressable data
+          variable, optionally with a constant byte offset.
         availability:
           ptx: "1.0"
           sm: 0
@@ -83,11 +91,17 @@ instructions:
             domain: scalar_types
             presence: fixed
             value: u64
-        operands: $mov_u64_symbol
-        rule: data_movement.mov_symbol_address
+        operands: $mov_u64
+        rule: data_movement.mov
 
         examples:
           - ptx: "mov.u64 %rd0, global_value;"
+            valid: true
+          - ptx: "mov.u64 %rd0, global_value+8;"
+            valid: true
+          - ptx: "mov.u64 %rd0, %rd1;"
+            valid: true
+          - ptx: "mov.u64 %rd0, 0;"
             valid: true
 
   - opcode: ld

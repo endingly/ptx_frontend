@@ -64,6 +64,7 @@ enum class ResolvedValueKind : uint8_t {
   Predicate,
   Immediate,
   RegOrImm,
+  MovSource,
   BranchTarget,
   SpecialRegister,
   Symbol,
@@ -248,7 +249,7 @@ struct ResolvedAddressOffset {
 using ResolvedAddressBase =
     std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedSymbolRef>;
 
-/** A dereferenced PTX address with a resolved base and optional byte offset. */
+/** A PTX address expression with a resolved base and optional byte offset. */
 struct ResolvedAddress {
   ResolvedAddressBase base;
   std::optional<ResolvedAddressOffset> offset;
@@ -263,11 +264,16 @@ struct ResolvedOperandLayoutTag {
 
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
+/** A scalar ``mov`` source after identifier classification and binding. */
+using ResolvedMovSource = std::variant<ResolvedRegisterRef, ResolvedImmediate,
+                                       ResolvedSpecialRegisterRef,
+                                       ResolvedSymbolRef, ResolvedAddress>;
+
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
-                 WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>,
-                 WithLocs<ResolvedBranchTarget>,
+                 WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
+                 WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;

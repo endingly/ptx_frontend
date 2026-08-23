@@ -92,15 +92,15 @@ call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 
 的 parameterized count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
 declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
 redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
-与 unresolved reference 的区别；`mov.u32 d, sreg` 已将前者解析为带类型和 target
-availability 的 `ResolvedSpecialRegisterRef`。尚未声明 special-register shape 的 opcode
+与 unresolved reference 的区别；`mov.u32/.u64` 的统一 source 已将前者解析为带类型和
+target availability 的 `ResolvedSpecialRegisterRef`。尚未声明 special-register shape 的 opcode
 仍会得到 operand 不支持诊断，而不是“未声明”。declaration semantic pass 的设计见
 `declaration_semantics_design.md`。
 
-`mov.u64 d, symbol` 与 `ld.u32 d, [address]` 也已消费 binding identity：前者生成
-`ResolvedSymbolRef`，后者在 symbol address base 中嵌入同一表示。module resolution 保存
-稳定 `SymbolId`、parameterized member 与 state space；standalone resolution 只保留 spelling。
+`mov.u64 d, symbol[+offset]` 与 `ld.u32 d, [address]` 也已消费 binding identity：前者的
+direct symbol 生成 `ResolvedSymbolRef`，带 offset 时把该表示嵌入 `ResolvedAddress` base；
+后者的 symbol address base 使用同一表示。module resolution 保存稳定 `SymbolId`、
+parameterized member 与 state space；standalone resolution 只保留 spelling。
 后续语义阶段仍需完成：
 
-- function/parameter address、state-space compatibility，以及其余 special-register/type/source
-  form。
+- function/parameter address、state-space compatibility，以及其余 special-register/type form。

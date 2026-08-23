@@ -124,6 +124,17 @@ _OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    "mov_data_src": (
+        OperandSyntaxShape.IDENTIFIER_REF
+        | OperandSyntaxShape.IMMEDIATE
+        | OperandSyntaxShape.VECTOR_MEMBER
+    ),
+    "mov_address_src": (
+        OperandSyntaxShape.IDENTIFIER_REF
+        | OperandSyntaxShape.IMMEDIATE
+        | OperandSyntaxShape.ADDRESS
+        | OperandSyntaxShape.VECTOR_MEMBER
+    ),
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
     "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
     "label": OperandSyntaxShape.BRANCH_TARGET,

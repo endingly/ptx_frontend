@@ -124,8 +124,8 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - 新增 `ResolvedSpecialRegisterRef`，同时保存源码 spelling 与注册表元数据；vector family
   仅在选择 `.x/.y/.z` 标量 component 后进入当前 scalar operand；
 - checker 除 operand shape/type 外，还按具体 special-register value 检查 PTX/SM 可用性；
-- 新增首个消费该表示的 `mov.u32 d, sreg` generated variant，覆盖 standalone 与
-  binding-aware module resolution；其他 `mov` source form 与 type width 不被这一小步伪装为已支持。
+- `mov.u32 d, sreg` 首先消费该表示并覆盖 standalone 与 binding-aware module resolution；
+  后续统一 source 阶段已在不复制 special-register registry 的前提下扩展 source form。
 
 当前注册表描述 PTX 9.x 的现行类型。早期 ISA 中 `%tid` 的 `.u16`、`%gridid` 的
 `.u16/.u32` 等历史读取形式尚未建模，应在扩展相应 `mov` type variant 时显式表示，而不是
@@ -138,11 +138,24 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
   declaration identity 为空；
 - 新增 `ResolvedAddress`，base 明确区分 register、immediate address 与 data symbol，offset
   保留加减运算及已解析的 signed 64-bit value；
-- `mov.u64 d, symbol` 首先覆盖非参数 addressable data variable 的取地址形式；function
-  address、parameter address 与 symbol+offset 仍保持未支持；
+- `mov.u64 d, symbol` 首先覆盖非参数 addressable data variable 的取地址形式；后续统一
+  source 阶段已加入 symbol+offset，function address 与 parameter address 仍保持未支持；
 - `ld.u32 d, [address]` 首先覆盖 generic scalar load，并要求方括号解引用；address base
   支持 register、immediate 与 binding-aware data symbol；
 - generic `ld` 的 PTX 2.0 / SM 20 可用性由 generated checker 统一检查。
+
+## 已完成：分类后的 mov scalar source
+
+- 新增 `ResolvedMovSource`，在 binding 后统一区分 register、immediate、special register、
+  data symbol 与 address expression，避免这些 source 共享 identifier syntax shape 时产生
+  variant/layout 选择歧义；
+- `mov.u32` 现支持 register、typed immediate 与现行 `.u32` special register；`mov.u64` 在这些
+  source 之外还支持非参数 addressable data symbol 及 `symbol+constant-offset`；
+- descriptor 仍按 variant 精确限制允许的 resolved operand shape，checker 对 register、
+  immediate 与 special register 执行 instruction type 检查，并保留 special-register target
+  availability；
+- function/parameter address、其余 scalar/vector type 与历史 special-register width 没有被本阶段
+  扩大为已支持。
 
 ## 下一步评审与调整
 
@@ -157,8 +170,8 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 `bra`、special-register consumer 与首个 address/symbol consumer 已完成闭环；剩余顺序是：
 
-1. 逐步补齐 `mov` 的 register/immediate、symbol+offset、parameter/function-address source
-   form，并按明确的历史 ISA 规则扩展 special-register type width；
+1. 逐步补齐 `mov` 的 parameter/function-address、其余 scalar/vector type，并按明确的历史 ISA
+   规则扩展 special-register type width；
 2. 为 `ld/st` 增加 state-space、memory consistency/cache modifier 与更多 scalar/vector type，
    同时把 state-space compatibility 纳入 checker；
 3. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
@@ -167,5 +180,5 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 ## 验证结果
 
-- Debug CTest：140/140（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：143/143（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

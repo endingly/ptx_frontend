@@ -71,6 +71,12 @@ bool allows_shape(OperandSyntaxShape allowed, OperandSyntaxShape actual) {
          0;
 }
 
+bool allows_shape(checker::OperandShape allowed, checker::OperandShape actual) {
+  using Underlying = std::underlying_type_t<checker::OperandShape>;
+  return (static_cast<Underlying>(allowed) & static_cast<Underlying>(actual)) !=
+         0;
+}
+
 /**
  * @brief Check if the actual operands of an instruction match the operand layout descriptor.
  * 
@@ -562,6 +568,24 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type);
 
+std::expected<std::optional<ResolvedAddressOffset>, ResolveDiagnostic>
+resolve_address_offset(const syntax_ast::AstAddress& address) {
+  if (!address.offset)
+    return std::nullopt;
+
+  auto value =
+      resolve_immediate_value(address.offset->magnitude, ScalarType::S64);
+  if (!value)
+    return std::unexpected(value.error());
+  return ResolvedAddressOffset{
+      .operation = address.offset->operation ==
+                           syntax_ast::AstAddressOffset::Operator::Subtract
+                       ? ResolvedAddressOffsetOperator::Subtract
+                       : ResolvedAddressOffsetOperator::Add,
+      .value = std::move(*value),
+  };
+}
+
 bool is_addressable_data_symbol(const binding::Symbol& symbol,
                                 bool allow_parameters) {
   if (symbol.kind == binding::SymbolKind::Variable) {
@@ -683,23 +707,12 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     base = std::move(*immediate_base);
   }
 
-  std::optional<ResolvedAddressOffset> offset;
-  if (address->offset) {
-    auto value =
-        resolve_immediate_value(address->offset->magnitude, ScalarType::S64);
-    if (!value)
-      return std::unexpected(value.error());
-    offset = ResolvedAddressOffset{
-        .operation = address->offset->operation ==
-                             syntax_ast::AstAddressOffset::Operator::Subtract
-                         ? ResolvedAddressOffsetOperator::Subtract
-                         : ResolvedAddressOffsetOperator::Add,
-        .value = std::move(*value),
-    };
-  }
+  auto offset = resolve_address_offset(*address);
+  if (!offset)
+    return std::unexpected(offset.error());
 
   return WithLocs<ResolvedAddress>{
-      ResolvedAddress{.base = std::move(*base), .offset = std::move(offset)},
+      ResolvedAddress{.base = std::move(*base), .offset = std::move(*offset)},
       address->range};
 }
 
@@ -888,6 +901,140 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
       .range = syntax_ast::sourceRange(operand),
       .message = "Expected a register or immediate operand.",
   });
+}
+
+std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
+resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
+                   checker::OperandShape allowed_shapes,
+                   const ResolveContext* context) {
+  const auto reject_shape =
+      [&](checker::OperandShape shape,
+          SourceRange range) -> std::optional<ResolveDiagnostic> {
+    if (allows_shape(allowed_shapes, shape))
+      return std::nullopt;
+    return ResolveDiagnostic{
+        .range = range,
+        .message =
+            "This mov variant does not accept the resolved source "
+            "operand shape.",
+    };
+  };
+
+  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
+    if (auto rejected = reject_shape(checker::OperandShape::Immediate,
+                                     immediate->syntax.range)) {
+      return std::unexpected(std::move(*rejected));
+    }
+    auto value = resolve_immediate_value(*immediate, type);
+    if (!value)
+      return std::unexpected(value.error());
+    return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(*value)},
+                                       immediate->syntax.range};
+  }
+
+  if (std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
+    if (auto rejected = reject_shape(checker::OperandShape::SpecialRegister,
+                                     syntax_ast::sourceRange(operand))) {
+      return std::unexpected(std::move(*rejected));
+    }
+    auto value = resolve_special_register(operand);
+    if (!value)
+      return std::unexpected(value.error());
+    WithLocs<ResolvedMovSource> resolved{
+        ResolvedMovSource{std::move(value->value)}};
+    resolved.locs = std::move(value->locs);
+    return resolved;
+  }
+
+  if (const auto* address = std::get_if<syntax_ast::AstAddress>(&operand)) {
+    if (auto rejected =
+            reject_shape(checker::OperandShape::Address, address->range)) {
+      return std::unexpected(std::move(*rejected));
+    }
+    if (address->bracketed) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = address->range,
+          .message = "Expected an unbracketed symbol-address operand.",
+      });
+    }
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&address->base);
+    if (identifier == nullptr) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = address->range,
+          .message = "A mov address expression must use a data-symbol base.",
+      });
+    }
+    auto symbol = resolve_data_symbol(*identifier, context, false);
+    if (!symbol)
+      return std::unexpected(symbol.error());
+    auto offset = resolve_address_offset(*address);
+    if (!offset)
+      return std::unexpected(offset.error());
+    ResolvedAddress value{
+        .base = std::move(*symbol),
+        .offset = std::move(*offset),
+    };
+    return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(value)},
+                                       address->range};
+  }
+
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a scalar mov source operand.",
+    });
+  }
+
+  if (special_registers::lookup(identifier->syntax.text)) {
+    if (auto rejected = reject_shape(checker::OperandShape::SpecialRegister,
+                                     identifier->syntax.range)) {
+      return std::unexpected(std::move(*rejected));
+    }
+    auto value = resolve_special_register(operand);
+    if (!value)
+      return std::unexpected(value.error());
+    WithLocs<ResolvedMovSource> resolved{
+        ResolvedMovSource{std::move(value->value)}};
+    resolved.locs = std::move(value->locs);
+    return resolved;
+  }
+
+  bool is_register = identifier->syntax.text.starts_with('%');
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, identifier->syntax.text);
+    if (lookup) {
+      const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+      is_register = symbol.kind == binding::SymbolKind::Variable &&
+                    symbol.state_space == syntax_ast::AstStateSpace::Register;
+    }
+  }
+
+  if (is_register) {
+    if (auto rejected = reject_shape(checker::OperandShape::Register,
+                                     identifier->syntax.range)) {
+      return std::unexpected(std::move(*rejected));
+    }
+    auto value = resolve_register(operand, context);
+    if (!value)
+      return std::unexpected(value.error());
+    WithLocs<ResolvedMovSource> resolved{
+        ResolvedMovSource{std::move(value->value)}};
+    resolved.locs = std::move(value->locs);
+    return resolved;
+  }
+
+  if (auto rejected = reject_shape(checker::OperandShape::Symbol,
+                                   identifier->syntax.range)) {
+    return std::unexpected(std::move(*rejected));
+  }
+  auto value = resolve_data_symbol(*identifier, context, false);
+  if (!value)
+    return std::unexpected(value.error());
+  return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(*value)},
+                                     identifier->syntax.range};
 }
 
 struct ModifierBindingAttempt {
@@ -1103,6 +1250,17 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::MovSource: {
+      const auto type =
+          type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
+      if (!type)
+        return std::unexpected(type.error());
+      auto value =
+          resolve_mov_source(operand, *type, binding.allowed_shapes, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::BranchTarget: {
       auto value = resolve_branch_target(operand, context);
       if (!value)
@@ -1174,6 +1332,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
+    case ResolvedValueKind::MovSource:
     case ResolvedValueKind::BranchTarget:
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
@@ -1378,6 +1537,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
+      case ResolvedValueKind::MovSource:
       case ResolvedValueKind::BranchTarget:
       case ResolvedValueKind::SpecialRegister:
       case ResolvedValueKind::Symbol:

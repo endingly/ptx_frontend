@@ -14,9 +14,10 @@ Resolved IR records the selected instruction variant, resolved operand values,
 and diagnostic locations. Both are stable frontend boundaries. Lexical symbol
 binding is connected to module resolution, execution predicates resolve to
 declaration-aware values, and special registers, external symbols, and
-genuinely undeclared references are distinct. `mov.u32 d, sreg`,
-`mov.u64 d, symbol`, and `ld.u32 d, [address]` now exercise the special-register,
-symbol, and address operand paths respectively. Other type/source forms,
+genuinely undeclared references are distinct. `mov.u32/.u64` now accept
+register, immediate, and special-register sources; `.u64` also accepts data
+symbols and `symbol+offset` addresses. `ld.u32 d, [address]` exercises the
+dereferenced-address path. Other type/source forms,
 complete memory qualifiers, `call` groups, CFG/SSA, and target lowering remain
 later work.
 
@@ -65,7 +66,7 @@ Modifier primitives include `bool`, `ScalarType`, and `RoundingMode`; the latter
 turns `.rn/.rz/.rm/.rp` into statically checkable values instead of runtime
 strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 `ResolvedPredicate`, `ResolvedBranchTarget`, `ResolvedSpecialRegisterRef`,
-`ResolvedSymbolRef`, `ResolvedAddress`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
+`ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
 and `ScalarType`, so the checker never has to reinterpret literal text.
 
 `AstImmediateKind` retains the lexer's literal classification. Decimal and hex
@@ -98,23 +99,27 @@ and minimum PTX/SM targets; binding only reuses it for classification. A scalar
 operand accepts a scalar special register or a component such as `%tid.x`, but
 not an unselected vector base. The checker uses the value-carried metadata for
 dynamic type and target checks, so instruction descriptors need not duplicate
-availability for every predefined name. The first consumer is
-`mov.u32 d, sreg`.
+availability for every predefined name. The current consumer is the unified,
+classified source of `mov.u32/.u64`.
 
 `ResolvedSymbolRef` retains source spelling. Module resolution also records the
 declaration `SymbolId`, parameterized member, state space, and representable
 declaration scalar type. Standalone resolution cannot perform lexical binding,
-so it leaves identity empty as it does for branch targets. The initial direct
-consumer, `mov.u64 d, symbol`, intentionally accepts only non-parameter
-addressable data variables; function and parameter addresses need their own
-availability and semantic rules before being added.
+so it leaves identity empty as it does for branch targets. `ResolvedMovSource`
+classifies registers, immediates, special registers, data symbols, and address
+expressions after binding, avoiding identifier-shape ambiguity during
+variant/layout selection. The current `mov.u64` data-symbol form intentionally
+accepts only non-parameter addressable data variables; function and parameter
+addresses need their own availability and semantic rules before being added.
 
 A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
 `ResolvedImmediate`, and `ResolvedSymbolRef`. Its optional offset retains the
-add/subtract operator and a parsed signed 64-bit value. The first consumer,
-`ld.u32 d, [address]`, requires bracketed dereference and covers register,
-immediate, and bound-symbol bases under generic addressing. Explicit state
-spaces and the complete memory-qualifier surface remain outside this subset.
+add/subtract operator and a parsed signed 64-bit value.
+`mov.u64 d, symbol+offset` uses an unbracketed address value restricted to a
+data-symbol base. `ld.u32 d, [address]` requires bracketed dereference and
+covers register, immediate, and bound-symbol bases under generic addressing.
+Explicit state spaces and the complete memory-qualifier surface remain outside
+this subset.
 
 ## Opcode-generated structures
 

@@ -1,4 +1,4 @@
-#include "ptx_ir/cst/ptx_cst_parser.hpp"
+#include <ptx_frontend/cst/ptx_cst_parser.hpp>
 
 #include <algorithm>
 #include <stdexcept>

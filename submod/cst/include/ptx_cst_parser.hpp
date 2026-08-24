@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ptx_ir/cst/ptx_cst.hpp"
-#include "ptx_lexer.hpp"
+#include <ptx_frontend/cst/ptx_cst.hpp>
+#include <ptx_frontend/lexer/ptx_lexer.hpp>
 
 namespace ptx_frontend {
 

@@ -6,7 +6,7 @@
  */
 
 %{
-#include "ptx_ir/lex/ptx_token.hpp"
+#include <ptx_frontend/lexer/ptx_token.hpp>
 using ptx_frontend::SourcePos;
 using ptx_frontend::SourceRange;
 using ptx_frontend::TokenKind;

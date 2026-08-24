@@ -1,5 +1,6 @@
 #include "ptx_ir/cst/ptx_cst_parser.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -72,6 +73,50 @@ bool isVariableStateSpace(TokenKind kind) {
   return kind == TokenKind::DotReg || kind == TokenKind::DotParam ||
          kind == TokenKind::DotLocal || kind == TokenKind::DotShared ||
          kind == TokenKind::DotGlobal || kind == TokenKind::DotConst;
+}
+
+bool isConstantLiteral(TokenKind kind) {
+  return isImmediate(kind) || kind == TokenKind::WarpSz;
+}
+
+bool isConstantUnaryOperator(TokenKind kind) {
+  return kind == TokenKind::Plus || kind == TokenKind::Minus ||
+         kind == TokenKind::Exclamation || kind == TokenKind::Tilde;
+}
+
+int constantBinaryPrecedence(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::PipePipe:
+      return 1;
+    case TokenKind::AmpAmp:
+      return 2;
+    case TokenKind::Pipe:
+      return 3;
+    case TokenKind::Caret:
+      return 4;
+    case TokenKind::Amp:
+      return 5;
+    case TokenKind::EqEq:
+    case TokenKind::NotEq:
+      return 6;
+    case TokenKind::Lt:
+    case TokenKind::LtEq:
+    case TokenKind::Gt:
+    case TokenKind::GtEq:
+      return 7;
+    case TokenKind::ShiftLeft:
+    case TokenKind::ShiftRight:
+      return 8;
+    case TokenKind::Plus:
+    case TokenKind::Minus:
+      return 9;
+    case TokenKind::Star:
+    case TokenKind::Slash:
+    case TokenKind::Percent:
+      return 10;
+    default:
+      return -1;
+  }
 }
 
 }  // namespace
@@ -210,6 +255,141 @@ PtxCstParser::parseVectorPack(TokenId open) {
 }
 
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+PtxCstParser::parseCallParameterList(
+    syntax_cst::CstCallParameterListKind kind) {
+  using syntax_cst::CstCallParameterList;
+  using syntax_cst::CstCallParameterListKind;
+
+  auto open = expect(TokenKind::LParen, "'(' in call parameter list");
+  if (!open)
+    return std::unexpected(open.error());
+
+  std::vector<syntax_cst::CstCallParameter> parameters;
+  std::vector<TokenId> commas;
+  if (kind == CstCallParameterListKind::Return) {
+    auto parameter = expect(TokenKind::Ident, "call return parameter");
+    if (!parameter)
+      return std::unexpected(parameter.error());
+    parameters.emplace_back(syntax_cst::CstIdentifier{*parameter});
+    if (token(peek()).kind == TokenKind::Comma) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "a call return parameter list must contain exactly one name"});
+    }
+  } else {
+    while (token(peek()).kind != TokenKind::RParen) {
+      if (token(peek()).kind == TokenKind::Ident) {
+        parameters.emplace_back(syntax_cst::CstIdentifier{consume()});
+      } else if (atImmediateStart()) {
+        auto parameter = parseImmediate();
+        if (!parameter)
+          return std::unexpected(parameter.error());
+        parameters.emplace_back(std::move(*parameter));
+      } else {
+        return std::unexpected(CstParseDiagnostic{
+            token(peek()).range,
+            "expected identifier or immediate call argument"});
+      }
+      if (token(peek()).kind != TokenKind::Comma)
+        break;
+      commas.push_back(consume());
+      if (token(peek()).kind == TokenKind::RParen) {
+        return std::unexpected(CstParseDiagnostic{
+            token(peek()).range,
+            "call argument list cannot end with a trailing comma"});
+      }
+    }
+  }
+
+  auto close = expect(TokenKind::RParen, "')' in call parameter list");
+  if (!close)
+    return std::unexpected(close.error());
+  return syntax_cst::CstOperand{CstCallParameterList{
+      .kind = kind,
+      .left_paren = *open,
+      .parameters = std::move(parameters),
+      .commas = std::move(commas),
+      .right_paren = *close,
+      .token_range = {*open, *close + 1},
+  }};
+}
+
+std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+PtxCstParser::parseCallOperands() {
+  using syntax_cst::CstCallParameterListKind;
+  std::vector<syntax_cst::CstOperandElement> operands;
+  const bool has_return_parameters = token(peek()).kind == TokenKind::LParen;
+  if (has_return_parameters) {
+    auto returns = parseCallParameterList(CstCallParameterListKind::Return);
+    if (!returns)
+      return std::unexpected(returns.error());
+    operands.push_back({std::move(*returns), std::nullopt});
+    auto comma = expect(TokenKind::Comma, "',' after call return parameter");
+    if (!comma)
+      return std::unexpected(comma.error());
+    operands.back().trailing_comma = *comma;
+  }
+
+  auto target = expect(TokenKind::Ident, "call target");
+  if (!target)
+    return std::unexpected(target.error());
+  operands.push_back(
+      {syntax_cst::CstCallTarget{syntax_cst::CstIdentifier{*target},
+                                 {*target, *target + 1}},
+       std::nullopt});
+
+  if (token(peek()).kind != TokenKind::Comma) {
+    if (has_return_parameters) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "a call with a return parameter requires an input parameter list"});
+    }
+    return operands;
+  }
+
+  operands.back().trailing_comma = consume();
+  if (token(peek()).kind == TokenKind::LParen) {
+    auto inputs = parseCallParameterList(CstCallParameterListKind::Input);
+    if (!inputs)
+      return std::unexpected(inputs.error());
+    operands.push_back({std::move(*inputs), std::nullopt});
+    if (token(peek()).kind != TokenKind::Comma)
+      return operands;
+    operands.back().trailing_comma = consume();
+  } else if (has_return_parameters) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "expected call input parameter list after the target"});
+  }
+
+  auto target_set = expect(TokenKind::Ident, "call target set or prototype");
+  if (!target_set)
+    return std::unexpected(target_set.error());
+  operands.push_back(
+      {syntax_cst::CstCallTargetSet{syntax_cst::CstIdentifier{*target_set},
+                                    {*target_set, *target_set + 1}},
+       std::nullopt});
+  return operands;
+}
+
+std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+PtxCstParser::parseBranchOperands() {
+  auto target = expect(TokenKind::Ident, "branch label target");
+  if (!target)
+    return std::unexpected(target.error());
+  if (token(peek()).kind == TokenKind::Comma) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "direct branch accepts exactly one label target"});
+  }
+  std::vector<syntax_cst::CstOperandElement> operands;
+  operands.push_back(
+      {syntax_cst::CstBranchTarget{syntax_cst::CstIdentifier{*target},
+                                   {*target, *target + 1}},
+       std::nullopt});
+  return operands;
+}
+
+std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseOperand() {
   if (token(peek()).kind == TokenKind::Exclamation) {
     const TokenId exclamation = consume();
@@ -289,7 +469,17 @@ PtxCstParser::parseInstructionNode(std::optional<TokenId> supplied_opcode) {
     modifiers.push_back(consume());
 
   std::vector<syntax_cst::CstOperandElement> operands;
-  if (token(peek()).kind != TokenKind::Semicolon) {
+  if (token(*opcode).text == "call") {
+    auto parsed_operands = parseCallOperands();
+    if (!parsed_operands)
+      return std::unexpected(parsed_operands.error());
+    operands = std::move(*parsed_operands);
+  } else if (token(*opcode).text == "bra") {
+    auto parsed_operands = parseBranchOperands();
+    if (!parsed_operands)
+      return std::unexpected(parsed_operands.error());
+    operands = std::move(*parsed_operands);
+  } else if (token(peek()).kind != TokenKind::Semicolon) {
     for (;;) {
       auto operand = parseOperand();
       if (!operand)
@@ -311,6 +501,187 @@ PtxCstParser::parseInstructionNode(std::optional<TokenId> supplied_opcode) {
   return syntax_cst::CstInstruction{
       std::move(predicate), *opcode,    std::move(modifiers),
       std::move(operands),  *semicolon, {first, *semicolon + 1}};
+}
+
+std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
+PtxCstParser::parseConstantPrimary() {
+  using namespace syntax_cst;
+
+  const TokenId first = peek();
+  CstConstantExpression expression;
+  if (isConstantLiteral(token(first).kind)) {
+    const TokenId literal = consume();
+    expression = CstConstantExpression{CstConstantLiteral{literal},
+                                       {literal, literal + 1}};
+  } else if (token(first).kind == TokenKind::Ident) {
+    const TokenId name = consume();
+    expression =
+        CstConstantExpression{CstConstantSymbol{name}, {name, name + 1}};
+  } else if (token(first).kind == TokenKind::LParen) {
+    const TokenId left_paren = consume();
+    if (token(peek()).kind == TokenKind::DotIdent &&
+        (token(peek()).text == ".s64" || token(peek()).text == ".u64")) {
+      const TokenId type = consume();
+      auto right_paren = expect(TokenKind::RParen, "')' after constant cast");
+      if (!right_paren)
+        return std::unexpected(right_paren.error());
+      auto operand = parseConstantUnary();
+      if (!operand)
+        return std::unexpected(operand.error());
+      const TokenId last = operand->token_range.last;
+      return CstConstantExpression{
+          CstConstantCast{
+              left_paren, type, *right_paren,
+              std::make_unique<CstConstantExpression>(std::move(*operand))},
+          {left_paren, last}};
+    }
+
+    auto inner = parseConstantExpression();
+    if (!inner)
+      return std::unexpected(inner.error());
+    auto right_paren = expect(TokenKind::RParen, "')'");
+    if (!right_paren)
+      return std::unexpected(right_paren.error());
+    expression = CstConstantExpression{
+        CstConstantParenthesized{
+            left_paren,
+            std::make_unique<CstConstantExpression>(std::move(*inner)),
+            *right_paren},
+        {left_paren, *right_paren + 1}};
+  } else {
+    return std::unexpected(
+        CstParseDiagnostic{token(first).range, "expected constant expression"});
+  }
+
+  while (token(peek()).kind == TokenKind::LParen) {
+    const TokenId left_paren = consume();
+    auto argument = parseConstantExpression();
+    if (!argument)
+      return std::unexpected(argument.error());
+    auto right_paren =
+        expect(TokenKind::RParen, "')' after initializer operator");
+    if (!right_paren)
+      return std::unexpected(right_paren.error());
+    const TokenId expression_first = expression.token_range.first;
+    expression = CstConstantExpression{
+        CstConstantCall{
+            std::make_unique<CstConstantExpression>(std::move(expression)),
+            left_paren,
+            std::make_unique<CstConstantExpression>(std::move(*argument)),
+            *right_paren},
+        {expression_first, *right_paren + 1}};
+  }
+
+  return expression;
+}
+
+std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
+PtxCstParser::parseConstantUnary() {
+  if (!isConstantUnaryOperator(token(peek()).kind))
+    return parseConstantPrimary();
+
+  const TokenId operator_token = consume();
+  auto operand = parseConstantUnary();
+  if (!operand)
+    return std::unexpected(operand.error());
+  const TokenId last = operand->token_range.last;
+  return syntax_cst::CstConstantExpression{
+      syntax_cst::CstConstantUnary{
+          operator_token, std::make_unique<syntax_cst::CstConstantExpression>(
+                              std::move(*operand))},
+      {operator_token, last}};
+}
+
+std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
+PtxCstParser::parseConstantExpression(int minimum_precedence) {
+  auto left = parseConstantUnary();
+  if (!left)
+    return std::unexpected(left.error());
+
+  for (;;) {
+    const int precedence = constantBinaryPrecedence(token(peek()).kind);
+    if (precedence < minimum_precedence)
+      break;
+
+    const TokenId operator_token = consume();
+    auto right = parseConstantExpression(precedence + 1);
+    if (!right)
+      return std::unexpected(right.error());
+    const TokenId first = left->token_range.first;
+    const TokenId last = right->token_range.last;
+    left = syntax_cst::CstConstantExpression{
+        syntax_cst::CstConstantBinary{
+            std::make_unique<syntax_cst::CstConstantExpression>(
+                std::move(*left)),
+            operator_token,
+            std::make_unique<syntax_cst::CstConstantExpression>(
+                std::move(*right))},
+        {first, last}};
+  }
+
+  if (minimum_precedence == 0 && token(peek()).kind == TokenKind::Question) {
+    const TokenId first = left->token_range.first;
+    const TokenId question = consume();
+    auto true_expression = parseConstantExpression();
+    if (!true_expression)
+      return std::unexpected(true_expression.error());
+    auto colon = expect(TokenKind::Colon, "':' in conditional expression");
+    if (!colon)
+      return std::unexpected(colon.error());
+    auto false_expression = parseConstantExpression();
+    if (!false_expression)
+      return std::unexpected(false_expression.error());
+    const TokenId last = false_expression->token_range.last;
+    left = syntax_cst::CstConstantExpression{
+        syntax_cst::CstConstantConditional{
+            std::make_unique<syntax_cst::CstConstantExpression>(
+                std::move(*left)),
+            question,
+            std::make_unique<syntax_cst::CstConstantExpression>(
+                std::move(*true_expression)),
+            *colon,
+            std::make_unique<syntax_cst::CstConstantExpression>(
+                std::move(*false_expression))},
+        {first, last}};
+  }
+
+  return left;
+}
+
+std::expected<syntax_cst::CstInitializer, CstParseDiagnostic>
+PtxCstParser::parseInitializer() {
+  using namespace syntax_cst;
+
+  if (token(peek()).kind != TokenKind::LBrace) {
+    auto expression = parseConstantExpression();
+    if (!expression)
+      return std::unexpected(expression.error());
+    const CstTokenRange range = expression->token_range;
+    return CstInitializer{std::move(*expression), range};
+  }
+
+  const TokenId left_brace = consume();
+  std::vector<CstInitializer> elements;
+  std::vector<TokenId> commas;
+  while (token(peek()).kind != TokenKind::RBrace) {
+    auto element = parseInitializer();
+    if (!element)
+      return std::unexpected(element.error());
+    elements.push_back(std::move(*element));
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+    if (token(peek()).kind == TokenKind::RBrace)
+      break;
+  }
+  auto right_brace = expect(TokenKind::RBrace, "'}' in initializer");
+  if (!right_brace)
+    return std::unexpected(right_brace.error());
+  const CstTokenRange range{left_brace, *right_brace + 1};
+  return CstInitializer{
+      CstInitializerList{left_brace, std::move(elements), std::move(commas),
+                         *right_brace, range},
+      range};
 }
 
 std::expected<syntax_cst::CstVariableDeclaration, CstParseDiagnostic>
@@ -351,21 +722,16 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers,
       return std::unexpected(name.error());
 
     std::optional<TokenId> left_angle;
-    std::optional<TokenId> register_count;
+    std::optional<TokenId> parameterized_count;
     std::optional<TokenId> right_angle;
     std::vector<syntax_cst::CstArrayDimension> array_dimensions;
     TokenId last = *name;
     if (token(peek()).kind == TokenKind::Lt) {
-      if (token(state_space).kind != TokenKind::DotReg) {
-        return std::unexpected(CstParseDiagnostic{
-            token(peek()).range,
-            "register-bank declarator requires '.reg' state space"});
-      }
       left_angle = consume();
-      auto count_token = expect(TokenKind::Decimal, "register count");
+      auto count_token = expect(TokenKind::Decimal, "parameterized count");
       if (!count_token)
         return std::unexpected(count_token.error());
-      register_count = *count_token;
+      parameterized_count = *count_token;
       auto close = expect(TokenKind::Gt, "'>'");
       if (!close)
         return std::unexpected(close.error());
@@ -375,29 +741,67 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers,
 
     while (token(peek()).kind == TokenKind::LBracket) {
       const TokenId left_bracket = consume();
-      std::vector<TokenId> size_tokens;
-      while (token(peek()).kind != TokenKind::RBracket) {
-        if (token(peek()).kind == TokenKind::Eof ||
-            token(peek()).kind == TokenKind::Semicolon) {
-          return std::unexpected(CstParseDiagnostic{
-              token(peek()).range, "expected ']' in array declarator"});
-        }
-        size_tokens.push_back(consume());
+      if (parameterized_count) {
+        return std::unexpected(CstParseDiagnostic{
+            token(left_bracket).range,
+            "parameterized variable names cannot declare arrays"});
       }
-      const TokenId right_bracket = consume();
+      std::optional<syntax_cst::CstConstantExpression> size;
+      if (token(peek()).kind != TokenKind::RBracket) {
+        auto expression = parseConstantExpression();
+        if (!expression)
+          return std::unexpected(expression.error());
+        size = std::move(*expression);
+      }
+      auto right_bracket = expect(TokenKind::RBracket, "']'");
+      if (!right_bracket)
+        return std::unexpected(right_bracket.error());
       array_dimensions.push_back(
           syntax_cst::CstArrayDimension{left_bracket,
-                                        std::move(size_tokens),
-                                        right_bracket,
-                                        {left_bracket, right_bracket + 1}});
-      last = right_bracket;
+                                        std::move(size),
+                                        *right_bracket,
+                                        {left_bracket, *right_bracket + 1}});
+      last = *right_bracket;
+    }
+
+    std::optional<TokenId> equals;
+    std::optional<syntax_cst::CstInitializer> initializer;
+    if (token(peek()).kind == TokenKind::Eq) {
+      equals = consume();
+      if (parameterized_count) {
+        return std::unexpected(CstParseDiagnostic{
+            token(*equals).range,
+            "parameterized variable names cannot have an initializer"});
+      }
+      if (token(state_space).kind != TokenKind::DotGlobal &&
+          token(state_space).kind != TokenKind::DotConst) {
+        return std::unexpected(CstParseDiagnostic{
+            token(*equals).range,
+            "variable initializer requires '.global' or '.const' state space"});
+      }
+      const bool is_external =
+          std::ranges::any_of(qualifiers, [this](TokenId qualifier) {
+            return token(qualifier).kind == TokenKind::DotExtern;
+          });
+      if (is_external) {
+        return std::unexpected(CstParseDiagnostic{
+            token(*equals).range,
+            "external variable declaration cannot have an initializer"});
+      }
+      auto parsed_initializer = parseInitializer();
+      if (!parsed_initializer)
+        return std::unexpected(parsed_initializer.error());
+      last = parsed_initializer->token_range.last - 1;
+      initializer = std::move(*parsed_initializer);
     }
     declarators.push_back(
         syntax_cst::CstVariableDeclarator{*name,
                                           left_angle,
-                                          register_count,
+                                          parameterized_count,
                                           right_angle,
                                           std::move(array_dimensions),
+                                          equals,
+                                          std::move(initializer),
                                           {*name, last + 1}});
 
     if (token(peek()).kind != TokenKind::Comma)
@@ -472,13 +876,17 @@ PtxCstParser::parseFunctionParameter() {
     return std::unexpected(name.error());
 
   std::optional<TokenId> left_bracket;
-  std::optional<TokenId> array_size;
+  std::optional<syntax_cst::CstConstantExpression> array_size;
   std::optional<TokenId> right_bracket;
   TokenId last = *name;
   if (token(peek()).kind == TokenKind::LBracket) {
     left_bracket = consume();
-    if (token(peek()).kind == TokenKind::Decimal)
-      array_size = consume();
+    if (token(peek()).kind != TokenKind::RBracket) {
+      auto size = parseConstantExpression();
+      if (!size)
+        return std::unexpected(size.error());
+      array_size = std::move(*size);
+    }
     auto close = expect(TokenKind::RBracket, "']'");
     if (!close)
       return std::unexpected(close.error());
@@ -497,7 +905,7 @@ PtxCstParser::parseFunctionParameter() {
       pointer_alignment,
       *name,
       left_bracket,
-      array_size,
+      std::move(array_size),
       right_bracket,
       {state_space, last + 1},
   };
@@ -647,14 +1055,15 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     header_tokens.push_back(*noreturn_directive);
   }
 
-  while (token(peek()).kind != TokenKind::LBrace &&
-         token(peek()).kind != TokenKind::Semicolon) {
-    const TokenId id = consume();
-    if (token(id).kind == TokenKind::Eof) {
-      return std::unexpected(CstParseDiagnostic{
-          token(id).range, "expected function body or prototype terminator"});
-    }
-    header_tokens.push_back(id);
+  if (token(peek()).kind == TokenKind::Eof) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "expected function body or prototype terminator"});
+  }
+  if (token(peek()).kind != TokenKind::LBrace &&
+      token(peek()).kind != TokenKind::Semicolon) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "unsupported function header token '" +
+                                 std::string{token(peek()).text} + "'"});
   }
 
   if (token(peek()).kind == TokenKind::Semicolon) {

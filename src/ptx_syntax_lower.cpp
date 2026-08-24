@@ -25,6 +25,8 @@ syntax_ast::AstImmediateKind immediateKind(TokenKind kind) {
       return syntax_ast::AstImmediateKind::F64Hex;
     case TokenKind::F64:
       return syntax_ast::AstImmediateKind::DecimalFloat;
+    case TokenKind::WarpSz:
+      return syntax_ast::AstImmediateKind::WarpSize;
     default:
       throw std::logic_error("CST immediate contains a non-literal token");
   }
@@ -47,6 +49,148 @@ syntax_ast::AstIdentifierRef lowerIdentifier(
   return syntax_ast::AstIdentifierRef{leafSyntax(cst, identifier.token)};
 }
 
+syntax_ast::AstConstantUnaryOperator lowerConstantUnaryOperator(
+    TokenKind kind) {
+  using Operator = syntax_ast::AstConstantUnaryOperator;
+  switch (kind) {
+    case TokenKind::Plus:
+      return Operator::Plus;
+    case TokenKind::Minus:
+      return Operator::Minus;
+    case TokenKind::Exclamation:
+      return Operator::LogicalNot;
+    case TokenKind::Tilde:
+      return Operator::BitwiseNot;
+    default:
+      throw std::logic_error(
+          "CST constant expression has invalid unary operator");
+  }
+}
+
+syntax_ast::AstConstantBinaryOperator lowerConstantBinaryOperator(
+    TokenKind kind) {
+  using Operator = syntax_ast::AstConstantBinaryOperator;
+  switch (kind) {
+    case TokenKind::Star:
+      return Operator::Multiply;
+    case TokenKind::Slash:
+      return Operator::Divide;
+    case TokenKind::Percent:
+      return Operator::Remainder;
+    case TokenKind::Plus:
+      return Operator::Add;
+    case TokenKind::Minus:
+      return Operator::Subtract;
+    case TokenKind::ShiftLeft:
+      return Operator::ShiftLeft;
+    case TokenKind::ShiftRight:
+      return Operator::ShiftRight;
+    case TokenKind::Lt:
+      return Operator::Less;
+    case TokenKind::LtEq:
+      return Operator::LessEqual;
+    case TokenKind::Gt:
+      return Operator::Greater;
+    case TokenKind::GtEq:
+      return Operator::GreaterEqual;
+    case TokenKind::EqEq:
+      return Operator::Equal;
+    case TokenKind::NotEq:
+      return Operator::NotEqual;
+    case TokenKind::Amp:
+      return Operator::BitwiseAnd;
+    case TokenKind::Caret:
+      return Operator::BitwiseXor;
+    case TokenKind::Pipe:
+      return Operator::BitwiseOr;
+    case TokenKind::AmpAmp:
+      return Operator::LogicalAnd;
+    case TokenKind::PipePipe:
+      return Operator::LogicalOr;
+    default:
+      throw std::logic_error(
+          "CST constant expression has invalid binary operator");
+  }
+}
+
+syntax_ast::AstConstantExpression lowerConstantExpression(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstConstantExpression& expression) {
+  using namespace syntax_ast;
+  AstConstantExpressionNode node = std::visit(
+      [&cst](const auto& value) -> AstConstantExpressionNode {
+        using Value = std::remove_cvref_t<decltype(value)>;
+        if constexpr (std::same_as<Value, syntax_cst::CstConstantLiteral>) {
+          const PtxToken& literal = cst.token(value.literal);
+          return AstConstantLiteral{AstImmediate{leafSyntax(cst, value.literal),
+                                                 immediateKind(literal.kind)}};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstConstantSymbol>) {
+          return AstConstantSymbol{lowerIdentifier(cst, {value.name})};
+        } else if constexpr (std::same_as<
+                                 Value, syntax_cst::CstConstantParenthesized>) {
+          return AstConstantParenthesized{
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.expression))};
+        } else if constexpr (std::same_as<Value, syntax_cst::CstConstantCall>) {
+          return AstConstantCall{
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.callee)),
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.argument))};
+        } else if constexpr (std::same_as<Value, syntax_cst::CstConstantCast>) {
+          return AstConstantCast{
+              leafSyntax(cst, value.type),
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.operand))};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstConstantUnary>) {
+          return AstConstantUnary{
+              lowerConstantUnaryOperator(cst.token(value.operator_token).kind),
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.operand))};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstConstantBinary>) {
+          return AstConstantBinary{
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.left)),
+              lowerConstantBinaryOperator(cst.token(value.operator_token).kind),
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.right))};
+        } else {
+          return AstConstantConditional{
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.condition)),
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.true_expression)),
+              std::make_unique<AstConstantExpression>(
+                  lowerConstantExpression(cst, *value.false_expression))};
+        }
+      },
+      expression.node);
+  return AstConstantExpression{std::move(node),
+                               cst.sourceRange(expression.token_range)};
+}
+
+syntax_ast::AstInitializer lowerInitializer(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstInitializer& initializer) {
+  using namespace syntax_ast;
+  const SourceRange range = cst.sourceRange(initializer.token_range);
+  if (const auto* expression =
+          std::get_if<syntax_cst::CstConstantExpression>(&initializer.value)) {
+    return AstInitializer{lowerConstantExpression(cst, *expression), range};
+  }
+
+  const auto& list =
+      std::get<syntax_cst::CstInitializerList>(initializer.value);
+  std::vector<AstInitializer> elements;
+  elements.reserve(list.elements.size());
+  for (const auto& element : list.elements)
+    elements.push_back(lowerInitializer(cst, element));
+  return AstInitializer{AstInitializerList{std::move(elements), range}, range};
+}
+
 syntax_ast::AstVectorElement lowerVectorElement(
     const syntax_cst::CstFile& cst,
     const syntax_cst::CstVectorElement& element) {
@@ -59,6 +203,20 @@ syntax_ast::AstVectorElement lowerVectorElement(
           return lowerImmediate(cst, value);
       },
       element);
+}
+
+syntax_ast::AstCallParameter lowerCallParameter(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstCallParameter& parameter) {
+  return std::visit(
+      [&cst](const auto& value) -> syntax_ast::AstCallParameter {
+        using Value = std::remove_cvref_t<decltype(value)>;
+        if constexpr (std::same_as<Value, syntax_cst::CstIdentifier>)
+          return lowerIdentifier(cst, value);
+        else
+          return lowerImmediate(cst, value);
+      },
+      parameter);
 }
 
 syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
@@ -106,13 +264,38 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
               cst.sourceRange(value.token_range)};
-        } else {
+        } else if constexpr (std::same_as<Value, syntax_cst::CstVectorPack>) {
           std::vector<syntax_ast::AstVectorElement> elements;
           elements.reserve(value.elements.size());
           for (const auto& element : value.elements)
             elements.push_back(lowerVectorElement(cst, element));
           return syntax_ast::AstVectorPack{std::move(elements),
                                            cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstCallParameterList>) {
+          std::vector<syntax_ast::AstCallParameter> parameters;
+          parameters.reserve(value.parameters.size());
+          for (const auto& parameter : value.parameters)
+            parameters.push_back(lowerCallParameter(cst, parameter));
+          return syntax_ast::AstCallParameterList{
+              .kind = value.kind == syntax_cst::CstCallParameterListKind::Return
+                          ? syntax_ast::AstCallParameterListKind::Return
+                          : syntax_ast::AstCallParameterListKind::Input,
+              .parameters = std::move(parameters),
+              .range = cst.sourceRange(value.token_range),
+          };
+        } else if constexpr (std::same_as<Value, syntax_cst::CstCallTarget>) {
+          return syntax_ast::AstCallTarget{lowerIdentifier(cst, value.name),
+                                           cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstCallTargetSet>) {
+          return syntax_ast::AstCallTargetSet{
+              lowerIdentifier(cst, value.name),
+              cst.sourceRange(value.token_range)};
+        } else {
+          return syntax_ast::AstBranchTarget{
+              lowerIdentifier(cst, value.name),
+              cst.sourceRange(value.token_range)};
         }
       },
       operand);
@@ -182,25 +365,29 @@ syntax_ast::AstVariableDeclaration lowerVariableDeclaration(
   std::vector<syntax_ast::AstVariableDeclarator> declarators;
   declarators.reserve(declaration.declarators.size());
   for (const auto& declarator : declaration.declarators) {
-    std::optional<syntax_ast::AstSyntax> register_count;
-    if (declarator.register_count)
-      register_count = leafSyntax(cst, *declarator.register_count);
+    std::optional<syntax_ast::AstSyntax> parameterized_count;
+    if (declarator.parameterized_count)
+      parameterized_count = leafSyntax(cst, *declarator.parameterized_count);
 
     std::vector<syntax_ast::AstArrayDimension> dimensions;
     dimensions.reserve(declarator.array_dimensions.size());
     for (const auto& dimension : declarator.array_dimensions) {
-      std::vector<syntax_ast::AstSyntax> size_tokens;
-      size_tokens.reserve(dimension.size_tokens.size());
-      for (const auto size_token : dimension.size_tokens)
-        size_tokens.push_back(leafSyntax(cst, size_token));
+      std::optional<syntax_ast::AstConstantExpression> size;
+      if (dimension.size)
+        size = lowerConstantExpression(cst, *dimension.size);
       dimensions.push_back(syntax_ast::AstArrayDimension{
-          std::move(size_tokens), cst.sourceRange(dimension.token_range)});
+          std::move(size), cst.sourceRange(dimension.token_range)});
     }
+
+    std::optional<syntax_ast::AstInitializer> initializer;
+    if (declarator.initializer)
+      initializer = lowerInitializer(cst, *declarator.initializer);
 
     declarators.push_back(syntax_ast::AstVariableDeclarator{
         .name = lowerIdentifier(cst, {declarator.name}),
-        .register_count = std::move(register_count),
+        .parameterized_count = std::move(parameterized_count),
         .array_dimensions = std::move(dimensions),
+        .initializer = std::move(initializer),
         .range = cst.sourceRange(declarator.token_range),
     });
   }
@@ -228,9 +415,9 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   std::optional<syntax_ast::AstSyntax> pointer_alignment;
   if (parameter.pointer_alignment)
     pointer_alignment = leafSyntax(cst, *parameter.pointer_alignment);
-  std::optional<syntax_ast::AstSyntax> array_size;
+  std::optional<syntax_ast::AstConstantExpression> array_size;
   if (parameter.array_size)
-    array_size = leafSyntax(cst, *parameter.array_size);
+    array_size = lowerConstantExpression(cst, *parameter.array_size);
 
   return syntax_ast::AstFunctionParameter{
       .state_space = lowerStateSpace(cst.token(parameter.state_space).kind),

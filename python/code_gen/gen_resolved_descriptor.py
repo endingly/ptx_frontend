@@ -212,10 +212,24 @@ def _emit_operand_layout_storage(
     fields = ",\n".join(
         _emit_resolved_field_descriptor(field) for field in layout.fields
     )
-    bindings = ",\n".join(
-        _emit_operand_binding_descriptor(binding) for binding in layout.bindings
+    vector_arities = "\n\n".join(
+        f"""  static constexpr std::array<uint8_t, {len(binding.allowed_vector_arities)}>
+      {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities = {{{{
+{_emit_vector_arities(binding.allowed_vector_arities)}
+      }}}};"""
+        for binding_index, binding in enumerate(layout.bindings)
+        if binding.allowed_vector_arities
     )
-    return f"""  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(layout.fields)}>
+    bindings = ",\n".join(
+        _emit_operand_binding_descriptor(
+            binding,
+            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities",
+        )
+        for binding_index, binding in enumerate(layout.bindings)
+    )
+    return f"""{vector_arities}
+
+  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(layout.fields)}>
       {variant_name}_operand_layout_{layout_index}_fields = {{
 {fields}
       }};
@@ -226,17 +240,26 @@ def _emit_operand_layout_storage(
       }};"""
 
 
-def _emit_operand_binding_descriptor(binding) -> str:
+def _emit_vector_arities(arities: tuple[int, ...]) -> str:
+    return ",\n".join(f"          {arity}" for arity in arities)
+
+
+def _emit_operand_binding_descriptor(binding, vector_arities_name: str) -> str:
     allowed_shapes = " | ".join(
         cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
         for shape in binding.allowed_shapes
+    )
+    vector_arities = (
+        f"\n              .allowed_vector_arities = {vector_arities_name},"
+        if binding.allowed_vector_arities
+        else ""
     )
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
               .type_expression = {_emit_type_expression_descriptor(binding.type_expression)},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},
+              .allowed_shapes = {allowed_shapes},{vector_arities}
           }}"""
 
 

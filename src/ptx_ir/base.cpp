@@ -88,4 +88,32 @@ uint8_t scalar_size_of(ScalarType t) {
   return 0;
 }
 
+bool scalar_types_compatible(ScalarType actual, ScalarType instruction) {
+  if (actual == instruction)
+    return true;
+  if (scalar_size_of(actual) != scalar_size_of(instruction))
+    return false;
+
+  const ScalarKind actual_kind = scalar_kind(actual);
+  const ScalarKind instruction_kind = scalar_kind(instruction);
+  if (actual_kind == ScalarKind::Bit || instruction_kind == ScalarKind::Bit)
+    return true;
+  const auto is_fundamental_integer = [](ScalarType type) {
+    switch (type) {
+      case ScalarType::U8:
+      case ScalarType::U16:
+      case ScalarType::U32:
+      case ScalarType::U64:
+      case ScalarType::S8:
+      case ScalarType::S16:
+      case ScalarType::S32:
+      case ScalarType::S64:
+        return true;
+      default:
+        return false;
+    }
+  };
+  return is_fundamental_integer(actual) && is_fundamental_integer(instruction);
+}
+
 };  // namespace ptx_frontend

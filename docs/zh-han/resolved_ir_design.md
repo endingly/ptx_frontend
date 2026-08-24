@@ -6,28 +6,41 @@
 设计。frontend 的核心数据流为：
 
 ```text
-PTX source -> Token stream -> Syntax AST -> Resolved IR -> checker
+PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> checker
 ```
 
 Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolved IR 则记录已经
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
-CFG、SSA、符号表的完整绑定和目标 lowering 是后续 pass，不应改变此层的结构。
+lexical symbol binding 与 module resolution 已接通，execution predicate 会解析为带声明
+身份的值，special register、external symbol 和真正未声明 reference 也已能区分。
+`mov` 的 16/32/64-bit scalar type family 已接入 register、immediate 与 special-register；
+32/64-bit form 还接入 data-symbol、`symbol+offset`、function-address 与合法 formal parameter
+地址；bit-size form 还支持 2/4-element vector pack/unpack，`.b128` 仅用于 vector form；
+`mov.pred` 复用 declaration-aware `ResolvedPredicate` 表示；
+`ld.u32 d, [address]` 已接入解引用 address operand。
+其余 type/source form、完整 memory qualifier、
+`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
-using ResolvedInstruction = std::variant<Add, Sub, Bar /* ... */>;
+using ResolvedInstruction =
+    std::variant<Add, Sub, Bar, Bra, Mov, Ld /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics>
+resolveModule(const syntax_ast::AstModule& ast);
 ```
 
 `resolveInstruction` 根据指令数据库生成，并分发到现有的 `resolve<T>` 特化。调用者不再
-需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。当前还提供初始的
-`ResolvedFunction` 与 `ResolvedModule` 容器，用于在文件范围内组织 resolved
-instruction。它们暂不虚构 directive、声明、label 或 symbol 字段；这些内容应当等真实
-绑定 pass 建立后再一并加入。syntax 层目前已经能够解析初始 module grammar，但这些事实
-不应以未解析字符串直接复制到 Resolved IR。
+需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。`resolveModule` 先建立
+`SymbolTable`，再为每个 function scope 构造显式 `ResolveContext`；返回的
+`ResolvedModule` 拥有 symbol table，`ResolvedFunction` 以函数 `SymbolId` 标识。
+standalone `resolveInstruction` 与 `resolve<T>` 不要求声明上下文，继续服务单指令工具。
+directive、declaration 与 label 目前仍由 Syntax AST/symbol table 保存，不复制成未解析的
+Resolved IR 字符串字段。
 
 ## 位置与基本值
 
@@ -46,7 +59,9 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 后者仍保存在 `WithLocs<T>` 中：`value` 是语义默认值，空 `locs` 表示源码没有显式写出。
 当前 modifier 基础值包括 `bool`、`ScalarType` 与 `RoundingMode`；后者使
 `.rn/.rz/.rm/.rp` 成为可静态检查的语义值，而不是运行时字符串。operand 基础值包括
-`ResolvedRegisterRef`、`ResolvedImmediate` 与 `RegOrImm`。
+`ResolvedRegisterRef`、`ResolvedImmediate`、`ResolvedPredicate`、
+`ResolvedBranchTarget`、`ResolvedSpecialRegisterRef`、`ResolvedFunctionRef`、`ResolvedSymbolRef`、
+`ResolvedAddress`、`ResolvedMovSource` 与 `RegOrImm`。
 `ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 
@@ -56,11 +71,70 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
 其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
 
-在符号表与声明绑定完成之前，`ResolvedRegisterRef` 会拥有寄存器的完整源码拼写，并
-同时保存 `ResolvedRegisterClass` 和 numbered-register index。index 只是便捷属性，不能
-单独充当身份：例如 `%r1` 与 `%rd1` 的 index 都是 1，但它们的 spelling 不同。当前
-resolver 支持 numbered-register 子集，并区分普通寄存器和 `%pN` predicate；未来接入
-符号表后，应以 declaration `SymbolId` 补充或替换这层词法引用。
+`ResolvedRegisterRef` 拥有完整源码拼写与 `ResolvedRegisterClass`。在 module resolution
+中，它还保存 declaration `SymbolId`、可选 parameterized member index 和声明
+`ScalarType`；因此 named register（如 `%tmp`）与 `name<count>` member 都有稳定身份。
+numbered-register index 仍只是可选便捷属性，不能单独充当身份。无 binding context 的
+standalone resolver 保留旧边界：只接受 numbered register，并令 symbol/type 字段为空。
+instruction 的可选 execution predicate 作为 opcode 外层公共字段
+`std::optional<WithLocs<ResolvedPredicate>>` 保存；module resolution 要求其绑定到 `.pred`
+register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarget` 同样区分两种
+边界：module resolution 保存当前 function label 的 `SymbolId`，standalone resolution 保存
+源码 spelling 而令 identity 为空。
+
+`ResolvedSpecialRegisterRef` 保存准确 spelling、稳定的 `SpecialRegisterId` 与可选 vector
+component，不保存依赖具体指令或 target 的有效类型。独立的 special-register 语义注册表
+是名称、稳定身份、现行声明 element type、vector width 及 intrinsic 最低 PTX/SM 的单一
+事实来源；binding 只复用它做分类。scalar operand 接受标量 special register 或
+`%tid.x` 一类 component，不接受未选 component 的 vector base。
+
+ISA 曾扩宽的读取形式属于指令语义，不属于寄存器自身：`mov` variant 在 YAML 的
+`operand_type_compatibilities` 中声明 special-register identity、instruction width、有效类型
+与最低 PTX/SM，生成到 checker descriptor。checker 仅在本次检查期间选择有效元数据，
+不会改写 Resolved IR。当前规则允许 `%tid/%ntid/%ctaid/%nctaid` component 的 16-bit read
+从 PTX 1.0 开始，`%gridid` 的 16/32-bit read 分别从 PTX 1.0/1.3 开始；其他使用场景仍按
+注册表中的现行声明类型和 intrinsic availability 检查。
+
+单一 scalar variant 的 type 是动态 modifier field，覆盖 `.b16/.u16/.s16`、`.b32/.u32/.s32/.f32` 与
+`.b64/.u64/.s64/.f64`。checker 按 PTX 基础类型规则接受同宽 bit-size/任意基础类型和
+signed/unsigned integer 组合，但仍拒绝 integer/float 混用；`.f64` 值另携带 SM 13 门槛。
+
+`mov.pred` 使用独立 variant，因为两端字段都是 `ResolvedPredicate`，与分类后的 scalar source
+结构不同。module resolution 要求 source/destination 都绑定到未取反的 `.pred` register，并保存
+稳定 `SymbolId`；standalone resolution 仍接受无需声明上下文的 numbered predicate register。
+
+scalar 与 vector `mov` 共享同一动态 type modifier variant，因为 `.b16/.b32/.b64` 的
+modifier 形式相同；三种 operand layout 分别表示 scalar、pack 与 unpack，不建立重复 variant。
+`ResolvedMovVector` 保存 2/4 个可选 `ResolvedRegisterRef`，空元素表示 destination-only `_`
+sink。resolver 与 checker 都要求 bit-size instruction type、vector 总位宽等于 instruction
+位宽，并拒绝 source sink、全 sink destination 与 sub-byte element。`.b128` 仅由 pack/unpack
+layout 接受，并携带 PTX 8.3 / SM 70 modifier-value availability。
+
+`ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
+device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
+SM 35 门槛，供 checker 按 target 检查。当前仅接受 bare function name；带 offset 的形式仍按
+data-symbol address 解析并拒绝。
+
+`ResolvedSymbolRef` 保存源码 spelling；module resolution 还保存 declaration `SymbolId`、
+parameterized member、declaration kind、声明 state space、实际 address state space 与可表示的
+declaration scalar type。普通 data variable 的两种 state space 相同；direct parameter memory
+address 与 kernel formal parameter 的 `mov` 取址仍得到 `.param` address，而 device-function
+formal parameter 经 `mov` 取址会将参数物化到 stack，因此得到 `.local` address。
+device-function formal parameter 的 `mov` 地址值携带 PTX 2.0 / SM 20 baseline；return
+parameter 再把最低 PTX 提升至 6.0，供 checker 按 target 检查。function-local `.param`
+call-argument variable 不能由
+`mov` 取址。standalone resolution 无法完成 lexical binding，因此和 branch target 一样保留
+空 identity/state-space。`ResolvedMovSource` 在 binding 后区分 register、immediate、special
+register、data symbol 与 address expression，避免这些 identifier 形状在 variant/layout 选择
+阶段产生歧义。standalone resolution 无法区分未绑定名称是 data 还是 function，因此仍保留为
+空 identity 的 `ResolvedSymbolRef`。
+
+`ResolvedAddress` 的 base 是 `ResolvedRegisterRef`、`ResolvedImmediate` 或
+`ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
+value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
+addressable data-symbol 或 formal-parameter base 的地址值；
+`ld.u32 d, [address]` 则要求方括号解引用，覆盖 generic addressing 的 register、immediate 与
+bound-symbol base。explicit state space 与完整 memory qualifier 仍不在这一子集中。
 
 ## 按 opcode 生成的结构
 
@@ -80,6 +154,7 @@ struct Add {
   };
 
   using Variant = std::variant<IntegerNoSat /* ... */>;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   Variant variant;
 };
 ```
@@ -127,12 +202,13 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 `OperandLayoutPayloadMismatch`。
 
 当前唯一实现的 layout algorithm 是 `Flat`：逗号分隔的、位置固定的 operand slots。
-`Group`、可变参数、call 参数组等需要先扩展 Syntax AST，再增加新的 layout kind；不能
-把它们伪装成 `Flat`。
+Syntax AST 已能表示 `Group` 和 call 参数组，但 descriptor/resolver 仍需增加新的 layout
+kind 才能消费它们；可变参数与 call group 不能伪装成 `Flat`。
 
 ## Resolution 协议
 
-`resolve<T>(const AstInstruction&)` 是生成的 opcode 专用薄封装，公共逻辑依次执行：
+`resolve<T>(const AstInstruction&)` 与带 `ResolveContext` 的重载共享生成的 opcode 专用
+实现，公共逻辑依次执行：
 
 1. 公共 matcher 先用全部 syntax descriptor 诊断真正未知的 spelling，再分别在每个
    候选 variant 内把 spelling 绑定到唯一活动 slot。重复占用一个 slot 会被诊断；单个
@@ -140,8 +216,10 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 2. `selectVariant<T>` 只依据上述 variant-local 绑定选择唯一 variant。`absent`、
    `optional`、`required/fixed` 都按 slot 和允许值匹配，不依赖源码 modifier 顺序。
 3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
-4. `resolve_fields` 按 resolved descriptor 把 modifier 和 operand 转换为带位置的
-   resolved 值。
+4. `resolve_fields` 解析公共 execution predicate，并按 resolved descriptor 把 modifier 和
+   operand 转换为带位置的 resolved 值；有 binding context 时，guard 必须绑定到 `.pred`
+   register，普通寄存器必须解析到当前 lexical scope 的 `.reg` declaration，两者都会写入
+   `SymbolId` 与声明类型，direct branch target 必须绑定到当前 function 的 label。
 5. 生成的 builder 将字段放入对应 C++ struct 或 layout payload。
 
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
@@ -164,7 +242,7 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 | --- | --- |
 | Syntax descriptor | modifier spellings、presence、AST operand shape 与 layout slots |
 | Resolved descriptor | resolved field kind、modifier binding、operand binding、结构化类型表达式与语义 role/access |
-| Checker descriptor | variant/layout 的 PTX/SM/family availability 与 rule ID |
+| Checker descriptor | variant/layout/value 的 availability、operand type compatibility 与 rule ID |
 
 三者不互相复制职责。Syntax descriptor 不应保存 resolved C++ 类型；Resolved descriptor
 不负责 modifier 拼写识别；Checker descriptor 不重新描述 resolve binding。
@@ -176,10 +254,14 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 - variant、已选 operand layout 与实际 modifier value 的最低 PTX 版本、SM 版本与 target family；
 - layout tag 的范围；
 - layout tag/payload 一致性；
-- operand 字段 ID、resolved shape 与由结构化 descriptor 约束的 immediate 类型。
+- operand 字段 ID、resolved shape，以及由结构化 descriptor 约束的 immediate 或已绑定
+  register 声明类型。
+- special-register intrinsic 元数据，以及由当前 instruction width 选择的上下文类型兼容与
+  availability；该选择只产生临时检查视图，不改变 Resolved IR。
 
-`rule_id` 留给指令特有规则的 typed wrapper。寄存器声明类型、符号可见性、地址空间
-和跨 instruction 约束依赖完整 symbol table，尚不属于当前公共 checker ABI。
+`rule_id` 留给指令特有规则的 typed wrapper。寄存器符号可见性与 `.reg` state-space 在
+module resolution 阶段检查；地址空间和跨 instruction 约束仍不属于当前公共 checker
+ABI。
 
 ## 扩展规则
 

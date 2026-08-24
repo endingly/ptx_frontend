@@ -133,7 +133,9 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ":"                     { TOK(Colon); }
 ";"                     { TOK(Semicolon); }
 "@"                     { TOK(At); }
+"||"                    { TOK(PipePipe); }
 "|"                     { TOK(Pipe); }
+"!="                    { TOK(NotEq); }
 "!"                     { TOK(Exclamation); }
 
 "("                     { TOK(LParen); }
@@ -142,11 +144,24 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 "]"                     { TOK(RBracket); }
 "{"                     { TOK(LBrace); }
 "}"                     { TOK(RBrace); }
+"<="                    { TOK(LtEq); }
+">="                    { TOK(GtEq); }
+"<<"                    { TOK(ShiftLeft); }
+">>"                    { TOK(ShiftRight); }
 "<"                     { TOK(Lt); }
 ">"                     { TOK(Gt); }
 
 "-"                     { TOK(Minus); }
 "+"                     { TOK(Plus); }
+"*"                     { TOK(Star); }
+"/"                     { TOK(Slash); }
+"%"                     { TOK(Percent); }
+"&&"                    { TOK(AmpAmp); }
+"&"                     { TOK(Amp); }
+"^"                     { TOK(Caret); }
+"~"                     { TOK(Tilde); }
+"?"                     { TOK(Question); }
+"=="                    { TOK(EqEq); }
 "="                     { TOK(Eq); }
 
 {F32HEX}                { TOK(F32Hex); }

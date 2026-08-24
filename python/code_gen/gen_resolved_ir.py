@@ -53,6 +53,7 @@ def generate_resolved_ir_header(
 {generated_at_comment()}
 #pragma once
 
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -106,14 +107,30 @@ def generate_resolved_dispatch_source(
 
 namespace ptx_frontend::resolved_ir {{
 
+namespace {{
+
 std::expected<ResolvedInstruction, ResolveDiagnostic>
-resolveInstruction(const syntax_ast::AstInstruction& ast) {{
+resolve_instruction(const syntax_ast::AstInstruction& ast,
+                    const ResolveContext* context) {{
 {branches}
 
   return std::unexpected(ResolveDiagnostic{{
       .range = ast.opcode.syntax.range,
       .message = "Unknown PTX opcode '" + ast.opcode.syntax.text + "'.",
   }});
+}}
+
+}}  // namespace
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast) {{
+  return resolve_instruction(ast, nullptr);
+}}
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast,
+                   const ResolveContext& context) {{
+  return resolve_instruction(ast, &context);
 }}
 
 }}  // namespace ptx_frontend::resolved_ir
@@ -133,25 +150,37 @@ def _emit_resolved_module_containers(
 using ResolvedInstruction = std::variant<{alternatives}>;
 
 struct ResolvedFunction {{
-  // Function spelling is temporary identity until symbol binding is added.
+  binding::SymbolId symbol_id;
   std::string name;
+  bool is_entry{{}};
+  bool is_prototype{{}};
   std::vector<ResolvedInstruction> body;
   SourceRange range;
 }};
 
 struct ResolvedModule {{
+  binding::SymbolTable symbols;
   std::vector<ResolvedFunction> functions;
   SourceRange range;
 }};
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
-resolveInstruction(const syntax_ast::AstInstruction& ast);"""
+resolveInstruction(const syntax_ast::AstInstruction& ast);
+
+std::expected<ResolvedInstruction, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast,
+                   const ResolveContext& context);
+
+using ModuleResolveDiagnostics = std::vector<ResolveDiagnostic>;
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics>
+resolveModule(const syntax_ast::AstModule& ast);"""
 
 
 def _emit_resolved_dispatch_branch(instruction: ResolvedInstruction) -> str:
     return f"""\
   if (ast.opcode.syntax.text == "{instruction.opcode}") {{
-    auto resolved = resolve<{instruction.cpp_name}>(ast);
+    auto resolved = resolve<{instruction.cpp_name}>(ast, context);
     if (!resolved)
       return std::unexpected(resolved.error());
     return ResolvedInstruction{{std::in_place_type<{instruction.cpp_name}>,
@@ -225,6 +254,7 @@ struct {instruction.cpp_name} {{
 {variant_definitions}
 
   using Variant = std::variant<{variant_names}>;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   Variant variant;
 
   static const check_end::SyntaxInstructionDescriptor&
@@ -243,7 +273,8 @@ def _emit_resolve_specialization_declaration(
     return f"""\
 template <>
 std::expected<{instruction.cpp_name}, ResolveDiagnostic>
-resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast);"""
+resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
+    const ResolveContext* context);"""
 
 
 def _emit_check_specialization_declaration(
@@ -263,15 +294,16 @@ def _emit_resolve_specialization(instruction: ResolvedInstruction) -> str:
     return f"""\
 template <>
 std::expected<{instruction.cpp_name}, ResolveDiagnostic>
-resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast) {{
+resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
+    const ResolveContext* context) {{
   const auto selected_variant = selectVariant<{instruction.cpp_name}>(ast);
   if (!selected_variant)
     return std::unexpected(selected_variant.error());
 
-  const auto fields = resolve_fields(
+  auto fields = resolve_fields(
       ast, {instruction.cpp_name}::get_syntax_descriptor(),
       {instruction.cpp_name}::get_resolved_descriptor(),
-      magic_enum::enum_name(*selected_variant));
+      magic_enum::enum_name(*selected_variant), context);
   if (!fields)
     return std::unexpected(fields.error());
 
@@ -293,7 +325,9 @@ def _emit_resolve_variant_case(
         )
         return f"""\
   if (fields->variant_name == "{variant.cpp_name}") {{
-    return {instruction.cpp_name}{{.variant = {instruction.cpp_name}::{variant.cpp_name}{{
+    return {instruction.cpp_name}{{
+        .execution_predicate = std::move(fields->execution_predicate),
+        .variant = {instruction.cpp_name}::{variant.cpp_name}{{
                    .operand_layout = fields->operand_layout,
 {fields}
     }}}};
@@ -332,7 +366,9 @@ def _emit_resolve_multi_layout_case(
         if field.storage is ResolvedFieldStorage.INSTANCE
     )
     return f"""    if (fields->operand_layout.value == {layout_index}) {{
-      return {instruction.cpp_name}{{.variant = {instruction.cpp_name}::{variant.cpp_name}{{
+      return {instruction.cpp_name}{{
+          .execution_predicate = std::move(fields->execution_predicate),
+          .variant = {instruction.cpp_name}::{variant.cpp_name}{{
               .operand_layout = fields->operand_layout,
 {modifier_fields}
               .operands = {instruction.cpp_name}::{variant.cpp_name}::Operands{{
@@ -453,7 +489,7 @@ def _emit_check_operand_dispatch(
             }}
             const auto operand_check = check_operands(
                 layouts[selected.operand_layout.value].bindings, fields, operands,
-                context);
+                {checker_variant_expr}.operand_type_compatibilities, context);
             if (!operand_check) {{
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
@@ -523,7 +559,10 @@ def _emit_check_multi_layout_lambda(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
                     .operand_layouts[{layout_index}]
                     .bindings,
-                fields, operands, context);
+                fields, operands,
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .operand_type_compatibilities,
+                context);
           }};
           static_assert(detail::VariantCheckFunction<
               decltype({lambda_name}),
@@ -631,11 +670,36 @@ def _emit_check_modifier_value_view(
 
 
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
+    if field.value_cpp_type == "ResolvedMovVector":
+        return f"""              [&]() -> OperandView {{
+                OperandView view{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                    .vector_arity = static_cast<uint8_t>(
+                        {object_name}.{field.name}.value.elements.size()),
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+                size_t index = 0;
+                for (const auto& element :
+                     {object_name}.{field.name}.value.elements) {{
+                  if (index >= view.vector_element_types.size())
+                    break;
+                  if (element) {{
+                    view.vector_element_types[index] =
+                        element->declared_type.value_or(ScalarType::Invalid);
+                  }} else {{
+                    ++view.vector_sink_count;
+                  }}
+                  ++index;
+                }}
+                return view;
+              }}()"""
     if field.value_cpp_type == "ResolvedRegisterRef":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                   .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedImmediate":
@@ -643,6 +707,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                   .immediate_type = {object_name}.{field.name}.value.type,
+                  .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicate":
@@ -650,6 +715,55 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedBranchTarget":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "BranchTarget")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedSpecialRegisterRef":
+        return f"""              [&]() -> OperandView {{
+                const auto info = special_registers::metadata(
+                    {object_name}.{field.name}.value.id);
+                return OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .special_register_type = info.element_type,
+                  .special_register_id = {object_name}.{field.name}.value.id,
+                  .value_availability = AvailabilityDescriptor{{
+                      .minimum_ptx_version = {{
+                          info.minimum_ptx_major,
+                          info.minimum_ptx_minor,
+                      }},
+                      .minimum_sm_version = info.minimum_sm,
+                  }},
+                  .value_name = {object_name}.{field.name}.value.spelling,
+                  .locations = {object_name}.{field.name}.locs,
+                }};
+              }}()"""
+    if field.value_cpp_type == "ResolvedSymbolRef":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .value_availability = {object_name}.{field.name}.value.address_availability,
+                  .value_name = {object_name}.{field.name}.value.spelling,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedAddress":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "RegOrImm":
@@ -660,13 +774,107 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .field_id = "{field.name}",
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                       .immediate_type = immediate->type,
+                      .register_type = std::nullopt,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
+                const auto& register_ref =
+                    std::get<ResolvedRegisterRef>({object_name}.{field.name}.value);
                 return OperandView{{
                     .field_id = "{field.name}",
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                     .immediate_type = std::nullopt,
+                    .register_type = register_ref.declared_type,
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+              }}()"""
+    if field.value_cpp_type == "ResolvedMovSource":
+        return f"""              [&]() -> OperandView {{
+                if (const auto* immediate =
+                        std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
+                      .immediate_type = immediate->type,
+                      .register_type = std::nullopt,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* register_ref =
+                        std::get_if<ResolvedRegisterRef>(&{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                      .immediate_type = std::nullopt,
+                      .register_type = register_ref->declared_type,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* special_register =
+                        std::get_if<ResolvedSpecialRegisterRef>(
+                            &{object_name}.{field.name}.value)) {{
+                  const auto info =
+                      special_registers::metadata(special_register->id);
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .special_register_type = info.element_type,
+                      .special_register_id = special_register->id,
+                      .value_availability = AvailabilityDescriptor{{
+                          .minimum_ptx_version = {{
+                              info.minimum_ptx_major,
+                              info.minimum_ptx_minor,
+                          }},
+                          .minimum_sm_version = info.minimum_sm,
+                      }},
+                      .value_name = special_register->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* function = std::get_if<ResolvedFunctionRef>(
+                        &{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .value_availability = function->address_availability,
+                      .value_name = function->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* symbol = std::get_if<ResolvedSymbolRef>(
+                        &{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .value_availability = symbol->address_availability,
+                      .value_name = symbol->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                // An offset address keeps its value requirements on the
+                // symbol base, so expose those requirements through the same
+                // operand view used for a direct symbol source.
+                const auto& address =
+                    std::get<ResolvedAddress>({object_name}.{field.name}.value);
+                const auto* symbol =
+                    std::get_if<ResolvedSymbolRef>(&address.base);
+                return OperandView{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
+                    .immediate_type = std::nullopt,
+                    .register_type = std::nullopt,
+                    .value_availability =
+                        symbol == nullptr ? std::nullopt
+                                          : symbol->address_availability,
+                    .value_name =
+                        symbol == nullptr ? std::string_view{{}}
+                                          : std::string_view{{symbol->spelling}},
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

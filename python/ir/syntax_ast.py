@@ -42,6 +42,10 @@ class OperandSyntaxShape(IntFlag):
     VECTOR_MEMBER = 1 << 3
     VECTOR_PACK = 1 << 4
     PREDICATE = 1 << 5
+    CALL_PARAMETER_LIST = 1 << 6
+    CALL_TARGET = 1 << 7
+    CALL_TARGET_SET = 1 << 8
+    BRANCH_TARGET = 1 << 9
 
 
 class OperandLayoutKind(Enum):
@@ -120,8 +124,19 @@ _OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    "mov_scalar_src": (
+        OperandSyntaxShape.IDENTIFIER_REF
+        | OperandSyntaxShape.IMMEDIATE
+        | OperandSyntaxShape.ADDRESS
+        | OperandSyntaxShape.VECTOR_MEMBER
+    ),
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
     "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
+    "label": OperandSyntaxShape.BRANCH_TARGET,
+    "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
+    "symbol": OperandSyntaxShape.IDENTIFIER_REF,
+    "addr": OperandSyntaxShape.ADDRESS,
+    "mov_vector": OperandSyntaxShape.VECTOR_PACK,
 }
 
 def _build_variant_descriptor_view(

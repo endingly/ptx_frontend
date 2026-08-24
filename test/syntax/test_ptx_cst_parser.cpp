@@ -9,6 +9,10 @@ namespace ptx_frontend {
 namespace {
 
 using syntax_cst::CstAddress;
+using syntax_cst::CstBranchTarget;
+using syntax_cst::CstCallParameterList;
+using syntax_cst::CstCallTarget;
+using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -68,6 +72,73 @@ TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
   EXPECT_EQ(result->token(pack.left_brace).kind, TokenKind::LBrace);
   EXPECT_EQ(result->token(pack.right_brace).kind, TokenKind::RBrace);
   ASSERT_EQ(pack.commas.size(), 1u);
+}
+
+TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
+  constexpr std::string_view source =
+      "@%p call.uni (%result), %callee, (%arg, -4), targets;";
+  PtxCstParser parser(source);
+
+  auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->operands.size(), 4u);
+
+  const auto& returns =
+      std::get<CstCallParameterList>(instruction->operands[0].operand);
+  EXPECT_EQ(returns.kind, syntax_cst::CstCallParameterListKind::Return);
+  ASSERT_EQ(returns.parameters.size(), 1u);
+  EXPECT_EQ(result->token(returns.left_paren).kind, TokenKind::LParen);
+  EXPECT_EQ(result->token(returns.right_paren).kind, TokenKind::RParen);
+
+  const auto& target =
+      std::get<CstCallTarget>(instruction->operands[1].operand);
+  EXPECT_EQ(result->token(target.name.token).text, "%callee");
+
+  const auto& inputs =
+      std::get<CstCallParameterList>(instruction->operands[2].operand);
+  EXPECT_EQ(inputs.kind, syntax_cst::CstCallParameterListKind::Input);
+  ASSERT_EQ(inputs.parameters.size(), 2u);
+  ASSERT_EQ(inputs.commas.size(), 1u);
+
+  const auto& target_set =
+      std::get<CstCallTargetSet>(instruction->operands[3].operand);
+  EXPECT_EQ(result->token(target_set.name.token).text, "targets");
+}
+
+TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
+  PtxCstParser parser("@%p bra.uni done;");
+
+  auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->operands.size(), 1u);
+  const auto& target =
+      std::get<CstBranchTarget>(instruction->operands[0].operand);
+  EXPECT_EQ(result->token(target.name.token).text, "done");
+}
+
+TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {"call (%r0, %r1), helper, ();",
+            "a call return parameter list must contain exactly one name"},
+           {"call (%r0), helper;",
+            "a call with a return parameter requires an input parameter list"},
+           {"call helper, (%r0,);",
+            "call argument list cannot end with a trailing comma"},
+           {"bra first, second;",
+            "direct branch accepts exactly one label target"}}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseInstruction();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
 }
 
 TEST(PtxCstParser, RejectsTrailingSignificantInput) {
@@ -200,6 +271,22 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(result->sourceText(), source);
 }
 
+TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
+  for (const std::string_view source : {
+           ".entry kernel() .maxntid 128, 1, 1 {}",
+           ".func helper() unexpected;",
+       }) {
+    PtxCstParser parser(source);
+
+    const auto result = parser.parseModule();
+
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_TRUE(
+        result.error().message.starts_with("unsupported function header token"))
+        << source;
+  }
+}
+
 TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
   constexpr std::string_view source =
       ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }";
@@ -219,8 +306,8 @@ TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
   EXPECT_EQ(result->token(declaration.type).text, ".u32");
   ASSERT_EQ(declaration.declarators.size(), 2u);
   EXPECT_EQ(result->token(declaration.declarators[0].name).text, "%r");
-  ASSERT_TRUE(declaration.declarators[0].register_count.has_value());
-  EXPECT_EQ(result->token(*declaration.declarators[0].register_count).text,
+  ASSERT_TRUE(declaration.declarators[0].parameterized_count.has_value());
+  EXPECT_EQ(result->token(*declaration.declarators[0].parameterized_count).text,
             "3");
   EXPECT_EQ(result->token(declaration.declarators[1].name).text, "%tmp");
   ASSERT_EQ(declaration.commas.size(), 1u);
@@ -256,10 +343,10 @@ TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
   ASSERT_TRUE(global.vector_type.has_value());
   EXPECT_EQ(result->token(*global.vector_type).text, ".v4");
   ASSERT_EQ(global.declarators[0].array_dimensions.size(), 2u);
-  EXPECT_EQ(
-      result->token(global.declarators[0].array_dimensions[1].size_tokens[0])
-          .text,
-      "3");
+  ASSERT_TRUE(global.declarators[0].array_dimensions[1].size.has_value());
+  const auto& dimension_literal = std::get<syntax_cst::CstConstantLiteral>(
+      global.declarators[0].array_dimensions[1].size->node);
+  EXPECT_EQ(result->token(dimension_literal.literal).text, "3");
 
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items[1]);
@@ -275,6 +362,127 @@ TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
       std::get<syntax_cst::CstVariableDeclaration>(function.body[2]);
   EXPECT_EQ(result->token(parameter.state_space).kind, TokenKind::DotParam);
   EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, RetainsStructuredConstantExpressionsAndInitializers) {
+  constexpr std::string_view source =
+      ".global .u32 table[(1 + 2) << 3] = {1, 2 * 3, WARP_SZ};\n"
+      ".const .u64 pointer = generic(base) + 8;\n"
+      ".global .u8 masked = 0xff(base + 4);\n"
+      ".global .u32 first = 1, second = 2;";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_EQ(result->module()->items.size(), 4u);
+  const auto& table =
+      std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
+  const auto& declarator = table.declarators[0];
+  ASSERT_EQ(declarator.array_dimensions.size(), 1u);
+  ASSERT_TRUE(declarator.array_dimensions[0].size.has_value());
+  const auto& shift = std::get<syntax_cst::CstConstantBinary>(
+      declarator.array_dimensions[0].size->node);
+  EXPECT_EQ(result->token(shift.operator_token).kind, TokenKind::ShiftLeft);
+  ASSERT_TRUE(std::holds_alternative<syntax_cst::CstConstantParenthesized>(
+      shift.left->node));
+
+  ASSERT_TRUE(declarator.equals.has_value());
+  ASSERT_TRUE(declarator.initializer.has_value());
+  const auto& list =
+      std::get<syntax_cst::CstInitializerList>(declarator.initializer->value);
+  ASSERT_EQ(list.elements.size(), 3u);
+  ASSERT_EQ(list.commas.size(), 2u);
+  const auto& product = std::get<syntax_cst::CstConstantBinary>(
+      std::get<syntax_cst::CstConstantExpression>(list.elements[1].value).node);
+  EXPECT_EQ(result->token(product.operator_token).kind, TokenKind::Star);
+  const auto& warp_size = std::get<syntax_cst::CstConstantLiteral>(
+      std::get<syntax_cst::CstConstantExpression>(list.elements[2].value).node);
+  EXPECT_EQ(result->token(warp_size.literal).kind, TokenKind::WarpSz);
+
+  const auto& pointer =
+      std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[1]);
+  const auto& pointer_expression = std::get<syntax_cst::CstConstantExpression>(
+      pointer.declarators[0].initializer->value);
+  const auto& add =
+      std::get<syntax_cst::CstConstantBinary>(pointer_expression.node);
+  EXPECT_EQ(result->token(add.operator_token).kind, TokenKind::Plus);
+  ASSERT_TRUE(
+      std::holds_alternative<syntax_cst::CstConstantCall>(add.left->node));
+
+  const auto& masked =
+      std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[2]);
+  const auto& masked_expression = std::get<syntax_cst::CstConstantExpression>(
+      masked.declarators[0].initializer->value);
+  const auto& mask_call =
+      std::get<syntax_cst::CstConstantCall>(masked_expression.node);
+  const auto& mask_literal =
+      std::get<syntax_cst::CstConstantLiteral>(mask_call.callee->node);
+  EXPECT_EQ(result->token(mask_literal.literal).text, "0xff");
+
+  const auto& multiple =
+      std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[3]);
+  ASSERT_EQ(multiple.declarators.size(), 2u);
+  ASSERT_EQ(multiple.commas.size(), 1u);
+  EXPECT_EQ(result->token(multiple.declarators[1].name).text, "second");
+  EXPECT_TRUE(multiple.declarators[1].initializer.has_value());
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, RetainsNestedAndUnsizedArrayInitializer) {
+  constexpr std::string_view source =
+      ".global .s32 offsets[][2] = {{-1, 0}, {0, -1}};";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& declaration =
+      std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
+  const auto& declarator = declaration.declarators[0];
+  ASSERT_EQ(declarator.array_dimensions.size(), 2u);
+  EXPECT_FALSE(declarator.array_dimensions[0].size.has_value());
+  EXPECT_TRUE(declarator.array_dimensions[1].size.has_value());
+  const auto& outer =
+      std::get<syntax_cst::CstInitializerList>(declarator.initializer->value);
+  ASSERT_EQ(outer.elements.size(), 2u);
+  for (const auto& row : outer.elements) {
+    const auto& inner = std::get<syntax_cst::CstInitializerList>(row.value);
+    EXPECT_EQ(inner.elements.size(), 2u);
+  }
+  const auto& first_value = std::get<syntax_cst::CstConstantExpression>(
+      std::get<syntax_cst::CstInitializerList>(outer.elements[0].value)
+          .elements[0]
+          .value);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstConstantUnary>(first_value.node));
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, RejectsInitializersInUnsupportedDeclarations) {
+  for (const auto source_and_message : {
+           std::pair{std::string_view{".reg .u32 value = 1;"},
+                     std::string_view{
+                         "variable initializer requires '.global' or '.const' "
+                         "state space"}},
+           std::pair{
+               std::string_view{".extern .global .u32 value = 1;"},
+               std::string_view{"external variable declaration cannot have an "
+                                "initializer"}},
+           std::pair{
+               std::string_view{".global .u32 values<2>[4];"},
+               std::string_view{"parameterized variable names cannot declare "
+                                "arrays"}},
+           std::pair{
+               std::string_view{".reg .u32 values<2> = 1;"},
+               std::string_view{"parameterized variable names cannot have an "
+                                "initializer"}},
+       }) {
+    PtxCstParser parser(source_and_message.first);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.has_value()) << source_and_message.first;
+    EXPECT_EQ(result.error().message, source_and_message.second);
+  }
 }
 
 }  // namespace

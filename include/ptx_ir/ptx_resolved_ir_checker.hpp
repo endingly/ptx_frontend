@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <compare>
 #include <concepts>
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "ptx_ir/base.hpp"
+#include "ptx_ir/semantic/ptx_special_register.hpp"
 #include "ptx_ir/source_loc.hpp"
 
 namespace ptx_frontend::resolved_ir::checker {
@@ -42,6 +44,8 @@ enum class OperandShape : uint16_t {
   Address = 1 << 3,
   Symbol = 1 << 4,
   Vector = 1 << 5,
+  BranchTarget = 1 << 6,
+  SpecialRegister = 1 << 7,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -64,6 +68,7 @@ enum class OperandAccess : uint8_t {
   Read,
   Write,
   ReadWrite,
+  Control,
 };
 
 /** A compile-time-normalized scalar-type source for one operand. */
@@ -92,6 +97,7 @@ struct OperandDescriptor {
   OperandRole role;
   OperandAccess access;
   OperandShape allowed_shapes;
+  std::span<const uint8_t> allowed_vector_arities;
 };
 
 /** A non-owning semantic view of one resolved modifier field. */
@@ -101,20 +107,45 @@ struct FieldView {
   std::span<const SourceRange> locations;
 };
 
-/** A non-owning semantic view of one resolved operand field. */
-struct OperandView {
-  std::string_view field_id;
-  OperandShape actual_shape;
-  std::optional<ScalarType> immediate_type;
-  std::span<const SourceRange> locations;
-};
-
 /** A PTX ISA version used by both checker descriptors and compilation targets. */
 struct PtxVersion {
   uint16_t major = 0;
   uint16_t minor = 0;
 
   constexpr auto operator<=>(const PtxVersion&) const = default;
+};
+
+/** Target requirements attached to a variant, layout, modifier, or value. */
+struct AvailabilityDescriptor {
+  PtxVersion minimum_ptx_version{};
+  uint32_t minimum_sm_version = 0;
+  std::string_view required_family{};
+};
+
+/** A generated instruction-context override for one special-register value. */
+struct OperandTypeCompatibilityDescriptor {
+  std::string_view target_field_id;
+  special_registers::SpecialRegisterKind special_register_kind =
+      special_registers::SpecialRegisterKind::Invalid;
+  uint8_t instruction_width = 0;
+  ScalarType effective_type = ScalarType::Invalid;
+  AvailabilityDescriptor availability;
+};
+
+/** A non-owning semantic view of one resolved operand field. */
+struct OperandView {
+  std::string_view field_id;
+  OperandShape actual_shape;
+  std::optional<ScalarType> immediate_type;
+  std::optional<ScalarType> register_type;
+  std::optional<ScalarType> special_register_type;
+  std::optional<special_registers::SpecialRegisterId> special_register_id;
+  std::array<ScalarType, 4> vector_element_types{};
+  uint8_t vector_arity = 0;
+  uint8_t vector_sink_count = 0;
+  std::optional<AvailabilityDescriptor> value_availability;
+  std::string_view value_name{};
+  std::span<const SourceRange> locations;
 };
 
 /**
@@ -128,13 +159,6 @@ struct TargetInfo {
   PtxVersion ptx_version{};
   uint32_t sm_version = 0;
   std::span<const std::string_view> families{};
-};
-
-/** Per-variant target requirements generated from YAML ``availability``. */
-struct AvailabilityDescriptor {
-  PtxVersion minimum_ptx_version{};
-  uint32_t minimum_sm_version = 0;
-  std::string_view required_family{};
 };
 
 /** Additional target requirements for one selected operand layout. */
@@ -185,6 +209,8 @@ struct VariantDescriptor {
   std::span<const ModifierValueAvailabilityDescriptor>
       modifier_value_availabilities;
   std::span<const OperandLayoutDescriptor> operand_layouts;
+  std::span<const OperandTypeCompatibilityDescriptor>
+      operand_type_compatibilities;
   std::string_view rule_id;
 };
 
@@ -206,6 +232,7 @@ enum class CheckDiagnosticKind : uint8_t {
   OperandLayoutPayloadMismatch,
   MissingTypeField,
   OperandTypeMismatch,
+  InvalidVectorOperand,
   RuleViolation,
 };
 
@@ -267,15 +294,15 @@ CheckResult check_common(const InstructionDescriptor& instruction,
  * Check operand constraints independent of a particular opcode.
  *
  * The generated typed wrapper supplies views of the selected resolved layout.
- * Currently this verifies operand-field identity, allowed resolved shape, and
- * immediate types constrained by the generated ``TypeExpressionDescriptor``.
- * Register type and state-space checks will join this entry point once symbol
- * lookup is part of ``Context``.
+ * This verifies operand-field identity, allowed resolved shape, and immediate
+ * or declaration-bound register types constrained by the generated
+ * ``TypeExpressionDescriptor``.
  */
-CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
-                           std::span<const FieldView> fields,
-                           std::span<const OperandView> operands,
-                           const Context& context);
+CheckResult check_operands(
+    std::span<const OperandDescriptor> descriptors,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
+    const Context& context);
 
 /** Verify that a resolved instruction preserved a valid selected layout tag. */
 CheckResult check_operand_layout_tag(std::string_view variant_name,

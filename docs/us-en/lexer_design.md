@@ -143,11 +143,13 @@ string interning or zero-copy token storage.
 Individual punctuation characters have dedicated token kinds, including:
 
 ```text
-, . : ; @ | ! ( ) [ ] { } < > - + =
+, . : ; @ ( ) [ ] { } < > <= >= << >> - + * / % & && ^ | || ! ~ ? = == !=
 ```
 
 A leading sign is not part of a numeric token. For example, `-1` produces
-`Minus` followed by `Decimal`.
+`Minus` followed by `Decimal`. Multi-character operators have dedicated token
+kinds so the declaration constant-expression parser can retain exact
+operators and precedence.
 
 ### Literals
 
@@ -314,6 +316,7 @@ The current test suite covers:
 - Compound and numeric-leading dot identifiers.
 - Dedicated module, function, visibility, and declaration directives.
 - Register declarations, memory operands, and predicate punctuation.
+- Single- and multi-character constant-expression operators.
 - Integer, hexadecimal, floating bit-pattern, decimal floating, and string
   literals.
 - Whitespace and comment skipping.

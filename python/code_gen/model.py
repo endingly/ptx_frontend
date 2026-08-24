@@ -78,6 +78,7 @@ class OperandSpec:
     role: str | None = None
     access: str | None = None
     type_expression: OperandTypeExpression | None = None
+    vector_arities: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,18 @@ class OperandLayoutSpec:
 
 
 @dataclass(frozen=True)
+class OperandTypeCompatibilitySpec:
+    """Contextual operand type accepted by one instruction variant."""
+
+    operand: str
+    value_kind: str
+    values: tuple[str, ...]
+    instruction_width: int
+    effective_type: str
+    availability: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class VariantSpec:
     """One PTX instruction variant."""
 
@@ -100,6 +113,7 @@ class VariantSpec:
     modifiers: tuple[ModifierSpec, ...]
     operand_layouts: tuple[OperandLayoutSpec, ...]
     rule: str | None = None
+    operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
 
 
 @dataclass(frozen=True)

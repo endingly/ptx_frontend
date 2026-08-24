@@ -80,6 +80,9 @@ class CppDomain(str, Enum):
     CHECKER_MODIFIER_VALUE_KINDS = (  # YAML: domains.checker_modifier_value_kinds
         "checker_modifier_value_kinds"
     )
+    SPECIAL_REGISTER_KINDS = (  # YAML: domains.special_register_kinds
+        "special_register_kinds"
+    )
 
 
 _REQUIRED_DOMAINS = frozenset(domain.value for domain in CppDomain)

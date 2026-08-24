@@ -52,8 +52,7 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
       .instruction_range = kInstructionRange,
   };
 
-  const auto result =
-      check_common(kInstruction, "PackedOptionalSat", context);
+  const auto result = check_common(kInstruction, "PackedOptionalSat", context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
@@ -68,8 +67,7 @@ TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
       .instruction_range = kInstructionRange,
   };
 
-  const auto result =
-      check_common(kInstruction, "PackedOptionalSat", context);
+  const auto result = check_common(kInstruction, "PackedOptionalSat", context);
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 3U);
@@ -132,16 +130,17 @@ TEST(ResolvedIrChecker, ChecksFixedScalarOperandTypeDescriptor) {
   constexpr OperandView operands[] = {{
       .field_id = "barrier",
       .actual_shape = OperandShape::Immediate,
-      .immediate_type = ScalarType::S32,
+      .immediate_type = ScalarType::F32,
       .locations = std::span<const SourceRange>{&kInstructionRange, 1},
   }};
   const Context context{.target = {}, .instruction_range = kInstructionRange};
 
-  const auto result = check_operands(descriptors, {}, operands, context);
+  const auto result = check_operands(descriptors, {}, operands, {}, context);
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 1U);
-  EXPECT_EQ(result.error().front().kind, CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(result.error().front().kind,
+            CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(result.error().front().range, kInstructionRange);
 }
 
@@ -189,9 +188,7 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
 
   constexpr std::array<std::string_view, 1> family{"sm_120f"};
   const Context unsupported_context{
-      .target = {.ptx_version = {9, 1},
-                 .sm_version = 100,
-                 .families = family},
+      .target = {.ptx_version = {9, 1}, .sm_version = 100, .families = family},
       .instruction_range = ast->range,
   };
   const auto unsupported = check(*resolved, unsupported_context);
@@ -203,9 +200,7 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
             CheckDiagnosticKind::UnsupportedSmVersion);
 
   const Context supported_context{
-      .target = {.ptx_version = {9, 2},
-                 .sm_version = 120,
-                 .families = family},
+      .target = {.ptx_version = {9, 2}, .sm_version = 120, .families = family},
       .instruction_range = ast->range,
   };
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
@@ -379,7 +374,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
   ASSERT_NE(add, nullptr);
   auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
-  immediate->type = ScalarType::U32;
+  immediate->type = ScalarType::F32;
 
   const Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},

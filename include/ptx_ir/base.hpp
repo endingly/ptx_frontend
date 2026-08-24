@@ -60,4 +60,7 @@ std::string to_string(Enum e) {
 ScalarKind scalar_kind(ScalarType t);
 uint8_t scalar_size_of(ScalarType t);
 
+/** PTX fundamental-type compatibility for operands of the same width. */
+bool scalar_types_compatible(ScalarType actual, ScalarType instruction);
+
 };  // namespace ptx_frontend

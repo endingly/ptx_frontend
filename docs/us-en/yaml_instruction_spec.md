@@ -261,6 +261,13 @@ unique layout with strictly more specific operand shapes. Equal or incomparable
 candidates are a YAML modeling error; availability cannot resolve the syntax
 ambiguity.
 
+An operand with `kind: mov_vector` must declare legal element counts through
+`vector.arity`; the current mov-specific Resolved IR supports at most four
+elements. This data is generated into resolved/checker descriptors for vector-payload validation and
+does not participate in modifier-variant selection. For example, scalar, pack,
+and unpack `mov` are three layouts of one modifier variant rather than copied
+variants with overlapping `.b16/.b32/.b64` forms.
+
 ## Current floating Add coverage
 
 The `add` definitions in `floating_point.yaml` and `integer_arith.yaml` merge

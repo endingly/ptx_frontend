@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -73,9 +74,41 @@ struct CstVectorPack {
   CstTokenRange token_range;
 };
 
+enum class CstCallParameterListKind : uint8_t {
+  Return,
+  Input,
+};
+
+using CstCallParameter = std::variant<CstIdentifier, CstImmediate>;
+
+struct CstCallParameterList {
+  CstCallParameterListKind kind{};
+  TokenId left_paren{};
+  std::vector<CstCallParameter> parameters;
+  std::vector<TokenId> commas;
+  TokenId right_paren{};
+  CstTokenRange token_range;
+};
+
+struct CstCallTarget {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
+struct CstCallTargetSet {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
+struct CstBranchTarget {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstImmediate, CstAddress,
-                 CstVectorMember, CstVectorPack>;
+                 CstVectorMember, CstVectorPack, CstCallParameterList,
+                 CstCallTarget, CstCallTargetSet, CstBranchTarget>;
 
 struct CstOperandElement {
   CstOperand operand;
@@ -91,9 +124,84 @@ struct CstInstruction {
   CstTokenRange token_range;
 };
 
+struct CstConstantExpression;
+using CstConstantExpressionPtr = std::unique_ptr<CstConstantExpression>;
+
+struct CstConstantLiteral {
+  TokenId literal{};
+};
+
+struct CstConstantSymbol {
+  TokenId name{};
+};
+
+struct CstConstantParenthesized {
+  TokenId left_paren{};
+  CstConstantExpressionPtr expression;
+  TokenId right_paren{};
+};
+
+struct CstConstantCall {
+  CstConstantExpressionPtr callee;
+  TokenId left_paren{};
+  CstConstantExpressionPtr argument;
+  TokenId right_paren{};
+};
+
+struct CstConstantCast {
+  TokenId left_paren{};
+  TokenId type{};
+  TokenId right_paren{};
+  CstConstantExpressionPtr operand;
+};
+
+struct CstConstantUnary {
+  TokenId operator_token{};
+  CstConstantExpressionPtr operand;
+};
+
+struct CstConstantBinary {
+  CstConstantExpressionPtr left;
+  TokenId operator_token{};
+  CstConstantExpressionPtr right;
+};
+
+struct CstConstantConditional {
+  CstConstantExpressionPtr condition;
+  TokenId question{};
+  CstConstantExpressionPtr true_expression;
+  TokenId colon{};
+  CstConstantExpressionPtr false_expression;
+};
+
+using CstConstantExpressionNode =
+    std::variant<CstConstantLiteral, CstConstantSymbol,
+                 CstConstantParenthesized, CstConstantCall, CstConstantCast,
+                 CstConstantUnary, CstConstantBinary, CstConstantConditional>;
+
+struct CstConstantExpression {
+  CstConstantExpressionNode node;
+  CstTokenRange token_range;
+};
+
+struct CstInitializer;
+
+struct CstInitializerList {
+  TokenId left_brace{};
+  std::vector<CstInitializer> elements;
+  std::vector<TokenId> commas;
+  TokenId right_brace{};
+  CstTokenRange token_range;
+};
+
+struct CstInitializer {
+  std::variant<CstConstantExpression, CstInitializerList> value;
+  CstTokenRange token_range;
+};
+
 struct CstArrayDimension {
   TokenId left_bracket{};
-  std::vector<TokenId> size_tokens;
+  std::optional<CstConstantExpression> size;
   TokenId right_bracket{};
   CstTokenRange token_range;
 };
@@ -101,9 +209,11 @@ struct CstArrayDimension {
 struct CstVariableDeclarator {
   TokenId name{};
   std::optional<TokenId> left_angle;
-  std::optional<TokenId> register_count;
+  std::optional<TokenId> parameterized_count;
   std::optional<TokenId> right_angle;
   std::vector<CstArrayDimension> array_dimensions;
+  std::optional<TokenId> equals;
+  std::optional<CstInitializer> initializer;
   CstTokenRange token_range;
 };
 
@@ -150,7 +260,7 @@ struct CstFunctionParameter {
   std::optional<TokenId> pointer_alignment;
   TokenId name{};
   std::optional<TokenId> left_bracket;
-  std::optional<TokenId> array_size;
+  std::optional<CstConstantExpression> array_size;
   std::optional<TokenId> right_bracket;
   CstTokenRange token_range;
 };

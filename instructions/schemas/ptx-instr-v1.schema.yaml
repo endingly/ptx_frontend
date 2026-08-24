@@ -617,6 +617,8 @@ $defs:
       - symbol
       - func
       - reg_or_imm
+      - mov_scalar_src
+      - mov_vector
       - addr_or_symbol
       - reg_list
       - pred_list
@@ -969,6 +971,46 @@ $defs:
       availability:
         $ref: "#/$defs/availability"
 
+  operand_type_compatibility:
+    description: >
+      A value-dependent operand type accepted by this instruction variant.
+      The rule is compiled into checker metadata and does not alter syntax or
+      Resolved IR values.
+    type: object
+    additionalProperties: false
+    required:
+      - operand
+      - value_kind
+      - values
+      - instruction_width
+      - effective_type
+      - availability
+    properties:
+      operand:
+        $ref: "#/$defs/schema_identifier"
+      value_kind:
+        type: string
+        enum:
+          - special_register
+      values:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/schema_identifier"
+      instruction_width:
+        type: integer
+        enum:
+          - 8
+          - 16
+          - 32
+          - 64
+          - 128
+      effective_type:
+        $ref: "#/$defs/ptx_type_name"
+      availability:
+        $ref: "#/$defs/availability"
+
   variant:
     description: "A PTX instruction variant."
     type: object
@@ -1026,6 +1068,14 @@ $defs:
         minItems: 1
         items:
           $ref: "#/$defs/operand_layout"
+
+      operand_type_compatibilities:
+        description: >
+          Contextual type rules keyed by resolved operand identity. These are
+          semantic checker rules, not syntax variants.
+        type: array
+        items:
+          $ref: "#/$defs/operand_type_compatibility"
 
       rule:
         $ref: "#/$defs/semantic_rule"

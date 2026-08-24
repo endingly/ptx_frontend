@@ -351,6 +351,25 @@ TEST(PtxLexerNew, PredicateGuardAndInstruction) {
   expect_token(toks[10], TokenKind::Semicolon, ";");
 }
 
+TEST(PtxLexerNew, ConstantExpressionOperatorsUseDedicatedTokens) {
+  auto toks = lex_all("<= >= << >> * / % & && ^ | || ~ ? == != = < > + - !");
+
+  const std::vector<TokenKind> expected{
+      TokenKind::LtEq,        TokenKind::GtEq,     TokenKind::ShiftLeft,
+      TokenKind::ShiftRight,  TokenKind::Star,     TokenKind::Slash,
+      TokenKind::Percent,     TokenKind::Amp,      TokenKind::AmpAmp,
+      TokenKind::Caret,       TokenKind::Pipe,     TokenKind::PipePipe,
+      TokenKind::Tilde,       TokenKind::Question, TokenKind::EqEq,
+      TokenKind::NotEq,       TokenKind::Eq,       TokenKind::Lt,
+      TokenKind::Gt,          TokenKind::Plus,     TokenKind::Minus,
+      TokenKind::Exclamation,
+  };
+
+  ASSERT_EQ(toks.size(), expected.size());
+  for (std::size_t i = 0; i < expected.size(); ++i)
+    EXPECT_EQ(toks[i].kind, expected[i]) << "text=" << toks[i].text;
+}
+
 // -----------------------------------------------------------------------------
 // Literals
 // -----------------------------------------------------------------------------

@@ -11,7 +11,10 @@
 #include <span>
 #include <type_traits>
 #include <unordered_set>
+#include <vector>
+#include "ptx_ir/bind/ptx_symbol_table.hpp"
 #include "ptx_ir/ptx_resolved_ir_checker.hpp"
+#include "ptx_ir/semantic/ptx_special_register.hpp"
 #include "ptx_ir/source_loc.hpp"
 #include "ptx_ir/syntax/ptx_syntax_ast.hpp"
 #include "utils.hpp"
@@ -26,7 +29,7 @@ using OperandAccess = checker::OperandAccess;
 using OperandTypeExpressionKind = checker::OperandTypeExpressionKind;
 using TypeExpressionDescriptor = checker::TypeExpressionDescriptor;
 
-enum class OperandSyntaxShape : uint8_t {
+enum class OperandSyntaxShape : uint16_t {
   Identifier = 1 << 0,
   Immediate = 1 << 1,
   Address = 1 << 2,
@@ -34,6 +37,9 @@ enum class OperandSyntaxShape : uint8_t {
   VectorMember = 1 << 4,
   Predicate = 1 << 5,
   Group = 1 << 6,  // for op call syntax (...)
+  CallTarget = 1 << 7,
+  CallTargetSet = 1 << 8,
+  BranchTarget = 1 << 9,
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
@@ -59,6 +65,12 @@ enum class ResolvedValueKind : uint8_t {
   Predicate,
   Immediate,
   RegOrImm,
+  MovSource,
+  BranchTarget,
+  SpecialRegister,
+  Symbol,
+  Address,
+  MovVector,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -178,17 +190,14 @@ enum class ResolvedRegisterClass : uint8_t {
   Predicate,
 };
 
-/**
- * Register identity before declaration binding is available.
- *
- * `spelling` is owned so the resolved IR does not depend on the Syntax AST
- * lifetime. `index` is retained for the currently supported numbered-register
- * syntax, but it is not the register's identity by itself.
- */
+/** A register reference, optionally bound to its declaration in a module. */
 struct ResolvedRegisterRef {
   std::string spelling;
   ResolvedRegisterClass register_class;
-  uint32_t index;
+  std::optional<uint32_t> index;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<uint32_t> parameterized_index;
+  std::optional<ScalarType> declared_type;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
 
@@ -198,10 +207,83 @@ struct ResolvedImmediate {
   bool operator==(const ResolvedImmediate&) const = default;
 };
 
+/** A register vector; an empty element is the write-only ``_`` sink. */
+struct ResolvedMovVector {
+  std::vector<std::optional<ResolvedRegisterRef>> elements;
+  bool operator==(const ResolvedMovVector&) const = default;
+};
+
 struct ResolvedPredicate {
   ResolvedRegisterRef register_ref;
   bool negated{};
   bool operator==(const ResolvedPredicate&) const = default;
+};
+
+/** A direct branch label, optionally bound to its declaration in a module. */
+struct ResolvedBranchTarget {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  bool operator==(const ResolvedBranchTarget&) const = default;
+};
+
+/** A predefined read-only PTX special register with target-independent identity. */
+struct ResolvedSpecialRegisterRef {
+  std::string spelling;
+  special_registers::SpecialRegisterId id;
+  std::optional<special_registers::VectorComponent> component;
+  bool operator==(const ResolvedSpecialRegisterRef&) const = default;
+};
+
+/** A function address, bound to a device or kernel function declaration. */
+struct ResolvedFunctionRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  bool is_entry{};
+  std::optional<checker::AvailabilityDescriptor> address_availability;
+  bool operator==(const ResolvedFunctionRef&) const = default;
+};
+
+/** An addressable data symbol, optionally bound to a module declaration. */
+struct ResolvedSymbolRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<uint32_t> parameterized_index;
+  std::optional<binding::SymbolKind> declaration_kind;
+  std::optional<syntax_ast::AstStateSpace> declaration_state_space;
+  /**
+   * State space of the address produced for this symbol.
+   *
+   * This normally equals ``declaration_state_space``.  Formal parameters are
+   * the important exception: a direct parameter address and a kernel
+   * parameter used by ``mov`` retain ``.param``, while ``mov`` address-taking
+   * materializes a device-function parameter in ``.local`` space.
+   */
+  std::optional<syntax_ast::AstStateSpace> address_state_space;
+  std::optional<ScalarType> declared_type;
+  /** Target requirement contributed by this address value, if any. */
+  std::optional<checker::AvailabilityDescriptor> address_availability;
+  bool operator==(const ResolvedSymbolRef&) const = default;
+};
+
+enum class ResolvedAddressOffsetOperator : uint8_t {
+  Add,
+  Subtract,
+};
+
+struct ResolvedAddressOffset {
+  ResolvedAddressOffsetOperator operation = ResolvedAddressOffsetOperator::Add;
+  ResolvedImmediate value;
+  bool operator==(const ResolvedAddressOffset&) const = default;
+};
+
+using ResolvedAddressBase =
+    std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedSymbolRef>;
+
+/** A PTX address expression with a resolved base and optional byte offset. */
+struct ResolvedAddress {
+  ResolvedAddressBase base;
+  std::optional<ResolvedAddressOffset> offset;
+  bool operator==(const ResolvedAddress&) const = default;
 };
 
 /** The selected operand-layout index within the resolved instruction variant. */
@@ -212,15 +294,26 @@ struct ResolvedOperandLayoutTag {
 
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
+/** A scalar ``mov`` source after identifier classification and binding. */
+using ResolvedMovSource =
+    std::variant<ResolvedRegisterRef, ResolvedImmediate,
+                 ResolvedSpecialRegisterRef, ResolvedFunctionRef,
+                 ResolvedSymbolRef, ResolvedAddress>;
+
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
-                 WithLocs<RegOrImm>, WithLocs<ResolvedPredicate>>;
+                 WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
+                 WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
+                 WithLocs<ResolvedSpecialRegisterRef>,
+                 WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
+                 WithLocs<ResolvedMovVector>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {
   std::string_view variant_name;
   ResolvedOperandLayoutTag operand_layout;
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   ResolvedFieldMap modifiers;
   ResolvedFieldMap operands;
 };
@@ -239,6 +332,14 @@ concept PtxOperator = requires(T object) {
 
 using ActualModifierTable =
     std::unordered_map<std::string, const syntax_ast::AstModifier*>;
+
+/** Declaration context used while resolving an instruction inside a module. */
+struct ResolveContext {
+  const binding::SymbolTable& symbols;
+  binding::ScopeId scope;
+  /** Whether ``scope`` belongs to a kernel entry rather than a device func. */
+  bool function_is_entry{};
+};
 
 /** Collect source modifiers by the slot IDs of one selected variant. */
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
@@ -268,10 +369,24 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
   return *variant;
 }
 
-/** Resolve one syntax instruction into its opcode-specific resolved IR. */
+/** Implementation entry specialized by each generated opcode. */
 template <PtxOperator T>
 std::expected<T, ResolveDiagnostic> resolve(
-    const syntax_ast::AstInstruction& ast);
+    const syntax_ast::AstInstruction& ast, const ResolveContext* context);
+
+/** Resolve one standalone instruction without declaration binding. */
+template <PtxOperator T>
+std::expected<T, ResolveDiagnostic> resolve(
+    const syntax_ast::AstInstruction& ast) {
+  return resolve<T>(ast, nullptr);
+}
+
+/** Resolve one instruction against an explicit module binding context. */
+template <PtxOperator T>
+std::expected<T, ResolveDiagnostic> resolve(
+    const syntax_ast::AstInstruction& ast, const ResolveContext& context) {
+  return resolve<T>(ast, &context);
+}
 
 /** Resolve one lexer-classified immediate literal for a selected scalar type. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
@@ -281,7 +396,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
-    std::string_view variant_name);
+    std::string_view variant_name, const ResolveContext* context = nullptr);
 
 /**
    * @brief Get a resolved modifier field from the resolved instruction fields.

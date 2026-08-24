@@ -44,9 +44,24 @@ enum class TokenKind : uint16_t {
   RBrace,       // }
   Lt,           // <
   Gt,           // >
+  LtEq,         // <=
+  GtEq,         // >=
+  ShiftLeft,    // <<
+  ShiftRight,   // >>
   Minus,        // -
   Plus,         // +
+  Star,         // *
+  Slash,        // /
+  Percent,      // %
+  Amp,          // &
+  AmpAmp,       // &&
+  Caret,        // ^
+  PipePipe,     // ||
+  Tilde,        // ~
+  Question,     // ?
   Eq,           // =
+  EqEq,         // ==
+  NotEq,        // !=
 
   // Literals
   F32Hex,   // 0f<8hex>

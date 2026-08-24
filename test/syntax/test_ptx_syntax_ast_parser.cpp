@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -10,6 +11,10 @@ namespace {
 
 using syntax_ast::AstAddress;
 using syntax_ast::AstAddressOffset;
+using syntax_ast::AstBranchTarget;
+using syntax_ast::AstCallParameterList;
+using syntax_ast::AstCallTarget;
+using syntax_ast::AstCallTargetSet;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstPredicateOperand;
@@ -76,6 +81,38 @@ TEST(PtxSyntaxParser, ParsesVectorPack) {
   EXPECT_TRUE(std::holds_alternative<AstIdentifierRef>(pack.elements[0]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[1]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[2]));
+}
+
+TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
+  PtxSyntaxParser call_parser(
+      "call.uni (%result), %callee, (%arg, 4), targets;");
+  auto call = call_parser.parseInstruction();
+  ASSERT_TRUE(call.has_value()) << call.error().message;
+  ASSERT_EQ(call->operands.size(), 4u);
+
+  const auto& returns = std::get<AstCallParameterList>(call->operands[0]);
+  EXPECT_EQ(returns.kind, syntax_ast::AstCallParameterListKind::Return);
+  ASSERT_EQ(returns.parameters.size(), 1u);
+  EXPECT_EQ(std::get<AstIdentifierRef>(returns.parameters[0]).syntax.text,
+            "%result");
+  EXPECT_EQ(std::get<AstCallTarget>(call->operands[1]).name.syntax.text,
+            "%callee");
+
+  const auto& inputs = std::get<AstCallParameterList>(call->operands[2]);
+  EXPECT_EQ(inputs.kind, syntax_ast::AstCallParameterListKind::Input);
+  ASSERT_EQ(inputs.parameters.size(), 2u);
+  EXPECT_EQ(std::get<AstIdentifierRef>(inputs.parameters[0]).syntax.text,
+            "%arg");
+  EXPECT_EQ(std::get<AstImmediate>(inputs.parameters[1]).syntax.text, "4");
+  EXPECT_EQ(std::get<AstCallTargetSet>(call->operands[3]).name.syntax.text,
+            "targets");
+
+  PtxSyntaxParser branch_parser("bra done;");
+  auto branch = branch_parser.parseInstruction();
+  ASSERT_TRUE(branch.has_value()) << branch.error().message;
+  ASSERT_EQ(branch->operands.size(), 1u);
+  EXPECT_EQ(std::get<AstBranchTarget>(branch->operands[0]).name.syntax.text,
+            "done");
 }
 
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {
@@ -208,7 +245,7 @@ TEST(PtxSyntaxParser, LowersFuncDefinition) {
 
 TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
   PtxSyntaxParser parser(
-      ".extern .func sink(.param .align 8 .b8 blob[12], "
+      ".extern .func sink(.param .align 8 .b8 blob[2 * WARP_SZ], "
       ".param .u64 .ptr .global .align 16 ptr) .noreturn;");
 
   const auto result = parser.parseModule();
@@ -227,7 +264,13 @@ TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(blob.alignment->text, "8");
   EXPECT_TRUE(blob.is_array);
   ASSERT_TRUE(blob.array_size.has_value());
-  EXPECT_EQ(blob.array_size->text, "12");
+  const auto& size =
+      std::get<syntax_ast::AstConstantBinary>(blob.array_size->node);
+  EXPECT_EQ(size.operation, syntax_ast::AstConstantBinaryOperator::Multiply);
+  const auto& warp_size =
+      std::get<syntax_ast::AstConstantLiteral>(size.right->node).value;
+  EXPECT_EQ(warp_size.kind, syntax_ast::AstImmediateKind::WarpSize);
+  EXPECT_EQ(warp_size.syntax.text, "WARP_SZ");
 
   const auto& pointer = function.parameters[1];
   EXPECT_TRUE(pointer.is_pointer);
@@ -255,8 +298,8 @@ TEST(PtxSyntaxParser, LowersRegisterDeclarationsAndLabels) {
   EXPECT_EQ(declaration.type.text, ".u32");
   ASSERT_EQ(declaration.declarators.size(), 2u);
   EXPECT_EQ(declaration.declarators[0].name.syntax.text, "%r");
-  ASSERT_TRUE(declaration.declarators[0].register_count.has_value());
-  EXPECT_EQ(declaration.declarators[0].register_count->text, "3");
+  ASSERT_TRUE(declaration.declarators[0].parameterized_count.has_value());
+  EXPECT_EQ(declaration.declarators[0].parameterized_count->text, "3");
   EXPECT_EQ(declaration.declarators[1].name.syntax.text, "%tmp");
 
   const auto& label = std::get<syntax_ast::AstLabel>(function.body[1]);
@@ -290,7 +333,11 @@ TEST(PtxSyntaxParser, LowersModuleAndFunctionVariableDeclarations) {
   ASSERT_TRUE(global.vector_type.has_value());
   EXPECT_EQ(global.vector_type->text, ".v4");
   ASSERT_EQ(global.declarators[0].array_dimensions.size(), 2u);
-  EXPECT_EQ(global.declarators[0].array_dimensions[1].size_tokens[0].text, "3");
+  ASSERT_TRUE(global.declarators[0].array_dimensions[1].size.has_value());
+  EXPECT_EQ(std::get<syntax_ast::AstConstantLiteral>(
+                global.declarators[0].array_dimensions[1].size->node)
+                .value.syntax.text,
+            "3");
 
   const auto& function = std::get<syntax_ast::AstFunction>(result->items[1]);
   ASSERT_EQ(function.body.size(), 4u);
@@ -303,6 +350,140 @@ TEST(PtxSyntaxParser, LowersModuleAndFunctionVariableDeclarations) {
   EXPECT_EQ(std::get<syntax_ast::AstVariableDeclaration>(function.body[2])
                 .state_space,
             syntax_ast::AstStateSpace::Parameter);
+}
+
+TEST(PtxSyntaxParser, LowersConstantExpressionPrecedenceAndConditional) {
+  PtxSyntaxParser parser(
+      ".global .s64 value = "
+      "(.s64)(1 + 2 * 3) > 0 && flag ? ~0 : -1;");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& declaration =
+      std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
+  const auto& initializer = *declaration.declarators[0].initializer;
+  const auto& expression =
+      std::get<syntax_ast::AstConstantExpression>(initializer.value);
+  const auto& conditional =
+      std::get<syntax_ast::AstConstantConditional>(expression.node);
+
+  const auto& logical_and =
+      std::get<syntax_ast::AstConstantBinary>(conditional.condition->node);
+  EXPECT_EQ(logical_and.operation,
+            syntax_ast::AstConstantBinaryOperator::LogicalAnd);
+  const auto& comparison =
+      std::get<syntax_ast::AstConstantBinary>(logical_and.left->node);
+  EXPECT_EQ(comparison.operation,
+            syntax_ast::AstConstantBinaryOperator::Greater);
+  const auto& cast =
+      std::get<syntax_ast::AstConstantCast>(comparison.left->node);
+  EXPECT_EQ(cast.type.text, ".s64");
+  const auto& parenthesized =
+      std::get<syntax_ast::AstConstantParenthesized>(cast.operand->node);
+  const auto& addition =
+      std::get<syntax_ast::AstConstantBinary>(parenthesized.expression->node);
+  EXPECT_EQ(addition.operation, syntax_ast::AstConstantBinaryOperator::Add);
+  const auto& product =
+      std::get<syntax_ast::AstConstantBinary>(addition.right->node);
+  EXPECT_EQ(product.operation, syntax_ast::AstConstantBinaryOperator::Multiply);
+  EXPECT_TRUE(std::holds_alternative<syntax_ast::AstConstantUnary>(
+      conditional.true_expression->node));
+  EXPECT_TRUE(std::holds_alternative<syntax_ast::AstConstantUnary>(
+      conditional.false_expression->node));
+}
+
+TEST(PtxSyntaxParser, LowersEveryConstantBinaryOperator) {
+  using Operator = syntax_ast::AstConstantBinaryOperator;
+  struct Case {
+    std::string_view expression;
+    Operator operation;
+  };
+  constexpr Case cases[] = {
+      {"2 * 3", Operator::Multiply},      {"6 / 2", Operator::Divide},
+      {"7 % 4", Operator::Remainder},     {"1 + 2", Operator::Add},
+      {"3 - 1", Operator::Subtract},      {"1 << 2", Operator::ShiftLeft},
+      {"4 >> 1", Operator::ShiftRight},   {"1 < 2", Operator::Less},
+      {"1 <= 2", Operator::LessEqual},    {"2 > 1", Operator::Greater},
+      {"2 >= 1", Operator::GreaterEqual}, {"1 == 1", Operator::Equal},
+      {"1 != 2", Operator::NotEqual},     {"1 & 3", Operator::BitwiseAnd},
+      {"1 ^ 3", Operator::BitwiseXor},    {"1 | 2", Operator::BitwiseOr},
+      {"1 && 2", Operator::LogicalAnd},   {"1 || 2", Operator::LogicalOr},
+  };
+
+  for (const auto& test_case : cases) {
+    PtxSyntaxParser parser(std::string{".global .u32 value = "} +
+                           std::string{test_case.expression} + ";");
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value())
+        << test_case.expression << ": " << result.error().message;
+    const auto& declaration =
+        std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
+    const auto& initializer = *declaration.declarators[0].initializer;
+    const auto& expression =
+        std::get<syntax_ast::AstConstantExpression>(initializer.value);
+    ASSERT_TRUE(
+        std::holds_alternative<syntax_ast::AstConstantBinary>(expression.node))
+        << test_case.expression;
+    EXPECT_EQ(
+        std::get<syntax_ast::AstConstantBinary>(expression.node).operation,
+        test_case.operation)
+        << test_case.expression;
+  }
+}
+
+TEST(PtxSyntaxParser, LowersRemainingConstantUnaryOperators) {
+  PtxSyntaxParser parser(".global .u32 value = +1 + !flag;");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& declaration =
+      std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
+  const auto& initializer = *declaration.declarators[0].initializer;
+  const auto& expression =
+      std::get<syntax_ast::AstConstantExpression>(initializer.value);
+  const auto& addition =
+      std::get<syntax_ast::AstConstantBinary>(expression.node);
+  EXPECT_EQ(
+      std::get<syntax_ast::AstConstantUnary>(addition.left->node).operation,
+      syntax_ast::AstConstantUnaryOperator::Plus);
+  EXPECT_EQ(
+      std::get<syntax_ast::AstConstantUnary>(addition.right->node).operation,
+      syntax_ast::AstConstantUnaryOperator::LogicalNot);
+}
+
+TEST(PtxSyntaxParser, LowersNestedInitializerAndSymbolAddressOperator) {
+  PtxSyntaxParser parser(
+      ".global .u64 pointers[][2] = "
+      "{{generic(base), generic(base) + 8}, {base, 0}};");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& declaration =
+      std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
+  const auto& declarator = declaration.declarators[0];
+  ASSERT_EQ(declarator.array_dimensions.size(), 2u);
+  EXPECT_FALSE(declarator.array_dimensions[0].size.has_value());
+  const auto& outer =
+      std::get<syntax_ast::AstInitializerList>(declarator.initializer->value);
+  ASSERT_EQ(outer.elements.size(), 2u);
+  const auto& first_row =
+      std::get<syntax_ast::AstInitializerList>(outer.elements[0].value);
+  ASSERT_EQ(first_row.elements.size(), 2u);
+  const auto& generic_expression =
+      std::get<syntax_ast::AstConstantExpression>(first_row.elements[0].value);
+  const auto& generic =
+      std::get<syntax_ast::AstConstantCall>(generic_expression.node);
+  EXPECT_EQ(std::get<syntax_ast::AstConstantSymbol>(generic.callee->node)
+                .name.syntax.text,
+            "generic");
+  const auto& address_expression =
+      std::get<syntax_ast::AstConstantExpression>(first_row.elements[1].value);
+  EXPECT_EQ(std::get<syntax_ast::AstConstantBinary>(address_expression.node)
+                .operation,
+            syntax_ast::AstConstantBinaryOperator::Add);
 }
 
 }  // namespace

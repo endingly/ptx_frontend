@@ -182,6 +182,57 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(layout.slots[1].allows(OperandSyntaxShape.IMMEDIATE))
         self.assertFalse(layout.slots[1].allows(OperandSyntaxShape.ADDRESS))
 
+    def test_control_flow_shapes_have_distinct_descriptor_flags(self) -> None:
+        self.assertEqual(OperandSyntaxShape.CALL_PARAMETER_LIST.value, 1 << 6)
+        self.assertEqual(OperandSyntaxShape.CALL_TARGET.value, 1 << 7)
+        self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
+        self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
+
+    def test_mov_source_layout_covers_data_and_address_forms(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mov = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mov"
+        )
+        descriptor = from_InstructionSpec(mov)
+        layout = descriptor.variants[0].operand_layouts[0]
+
+        self.assertEqual(
+            layout.slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
+        )
+        self.assertEqual(
+            layout.slots[1].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF
+            | OperandSyntaxShape.IMMEDIATE
+            | OperandSyntaxShape.ADDRESS
+            | OperandSyntaxShape.VECTOR_MEMBER,
+        )
+
+    def test_ld_layout_requires_address_syntax(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ld = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ld"
+        )
+        descriptor = from_InstructionSpec(ld)
+        layout = descriptor.variants[0].operand_layouts[0]
+
+        self.assertEqual(
+            layout.slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
+        )
+        self.assertEqual(
+            layout.slots[1].allowed_syntax_shapes,
+            OperandSyntaxShape.ADDRESS,
+        )
+
     def test_sub_variants_and_modifier_constraints(self) -> None:
         self.assertEqual(self.sub_descriptor.opcode, "sub")
         self.assertEqual(

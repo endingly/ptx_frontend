@@ -11,6 +11,7 @@
 #include <span>
 #include <type_traits>
 #include <unordered_set>
+#include <vector>
 #include "ptx_ir/bind/ptx_symbol_table.hpp"
 #include "ptx_ir/ptx_resolved_ir_checker.hpp"
 #include "ptx_ir/semantic/ptx_special_register.hpp"
@@ -69,6 +70,7 @@ enum class ResolvedValueKind : uint8_t {
   SpecialRegister,
   Symbol,
   Address,
+  MovVector,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -205,6 +207,12 @@ struct ResolvedImmediate {
   bool operator==(const ResolvedImmediate&) const = default;
 };
 
+/** A register vector; an empty element is the write-only ``_`` sink. */
+struct ResolvedMovVector {
+  std::vector<std::optional<ResolvedRegisterRef>> elements;
+  bool operator==(const ResolvedMovVector&) const = default;
+};
+
 struct ResolvedPredicate {
   ResolvedRegisterRef register_ref;
   bool negated{};
@@ -218,10 +226,11 @@ struct ResolvedBranchTarget {
   bool operator==(const ResolvedBranchTarget&) const = default;
 };
 
-/** A predefined read-only PTX special register and its ISA metadata. */
+/** A predefined read-only PTX special register with target-independent identity. */
 struct ResolvedSpecialRegisterRef {
   std::string spelling;
-  special_registers::Info info;
+  special_registers::SpecialRegisterId id;
+  std::optional<special_registers::VectorComponent> component;
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
 };
 
@@ -297,7 +306,8 @@ using ResolvedFieldValue =
                  WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedSpecialRegisterRef>,
-                 WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>>;
+                 WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
+                 WithLocs<ResolvedMovVector>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {

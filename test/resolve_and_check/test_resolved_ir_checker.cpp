@@ -135,7 +135,7 @@ TEST(ResolvedIrChecker, ChecksFixedScalarOperandTypeDescriptor) {
   }};
   const Context context{.target = {}, .instruction_range = kInstructionRange};
 
-  const auto result = check_operands(descriptors, {}, operands, context);
+  const auto result = check_operands(descriptors, {}, operands, {}, context);
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 1U);

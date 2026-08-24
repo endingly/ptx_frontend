@@ -11,6 +11,7 @@ from ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierValueAvailability,
     ResolvedOperandLayout,
+    ResolvedOperandTypeCompatibility,
     ResolvedVariant,
     from_instruction_spec,
 )
@@ -65,6 +66,10 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         _emit_variant_layout_descriptors(variant)
         for variant in instruction.variants
     )
+    type_compatibility_definitions = "\n\n".join(
+        _emit_variant_type_compatibility_descriptors(variant)
+        for variant in instruction.variants
+    )
     variants = ",\n".join(
         _emit_variant_descriptor(variant) for variant in instruction.variants
     )
@@ -72,6 +77,8 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 {modifier_value_definitions}
 
 {layout_definitions}
+
+{type_compatibility_definitions}
 
   static constexpr std::array<checker::VariantDescriptor, {len(instruction.variants)}>
       variants = {{
@@ -114,6 +121,8 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
               .modifier_value_availabilities =
                   {variant.cpp_name}_modifier_value_availabilities,
               .operand_layouts = {variant.cpp_name}_operand_layouts,
+              .operand_type_compatibilities =
+                  {variant.cpp_name}_operand_type_compatibilities,
               .rule_id = "{rule_id}",
           }}"""
 
@@ -186,6 +195,39 @@ def _emit_operand_layout_descriptor(layout: ResolvedOperandLayout) -> str:
     family = str(availability.get("family", ""))
     return f"""          checker::OperandLayoutDescriptor{{
               .layout_name = "{layout.layout_id}",
+              .availability = {{
+                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                  .minimum_sm_version = {minimum_sm},
+                  .required_family = "{family}",
+              }},
+          }}"""
+
+
+def _emit_variant_type_compatibility_descriptors(
+    variant: ResolvedVariant,
+) -> str:
+    entries = ",\n".join(
+        _emit_operand_type_compatibility_descriptor(entry)
+        for entry in variant.operand_type_compatibilities
+    )
+    return f"""  static constexpr std::array<checker::OperandTypeCompatibilityDescriptor, {len(variant.operand_type_compatibilities)}>
+      {variant.cpp_name}_operand_type_compatibilities = {{{{
+{entries}
+      }}}};"""
+
+
+def _emit_operand_type_compatibility_descriptor(
+    entry: ResolvedOperandTypeCompatibility,
+) -> str:
+    availability = dict(entry.availability)
+    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
+    minimum_sm = int(availability.get("sm", 0))
+    family = str(availability.get("family", ""))
+    return f"""          checker::OperandTypeCompatibilityDescriptor{{
+              .target_field_id = "{entry.target_field_id}",
+              .special_register_kind = {cpp_value(CppDomain.SPECIAL_REGISTER_KINDS, entry.special_register_kind)},
+              .instruction_width = {entry.instruction_width},
+              .effective_type = {cpp_value(CppDomain.SCALAR_TYPES, entry.effective_type)},
               .availability = {{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                   .minimum_sm_version = {minimum_sm},

@@ -20,6 +20,29 @@ const Add::IntegerNoSat& resolvedIntegerAdd(
   return std::get<Add::IntegerNoSat>(std::get<Add>(instruction).variant);
 }
 
+const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov::Scalar& mov) {
+  return std::get<Mov::Scalar::ScalarOperands>(mov.operands);
+}
+
+const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov& mov) {
+  return scalarMovOperands(std::get<Mov::Scalar>(mov.variant));
+}
+
+const Mov::Scalar::PackOperands& packMovOperands(const Mov& mov) {
+  return std::get<Mov::Scalar::PackOperands>(
+      std::get<Mov::Scalar>(mov.variant).operands);
+}
+
+Mov::Scalar::PackOperands& packMovOperands(Mov& mov) {
+  return std::get<Mov::Scalar::PackOperands>(
+      std::get<Mov::Scalar>(mov.variant).operands);
+}
+
+const Mov::Scalar::UnpackOperands& unpackMovOperands(const Mov& mov) {
+  return std::get<Mov::Scalar::UnpackOperands>(
+      std::get<Mov::Scalar>(mov.variant).operands);
+}
+
 TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {
@@ -109,13 +132,17 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
   const auto& u32 = std::get<Mov::Scalar>(mov.variant);
-  const auto& special = std::get<ResolvedSpecialRegisterRef>(u32.src.value);
+  const auto& scalar = scalarMovOperands(u32);
+  const auto& special = std::get<ResolvedSpecialRegisterRef>(scalar.src.value);
   EXPECT_EQ(special.spelling, "%laneid");
-  EXPECT_EQ(special.info.element_type, ScalarType::U32);
-  EXPECT_EQ(special.info.vector_width, 1u);
-  EXPECT_EQ(special.info.minimum_ptx_major, 1u);
-  EXPECT_EQ(special.info.minimum_ptx_minor, 3u);
-  EXPECT_EQ(special.info.minimum_sm, 0u);
+  EXPECT_EQ(special.id.kind, special_registers::SpecialRegisterKind::LaneId);
+  EXPECT_FALSE(special.component.has_value());
+  const auto special_info = special_registers::metadata(special.id);
+  EXPECT_EQ(special_info.element_type, ScalarType::U32);
+  EXPECT_EQ(special_info.vector_width, 1u);
+  EXPECT_EQ(special_info.minimum_ptx_major, 1u);
+  EXPECT_EQ(special_info.minimum_ptx_minor, 3u);
+  EXPECT_EQ(special_info.minimum_sm, 0u);
 
   const checker::Context too_old{
       .target =
@@ -123,7 +150,7 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
               .ptx_version = checker::PtxVersion{1, 2},
               .sm_version = 10,
           },
-      .instruction_range = u32.src.locs.front(),
+      .instruction_range = scalar.src.locs.front(),
   };
   const auto rejected = checker::check(mov, too_old);
   ASSERT_FALSE(rejected.has_value());
@@ -192,11 +219,13 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
   ASSERT_TRUE(component_resolved.has_value())
       << component_resolved.error().message;
   const auto& component = std::get<ResolvedSpecialRegisterRef>(
-      std::get<Mov::Scalar>(std::get<Mov>(*component_resolved).variant)
-          .src.value);
+      scalarMovOperands(std::get<Mov>(*component_resolved)).src.value);
   EXPECT_EQ(component.spelling, "%tid.x");
-  EXPECT_EQ(component.info.vector_width, 1u);
-  EXPECT_EQ(component.info.minimum_ptx_major, 2u);
+  EXPECT_EQ(component.id.kind, special_registers::SpecialRegisterKind::Tid);
+  EXPECT_EQ(component.component, special_registers::VectorComponent::X);
+  const auto component_info = special_registers::metadata(component.id);
+  EXPECT_EQ(component_info.vector_width, 4u);
+  EXPECT_EQ(component_info.minimum_ptx_major, 2u);
 
   PtxSyntaxParser vector_parser("mov.u32 %r0, %tid;");
   const auto vector_ast = vector_parser.parseInstruction();
@@ -228,7 +257,7 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
 
   const auto& mov = std::get<Mov>(body[0]);
   const auto& mov_symbol =
-      std::get<ResolvedSymbolRef>(std::get<Mov::Scalar>(mov.variant).src.value);
+      std::get<ResolvedSymbolRef>(scalarMovOperands(mov).src.value);
   ASSERT_TRUE(mov_symbol.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*mov_symbol.symbol_id).name,
             "global_value");
@@ -325,18 +354,18 @@ TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
   ASSERT_EQ(body.size(), 4u);
 
   const auto& register_source = std::get<ResolvedRegisterRef>(
-      std::get<Mov::Scalar>(std::get<Mov>(body[0]).variant).src.value);
+      scalarMovOperands(std::get<Mov>(body[0])).src.value);
   EXPECT_EQ(register_source.spelling, "%r1");
   EXPECT_EQ(register_source.parameterized_index, 1u);
   EXPECT_EQ(register_source.declared_type, ScalarType::U32);
 
   const auto& immediate_source = std::get<ResolvedImmediate>(
-      std::get<Mov::Scalar>(std::get<Mov>(body[1]).variant).src.value);
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
   EXPECT_EQ(immediate_source.type, ScalarType::U32);
   EXPECT_EQ(immediate_source.bits, 42u);
 
   const auto& address_source = std::get<ResolvedAddress>(
-      std::get<Mov::Scalar>(std::get<Mov>(body[2]).variant).src.value);
+      scalarMovOperands(std::get<Mov>(body[2])).src.value);
   const auto& symbol = std::get<ResolvedSymbolRef>(address_source.base);
   ASSERT_TRUE(symbol.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*symbol.symbol_id).name, "global_value");
@@ -347,9 +376,12 @@ TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
   EXPECT_EQ(address_source.offset->value.bits, 8u);
 
   const auto& special_source = std::get<ResolvedSpecialRegisterRef>(
-      std::get<Mov::Scalar>(std::get<Mov>(body[3]).variant).src.value);
+      scalarMovOperands(std::get<Mov>(body[3])).src.value);
   EXPECT_EQ(special_source.spelling, "%clock64");
-  EXPECT_EQ(special_source.info.element_type, ScalarType::U64);
+  EXPECT_EQ(special_source.id.kind,
+            special_registers::SpecialRegisterKind::Clock64);
+  EXPECT_EQ(special_registers::metadata(special_source.id).element_type,
+            ScalarType::U64);
 }
 
 TEST(ResolvedModule, ChecksMovRegisterSourceType) {
@@ -382,12 +414,18 @@ TEST(ResolvedModule, ChecksMovRegisterSourceType) {
 TEST(ResolvedModule, ResolvesAndChecksMovScalarTypeFamilies) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {
+  .reg .b16 %bh0;
+  .reg .u16 %uh0;
+  .reg .s16 %sh0;
   .reg .b32 %b0;
   .reg .u32 %u0;
   .reg .s32 %s0;
   .reg .f32 %f0;
   .reg .b64 %bd0;
   .reg .f64 %fd0;
+  mov.b16 %bh0, %uh0;
+  mov.s16 %sh0, %bh0;
+  mov.u16 %uh0, 65535;
   mov.b32 %b0, %u0;
   mov.s32 %s0, %b0;
   mov.u32 %u0, %s0;
@@ -401,10 +439,14 @@ TEST(ResolvedModule, ResolvesAndChecksMovScalarTypeFamilies) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 
   const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 7u);
+  ASSERT_EQ(body.size(), 10u);
   const auto& first = std::get<Mov::Scalar>(std::get<Mov>(body[0]).variant);
-  EXPECT_EQ(first.type.value, ScalarType::B32);
-  const auto& f64 = std::get<Mov>(body[5]);
+  EXPECT_EQ(first.type.value, ScalarType::B16);
+  const auto& immediate = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[2])).src.value);
+  EXPECT_EQ(immediate.type, ScalarType::U16);
+  EXPECT_EQ(immediate.bits, 65535u);
+  const auto& f64 = std::get<Mov>(body[8]);
   EXPECT_EQ(std::get<Mov::Scalar>(f64.variant).type.value, ScalarType::F64);
 
   const auto check_at = [&](const Mov& mov, uint32_t sm) {
@@ -418,7 +460,7 @@ TEST(ResolvedModule, ResolvesAndChecksMovScalarTypeFamilies) {
                               .instruction_range = ast.range,
                           });
   };
-  for (size_t index = 0; index < 6; ++index)
+  for (size_t index = 0; index < 9; ++index)
     EXPECT_TRUE(check_at(std::get<Mov>(body[index]), 13).has_value());
 
   const auto old_target = check_at(f64, 12);
@@ -427,11 +469,210 @@ TEST(ResolvedModule, ResolvesAndChecksMovScalarTypeFamilies) {
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
-  const auto incompatible = check_at(std::get<Mov>(body[6]), 13);
+  const auto incompatible = check_at(std::get<Mov>(body[9]), 13);
   ASSERT_FALSE(incompatible.has_value());
   ASSERT_EQ(incompatible.error().size(), 1u);
   EXPECT_EQ(incompatible.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+TEST(ResolvedModule, ResolvesAndChecksMovVectorPackAndUnpack) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u8 %b<4>;
+  .reg .u16 %h<2>;
+  .reg .b32 %r<2>;
+  .reg .b64 %rd<2>;
+  .reg .b128 %q0;
+  mov.b32 %r0, {%h0, %h1};
+  mov.b32 {%b0, %b1, %b2, %b3}, %r0;
+  mov.b64 {%r0, _}, %rd0;
+  mov.b128 %q0, {%rd0, %rd1};
+  mov.b128 {%rd0, %rd1}, %q0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 5u);
+  const auto& pack = packMovOperands(std::get<Mov>(body[0]));
+  ASSERT_EQ(pack.src.value.elements.size(), 2u);
+  ASSERT_TRUE(pack.src.value.elements[0].has_value());
+  EXPECT_EQ(pack.src.value.elements[0]->spelling, "%h0");
+  EXPECT_EQ(pack.src.value.elements[0]->declared_type, ScalarType::U16);
+
+  const auto& unpack = unpackMovOperands(std::get<Mov>(body[2]));
+  ASSERT_EQ(unpack.dst.value.elements.size(), 2u);
+  ASSERT_TRUE(unpack.dst.value.elements[0].has_value());
+  EXPECT_FALSE(unpack.dst.value.elements[1].has_value());
+
+  const checker::Context current{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = {8, 3},
+              .sm_version = 70,
+          },
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(
+        checker::check(std::get<Mov>(instruction), current).has_value());
+
+  const auto b128_too_old =
+      checker::check(std::get<Mov>(body[3]),
+                     checker::Context{
+                         .target = checker::TargetInfo{.ptx_version = {8, 2},
+                                                       .sm_version = 70},
+                         .instruction_range = ast.range,
+                     });
+  ASSERT_FALSE(b128_too_old.has_value());
+  EXPECT_EQ(b128_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto b128_sm_too_old =
+      checker::check(std::get<Mov>(body[3]),
+                     checker::Context{
+                         .target = checker::TargetInfo{.ptx_version = {8, 3},
+                                                       .sm_version = 69},
+                         .instruction_range = ast.range,
+                     });
+  ASSERT_FALSE(b128_sm_too_old.has_value());
+  EXPECT_EQ(b128_sm_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  Mov corrupted = std::get<Mov>(body[0]);
+  packMovOperands(corrupted).src.value.elements[0]->declared_type =
+      ScalarType::U8;
+  const auto corrupted_check = checker::check(corrupted, current);
+  ASSERT_FALSE(corrupted_check.has_value());
+  EXPECT_EQ(corrupted_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+TEST(ResolvedModule, RejectsInvalidMovVectorForms) {
+  const auto resolve_source = [](std::string_view instruction) {
+    const std::string source = fmt::format(R"ptx(
+.entry kernel() {{
+  .reg .u8 %b<4>;
+  .reg .u16 %h<2>;
+  .reg .b32 %r0;
+  .reg .b128 %q0;
+  {}
+}}
+)ptx",
+                                           instruction);
+    return resolveModule(parseModule(source));
+  };
+
+  const auto non_bit = resolve_source("mov.u32 %r0, {%h0, %h1};");
+  ASSERT_FALSE(non_bit.has_value());
+  EXPECT_EQ(non_bit.error().front().message,
+            "A vector mov requires a bit-size instruction type.");
+
+  const auto source_sink = resolve_source("mov.b32 %r0, {%h0, _};");
+  ASSERT_FALSE(source_sink.has_value());
+  EXPECT_EQ(source_sink.error().front().message,
+            "The '_' sink is allowed only in a destination vector.");
+
+  const auto bad_arity = resolve_source("mov.b32 %r0, {%b0, %b1, %b2};");
+  ASSERT_FALSE(bad_arity.has_value());
+  EXPECT_EQ(bad_arity.error().front().message,
+            "A vector mov requires two or four elements.");
+
+  const auto all_sinks = resolve_source("mov.b32 {_, _}, %r0;");
+  ASSERT_FALSE(all_sinks.has_value());
+  EXPECT_EQ(all_sinks.error().front().message,
+            "A destination vector must contain at least one register.");
+
+  const auto scalar_b128 = resolve_source("mov.b128 %q0, %q0;");
+  ASSERT_FALSE(scalar_b128.has_value());
+  EXPECT_EQ(scalar_b128.error().front().message,
+            "The .b128 mov type is available only for vector pack or unpack "
+            "forms.");
+
+  const auto sub_byte = resolve_source("mov.b16 %r0, {%b0, %b1, %b2, %b3};");
+  ASSERT_FALSE(sub_byte.has_value());
+  EXPECT_EQ(sub_byte.error().front().message,
+            "Vector mov elements must be at least eight bits wide.");
+}
+
+TEST(ResolvedModule, ChecksLegacySpecialRegisterMoveWidths) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u16 %h0;
+  .reg .u32 %r0;
+  mov.u16 %h0, %tid.x;
+  mov.u32 %r0, %tid.x;
+  mov.u16 %h0, %gridid;
+  mov.u32 %r0, %gridid;
+  mov.u16 %h0, %laneid;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 5u);
+  const auto& tid = std::get<ResolvedSpecialRegisterRef>(
+      scalarMovOperands(std::get<Mov>(body[0])).src.value);
+  const auto& current_tid = std::get<ResolvedSpecialRegisterRef>(
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
+  EXPECT_EQ(tid.id, current_tid.id);
+  EXPECT_EQ(tid.component, current_tid.component);
+  const auto tid_info = special_registers::metadata(tid.id);
+  EXPECT_EQ(tid_info.element_type, ScalarType::U32);
+  EXPECT_EQ(tid_info.minimum_ptx_major, 2u);
+  EXPECT_EQ(tid_info.minimum_ptx_minor, 0u);
+
+  const auto check_at = [&](size_t index, checker::PtxVersion version) {
+    return checker::check(std::get<Mov>(body[index]),
+                          checker::Context{
+                              .target =
+                                  checker::TargetInfo{
+                                      .ptx_version = version,
+                                      .sm_version = 10,
+                                  },
+                              .instruction_range = ast.range,
+                          });
+  };
+  EXPECT_TRUE(check_at(0, {1, 0}).has_value());
+  EXPECT_TRUE(check_at(1, {2, 0}).has_value());
+  EXPECT_TRUE(check_at(2, {1, 0}).has_value());
+  EXPECT_TRUE(check_at(3, {1, 3}).has_value());
+
+  const auto current_tid_too_old = check_at(1, {1, 9});
+  ASSERT_FALSE(current_tid_too_old.has_value());
+  ASSERT_EQ(current_tid_too_old.error().size(), 1u);
+  EXPECT_EQ(current_tid_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto gridid_too_old = check_at(3, {1, 2});
+  ASSERT_FALSE(gridid_too_old.has_value());
+  ASSERT_EQ(gridid_too_old.error().size(), 1u);
+  EXPECT_EQ(gridid_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto laneid_narrow = check_at(4, {9, 2});
+  ASSERT_FALSE(laneid_narrow.has_value());
+  ASSERT_EQ(laneid_narrow.error().size(), 1u);
+  EXPECT_EQ(laneid_narrow.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+TEST(ResolvedModule, RejectsSixteenBitMovAddress) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u16 %h0;
+  mov.u16 %h0, global_value;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "A data address requires a 32-bit or 64-bit integer or bit-size "
+            "mov type.");
 }
 
 TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
@@ -495,8 +736,7 @@ TEST(ResolvedModule, ResolvesU32MovSymbolAddressSource) {
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& source = std::get<ResolvedSymbolRef>(
-      std::get<Mov::Scalar>(
-          std::get<Mov>(resolved->functions.front().body.front()).variant)
+      scalarMovOperands(std::get<Mov>(resolved->functions.front().body.front()))
           .src.value);
   EXPECT_EQ(source.spelling, "global_value");
   EXPECT_EQ(source.declaration_state_space, syntax_ast::AstStateSpace::Global);
@@ -522,8 +762,7 @@ TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
   ASSERT_EQ(resolved->functions.size(), 2u);
 
   const auto& kernel_address = std::get<ResolvedAddress>(
-      std::get<Mov::Scalar>(
-          std::get<Mov>(resolved->functions[0].body.front()).variant)
+      scalarMovOperands(std::get<Mov>(resolved->functions[0].body.front()))
           .src.value);
   const auto& kernel_parameter =
       std::get<ResolvedSymbolRef>(kernel_address.base);
@@ -537,8 +776,7 @@ TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
   EXPECT_EQ(kernel_address.offset->value.bits, 4u);
 
   const auto& device_input = std::get<ResolvedSymbolRef>(
-      std::get<Mov::Scalar>(
-          std::get<Mov>(resolved->functions[1].body[0]).variant)
+      scalarMovOperands(std::get<Mov>(resolved->functions[1].body[0]))
           .src.value);
   EXPECT_EQ(device_input.declaration_kind, binding::SymbolKind::InputParameter);
   EXPECT_EQ(device_input.declaration_state_space,
@@ -550,8 +788,7 @@ TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
   EXPECT_EQ(device_input.address_availability->minimum_sm_version, 20u);
 
   const auto& return_parameter = std::get<ResolvedSymbolRef>(
-      std::get<Mov::Scalar>(
-          std::get<Mov>(resolved->functions[1].body[1]).variant)
+      scalarMovOperands(std::get<Mov>(resolved->functions[1].body[1]))
           .src.value);
   EXPECT_EQ(return_parameter.declaration_kind,
             binding::SymbolKind::ReturnParameter);
@@ -650,8 +887,8 @@ TEST(ResolvedModule, ResolvesAndChecksFunctionAddresses) {
   const auto& device_mov = std::get<Mov>(resolved->functions[2].body[0]);
   const auto& kernel_mov = std::get<Mov>(resolved->functions[2].body[1]);
 
-  const auto& device = std::get<ResolvedFunctionRef>(
-      std::get<Mov::Scalar>(device_mov.variant).src.value);
+  const auto& device =
+      std::get<ResolvedFunctionRef>(scalarMovOperands(device_mov).src.value);
   ASSERT_TRUE(device.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*device.symbol_id).name, "device");
   EXPECT_FALSE(device.is_entry);
@@ -667,8 +904,8 @@ TEST(ResolvedModule, ResolvesAndChecksFunctionAddresses) {
                              })
                   .has_value());
 
-  const auto& kernel = std::get<ResolvedFunctionRef>(
-      std::get<Mov::Scalar>(kernel_mov.variant).src.value);
+  const auto& kernel =
+      std::get<ResolvedFunctionRef>(scalarMovOperands(kernel_mov).src.value);
   ASSERT_TRUE(kernel.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*kernel.symbol_id).name, "launched");
   EXPECT_TRUE(kernel.is_entry);
@@ -752,7 +989,7 @@ TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   const auto mov_resolved = resolveInstruction(*mov_ast);
   ASSERT_TRUE(mov_resolved.has_value()) << mov_resolved.error().message;
   const auto& symbol = std::get<ResolvedSymbolRef>(
-      std::get<Mov::Scalar>(std::get<Mov>(*mov_resolved).variant).src.value);
+      scalarMovOperands(std::get<Mov>(*mov_resolved)).src.value);
   EXPECT_EQ(symbol.spelling, "global_value");
   EXPECT_FALSE(symbol.symbol_id.has_value());
   EXPECT_FALSE(symbol.declaration_kind.has_value());

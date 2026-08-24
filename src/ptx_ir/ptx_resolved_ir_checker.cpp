@@ -189,10 +189,11 @@ CheckResult check_common(const InstructionDescriptor& instruction,
   return check_availability(*variant, context);
 }
 
-CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
-                           std::span<const FieldView> fields,
-                           std::span<const OperandView> operands,
-                           const Context& context) {
+CheckResult check_operands(
+    std::span<const OperandDescriptor> descriptors,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
+    const Context& context) {
   CheckDiagnostics diagnostics;
 
   for (const OperandDescriptor& descriptor : descriptors) {
@@ -219,11 +220,11 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
       });
     }
 
-    append_value_availability_diagnostics(*operand, context, diagnostics);
-
     const auto& expression = descriptor.type_expression;
-    if (expression.kind == OperandTypeExpressionKind::None)
+    if (expression.kind == OperandTypeExpressionKind::None) {
+      append_value_availability_diagnostics(*operand, context, diagnostics);
       continue;
+    }
 
     ScalarType expected_type = ScalarType::Invalid;
     std::string_view expected_type_source = "fixed scalar type";
@@ -240,6 +241,7 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
                 "Resolved operand '{}' requires scalar type field '{}'.",
                 descriptor.target_field_id, expression.modifier_field_id),
         });
+        append_value_availability_diagnostics(*operand, context, diagnostics);
         continue;
       }
       expected_type = *type_field->scalar_type;
@@ -252,6 +254,104 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
                                  "expression descriptor.",
                                  descriptor.target_field_id),
       });
+      append_value_availability_diagnostics(*operand, context, diagnostics);
+      continue;
+    }
+
+    std::optional<OperandView> contextual_operand;
+    if (operand->special_register_id) {
+      const auto compatibility = std::ranges::find_if(
+          type_compatibilities,
+          [&](const OperandTypeCompatibilityDescriptor& candidate) {
+            return candidate.target_field_id == descriptor.target_field_id &&
+                   candidate.special_register_kind ==
+                       operand->special_register_id->kind &&
+                   candidate.instruction_width ==
+                       scalar_size_of(expected_type) * 8;
+          });
+      if (compatibility != type_compatibilities.end()) {
+        // Historical instruction forms change only this check's view; the
+        // resolved operand retains target-independent intrinsic identity.
+        contextual_operand = *operand;
+        contextual_operand->special_register_type =
+            compatibility->effective_type;
+        contextual_operand->value_availability = compatibility->availability;
+        operand = &*contextual_operand;
+      }
+    }
+    append_value_availability_diagnostics(*operand, context, diagnostics);
+
+    if (operand->actual_shape == OperandShape::Vector) {
+      const SourceRange& range = diagnostic_range(operand->locations, context);
+      if (scalar_kind(expected_type) != ScalarKind::Bit) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' requires a bit-size instruction type.",
+                descriptor.target_field_id),
+        });
+        continue;
+      }
+      if (operand->vector_arity == 0 || operand->vector_arity > 4 ||
+          std::ranges::find(descriptor.allowed_vector_arities,
+                            operand->vector_arity) ==
+              descriptor.allowed_vector_arities.end()) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::InvalidVectorOperand,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' has an unsupported element count.",
+                descriptor.target_field_id),
+        });
+        continue;
+      }
+      if ((descriptor.access != OperandAccess::Write &&
+           operand->vector_sink_count != 0) ||
+          operand->vector_sink_count >= operand->vector_arity) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::InvalidVectorOperand,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' uses the '_' sink in an invalid "
+                "position.",
+                descriptor.target_field_id),
+        });
+        continue;
+      }
+
+      const uint8_t instruction_bytes = scalar_size_of(expected_type);
+      if (instruction_bytes % operand->vector_arity != 0 ||
+          instruction_bytes / operand->vector_arity == 0) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' would require sub-byte elements.",
+                descriptor.target_field_id),
+        });
+        continue;
+      }
+      const uint8_t element_bytes = instruction_bytes / operand->vector_arity;
+      const auto mismatched = std::ranges::find_if(
+          operand->vector_element_types.begin(),
+          operand->vector_element_types.begin() + operand->vector_arity,
+          [element_bytes](ScalarType element_type) {
+            return element_type != ScalarType::Invalid &&
+                   scalar_size_of(element_type) != element_bytes;
+          });
+      if (mismatched !=
+          operand->vector_element_types.begin() + operand->vector_arity) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' has an element type '{}' but the "
+                "instruction requires {}-bit elements.",
+                descriptor.target_field_id, to_string(*mismatched),
+                element_bytes * 8),
+        });
+      }
       continue;
     }
 

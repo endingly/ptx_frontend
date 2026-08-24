@@ -490,14 +490,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(instruction.cpp_name, "Mov")
         self.assertEqual(len(instruction.variants), 2)
+        self.assertEqual(
+            [value.value for value in mov.variants[0].modifiers[0].values],
+            [
+                "b16",
+                "u16",
+                "s16",
+                "b32",
+                "u32",
+                "s32",
+                "f32",
+                "b64",
+                "u64",
+                "s64",
+                "b128",
+                "f64",
+            ],
+        )
         variant = instruction.variants[0]
         self.assertEqual(variant.cpp_name, "Scalar")
+        self.assertEqual(
+            [layout.layout_id for layout in variant.operand_layouts],
+            ["scalar", "pack", "unpack"],
+        )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
                 ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
                 ("src", "WithLocs<ResolvedMovSource>"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedMovVector>"),
+                ("dst", "WithLocs<ResolvedMovVector>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
             ],
         )
         source_binding = variant.operand_layouts[0].bindings[1]
@@ -519,6 +544,31 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
                 modifier_field_id="type",
             ),
+        )
+        self.assertEqual(
+            variant.operand_layouts[1].bindings[1].allowed_vector_arities,
+            (2, 4),
+        )
+        self.assertEqual(len(variant.operand_type_compatibilities), 6)
+        self.assertEqual(
+            [
+                (
+                    entry.target_field_id,
+                    entry.special_register_kind,
+                    entry.instruction_width,
+                    entry.effective_type,
+                    dict(entry.availability),
+                )
+                for entry in variant.operand_type_compatibilities
+            ],
+            [
+                ("src", "tid", 16, "u16", {"ptx": "1.0", "sm": 0}),
+                ("src", "ntid", 16, "u16", {"ptx": "1.0", "sm": 0}),
+                ("src", "ctaid", 16, "u16", {"ptx": "1.0", "sm": 0}),
+                ("src", "nctaid", 16, "u16", {"ptx": "1.0", "sm": 0}),
+                ("src", "gridid", 16, "u16", {"ptx": "1.0", "sm": 0}),
+                ("src", "gridid", 32, "u32", {"ptx": "1.3", "sm": 0}),
+            ],
         )
 
         predicate = instruction.variants[1]
@@ -733,9 +783,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ".actual_shape = check_end::OperandShape::SpecialRegister", source
         )
         self.assertIn(
-            ".special_register_type = special_register->info.element_type",
+            "special_registers::metadata(special_register->id)",
             source,
         )
+        self.assertIn(".special_register_id = special_register->id", source)
+        self.assertIn(".operand_type_compatibilities, context", source)
+        self.assertIn("resolved_operand<ResolvedMovVector>", source)
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::Vector", source
+        )
+        self.assertIn(".vector_arity = static_cast<uint8_t>", source)
         self.assertIn(".value_availability = AvailabilityDescriptor", source)
         self.assertIn(
             ".value_availability = symbol->address_availability", source
@@ -880,6 +937,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct BarCheckerDescriptorStorage {", source)
         self.assertIn("checker::VariantDescriptor", source)
         self.assertIn("checker::OperandLayoutDescriptor", source)
+        self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
+        self.assertIn(
+            ".special_register_kind = special_registers::SpecialRegisterKind::Tid,",
+            source,
+        )
+        self.assertIn(".instruction_width = 16,", source)
+        self.assertIn(".effective_type = ScalarType::U16,", source)
         self.assertIn('.layout_name = "immediate_barrier",', source)
         self.assertIn('.layout_name = "barrier_and_thread_count",', source)
         self.assertIn('.minimum_ptx_version = {9, 2},', source)

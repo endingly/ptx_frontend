@@ -12,6 +12,7 @@ from code_gen.model import (
     ModifierValueSpec,
     OperandLayoutSpec,
     OperandSpec,
+    OperandTypeCompatibilitySpec,
     OperandTypeExpression,
     OperandTypeExpressionKind,
     VariantSpec,
@@ -27,12 +28,25 @@ _UNSUPPORTED_TYPE_EXPR_FUNCTIONS = ("same_as", "one_of", "same_size_as")
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     """Normalize one operand specification."""
 
+    vector_arities: tuple[int, ...] = ()
+    if raw["kind"] == "mov_vector":
+        vector = raw.get("vector")
+        if not isinstance(vector, dict) or "arity" not in vector:
+            raise ValueError("mov_vector operand must declare vector.arity")
+        raw_arities = vector["arity"]
+        if isinstance(raw_arities, int):
+            raw_arities = [raw_arities]
+        vector_arities = tuple(raw_arities)
+        if any(arity > 4 for arity in vector_arities):
+            raise ValueError("resolved vector operands support at most four elements")
+
     return OperandSpec(
         name=raw["name"],
         kind=raw["kind"],
         role=raw.get("role"),
         access=raw.get("access"),
         type_expression=_normalize_operand_type_expression(raw.get("type")),
+        vector_arities=vector_arities,
     )
 
 
@@ -289,6 +303,44 @@ def _validate_modifier_type_expressions(
                 )
 
 
+def _normalize_operand_type_compatibilities(
+    raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
+) -> tuple[OperandTypeCompatibilitySpec, ...]:
+    """Normalize value-dependent type rules and validate their operand names."""
+
+    operand_names = {
+        operand.name for layout in layouts for operand in layout.operands
+    }
+    result: list[OperandTypeCompatibilitySpec] = []
+    seen: set[tuple[str, str, str, int]] = set()
+    for raw in raw_variant.get("operand_type_compatibilities", ()):
+        operand = raw["operand"]
+        if operand not in operand_names:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: operand type compatibility "
+                f"references unknown operand {operand!r}"
+            )
+        for value in raw["values"]:
+            key = (operand, raw["value_kind"], value, raw["instruction_width"])
+            if key in seen:
+                raise ValueError(
+                    f"variant {raw_variant['name']!r}: duplicate operand type "
+                    f"compatibility {key!r}"
+                )
+            seen.add(key)
+        result.append(
+            OperandTypeCompatibilitySpec(
+                operand=operand,
+                value_kind=raw["value_kind"],
+                values=tuple(raw["values"]),
+                instruction_width=raw["instruction_width"],
+                effective_type=raw["effective_type"],
+                availability=dict(raw["availability"]),
+            )
+        )
+    return tuple(result)
+
+
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
@@ -331,6 +383,11 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
                     rule=raw_variant.get("rule"),
+                    operand_type_compatibilities=(
+                        _normalize_operand_type_compatibilities(
+                            raw_variant, operand_layouts
+                        )
+                    ),
                 )
             )
 

@@ -22,7 +22,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Other directives | Not supported (rejected) | Debug, section, pragma, module variable, and structured kernel-tuning directives; unmodeled function-header tokens never silently enter the AST |
 | Structured control syntax | Not supported | Nested scopes and directive-driven control-flow metadata |
 | Recovery/editing | Not supported | Missing tokens, recovery nodes, multi-error parsing, and token edits |
-| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, `bra`, `mov.pred`, register/immediate/special-register/data-symbol/formal-parameter-address/function-address sources for 32/64-bit scalar `mov`, and generic `ld.u32 d, [address]`, retaining binding-aware identity, declared/effective address spaces, and corresponding type/target checks |
+| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, `bra`, `mov.pred`, register/immediate/special-register sources for 16/32/64-bit scalar `mov`, 32/64-bit address sources, bit-size two/four-element vector pack/unpack including vector-only `.b128`, and generic `ld.u32 d, [address]`; special registers retain stable identity, while generated YAML context rules check ISA-defined legacy 16/32-bit `mov` read types and targets |
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be
@@ -30,13 +30,11 @@ lowered to Resolved IR.
 
 ## Near-term order
 
-1. Complete 16-bit and vector `mov` forms plus special-register type-width
-   forms backed by explicit historical rules.
-2. Extend `ld/st` state spaces, memory qualifiers, and scalar/vector types,
+1. Extend `ld/st` state spaces, memory qualifiers, and scalar/vector types,
    including state-space compatibility checks.
-3. Add a non-`Flat` descriptor layout algorithm for call groups and variadic operands, then integrate `call`.
-4. Represent `.calltargets`/`.callprototype`/`.branchtargets` and remaining module/function directives.
-5. Expand YAML instruction coverage independently of module grammar work.
+2. Add a non-`Flat` descriptor layout algorithm for call groups and variadic operands, then integrate `call`.
+3. Represent `.calltargets`/`.callprototype`/`.branchtargets` and remaining module/function directives.
+4. Expand YAML instruction coverage independently of module grammar work.
 
 The PTX ISA variable-declaration overview mentions an optional fixed address,
 but the current specification provides no separate grammar, constraints, or

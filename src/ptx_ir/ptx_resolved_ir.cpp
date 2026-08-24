@@ -529,6 +529,7 @@ std::expected<WithLocs<ResolvedSpecialRegisterRef>, ResolveDiagnostic>
 resolve_special_register(const syntax_ast::AstOperand& operand) {
   std::string spelling;
   SourceRange range;
+  std::optional<special_registers::VectorComponent> component;
   if (const auto* identifier =
           std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
     spelling = identifier->syntax.text;
@@ -537,6 +538,19 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
                  std::get_if<syntax_ast::AstVectorMember>(&operand)) {
     spelling = member->base.syntax.text + member->selector.text;
     range = member->range;
+    switch (member->selector.text.back()) {
+      case 'x':
+        component = special_registers::VectorComponent::X;
+        break;
+      case 'y':
+        component = special_registers::VectorComponent::Y;
+        break;
+      case 'z':
+        component = special_registers::VectorComponent::Z;
+        break;
+      default:
+        break;
+    }
   } else {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
@@ -544,7 +558,7 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
     });
   }
 
-  const auto info = special_registers::lookup(spelling);
+  auto info = special_registers::lookup(spelling);
   if (!info) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
@@ -561,7 +575,8 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
   }
   return WithLocs<ResolvedSpecialRegisterRef>{
       ResolvedSpecialRegisterRef{.spelling = std::move(spelling),
-                                 .info = *info},
+                                 .id = info->id,
+                                 .component = component},
       range};
 }
 
@@ -937,10 +952,107 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
   });
 }
 
+std::expected<WithLocs<ResolvedMovVector>, ResolveDiagnostic>
+resolve_mov_vector(const syntax_ast::AstOperand& operand,
+                   ScalarType instruction_type, checker::OperandAccess access,
+                   std::span<const uint8_t> allowed_arities,
+                   const ResolveContext* context) {
+  const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (vector == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector-pack operand.",
+    });
+  }
+  if (scalar_kind(instruction_type) != ScalarKind::Bit) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = "A vector mov requires a bit-size instruction type.",
+    });
+  }
+
+  const size_t arity = vector->elements.size();
+  if (std::ranges::find(allowed_arities, arity) == allowed_arities.end()) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = "A vector mov requires two or four elements.",
+    });
+  }
+  const size_t instruction_bytes = scalar_size_of(instruction_type);
+  if (instruction_bytes % arity != 0 || instruction_bytes / arity == 0) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = "Vector mov elements must be at least eight bits wide.",
+    });
+  }
+  const size_t element_bytes = instruction_bytes / arity;
+
+  ResolvedMovVector result;
+  result.elements.reserve(arity);
+  std::vector<SourceRange> locations;
+  locations.reserve(arity);
+  size_t sink_count = 0;
+  for (const auto& element : vector->elements) {
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&element);
+    if (identifier == nullptr) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
+          .message = "A vector mov element must be a register or '_' sink.",
+      });
+    }
+    locations.push_back(identifier->syntax.range);
+    if (identifier->syntax.text == "_") {
+      if (access != checker::OperandAccess::Write) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = identifier->syntax.range,
+            .message = "The '_' sink is allowed only in a destination vector.",
+        });
+      }
+      ++sink_count;
+      result.elements.emplace_back(std::nullopt);
+      continue;
+    }
+
+    syntax_ast::AstOperand register_operand{*identifier};
+    auto register_ref = resolve_register(register_operand, context);
+    if (!register_ref)
+      return std::unexpected(register_ref.error());
+    if (register_ref->value.declared_type &&
+        scalar_size_of(*register_ref->value.declared_type) != element_bytes) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = identifier->syntax.range,
+          .message = fmt::format(
+              "Vector element '{}' has type '{}' but this mov requires "
+              "{}-bit elements.",
+              identifier->syntax.text,
+              to_string(*register_ref->value.declared_type), element_bytes * 8),
+      });
+    }
+    result.elements.emplace_back(std::move(register_ref->value));
+  }
+  if (sink_count == arity) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = "A destination vector must contain at least one register.",
+    });
+  }
+  WithLocs<ResolvedMovVector> resolved{std::move(result)};
+  resolved.locs = std::move(locations);
+  return resolved;
+}
+
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
                    const ResolveContext* context) {
+  if (type == ScalarType::B128) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "The .b128 mov type is available only for vector pack or "
+                   "unpack forms.",
+    });
+  }
   const auto reject_shape =
       [&](checker::OperandShape shape,
           SourceRange range) -> std::optional<ResolveDiagnostic> {
@@ -957,17 +1069,20 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
       [&](SourceRange range,
           bool function_address = false) -> std::optional<ResolveDiagnostic> {
     const ScalarKind kind = scalar_kind(type);
+    const uint8_t width = scalar_size_of(type);
     const bool integer_address =
         kind == ScalarKind::Unsigned || kind == ScalarKind::Signed;
     const bool data_address = integer_address || kind == ScalarKind::Bit;
-    if (function_address ? integer_address : data_address)
+    const bool address_width = width == 4 || width == 8;
+    if (address_width && (function_address ? integer_address : data_address))
       return std::nullopt;
     return ResolveDiagnostic{
         .range = range,
         .message = function_address
-                       ? "A function address requires an integer mov type."
-                       : "A data address requires an integer or bit-size mov "
-                         "type.",
+                       ? "A function address requires a 32-bit or 64-bit "
+                         "integer mov type."
+                       : "A data address requires a 32-bit or 64-bit integer "
+                         "or bit-size mov type.",
     };
   };
 
@@ -1369,6 +1484,17 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::MovVector: {
+      const auto type =
+          type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
+      if (!type)
+        return std::unexpected(type.error());
+      auto value = resolve_mov_vector(operand, *type, binding.access,
+                                      binding.allowed_vector_arities, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
@@ -1421,6 +1547,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
+    case ResolvedValueKind::MovVector:
       throw ResolveException(fmt::format(
           "Optional modifier '{}' targets non-modifier resolved field '{}'.",
           binding.source_kind_id, field.field_id));
@@ -1626,6 +1753,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::SpecialRegister:
       case ResolvedValueKind::Symbol:
       case ResolvedValueKind::Address:
+      case ResolvedValueKind::MovVector:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

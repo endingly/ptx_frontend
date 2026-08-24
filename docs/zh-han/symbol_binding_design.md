@@ -93,10 +93,11 @@ call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 
 的 parameterized count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
 declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
 redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
-与 unresolved reference 的区别；32/64-bit scalar `mov` 的统一 source 已将前者解析为带类型和
-target availability 的 `ResolvedSpecialRegisterRef`。尚未声明 special-register shape 的 opcode
-仍会得到 operand 不支持诊断，而不是“未声明”。declaration semantic pass 的设计见
-`declaration_semantics_design.md`。
+与 unresolved reference 的区别；scalar `mov` 的统一 source 已将前者解析为带稳定身份与
+component 的 `ResolvedSpecialRegisterRef`。现行声明类型与 intrinsic availability 由语义注册表
+按该身份提供，指令相关的历史读取兼容由 generated checker descriptor 提供。尚未声明
+special-register shape 的 opcode 仍会得到 operand 不支持诊断，而不是“未声明”。declaration
+semantic pass 的设计见 `declaration_semantics_design.md`。
 
 32/64-bit integer/bit-size `mov d, symbol[+offset]` 与 `ld.u32 d, [address]` 也已消费
 binding identity：前者的

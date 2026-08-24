@@ -46,6 +46,15 @@ domains:
       e4m3: ScalarType::E4m3
       e5m2: ScalarType::E5m2
 
+  special_register_kinds:
+    cpp_type: special_registers::SpecialRegisterKind
+    values:
+      tid: special_registers::SpecialRegisterKind::Tid
+      ntid: special_registers::SpecialRegisterKind::NTid
+      ctaid: special_registers::SpecialRegisterKind::CtaId
+      nctaid: special_registers::SpecialRegisterKind::NCtaId
+      gridid: special_registers::SpecialRegisterKind::GridId
+
   rounding_modes:
     cpp_type: RoundingMode
     default: RoundingMode::Invalid
@@ -76,6 +85,7 @@ domains:
       sreg: ResolvedSpecialRegisterRef
       symbol: ResolvedSymbolRef
       addr: ResolvedAddress
+      mov_vector: ResolvedMovVector
 
   resolved_value_cpp_types:
     cpp_type: CppType
@@ -92,6 +102,7 @@ domains:
       SpecialRegister: ResolvedSpecialRegisterRef
       Symbol: ResolvedSymbolRef
       Address: ResolvedAddress
+      MovVector: ResolvedMovVector
 
   modifier_field_names:
     cpp_type: CppIdentifier
@@ -145,6 +156,7 @@ domains:
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
       Symbol: check_end::ResolvedValueKind::Symbol
       Address: check_end::ResolvedValueKind::Address
+      MovVector: check_end::ResolvedValueKind::MovVector
 
   resolved_operand_roles:
     cpp_type: check_end::OperandRole

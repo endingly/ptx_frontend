@@ -13,8 +13,9 @@ Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolve
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
 lexical symbol binding 与 module resolution 已接通，execution predicate 会解析为带声明
 身份的值，special register、external symbol 和真正未声明 reference 也已能区分。
-`mov` 的 32/64-bit scalar type family 已接入 register、immediate、special-register、data-symbol、
-`symbol+offset` 与 function-address source，并支持合法 formal parameter 地址；
+`mov` 的 16/32/64-bit scalar type family 已接入 register、immediate 与 special-register；
+32/64-bit form 还接入 data-symbol、`symbol+offset`、function-address 与合法 formal parameter
+地址；bit-size form 还支持 2/4-element vector pack/unpack，`.b128` 仅用于 vector form；
 `mov.pred` 复用 declaration-aware `ResolvedPredicate` 表示；
 `ld.u32 d, [address]` 已接入解引用 address operand。
 其余 type/source form、完整 memory qualifier、
@@ -81,20 +82,33 @@ register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarge
 边界：module resolution 保存当前 function label 的 `SymbolId`，standalone resolution 保存
 源码 spelling 而令 identity 为空。
 
-`ResolvedSpecialRegisterRef` 保存准确 spelling 与 `special_registers::Info`。独立的
-special-register 语义注册表是名称、现行 element type、vector width 及最低 PTX/SM 的单一
+`ResolvedSpecialRegisterRef` 保存准确 spelling、稳定的 `SpecialRegisterId` 与可选 vector
+component，不保存依赖具体指令或 target 的有效类型。独立的 special-register 语义注册表
+是名称、稳定身份、现行声明 element type、vector width 及 intrinsic 最低 PTX/SM 的单一
 事实来源；binding 只复用它做分类。scalar operand 接受标量 special register 或
-`%tid.x` 一类 component，不接受未选 component 的 vector base。checker 使用值携带的
-元数据执行动态 type/target 检查，因此 instruction descriptor 不需要复制每个预定义名称的
-可用性。当前 consumer 是统一分类 source 的 32/64-bit scalar `mov`。
+`%tid.x` 一类 component，不接受未选 component 的 vector base。
 
-单一 scalar variant 的 type 是动态 modifier field，覆盖 `.b32/.u32/.s32/.f32` 与
+ISA 曾扩宽的读取形式属于指令语义，不属于寄存器自身：`mov` variant 在 YAML 的
+`operand_type_compatibilities` 中声明 special-register identity、instruction width、有效类型
+与最低 PTX/SM，生成到 checker descriptor。checker 仅在本次检查期间选择有效元数据，
+不会改写 Resolved IR。当前规则允许 `%tid/%ntid/%ctaid/%nctaid` component 的 16-bit read
+从 PTX 1.0 开始，`%gridid` 的 16/32-bit read 分别从 PTX 1.0/1.3 开始；其他使用场景仍按
+注册表中的现行声明类型和 intrinsic availability 检查。
+
+单一 scalar variant 的 type 是动态 modifier field，覆盖 `.b16/.u16/.s16`、`.b32/.u32/.s32/.f32` 与
 `.b64/.u64/.s64/.f64`。checker 按 PTX 基础类型规则接受同宽 bit-size/任意基础类型和
 signed/unsigned integer 组合，但仍拒绝 integer/float 混用；`.f64` 值另携带 SM 13 门槛。
 
 `mov.pred` 使用独立 variant，因为两端字段都是 `ResolvedPredicate`，与分类后的 scalar source
 结构不同。module resolution 要求 source/destination 都绑定到未取反的 `.pred` register，并保存
 稳定 `SymbolId`；standalone resolution 仍接受无需声明上下文的 numbered predicate register。
+
+scalar 与 vector `mov` 共享同一动态 type modifier variant，因为 `.b16/.b32/.b64` 的
+modifier 形式相同；三种 operand layout 分别表示 scalar、pack 与 unpack，不建立重复 variant。
+`ResolvedMovVector` 保存 2/4 个可选 `ResolvedRegisterRef`，空元素表示 destination-only `_`
+sink。resolver 与 checker 都要求 bit-size instruction type、vector 总位宽等于 instruction
+位宽，并拒绝 source sink、全 sink destination 与 sub-byte element。`.b128` 仅由 pack/unpack
+layout 接受，并携带 PTX 8.3 / SM 70 modifier-value availability。
 
 `ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
 device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
@@ -228,7 +242,7 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 | --- | --- |
 | Syntax descriptor | modifier spellings、presence、AST operand shape 与 layout slots |
 | Resolved descriptor | resolved field kind、modifier binding、operand binding、结构化类型表达式与语义 role/access |
-| Checker descriptor | variant/layout 的 PTX/SM/family availability 与 rule ID |
+| Checker descriptor | variant/layout/value 的 availability、operand type compatibility 与 rule ID |
 
 三者不互相复制职责。Syntax descriptor 不应保存 resolved C++ 类型；Resolved descriptor
 不负责 modifier 拼写识别；Checker descriptor 不重新描述 resolve binding。
@@ -242,6 +256,8 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 - layout tag/payload 一致性；
 - operand 字段 ID、resolved shape，以及由结构化 descriptor 约束的 immediate 或已绑定
   register 声明类型。
+- special-register intrinsic 元数据，以及由当前 instruction width 选择的上下文类型兼容与
+  availability；该选择只产生临时检查视图，不改变 Resolved IR。
 
 `rule_id` 留给指令特有规则的 typed wrapper。寄存器符号可见性与 `.reg` state-space 在
 module resolution 阶段检查；地址空间和跨 instruction 约束仍不属于当前公共 checker

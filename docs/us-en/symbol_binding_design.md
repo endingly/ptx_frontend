@@ -109,10 +109,13 @@ qualifiers, and genuinely unresolved references. Same-name module declarations f
 stable `SymbolId`; the declaration semantic pass then classifies them as a
 legal redeclaration, signature conflict, or multiple definition. Module
 resolution preserves the distinction between special and unresolved names.
-The unified 32/64-bit scalar `mov` source resolves the former to a
-`ResolvedSpecialRegisterRef` carrying type and target availability. Opcodes without a declared special-register
-shape still report an unsupported operand rather than an undeclared name. See
-`declaration_semantics_design.md` for the following pass.
+The unified scalar `mov` source resolves the former to a
+`ResolvedSpecialRegisterRef` carrying stable identity and component. The
+semantic registry provides the current declared type and intrinsic availability
+for that identity, while generated checker descriptors provide
+instruction-specific historical read compatibility. Opcodes without a declared
+special-register shape still report an unsupported operand rather than an
+undeclared name. See `declaration_semantics_design.md` for the following pass.
 
 32/64-bit integer/bit-size `mov d, symbol[+offset]` and `ld.u32 d, [address]`
 now consume binding

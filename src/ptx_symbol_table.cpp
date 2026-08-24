@@ -483,6 +483,11 @@ struct SymbolTableBuilder {
             for (const auto& element : value.elements) {
               if (const auto* identifier =
                       std::get_if<syntax_ast::AstIdentifierRef>(&element)) {
+                // ``_`` is a write-only sink in selected vector operands, not
+                // a user-declared symbol. Instruction resolution validates
+                // whether the selected operand position permits it.
+                if (identifier->syntax.text == "_")
+                  continue;
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
               }

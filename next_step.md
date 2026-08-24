@@ -121,15 +121,15 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 - 新增独立的 `special_registers` 语义注册表，以预定义名称为键记录 element type、vector
   width、最低 PTX ISA 与最低 SM；binding 的分类逻辑复用该注册表，不复制名称集合；
-- 新增 `ResolvedSpecialRegisterRef`，同时保存源码 spelling 与注册表元数据；vector family
-  仅在选择 `.x/.y/.z` 标量 component 后进入当前 scalar operand；
+- 新增 `ResolvedSpecialRegisterRef`，保存源码 spelling、稳定 identity 与可选 vector component；
+  vector family 仅在选择 `.x/.y/.z` 标量 component 后进入当前 scalar operand；
 - checker 除 operand shape/type 外，还按具体 special-register value 检查 PTX/SM 可用性；
 - `mov.u32 d, sreg` 首先消费该表示并覆盖 standalone 与 binding-aware module resolution；
   后续统一 source 阶段已在不复制 special-register registry 的前提下扩展 source form。
 
-当前注册表描述 PTX 9.x 的现行类型。早期 ISA 中 `%tid` 的 `.u16`、`%gridid` 的
-`.u16/.u32` 等历史读取形式尚未建模，应在扩展相应 `mov` type variant 时显式表示，而不是
-放宽当前 `.u32` checker。
+注册表只描述 special register 的稳定身份、现行声明类型/shape 与 intrinsic availability；
+指令相关的历史读取版本由 YAML checker descriptor 描述，resolution 不生成 target-dependent
+有效类型。
 
 ## 已完成：binding-aware address/symbol resolution
 
@@ -149,14 +149,14 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - 新增 `ResolvedMovSource`，在 binding 后统一区分 register、immediate、special register、
   data symbol 与 address expression，避免这些 source 共享 identifier syntax shape 时产生
   variant/layout 选择歧义；
-- 32/64-bit scalar `mov` 现支持 register、typed immediate、对应宽度的现行 special register、
-  addressable data symbol、formal parameter 及 `symbol+constant-offset`；
+- 该阶段使 32/64-bit scalar `mov` 支持 register、typed immediate、对应宽度的现行 special
+  register、addressable data symbol、formal parameter 及 `symbol+constant-offset`；
 - 两种宽度现在共享 `mov_scalar_src` operand kind；此前仅用于限制 `.u32` address shape 的
   `mov_data_src`/`mov_address_src` 分裂已不再表达真实语义，因此从 schema/backend model 移除；
 - descriptor 仍按 variant 精确限制允许的 resolved operand shape，checker 对 register、
   immediate 与 special register 执行 instruction type 检查，并保留 special-register target
   availability；
-- 16-bit、vector form 与历史 special-register width 没有被本阶段扩大为已支持。
+- 16-bit、历史 special-register width 与 vector form 均在后续阶段完成。
 
 ## 已完成：mov formal-parameter address
 
@@ -184,16 +184,17 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - standalone resolution 无法区分未绑定名称是 data 还是 function，因此仍保留为无 identity 的
   `ResolvedSymbolRef`。
 
-## 已完成：mov 32/64-bit scalar type family
+## 已完成：mov 16/32/64-bit scalar type family
 
 - 原先固定 `.u32/.u64` 的两条 variant 合并为一个动态 type field variant，覆盖
-  `.b32/.u32/.s32/.f32/.b64/.u64/.s64/.f64`；
+  `.b16/.u16/.s16/.b32/.u32/.s32/.f32/.b64/.u64/.s64/.f64`；
 - checker 在共享入口实现 PTX 基础类型兼容：同宽 bit-size 接受任意基础类型，signed/unsigned
   integer 互相兼容，integer/float 混用仍拒绝；
 - `.f64` modifier value 携带 SM 13 门槛；data address 限制为 integer/bit-size type，function
   address 限制为 integer type；当前无 warning channel，因此 PTX 允许但会警告的 signed
   function-address form 保持成功；
-- 16-bit、vector form 与历史 special-register width 仍留待后续。
+- data/function address 继续限定为 32/64-bit，16-bit form 不会误接受 symbol address；
+- vector form 在后续阶段完成。
 
 ## 已完成：mov predicate form
 
@@ -202,7 +203,41 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - module resolution 要求两端绑定到未取反的 `.pred` register，并保留 declaration `SymbolId`
   与 parameterized member；standalone resolution 继续支持 numbered predicate register；
 - checker 复用 fixed `.pred` operand type/shape descriptor，PTX 1.0 起适用于全部 target；
-- 16-bit、vector form 与历史 special-register width 仍留待后续。
+- vector form 在后续阶段完成。
+
+## 已完成：mov historical special-register widths
+
+- `%tid/%ntid/%ctaid/%nctaid` component 的 16-bit read 使用 PTX 1.0 baseline；
+- `%gridid` 的 16/32-bit read 分别使用 PTX 1.0/1.3 baseline，现行 64-bit read 仍从 PTX
+  3.0 可用；
+- 历史规则由 `mov_scalar` 的 YAML `operand_type_compatibilities` 声明并生成到 checker
+  descriptor；checker 按 stable identity 与 instruction width 创建临时有效类型/availability
+  视图，不修改 Resolved IR；同宽 bit/signed form 复用现有基础类型兼容，float 和无历史
+  规则的 special register 仍拒绝。
+
+## 已完成：special-register target 分层重构
+
+- special-register catalog 只保留 intrinsic identity、现行声明 type/shape 与自身 availability，
+  删除 `mov` 专用历史字段和 `effectiveMovInfo`；
+- `ResolvedSpecialRegisterRef` 只保留 target-independent identity、component 与 spelling；
+- YAML variant 可用 `operand_type_compatibilities` 表达某个 operand/value/width 的上下文有效
+  type 与 PTX/SM 门槛；generator 将其解析为 checker descriptor，不进入 syntax descriptor；
+- checker 在验证期间临时选择上下文规则，覆盖历史 `mov` read，同时确保其他 consumer 和
+  Resolved IR 不继承 `mov` 语义；
+- syntax baseline 继续由编译期支持范围固定，不接收 target version/architecture 输入。
+
+## 已完成：mov vector pack/unpack
+
+- `mov_scalar` 保持单一 modifier variant；scalar、pack、unpack 由三个 operand layout 表示，
+  避免为相同 `.b16/.b32/.b64` modifier 组合复制 variant；
+- 新增 `ResolvedMovVector`，以 2/4 个可选 `ResolvedRegisterRef` 保存 vector payload；空元素只表示
+  destination `_` sink，binding 不再把 `_` 当作未声明 symbol；
+- YAML `kind: mov_vector` 的 `vector.arity` 进入 resolved/checker descriptor；resolver 与 checker
+  都验证 arity、bit-size instruction type、element width、source sink 与全 sink destination；
+- `.b128` 仅由 pack/unpack layout 接受，并按 modifier value 要求 PTX 8.3 / SM 70；scalar
+  `.b128` 明确拒绝；
+- C++ 回归覆盖 2/4-element pack、unpack、sink、`.b128` 双向读取、target 门槛及损坏
+  Resolved IR 的 element-width 检查。
 
 ## 下一步评审与调整
 
@@ -217,15 +252,15 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 `bra`、special-register consumer 与首个 address/symbol consumer 已完成闭环；剩余顺序是：
 
-1. 补齐 `mov` 的 16-bit 与 vector form，并按明确的历史 ISA 规则扩展 special-register
-   type width；
-2. 为 `ld/st` 增加 state-space、memory consistency/cache modifier 与更多 scalar/vector type，
+1. 为 `ld/st` 增加 state-space、memory consistency/cache modifier 与更多 scalar/vector type，
    同时把 state-space compatibility 纳入 checker；
-3. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
+2. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
    接入统一 dispatch/checker；
-4. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
+3. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
 
 ## 验证结果
 
-- Debug CTest：150/150（包含 C++、Python IR 与 installed package consumer）；
+- Python unit tests：51/51；
+- Debug C++ build：通过；
+- Debug CTest：154/154（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

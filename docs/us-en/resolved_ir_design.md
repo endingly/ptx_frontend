@@ -14,10 +14,11 @@ Resolved IR records the selected instruction variant, resolved operand values,
 and diagnostic locations. Both are stable frontend boundaries. Lexical symbol
 binding is connected to module resolution, execution predicates resolve to
 declaration-aware values, and special registers, external symbols, and
-genuinely undeclared references are distinct. The 32/64-bit scalar `mov` type
-families now accept register, immediate, special-register, data-symbol,
-`symbol+offset`, and function-address sources, including legal
-formal-parameter addresses. `mov.pred` reuses the declaration-aware
+genuinely undeclared references are distinct. The 16/32/64-bit scalar `mov`
+type families accept register, immediate, and special-register sources; the
+32/64-bit forms also accept data-symbol, `symbol+offset`, function-address, and
+legal formal-parameter-address sources. Bit-size forms also support two/four-
+element vector pack/unpack; `.b128` is vector-only. `mov.pred` reuses the declaration-aware
 `ResolvedPredicate` representation. `ld.u32 d, [address]` exercises the
 dereferenced-address path. Other type/source forms,
 complete memory qualifiers, `call` groups, CFG/SSA, and target lowering remain
@@ -94,18 +95,27 @@ a numbered `%pN` guard. `ResolvedBranchTarget` follows the same two-boundary
 rule: module resolution stores the current function label's `SymbolId`, while
 standalone resolution retains the source spelling with no symbol identity.
 
-`ResolvedSpecialRegisterRef` retains the exact spelling and a
-`special_registers::Info`. The independent special-register semantic registry
-is the single source of truth for names, current element types, vector widths,
-and minimum PTX/SM targets; binding only reuses it for classification. A scalar
+`ResolvedSpecialRegisterRef` retains the exact spelling, a stable
+`SpecialRegisterId`, and an optional vector component. It does not store an
+effective type that depends on an instruction or target. The independent
+special-register semantic registry is the single source of truth for names,
+stable identities, current declared element types, vector widths, and intrinsic
+minimum PTX/SM targets; binding only reuses it for classification. A scalar
 operand accepts a scalar special register or a component such as `%tid.x`, but
-not an unselected vector base. The checker uses the value-carried metadata for
-dynamic type and target checks, so instruction descriptors need not duplicate
-availability for every predefined name. The current consumer is the unified,
-classified source of 32/64-bit scalar `mov`.
+not an unselected vector base.
+
+Read forms widened by the ISA are instruction semantics, not properties of the
+register itself. The `mov` variant declares the special-register identity,
+instruction width, effective type, and minimum PTX/SM in YAML
+`operand_type_compatibilities`, which is generated into the checker descriptor.
+The checker selects effective metadata only for that check and never mutates
+Resolved IR. Current rules allow 16-bit `%tid`/`%ntid`/`%ctaid`/`%nctaid`
+component reads from PTX 1.0 and 16/32-bit `%gridid` reads from PTX 1.0/1.3;
+other uses retain the registry's current declared type and intrinsic
+availability.
 
 A single scalar variant carries a dynamic type modifier covering
-`.b32/.u32/.s32/.f32` and `.b64/.u64/.s64/.f64`. The checker applies PTX
+`.b16/.u16/.s16`, `.b32/.u32/.s32/.f32`, and `.b64/.u64/.s64/.f64`. The checker applies PTX
 fundamental-type compatibility: a same-width bit type agrees with any
 fundamental type, signed and unsigned integers agree, and integer/float mixes
 remain invalid. The `.f64` value additionally carries its SM 13 requirement.
@@ -115,6 +125,16 @@ remain invalid. The `.f64` value additionally carries its SM 13 requirement.
 resolution requires unnegated `.pred` registers for source and destination and
 retains stable `SymbolId` values; standalone resolution continues to accept
 numbered predicate registers without declaration context.
+
+Scalar and vector `mov` share one dynamic type-modifier variant because their
+`.b16/.b32/.b64` modifier forms are identical. Three operand layouts represent
+scalar, pack, and unpack forms without duplicate variants. `ResolvedMovVector`
+stores two or four optional `ResolvedRegisterRef` elements; an empty element is
+the destination-only `_` sink. Resolution and checking require a bit-size
+instruction type, equal total vector/instruction widths, no source sink, at
+least one real destination register, and no sub-byte element. `.b128` is
+accepted only by pack/unpack layouts and carries PTX 8.3 / SM 70 modifier-value
+availability.
 
 `ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
 and the `.func`/`.entry` classification. A device-function address uses the
@@ -269,7 +289,7 @@ One YAML specification generates three static descriptors with distinct roles:
 | --- | --- |
 | Syntax descriptor | modifier spellings/presence, AST operand shapes, and layout slots |
 | Resolved descriptor | resolved field kinds, modifier/operand bindings, structured type expressions, roles, and access |
-| Checker descriptor | variant/layout PTX/SM/family availability and rule ID |
+| Checker descriptor | variant/layout/value availability, operand type compatibility, and rule ID |
 
 They must not duplicate each other: syntax descriptors do not store resolved C++
 types, resolved descriptors do not recognize modifier spellings, and checker
@@ -284,6 +304,9 @@ Each generated `checker::check<T>` wrapper uses common checking for:
 - layout-tag/payload agreement;
 - operand field identity, resolved shape, and immediate or bound-register
   declaration types from structured descriptors.
+- special-register intrinsic metadata and contextual type/availability selected
+  by the current instruction width; this creates only a temporary checking view
+  and does not change Resolved IR.
 
 `rule_id` is reserved for typed instruction-specific rules. Register visibility
 and `.reg` state space are checked during module resolution; address spaces and

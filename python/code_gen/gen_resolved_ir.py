@@ -489,7 +489,7 @@ def _emit_check_operand_dispatch(
             }}
             const auto operand_check = check_operands(
                 layouts[selected.operand_layout.value].bindings, fields, operands,
-                context);
+                {checker_variant_expr}.operand_type_compatibilities, context);
             if (!operand_check) {{
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
@@ -559,7 +559,10 @@ def _emit_check_multi_layout_lambda(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
                     .operand_layouts[{layout_index}]
                     .bindings,
-                fields, operands, context);
+                fields, operands,
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .operand_type_compatibilities,
+                context);
           }};
           static_assert(detail::VariantCheckFunction<
               decltype({lambda_name}),
@@ -667,6 +670,30 @@ def _emit_check_modifier_value_view(
 
 
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
+    if field.value_cpp_type == "ResolvedMovVector":
+        return f"""              [&]() -> OperandView {{
+                OperandView view{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                    .vector_arity = static_cast<uint8_t>(
+                        {object_name}.{field.name}.value.elements.size()),
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+                size_t index = 0;
+                for (const auto& element :
+                     {object_name}.{field.name}.value.elements) {{
+                  if (index >= view.vector_element_types.size())
+                    break;
+                  if (element) {{
+                    view.vector_element_types[index] =
+                        element->declared_type.value_or(ScalarType::Invalid);
+                  }} else {{
+                    ++view.vector_sink_count;
+                  }}
+                  ++index;
+                }}
+                return view;
+              }}()"""
     if field.value_cpp_type == "ResolvedRegisterRef":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
@@ -700,22 +727,27 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedSpecialRegisterRef":
-        return f"""              OperandView{{
+        return f"""              [&]() -> OperandView {{
+                const auto info = special_registers::metadata(
+                    {object_name}.{field.name}.value.id);
+                return OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
                   .immediate_type = std::nullopt,
                   .register_type = std::nullopt,
-                  .special_register_type = {object_name}.{field.name}.value.info.element_type,
+                  .special_register_type = info.element_type,
+                  .special_register_id = {object_name}.{field.name}.value.id,
                   .value_availability = AvailabilityDescriptor{{
                       .minimum_ptx_version = {{
-                          {object_name}.{field.name}.value.info.minimum_ptx_major,
-                          {object_name}.{field.name}.value.info.minimum_ptx_minor,
+                          info.minimum_ptx_major,
+                          info.minimum_ptx_minor,
                       }},
-                      .minimum_sm_version = {object_name}.{field.name}.value.info.minimum_sm,
+                      .minimum_sm_version = info.minimum_sm,
                   }},
                   .value_name = {object_name}.{field.name}.value.spelling,
                   .locations = {object_name}.{field.name}.locs,
-              }}"""
+                }};
+              }}()"""
     if field.value_cpp_type == "ResolvedSymbolRef":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
@@ -781,18 +813,21 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 if (const auto* special_register =
                         std::get_if<ResolvedSpecialRegisterRef>(
                             &{object_name}.{field.name}.value)) {{
+                  const auto info =
+                      special_registers::metadata(special_register->id);
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
                       .immediate_type = std::nullopt,
                       .register_type = std::nullopt,
-                      .special_register_type = special_register->info.element_type,
+                      .special_register_type = info.element_type,
+                      .special_register_id = special_register->id,
                       .value_availability = AvailabilityDescriptor{{
                           .minimum_ptx_version = {{
-                              special_register->info.minimum_ptx_major,
-                              special_register->info.minimum_ptx_minor,
+                              info.minimum_ptx_major,
+                              info.minimum_ptx_minor,
                           }},
-                          .minimum_sm_version = special_register->info.minimum_sm,
+                          .minimum_sm_version = info.minimum_sm,
                       }},
                       .value_name = special_register->spelling,
                       .locations = {object_name}.{field.name}.locs,

@@ -236,6 +236,12 @@ Python 测试。
 resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同或不可比较的候选是 YAML
 建模错误，不能借 availability 消除歧义。
 
+`kind: mov_vector` 的 operand 必须用 `vector.arity` 声明合法元素数；当前 mov-specific
+Resolved IR 支持最多四个元素。该信息生成到 resolved/checker descriptor，用于验证 vector
+payload，不影响
+modifier variant 选择。例如 `mov` 的 scalar、pack 与 unpack 是同一 modifier variant 的三种
+layout，不能因 `.b16/.b32/.b64` 形式重叠而复制 variant。
+
 ## 浮点 Add 的当前覆盖
 
 `floating_point.yaml` 与 `integer_arith.yaml` 中的 `add` 定义自动合并。当前覆盖标准

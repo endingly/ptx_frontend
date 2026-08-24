@@ -23,6 +23,7 @@ from code_gen.model import (
     ModifierSpec,
     ModifierValueSpec,
     OperandSpec,
+    OperandTypeCompatibilitySpec,
     OperandTypeExpression,
     OperandTypeExpressionKind,
     VariantSpec,
@@ -51,6 +52,7 @@ class ResolvedValueKind(Enum):
     SPECIAL_REGISTER = "SpecialRegister"
     SYMBOL = "Symbol"
     ADDRESS = "Address"
+    MOV_VECTOR = "MovVector"
 
 
 class ResolvedFieldStorage(Enum):
@@ -178,6 +180,7 @@ class ResolvedVariant:
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
+    operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -224,6 +227,17 @@ class ResolvedModifierValueAvailability:
 
 
 @dataclass(frozen=True)
+class ResolvedOperandTypeCompatibility:
+    """One generated value-dependent operand type-checking rule."""
+
+    target_field_id: str
+    special_register_kind: str
+    instruction_width: int
+    effective_type: str
+    availability: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class ResolvedOperandBinding:
     """Bind one positional syntax operand to a resolved field."""
 
@@ -232,6 +246,7 @@ class ResolvedOperandBinding:
     role: ResolvedOperandRole
     access: ResolvedOperandAccess
     allowed_shapes: tuple[ResolvedOperandShape, ...]
+    allowed_vector_arities: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -274,6 +289,7 @@ _OPERAND_ALLOWED_SHAPES = {
     "sreg": (ResolvedOperandShape.SPECIAL_REGISTER,),
     "symbol": (ResolvedOperandShape.SYMBOL,),
     "addr": (ResolvedOperandShape.ADDRESS,),
+    "mov_vector": (ResolvedOperandShape.VECTOR,),
 }
 
 _OPERAND_ROLES = {
@@ -347,6 +363,11 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             for modifier in variant.modifiers
             for value in modifier.values
             if value.availability
+        ),
+        operand_type_compatibilities=tuple(
+            _build_operand_type_compatibility(compatibility, value)
+            for compatibility in variant.operand_type_compatibilities
+            for value in compatibility.values
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
@@ -444,6 +465,31 @@ def _build_modifier_value_availability(
     )
 
 
+def _build_operand_type_compatibility(
+    compatibility: OperandTypeCompatibilitySpec, value: str
+) -> ResolvedOperandTypeCompatibility:
+    """Validate and lower one expanded contextual operand type rule."""
+
+    if compatibility.value_kind != "special_register":
+        raise ValueError(
+            f"unsupported operand compatibility value kind "
+            f"{compatibility.value_kind!r}"
+        )
+    if value not in cpp_domain(CppDomain.SPECIAL_REGISTER_KINDS).values:
+        raise ValueError(f"unsupported special-register compatibility value {value!r}")
+    if compatibility.effective_type not in cpp_domain(CppDomain.SCALAR_TYPES).values:
+        raise ValueError(
+            f"unsupported effective scalar type {compatibility.effective_type!r}"
+        )
+    return ResolvedOperandTypeCompatibility(
+        target_field_id=compatibility.operand,
+        special_register_kind=value,
+        instruction_width=compatibility.instruction_width,
+        effective_type=compatibility.effective_type,
+        availability=tuple(compatibility.availability.items()),
+    )
+
+
 def _build_operand_layout(
     layout_id: str,
     operands: tuple[OperandSpec, ...],
@@ -465,6 +511,7 @@ def _build_operand_layout(
                 role=_require_operand_role(field),
                 access=_require_operand_access(field),
                 allowed_shapes=field.allowed_operand_shapes,
+                allowed_vector_arities=operand.vector_arities,
             )
             for operand, field in zip(operands, fields, strict=True)
         ),

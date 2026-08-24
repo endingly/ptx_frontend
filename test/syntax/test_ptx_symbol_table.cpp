@@ -300,6 +300,7 @@ TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
 TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   const auto laneid = special_registers::lookup("%laneid");
   ASSERT_TRUE(laneid.has_value());
+  EXPECT_EQ(laneid->id.kind, special_registers::SpecialRegisterKind::LaneId);
   EXPECT_EQ(laneid->element_type, ScalarType::U32);
   EXPECT_EQ(laneid->vector_width, 1u);
   EXPECT_EQ(laneid->minimum_ptx_major, 1u);
@@ -311,14 +312,21 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   ASSERT_TRUE(tid.has_value());
   ASSERT_TRUE(tid_x.has_value());
   EXPECT_EQ(tid->element_type, ScalarType::U32);
+  EXPECT_EQ(tid->id.kind, special_registers::SpecialRegisterKind::Tid);
+  EXPECT_EQ(tid_x->id, tid->id);
   EXPECT_EQ(tid->vector_width, 4u);
   EXPECT_EQ(tid_x->vector_width, 1u);
   EXPECT_EQ(tid_x->minimum_ptx_major, 2u);
+  EXPECT_EQ(special_registers::metadata(tid_x->id), *tid);
 
   const auto pm3 = special_registers::lookup("%pm3");
   const auto pm4 = special_registers::lookup("%pm4");
   ASSERT_TRUE(pm3.has_value());
   ASSERT_TRUE(pm4.has_value());
+  EXPECT_EQ(pm3->id.kind,
+            special_registers::SpecialRegisterKind::PerformanceMonitor);
+  EXPECT_EQ(pm3->id.index, 3u);
+  EXPECT_EQ(pm4->id.index, 4u);
   EXPECT_EQ(pm3->minimum_ptx_major, 1u);
   EXPECT_EQ(pm3->minimum_ptx_minor, 3u);
   EXPECT_EQ(pm3->minimum_sm, 0u);

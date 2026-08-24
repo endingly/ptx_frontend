@@ -30,7 +30,8 @@ scope whose parent is the module scope. The initial pass collects:
 
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
-parameter. `SymbolLinkage` directly records `.extern`, `.visible`, or `.weak`.
+parameter; a function symbol also records its `.func`/`.entry` classification.
+`SymbolLinkage` directly records `.extern`, `.visible`, or `.weak`.
 A function symbol points to its function scope through `owned_scope`. When a
 prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.
@@ -108,17 +109,27 @@ qualifiers, and genuinely unresolved references. Same-name module declarations f
 stable `SymbolId`; the declaration semantic pass then classifies them as a
 legal redeclaration, signature conflict, or multiple definition. Module
 resolution preserves the distinction between special and unresolved names.
-The unified `mov.u32/.u64` source resolves the former to a
+The unified 32/64-bit scalar `mov` source resolves the former to a
 `ResolvedSpecialRegisterRef` carrying type and target availability. Opcodes without a declared special-register
 shape still report an unsupported operand rather than an undeclared name. See
 `declaration_semantics_design.md` for the following pass.
 
-`mov.u64 d, symbol[+offset]` and `ld.u32 d, [address]` now consume binding
+32/64-bit integer/bit-size `mov d, symbol[+offset]` and `ld.u32 d, [address]`
+now consume binding
 identity as well. A direct symbol in the former produces a `ResolvedSymbolRef`;
 its offset form embeds that representation as a `ResolvedAddress` base. Symbol
 address bases in the latter use the same representation. Module resolution
-retains a stable `SymbolId`, parameterized member, and state space, while
-standalone resolution keeps spelling only. Remaining work includes:
+retains a stable `SymbolId`, parameterized member, declaration kind, declared
+state space, and effective address state space. Direct parameter memory
+addresses and kernel formal-parameter `mov` addresses remain in `.param`;
+device-function formal-parameter `mov` addresses are in `.local`, and the
+checker applies a PTX 2.0 / SM 20 baseline to all such addresses and raises
+the PTX minimum to 6.0 for a return-parameter address.
+Function-local `.param` variables remain non-addressable, while
+standalone resolution keeps spelling only. A bare function name binds to a
+`ResolvedFunctionRef` with the same stable `SymbolId` and its `.func`/`.entry`
+classification. The checker requires PTX 3.1 / SM 35 for a kernel-function
+address; a device-function address uses the base PTX 1.0 availability of
+`mov`. Remaining work includes:
 
-- function/parameter addresses, state-space compatibility, and the remaining
-  special-register/type forms.
+- state-space compatibility and the remaining special-register/type forms.

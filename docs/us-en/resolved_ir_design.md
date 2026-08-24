@@ -14,9 +14,11 @@ Resolved IR records the selected instruction variant, resolved operand values,
 and diagnostic locations. Both are stable frontend boundaries. Lexical symbol
 binding is connected to module resolution, execution predicates resolve to
 declaration-aware values, and special registers, external symbols, and
-genuinely undeclared references are distinct. `mov.u32/.u64` now accept
-register, immediate, and special-register sources; `.u64` also accepts data
-symbols and `symbol+offset` addresses. `ld.u32 d, [address]` exercises the
+genuinely undeclared references are distinct. The 32/64-bit scalar `mov` type
+families now accept register, immediate, special-register, data-symbol,
+`symbol+offset`, and function-address sources, including legal
+formal-parameter addresses. `mov.pred` reuses the declaration-aware
+`ResolvedPredicate` representation. `ld.u32 d, [address]` exercises the
 dereferenced-address path. Other type/source forms,
 complete memory qualifiers, `call` groups, CFG/SSA, and target lowering remain
 later work.
@@ -66,7 +68,7 @@ Modifier primitives include `bool`, `ScalarType`, and `RoundingMode`; the latter
 turns `.rn/.rz/.rm/.rp` into statically checkable values instead of runtime
 strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 `ResolvedPredicate`, `ResolvedBranchTarget`, `ResolvedSpecialRegisterRef`,
-`ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
+`ResolvedFunctionRef`, `ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
 and `ScalarType`, so the checker never has to reinterpret literal text.
 
 `AstImmediateKind` retains the lexer's literal classification. Decimal and hex
@@ -100,23 +102,51 @@ operand accepts a scalar special register or a component such as `%tid.x`, but
 not an unselected vector base. The checker uses the value-carried metadata for
 dynamic type and target checks, so instruction descriptors need not duplicate
 availability for every predefined name. The current consumer is the unified,
-classified source of `mov.u32/.u64`.
+classified source of 32/64-bit scalar `mov`.
+
+A single scalar variant carries a dynamic type modifier covering
+`.b32/.u32/.s32/.f32` and `.b64/.u64/.s64/.f64`. The checker applies PTX
+fundamental-type compatibility: a same-width bit type agrees with any
+fundamental type, signed and unsigned integers agree, and integer/float mixes
+remain invalid. The `.f64` value additionally carries its SM 13 requirement.
+
+`mov.pred` has a separate variant because both fields are
+`ResolvedPredicate`, structurally unlike the classified scalar source. Module
+resolution requires unnegated `.pred` registers for source and destination and
+retains stable `SymbolId` values; standalone resolution continues to accept
+numbered predicate registers without declaration context.
+
+`ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
+and the `.func`/`.entry` classification. A device-function address uses the
+base PTX 1.0 availability of `mov`; a kernel-function address carries the PTX
+3.1 / SM 35 requirement for target checking. Only a bare function name is
+accepted; an offset form continues through data-symbol address resolution and
+is rejected.
 
 `ResolvedSymbolRef` retains source spelling. Module resolution also records the
-declaration `SymbolId`, parameterized member, state space, and representable
-declaration scalar type. Standalone resolution cannot perform lexical binding,
-so it leaves identity empty as it does for branch targets. `ResolvedMovSource`
-classifies registers, immediates, special registers, data symbols, and address
-expressions after binding, avoiding identifier-shape ambiguity during
-variant/layout selection. The current `mov.u64` data-symbol form intentionally
-accepts only non-parameter addressable data variables; function and parameter
-addresses need their own availability and semantic rules before being added.
+declaration `SymbolId`, parameterized member, declaration kind, declared state
+space, effective address state space, and representable declaration scalar
+type. The two state spaces are identical for ordinary data variables. Direct
+parameter memory addresses and kernel formal parameters used by `mov` retain
+a `.param` address, while taking a device-function formal parameter address
+with `mov` materializes it on the stack and produces a `.local` address. A
+device-function formal-parameter `mov` address carries a PTX 2.0 / SM 20
+baseline; a return-parameter address raises the PTX minimum to 6.0. A
+function-local `.param` call-argument
+variable remains non-addressable through `mov`. Standalone resolution cannot
+perform lexical binding, so it leaves identity and state-space fields empty as
+it does for branch targets. `ResolvedMovSource` classifies registers,
+immediates, special registers, data symbols, and address expressions after
+binding, avoiding identifier-shape ambiguity during variant/layout selection.
+Standalone resolution cannot tell whether an unbound name denotes data or a
+function, so it remains a `ResolvedSymbolRef` with no identity.
 
 A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
 `ResolvedImmediate`, and `ResolvedSymbolRef`. Its optional offset retains the
 add/subtract operator and a parsed signed 64-bit value.
-`mov.u64 d, symbol+offset` uses an unbracketed address value restricted to a
-data-symbol base. `ld.u32 d, [address]` requires bracketed dereference and
+A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
+address value restricted to an addressable data-symbol or formal-parameter
+base. `ld.u32 d, [address]` requires bracketed dereference and
 covers register, immediate, and bound-symbol bases under generic addressing.
 Explicit state spaces and the complete memory-qualifier surface remain outside
 this subset.

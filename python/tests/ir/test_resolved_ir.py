@@ -477,7 +477,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.rule, "control_flow.bra")
 
-    def test_mov_uses_classified_scalar_source(self) -> None:
+    def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
@@ -491,11 +491,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(instruction.cpp_name, "Mov")
         self.assertEqual(len(instruction.variants), 2)
         variant = instruction.variants[0]
-        self.assertEqual(variant.cpp_name, "U32")
+        self.assertEqual(variant.cpp_name, "Scalar")
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
-                ("type", "ScalarType"),
+                ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
                 ("src", "WithLocs<ResolvedMovSource>"),
             ],
@@ -509,33 +509,6 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ResolvedOperandShape.REGISTER,
                 ResolvedOperandShape.IMMEDIATE,
                 ResolvedOperandShape.SPECIAL_REGISTER,
-            ),
-        )
-        self.assertEqual(
-            source_binding.type_expression,
-            ResolvedOperandTypeExpression(
-                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
-                scalar_type="u32",
-            ),
-        )
-
-        address_variant = instruction.variants[1]
-        self.assertEqual(address_variant.cpp_name, "U64")
-        self.assertEqual(
-            [(field.name, field.cpp_type) for field in address_variant.fields],
-            [
-                ("type", "ScalarType"),
-                ("dst", "WithLocs<ResolvedRegisterRef>"),
-                ("src", "WithLocs<ResolvedMovSource>"),
-            ],
-        )
-        source_binding = address_variant.operand_layouts[0].bindings[1]
-        self.assertEqual(
-            source_binding.allowed_shapes,
-            (
-                ResolvedOperandShape.REGISTER,
-                ResolvedOperandShape.IMMEDIATE,
-                ResolvedOperandShape.SPECIAL_REGISTER,
                 ResolvedOperandShape.SYMBOL,
                 ResolvedOperandShape.ADDRESS,
             ),
@@ -543,10 +516,33 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             source_binding.type_expression,
             ResolvedOperandTypeExpression(
-                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
-                scalar_type="u64",
+                kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                modifier_field_id="type",
             ),
         )
+
+        predicate = instruction.variants[1]
+        self.assertEqual(predicate.cpp_name, "Pred")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in predicate.fields],
+            [
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedPredicate>"),
+                ("src", "WithLocs<ResolvedPredicate>"),
+            ],
+        )
+        for binding in predicate.operand_layouts[0].bindings:
+            self.assertEqual(
+                binding.allowed_shapes,
+                (ResolvedOperandShape.PREDICATE,),
+            )
+            self.assertEqual(
+                binding.type_expression,
+                ResolvedOperandTypeExpression(
+                    kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                    scalar_type="pred",
+                ),
+            )
 
     def test_ld_generic_u32_uses_resolved_address(self) -> None:
         database = load_codegen_database(
@@ -609,7 +605,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
-        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 2)
+        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 1)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",
@@ -741,6 +737,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(".value_availability = AvailabilityDescriptor", source)
+        self.assertIn(
+            ".value_availability = symbol->address_availability", source
+        )
+        self.assertIn(
+            ".value_availability = function->address_availability", source
+        )
         self.assertIn("CheckResult check<Mov>(", source)
         self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
         self.assertIn(

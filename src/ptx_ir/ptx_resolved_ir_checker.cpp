@@ -255,7 +255,8 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
       continue;
     }
 
-    if (operand->immediate_type && *operand->immediate_type != expected_type) {
+    if (operand->immediate_type &&
+        !scalar_types_compatible(*operand->immediate_type, expected_type)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
           .range = diagnostic_range(operand->locations, context),
@@ -266,7 +267,8 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
               expected_type_source, to_string(expected_type)),
       });
     } else if (operand->register_type &&
-               *operand->register_type != expected_type) {
+               !scalar_types_compatible(*operand->register_type,
+                                        expected_type)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
           .range = diagnostic_range(operand->locations, context),
@@ -277,7 +279,8 @@ CheckResult check_operands(std::span<const OperandDescriptor> descriptors,
               expected_type_source, to_string(expected_type)),
       });
     } else if (operand->special_register_type &&
-               *operand->special_register_type != expected_type) {
+               !scalar_types_compatible(*operand->special_register_type,
+                                        expected_type)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
           .range = diagnostic_range(operand->locations, context),

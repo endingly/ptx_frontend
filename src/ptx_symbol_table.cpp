@@ -190,7 +190,7 @@ struct SymbolTableBuilder {
       std::optional<syntax_ast::AstStateSpace> state_space = std::nullopt,
       std::optional<std::string_view> type = std::nullopt,
       std::optional<uint32_t> parameterized_count = std::nullopt,
-      bool allow_redeclaration = false) {
+      bool allow_redeclaration = false, bool function_is_entry = false) {
     if (const auto previous = exactSymbol(scope, name, parameterized_count)) {
       const Symbol& existing = result.table.symbol(*previous);
       if (!allow_redeclaration) {
@@ -235,6 +235,7 @@ struct SymbolTableBuilder {
                      : std::nullopt,
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
+        .function_is_entry = function_is_entry,
     });
     return id;
   }
@@ -304,7 +305,7 @@ struct SymbolTableBuilder {
         addSymbol(result.table.moduleScope(), SymbolKind::Function,
                   function.name.syntax.text, function.name.syntax.range,
                   linkage(function.qualifiers, function.range), std::nullopt,
-                  std::nullopt, std::nullopt, true);
+                  std::nullopt, std::nullopt, true, function.is_entry);
     const ScopeId function_scope =
         addFunctionScope(function_symbol, !function.is_prototype);
     functions.push_back(FunctionContext{&function, function_scope});

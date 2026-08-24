@@ -78,6 +78,8 @@ struct Symbol {
   std::optional<std::string> type;
   std::optional<uint32_t> parameterized_count;
   std::optional<ScopeId> owned_scope;
+  /** Meaningful only for ``Function`` symbols. */
+  bool function_is_entry{};
 };
 
 struct SymbolLookup {

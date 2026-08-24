@@ -225,13 +225,34 @@ struct ResolvedSpecialRegisterRef {
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
 };
 
+/** A function address, bound to a device or kernel function declaration. */
+struct ResolvedFunctionRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  bool is_entry{};
+  std::optional<checker::AvailabilityDescriptor> address_availability;
+  bool operator==(const ResolvedFunctionRef&) const = default;
+};
+
 /** An addressable data symbol, optionally bound to a module declaration. */
 struct ResolvedSymbolRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
-  std::optional<syntax_ast::AstStateSpace> state_space;
+  std::optional<binding::SymbolKind> declaration_kind;
+  std::optional<syntax_ast::AstStateSpace> declaration_state_space;
+  /**
+   * State space of the address produced for this symbol.
+   *
+   * This normally equals ``declaration_state_space``.  Formal parameters are
+   * the important exception: a direct parameter address and a kernel
+   * parameter used by ``mov`` retain ``.param``, while ``mov`` address-taking
+   * materializes a device-function parameter in ``.local`` space.
+   */
+  std::optional<syntax_ast::AstStateSpace> address_state_space;
   std::optional<ScalarType> declared_type;
+  /** Target requirement contributed by this address value, if any. */
+  std::optional<checker::AvailabilityDescriptor> address_availability;
   bool operator==(const ResolvedSymbolRef&) const = default;
 };
 
@@ -265,9 +286,10 @@ struct ResolvedOperandLayoutTag {
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
 /** A scalar ``mov`` source after identifier classification and binding. */
-using ResolvedMovSource = std::variant<ResolvedRegisterRef, ResolvedImmediate,
-                                       ResolvedSpecialRegisterRef,
-                                       ResolvedSymbolRef, ResolvedAddress>;
+using ResolvedMovSource =
+    std::variant<ResolvedRegisterRef, ResolvedImmediate,
+                 ResolvedSpecialRegisterRef, ResolvedFunctionRef,
+                 ResolvedSymbolRef, ResolvedAddress>;
 
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
@@ -305,6 +327,8 @@ using ActualModifierTable =
 struct ResolveContext {
   const binding::SymbolTable& symbols;
   binding::ScopeId scope;
+  /** Whether ``scope`` belongs to a kernel entry rather than a device func. */
+  bool function_is_entry{};
 };
 
 /** Collect source modifiers by the slot IDs of one selected variant. */

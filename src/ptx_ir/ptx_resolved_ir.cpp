@@ -586,15 +586,21 @@ resolve_address_offset(const syntax_ast::AstAddress& address) {
   };
 }
 
+enum class FormalParameterAddressPolicy : uint8_t {
+  Reject,
+  PreserveParameterSpace,
+  MaterializeDeviceParameter,
+};
+
 bool is_addressable_data_symbol(const binding::Symbol& symbol,
-                                bool allow_parameters) {
+                                FormalParameterAddressPolicy parameter_policy) {
   if (symbol.kind == binding::SymbolKind::Variable) {
     return symbol.state_space == syntax_ast::AstStateSpace::Local ||
            symbol.state_space == syntax_ast::AstStateSpace::Shared ||
            symbol.state_space == syntax_ast::AstStateSpace::Global ||
            symbol.state_space == syntax_ast::AstStateSpace::Constant;
   }
-  return allow_parameters &&
+  return parameter_policy != FormalParameterAddressPolicy::Reject &&
          (symbol.kind == binding::SymbolKind::InputParameter ||
           symbol.kind == binding::SymbolKind::ReturnParameter) &&
          symbol.state_space == syntax_ast::AstStateSpace::Parameter;
@@ -602,7 +608,8 @@ bool is_addressable_data_symbol(const binding::Symbol& symbol,
 
 std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
     const syntax_ast::AstIdentifierRef& identifier,
-    const ResolveContext* context, bool allow_parameters) {
+    const ResolveContext* context,
+    FormalParameterAddressPolicy parameter_policy) {
   ResolvedSymbolRef resolved{.spelling = identifier.syntax.text};
   if (context == nullptr)
     return resolved;
@@ -624,7 +631,7 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
     });
   }
   const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
-  if (!is_addressable_data_symbol(symbol, allow_parameters)) {
+  if (!is_addressable_data_symbol(symbol, parameter_policy)) {
     return std::unexpected(ResolveDiagnostic{
         .range = identifier.syntax.range,
         .message = fmt::format("Symbol '{}' is not an addressable data symbol.",
@@ -634,7 +641,29 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
 
   resolved.symbol_id = lookup->symbol;
   resolved.parameterized_index = lookup->parameterized_index;
-  resolved.state_space = symbol.state_space;
+  resolved.declaration_kind = symbol.kind;
+  resolved.declaration_state_space = symbol.state_space;
+  resolved.address_state_space = symbol.state_space;
+  if (symbol.kind == binding::SymbolKind::InputParameter ||
+      symbol.kind == binding::SymbolKind::ReturnParameter) {
+    // A direct formal-parameter memory address stays in .param.  Only mov
+    // address-taking materializes a device-function parameter on the stack and
+    // consequently changes the produced address to .local.
+    if (parameter_policy ==
+            FormalParameterAddressPolicy::MaterializeDeviceParameter &&
+        !context->function_is_entry) {
+      resolved.address_state_space = syntax_ast::AstStateSpace::Local;
+      // Device-function parameters require PTX 2.0 and sm_20.  PTX raised the
+      // minimum for taking a return-parameter address to 6.0.
+      resolved.address_availability = checker::AvailabilityDescriptor{
+          .minimum_ptx_version =
+              symbol.kind == binding::SymbolKind::ReturnParameter
+                  ? checker::PtxVersion{6, 0}
+                  : checker::PtxVersion{2, 0},
+          .minimum_sm_version = 20,
+      };
+    }
+  }
   if (symbol.type)
     resolved.declared_type = scalar_type_from_ptx_name(*symbol.type);
   return resolved;
@@ -649,7 +678,8 @@ std::expected<WithLocs<ResolvedSymbolRef>, ResolveDiagnostic> resolve_symbol(
         .message = "Expected a data-symbol operand.",
     });
   }
-  auto resolved = resolve_data_symbol(*identifier, context, false);
+  auto resolved = resolve_data_symbol(*identifier, context,
+                                      FormalParameterAddressPolicy::Reject);
   if (!resolved)
     return std::unexpected(resolved.error());
   return WithLocs<ResolvedSymbolRef>{std::move(*resolved),
@@ -684,7 +714,9 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
           return std::unexpected(register_ref.error());
         base = std::move(*register_ref);
       } else {
-        auto symbol = resolve_data_symbol(*identifier, context, true);
+        auto symbol = resolve_data_symbol(
+            *identifier, context,
+            FormalParameterAddressPolicy::PreserveParameterSpace);
         if (!symbol)
           return std::unexpected(symbol.error());
         base = std::move(*symbol);
@@ -696,7 +728,9 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
         return std::unexpected(register_ref.error());
       base = std::move(register_ref->value);
     } else {
-      auto symbol = resolve_data_symbol(*identifier, nullptr, true);
+      auto symbol = resolve_data_symbol(
+          *identifier, nullptr,
+          FormalParameterAddressPolicy::PreserveParameterSpace);
       base = std::move(*symbol);
     }
   } else {
@@ -919,6 +953,23 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
             "operand shape.",
     };
   };
+  const auto reject_address_type =
+      [&](SourceRange range,
+          bool function_address = false) -> std::optional<ResolveDiagnostic> {
+    const ScalarKind kind = scalar_kind(type);
+    const bool integer_address =
+        kind == ScalarKind::Unsigned || kind == ScalarKind::Signed;
+    const bool data_address = integer_address || kind == ScalarKind::Bit;
+    if (function_address ? integer_address : data_address)
+      return std::nullopt;
+    return ResolveDiagnostic{
+        .range = range,
+        .message = function_address
+                       ? "A function address requires an integer mov type."
+                       : "A data address requires an integer or bit-size mov "
+                         "type.",
+    };
+  };
 
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
     if (auto rejected = reject_shape(checker::OperandShape::Immediate,
@@ -957,6 +1008,8 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
           .message = "Expected an unbracketed symbol-address operand.",
       });
     }
+    if (auto rejected = reject_address_type(address->range))
+      return std::unexpected(std::move(*rejected));
     const auto* identifier =
         std::get_if<syntax_ast::AstIdentifierRef>(&address->base);
     if (identifier == nullptr) {
@@ -965,7 +1018,9 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
           .message = "A mov address expression must use a data-symbol base.",
       });
     }
-    auto symbol = resolve_data_symbol(*identifier, context, false);
+    auto symbol = resolve_data_symbol(
+        *identifier, context,
+        FormalParameterAddressPolicy::MaterializeDeviceParameter);
     if (!symbol)
       return std::unexpected(symbol.error());
     auto offset = resolve_address_offset(*address);
@@ -1007,6 +1062,31 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
         context->symbols.lookup(context->scope, identifier->syntax.text);
     if (lookup) {
       const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+      if (symbol.kind == binding::SymbolKind::Function) {
+        if (auto rejected = reject_shape(checker::OperandShape::Symbol,
+                                         identifier->syntax.range)) {
+          return std::unexpected(std::move(*rejected));
+        }
+        // PTX accepts signed function-address moves with a warning. The
+        // frontend has no warning channel yet, so they remain successful.
+        if (auto rejected =
+                reject_address_type(identifier->syntax.range, true)) {
+          return std::unexpected(std::move(*rejected));
+        }
+        ResolvedFunctionRef function{
+            .spelling = identifier->syntax.text,
+            .symbol_id = symbol.id,
+            .is_entry = symbol.function_is_entry,
+        };
+        if (function.is_entry) {
+          function.address_availability = checker::AvailabilityDescriptor{
+              .minimum_ptx_version = {3, 1},
+              .minimum_sm_version = 35,
+          };
+        }
+        return WithLocs<ResolvedMovSource>{
+            ResolvedMovSource{std::move(function)}, identifier->syntax.range};
+      }
       is_register = symbol.kind == binding::SymbolKind::Variable &&
                     symbol.state_space == syntax_ast::AstStateSpace::Register;
     }
@@ -1030,7 +1110,11 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                                    identifier->syntax.range)) {
     return std::unexpected(std::move(*rejected));
   }
-  auto value = resolve_data_symbol(*identifier, context, false);
+  if (auto rejected = reject_address_type(identifier->syntax.range))
+    return std::unexpected(std::move(*rejected));
+  auto value = resolve_data_symbol(
+      *identifier, context,
+      FormalParameterAddressPolicy::MaterializeDeviceParameter);
   if (!value)
     return std::unexpected(value.error());
   return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(*value)},

@@ -8,29 +8,31 @@ codegen_category: data_movement
 section: "9.7.9"
 
 operand_patterns:
-  mov_u32:
+  mov_scalar:
     - name: dst
       kind: reg
       role: dst
       access: write
-      type: u32
+      type:
+        expr: modifier(type)
     - name: src
-      kind: mov_data_src
+      kind: mov_scalar_src
       role: src
       access: read
-      type: u32
+      type:
+        expr: modifier(type)
 
-  mov_u64:
+  mov_pred:
     - name: dst
-      kind: reg
+      kind: pred
       role: dst
       access: write
-      type: u64
+      type: pred
     - name: src
-      kind: mov_address_src
+      kind: pred
       role: src
       access: read
-      type: u64
+      type: pred
 
   ld_u32_address:
     - name: dst
@@ -48,14 +50,14 @@ instructions:
     section: "9.7.9.3"
     doc: >
       Move a scalar register, immediate, or compatible special register into
-      a u32/u64 register. The u64 form additionally accepts a non-parameter
-      data-variable address, with an optional constant byte offset. Function,
-      parameter, predicate, vector, and other-width forms remain separate
-      coverage.
-    syntax: "mov.u32 dst, src | mov.u64 dst, src"
+      a 32/64-bit register. Integer/bit-size forms also accept a data-variable
+      or formal-parameter address, with an optional constant byte offset, or a
+      bare device/kernel function address. Predicate register moves are also
+      supported; vector and other-width forms remain separate coverage.
+    syntax: "mov.{pred|b32|u32|s32|f32|b64|u64|s64|f64} dst, src"
 
     variants:
-      - name: mov_u32
+      - name: mov_scalar
         availability:
           ptx: "1.0"
           sm: 0
@@ -63,9 +65,20 @@ instructions:
           - name: type
             kind: type
             domain: scalar_types
-            presence: fixed
-            value: u32
-        operands: $mov_u32
+            presence: required
+            values:
+              - b32
+              - u32
+              - s32
+              - f32
+              - b64
+              - u64
+              - s64
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $mov_scalar
         rule: data_movement.mov
 
         examples:
@@ -77,11 +90,28 @@ instructions:
             valid: true
           - ptx: "mov.u32 %r0, 42;"
             valid: true
+          - ptx: "mov.u32 %r0, kernel_parameter;"
+            valid: true
+          - ptx: "mov.u32 %r0, device_function;"
+            valid: true
+          - ptx: "mov.b32 %r0, %laneid;"
+            valid: true
+          - ptx: "mov.f32 %f0, 0f3f800000;"
+            valid: true
+          - ptx: "mov.u64 %rd0, global_value;"
+            valid: true
+          - ptx: "mov.u64 %rd0, global_value+8;"
+            valid: true
+          - ptx: "mov.u64 %rd0, %rd1;"
+            valid: true
+          - ptx: "mov.u64 %rd0, 0;"
+            valid: true
+          - ptx: "mov.u64 %rd0, kernel_function;"
+            valid: true
+          - ptx: "mov.f64 %fd0, 0d3ff0000000000000;"
+            valid: true
 
-      - name: mov_u64
-        description: >
-          Move scalar data or take the address of an addressable data
-          variable, optionally with a constant byte offset.
+      - name: mov_pred
         availability:
           ptx: "1.0"
           sm: 0
@@ -90,18 +120,12 @@ instructions:
             kind: type
             domain: scalar_types
             presence: fixed
-            value: u64
-        operands: $mov_u64
+            value: pred
+        operands: $mov_pred
         rule: data_movement.mov
 
         examples:
-          - ptx: "mov.u64 %rd0, global_value;"
-            valid: true
-          - ptx: "mov.u64 %rd0, global_value+8;"
-            valid: true
-          - ptx: "mov.u64 %rd0, %rd1;"
-            valid: true
-          - ptx: "mov.u64 %rd0, 0;"
+          - ptx: "mov.pred %p0, %p1;"
             valid: true
 
   - opcode: ld

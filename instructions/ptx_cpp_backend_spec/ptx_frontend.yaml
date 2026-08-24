@@ -69,8 +69,7 @@ domains:
       reg: ResolvedRegisterRef
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
-      mov_data_src: ResolvedMovSource
-      mov_address_src: ResolvedMovSource
+      mov_scalar_src: ResolvedMovSource
       pred: ResolvedPredicate
       pred_or_not: ResolvedPredicate
       label: ResolvedBranchTarget

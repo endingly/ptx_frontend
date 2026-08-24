@@ -108,7 +108,7 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
-  const auto& u32 = std::get<Mov::U32>(mov.variant);
+  const auto& u32 = std::get<Mov::Scalar>(mov.variant);
   const auto& special = std::get<ResolvedSpecialRegisterRef>(u32.src.value);
   EXPECT_EQ(special.spelling, "%laneid");
   EXPECT_EQ(special.info.element_type, ScalarType::U32);
@@ -181,7 +181,7 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(wide_check.error().front().message,
             "Special-register operand 'src' has declared type 'U64' but "
-            "instruction type source 'fixed scalar type' is 'U32'.");
+            "instruction type source 'type' is 'U32'.");
 }
 
 TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
@@ -192,7 +192,8 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
   ASSERT_TRUE(component_resolved.has_value())
       << component_resolved.error().message;
   const auto& component = std::get<ResolvedSpecialRegisterRef>(
-      std::get<Mov::U32>(std::get<Mov>(*component_resolved).variant).src.value);
+      std::get<Mov::Scalar>(std::get<Mov>(*component_resolved).variant)
+          .src.value);
   EXPECT_EQ(component.spelling, "%tid.x");
   EXPECT_EQ(component.info.vector_width, 1u);
   EXPECT_EQ(component.info.minimum_ptx_major, 2u);
@@ -227,11 +228,14 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
 
   const auto& mov = std::get<Mov>(body[0]);
   const auto& mov_symbol =
-      std::get<ResolvedSymbolRef>(std::get<Mov::U64>(mov.variant).src.value);
+      std::get<ResolvedSymbolRef>(std::get<Mov::Scalar>(mov.variant).src.value);
   ASSERT_TRUE(mov_symbol.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*mov_symbol.symbol_id).name,
             "global_value");
-  EXPECT_EQ(mov_symbol.state_space, syntax_ast::AstStateSpace::Global);
+  EXPECT_EQ(mov_symbol.declaration_kind, binding::SymbolKind::Variable);
+  EXPECT_EQ(mov_symbol.declaration_state_space,
+            syntax_ast::AstStateSpace::Global);
+  EXPECT_EQ(mov_symbol.address_state_space, syntax_ast::AstStateSpace::Global);
   EXPECT_EQ(mov_symbol.declared_type, ScalarType::U32);
 
   const auto& symbol_address =
@@ -321,18 +325,18 @@ TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
   ASSERT_EQ(body.size(), 4u);
 
   const auto& register_source = std::get<ResolvedRegisterRef>(
-      std::get<Mov::U32>(std::get<Mov>(body[0]).variant).src.value);
+      std::get<Mov::Scalar>(std::get<Mov>(body[0]).variant).src.value);
   EXPECT_EQ(register_source.spelling, "%r1");
   EXPECT_EQ(register_source.parameterized_index, 1u);
   EXPECT_EQ(register_source.declared_type, ScalarType::U32);
 
   const auto& immediate_source = std::get<ResolvedImmediate>(
-      std::get<Mov::U32>(std::get<Mov>(body[1]).variant).src.value);
+      std::get<Mov::Scalar>(std::get<Mov>(body[1]).variant).src.value);
   EXPECT_EQ(immediate_source.type, ScalarType::U32);
   EXPECT_EQ(immediate_source.bits, 42u);
 
   const auto& address_source = std::get<ResolvedAddress>(
-      std::get<Mov::U64>(std::get<Mov>(body[2]).variant).src.value);
+      std::get<Mov::Scalar>(std::get<Mov>(body[2]).variant).src.value);
   const auto& symbol = std::get<ResolvedSymbolRef>(address_source.base);
   ASSERT_TRUE(symbol.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*symbol.symbol_id).name, "global_value");
@@ -343,7 +347,7 @@ TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
   EXPECT_EQ(address_source.offset->value.bits, 8u);
 
   const auto& special_source = std::get<ResolvedSpecialRegisterRef>(
-      std::get<Mov::U64>(std::get<Mov>(body[3]).variant).src.value);
+      std::get<Mov::Scalar>(std::get<Mov>(body[3]).variant).src.value);
   EXPECT_EQ(special_source.spelling, "%clock64");
   EXPECT_EQ(special_source.info.element_type, ScalarType::U64);
 }
@@ -375,7 +379,110 @@ TEST(ResolvedModule, ChecksMovRegisterSourceType) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 
-TEST(ResolvedModule, RejectsU32MovSymbolAddressSource) {
+TEST(ResolvedModule, ResolvesAndChecksMovScalarTypeFamilies) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  .reg .u32 %u0;
+  .reg .s32 %s0;
+  .reg .f32 %f0;
+  .reg .b64 %bd0;
+  .reg .f64 %fd0;
+  mov.b32 %b0, %u0;
+  mov.s32 %s0, %b0;
+  mov.u32 %u0, %s0;
+  mov.f32 %f0, %b0;
+  mov.b64 %bd0, %fd0;
+  mov.f64 %fd0, %bd0;
+  mov.f32 %f0, %u0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 7u);
+  const auto& first = std::get<Mov::Scalar>(std::get<Mov>(body[0]).variant);
+  EXPECT_EQ(first.type.value, ScalarType::B32);
+  const auto& f64 = std::get<Mov>(body[5]);
+  EXPECT_EQ(std::get<Mov::Scalar>(f64.variant).type.value, ScalarType::F64);
+
+  const auto check_at = [&](const Mov& mov, uint32_t sm) {
+    return checker::check(mov,
+                          checker::Context{
+                              .target =
+                                  checker::TargetInfo{
+                                      .ptx_version = checker::PtxVersion{9, 2},
+                                      .sm_version = sm,
+                                  },
+                              .instruction_range = ast.range,
+                          });
+  };
+  for (size_t index = 0; index < 6; ++index)
+    EXPECT_TRUE(check_at(std::get<Mov>(body[index]), 13).has_value());
+
+  const auto old_target = check_at(f64, 12);
+  ASSERT_FALSE(old_target.has_value());
+  ASSERT_EQ(old_target.error().size(), 1u);
+  EXPECT_EQ(old_target.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto incompatible = check_at(std::get<Mov>(body[6]), 13);
+  ASSERT_FALSE(incompatible.has_value());
+  ASSERT_EQ(incompatible.error().size(), 1u);
+  EXPECT_EQ(incompatible.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %p<2>;
+  mov.pred %p0, %p1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
+  const auto& predicate = std::get<Mov::Pred>(mov.variant);
+  EXPECT_FALSE(predicate.dst.value.negated);
+  EXPECT_FALSE(predicate.src.value.negated);
+  ASSERT_TRUE(predicate.dst.value.register_ref.symbol_id.has_value());
+  ASSERT_TRUE(predicate.src.value.register_ref.symbol_id.has_value());
+  EXPECT_EQ(
+      resolved->symbols.symbol(*predicate.dst.value.register_ref.symbol_id)
+          .name,
+      "%p");
+  EXPECT_EQ(predicate.dst.value.register_ref.parameterized_index, 0u);
+  EXPECT_EQ(predicate.src.value.register_ref.parameterized_index, 1u);
+
+  EXPECT_TRUE(
+      checker::check(mov,
+                     checker::Context{
+                         .target =
+                             checker::TargetInfo{
+                                 .ptx_version = checker::PtxVersion{1, 0},
+                                 .sm_version = 0,
+                             },
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
+
+  PtxSyntaxParser parser("mov.pred %p0, %p1;");
+  const auto standalone_ast = parser.parseInstruction();
+  ASSERT_TRUE(standalone_ast.has_value()) << standalone_ast.error().message;
+  const auto standalone = resolveInstruction(*standalone_ast);
+  ASSERT_TRUE(standalone.has_value()) << standalone.error().message;
+  const auto& standalone_predicate =
+      std::get<Mov::Pred>(std::get<Mov>(*standalone).variant);
+  EXPECT_FALSE(
+      standalone_predicate.dst.value.register_ref.symbol_id.has_value());
+  EXPECT_FALSE(
+      standalone_predicate.src.value.register_ref.symbol_id.has_value());
+}
+
+TEST(ResolvedModule, ResolvesU32MovSymbolAddressSource) {
   const auto ast = parseModule(R"ptx(
 .global .u32 global_value;
 .entry kernel() {
@@ -386,11 +493,256 @@ TEST(ResolvedModule, RejectsU32MovSymbolAddressSource) {
 
   const auto resolved = resolveModule(ast);
 
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& source = std::get<ResolvedSymbolRef>(
+      std::get<Mov::Scalar>(
+          std::get<Mov>(resolved->functions.front().body.front()).variant)
+          .src.value);
+  EXPECT_EQ(source.spelling, "global_value");
+  EXPECT_EQ(source.declaration_state_space, syntax_ast::AstStateSpace::Global);
+  EXPECT_EQ(source.address_state_space, syntax_ast::AstStateSpace::Global);
+}
+
+TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel(.param .u32 kernel_input) {
+  .reg .u32 %r0;
+  mov.u32 %r0, kernel_input+4;
+}
+.func (.param .u32 result) device(.param .u32 input) {
+  .reg .u64 %rd<2>;
+  mov.u64 %rd0, input;
+  mov.u64 %rd1, result;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.size(), 2u);
+
+  const auto& kernel_address = std::get<ResolvedAddress>(
+      std::get<Mov::Scalar>(
+          std::get<Mov>(resolved->functions[0].body.front()).variant)
+          .src.value);
+  const auto& kernel_parameter =
+      std::get<ResolvedSymbolRef>(kernel_address.base);
+  EXPECT_EQ(kernel_parameter.declaration_kind,
+            binding::SymbolKind::InputParameter);
+  EXPECT_EQ(kernel_parameter.declaration_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  EXPECT_EQ(kernel_parameter.address_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  ASSERT_TRUE(kernel_address.offset.has_value());
+  EXPECT_EQ(kernel_address.offset->value.bits, 4u);
+
+  const auto& device_input = std::get<ResolvedSymbolRef>(
+      std::get<Mov::Scalar>(
+          std::get<Mov>(resolved->functions[1].body[0]).variant)
+          .src.value);
+  EXPECT_EQ(device_input.declaration_kind, binding::SymbolKind::InputParameter);
+  EXPECT_EQ(device_input.declaration_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  EXPECT_EQ(device_input.address_state_space, syntax_ast::AstStateSpace::Local);
+  ASSERT_TRUE(device_input.address_availability.has_value());
+  EXPECT_EQ(device_input.address_availability->minimum_ptx_version,
+            (checker::PtxVersion{2, 0}));
+  EXPECT_EQ(device_input.address_availability->minimum_sm_version, 20u);
+
+  const auto& return_parameter = std::get<ResolvedSymbolRef>(
+      std::get<Mov::Scalar>(
+          std::get<Mov>(resolved->functions[1].body[1]).variant)
+          .src.value);
+  EXPECT_EQ(return_parameter.declaration_kind,
+            binding::SymbolKind::ReturnParameter);
+  EXPECT_EQ(return_parameter.declaration_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  EXPECT_EQ(return_parameter.address_state_space,
+            syntax_ast::AstStateSpace::Local);
+  ASSERT_TRUE(return_parameter.address_availability.has_value());
+  EXPECT_EQ(return_parameter.address_availability->minimum_ptx_version,
+            (checker::PtxVersion{6, 0}));
+  EXPECT_EQ(return_parameter.address_availability->minimum_sm_version, 20u);
+}
+
+TEST(ResolvedModule, ChecksDeviceParameterAddressAvailability) {
+  const auto ast = parseModule(R"ptx(
+.func (.param .u32 result) device(.param .u32 input) {
+  .reg .u64 %rd<2>;
+  mov.u64 %rd0, input;
+  mov.u64 %rd1, result+4;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& input_mov = std::get<Mov>(resolved->functions.front().body[0]);
+  const auto& return_mov = std::get<Mov>(resolved->functions.front().body[1]);
+
+  const auto input_rejected =
+      checker::check(input_mov, checker::Context{
+                                    .target =
+                                        checker::TargetInfo{
+                                            .ptx_version = {1, 5},
+                                            .sm_version = 10,
+                                        },
+                                    .instruction_range = ast.range,
+                                });
+  ASSERT_FALSE(input_rejected.has_value());
+  ASSERT_EQ(input_rejected.error().size(), 2u);
+  EXPECT_EQ(input_rejected.error()[0].kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(input_rejected.error()[1].kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(checker::check(input_mov,
+                             checker::Context{
+                                 .target =
+                                     checker::TargetInfo{
+                                         .ptx_version = {2, 0},
+                                         .sm_version = 20,
+                                     },
+                                 .instruction_range = ast.range,
+                             })
+                  .has_value());
+
+  const auto return_rejected =
+      checker::check(return_mov, checker::Context{
+                                     .target =
+                                         checker::TargetInfo{
+                                             .ptx_version = {5, 0},
+                                             .sm_version = 10,
+                                         },
+                                     .instruction_range = ast.range,
+                                 });
+  ASSERT_FALSE(return_rejected.has_value());
+  ASSERT_EQ(return_rejected.error().size(), 2u);
+  EXPECT_EQ(return_rejected.error()[0].kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(return_rejected.error()[1].kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(checker::check(return_mov,
+                             checker::Context{
+                                 .target =
+                                     checker::TargetInfo{
+                                         .ptx_version = {6, 0},
+                                         .sm_version = 20,
+                                     },
+                                 .instruction_range = ast.range,
+                             })
+                  .has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksFunctionAddresses) {
+  const auto ast = parseModule(R"ptx(
+.func device() {}
+.entry launched() {}
+.entry caller() {
+  .reg .u32 %r0;
+  .reg .u64 %rd0;
+  mov.u32 %r0, device;
+  mov.u64 %rd0, launched;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.size(), 3u);
+  const auto& device_mov = std::get<Mov>(resolved->functions[2].body[0]);
+  const auto& kernel_mov = std::get<Mov>(resolved->functions[2].body[1]);
+
+  const auto& device = std::get<ResolvedFunctionRef>(
+      std::get<Mov::Scalar>(device_mov.variant).src.value);
+  ASSERT_TRUE(device.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*device.symbol_id).name, "device");
+  EXPECT_FALSE(device.is_entry);
+  EXPECT_FALSE(device.address_availability.has_value());
+  EXPECT_TRUE(checker::check(device_mov,
+                             checker::Context{
+                                 .target =
+                                     checker::TargetInfo{
+                                         .ptx_version = {1, 0},
+                                         .sm_version = 0,
+                                     },
+                                 .instruction_range = ast.range,
+                             })
+                  .has_value());
+
+  const auto& kernel = std::get<ResolvedFunctionRef>(
+      std::get<Mov::Scalar>(kernel_mov.variant).src.value);
+  ASSERT_TRUE(kernel.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*kernel.symbol_id).name, "launched");
+  EXPECT_TRUE(kernel.is_entry);
+  ASSERT_TRUE(kernel.address_availability.has_value());
+  EXPECT_EQ(kernel.address_availability->minimum_ptx_version,
+            (checker::PtxVersion{3, 1}));
+  EXPECT_EQ(kernel.address_availability->minimum_sm_version, 35u);
+
+  const auto rejected =
+      checker::check(kernel_mov, checker::Context{
+                                     .target =
+                                         checker::TargetInfo{
+                                             .ptx_version = {3, 0},
+                                             .sm_version = 30,
+                                         },
+                                     .instruction_range = ast.range,
+                                 });
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2u);
+  EXPECT_EQ(rejected.error()[0].kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(checker::check(kernel_mov,
+                             checker::Context{
+                                 .target =
+                                     checker::TargetInfo{
+                                         .ptx_version = {3, 1},
+                                         .sm_version = 35,
+                                     },
+                                 .instruction_range = ast.range,
+                             })
+                  .has_value());
+}
+
+TEST(ResolvedModule, PreservesDirectDeviceParameterAddressSpace) {
+  const auto ast = parseModule(R"ptx(
+.func device(.param .u32 input) {
+  .reg .u32 %r0;
+  ld.u32 %r0, [input];
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& address =
+      std::get<Ld::GenericU32>(
+          std::get<Ld>(resolved->functions.front().body.front()).variant)
+          .address.value;
+  const auto& parameter = std::get<ResolvedSymbolRef>(address.base);
+  EXPECT_EQ(parameter.declaration_kind, binding::SymbolKind::InputParameter);
+  EXPECT_EQ(parameter.declaration_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  EXPECT_EQ(parameter.address_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  EXPECT_FALSE(parameter.address_availability.has_value());
+}
+
+TEST(ResolvedModule, RejectsLocallyScopedParamVariableAddress) {
+  const auto ast = parseModule(R"ptx(
+.func device() {
+  .param .align 8 .b8 call_argument[8];
+  .reg .u64 %rd0;
+  mov.u64 %rd0, call_argument;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().message,
-            "This mov variant does not accept the resolved source operand "
-            "shape.");
+            "Symbol 'call_argument' is not an addressable data symbol.");
 }
 
 TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
@@ -400,10 +752,12 @@ TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   const auto mov_resolved = resolveInstruction(*mov_ast);
   ASSERT_TRUE(mov_resolved.has_value()) << mov_resolved.error().message;
   const auto& symbol = std::get<ResolvedSymbolRef>(
-      std::get<Mov::U64>(std::get<Mov>(*mov_resolved).variant).src.value);
+      std::get<Mov::Scalar>(std::get<Mov>(*mov_resolved).variant).src.value);
   EXPECT_EQ(symbol.spelling, "global_value");
   EXPECT_FALSE(symbol.symbol_id.has_value());
-  EXPECT_FALSE(symbol.state_space.has_value());
+  EXPECT_FALSE(symbol.declaration_kind.has_value());
+  EXPECT_FALSE(symbol.declaration_state_space.has_value());
+  EXPECT_FALSE(symbol.address_state_space.has_value());
 
   PtxSyntaxParser load_parser("ld.u32 %r0, [%rd0+4];");
   const auto load_ast = load_parser.parseInstruction();

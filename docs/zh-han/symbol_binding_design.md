@@ -28,8 +28,9 @@ function scope。当前收集：
 - label。
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
-parameter 的 state space/type。`SymbolLinkage` 直接记录 `.extern/.visible/.weak`；function
-symbol 通过 `owned_scope` 指向其 function scope。若同一 function 同时存在 prototype 与
+parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
+`SymbolLinkage` 直接记录 `.extern/.visible/.weak`；function symbol 通过 `owned_scope` 指向其
+function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 
 同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
@@ -92,15 +93,23 @@ call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 
 的 parameterized count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
 declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
 redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
-与 unresolved reference 的区别；`mov.u32/.u64` 的统一 source 已将前者解析为带类型和
+与 unresolved reference 的区别；32/64-bit scalar `mov` 的统一 source 已将前者解析为带类型和
 target availability 的 `ResolvedSpecialRegisterRef`。尚未声明 special-register shape 的 opcode
 仍会得到 operand 不支持诊断，而不是“未声明”。declaration semantic pass 的设计见
 `declaration_semantics_design.md`。
 
-`mov.u64 d, symbol[+offset]` 与 `ld.u32 d, [address]` 也已消费 binding identity：前者的
+32/64-bit integer/bit-size `mov d, symbol[+offset]` 与 `ld.u32 d, [address]` 也已消费
+binding identity：前者的
 direct symbol 生成 `ResolvedSymbolRef`，带 offset 时把该表示嵌入 `ResolvedAddress` base；
 后者的 symbol address base 使用同一表示。module resolution 保存稳定 `SymbolId`、
-parameterized member 与 state space；standalone resolution 只保留 spelling。
+parameterized member、declaration kind、声明 state space 与实际 address state space；direct
+parameter memory address 与 kernel formal parameter 的 `mov` 地址属于 `.param`，
+device-function formal parameter 的 `mov` 地址属于 `.local`，且 return parameter 取址由
+checker 在所有 device parameter 上要求 PTX 2.0 / SM 20 baseline，并将 return parameter 的
+最低 PTX 提升至 6.0。function-local `.param` variable 仍拒绝取址；
+standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
+同一稳定 `SymbolId` 与 `.func/.entry` 类别；kernel function 地址由 checker 要求 PTX 3.1 /
+SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
 后续语义阶段仍需完成：
 
-- function/parameter address、state-space compatibility，以及其余 special-register/type form。
+- state-space compatibility，以及其余 special-register/type form。

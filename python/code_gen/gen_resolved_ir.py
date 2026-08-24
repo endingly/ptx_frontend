@@ -722,6 +722,8 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
                   .immediate_type = std::nullopt,
                   .register_type = std::nullopt,
+                  .value_availability = {object_name}.{field.name}.value.address_availability,
+                  .value_name = {object_name}.{field.name}.value.spelling,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedAddress":
@@ -796,21 +798,48 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
-                if (std::holds_alternative<ResolvedSymbolRef>(
-                        {object_name}.{field.name}.value)) {{
+                if (const auto* function = std::get_if<ResolvedFunctionRef>(
+                        &{object_name}.{field.name}.value)) {{
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
                       .immediate_type = std::nullopt,
                       .register_type = std::nullopt,
+                      .value_availability = function->address_availability,
+                      .value_name = function->spelling,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
+                if (const auto* symbol = std::get_if<ResolvedSymbolRef>(
+                        &{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .value_availability = symbol->address_availability,
+                      .value_name = symbol->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                // An offset address keeps its value requirements on the
+                // symbol base, so expose those requirements through the same
+                // operand view used for a direct symbol source.
+                const auto& address =
+                    std::get<ResolvedAddress>({object_name}.{field.name}.value);
+                const auto* symbol =
+                    std::get_if<ResolvedSymbolRef>(&address.base);
                 return OperandView{{
                     .field_id = "{field.name}",
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
                     .immediate_type = std::nullopt,
                     .register_type = std::nullopt,
+                    .value_availability =
+                        symbol == nullptr ? std::nullopt
+                                          : symbol->address_availability,
+                    .value_name =
+                        symbol == nullptr ? std::string_view{{}}
+                                          : std::string_view{{symbol->spelling}},
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

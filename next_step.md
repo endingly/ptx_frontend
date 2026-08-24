@@ -134,12 +134,12 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 ## 已完成：binding-aware address/symbol resolution
 
 - 新增 `ResolvedSymbolRef`，module resolution 保存稳定 `SymbolId`、parameterized member、
-  state space 与可表示的 declaration scalar type；standalone resolution 保留 spelling 并令
-  declaration identity 为空；
+  declaration kind、声明/有效 address state space 与可表示的 declaration scalar type；
+  standalone resolution 保留 spelling 并令 declaration identity/state-space 为空；
 - 新增 `ResolvedAddress`，base 明确区分 register、immediate address 与 data symbol，offset
   保留加减运算及已解析的 signed 64-bit value；
 - `mov.u64 d, symbol` 首先覆盖非参数 addressable data variable 的取地址形式；后续统一
-  source 阶段已加入 symbol+offset，function address 与 parameter address 仍保持未支持；
+  source 阶段已加入 symbol+offset，parameter address 与 function address 也已完成；
 - `ld.u32 d, [address]` 首先覆盖 generic scalar load，并要求方括号解引用；address base
   支持 register、immediate 与 binding-aware data symbol；
 - generic `ld` 的 PTX 2.0 / SM 20 可用性由 generated checker 统一检查。
@@ -149,13 +149,60 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - 新增 `ResolvedMovSource`，在 binding 后统一区分 register、immediate、special register、
   data symbol 与 address expression，避免这些 source 共享 identifier syntax shape 时产生
   variant/layout 选择歧义；
-- `mov.u32` 现支持 register、typed immediate 与现行 `.u32` special register；`mov.u64` 在这些
-  source 之外还支持非参数 addressable data symbol 及 `symbol+constant-offset`；
+- 32/64-bit scalar `mov` 现支持 register、typed immediate、对应宽度的现行 special register、
+  addressable data symbol、formal parameter 及 `symbol+constant-offset`；
+- 两种宽度现在共享 `mov_scalar_src` operand kind；此前仅用于限制 `.u32` address shape 的
+  `mov_data_src`/`mov_address_src` 分裂已不再表达真实语义，因此从 schema/backend model 移除；
 - descriptor 仍按 variant 精确限制允许的 resolved operand shape，checker 对 register、
   immediate 与 special register 执行 instruction type 检查，并保留 special-register target
   availability；
-- function/parameter address、其余 scalar/vector type 与历史 special-register width 没有被本阶段
-  扩大为已支持。
+- 16-bit、vector form 与历史 special-register width 没有被本阶段扩大为已支持。
+
+## 已完成：mov formal-parameter address
+
+- `mov.u32/.u64` 均可取得 ordinary data variable、kernel/device-function formal parameter 的
+  地址，并支持 constant offset；function-local `.param` call-argument variable 仍按 PTX 规则
+  拒绝取址；
+- `ResolvedSymbolRef` 分开保存 declaration state space 与 effective address state space：kernel
+  parameter 的 `mov` 地址属于 `.param`，device-function parameter 经 `mov` 取址会物化到
+  stack，因此地址属于 `.local`；未经过 `mov` 物化的 direct parameter memory address 保持
+  `.param`，供后续 `ld/st` state-space compatibility 使用；
+- input/return parameter identity 通过 declaration `SymbolKind` 保留；device-function
+  parameter 地址携带 PTX 2.0 / SM 20 baseline，return parameter 将最低 PTX 提升至 6.0；
+  direct symbol 与带 offset address 都由 checker 检查这些门槛；
+- standalone resolution 继续只保留 spelling，不在缺少 module/function context 时猜测参数类别、
+  state space 或 availability。
+
+## 已完成：mov function address
+
+- 新增 `ResolvedFunctionRef`，module resolution 保存稳定 function `SymbolId` 与
+  `.func/.entry` 类别；
+- `mov.u32/.u64` 接受 bare device/kernel function name；带 offset 的形式继续按 data-symbol
+  address 解析并拒绝；
+- device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
+  SM 35 门槛，并由 checker 按 target 检查；
+- standalone resolution 无法区分未绑定名称是 data 还是 function，因此仍保留为无 identity 的
+  `ResolvedSymbolRef`。
+
+## 已完成：mov 32/64-bit scalar type family
+
+- 原先固定 `.u32/.u64` 的两条 variant 合并为一个动态 type field variant，覆盖
+  `.b32/.u32/.s32/.f32/.b64/.u64/.s64/.f64`；
+- checker 在共享入口实现 PTX 基础类型兼容：同宽 bit-size 接受任意基础类型，signed/unsigned
+  integer 互相兼容，integer/float 混用仍拒绝；
+- `.f64` modifier value 携带 SM 13 门槛；data address 限制为 integer/bit-size type，function
+  address 限制为 integer type；当前无 warning channel，因此 PTX 允许但会警告的 signed
+  function-address form 保持成功；
+- 16-bit、vector form 与历史 special-register width 仍留待后续。
+
+## 已完成：mov predicate form
+
+- 新增结构独立的 `mov_pred` variant，source/destination 复用现有 `ResolvedPredicate`，不扩展
+  `ResolvedMovSource`；
+- module resolution 要求两端绑定到未取反的 `.pred` register，并保留 declaration `SymbolId`
+  与 parameterized member；standalone resolution 继续支持 numbered predicate register；
+- checker 复用 fixed `.pred` operand type/shape descriptor，PTX 1.0 起适用于全部 target；
+- 16-bit、vector form 与历史 special-register width 仍留待后续。
 
 ## 下一步评审与调整
 
@@ -170,8 +217,8 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 `bra`、special-register consumer 与首个 address/symbol consumer 已完成闭环；剩余顺序是：
 
-1. 逐步补齐 `mov` 的 parameter/function-address、其余 scalar/vector type，并按明确的历史 ISA
-   规则扩展 special-register type width；
+1. 补齐 `mov` 的 16-bit 与 vector form，并按明确的历史 ISA 规则扩展 special-register
+   type width；
 2. 为 `ld/st` 增加 state-space、memory consistency/cache modifier 与更多 scalar/vector type，
    同时把 state-space compatibility 纳入 checker；
 3. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
@@ -180,5 +227,5 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 ## 验证结果
 
-- Debug CTest：143/143（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：150/150（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

@@ -617,8 +617,7 @@ $defs:
       - symbol
       - func
       - reg_or_imm
-      - mov_data_src
-      - mov_address_src
+      - mov_scalar_src
       - addr_or_symbol
       - reg_list
       - pred_list

@@ -13,8 +13,10 @@ Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolve
 选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
 lexical symbol binding 与 module resolution 已接通，execution predicate 会解析为带声明
 身份的值，special register、external symbol 和真正未声明 reference 也已能区分。
-`mov.u32/.u64` 已接入 register、immediate 与 special-register source，`.u64` 还支持
-data-symbol 及 `symbol+offset` 地址；`ld.u32 d, [address]` 已接入解引用 address operand。
+`mov` 的 32/64-bit scalar type family 已接入 register、immediate、special-register、data-symbol、
+`symbol+offset` 与 function-address source，并支持合法 formal parameter 地址；
+`mov.pred` 复用 declaration-aware `ResolvedPredicate` 表示；
+`ld.u32 d, [address]` 已接入解引用 address operand。
 其余 type/source form、完整 memory qualifier、
 `call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
@@ -57,7 +59,7 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 当前 modifier 基础值包括 `bool`、`ScalarType` 与 `RoundingMode`；后者使
 `.rn/.rz/.rm/.rp` 成为可静态检查的语义值，而不是运行时字符串。operand 基础值包括
 `ResolvedRegisterRef`、`ResolvedImmediate`、`ResolvedPredicate`、
-`ResolvedBranchTarget`、`ResolvedSpecialRegisterRef`、`ResolvedSymbolRef`、
+`ResolvedBranchTarget`、`ResolvedSpecialRegisterRef`、`ResolvedFunctionRef`、`ResolvedSymbolRef`、
 `ResolvedAddress`、`ResolvedMovSource` 与 `RegOrImm`。
 `ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
@@ -84,19 +86,39 @@ special-register 语义注册表是名称、现行 element type、vector width �
 事实来源；binding 只复用它做分类。scalar operand 接受标量 special register 或
 `%tid.x` 一类 component，不接受未选 component 的 vector base。checker 使用值携带的
 元数据执行动态 type/target 检查，因此 instruction descriptor 不需要复制每个预定义名称的
-可用性。当前 consumer 是统一分类 source 的 `mov.u32/.u64`。
+可用性。当前 consumer 是统一分类 source 的 32/64-bit scalar `mov`。
+
+单一 scalar variant 的 type 是动态 modifier field，覆盖 `.b32/.u32/.s32/.f32` 与
+`.b64/.u64/.s64/.f64`。checker 按 PTX 基础类型规则接受同宽 bit-size/任意基础类型和
+signed/unsigned integer 组合，但仍拒绝 integer/float 混用；`.f64` 值另携带 SM 13 门槛。
+
+`mov.pred` 使用独立 variant，因为两端字段都是 `ResolvedPredicate`，与分类后的 scalar source
+结构不同。module resolution 要求 source/destination 都绑定到未取反的 `.pred` register，并保存
+稳定 `SymbolId`；standalone resolution 仍接受无需声明上下文的 numbered predicate register。
+
+`ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
+device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
+SM 35 门槛，供 checker 按 target 检查。当前仅接受 bare function name；带 offset 的形式仍按
+data-symbol address 解析并拒绝。
 
 `ResolvedSymbolRef` 保存源码 spelling；module resolution 还保存 declaration `SymbolId`、
-parameterized member、state space 与可表示的 declaration scalar type。standalone resolution
-无法完成 lexical binding，因此和 branch target 一样保留空 identity。`ResolvedMovSource`
-在 binding 后区分 register、immediate、special register、data symbol 与 address expression，
-避免这些 identifier 形状在 variant/layout 选择阶段产生歧义。当前 `mov.u64` 的 data-symbol
-form 有意只接受非参数 addressable data variable；function/parameter address 需要各自的
-availability 与规则后再扩展。
+parameterized member、declaration kind、声明 state space、实际 address state space 与可表示的
+declaration scalar type。普通 data variable 的两种 state space 相同；direct parameter memory
+address 与 kernel formal parameter 的 `mov` 取址仍得到 `.param` address，而 device-function
+formal parameter 经 `mov` 取址会将参数物化到 stack，因此得到 `.local` address。
+device-function formal parameter 的 `mov` 地址值携带 PTX 2.0 / SM 20 baseline；return
+parameter 再把最低 PTX 提升至 6.0，供 checker 按 target 检查。function-local `.param`
+call-argument variable 不能由
+`mov` 取址。standalone resolution 无法完成 lexical binding，因此和 branch target 一样保留
+空 identity/state-space。`ResolvedMovSource` 在 binding 后区分 register、immediate、special
+register、data symbol 与 address expression，避免这些 identifier 形状在 variant/layout 选择
+阶段产生歧义。standalone resolution 无法区分未绑定名称是 data 还是 function，因此仍保留为
+空 identity 的 `ResolvedSymbolRef`。
 
 `ResolvedAddress` 的 base 是 `ResolvedRegisterRef`、`ResolvedImmediate` 或
 `ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
-value。`mov.u64 d, symbol+offset` 使用未加方括号且限定为 data-symbol base 的地址值；
+value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
+addressable data-symbol 或 formal-parameter base 的地址值；
 `ld.u32 d, [address]` 则要求方括号解引用，覆盖 generic addressing 的 register、immediate 与
 bound-symbol base。explicit state space 与完整 memory qualifier 仍不在这一子集中。
 

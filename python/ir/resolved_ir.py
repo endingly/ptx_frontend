@@ -261,12 +261,7 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
-    "mov_data_src": (
-        ResolvedOperandShape.REGISTER,
-        ResolvedOperandShape.IMMEDIATE,
-        ResolvedOperandShape.SPECIAL_REGISTER,
-    ),
-    "mov_address_src": (
+    "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
         ResolvedOperandShape.SPECIAL_REGISTER,

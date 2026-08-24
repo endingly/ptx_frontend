@@ -49,6 +49,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     ResolveContext context{
         .symbols = binding_result.table,
         .scope = *symbol.owned_scope,
+        .function_is_entry = function->is_entry,
     };
     ResolvedFunction resolved_function{
         .symbol_id = symbol.id,

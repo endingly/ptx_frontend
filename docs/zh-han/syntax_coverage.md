@@ -21,15 +21,14 @@
 | 其他 directive | 尚未支持（直接拒绝） | debug、section、pragma、module variable 与结构化 kernel-tuning directive；未建模 function-header token 不会静默进入 AST |
 | 结构化控制语法 | 尚未支持 | nested scope 与由 directive 驱动的 control-flow metadata |
 | 恢复与编辑 | 尚未支持 | missing token、recovery node、多错误解析与 token edit |
-| Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 `add`、`sub`、`bar`、`bra`、`mov.u32/.u64` 的 register/immediate/special-register source、`mov.u64` 的 data-symbol/symbol+offset source，以及 generic `ld.u32 d, [address]`，并保留 binding-aware identity 与对应 type/target 检查 |
+| Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 `add`、`sub`、`bar`、`bra`、`mov.pred`、32/64-bit scalar `mov` 的 register/immediate/special-register/data-symbol/formal-parameter-address/function-address source，以及 generic `ld.u32 d, [address]`，并保留 binding-aware identity、声明/有效地址空间与对应 type/target 检查 |
 
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。
 
 ## 近期实现顺序
 
-1. 补齐 `mov` 的 function/parameter address、其余 scalar/vector type 与明确历史规则下的
-   special-register type width；
+1. 补齐 `mov` 的 16-bit 与 vector form，以及明确历史规则下的 special-register type width；
 2. 扩展 `ld/st` state-space、memory qualifier 与 scalar/vector type，并检查 state-space
    compatibility；
 3. 为 call group/variadic operand 增加非 `Flat` descriptor layout algorithm，并接入 `call`；

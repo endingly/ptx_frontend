@@ -272,5 +272,6 @@ ABI。
   checker 的对应 resolved value。
 - 新的多 layout 指令必须测试正常 resolution、非法 layout、以及 tag/payload 不一致。
 
-实现入口见 `include/ptx_ir/resolved/ptx_resolved_ir.hpp`、
-`include/ptx_ir/ptx_resolved_ir_checker.hpp` 与生成的 `resolved_ir.gen.hpp`。
+实现入口见 `submod/resolved_ir/include/ptx_resolved_ir.hpp`、
+`submod/resolved_ir/include/ptx_resolved_ir_checker.hpp` 与生成的
+`resolved_ir.gen.hpp`。

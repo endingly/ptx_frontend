@@ -8,7 +8,7 @@ Symbol binding sits between Syntax AST and Resolved IR/checking:
 source -> CST -> Syntax AST -> symbol binding -> Resolved IR/checker
 ```
 
-`include/ptx_ir/bind/ptx_symbol_table.hpp` exposes the public entry point:
+`submod/binding/include/ptx_symbol_table.hpp` exposes the public entry point:
 
 ```cpp
 auto binding = binding::bindSymbols(module);

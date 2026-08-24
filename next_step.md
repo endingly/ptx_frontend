@@ -23,7 +23,7 @@ auto result = ptx_frontend::binding::bindSymbols(module);
   parameterized count 诊断；
 - 未解析 reference 的保留，供后续 special-register/linkage/opcode-aware 诊断。
 
-公共类型位于 `include/ptx_ir/bind/ptx_symbol_table.hpp`，设计说明位于：
+公共类型位于 `submod/binding/include/ptx_symbol_table.hpp`，设计说明位于：
 
 - `docs/zh-han/symbol_binding_design.md`；
 - `docs/us-en/symbol_binding_design.md`。

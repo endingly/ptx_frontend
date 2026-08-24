@@ -1,16 +1,15 @@
 file(GLOB_RECURSE cst_srcs src/*cpp)
-add_library(cst INTERFACE)
-target_sources(cst INTERFACE ${cst_srcs})
+add_library(cst ${cst_srcs})
 add_library(ptx_frontend::cst ALIAS cst)
 register_headers(
     cst
     cst
-    INTERFACE
+    PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries(
     cst
-    INTERFACE ptx_frontend::lexer
+    PUBLIC ptx_frontend::lexer
 )
 
 if(BUILD_TESTING)

@@ -147,7 +147,56 @@ endif()
 #     add_subdirectory(test)
 # endif()
 
+# Generated resolved-IR declarations and implementations are owned by the
+# final frontend stage.  Keep their generation at the top level so every
+# stage can consume the same build-tree paths.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(PTX_GEN_PUBLIC_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/public)
+set(PTX_GEN_PRIVATE_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/private)
+file(GLOB_RECURSE PTX_SPEC_FILES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/*.yaml
+)
+file(GLOB_RECURSE PTX_CODEGEN_FILES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/base/*.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/code_gen/*.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/ir/*.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${PTX_SPEC_FILES} ${PTX_CODEGEN_FILES}
+)
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+            --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+            --backend-spec ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml
+            --output ${CMAKE_CURRENT_BINARY_DIR}/generated --list-outputs
+    RESULT_VARIABLE PTX_GENERATED_FILES_RESULT
+    OUTPUT_VARIABLE PTX_GENERATED_FILES_OUTPUT
+    ERROR_VARIABLE PTX_GENERATED_FILES_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(NOT PTX_GENERATED_FILES_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to determine generated files: ${PTX_GENERATED_FILES_ERROR}")
+endif()
+string(REPLACE "\n" ";" PTX_GENERATED_FILES "${PTX_GENERATED_FILES_OUTPUT}")
+add_custom_command(
+    OUTPUT ${PTX_GENERATED_FILES}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py
+            --spec-dir ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec
+            --backend-spec ${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml
+            --output ${CMAKE_CURRENT_BINARY_DIR}/generated
+    DEPENDS ${PTX_SPEC_FILES} ${PTX_CODEGEN_FILES}
+    COMMENT "Generating resolved-IR sources"
+)
+add_custom_target(auto_gen_code DEPENDS ${PTX_GENERATED_FILES})
+set(PTX_RESOLVED_IR_GENERATED_SRCS ${PTX_GENERATED_FILES})
+list(FILTER PTX_RESOLVED_IR_GENERATED_SRCS INCLUDE REGEX "\\.gen\\.cpp$")
+
 add_subdirectory(submod)
+
+add_library(ptx_frontend INTERFACE)
+add_library(ptx_frontend::ptx_frontend ALIAS ptx_frontend)
+target_link_libraries(ptx_frontend INTERFACE ptx_frontend::resolved_ir)
 
 # ################################################################
 # install targets
@@ -168,5 +217,5 @@ add_subdirectory(submod)
 
 # install(
 #     FILES ${PTX_GEN_PUBLIC_DIR}/resolved_ir.gen.hpp
-#     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ptx_ir/resolved
+#     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 # )

@@ -62,7 +62,7 @@ function(install_project_targets)
     # 2) install headers
     # INCLUDE_DIRS are include roots, not directories to preserve as another
     # path component.  Installing their contents directly keeps build-tree and
-    # install-tree includes identical (for example <ptx_ir/base.hpp>).
+    # install-tree includes identical (for example <ptx_frontend/base/base.hpp>).
     foreach(_inc ${INSTALL_PROJECT_INCLUDE_DIRS})
         install(DIRECTORY ${_inc}/
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}

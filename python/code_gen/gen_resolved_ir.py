@@ -58,8 +58,8 @@ def generate_resolved_ir_header(
 #include <variant>
 #include <vector>
 
-#include "ptx_ir/resolved/ptx_resolved_ir.hpp"
-#include "ptx_ir/ptx_resolved_ir_checker.hpp"
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
 
 namespace ptx_frontend::resolved_ir {{
 

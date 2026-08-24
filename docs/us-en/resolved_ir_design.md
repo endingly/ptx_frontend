@@ -322,6 +322,6 @@ cross-instruction constraints remain outside the current common checker ABI.
 - A new multi-layout instruction needs tests for normal resolution, an invalid
   layout tag, and a tag/payload mismatch.
 
-Implementation entry points are `include/ptx_ir/resolved/ptx_resolved_ir.hpp`,
-`include/ptx_ir/ptx_resolved_ir_checker.hpp`, and generated
+Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`,
+`submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
 `resolved_ir.gen.hpp`.

@@ -2,6 +2,7 @@
 add_library(common INTERFACE)
 # target_sources(common PRIVATE ${common_srcs})
 add_library(ptx_frontend::common ALIAS common)
+target_compile_features(common INTERFACE cxx_std_23)
 register_headers(
     common
     common

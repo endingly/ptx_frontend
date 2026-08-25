@@ -1,0 +1,34 @@
+@PACKAGE_INIT@
+
+set(@PACKAGE_NAME@_VERSION "@PACKAGE_VERSION@")
+set(@PACKAGE_NAME@_SUPPORTED_COMPONENTS "@PACKAGE_COMPONENTS@")
+
+set(_@PACKAGE_NAME@_unsupported_components "")
+foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
+    if(_@PACKAGE_NAME@_component IN_LIST @PACKAGE_NAME@_SUPPORTED_COMPONENTS)
+        set(@PACKAGE_NAME@_${_@PACKAGE_NAME@_component}_FOUND TRUE)
+    else()
+        set(@PACKAGE_NAME@_${_@PACKAGE_NAME@_component}_FOUND FALSE)
+        list(APPEND _@PACKAGE_NAME@_unsupported_components
+             "${_@PACKAGE_NAME@_component}")
+    endif()
+endforeach()
+
+if(_@PACKAGE_NAME@_unsupported_components)
+    string(CONCAT @PACKAGE_NAME@_NOT_FOUND_MESSAGE
+        "Unsupported @PACKAGE_NAME@ component(s): "
+        "${_@PACKAGE_NAME@_unsupported_components}. Supported components: "
+        "${@PACKAGE_NAME@_SUPPORTED_COMPONENTS}")
+endif()
+
+unset(_@PACKAGE_NAME@_component)
+unset(_@PACKAGE_NAME@_unsupported_components)
+check_required_components(@PACKAGE_NAME@)
+
+if(DEFINED @PACKAGE_NAME@_FOUND AND NOT @PACKAGE_NAME@_FOUND)
+    return()
+endif()
+
+include(CMakeFindDependencyMacro)
+@PACKAGE_DEPENDENCY_CALLS@
+include("${CMAKE_CURRENT_LIST_DIR}/@PACKAGE_NAME@Targets.cmake")

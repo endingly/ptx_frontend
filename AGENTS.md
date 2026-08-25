@@ -12,6 +12,14 @@ When delegating:
 
 These files define project-wide delegation behavior.
 
+## Required skill: Ponytail
+
+Ponytail is mandatory for every coding, design, refactoring, debugging, dependency-selection, and code-review task in this repository.
+
+- Before substantive work, actually load the upstream `ponytail` skill in `full` mode (the default) and keep it active for the task. A link or this summary is not activation. Never claim Ponytail was used or active unless its `SKILL.md` was genuinely loaded; if it is unavailable, say so explicitly and apply these constraints directly.
+- Canonical source and Codex installation: [`DietrichGebert/ponytail`](https://github.com/DietrichGebert/ponytail) — run `codex plugin marketplace add DietrichGebert/ponytail`, then `codex plugin add ponytail@ponytail`; review and trust its hooks in `/hooks`, then start a new thread. Do not vendor a copy into this repository.
+- Minimize only after understanding: read the affected code and trace the real flow end to end, then choose the smallest root-cause solution. Never minimize away required validation, data-loss-preventing error handling, security controls, accessibility, or tests/checks for changed non-trivial behavior.
+
 ## Primary agent responsibilities
 
 The primary Sol agent is responsible for:

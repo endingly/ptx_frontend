@@ -15,7 +15,7 @@ source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved 
 
 ## CST 的所有权与表示
 
-公共 CST 头文件位于 `include/ptx_ir/cst`。`syntax_cst::CstFile` 持有完整
+公共 CST 头文件位于 `submod/cst/include`。`syntax_cst::CstFile` 持有完整
 `PtxToken` buffer；其 `CstRoot` 区分独立 instruction fragment 与 `CstModule`。节点通过
 `TokenId` 引用 file buffer，组合节点另外保存半开区间 `CstTokenRange`。
 

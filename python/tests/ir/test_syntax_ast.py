@@ -637,7 +637,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            '#include "ptx_ir/resolved/ptx_resolved_ir.hpp"',
+            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>',
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)

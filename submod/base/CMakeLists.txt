@@ -1,0 +1,7 @@
+file(GLOB_RECURSE base_srcs CONFIGURE_DEPENDS src/*.cpp)
+add_library(base INTERFACE)
+target_sources(base INTERFACE ${base_srcs})
+add_library(ptx_frontend::base ALIAS base)
+register_headers(base base INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+find_package(magic_enum CONFIG REQUIRED)
+target_link_libraries(base INTERFACE ptx_frontend::common magic_enum::magic_enum)

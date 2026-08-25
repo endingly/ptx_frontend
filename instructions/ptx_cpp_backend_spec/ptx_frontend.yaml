@@ -47,13 +47,13 @@ domains:
       e5m2: ScalarType::E5m2
 
   special_register_kinds:
-    cpp_type: special_registers::SpecialRegisterKind
+    cpp_type: base::SpecialRegisterKind
     values:
-      tid: special_registers::SpecialRegisterKind::Tid
-      ntid: special_registers::SpecialRegisterKind::NTid
-      ctaid: special_registers::SpecialRegisterKind::CtaId
-      nctaid: special_registers::SpecialRegisterKind::NCtaId
-      gridid: special_registers::SpecialRegisterKind::GridId
+      tid: base::SpecialRegisterKind::Tid
+      ntid: base::SpecialRegisterKind::NTid
+      ctaid: base::SpecialRegisterKind::CtaId
+      nctaid: base::SpecialRegisterKind::NCtaId
+      gridid: base::SpecialRegisterKind::GridId
 
   rounding_modes:
     cpp_type: RoundingMode

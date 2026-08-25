@@ -21,6 +21,7 @@ from code_gen.cpp_backend import (
 from code_gen.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
+    MemoryVectorConstraint,
     ModifierSpec,
     ModifierValueSpec,
     OperandParameterConstraint,
@@ -168,6 +169,17 @@ class ResolvedMemoryConsistencyConstraint:
 
 
 @dataclass(frozen=True)
+class ResolvedMemoryVectorConstraint:
+    """Generated field identities for the PTX 8.8 vector cross-rule."""
+
+    type_field_id: str
+    vector_field_id: str
+    address_field_id: str
+    availability: tuple[tuple[str, Any], ...]
+    state_space_field_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
 
@@ -250,6 +262,7 @@ class ResolvedVariant:
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
+    memory_vector: ResolvedMemoryVectorConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -449,6 +462,10 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_consistency,
             {field.source_name: field.name for field in modifier_fields},
         ),
+        memory_vector=_build_memory_vector_constraint(
+            variant.memory_vector,
+            {field.source_name: field.name for field in modifier_fields},
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )
@@ -470,6 +487,24 @@ def _build_memory_consistency_constraint(
         ),
         cache_field_id=modifier_field_ids[constraint.cache_modifier],
         address_field_id=constraint.address_operand,
+        state_space_field_id=(
+            modifier_field_ids[constraint.state_space_modifier]
+            if constraint.state_space_modifier is not None else None
+        ),
+    )
+
+
+def _build_memory_vector_constraint(
+    constraint: MemoryVectorConstraint | None,
+    modifier_field_ids: dict[str, str],
+) -> ResolvedMemoryVectorConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedMemoryVectorConstraint(
+        type_field_id=modifier_field_ids[constraint.type_modifier],
+        vector_field_id=constraint.vector_operand,
+        address_field_id=constraint.address_operand,
+        availability=tuple(constraint.availability.items()),
         state_space_field_id=(
             modifier_field_ids[constraint.state_space_modifier]
             if constraint.state_space_modifier is not None else None

@@ -277,7 +277,9 @@ availability; generic `.f64` does not duplicate it because the generic variant
 already requires SM 20. Data operands use `type: {expr: modifier(type)}`, so
 the runtime modifier and its location drive the common fundamental-type check.
 Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
-types through 64 bits and `.v4` through 32 bits; `.v4` 64-bit is deferred.
+types through 64 bits and `.v4` through 32 bits. A generated `memory_vector`
+constraint additionally permits only 256-bit `.v8` × 32-bit and `.v4` × 64-bit
+forms at PTX 8.8/SM 100, with global space when known.
 A register operand may also select an explicit width policy:
 
 ```yaml
@@ -300,8 +302,8 @@ instruction size, after which either-side bit types and signed/unsigned integer
 pairs are compatible, floats require exact type/size, and integer/float pairs
 remain incompatible. Immediate and special-register checks stay same-width.
 Wider actual registers are currently limited to 64 bits; `.b128` remains
-rejected until declaration-type target availability is checked. `.b128`
-instruction types and modern vector forms remain outside this set.
+rejected until declaration-type target availability is checked. Scalar `.b128`
+instruction types remain outside this set.
 
 A `reg_vector` operand must declare legal element counts through
 `vector.arity`. Static forms use an integer or list:
@@ -309,8 +311,8 @@ A `reg_vector` operand must declare legal element counts through
 ```yaml
 vector: {arity: [2, 4], type_policy: aggregate, allow_sink: true}
 ```
-This sink support is additionally constrained by write access in the operand
-descriptor.
+For memory vectors, the generated cross rule permits partial sinks only for an
+exact 256-bit modern payload; legacy vectors and all-sink forms remain invalid.
 
 Legacy memory vectors instead link arity to the required runtime vector
 modifier:
@@ -328,8 +330,9 @@ modifier:
 `type_policy: aggregate` checks a vector payload against the whole instruction
 bit width and is used by `mov` pack/unpack. `type_policy: element` checks each
 element against the instruction type and is used by legacy memory vectors.
-Those memory vectors are limited to a 128-bit payload: `.v2` through 64-bit
-types and `.v4` through 32-bit types; `.v4` 64-bit remains deferred.
+Those memory vectors retain their 128-bit legacy forms (`.v2` through 64-bit
+types and `.v4` through 32-bit types) and add only the PTX 8.8 256-bit forms
+described above.
 `VectorArity` is a required modifier domain; it has no optional/default form.
 
 Use semantic roles such as `dst`, `src1`, `barrier`, and `thread_count` rather

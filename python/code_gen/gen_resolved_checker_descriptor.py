@@ -123,6 +123,27 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .address_field_id = "{consistency.address_field_id}",
                   .state_space_field_id = "{consistency.state_space_field_id or ""}",
               }},'''
+    vector = variant.memory_vector
+    memory_vector = ""
+    if vector is not None:
+        vector_availability = dict(vector.availability)
+        vector_minimum_ptx = _parse_ptx_version(
+            vector_availability.get("ptx", "0.0")
+        )
+        vector_minimum_sm = int(vector_availability.get("sm", 0))
+        vector_family = str(vector_availability.get("family", ""))
+        memory_vector = f'''
+              .memory_vector = {{
+                  .type_field_id = "{vector.type_field_id}",
+                  .vector_field_id = "{vector.vector_field_id}",
+                  .address_field_id = "{vector.address_field_id}",
+                  .state_space_field_id = "{vector.state_space_field_id or ""}",
+                  .availability = {{
+                      .minimum_ptx_version = {{{vector_minimum_ptx[0]}, {vector_minimum_ptx[1]}}},
+                      .minimum_sm_version = {vector_minimum_sm},
+                      .required_family = "{vector_family}",
+                  }},
+              }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {{
@@ -137,6 +158,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   {variant.cpp_name}_operand_type_compatibilities,
               .rule_id = "{rule_id}",
 {memory_consistency}
+{memory_vector}
           }}"""
 
 

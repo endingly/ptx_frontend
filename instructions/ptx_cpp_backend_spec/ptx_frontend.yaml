@@ -65,12 +65,63 @@ domains:
       rm: RoundingMode::Rm
       rp: RoundingMode::Rp
 
+  cache_operators:
+    cpp_type: CacheOperator
+    default: CacheOperator::Unspecified
+    runtime_lookup: ptx_suffix
+    values:
+      unspecified: CacheOperator::Unspecified
+      ca: CacheOperator::Ca
+      cg: CacheOperator::Cg
+      cs: CacheOperator::Cs
+      lu: CacheOperator::Lu
+      cv: CacheOperator::Cv
+      wb: CacheOperator::Wb
+      wt: CacheOperator::Wt
+
+  vector_arities:
+    cpp_type: VectorArity
+    default: VectorArity::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      v2: VectorArity::V2
+      v4: VectorArity::V4
+
+  memory_state_spaces:
+    cpp_type: MemoryStateSpace
+    default: MemoryStateSpace::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      const: MemoryStateSpace::Constant
+      generic: MemoryStateSpace::Generic
+      global: MemoryStateSpace::Global
+      local: MemoryStateSpace::Local
+      param: MemoryStateSpace::Parameter
+      shared: MemoryStateSpace::Shared
+
+  parameter_directions:
+    cpp_type: ParameterDirection
+    default: ParameterDirection::None
+    values:
+      input: ParameterDirection::Input
+      return: ParameterDirection::Return
+
+  register_width_policies:
+    cpp_type: base::ScalarTypeSizePolicy
+    default: base::ScalarTypeSizePolicy::SameWidth
+    values:
+      same_width: base::ScalarTypeSizePolicy::SameWidth
+      equal_or_wider: base::ScalarTypeSizePolicy::EqualOrWider
+
   modifier_value_cpp_types:
     cpp_type: CppType
     values:
       flag: bool
       type: ScalarType
       rounding: RoundingMode
+      cache: CacheOperator
+      vector: VectorArity
+      state_space: MemoryStateSpace
 
   operand_value_cpp_types:
     cpp_type: CppType
@@ -85,7 +136,7 @@ domains:
       sreg: ResolvedSpecialRegisterRef
       symbol: ResolvedSymbolRef
       addr: ResolvedAddress
-      mov_vector: ResolvedMovVector
+      reg_vector: ResolvedRegisterVector
 
   resolved_value_cpp_types:
     cpp_type: CppType
@@ -93,6 +144,9 @@ domains:
       Bool: bool
       ScalarType: ScalarType
       RoundingMode: RoundingMode
+      CacheOperator: CacheOperator
+      VectorArity: VectorArity
+      MemoryStateSpace: MemoryStateSpace
       Register: ResolvedRegisterRef
       Predicate: ResolvedPredicate
       Immediate: ResolvedImmediate
@@ -102,7 +156,7 @@ domains:
       SpecialRegister: ResolvedSpecialRegisterRef
       Symbol: ResolvedSymbolRef
       Address: ResolvedAddress
-      MovVector: ResolvedMovVector
+      RegisterVector: ResolvedRegisterVector
 
   modifier_field_names:
     cpp_type: CppIdentifier
@@ -147,6 +201,9 @@ domains:
       Bool: check_end::ResolvedValueKind::Bool
       ScalarType: check_end::ResolvedValueKind::ScalarType
       RoundingMode: check_end::ResolvedValueKind::RoundingMode
+      CacheOperator: check_end::ResolvedValueKind::CacheOperator
+      VectorArity: check_end::ResolvedValueKind::VectorArity
+      MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
       Register: check_end::ResolvedValueKind::Register
       Predicate: check_end::ResolvedValueKind::Predicate
       Immediate: check_end::ResolvedValueKind::Immediate
@@ -156,7 +213,7 @@ domains:
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
       Symbol: check_end::ResolvedValueKind::Symbol
       Address: check_end::ResolvedValueKind::Address
-      MovVector: check_end::ResolvedValueKind::MovVector
+      RegisterVector: check_end::ResolvedValueKind::RegisterVector
 
   resolved_operand_roles:
     cpp_type: check_end::OperandRole
@@ -202,6 +259,8 @@ domains:
       Bool: check_end::ResolvedModifierDefaultKind::Bool
       ScalarType: check_end::ResolvedModifierDefaultKind::ScalarType
       RoundingMode: check_end::ResolvedModifierDefaultKind::RoundingMode
+      CacheOperator: check_end::ResolvedModifierDefaultKind::CacheOperator
+      MemoryStateSpace: check_end::ResolvedModifierDefaultKind::MemoryStateSpace
 
   checker_modifier_value_kinds:
     cpp_type: checker::ModifierValueKind
@@ -209,6 +268,9 @@ domains:
       bool: checker::ModifierValueKind::Bool
       ScalarType: checker::ModifierValueKind::ScalarType
       RoundingMode: checker::ModifierValueKind::RoundingMode
+      CacheOperator: checker::ModifierValueKind::CacheOperator
+      VectorArity: checker::ModifierValueKind::VectorArity
+      MemoryStateSpace: checker::ModifierValueKind::MemoryStateSpace
 
 # Per-instruction C++ overrides remain available in the model/schema, but the
 # current resolved-IR generator derives instruction structure from ISA YAML.

@@ -19,10 +19,13 @@ type families accept register, immediate, and special-register sources; the
 32/64-bit forms also accept data-symbol, `symbol+offset`, function-address, and
 legal formal-parameter-address sources. Bit-size forms also support two/four-
 element vector pack/unpack; `.b128` is vector-only. `mov.pred` reuses the declaration-aware
-`ResolvedPredicate` representation. `ld.u32 d, [address]` exercises the
-dereferenced-address path. Other type/source forms,
-complete memory qualifiers, `call` groups, CFG/SSA, and target lowering remain
-later work.
+`ResolvedPredicate` representation. Generic and basic explicit-space scalar
+plus legacy `.v2/.v4` vector `ld`/`st` exercise the dereferenced-address path
+for 14 bit-size, integer, and floating-point types from 8 through 64 bits.
+Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
+types through 64 bits, `.v4` through 32 bits, and `.v4` 64-bit remains deferred.
+Other source forms, modern memory vectors, complete memory qualifiers, `call`
+groups, CFG/SSA, and target lowering remain later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -128,7 +131,7 @@ numbered predicate registers without declaration context.
 
 Scalar and vector `mov` share one dynamic type-modifier variant because their
 `.b16/.b32/.b64` modifier forms are identical. Three operand layouts represent
-scalar, pack, and unpack forms without duplicate variants. `ResolvedMovVector`
+scalar, pack, and unpack forms without duplicate variants. `ResolvedRegisterVector`
 stores two or four optional `ResolvedRegisterRef` elements; an empty element is
 the destination-only `_` sink. Resolution and checking require a bit-size
 instruction type, equal total vector/instruction widths, no source sink, at
@@ -166,10 +169,69 @@ A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
 add/subtract operator and a parsed signed 64-bit value.
 A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
 address value restricted to an addressable data-symbol or formal-parameter
-base. `ld.u32 d, [address]` requires bracketed dereference and
-covers register, immediate, and bound-symbol bases under generic addressing.
-Explicit state spaces and the complete memory-qualifier surface remain outside
-this subset.
+base. Scalar and legacy `.v2/.v4` `ld`/`st` require bracketed dereference and
+cover register, immediate, and bound-symbol bases. Each opcode uses
+`GenericScalar`, `ExplicitScalar`, `GenericVector`, and `ExplicitVector`
+variants. Their runtime type field accepts `.b8/.b16/.b32/.b64`,
+`.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; `.b128` is not a
+memory type in the current model. Vector variants add a required runtime
+`.v2/.v4` field, and the register-vector operand descriptor links its expected
+element count to that field rather than duplicating variants per arity. Memory
+vectors use element type policy: each register element is checked against the
+instruction type, with `EqualOrWider` register width accepted and `_` sinks
+rejected. Their payload is capped at 128 bits: `.v2` accepts modeled types
+through 64 bits and `.v4` through 32 bits; `.v4` 64-bit remains deferred. The
+default register-width policy is `SameWidth`, preserving
+`mov/add/sub`, immediate, and special-register behavior. Only `ld` destination
+and `st` source register descriptors select `EqualOrWider`, so the declared
+register may be at least as wide as the instruction type. After that size
+check, either side being a bit type is compatible, signed/unsigned fundamental
+integers are mutually compatible, floats require the exact type/size, and
+integer/float combinations remain incompatible. This covers wider load
+destinations and store sources through 64-bit declared registers, including
+store truncation. A wider actual `.b128` register is deliberately rejected
+until declaration-type target availability is represented and checked; exact
+`.b128` compatibility remains unchanged for its existing `mov` vector
+consumers.
+
+Explicit loads accept `.const/.global/.local/.param/.shared`, while stores
+accept `.global/.local/.param/.shared`. `WithLocs` retains both runtime
+state-space/type modifiers and their source ranges. Explicit `.f64` adds SM 13
+through modifier-value availability; generic `.f64` needs no separate SM rule
+because the generic variant already requires SM 20. Generated operand views
+translate a bound symbol's effective address space, rather than its declaration
+spelling, and the checker reports `AddressStateSpaceMismatch` when it differs
+from the runtime field. Generic operand descriptors carry a static bound-space
+allowlist with per-entry availability: loads accept known
+`.const/.global/.local/.shared` addresses, with `.const` requiring PTX 3.1,
+while stores accept `.global/.local/.shared` and reject known `.const` or
+`.param` addresses. Explicit `ld.const` itself remains in the PTX 1.0 basic
+explicit baseline.
+
+Legacy cache operators are modeled on the same scalar/vector `ld/st` variants
+rather than by duplicating variants per cache spelling. Loads accept
+runtime `.ca/.cg/.cs/.lu/.cv`, stores accept runtime `.wb/.cg/.cs/.wt`, and
+every explicit cache spelling carries PTX 2.0 / SM 20 modifier-value
+availability. When source omits cache, Resolved IR stores
+`CacheOperator::Unspecified` with empty `locs`. That sentinel is intentional
+provenance metadata, not a claim that PTX lacks an effective hardware default:
+the ISA still makes omitted `ld` behave as `.ca` and omitted `st` behave as
+`.wb`, while the IR preserves `Unspecified` so omitted source does not masquerade
+as an explicit modifier and does not trigger cache-value availability checks.
+
+`ResolvedAddress` separately records the enclosing function kind. Generated
+address views derive an optional parameter direction only from a bound
+`InputParameter` or `ReturnParameter`; they do not infer it from spelling.
+For explicit `.param`, the generated operand constraint requires input
+parameters for `ld` and return parameters for `st`. A known wrong direction
+reports `ParameterDirectionMismatch` without stacking target diagnostics. A
+device-function `ld.param`, and every `st.param`, apply the YAML-provided PTX
+2.0 / SM 20 function-availability constraint. A kernel input `ld.param`
+retains the explicit-form baseline, while an address with unknown identity is
+not assigned a direction. Its known device-function provenance still triggers
+the load constraint; an unknown standalone load context does not. This
+contextual rule does not change `ResolvedSymbolRef::address_availability`,
+which continues to describe address-value semantics such as `mov`.
 
 ## Opcode-generated structures
 
@@ -288,7 +350,7 @@ One YAML specification generates three static descriptors with distinct roles:
 | Descriptor | Responsibility |
 | --- | --- |
 | Syntax descriptor | modifier spellings/presence, AST operand shapes, and layout slots |
-| Resolved descriptor | resolved field kinds, modifier/operand bindings, structured type expressions, roles, and access |
+| Resolved descriptor | resolved field kinds, modifier/operand bindings, structured type/state-space expressions, static state-space allowlists with per-entry availability, roles, and access |
 | Checker descriptor | variant/layout/value availability, operand type compatibility, and rule ID |
 
 They must not duplicate each other: syntax descriptors do not store resolved C++
@@ -307,10 +369,18 @@ Each generated `checker::check<T>` wrapper uses common checking for:
 - special-register intrinsic metadata and contextual type/availability selected
   by the current instruction width; this creates only a temporary checking view
   and does not change Resolved IR.
+- static generic state-space allowlists and explicit modifier-derived
+  constraints against known effective bound-symbol address spaces, including
+  per-entry target availability; unknown register/immediate/standalone bases
+  are not inferred.
+- explicit `.param` input/return direction and function-context availability
+  from the generated operand constraint; direction mismatches take precedence
+  over that contextual availability.
 
 `rule_id` is reserved for typed instruction-specific rules. Register visibility
-and `.reg` state space are checked during module resolution; address spaces and
-cross-instruction constraints remain outside the current common checker ABI.
+and `.reg` state space are checked during module resolution; the common checker
+handles generated address-space constraints, while cross-instruction
+constraints remain outside its ABI.
 
 ## Extension rules
 
@@ -325,3 +395,9 @@ cross-instruction constraints remain outside the current common checker ABI.
 Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`,
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
 `resolved_ir.gen.hpp`.
+
+Function-local call-argument `.param` memory, qualified `::entry`/`::func`
+forms, call adjacency/predication constraints, modern memory vector forms,
+`.b128`, declaration-type availability for wider `.b128` registers, and memory
+consistency qualifiers remain outside this slice. Legacy scalar/vector `ld/st`
+cache operators and legacy `.v2/.v4` braced memory vectors are covered here.

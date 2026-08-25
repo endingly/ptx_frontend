@@ -7,6 +7,26 @@ category: data_movement_and_conversion
 codegen_category: data_movement
 section: "9.7.9"
 
+type_sets:
+  ld_st_scalar_types:
+    - b8
+    - b16
+    - b32
+    - b64
+    - u8
+    - u16
+    - u32
+    - u64
+    - s8
+    - s16
+    - s32
+    - s64
+    - f32
+
+value_sets:
+  ld_cache_operators: [ca, cg, cs, lu, cv]
+  st_cache_operators: [wb, cg, cs, wt]
+
 operand_patterns:
   mov_scalar:
     - name: dst
@@ -42,7 +62,7 @@ operand_patterns:
       type:
         expr: modifier(type)
     - name: src
-      kind: mov_vector
+      kind: reg_vector
       role: src
       access: read
       type:
@@ -53,7 +73,7 @@ operand_patterns:
 
   mov_unpack:
     - name: dst
-      kind: mov_vector
+      kind: reg_vector
       role: dst
       access: write
       type:
@@ -61,22 +81,180 @@ operand_patterns:
       vector:
         kind: vector
         arity: [2, 4]
+        allow_sink: true
     - name: src
       kind: reg
       role: src
       access: read
       type:
         expr: modifier(type)
-  ld_u32_address:
+  ld_scalar:
     - name: dst
       kind: reg
       role: dst
       access: write
-      type: u32
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
     - name: address
       kind: addr
       role: addr
       access: read
+      state_space:
+        - value: const
+          availability:
+            ptx: "3.1"
+        - global
+        - local
+        - shared
+
+  ld_explicit_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: input
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+
+  ld_vector:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        - value: const
+          availability:
+            ptx: "3.1"
+        - global
+        - local
+        - shared
+
+  ld_explicit_vector:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: input
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+
+  st_scalar:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global, local, shared]
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+
+  st_vector:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global, local, shared]
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+
+  st_explicit_vector:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: return
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+
+  st_explicit_scalar:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: return
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
 
 instructions:
   - opcode: mov
@@ -219,27 +397,301 @@ instructions:
   - opcode: ld
     section: "9.7.9.8"
     doc: >
-      Scalar u32 load through a generic address. Explicit state spaces,
-      cache/consistency qualifiers, vectors, and other data widths remain
-      separate coverage.
-    syntax: "ld.u32 dst, [address]"
+      Scalar and legacy v2/v4 8/16/32/64-bit integer, bit-size, and 32/64-bit
+      floating-point load through a generic address or the basic explicit
+      const, global, local, parameter, and shared spaces. Other qualifiers and
+      newer vector extensions remain separate coverage.
+    syntax: "ld{.const|.global|.local|.param|.shared}{.v2|.v4}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} dst, [address]"
 
     variants:
-      - name: ld_generic_u32
+      - name: ld_generic_scalar
         availability:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
           - name: type
             kind: type
             domain: scalar_types
-            presence: fixed
-            value: u32
-        operands: $ld_u32_address
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $ld_scalar
         rule: data_movement.ld_generic
 
         examples:
           - ptx: "ld.u32 %r0, [%rd0+4];"
             valid: true
           - ptx: "ld.u32 %r0, [global_value];"
+            valid: true
+
+      - name: ld_explicit_scalar
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [const, global, local, param, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $ld_explicit_scalar
+        rule: data_movement.ld_explicit
+
+        examples:
+          - ptx: "ld.global.u32 %r0, [global_value];"
+            valid: true
+          - ptx: "ld.shared.u32 %r0, [shared_value];"
+            valid: true
+
+      - name: ld_generic_vector
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values: [v2, v4]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $ld_vector
+        rule: data_movement.ld_generic
+
+        examples:
+          - ptx: "ld.v2.u32 {%r0, %r1}, [%rd0];"
+            valid: true
+          - ptx: "ld.v4.u16 {%h0, %h1, %h2, %h3}, [%rd0];"
+            valid: true
+
+      - name: ld_explicit_vector
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [const, global, local, param, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values: [v2, v4]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $ld_explicit_vector
+        rule: data_movement.ld_explicit
+
+        examples:
+          - ptx: "ld.global.v2.u32 {%r0, %r1}, [global_value];"
+            valid: true
+          - ptx: "ld.shared.v4.u16 {%h0, %h1, %h2, %h3}, [shared_value];"
+            valid: true
+
+  - opcode: st
+    section: "9.7.9.11"
+    doc: >
+      Scalar and legacy v2/v4 8/16/32/64-bit integer, bit-size, and 32/64-bit
+      floating-point store through a generic address or the basic explicit
+      global, local, parameter, and shared spaces. Other qualifiers and newer
+      vector extensions remain separate coverage.
+    syntax: "st{.global|.local|.param|.shared}{.v2|.v4}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} [address], src"
+
+    variants:
+      - name: st_generic_scalar
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $st_scalar
+        rule: data_movement.st_generic
+
+        examples:
+          - ptx: "st.u32 [%rd0+4], %r0;"
+            valid: true
+
+      - name: st_explicit_scalar
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [global, local, param, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $st_explicit_scalar
+        rule: data_movement.st_explicit
+
+        examples:
+          - ptx: "st.global.u32 [global_value], %r0;"
+            valid: true
+          - ptx: "st.local.u32 [local_value], %r0;"
+            valid: true
+
+      - name: st_generic_vector
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values: [v2, v4]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $st_vector
+        rule: data_movement.st_generic
+
+        examples:
+          - ptx: "st.v2.u32 [%rd0], {%r0, %r1};"
+            valid: true
+          - ptx: "st.v4.u16 [%rd0], {%h0, %h1, %h2, %h3};"
+            valid: true
+
+      - name: st_explicit_vector
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [global, local, param, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values: [v2, v4]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $st_explicit_vector
+        rule: data_movement.st_explicit
+
+        examples:
+          - ptx: "st.global.v2.u32 [global_value], {%r0, %r1};"
+            valid: true
+          - ptx: "st.shared.v4.u16 [shared_value], {%h0, %h1, %h2, %h3};"
             valid: true

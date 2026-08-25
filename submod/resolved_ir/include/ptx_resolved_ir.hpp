@@ -22,6 +22,7 @@
 namespace ptx_frontend::resolved_ir {
 using base::ScalarType;
 using base::RoundingMode;
+using base::CacheOperator;
 namespace check_end {
 
 using OperandShape = checker::OperandShape;
@@ -62,6 +63,9 @@ enum class ResolvedValueKind : uint8_t {
   Bool,
   ScalarType,
   RoundingMode,
+  CacheOperator,
+  VectorArity,
+  MemoryStateSpace,
   Register,
   Predicate,
   Immediate,
@@ -71,7 +75,7 @@ enum class ResolvedValueKind : uint8_t {
   SpecialRegister,
   Symbol,
   Address,
-  MovVector,
+  RegisterVector,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -126,6 +130,8 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   Bool,
   ScalarType,
   RoundingMode,
+  CacheOperator,
+  MemoryStateSpace,
 };
 
 struct ResolvedModifierDefaultDescriptor {
@@ -133,6 +139,8 @@ struct ResolvedModifierDefaultDescriptor {
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
+  CacheOperator cache_operator = CacheOperator::Unspecified;
+  MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
 };
 
 struct ResolvedModifierBindingDescriptor {
@@ -209,9 +217,9 @@ struct ResolvedImmediate {
 };
 
 /** A register vector; an empty element is the write-only ``_`` sink. */
-struct ResolvedMovVector {
+struct ResolvedRegisterVector {
   std::vector<std::optional<ResolvedRegisterRef>> elements;
-  bool operator==(const ResolvedMovVector&) const = default;
+  bool operator==(const ResolvedRegisterVector&) const = default;
 };
 
 struct ResolvedPredicate {
@@ -284,6 +292,8 @@ using ResolvedAddressBase =
 struct ResolvedAddress {
   ResolvedAddressBase base;
   std::optional<ResolvedAddressOffset> offset;
+  /** Instruction context captured by module resolution; standalone is unknown. */
+  EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
   bool operator==(const ResolvedAddress&) const = default;
 };
 
@@ -303,12 +313,14 @@ using ResolvedMovSource =
 
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
+                 WithLocs<CacheOperator>, WithLocs<VectorArity>,
+                 WithLocs<MemoryStateSpace>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
-                 WithLocs<ResolvedMovVector>>;
+                 WithLocs<ResolvedRegisterVector>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {

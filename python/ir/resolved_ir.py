@@ -22,10 +22,16 @@ from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
     ModifierValueSpec,
+    OperandParameterConstraint,
+    OperandRegisterWidthPolicy,
     OperandSpec,
+    OperandStateSpaceExpression,
+    OperandStateSpaceValue,
     OperandTypeCompatibilitySpec,
     OperandTypeExpression,
     OperandTypeExpressionKind,
+    OperandVectorArityExpression,
+    OperandVectorTypePolicy,
     VariantSpec,
 )
 
@@ -43,6 +49,9 @@ class ResolvedValueKind(Enum):
     BOOL = "Bool"
     SCALAR_TYPE = "ScalarType"
     ROUNDING_MODE = "RoundingMode"
+    CACHE_OPERATOR = "CacheOperator"
+    VECTOR_ARITY = "VectorArity"
+    MEMORY_STATE_SPACE = "MemoryStateSpace"
     REGISTER = "Register"
     PREDICATE = "Predicate"
     IMMEDIATE = "Immediate"
@@ -52,7 +61,7 @@ class ResolvedValueKind(Enum):
     SPECIAL_REGISTER = "SpecialRegister"
     SYMBOL = "Symbol"
     ADDRESS = "Address"
-    MOV_VECTOR = "MovVector"
+    REGISTER_VECTOR = "RegisterVector"
 
 
 class ResolvedFieldStorage(Enum):
@@ -104,6 +113,20 @@ class ResolvedOperandTypeExpressionKind(Enum):
     MODIFIER_FIELD = "ModifierField"
 
 
+class ResolvedRegisterWidthPolicy(Enum):
+    """Descriptor-facing register-size relation for a typed operand."""
+
+    SAME_WIDTH = "same_width"
+    EQUAL_OR_WIDER = "equal_or_wider"
+
+
+class ResolvedVectorTypePolicy(Enum):
+    """Descriptor-facing interpretation of an instruction type for vectors."""
+
+    AGGREGATE = "Aggregate"
+    ELEMENT = "Element"
+
+
 @dataclass(frozen=True)
 class ResolvedOperandTypeExpression:
     """A resolved, descriptor-ready operand scalar-type expression."""
@@ -111,6 +134,22 @@ class ResolvedOperandTypeExpression:
     kind: ResolvedOperandTypeExpressionKind
     scalar_type: str | None = None
     modifier_field_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedAddressStateSpace:
+    """One statically accepted effective address space and its availability."""
+
+    value: str
+    availability: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class ResolvedParameterAddressConstraint:
+    """Descriptor-ready direction and function availability for .param."""
+
+    direction: str
+    function_availability: tuple[tuple[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -164,6 +203,14 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.ROUNDING_MODES, self.constant_value)
+        if self.value_cpp_type == "CacheOperator" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.CACHE_OPERATORS, self.constant_value)
+        if self.value_cpp_type == "MemoryStateSpace" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.MEMORY_STATE_SPACES, self.constant_value)
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"
@@ -243,10 +290,17 @@ class ResolvedOperandBinding:
 
     target_field_id: str
     type_expression: ResolvedOperandTypeExpression
+    register_width_policy: ResolvedRegisterWidthPolicy
     role: ResolvedOperandRole
     access: ResolvedOperandAccess
     allowed_shapes: tuple[ResolvedOperandShape, ...]
+    allowed_address_state_spaces: tuple[ResolvedAddressStateSpace, ...] = ()
+    state_space_modifier_field_id: str | None = None
+    parameter_constraint: ResolvedParameterAddressConstraint | None = None
     allowed_vector_arities: tuple[int, ...] = ()
+    vector_arity_modifier_field_id: str | None = None
+    vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
+    allow_vector_sink: bool = False
 
 
 @dataclass(frozen=True)
@@ -289,7 +343,7 @@ _OPERAND_ALLOWED_SHAPES = {
     "sreg": (ResolvedOperandShape.SPECIAL_REGISTER,),
     "symbol": (ResolvedOperandShape.SYMBOL,),
     "addr": (ResolvedOperandShape.ADDRESS,),
-    "mov_vector": (ResolvedOperandShape.VECTOR,),
+    "reg_vector": (ResolvedOperandShape.VECTOR,),
 }
 
 _OPERAND_ROLES = {
@@ -421,6 +475,28 @@ def _build_modifier_default(
                 f"optional rounding modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
+    if value_cpp_type == "CacheOperator":
+        if not isinstance(modifier.default, str):
+            raise ValueError(
+                f"optional cache modifier {modifier.name!r} must have a "
+                "string default"
+            )
+        if modifier.default not in cpp_domain(CppDomain.CACHE_OPERATORS).values:
+            raise ValueError(
+                f"optional cache modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "MemoryStateSpace":
+        if not isinstance(modifier.default, str):
+            raise ValueError(
+                f"optional state-space modifier {modifier.name!r} must have a "
+                "string default"
+            )
+        if modifier.default not in cpp_domain(CppDomain.MEMORY_STATE_SPACES).values:
+            raise ValueError(
+                f"optional state-space modifier {modifier.name!r} has "
+                f"unsupported default {modifier.default!r}"
+            )
     return ResolvedModifierDefault(
         value_cpp_type=value_cpp_type,
         value=modifier.default,
@@ -455,6 +531,36 @@ def _build_modifier_value_availability(
         if value.value not in cpp_domain(CppDomain.ROUNDING_MODES).values:
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported rounding value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "CacheOperator":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: cache value must be a string"
+            )
+        if value.value not in cpp_domain(CppDomain.CACHE_OPERATORS).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported cache value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "VectorArity":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: vector value must be a string"
+            )
+        if value.value not in cpp_domain(CppDomain.VECTOR_ARITIES).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported vector value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "MemoryStateSpace":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: state-space value must be a string"
+            )
+        if value.value not in cpp_domain(CppDomain.MEMORY_STATE_SPACES).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported state-space value "
                 f"{value.value!r}"
             )
     return ResolvedModifierValueAvailability(
@@ -508,10 +614,35 @@ def _build_operand_layout(
                     operand.type_expression,
                     modifier_field_ids,
                 ),
+                register_width_policy=ResolvedRegisterWidthPolicy(
+                    operand.register_width_policy.value
+                ),
                 role=_require_operand_role(field),
                 access=_require_operand_access(field),
                 allowed_shapes=field.allowed_operand_shapes,
+                allowed_address_state_spaces=_resolve_operand_state_spaces(
+                    operand.state_space_values
+                ),
+                state_space_modifier_field_id=(
+                    _resolve_operand_state_space_expression(
+                        operand.state_space_expression,
+                        modifier_field_ids,
+                    )
+                ),
+                parameter_constraint=_resolve_parameter_address_constraint(
+                    operand.parameter_constraint
+                ),
                 allowed_vector_arities=operand.vector_arities,
+                vector_arity_modifier_field_id=(
+                    _resolve_operand_vector_arity_expression(
+                        operand.vector_arity_expression,
+                        modifier_field_ids,
+                    )
+                ),
+                vector_type_policy=ResolvedVectorTypePolicy(
+                    operand.vector_type_policy.value.capitalize()
+                ),
+                allow_vector_sink=operand.vector_allow_sink,
             )
             for operand, field in zip(operands, fields, strict=True)
         ),
@@ -617,6 +748,76 @@ def _resolve_operand_type_expression(
             modifier_field_id=field_id,
         )
     raise AssertionError(f"unhandled operand type expression: {expression.kind}")
+
+
+def _resolve_operand_state_space_expression(
+    expression: OperandStateSpaceExpression | None,
+    modifier_field_ids: dict[str, str],
+) -> str | None:
+    """Map ``modifier(name)`` to its generated resolved field identifier."""
+
+    if expression is None:
+        return None
+    try:
+        return modifier_field_ids[expression.modifier_name]
+    except KeyError as error:
+        raise ValueError(
+            "operand state-space expression references unresolved modifier "
+            f"{expression.modifier_name!r}"
+        ) from error
+
+
+def _resolve_operand_vector_arity_expression(
+    expression: OperandVectorArityExpression | None,
+    modifier_field_ids: dict[str, str],
+) -> str | None:
+    """Map a vector arity expression to its generated resolved field id."""
+
+    if expression is None:
+        return None
+    try:
+        return modifier_field_ids[expression.modifier_name]
+    except KeyError as error:
+        raise ValueError(
+            "operand vector arity expression references unresolved modifier "
+            f"{expression.modifier_name!r}"
+        ) from error
+
+
+def _resolve_operand_state_spaces(
+    values: tuple[OperandStateSpaceValue, ...],
+) -> tuple[ResolvedAddressStateSpace, ...]:
+    """Validate static state spaces against the semantic C++ value domain."""
+
+    supported = cpp_domain(CppDomain.MEMORY_STATE_SPACES).values
+    result: list[ResolvedAddressStateSpace] = []
+    for value in values:
+        if value.value not in supported:
+            raise ValueError(
+                f"unsupported resolved operand state space {value.value!r}"
+            )
+        result.append(
+            ResolvedAddressStateSpace(
+                value=value.value,
+                availability=tuple(value.availability.items()),
+            )
+        )
+    return tuple(result)
+
+
+def _resolve_parameter_address_constraint(
+    constraint: OperandParameterConstraint | None,
+) -> ResolvedParameterAddressConstraint | None:
+    if constraint is None:
+        return None
+    if constraint.direction not in cpp_domain(CppDomain.PARAMETER_DIRECTIONS).values:
+        raise ValueError(
+            f"unsupported resolved parameter direction {constraint.direction!r}"
+        )
+    return ResolvedParameterAddressConstraint(
+        direction=constraint.direction,
+        function_availability=tuple(constraint.function_availability.items()),
+    )
 
 
 def _require_operand_role(field: ResolvedField) -> ResolvedOperandRole:

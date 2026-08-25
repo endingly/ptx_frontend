@@ -21,6 +21,7 @@ from code_gen.gen_syntax_ast_arch import (
     generate_syntax_descriptor_source,
 )
 from code_gen.load_yaml import expand_value_refs
+from code_gen.model import OperandRegisterWidthPolicy, OperandVectorTypePolicy
 from code_gen.normalize import normalize_instruction_spec
 from ir.syntax_ast import from_InstructionSpec
 from ir.syntax_ast import (
@@ -515,6 +516,422 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 ],
             )
 
+    def test_state_space_expression_requires_active_state_space_modifier(self) -> None:
+        def normalize_with_modifier(modifier: dict[str, object]):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [modifier],
+                                    "operands": [
+                                        {
+                                            "name": "address",
+                                            "kind": "addr",
+                                            "role": "addr",
+                                            "access": "read",
+                                            "state_space": {
+                                                "expr": "modifier(state_space)"
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        instruction = normalize_with_modifier(
+            {
+                "name": "state_space",
+                "kind": "state_space",
+                "presence": "fixed",
+                "domain": "state_spaces",
+                "value": "global",
+            }
+        )[0]
+        expression = instruction.variants[0].operand_layouts[0].operands[
+            0
+        ].state_space_expression
+        self.assertIsNotNone(expression)
+        self.assertEqual(expression.modifier_name, "state_space")
+
+        with self.assertRaisesRegex(ValueError, "active state-space modifier"):
+            normalize_with_modifier(
+                {
+                    "name": "state_space",
+                    "kind": "type",
+                    "presence": "fixed",
+                    "domain": "scalar_types",
+                    "value": "u32",
+                }
+            )
+
+    def test_operand_state_space_allowlist_normalization(self) -> None:
+        def normalize_state_space(state_space: object, kind: str = "addr"):
+            instruction = normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "operands": [
+                                        {
+                                            "name": "address",
+                                            "kind": kind,
+                                            "role": "addr",
+                                            "access": "read",
+                                            "state_space": state_space,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0]
+            return instruction.variants[0].operand_layouts[0].operands[0]
+
+        scalar = normalize_state_space("global")
+        self.assertEqual(
+            [(entry.value, entry.availability) for entry in scalar.state_space_values],
+            [("global", {})],
+        )
+        self.assertIsNone(scalar.state_space_expression)
+
+        values = normalize_state_space(
+            [
+                "global",
+                {"value": "const", "availability": {"ptx": "3.1"}},
+            ]
+        ).state_space_values
+        self.assertEqual(
+            [(entry.value, entry.availability) for entry in values],
+            [("global", {}), ("const", {"ptx": "3.1"})],
+        )
+
+        with self.assertRaisesRegex(ValueError, "duplicate operand state space"):
+            normalize_state_space(
+                [
+                    "global",
+                    {"value": "global", "availability": {"ptx": "2.0"}},
+                ]
+            )
+        with self.assertRaisesRegex(ValueError, "unknown operand state space"):
+            normalize_state_space(["missing"])
+        with self.assertRaisesRegex(ValueError, "value and availability"):
+            normalize_state_space([{"value": "const"}])
+        with self.assertRaisesRegex(ValueError, "modifier expression"):
+            normalize_state_space(
+                {"expr": "modifier(state_space)", "value": "global"}
+            )
+        for non_address_state_space in (
+            "global",
+            {"expr": "modifier(state_space)"},
+        ):
+            with self.subTest(state_space=non_address_state_space):
+                with self.assertRaisesRegex(
+                    ValueError, "address constraints.*kind 'addr'"
+                ):
+                    normalize_state_space(non_address_state_space, kind="reg")
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            normalize_state_space([])
+
+    def test_parameter_address_constraint_normalization(self) -> None:
+        default_state_space = object()
+        default_parameter = object()
+
+        def normalize_parameter(
+            modifier: dict[str, object],
+            *,
+            kind: str = "addr",
+            state_space: object = default_state_space,
+            parameter: object = default_parameter,
+        ):
+            if state_space is default_state_space:
+                state_space = {"expr": "modifier(state_space)"}
+            if parameter is default_parameter:
+                parameter = {
+                    "direction": "input",
+                    "function_availability": {"ptx": "2.0", "sm": 20},
+                }
+            instruction = normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [modifier],
+                                    "operands": [
+                                        {
+                                            "name": "address",
+                                            "kind": kind,
+                                            "role": "addr",
+                                            "access": "read",
+                                            "state_space": state_space,
+                                            "parameter": parameter,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0]
+            return instruction.variants[0].operand_layouts[0].operands[0]
+
+        required_modifier = {
+            "name": "state_space",
+            "kind": "state_space",
+            "presence": "required",
+            "domain": "state_spaces",
+            "values": ["global", "param"],
+        }
+        operand = normalize_parameter(required_modifier)
+        self.assertEqual(operand.parameter_constraint.direction, "input")
+        self.assertEqual(
+            operand.parameter_constraint.function_availability,
+            {"ptx": "2.0", "sm": 20},
+        )
+
+        fixed_modifier = {
+            "name": "state_space",
+            "kind": "state_space",
+            "presence": "fixed",
+            "domain": "state_spaces",
+            "value": "param",
+        }
+        self.assertIsNotNone(normalize_parameter(fixed_modifier).parameter_constraint)
+
+        with self.assertRaisesRegex(ValueError, "address constraints.*kind 'addr'"):
+            normalize_parameter(required_modifier, kind="reg")
+        with self.assertRaisesRegex(ValueError, "requires a state_space modifier"):
+            normalize_parameter(required_modifier, state_space=None)
+        without_param = dict(required_modifier, values=["global"])
+        with self.assertRaisesRegex(ValueError, "allow \\.param"):
+            normalize_parameter(without_param)
+        with self.assertRaisesRegex(ValueError, "unsupported parameter direction"):
+            normalize_parameter(
+                required_modifier,
+                parameter={
+                    "direction": "both",
+                    "function_availability": {"ptx": "2.0"},
+                },
+            )
+        with self.assertRaisesRegex(ValueError, "must contain direction"):
+            normalize_parameter(
+                required_modifier,
+                parameter={"direction": "input"},
+            )
+
+    def test_register_width_policy_normalization(self) -> None:
+        default_type = object()
+
+        def normalize_width(
+            *,
+            kind: str = "reg",
+            operand_type: object = default_type,
+            register_width: object = "equal_or_wider",
+        ):
+            if operand_type is default_type:
+                operand_type = {"expr": "modifier(type)"}
+            instruction = normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [
+                                        {
+                                            "name": "type",
+                                            "kind": "type",
+                                            "domain": "scalar_types",
+                                            "presence": "fixed",
+                                            "value": "u32",
+                                        }
+                                    ],
+                                    "operands": [
+                                        {
+                                            "name": "value",
+                                            "kind": kind,
+                                            "role": "src",
+                                            "access": "read",
+                                            "type": operand_type,
+                                            "register_width": register_width,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0]
+            return instruction.variants[0].operand_layouts[0].operands[0]
+
+        operand = normalize_width()
+        self.assertEqual(
+            operand.register_width_policy,
+            OperandRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
+        self.assertEqual(
+            normalize_width(register_width="same_width").register_width_policy,
+            OperandRegisterWidthPolicy.SAME_WIDTH,
+        )
+        with self.assertRaisesRegex(ValueError, "only valid for kind 'reg'"):
+            normalize_width(kind="reg_or_imm")
+        with self.assertRaisesRegex(ValueError, "requires a type expression"):
+            normalize_width(operand_type=None)
+        with self.assertRaisesRegex(ValueError, "unsupported register_width"):
+            normalize_width(register_width="wider")
+
+    def test_register_vector_arity_expression_normalization(self) -> None:
+        instruction = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_vector",
+                                "availability": {"ptx": "1.0"},
+                                "modifiers": [
+                                    {
+                                        "name": "vector",
+                                        "kind": "vector",
+                                        "domain": "vector_arities",
+                                        "presence": "required",
+                                        "values": ["v2", "v4"],
+                                    },
+                                    {
+                                        "name": "type",
+                                        "kind": "type",
+                                        "domain": "scalar_types",
+                                        "presence": "required",
+                                        "values": ["u32"],
+                                    },
+                                ],
+                                "operands": [
+                                    {
+                                        "name": "dst",
+                                        "kind": "reg_vector",
+                                        "role": "dst",
+                                        "access": "write",
+                                        "type": {"expr": "modifier(type)"},
+                                        "register_width": "equal_or_wider",
+                                        "vector": {
+                                            "kind": "vector",
+                                            "arity": {
+                                                "expr": "modifier(vector)",
+                                            },
+                                            "type_policy": "element",
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )[0]
+        operand = instruction.variants[0].operand_layouts[0].operands[0]
+        self.assertEqual(operand.vector_arities, ())
+        self.assertEqual(operand.vector_arity_expression.modifier_name, "vector")
+        self.assertEqual(
+            operand.vector_type_policy,
+            OperandVectorTypePolicy.ELEMENT,
+        )
+
+        with self.assertRaisesRegex(ValueError, "use modifier"):
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "bad",
+                            "variants": [
+                                {
+                                    "name": "bad_vector",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": "reg_vector",
+                                            "role": "dst",
+                                            "access": "write",
+                                            "vector": {
+                                                "kind": "vector",
+                                                "arity": {"expr": "v2"},
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        with self.assertRaisesRegex(TypeError, "vector\\.allow_sink"):
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "bad_sink_type",
+                            "variants": [
+                                {
+                                    "name": "bad_sink_type",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": "reg_vector",
+                                            "role": "dst",
+                                            "access": "write",
+                                            "type": {"expr": "modifier(type)"},
+                                            "register_width": "equal_or_wider",
+                                            "vector": {
+                                                "kind": "vector",
+                                                "arity": 2,
+                                                "allow_sink": 1,
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
     def test_optional_modifier_requires_typed_default(self) -> None:
         def normalize_modifier_entry(modifier: dict[str, object]) -> None:
             normalize_instruction_spec(
@@ -564,6 +981,19 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     "presence": "optional",
                     "values": ["u32", "u64"],
                     "default": "s32",
+                }
+            )
+        with self.assertRaisesRegex(
+            ValueError, "cache sentinel 'unspecified' is not a syntax value"
+        ):
+            normalize_modifier_entry(
+                {
+                    "name": "cache",
+                    "kind": "cache",
+                    "presence": "optional",
+                    "domain": "cache_operators",
+                    "values": ["unspecified", "ca"],
+                    "default": "unspecified",
                 }
             )
 

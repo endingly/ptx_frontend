@@ -88,8 +88,9 @@ Core modifier fields are:
 
 An `optional` modifier must explicitly define its semantic `default` when it is
 omitted. The default type must agree with the modifier kind: `flag` uses a
-Boolean, `type` uses one scalar type from `values`, and `rounding` uses a
-rounding-mode value such as `rn`. For example:
+Boolean, `type` uses one scalar type from `values`, `rounding` uses a
+rounding-mode value such as `rn`, and legacy `cache` uses the semantic
+source-absence sentinel `unspecified`. For example:
 
 ```yaml
 - name: sat
@@ -110,6 +111,15 @@ rounding-mode value such as `rn`. For example:
   presence: optional
   values: [$rounding_modes]
   default: rn
+
+- name: cache
+  kind: cache
+  domain: cache_operators
+  presence: optional
+  values:
+    - value: [ca, cg, cs, lu, cv]
+      availability: {ptx: "2.0", sm: 20}
+  default: unspecified
 ```
 
 When the modifier is omitted, the resolver stores this default in the resolved
@@ -117,7 +127,9 @@ field with empty `locs`. An explicit modifier overrides it and retains its
 source location. `absent`, `required`, and `fixed` modifiers must not define
 `default`. A default remains an active semantic value, so the checker still
 applies its value availability. Because no modifier source range exists, such
-a diagnostic falls back to the whole instruction range.
+a diagnostic falls back to the whole instruction range. Legacy `cache` is the
+exception: `unspecified` is a source-absence sentinel rather than a spellable
+PTX value, so it never triggers modifier-value availability.
 
 `flag` normally provides `token: ".sat"`; a type token is normally derived
 from `value` or `values`. `name` is the modifier-slot ID local to one variant,
@@ -164,15 +176,154 @@ optional `type`:
 ```
 
 The full generated resolve path currently supports `reg`, `imm`, `reg_or_imm`,
-`pred`, and `pred_or_not`. `pred_or_not` accepts `%pN` or `!%pN` and preserves
-the complement bit in resolved IR. The schema can describe many more PTX
-kinds. Adding a schema enum does not implement it: Python Syntax/Resolved
-models, the C++ resolver, and the checker must all be extended. `type` may
-reference a modifier (`modifier(type)`) or name a fixed scalar type such as
-`u32`. The only supported type-expression function today is `modifier(name)`,
-which reads an active `kind: type` modifier of the current variant. The schema
-retains `same_as(...)`, `one_of(...)`, and `same_size_as(...)` as future syntax,
-but the normalizer explicitly rejects them as unsupported.
+`pred`, `pred_or_not`, `addr`, and `reg_vector`. `pred_or_not` accepts `%pN`
+or `!%pN` and preserves the complement bit in resolved IR. The schema can
+describe many more PTX kinds. Adding a schema enum does not implement it:
+Python Syntax/Resolved models, the C++ resolver, and the checker must all be
+extended. `type` may reference a modifier (`modifier(type)`) or name a fixed
+scalar type such as `u32`. The only supported type-expression function today is
+`modifier(name)`, which reads an active `kind: type` modifier of the current
+variant. The schema retains `same_as(...)`, `one_of(...)`, and
+`same_size_as(...)` as future syntax, but the normalizer explicitly rejects
+them as unsupported.
+
+An address operand may similarly derive its required state space from an
+active `kind: state_space` modifier:
+
+```yaml
+- name: address
+  kind: addr
+  role: addr
+  access: read
+  state_space: {expr: modifier(state_space)}
+```
+
+The normalizer preserves the reference and the resolved descriptor stores the
+modifier field ID. The checker compares it only when the address has a known
+declaration-derived effective state space; register, immediate, and standalone
+addresses remain unknown rather than being inferred from spelling.
+The current scalar/vector `ld/st` explicit forms use one runtime modifier field per
+opcode rather than duplicating a variant for each state-space value.
+
+An explicit `.param` address may add a narrow direction and function-context
+constraint:
+
+```yaml
+- name: address
+  kind: addr
+  role: addr
+  access: read
+  state_space: {expr: modifier(state_space)}
+  parameter:
+    direction: input
+    function_availability: {ptx: "2.0", sm: 20}
+```
+
+`parameter` is valid only on `kind: addr`. It must accompany a state-space
+modifier expression whose active modifier permits (or is fixed to) `param`;
+the normalizer rejects a detached or ineffective constraint. The resolved
+descriptor stores a typed input/return direction and availability. When the
+selected runtime state space is `.param`, the common checker first rejects a
+known wrong parameter direction. Otherwise it applies the function
+availability for a return constraint or a device-function address. Thus the
+current load constraint lets an entry input parameter use the explicit-form
+baseline but requires PTX 2.0 / SM 20 in a device function, while the store
+return constraint requires that target in every context. Unknown identity is
+not assigned a direction, and a known non-`.param` symbol is handled only by
+the ordinary exact state-space mismatch.
+
+A scalar string or list defines a static effective-address allowlist. List
+items may be plain state-space strings or `value`/`availability` objects:
+
+```yaml
+- name: address
+  kind: addr
+  role: addr
+  access: read
+  state_space:
+    - value: const
+      availability: {ptx: "3.1"}
+    - global
+    - local
+    - shared
+```
+
+The scalar form is equivalent to a one-entry list without an additional target
+requirement. Static values and `expr: modifier(...)` are mutually exclusive.
+The resolved descriptor maps every static value to `MemoryStateSpace` and keeps
+its availability. The common checker rejects a known effective space outside
+the list and checks availability on the matching entry; an unknown register,
+immediate, or standalone address remains accepted. Current generic scalar/vector
+loads use the example policy above, while generic scalar/vector stores allow only
+`.global/.local/.shared`.
+
+The current scalar/vector `ld/st` variants reuse one type set containing
+`.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32`,
+then append `.f64` at the variant. Legacy loads additionally model
+`.ca/.cg/.cs/.lu/.cv`, legacy stores model `.wb/.cg/.cs/.wt`, and all explicit
+cache spellings attach PTX 2.0 / SM 20 availability while omission resolves to the
+non-spellable `unspecified` sentinel. PTX's effective hardware defaults still
+follow the ISA (`ld` behaves as `.ca`, `st` behaves as `.wb` when the modifier
+is omitted), but Resolved IR intentionally preserves `Unspecified` so source
+provenance and modifier-value availability stay distinguishable. Explicit `.f64` attaches SM 13
+availability; generic `.f64` does not duplicate it because the generic variant
+already requires SM 20. Data operands use `type: {expr: modifier(type)}`, so
+the runtime modifier and its location drive the common fundamental-type check.
+Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
+types through 64 bits and `.v4` through 32 bits; `.v4` 64-bit is deferred.
+A register operand may also select an explicit width policy:
+
+```yaml
+- name: dst
+  kind: reg
+  role: dst
+  access: write
+  type: {expr: modifier(type)}
+  register_width: equal_or_wider
+```
+
+`register_width` defaults to `same_width`. The normalizer rejects the non-default
+`equal_or_wider` value on a non-register operand or an operand without a type
+expression, preventing a silent no-op. `reg_vector` operands may also use this
+policy, applying it to each vector element. The resolved operand descriptor
+stores the policy; no runtime Resolved IR field is generated. Current scalar
+`ld` destinations, scalar `st` sources, and legacy `.v2/.v4` memory vector
+elements use `equal_or_wider`: the declared register size must be at least the
+instruction size, after which either-side bit types and signed/unsigned integer
+pairs are compatible, floats require exact type/size, and integer/float pairs
+remain incompatible. Immediate and special-register checks stay same-width.
+Wider actual registers are currently limited to 64 bits; `.b128` remains
+rejected until declaration-type target availability is checked. `.b128`
+instruction types and modern vector forms remain outside this set.
+
+A `reg_vector` operand must declare legal element counts through
+`vector.arity`. Static forms use an integer or list:
+
+```yaml
+vector: {arity: [2, 4], type_policy: aggregate, allow_sink: true}
+```
+This sink support is additionally constrained by write access in the operand
+descriptor.
+
+Legacy memory vectors instead link arity to the required runtime vector
+modifier:
+
+```yaml
+- name: dst
+  kind: reg_vector
+  role: dst
+  access: write
+  type: {expr: modifier(type)}
+  register_width: equal_or_wider
+  vector: {arity: {expr: modifier(vector)}, type_policy: element}
+```
+
+`type_policy: aggregate` checks a vector payload against the whole instruction
+bit width and is used by `mov` pack/unpack. `type_policy: element` checks each
+element against the instruction type and is used by legacy memory vectors.
+Those memory vectors are limited to a 128-bit payload: `.v2` through 64-bit
+types and `.v4` through 32-bit types; `.v4` 64-bit remains deferred.
+`VectorArity` is a required modifier domain; it has no optional/default form.
 
 Use semantic roles such as `dst`, `src1`, `barrier`, and `thread_count` rather
 than inventing `srcN` names merely for reuse. Role and access are carried into
@@ -261,12 +412,14 @@ unique layout with strictly more specific operand shapes. Equal or incomparable
 candidates are a YAML modeling error; availability cannot resolve the syntax
 ambiguity.
 
-An operand with `kind: mov_vector` must declare legal element counts through
-`vector.arity`; the current mov-specific Resolved IR supports at most four
-elements. This data is generated into resolved/checker descriptors for vector-payload validation and
-does not participate in modifier-variant selection. For example, scalar, pack,
-and unpack `mov` are three layouts of one modifier variant rather than copied
-variants with overlapping `.b16/.b32/.b64` forms.
+An operand with `kind: reg_vector` generates a `ResolvedRegisterVector` payload.
+Static `vector.arity` values are descriptor checks only; dynamic
+`vector.arity: {expr: modifier(vector)}` also records a link to the selected
+runtime modifier field. This data does not participate in modifier-variant
+selection. For example, scalar, pack, and unpack `mov` are three layouts of one
+modifier variant rather than copied variants with overlapping `.b16/.b32/.b64`
+forms, while `ld.v2` and `ld.v4` are one vector variant selected by a required
+runtime `vector` modifier.
 
 ## Current floating Add coverage
 

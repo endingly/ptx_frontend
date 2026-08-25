@@ -42,6 +42,12 @@ enum class ScalarType : uint8_t {
 
 enum class ScalarKind { Invalid, Bit, Unsigned, Signed, Float, Pred };
 
+/** Width relation accepted when checking a register against an instruction. */
+enum class ScalarTypeSizePolicy : uint8_t {
+  SameWidth,
+  EqualOrWider,
+};
+
 /** Semantic value of a PTX floating-point rounding modifier. */
 enum class RoundingMode : uint8_t {
   Invalid = 0,
@@ -49,6 +55,18 @@ enum class RoundingMode : uint8_t {
   Rz,
   Rm,
   Rp,
+};
+
+/** Semantic value of a PTX ld/st cache operator modifier. */
+enum class CacheOperator : uint8_t {
+  Unspecified = 0,
+  Ca,
+  Cg,
+  Cs,
+  Lu,
+  Cv,
+  Wb,
+  Wt,
 };
 
 template <typename Enum>
@@ -60,7 +78,9 @@ std::string to_string(Enum e) {
 ScalarKind scalar_kind(ScalarType t);
 uint8_t scalar_size_of(ScalarType t);
 
-/** PTX fundamental-type compatibility for operands of the same width. */
-bool scalar_types_compatible(ScalarType actual, ScalarType instruction);
+/** PTX fundamental-type compatibility under an explicit register-size policy. */
+bool scalar_types_compatible(
+    ScalarType actual, ScalarType instruction,
+    ScalarTypeSizePolicy size_policy = ScalarTypeSizePolicy::SameWidth);
 
 };  // namespace ptx_frontend

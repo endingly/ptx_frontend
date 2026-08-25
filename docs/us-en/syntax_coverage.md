@@ -22,7 +22,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Other directives | Not supported (rejected) | Debug, section, pragma, module variable, and structured kernel-tuning directives; unmodeled function-header tokens never silently enter the AST |
 | Structured control syntax | Not supported | Nested scopes and directive-driven control-flow metadata |
 | Recovery/editing | Not supported | Missing tokens, recovery nodes, multi-error parsing, and token edits |
-| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, `bra`, `mov.pred`, register/immediate/special-register sources for 16/32/64-bit scalar `mov`, 32/64-bit address sources, bit-size two/four-element vector pack/unpack including vector-only `.b128`, and generic `ld.u32 d, [address]`; special registers retain stable identity, while generated YAML context rules check ISA-defined legacy 16/32-bit `mov` read types and targets |
+| Resolved opcodes | Partial | Only opcodes present in the YAML database; currently `add`, `sub`, `bar`, `bra`, selected scalar/vector `mov`, and generic/basic-explicit scalar plus legacy `.v2/.v4` braced-vector `ld`/`st` for `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; legacy vector payloads are at most 128 bits (`.v2` through 64-bit types, `.v4` through 32-bit types; `.v4` 64-bit is deferred); generic loads accept known `.const/.global/.local/.shared` spaces (`.const` requires PTX 3.1), generic stores accept `.global/.local/.shared`, and explicit forms require an exact runtime-modifier match; bound `.param` loads require input parameters and stores require return parameters, with function-context PTX/SM checks; load destination/store source registers and vector elements may be wider under the bit/integer/float kind rules, while other typed operands remain same-width and unknown address identity is not inferred |
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be
@@ -30,8 +30,10 @@ lowered to Resolved IR.
 
 ## Near-term order
 
-1. Extend `ld/st` state spaces, memory qualifiers, and scalar/vector types,
-   including state-space compatibility checks.
+1. Extend `ld/st` with memory consistency qualifiers, modern vector forms, and
+   cross-modifier rules. `.b128` is not part of the current
+   scalar family. Function-local call argument `.param`, `::entry`/`::func`,
+   and call adjacency/predication remain part of the later call-context work.
 2. Add a non-`Flat` descriptor layout algorithm for call groups and variadic operands, then integrate `call`.
 3. Represent `.calltargets`/`.callprototype`/`.branchtargets` and remaining module/function directives.
 4. Expand YAML instruction coverage independently of module grammar work.

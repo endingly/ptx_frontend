@@ -115,6 +115,53 @@ TEST(ResolvedIrChecker, ChecksSelectedModifierValueAvailability) {
   EXPECT_EQ(result.error()[0].range, kInstructionRange);
 }
 
+TEST(ResolvedIrChecker, IgnoresOmittedCacheSentinelAndChecksExplicitCache) {
+  constexpr ModifierValueAvailabilityDescriptor descriptors[] = {{
+      .kind_id = "cache",
+      .value_kind = ModifierValueKind::CacheOperator,
+      .cache_operator = CacheOperator::Ca,
+      .availability =
+          {
+              .minimum_ptx_version = {2, 0},
+              .minimum_sm_version = 20,
+          },
+  }};
+  constexpr std::array<ModifierValueView, 1> omitted{{
+      {
+          .kind_id = "cache",
+          .value_kind = ModifierValueKind::CacheOperator,
+          .cache_operator = CacheOperator::Unspecified,
+          .is_present = false,
+      },
+  }};
+  const Context old_context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 10},
+      .instruction_range = {{1, 1}, {1, 8}},
+  };
+  EXPECT_TRUE(
+      check_modifier_value_availability(descriptors, omitted, old_context)
+          .has_value());
+
+  constexpr std::array<ModifierValueView, 1> explicit_cache{{
+      {
+          .kind_id = "cache",
+          .value_kind = ModifierValueKind::CacheOperator,
+          .cache_operator = CacheOperator::Ca,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  const auto rejected = check_modifier_value_availability(
+      descriptors, explicit_cache, old_context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2U);
+  EXPECT_EQ(rejected.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_EQ(rejected.error()[0].range, kInstructionRange);
+}
+
 TEST(ResolvedIrChecker, ChecksFixedScalarOperandTypeDescriptor) {
   constexpr OperandDescriptor descriptors[] = {{
       .target_field_id = "barrier",
@@ -142,6 +189,395 @@ TEST(ResolvedIrChecker, ChecksFixedScalarOperandTypeDescriptor) {
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, AppliesRegisterWidthPolicyFromOperandDescriptor) {
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "value",
+      .type_expression =
+          {
+              .kind = OperandTypeExpressionKind::FixedScalar,
+              .fixed_scalar_type = ScalarType::U16,
+          },
+      .register_width_policy = base::ScalarTypeSizePolicy::EqualOrWider,
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Register,
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView operand{
+      .field_id = "value",
+      .actual_shape = OperandShape::Register,
+      .register_type = ScalarType::U32,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const auto check_operand = [&](ScalarType actual_type) {
+    operand.register_type = actual_type;
+    return check_operands(
+        descriptors, {}, std::span<const OperandView>{&operand, 1}, {},
+        context);
+  };
+
+  EXPECT_TRUE(check_operand(ScalarType::U32).has_value());
+  EXPECT_TRUE(check_operand(ScalarType::B64).has_value());
+
+  const auto narrow = check_operand(ScalarType::U8);
+  ASSERT_FALSE(narrow.has_value());
+  ASSERT_EQ(narrow.error().size(), 1u);
+  EXPECT_EQ(narrow.error().front().kind,
+            CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto float_integer = check_operand(ScalarType::F32);
+  ASSERT_FALSE(float_integer.has_value());
+  ASSERT_EQ(float_integer.error().size(), 1u);
+  EXPECT_EQ(float_integer.error().front().kind,
+            CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+TEST(ResolvedIrChecker, ChecksDynamicVectorArityAndElementPolicy) {
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "dst",
+      .type_expression =
+          {
+              .kind = OperandTypeExpressionKind::FixedScalar,
+              .fixed_scalar_type = ScalarType::U16,
+          },
+      .register_width_policy = base::ScalarTypeSizePolicy::EqualOrWider,
+      .role = OperandRole::Destination,
+      .access = OperandAccess::Write,
+      .allowed_shapes = OperandShape::Vector,
+      .vector_arity_modifier_field_id = "vector",
+      .vector_type_policy = VectorTypePolicy::Element,
+  }};
+  constexpr FieldView fields[] = {{
+      .field_id = "vector",
+      .vector_arity = VectorArity::V2,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView operand{
+      .field_id = "dst",
+      .actual_shape = OperandShape::Vector,
+      .vector_element_types = {ScalarType::U16, ScalarType::U32},
+      .vector_arity = 2,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+
+  EXPECT_TRUE(check_operands(descriptors, fields,
+                             std::span<const OperandView>{&operand, 1}, {},
+                             context)
+                  .has_value());
+
+  operand.vector_arity = 4;
+  auto rejected = check_operands(
+      descriptors, fields, std::span<const OperandView>{&operand, 1}, {},
+      context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::InvalidVectorOperand);
+
+  operand.vector_arity = 2;
+  operand.vector_sink_count = 1;
+  rejected = check_operands(descriptors, fields,
+                            std::span<const OperandView>{&operand, 1}, {},
+                            context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::InvalidVectorOperand);
+
+  operand.vector_sink_count = 0;
+  operand.vector_element_types = {ScalarType::U8, ScalarType::U32};
+  rejected = check_operands(descriptors, fields,
+                            std::span<const OperandView>{&operand, 1}, {},
+                            context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::OperandTypeMismatch);
+
+  operand.vector_element_types = {ScalarType::F32, ScalarType::U32};
+  rejected = check_operands(descriptors, fields,
+                            std::span<const OperandView>{&operand, 1}, {},
+                            context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::OperandTypeMismatch);
+
+  operand.vector_element_types = {ScalarType::U16, ScalarType::U32};
+  rejected = check_operands(descriptors, {}, std::span<const OperandView>{&operand, 1},
+                            {}, context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::MissingVectorArityField);
+}
+
+TEST(ResolvedIrChecker, RejectsOverwideVectorOperandPayload) {
+  const std::array<uint8_t, 2> allowed_vector_arities = {2, 4};
+  const OperandDescriptor descriptors[] = {{
+      .target_field_id = "dst",
+      .type_expression =
+          {
+              .kind = OperandTypeExpressionKind::FixedScalar,
+              .fixed_scalar_type = ScalarType::U64,
+          },
+      .register_width_policy = base::ScalarTypeSizePolicy::EqualOrWider,
+      .role = OperandRole::Destination,
+      .access = OperandAccess::Write,
+      .allowed_shapes = OperandShape::Vector,
+      .allowed_vector_arities = allowed_vector_arities,
+      .vector_type_policy = VectorTypePolicy::Element,
+  }};
+  OperandView operand{
+      .field_id = "dst",
+      .actual_shape = OperandShape::Vector,
+      .vector_element_types = {ScalarType::U64, ScalarType::U64, ScalarType::U64,
+                              ScalarType::U64},
+      .vector_arity = 4,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+
+  const auto rejected = check_operands(
+      descriptors, {}, std::span<const OperandView>{&operand, 1}, {},
+      context);
+
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(rejected.error().front().message,
+            "Vector operand 'dst' payload width (256 bits) exceeds the "
+            "supported 128 bit limit.");
+  EXPECT_EQ(rejected.error().front().range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, DiagnosesMissingStateSpaceField) {
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .state_space_modifier_field_id = "state_space",
+  }};
+  constexpr OperandView operands[] = {{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Global,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+
+  const auto result = check_operands(descriptors, {}, operands, {}, context);
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 1u);
+  EXPECT_EQ(result.error().front().kind,
+            CheckDiagnosticKind::MissingStateSpaceField);
+  EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, RejectsAddressOutsideStaticStateSpaceAllowlist) {
+  static constexpr AddressStateSpaceDescriptor allowed_state_spaces[] = {{
+      .state_space = MemoryStateSpace::Global,
+  }};
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .allowed_address_state_spaces = allowed_state_spaces,
+  }};
+  constexpr OperandView operands[] = {{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Parameter,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+
+  const auto result = check_operands(descriptors, {}, operands, {}, context);
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 1u);
+  EXPECT_EQ(result.error().front().kind,
+            CheckDiagnosticKind::AddressStateSpaceMismatch);
+  EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, ChecksStaticAddressStateSpaceAvailability) {
+  static constexpr AddressStateSpaceDescriptor allowed_state_spaces[] = {{
+      .state_space = MemoryStateSpace::Constant,
+      .availability = {
+          .minimum_ptx_version = {3, 1},
+          .minimum_sm_version = 30,
+          .required_family = "sm_test",
+      },
+  }};
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .allowed_address_state_spaces = allowed_state_spaces,
+  }};
+  constexpr OperandView operands[] = {{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Constant,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  }};
+  const Context old_context{
+      .target = {.ptx_version = {3, 0}, .sm_version = 20},
+      .instruction_range = {{1, 1}, {1, 8}},
+  };
+
+  const auto rejected =
+      check_operands(descriptors, {}, operands, {}, old_context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 3u);
+  EXPECT_EQ(rejected.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_EQ(rejected.error()[2].kind,
+            CheckDiagnosticKind::UnsupportedTargetFamily);
+  EXPECT_EQ(rejected.error().front().range, kInstructionRange);
+
+  constexpr std::array<std::string_view, 1> families{"sm_test"};
+  auto supported_context = old_context;
+  supported_context.target.ptx_version = {3, 1};
+  supported_context.target.sm_version = 30;
+  supported_context.target.families = families;
+  EXPECT_TRUE(check_operands(descriptors, {}, operands, {}, supported_context)
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksInputParameterDirectionAndFunctionAvailability) {
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .state_space_modifier_field_id = "state_space",
+      .parameter_constraint = {
+          .direction = ParameterDirection::Input,
+          .function_availability = {
+              .minimum_ptx_version = {2, 0},
+              .minimum_sm_version = 20,
+          },
+      },
+  }};
+  constexpr FieldView fields[] = {{
+      .field_id = "state_space",
+      .memory_state_space = MemoryStateSpace::Parameter,
+  }};
+  const Context old_context{
+      .target = {.ptx_version = {1, 5}, .sm_version = 10},
+      .instruction_range = {{1, 1}, {1, 8}},
+  };
+  const auto check_operand = [&](const OperandView& operand,
+                                 const Context& context) {
+    return check_operands(
+        descriptors, fields, std::span<const OperandView>{&operand, 1}, {},
+        context);
+  };
+
+  OperandView input{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Parameter,
+      .enclosing_function_kind = EnclosingFunctionKind::Entry,
+      .parameter_direction = ParameterDirection::Input,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  EXPECT_TRUE(check_operand(input, old_context).has_value());
+  input.enclosing_function_kind = EnclosingFunctionKind::Unknown;
+  EXPECT_TRUE(check_operand(input, old_context).has_value());
+
+  input.enclosing_function_kind = EnclosingFunctionKind::Device;
+  const auto device_rejected = check_operand(input, old_context);
+  ASSERT_FALSE(device_rejected.has_value());
+  ASSERT_EQ(device_rejected.error().size(), 2u);
+  EXPECT_EQ(device_rejected.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(device_rejected.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  auto supported_context = old_context;
+  supported_context.target = {.ptx_version = {2, 0}, .sm_version = 20};
+  EXPECT_TRUE(check_operand(input, supported_context).has_value());
+
+  input.parameter_direction = ParameterDirection::Return;
+  const auto wrong_direction = check_operand(input, old_context);
+  ASSERT_FALSE(wrong_direction.has_value());
+  ASSERT_EQ(wrong_direction.error().size(), 1u);
+  EXPECT_EQ(wrong_direction.error().front().kind,
+            CheckDiagnosticKind::ParameterDirectionMismatch);
+  EXPECT_EQ(wrong_direction.error().front().range, kInstructionRange);
+
+  input.address_state_space = MemoryStateSpace::Global;
+  const auto wrong_space = check_operand(input, old_context);
+  ASSERT_FALSE(wrong_space.has_value());
+  ASSERT_EQ(wrong_space.error().size(), 1u);
+  EXPECT_EQ(wrong_space.error().front().kind,
+            CheckDiagnosticKind::AddressStateSpaceMismatch);
+}
+
+TEST(ResolvedIrChecker, ChecksReturnParameterAvailabilityWithoutFunctionKind) {
+  constexpr OperandDescriptor descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .state_space_modifier_field_id = "state_space",
+      .parameter_constraint = {
+          .direction = ParameterDirection::Return,
+          .function_availability = {
+              .minimum_ptx_version = {2, 0},
+              .minimum_sm_version = 20,
+          },
+      },
+  }};
+  constexpr FieldView fields[] = {{
+      .field_id = "state_space",
+      .memory_state_space = MemoryStateSpace::Parameter,
+  }};
+  const Context old_context{
+      .target = {.ptx_version = {1, 5}, .sm_version = 10},
+      .instruction_range = {{1, 1}, {1, 8}},
+  };
+
+  OperandView operand{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .enclosing_function_kind = EnclosingFunctionKind::Unknown,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const auto check_operand = [&](const OperandView& actual) {
+    return check_operands(
+        descriptors, fields, std::span<const OperandView>{&actual, 1}, {},
+        old_context);
+  };
+
+  const auto unknown_rejected = check_operand(operand);
+  ASSERT_FALSE(unknown_rejected.has_value());
+  ASSERT_EQ(unknown_rejected.error().size(), 2u);
+  EXPECT_EQ(unknown_rejected.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unknown_rejected.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  operand.address_state_space = MemoryStateSpace::Parameter;
+  operand.parameter_direction = ParameterDirection::Input;
+  const auto wrong_direction = check_operand(operand);
+  ASSERT_FALSE(wrong_direction.has_value());
+  ASSERT_EQ(wrong_direction.error().size(), 1u);
+  EXPECT_EQ(wrong_direction.error().front().kind,
+            CheckDiagnosticKind::ParameterDirectionMismatch);
 }
 
 TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {

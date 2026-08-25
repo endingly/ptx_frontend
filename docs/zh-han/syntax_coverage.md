@@ -21,15 +21,17 @@
 | 其他 directive | 尚未支持（直接拒绝） | debug、section、pragma、module variable 与结构化 kernel-tuning directive；未建模 function-header token 不会静默进入 AST |
 | 结构化控制语法 | 尚未支持 | nested scope 与由 directive 驱动的 control-flow metadata |
 | 恢复与编辑 | 尚未支持 | missing token、recovery node、多错误解析与 token edit |
-| Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 `add`、`sub`、`bar`、`bra`、`mov.pred`、16/32/64-bit scalar `mov` 的 register/immediate/special-register source、32/64-bit address source、bit-size 2/4-element vector pack/unpack（含 vector-only `.b128`），以及 generic `ld.u32 d, [address]`；special register 保留稳定 identity，ISA 明定的历史 16/32-bit `mov` 读取由 YAML 生成的上下文 type/target 规则检查 |
+| Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 `add`、`sub`、`bar`、`bra`、部分 scalar/vector `mov`，以及 `.b8/.b16/.b32/.b64`、`.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64`、`.f32/.f64` 的 generic/basic-explicit scalar 与 legacy `.v2/.v4` braced-vector `ld`/`st`；legacy vector payload 最多 128 bit（`.v2` 到 64-bit type，`.v4` 到 32-bit type；`.v4` 64-bit 尚待实现）；generic load 接受已知 `.const/.global/.local/.shared` space（`.const` 要求 PTX 3.1），generic store 接受 `.global/.local/.shared`，explicit form 要求精确匹配 runtime modifier；绑定的 `.param` load 要求 input parameter，store 要求 return parameter，并按 function context 检查 PTX/SM；load destination/store source register 以及 vector element 可在 bit/integer/float kind rule 下使用更宽声明，其余 typed operand 仍要求 same-width，未知 address identity 不推断 |
 
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。
 
 ## 近期实现顺序
 
-1. 扩展 `ld/st` state-space、memory qualifier 与 scalar/vector type，并检查 state-space
-   compatibility；
+1. 扩展 `ld/st` 的 memory consistency qualifier、modern vector form 与跨 modifier
+   规则；`.b128` 不属于当前 scalar family；
+   function-local call-argument `.param`、`::entry`/`::func` 以及 call
+   adjacency/predication 留到后续 call-context 工作；
 2. 为 call group/variadic operand 增加非 `Flat` descriptor layout algorithm，并接入 `call`；
 3. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive；
 4. PTX module grammar 与 YAML instruction coverage 分别独立扩展。

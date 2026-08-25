@@ -149,14 +149,41 @@ def _emit_modifier_value_descriptor(
         bool_value = "true" if entry.value else "false"
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif entry.value_cpp_type == "ScalarType":
         scalar_type = cpp_value(CppDomain.SCALAR_TYPES, str(entry.value))
         bool_value = "false"
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif entry.value_cpp_type == "RoundingMode":
         rounding_mode = cpp_value(CppDomain.ROUNDING_MODES, str(entry.value))
         bool_value = "false"
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "CacheOperator":
+        cache_operator = cpp_value(CppDomain.CACHE_OPERATORS, str(entry.value))
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "VectorArity":
+        vector_arity = cpp_value(CppDomain.VECTOR_ARITIES, str(entry.value))
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+    elif entry.value_cpp_type == "MemoryStateSpace":
+        memory_state_space = cpp_value(
+            CppDomain.MEMORY_STATE_SPACES, str(entry.value)
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     else:
         raise ValueError(
             f"unsupported modifier availability value type {entry.value_cpp_type!r}"
@@ -167,6 +194,9 @@ def _emit_modifier_value_descriptor(
               .bool_value = {bool_value},
               .scalar_type = {scalar_type},
               .rounding_mode = {rounding_mode},
+              .cache_operator = {cache_operator},
+              .vector_arity = {vector_arity},
+              .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
               .availability = {{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                   .minimum_sm_version = {minimum_sm},

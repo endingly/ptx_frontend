@@ -19,7 +19,21 @@ The frontend currently provides:
 - module/function symbol scopes, reference classification, and declaration
   semantics;
 - generated resolution and checking for YAML-modelled `bra`, `add`, `sub`,
-  `bar`, selected `mov` forms, and generic `ld.u32` forms;
+  `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
+  the 14 `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`,
+  `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` with a
+  128-bit payload maximum (`.v2` through 64-bit types and `.v4` through
+  32-bit types; `.v4` 64-bit remains deferred), legacy `ld` cache operators
+  `.ca/.cg/.cs/.lu/.cv`, legacy `st` cache operators
+  `.wb/.cg/.cs/.wt`, explicit `.const/.global/.local/.param/.shared` loads,
+  and explicit `.global/.local/.param/.shared` stores, including data-driven
+  generic bound-space policies, exact explicit bound-symbol address-space
+  checks, and input/return direction checks for bound `.param` addresses;
+  operand register compatibility permits PTX's wider load destination/store
+  source forms while retaining bit/integer/float kind restrictions for declared
+  registers through 64 bits; wider `.b128` declarations remain deferred until
+  declaration-type target availability is checked, and other instructions
+  remain exact-width;
 - explicit PTX ISA version, SM version, and target-family availability checks
   for modelled variants, modifiers, layouts, and operands.
 

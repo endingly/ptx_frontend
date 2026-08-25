@@ -27,6 +27,9 @@ The frontend currently provides:
   `.ca/.cg/.cs/.lu/.cv`, legacy `st` cache operators
   `.wb/.cg/.cs/.wt`, explicit `.const/.global/.local/.param/.shared` loads,
   and explicit `.global/.local/.param/.shared` stores, including data-driven
+  `.weak/.volatile/.relaxed.scope/.acquire.scope/.release.scope` consistency
+  qualifiers and PTX 8.2 `.mmio.relaxed.sys` (legacy vectors intentionally
+  exclude mmio),
   generic bound-space policies, exact explicit bound-symbol address-space
   checks, and input/return direction checks for bound `.param` addresses;
   operand register compatibility permits PTX's wider load destination/store

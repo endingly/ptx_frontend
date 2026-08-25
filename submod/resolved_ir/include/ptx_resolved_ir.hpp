@@ -23,6 +23,8 @@ namespace ptx_frontend::resolved_ir {
 using base::ScalarType;
 using base::RoundingMode;
 using base::CacheOperator;
+using base::MemoryConsistency;
+using base::MemoryScope;
 namespace check_end {
 
 using OperandShape = checker::OperandShape;
@@ -64,6 +66,8 @@ enum class ResolvedValueKind : uint8_t {
   ScalarType,
   RoundingMode,
   CacheOperator,
+  MemoryConsistency,
+  MemoryScope,
   VectorArity,
   MemoryStateSpace,
   Register,
@@ -131,6 +135,8 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   ScalarType,
   RoundingMode,
   CacheOperator,
+  MemoryConsistency,
+  MemoryScope,
   MemoryStateSpace,
 };
 
@@ -141,6 +147,8 @@ struct ResolvedModifierDefaultDescriptor {
   RoundingMode rounding_mode = RoundingMode::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
+  MemoryScope memory_scope = MemoryScope::None;
 };
 
 struct ResolvedModifierBindingDescriptor {
@@ -313,7 +321,8 @@ using ResolvedMovSource =
 
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
-                 WithLocs<CacheOperator>, WithLocs<VectorArity>,
+                 WithLocs<CacheOperator>, WithLocs<MemoryConsistency>,
+                 WithLocs<MemoryScope>, WithLocs<VectorArity>,
                  WithLocs<MemoryStateSpace>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,

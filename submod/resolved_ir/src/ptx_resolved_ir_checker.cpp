@@ -108,6 +108,10 @@ bool matches_modifier_value(
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:
       return descriptor.memory_state_space == actual.memory_state_space;
+    case ModifierValueKind::MemoryConsistency:
+      return descriptor.memory_consistency == actual.memory_consistency;
+    case ModifierValueKind::MemoryScope:
+      return descriptor.memory_scope == actual.memory_scope;
   }
   return false;
 }
@@ -777,6 +781,97 @@ CheckResult check_modifier_value_availability(
           .message = fmt::format("Modifier '{}' requires target family '{}'.",
                                  actual.kind_id, availability.required_family),
       });
+    }
+  }
+
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_memory_consistency(
+    const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context) {
+  if (descriptor.semantics_field_id.empty())
+    return {};
+
+  const FieldView* semantics_field =
+      find_field(fields, descriptor.semantics_field_id);
+  const FieldView* scope_field = find_field(fields, descriptor.scope_field_id);
+  const FieldView* mmio_field = descriptor.mmio_field_id.empty()
+                                    ? nullptr
+                                    : find_field(fields, descriptor.mmio_field_id);
+  const FieldView* cache_field = find_field(fields, descriptor.cache_field_id);
+  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  if (semantics_field == nullptr || scope_field == nullptr ||
+      cache_field == nullptr || address == nullptr ||
+      !semantics_field->memory_consistency || !scope_field->memory_scope ||
+      !cache_field->cache_operator ||
+      (mmio_field != nullptr && !mmio_field->bool_value)) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Generated memory-consistency descriptor has missing fields.",
+    }});
+  }
+
+  const MemoryConsistency semantics = *semantics_field->memory_consistency;
+  const MemoryScope scope = *scope_field->memory_scope;
+  const bool mmio = mmio_field != nullptr && *mmio_field->bool_value;
+  const bool cached = *cache_field->cache_operator != CacheOperator::Unspecified;
+  CheckDiagnostics diagnostics;
+  const auto violation = [&](const FieldView& field, std::string_view message) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::MemoryConsistencyViolation,
+        .range = diagnostic_range(field.locations, context),
+        .message = std::string(message),
+    });
+  };
+
+  const bool scoped = semantics == MemoryConsistency::Relaxed ||
+                      semantics == MemoryConsistency::Acquire ||
+                      semantics == MemoryConsistency::Release;
+  if (scoped != (scope != MemoryScope::None)) {
+    violation(scoped ? *semantics_field : *scope_field,
+              scoped ? "Memory semantics requires an explicit scope."
+                     : "Memory scope is only valid with relaxed, acquire, or release semantics.");
+  }
+  if (cached && (semantics == MemoryConsistency::Volatile || scoped || mmio)) {
+    violation(*cache_field,
+              "Cache operator is not valid with volatile, ordered, or mmio memory semantics.");
+  }
+
+  std::optional<MemoryStateSpace> state_space = address->address_state_space;
+  if (!descriptor.state_space_field_id.empty()) {
+    const FieldView* field = find_field(fields, descriptor.state_space_field_id);
+    if (field != nullptr && field->memory_state_space)
+      state_space = *field->memory_state_space;
+  }
+  const bool known_global_or_shared =
+      state_space == MemoryStateSpace::Global || state_space == MemoryStateSpace::Shared;
+  const bool volatile_local = semantics == MemoryConsistency::Volatile &&
+                              state_space == MemoryStateSpace::Local;
+  const bool strong = scoped || semantics == MemoryConsistency::Volatile;
+  if (strong && state_space && !known_global_or_shared && !volatile_local) {
+    violation(*semantics_field,
+              "Strong memory semantics require a global or shared address space.");
+  }
+  if (volatile_local && context.target.ptx_version < PtxVersion{9, 1}) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = diagnostic_range(semantics_field->locations, context),
+        .message = fmt::format("volatile.local requires PTX ISA >= 9.1, but target PTX ISA is {}.",
+                               format_version(context.target.ptx_version)),
+    });
+  }
+  if (mmio) {
+    if (semantics != MemoryConsistency::Relaxed || scope != MemoryScope::Sys) {
+      violation(*mmio_field, "mmio requires .relaxed.sys semantics.");
+    }
+    if (state_space && *state_space != MemoryStateSpace::Global) {
+      violation(*mmio_field,
+                "mmio requires a global address space when the address space is known.");
     }
   }
 

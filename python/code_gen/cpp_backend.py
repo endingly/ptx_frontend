@@ -41,6 +41,8 @@ class CppDomain(str, Enum):
     SCALAR_TYPES = "scalar_types"  # YAML: domains.scalar_types
     ROUNDING_MODES = "rounding_modes"  # YAML: domains.rounding_modes
     CACHE_OPERATORS = "cache_operators"  # YAML: domains.cache_operators
+    MEMORY_CONSISTENCIES = "memory_consistencies"
+    MEMORY_SCOPES = "memory_scopes"
     VECTOR_ARITIES = "vector_arities"
     MEMORY_STATE_SPACES = (  # YAML: domains.memory_state_spaces
         "memory_state_spaces"

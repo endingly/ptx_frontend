@@ -205,6 +205,13 @@ TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto invalid_vector_selected = selectVariant<Ld>(invalid_vector);
   ASSERT_FALSE(invalid_vector_selected.has_value());
   EXPECT_EQ(invalid_vector_selected.error().message, "Unknown modifier '.v8'.");
+
+  const auto vector_mmio = parse_instruction(
+      "ld.mmio.relaxed.sys.v2.u32 {%r0, %r1}, [%rd0];");
+  const auto vector_mmio_selected = selectVariant<Ld>(vector_mmio);
+  ASSERT_FALSE(vector_mmio_selected.has_value());
+  EXPECT_EQ(vector_mmio_selected.error().message,
+            "No variant of instruction 'ld' accepts this modifier combination.");
 }
 
 TEST(SelectVariantAdd, ReportsUnknownModifier) {
@@ -304,6 +311,72 @@ TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {
   ASSERT_NE(omitted_store_variant, nullptr);
   EXPECT_EQ(omitted_store_variant->cache.value, CacheOperator::Unspecified);
   EXPECT_TRUE(omitted_store_variant->cache.locs.empty());
+}
+
+TEST(ResolveLoadStore, PreservesMemoryConsistencyDefaultsAndExplicitWeak) {
+  const auto omitted_ast = parse_instruction("ld.u32 %r0, [%rd0];");
+  const auto omitted = resolve<Ld>(omitted_ast);
+  ASSERT_TRUE(omitted.has_value()) << omitted.error().message;
+  const auto* omitted_variant = std::get_if<Ld::GenericScalar>(&omitted->variant);
+  ASSERT_NE(omitted_variant, nullptr);
+  EXPECT_EQ(omitted_variant->semantics.value, MemoryConsistency::Omitted);
+  EXPECT_TRUE(omitted_variant->semantics.locs.empty());
+  EXPECT_EQ(omitted_variant->scope.value, MemoryScope::None);
+  EXPECT_TRUE(omitted_variant->scope.locs.empty());
+
+  const auto weak_ast = parse_instruction("ld.weak.u32 %r0, [%rd0];");
+  const auto weak = resolve<Ld>(weak_ast);
+  ASSERT_TRUE(weak.has_value()) << weak.error().message;
+  const auto* weak_variant = std::get_if<Ld::GenericScalar>(&weak->variant);
+  ASSERT_NE(weak_variant, nullptr);
+  EXPECT_EQ(weak_variant->semantics.value, MemoryConsistency::Weak);
+  ASSERT_EQ(weak_variant->semantics.locs.size(), 1U);
+  EXPECT_EQ(weak_variant->semantics.locs.front(),
+            weak_ast.modifiers.front().syntax.range);
+
+  const auto acquire = selectVariant<Ld>(
+      parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(acquire.has_value()) << acquire.error().message;
+  EXPECT_EQ(*acquire, Ld::VariantType::GenericScalar);
+  const auto release = selectVariant<St>(
+      parse_instruction("st.release.sys.u32 [%rd0], %r0;"));
+  ASSERT_TRUE(release.has_value()) << release.error().message;
+  EXPECT_EQ(*release, St::VariantType::GenericScalar);
+}
+
+TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
+  const checker::Context context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 90},
+      .instruction_range = SourceRange{},
+  };
+  const auto missing_scope = resolve<Ld>(
+      parse_instruction("ld.relaxed.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(missing_scope.has_value()) << missing_scope.error().message;
+  const auto missing_scope_check = checker::check(*missing_scope, context);
+  ASSERT_FALSE(missing_scope_check.has_value());
+  EXPECT_EQ(missing_scope_check.error().back().kind,
+            checker::CheckDiagnosticKind::MemoryConsistencyViolation);
+
+  const auto conflicting_cache = resolve<Ld>(
+      parse_instruction("ld.ca.volatile.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(conflicting_cache.has_value()) << conflicting_cache.error().message;
+  const auto cache_check = checker::check(*conflicting_cache, context);
+  ASSERT_FALSE(cache_check.has_value());
+  EXPECT_EQ(cache_check.error().back().kind,
+            checker::CheckDiagnosticKind::MemoryConsistencyViolation);
+
+  const auto relaxed_local = resolve<Ld>(
+      parse_instruction("ld.local.relaxed.cta.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(relaxed_local.has_value()) << relaxed_local.error().message;
+  const auto relaxed_local_check = checker::check(*relaxed_local, context);
+  ASSERT_FALSE(relaxed_local_check.has_value());
+  EXPECT_EQ(relaxed_local_check.error().back().kind,
+            checker::CheckDiagnosticKind::MemoryConsistencyViolation);
+
+  const auto unknown_generic = resolve<Ld>(
+      parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(unknown_generic.has_value()) << unknown_generic.error().message;
+  EXPECT_TRUE(checker::check(*unknown_generic, context).has_value());
 }
 
 TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {

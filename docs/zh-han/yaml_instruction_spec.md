@@ -121,6 +121,12 @@ source-absence sentinel `unspecified`。
 `cache` 是例外：`unspecified` 不是可拼写的 PTX value，而是 source absence sentinel，
 因此不会触发 modifier-value availability。
 
+`constraints` 可携带 typed `memory_consistency` descriptor。它引用生成后的
+semantics、scope、cache 与 address field（也可引用 mmio/state-space field）；
+normalization 会拒绝未激活或未知的引用。memory qualifier 在 syntax 中保持独立，而
+descriptor-backed checker 统一执行 cross rule。`omitted` 与 `none` 是 source-absence
+default，不是可拼写的 modifier value。
+
 `flag` 通常给出 `token: ".sat"`；`type` 的 token 通常从 `value` 或 `values` 推导。
 `name` 是当前 variant 内的 modifier slot ID，`kind` 决定解析后的值类型。同一个
 spelling 可以在不同 variant 绑定不同 slot，例如 `.f32` 在普通 Add 中绑定 `type`，在

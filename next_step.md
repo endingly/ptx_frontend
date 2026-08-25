@@ -413,8 +413,11 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 `bra`、special-register consumer 与首个 address/symbol consumer 已完成闭环；剩余顺序是：
 
-1. 为 `ld/st` 增加 memory consistency qualifier、modern vector form、alignment 与跨 modifier
-   规则；
+1. 为 `ld/st` 增加 modern vector form、alignment 与其余跨 modifier 规则；已完成
+   PTX ≤9.2 的 omission/`.weak`/`.volatile`/scoped
+   `.relaxed/.acquire/.release` 及 PTX 8.2 scalar `.mmio.relaxed.sys` consistency
+   qualifier。legacy `.v2/.v4` 明确不接受 mmio；static address-alignment checking 与
+   modern vector extension 仍保留为后续工作；
    function-local call-argument `.param` 及相关 call-context 规则留到 `call` 阶段；
 2. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
    接入统一 dispatch/checker；

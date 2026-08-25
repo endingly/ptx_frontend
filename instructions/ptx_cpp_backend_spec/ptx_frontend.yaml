@@ -79,6 +79,29 @@ domains:
       wb: CacheOperator::Wb
       wt: CacheOperator::Wt
 
+  memory_consistencies:
+    cpp_type: MemoryConsistency
+    default: MemoryConsistency::Omitted
+    runtime_lookup: ptx_suffix
+    values:
+      omitted: MemoryConsistency::Omitted
+      weak: MemoryConsistency::Weak
+      volatile: MemoryConsistency::Volatile
+      relaxed: MemoryConsistency::Relaxed
+      acquire: MemoryConsistency::Acquire
+      release: MemoryConsistency::Release
+
+  memory_scopes:
+    cpp_type: MemoryScope
+    default: MemoryScope::None
+    runtime_lookup: ptx_suffix
+    values:
+      none: MemoryScope::None
+      cta: MemoryScope::Cta
+      cluster: MemoryScope::Cluster
+      gpu: MemoryScope::Gpu
+      sys: MemoryScope::Sys
+
   vector_arities:
     cpp_type: VectorArity
     default: VectorArity::Invalid
@@ -120,6 +143,8 @@ domains:
       type: ScalarType
       rounding: RoundingMode
       cache: CacheOperator
+      semantics: MemoryConsistency
+      scope: MemoryScope
       vector: VectorArity
       state_space: MemoryStateSpace
 
@@ -145,6 +170,8 @@ domains:
       ScalarType: ScalarType
       RoundingMode: RoundingMode
       CacheOperator: CacheOperator
+      MemoryConsistency: MemoryConsistency
+      MemoryScope: MemoryScope
       VectorArity: VectorArity
       MemoryStateSpace: MemoryStateSpace
       Register: ResolvedRegisterRef
@@ -202,6 +229,8 @@ domains:
       ScalarType: check_end::ResolvedValueKind::ScalarType
       RoundingMode: check_end::ResolvedValueKind::RoundingMode
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
+      MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
+      MemoryScope: check_end::ResolvedValueKind::MemoryScope
       VectorArity: check_end::ResolvedValueKind::VectorArity
       MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
       Register: check_end::ResolvedValueKind::Register
@@ -260,6 +289,8 @@ domains:
       ScalarType: check_end::ResolvedModifierDefaultKind::ScalarType
       RoundingMode: check_end::ResolvedModifierDefaultKind::RoundingMode
       CacheOperator: check_end::ResolvedModifierDefaultKind::CacheOperator
+      MemoryConsistency: check_end::ResolvedModifierDefaultKind::MemoryConsistency
+      MemoryScope: check_end::ResolvedModifierDefaultKind::MemoryScope
       MemoryStateSpace: check_end::ResolvedModifierDefaultKind::MemoryStateSpace
 
   checker_modifier_value_kinds:
@@ -269,6 +300,8 @@ domains:
       ScalarType: checker::ModifierValueKind::ScalarType
       RoundingMode: checker::ModifierValueKind::RoundingMode
       CacheOperator: checker::ModifierValueKind::CacheOperator
+      MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
+      MemoryScope: checker::ModifierValueKind::MemoryScope
       VectorArity: checker::ModifierValueKind::VectorArity
       MemoryStateSpace: checker::ModifierValueKind::MemoryStateSpace
 

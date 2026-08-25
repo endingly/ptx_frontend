@@ -111,6 +111,18 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
     minimum_sm = int(availability.get("sm", 0))
     family = str(availability.get("family", ""))
     rule_id = variant.rule or ""
+    consistency = variant.memory_consistency
+    memory_consistency = ""
+    if consistency is not None:
+        memory_consistency = f'''
+              .memory_consistency = {{
+                  .semantics_field_id = "{consistency.semantics_field_id}",
+                  .scope_field_id = "{consistency.scope_field_id}",
+                  .mmio_field_id = "{consistency.mmio_field_id}",
+                  .cache_field_id = "{consistency.cache_field_id}",
+                  .address_field_id = "{consistency.address_field_id}",
+                  .state_space_field_id = "{consistency.state_space_field_id or ""}",
+              }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {{
@@ -124,6 +136,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
               .operand_type_compatibilities =
                   {variant.cpp_name}_operand_type_compatibilities,
               .rule_id = "{rule_id}",
+{memory_consistency}
           }}"""
 
 
@@ -184,6 +197,22 @@ def _emit_modifier_value_descriptor(
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "MemoryConsistency":
+        memory_consistency = cpp_value(
+            CppDomain.MEMORY_CONSISTENCIES, str(entry.value)
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "MemoryScope":
+        memory_scope = cpp_value(CppDomain.MEMORY_SCOPES, str(entry.value))
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     else:
         raise ValueError(
             f"unsupported modifier availability value type {entry.value_cpp_type!r}"
@@ -197,6 +226,8 @@ def _emit_modifier_value_descriptor(
               .cache_operator = {cache_operator},
               .vector_arity = {vector_arity},
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
+              .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},
+              .memory_scope = {memory_scope if entry.value_cpp_type == "MemoryScope" else cpp_default(CppDomain.MEMORY_SCOPES)},
               .availability = {{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                   .minimum_sm_version = {minimum_sm},

@@ -21,8 +21,8 @@ generic 与 basic explicit-space scalar 以及 legacy `.v2/.v4` braced-vector `l
 14 种 8--64-bit bit-size、integer 与 floating-point type 接入解引用 address operand。
 legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 32-bit type，`.v4` 64-bit 仍是尚待实现的 modern form。
-其余 source form、modern vector memory operation、完整 memory qualifier、
-`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+其余 source form、modern vector memory operation、其余 memory qualifier extension、
+静态 address alignment、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -172,6 +172,14 @@ modifier-value availability。源码省略 cache 时，Resolved IR 保存
 元数据，不表示 PTX 没有实际硬件默认语义：ISA 仍规定省略时 `ld` 按 `.ca`、`st` 按 `.wb`
 生效；IR 保留 `Unspecified`，是为了不把“源码未写”伪装成“显式写了默认值”，也避免它触发
 cache value availability 检查。
+
+memory consistency 采用生成的 cross-modifier descriptor，而不是把每种 qualifier
+组合展开成 `ld/st` variant。`MemoryConsistency::Omitted`（空 `locs`）与显式
+`.weak` 保持不同；`.volatile/.relaxed/.acquire/.release` 保留 modifier location。
+checker 只允许 relaxed/acquire/release 携带 scope，拒绝 volatile/ordered/mmio 与
+cache 的组合；对已知 address space 执行 global/shared、PTX 9.1 的
+`volatile.local` 及 scalar `.mmio.relaxed.sys` 规则，而不猜测 unknown generic
+address。modern vector form 与静态地址 alignment 检查仍留作后续。
 
 `ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的
 `InputParameter`/`ReturnParameter` 推导可选 parameter direction，不根据 spelling 猜测。
@@ -330,5 +338,6 @@ instruction 约束仍不属于当前 ABI。
 
 function-local call-argument `.param` memory、带限定的 `::entry`/`::func` form、call
 adjacency/predication constraint、modern memory vector form、`.b128`、wider `.b128` register
-所需的 declaration-type availability，以及 memory consistency qualifier 仍不在本切片范围内。
-legacy scalar/vector `ld/st` cache operator 与 legacy `.v2/.v4` braced memory vector 已纳入本切片。
+所需的 declaration-type availability 与静态地址 alignment 检查仍不在本切片范围内。
+legacy scalar/vector `ld/st` cache operator、legacy `.v2/.v4` braced memory vector 与
+memory consistency qualifier 已纳入本切片。

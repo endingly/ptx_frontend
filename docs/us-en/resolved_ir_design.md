@@ -24,8 +24,9 @@ plus legacy `.v2/.v4` vector `ld`/`st` exercise the dereferenced-address path
 for 14 bit-size, integer, and floating-point types from 8 through 64 bits.
 Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
 types through 64 bits, `.v4` through 32 bits, and `.v4` 64-bit remains deferred.
-Other source forms, modern memory vectors, complete memory qualifiers, `call`
-groups, CFG/SSA, and target lowering remain later work.
+Other source forms, modern memory vectors, remaining qualifier extensions,
+static address alignment, `call` groups, CFG/SSA, and target lowering remain
+later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -219,6 +220,16 @@ the ISA still makes omitted `ld` behave as `.ca` and omitted `st` behave as
 `.wb`, while the IR preserves `Unspecified` so omitted source does not masquerade
 as an explicit modifier and does not trigger cache-value availability checks.
 
+Memory consistency is a generated cross-modifier descriptor, not a Cartesian
+set of `ld/st` variants. `MemoryConsistency::Omitted` (empty `locs`) remains
+distinct from explicit `.weak`; `.volatile`, `.relaxed`, `.acquire`, and
+`.release` retain their modifier locations. The checker requires scope only
+for relaxed/acquire/release, rejects cache with volatile/ordered/mmio forms,
+uses known address-space identity without guessing unknown generic addresses,
+and applies the global/shared, `volatile.local` PTX 9.1, and scalar
+`.mmio.relaxed.sys` rules. Modern vector forms and static alignment checks are
+still deferred.
+
 `ResolvedAddress` separately records the enclosing function kind. Generated
 address views derive an optional parameter direction only from a bound
 `InputParameter` or `ReturnParameter`; they do not infer it from spelling.
@@ -398,6 +409,7 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 
 Function-local call-argument `.param` memory, qualified `::entry`/`::func`
 forms, call adjacency/predication constraints, modern memory vector forms,
-`.b128`, declaration-type availability for wider `.b128` registers, and memory
-consistency qualifiers remain outside this slice. Legacy scalar/vector `ld/st`
-cache operators and legacy `.v2/.v4` braced memory vectors are covered here.
+`.b128`, declaration-type availability for wider `.b128` registers, modern
+memory vector forms, and static memory-address alignment checks remain outside
+this slice. Legacy scalar/vector `ld/st` cache operators, legacy `.v2/.v4`
+braced memory vectors, and memory-consistency qualifiers are covered here.

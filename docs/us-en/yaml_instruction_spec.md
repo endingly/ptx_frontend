@@ -131,6 +131,13 @@ a diagnostic falls back to the whole instruction range. Legacy `cache` is the
 exception: `unspecified` is a source-absence sentinel rather than a spellable
 PTX value, so it never triggers modifier-value availability.
 
+`constraints` may carry the typed `memory_consistency` descriptor. It names
+the generated semantics, scope, cache, and address fields (and optionally
+mmio/state-space fields); normalization rejects inactive or
+unknown references. This keeps memory qualifiers independent in syntax while
+the descriptor-backed checker owns their cross rules. `omitted` and `none` are
+source-absence defaults, not spellable modifier values.
+
 `flag` normally provides `token: ".sat"`; a type token is normally derived
 from `value` or `values`. `name` is the modifier-slot ID local to one variant,
 while `kind` determines the resolved value type. The same spelling may bind a

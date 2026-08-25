@@ -409,6 +409,45 @@ instructions:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - &ld_semantics
+            name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            values:
+              - value: weak
+                availability: {ptx: "6.0", sm: 70}
+              - value: volatile
+                availability: {ptx: "1.1"}
+              - value: relaxed
+                availability: {ptx: "6.0", sm: 70}
+              - value: acquire
+                availability: {ptx: "6.0", sm: 70}
+            default: omitted
+          - &memory_scope
+            name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: optional
+            values:
+              - value: cta
+                availability: {ptx: "6.0", sm: 70}
+              - value: cluster
+                availability: {ptx: "7.8", sm: 90}
+              - value: gpu
+                availability: {ptx: "6.0", sm: 70}
+              - value: sys
+                availability: {ptx: "6.0", sm: 70}
+            default: none
+          - &memory_mmio
+            name: mmio
+            kind: flag
+            presence: optional
+            values:
+              - value: true
+                token: .mmio
+                availability: {ptx: "8.2", sm: 70}
+            default: false
           - name: cache
             kind: cache
             domain: cache_operators
@@ -426,6 +465,13 @@ instructions:
               - f64
         operands: $ld_scalar
         rule: data_movement.ld_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
 
         examples:
           - ptx: "ld.u32 %r0, [%rd0+4];"
@@ -451,6 +497,9 @@ instructions:
               - value: $ld_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
+          - *ld_semantics
+          - *memory_scope
+          - *memory_mmio
           - name: type
             kind: type
             domain: scalar_types
@@ -463,6 +512,14 @@ instructions:
                   sm: 13
         operands: $ld_explicit_scalar
         rule: data_movement.ld_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
 
         examples:
           - ptx: "ld.global.u32 %r0, [global_value];"
@@ -475,6 +532,8 @@ instructions:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - *ld_semantics
+          - *memory_scope
           - name: cache
             kind: cache
             domain: cache_operators
@@ -497,6 +556,12 @@ instructions:
               - f64
         operands: $ld_vector
         rule: data_movement.ld_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
 
         examples:
           - ptx: "ld.v2.u32 {%r0, %r1}, [%rd0];"
@@ -522,6 +587,8 @@ instructions:
               - value: $ld_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
+          - *ld_semantics
+          - *memory_scope
           - name: vector
             kind: vector
             domain: vector_arities
@@ -539,6 +606,13 @@ instructions:
                   sm: 13
         operands: $ld_explicit_vector
         rule: data_movement.ld_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
 
         examples:
           - ptx: "ld.global.v2.u32 {%r0, %r1}, [global_value];"
@@ -561,6 +635,15 @@ instructions:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - &st_semantics
+            name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            values: [{value: weak, availability: {ptx: "6.0", sm: 70}}, {value: volatile, availability: {ptx: "1.1"}}, {value: relaxed, availability: {ptx: "6.0", sm: 70}}, {value: release, availability: {ptx: "6.0", sm: 70}}]
+            default: omitted
+          - *memory_scope
+          - *memory_mmio
           - name: cache
             kind: cache
             domain: cache_operators
@@ -578,6 +661,13 @@ instructions:
               - f64
         operands: $st_scalar
         rule: data_movement.st_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
 
         examples:
           - ptx: "st.u32 [%rd0+4], %r0;"
@@ -601,6 +691,9 @@ instructions:
               - value: $st_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
+          - *st_semantics
+          - *memory_scope
+          - *memory_mmio
           - name: type
             kind: type
             domain: scalar_types
@@ -613,6 +706,14 @@ instructions:
                   sm: 13
         operands: $st_explicit_scalar
         rule: data_movement.st_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
 
         examples:
           - ptx: "st.global.u32 [global_value], %r0;"
@@ -625,6 +726,8 @@ instructions:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - *st_semantics
+          - *memory_scope
           - name: cache
             kind: cache
             domain: cache_operators
@@ -647,6 +750,12 @@ instructions:
               - f64
         operands: $st_vector
         rule: data_movement.st_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
 
         examples:
           - ptx: "st.v2.u32 [%rd0], {%r0, %r1};"
@@ -672,6 +781,8 @@ instructions:
               - value: $st_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
+          - *st_semantics
+          - *memory_scope
           - name: vector
             kind: vector
             domain: vector_arities
@@ -689,6 +800,13 @@ instructions:
                   sm: 13
         operands: $st_explicit_vector
         rule: data_movement.st_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
 
         examples:
           - ptx: "st.global.v2.u32 [global_value], {%r0, %r1};"

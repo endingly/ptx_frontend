@@ -278,6 +278,41 @@ std::expected<WithLocs<CacheOperator>, ResolveDiagnostic> resolve_cache_operator
   return WithLocs<CacheOperator>{*cache_operator, modifier.syntax.range};
 }
 
+std::optional<MemoryConsistency> memory_consistency_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kMemoryConsistencies, spelling);
+}
+
+std::expected<WithLocs<MemoryConsistency>, ResolveDiagnostic>
+resolve_memory_consistency(const syntax_ast::AstModifier& modifier) {
+  const auto value = memory_consistency_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown memory consistency '{}'.",
+                               modifier.syntax.text),
+    });
+  }
+  return WithLocs<MemoryConsistency>{*value, modifier.syntax.range};
+}
+
+std::optional<MemoryScope> memory_scope_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kMemoryScopes, spelling);
+}
+
+std::expected<WithLocs<MemoryScope>, ResolveDiagnostic> resolve_memory_scope(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value = memory_scope_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown memory scope '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<MemoryScope>{*value, modifier.syntax.range};
+}
+
 std::optional<VectorArity> vector_arity_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kVectorArities, spelling);
@@ -1633,6 +1668,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
     case ResolvedValueKind::CacheOperator:
+    case ResolvedValueKind::MemoryConsistency:
+    case ResolvedValueKind::MemoryScope:
     case ResolvedValueKind::VectorArity:
     case ResolvedValueKind::MemoryStateSpace:
       throw ResolveException(fmt::format(
@@ -1684,6 +1721,21 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{WithLocs<CacheOperator>{
           default_value.cache_operator}};
+    case ResolvedValueKind::MemoryConsistency:
+      if (default_value.kind != ResolvedModifierDefaultKind::MemoryConsistency) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a memory-consistency default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MemoryConsistency>{
+          default_value.memory_consistency}};
+    case ResolvedValueKind::MemoryScope:
+      if (default_value.kind != ResolvedModifierDefaultKind::MemoryScope) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a memory-scope default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MemoryScope>{default_value.memory_scope}};
     case ResolvedValueKind::MemoryStateSpace:
       if (default_value.kind !=
               ResolvedModifierDefaultKind::MemoryStateSpace ||
@@ -1904,6 +1956,18 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::CacheOperator: {
         auto value = resolve_cache_operator(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MemoryConsistency: {
+        auto value = resolve_memory_consistency(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MemoryScope: {
+        auto value = resolve_memory_scope(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));

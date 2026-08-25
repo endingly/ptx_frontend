@@ -69,6 +69,27 @@ enum class CacheOperator : uint8_t {
   Wt,
 };
 
+/** Source-level memory-consistency qualifier for ld/st.  Omitted is kept
+ * distinct from explicit .weak so target availability and source provenance
+ * remain observable in Resolved IR. */
+enum class MemoryConsistency : uint8_t {
+  Omitted = 0,
+  Weak,
+  Volatile,
+  Relaxed,
+  Acquire,
+  Release,
+};
+
+/** Scope carried by memory-consistency operations; None represents omission. */
+enum class MemoryScope : uint8_t {
+  None = 0,
+  Cta,
+  Cluster,
+  Gpu,
+  Sys,
+};
+
 template <typename Enum>
   requires std::is_enum_v<Enum>
 std::string to_string(Enum e) {

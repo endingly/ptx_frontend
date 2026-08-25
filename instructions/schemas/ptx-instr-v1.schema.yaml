@@ -1002,6 +1002,7 @@ $defs:
           - mutually_exclusive_modifiers
           - implies_modifier
           - custom
+          - memory_consistency
 
       operands:
         type: array
@@ -1023,6 +1024,24 @@ $defs:
 
       message:
         type: string
+
+      semantics_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      scope_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      mmio_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      cache_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      address_operand:
+        $ref: "#/$defs/schema_identifier"
+
+      state_space_modifier:
+        $ref: "#/$defs/schema_identifier"
 
   example:
     description: "Positive or negative PTX example for an instruction or variant."

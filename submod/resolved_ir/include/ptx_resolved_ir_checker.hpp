@@ -68,6 +68,8 @@ namespace checker {
 using base::ScalarType;
 using base::RoundingMode;
 using base::CacheOperator;
+using base::MemoryConsistency;
+using base::MemoryScope;
 namespace detail {
 
 /** Combine variant-specific lambdas into the visitor accepted by std::visit. */
@@ -200,9 +202,13 @@ struct OperandDescriptor {
 /** A non-owning semantic view of one resolved modifier field. */
 struct FieldView {
   std::string_view field_id;
+  std::optional<bool> bool_value;
+  std::optional<CacheOperator> cache_operator;
   std::optional<ScalarType> scalar_type;
   std::optional<VectorArity> vector_arity;
   std::optional<MemoryStateSpace> memory_state_space;
+  std::optional<MemoryConsistency> memory_consistency;
+  std::optional<MemoryScope> memory_scope;
   std::span<const SourceRange> locations;
 };
 
@@ -265,6 +271,8 @@ enum class ModifierValueKind : uint8_t {
   CacheOperator,
   VectorArity,
   MemoryStateSpace,
+  MemoryConsistency,
+  MemoryScope,
 };
 
 /** Target requirement attached to one legal semantic modifier value. */
@@ -277,6 +285,8 @@ struct ModifierValueAvailabilityDescriptor {
   CacheOperator cache_operator = CacheOperator::Unspecified;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
+  MemoryScope memory_scope = MemoryScope::None;
   AvailabilityDescriptor availability;
 };
 
@@ -290,6 +300,8 @@ struct ModifierValueView {
   CacheOperator cache_operator = CacheOperator::Unspecified;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
+  MemoryScope memory_scope = MemoryScope::None;
   bool is_present = false;
   std::span<const SourceRange> locations;
 };
@@ -311,6 +323,15 @@ struct VariantDescriptor {
   std::span<const OperandTypeCompatibilityDescriptor>
       operand_type_compatibilities;
   std::string_view rule_id;
+  /** Empty field IDs mean this variant has no memory-consistency rule. */
+  struct MemoryConsistencyDescriptor {
+    std::string_view semantics_field_id;
+    std::string_view scope_field_id;
+    std::string_view mmio_field_id;
+    std::string_view cache_field_id;
+    std::string_view address_field_id;
+    std::string_view state_space_field_id;
+  } memory_consistency;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -336,6 +357,7 @@ enum class CheckDiagnosticKind : uint8_t {
   AddressStateSpaceMismatch,
   ParameterDirectionMismatch,
   InvalidVectorOperand,
+  MemoryConsistencyViolation,
   RuleViolation,
 };
 
@@ -427,6 +449,12 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
 CheckResult check_modifier_value_availability(
     std::span<const ModifierValueAvailabilityDescriptor> descriptors,
     std::span<const ModifierValueView> actual_values, const Context& context);
+
+/** Check generated ld/st memory-order and address-space cross constraints. */
+CheckResult check_memory_consistency(
+    const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context);
 
 /**
  * Check one generated resolved instruction.

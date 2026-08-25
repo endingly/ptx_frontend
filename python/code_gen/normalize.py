@@ -8,6 +8,7 @@ from typing import Any
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     InstructionSpec,
+    MemoryConsistencyConstraint,
     ModifierSpec,
     ModifierValueSpec,
     OperandLayoutSpec,
@@ -390,6 +391,21 @@ def _validate_modifier_default(
                 "default 'unspecified'"
             )
         return
+    if kind in {"semantics", "scope"}:
+        if not isinstance(default, str):
+            raise ValueError(
+                f"optional {kind} modifier {raw['name']!r} must have a string "
+                "default"
+            )
+        allowed_values = {value.value for value in values}
+        # Omission sentinels intentionally are not spellable modifier values.
+        sentinel = "omitted" if kind == "semantics" else "none"
+        if default != sentinel and default not in allowed_values:
+            raise ValueError(
+                f"optional {kind} modifier {raw['name']!r} has default "
+                f"{default!r} outside its allowed values"
+            )
+        return
 
 
 def _normalize_modifier_values(
@@ -604,6 +620,104 @@ def _normalize_operand_type_compatibilities(
     return tuple(result)
 
 
+def _normalize_memory_consistency_constraint(
+    raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...],
+    layouts: tuple[OperandLayoutSpec, ...]
+) -> MemoryConsistencyConstraint | None:
+    """Lower the one typed ld/st cross-modifier constraint, if present."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "memory_consistency"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: at most one memory_consistency "
+            "constraint is supported"
+        )
+    raw = matches[0]
+    required = {
+        "semantics_modifier", "scope_modifier", "cache_modifier",
+        "address_operand",
+    }
+    missing = required - raw.keys()
+    if missing:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency constraint "
+            f"is missing {sorted(missing)}"
+        )
+    modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
+    modifier_names = set(modifiers_by_name)
+    for key in required - {"address_operand"}:
+        value = raw[key]
+        if value not in modifier_names:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_consistency {key} "
+                f"references inactive modifier {value!r}"
+            )
+    operand_names = {operand.name for layout in layouts for operand in layout.operands}
+    if raw["address_operand"] not in operand_names:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency address "
+            f"references unknown operand {raw['address_operand']!r}"
+        )
+    if any(
+        operand.name == raw["address_operand"] and operand.kind != "addr"
+        for layout in layouts for operand in layout.operands
+    ):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency address "
+            "operand must have kind 'addr'"
+        )
+    expected_kinds = {
+        "semantics_modifier": "semantics",
+        "scope_modifier": "scope",
+        "cache_modifier": "cache",
+    }
+    for key, expected_kind in expected_kinds.items():
+        if modifiers_by_name[raw[key]].kind != expected_kind:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_consistency {key} "
+                f"must name a {expected_kind!r} modifier"
+            )
+    mmio_modifier = raw.get("mmio_modifier")
+    if mmio_modifier is not None:
+        if mmio_modifier not in modifier_names:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_consistency "
+                f"mmio_modifier references inactive modifier {mmio_modifier!r}"
+            )
+        if modifiers_by_name[mmio_modifier].kind != "flag":
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_consistency "
+                "mmio_modifier must name a 'flag' modifier"
+            )
+    for key in ("state_space_modifier",):
+        value = raw.get(key)
+        if value is not None and value not in modifier_names:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_consistency {key} "
+                f"references inactive modifier {value!r}"
+            )
+    if raw.get("state_space_modifier") is not None and (
+        modifiers_by_name[raw["state_space_modifier"]].kind != "state_space"
+    ):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency "
+            "state_space_modifier must name a state_space modifier"
+        )
+    return MemoryConsistencyConstraint(
+        semantics_modifier=raw["semantics_modifier"],
+        scope_modifier=raw["scope_modifier"],
+        cache_modifier=raw["cache_modifier"],
+        address_operand=raw["address_operand"],
+        mmio_modifier=mmio_modifier,
+        state_space_modifier=raw.get("state_space_modifier"),
+    )
+
+
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
@@ -653,6 +767,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                         _normalize_operand_type_compatibilities(
                             raw_variant, operand_layouts
                         )
+                    ),
+                    memory_consistency=_normalize_memory_consistency_constraint(
+                        raw_variant, modifiers, operand_layouts
                     ),
                 )
             )

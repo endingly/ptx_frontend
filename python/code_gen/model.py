@@ -58,6 +58,18 @@ class OperandParameterConstraint:
     function_availability: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class MemoryConsistencyConstraint:
+    """Typed cross-modifier rule for a family of ld/st variants."""
+
+    semantics_modifier: str
+    scope_modifier: str
+    cache_modifier: str
+    address_operand: str
+    mmio_modifier: str | None = None
+    state_space_modifier: str | None = None
+
+
 class RuntimeLookupKind(str, Enum):
     """Runtime C++ lookup forms emitted for backend value domains."""
 
@@ -167,6 +179,7 @@ class VariantSpec:
     operand_layouts: tuple[OperandLayoutSpec, ...]
     rule: str | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
+    memory_consistency: MemoryConsistencyConstraint | None = None
 
 
 @dataclass(frozen=True)

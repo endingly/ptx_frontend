@@ -111,6 +111,26 @@ class BackendModelTests(unittest.TestCase):
             "CacheOperator::Unspecified",
         )
         self.assertEqual(
+            unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
+            "MemoryConsistency::Weak",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.MEMORY_SCOPES.value].default,
+            "MemoryScope::None",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
+                "MemoryConsistency"
+            ],
+            "MemoryConsistency",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
+                "MemoryScope"
+            ],
+            "MemoryScope",
+        )
+        self.assertEqual(
             unit.domains[CppDomain.REGISTER_WIDTH_POLICIES.value].values[
                 "equal_or_wider"
             ],

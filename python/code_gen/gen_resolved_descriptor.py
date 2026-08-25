@@ -226,6 +226,20 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
                   .memory_state_space = {memory_state_space},
               }}"""
+    if default.value_cpp_type == "MemoryConsistency" and isinstance(
+        default.value, str
+    ):
+        value = cpp_value(CppDomain.MEMORY_CONSISTENCIES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryConsistency")},
+                  .memory_consistency = {value},
+              }}"""
+    if default.value_cpp_type == "MemoryScope" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.MEMORY_SCOPES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryScope")},
+                  .memory_scope = {value},
+              }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "
         f"{default.value_cpp_type}"

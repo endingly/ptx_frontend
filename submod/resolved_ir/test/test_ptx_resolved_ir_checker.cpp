@@ -913,5 +913,60 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperChecksLayoutAvailability) {
   EXPECT_TRUE(check(*register_barrier, sm20_context).has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedMemoryConsistencyCrossRules) {
+  constexpr VariantDescriptor::MemoryConsistencyDescriptor descriptor{
+      .semantics_field_id = "semantics",
+      .scope_field_id = "scope",
+      .mmio_field_id = "mmio",
+      .cache_field_id = "cache",
+      .address_field_id = "address",
+  };
+  const Context context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 90},
+      .instruction_range = kInstructionRange,
+  };
+  const FieldView invalid_fields[] = {
+      {.field_id = "semantics", .memory_consistency = MemoryConsistency::Relaxed},
+      {.field_id = "scope", .memory_scope = MemoryScope::None},
+      {.field_id = "mmio", .bool_value = false},
+      {.field_id = "cache", .cache_operator = CacheOperator::Unspecified},
+  };
+  const OperandView global_address[] = {{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Global,
+  }};
+  const auto missing_scope = check_memory_consistency(
+      descriptor, invalid_fields, global_address, context);
+  ASSERT_FALSE(missing_scope.has_value());
+  EXPECT_EQ(missing_scope.error().front().kind,
+            CheckDiagnosticKind::MemoryConsistencyViolation);
+
+  const FieldView valid_fields[] = {
+      {.field_id = "semantics", .memory_consistency = MemoryConsistency::Relaxed},
+      {.field_id = "scope", .memory_scope = MemoryScope::Sys},
+      {.field_id = "mmio", .bool_value = true},
+      {.field_id = "cache", .cache_operator = CacheOperator::Unspecified},
+  };
+  EXPECT_TRUE(check_memory_consistency(descriptor, valid_fields, global_address,
+                                       context)
+                  .has_value());
+
+  constexpr VariantDescriptor::MemoryConsistencyDescriptor vector_descriptor{
+      .semantics_field_id = "semantics",
+      .scope_field_id = "scope",
+      .cache_field_id = "cache",
+      .address_field_id = "address",
+  };
+  const FieldView vector_fields[] = {
+      {.field_id = "semantics", .memory_consistency = MemoryConsistency::Relaxed},
+      {.field_id = "scope", .memory_scope = MemoryScope::Cta},
+      {.field_id = "cache", .cache_operator = CacheOperator::Unspecified},
+  };
+  EXPECT_TRUE(check_memory_consistency(vector_descriptor, vector_fields,
+                                       global_address, context)
+                  .has_value());
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir::checker

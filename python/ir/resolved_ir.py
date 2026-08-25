@@ -20,6 +20,7 @@ from code_gen.cpp_backend import (
 )
 from code_gen.model import (
     InstructionSpec,
+    MemoryConsistencyConstraint,
     ModifierSpec,
     ModifierValueSpec,
     OperandParameterConstraint,
@@ -50,6 +51,8 @@ class ResolvedValueKind(Enum):
     SCALAR_TYPE = "ScalarType"
     ROUNDING_MODE = "RoundingMode"
     CACHE_OPERATOR = "CacheOperator"
+    MEMORY_CONSISTENCY = "MemoryConsistency"
+    MEMORY_SCOPE = "MemoryScope"
     VECTOR_ARITY = "VectorArity"
     MEMORY_STATE_SPACE = "MemoryStateSpace"
     REGISTER = "Register"
@@ -153,6 +156,18 @@ class ResolvedParameterAddressConstraint:
 
 
 @dataclass(frozen=True)
+class ResolvedMemoryConsistencyConstraint:
+    """Generated field identities for the typed ld/st cross-rule checker."""
+
+    semantics_field_id: str
+    scope_field_id: str
+    mmio_field_id: str
+    cache_field_id: str
+    address_field_id: str
+    state_space_field_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
 
@@ -211,6 +226,12 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.MEMORY_STATE_SPACES, self.constant_value)
+        if self.value_cpp_type == "MemoryConsistency" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.MEMORY_CONSISTENCIES, self.constant_value)
+        if self.value_cpp_type == "MemoryScope" and isinstance(self.constant_value, str):
+            return cpp_value(CppDomain.MEMORY_SCOPES, self.constant_value)
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"
@@ -228,6 +249,7 @@ class ResolvedVariant:
     operand_layouts: tuple["ResolvedOperandLayout", ...]
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
+    memory_consistency: ResolvedMemoryConsistencyConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -423,8 +445,35 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             for compatibility in variant.operand_type_compatibilities
             for value in compatibility.values
         ),
+        memory_consistency=_build_memory_consistency_constraint(
+            variant.memory_consistency,
+            {field.source_name: field.name for field in modifier_fields},
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
+    )
+
+
+def _build_memory_consistency_constraint(
+    constraint: MemoryConsistencyConstraint | None,
+    modifier_field_ids: dict[str, str],
+) -> ResolvedMemoryConsistencyConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedMemoryConsistencyConstraint(
+        semantics_field_id=modifier_field_ids[constraint.semantics_modifier],
+        scope_field_id=modifier_field_ids[constraint.scope_modifier],
+        mmio_field_id=(
+            modifier_field_ids[constraint.mmio_modifier]
+            if constraint.mmio_modifier is not None
+            else ""
+        ),
+        cache_field_id=modifier_field_ids[constraint.cache_modifier],
+        address_field_id=constraint.address_operand,
+        state_space_field_id=(
+            modifier_field_ids[constraint.state_space_modifier]
+            if constraint.state_space_modifier is not None else None
+        ),
     )
 
 
@@ -497,6 +546,22 @@ def _build_modifier_default(
                 f"optional state-space modifier {modifier.name!r} has "
                 f"unsupported default {modifier.default!r}"
             )
+    if value_cpp_type == "MemoryConsistency":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.MEMORY_CONSISTENCIES
+        ).values:
+            raise ValueError(
+                f"optional semantics modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "MemoryScope":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.MEMORY_SCOPES
+        ).values:
+            raise ValueError(
+                f"optional scope modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
     return ResolvedModifierDefault(
         value_cpp_type=value_cpp_type,
         value=modifier.default,
@@ -561,6 +626,22 @@ def _build_modifier_value_availability(
         if value.value not in cpp_domain(CppDomain.MEMORY_STATE_SPACES).values:
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported state-space value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "MemoryConsistency":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.MEMORY_CONSISTENCIES
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported memory consistency "
+                f"value {value.value!r}"
+            )
+    if value_cpp_type == "MemoryScope":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.MEMORY_SCOPES
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported memory scope value "
                 f"{value.value!r}"
             )
     return ResolvedModifierValueAvailability(

@@ -651,6 +651,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
+                ("semantics", "WithLocs<MemoryConsistency>"),
+                ("scope", "WithLocs<MemoryScope>"),
+                ("mmio", "WithLocs<bool>"),
                 ("cache", "WithLocs<CacheOperator>"),
                 ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
@@ -658,17 +661,30 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            variant.modifier_bindings[0].default_value.value_cpp_type,
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "cache").default_value.value_cpp_type,
             "CacheOperator",
         )
         self.assertEqual(
-            variant.modifier_bindings[0].default_value.value,
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "cache").default_value.value,
             "unspecified",
+        )
+        self.assertEqual(
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "semantics").default_value.value,
+            "omitted",
+        )
+        self.assertEqual(
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "scope").default_value.value,
+            "none",
         )
         self.assertEqual(
             [
                 (entry.source_kind_id, entry.value_cpp_type, entry.value)
                 for entry in variant.modifier_value_availabilities
+                if entry.source_kind_id == "cache"
             ],
             [
                 ("cache", "CacheOperator", "ca"),
@@ -678,6 +694,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("cache", "CacheOperator", "cv"),
             ],
         )
+        self.assertEqual(
+            [
+                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                for entry in variant.modifier_value_availabilities
+                if entry.source_kind_id == "semantics"
+            ],
+            [
+                ("semantics", "MemoryConsistency", "weak"),
+                ("semantics", "MemoryConsistency", "volatile"),
+                ("semantics", "MemoryConsistency", "relaxed"),
+                ("semantics", "MemoryConsistency", "acquire"),
+            ],
+        )
+        self.assertIn(
+            ("mmio", "bool", True),
+            [(entry.source_kind_id, entry.value_cpp_type, entry.value)
+             for entry in variant.modifier_value_availabilities],
+        )
+        self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
+        self.assertEqual(variant.memory_consistency.address_field_id, "address")
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].type_expression,
             ResolvedOperandTypeExpression(
@@ -759,11 +795,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (
-                    availability.value,
-                    dict(availability.availability),
-                )
-                for availability in explicit_variant.modifier_value_availabilities
+                (entry.value, dict(entry.availability))
+                for entry in explicit_variant.modifier_value_availabilities
+                if entry.source_kind_id in {"cache", "type"}
             ],
             [
                 ("ca", {"ptx": "2.0", "sm": 20}),
@@ -785,10 +819,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(vector_variant.cpp_name, "GenericVector")
         self.assertEqual(
             [field.name for field in vector_variant.fields],
-            ["cache", "vector", "type", "dst", "address"],
+            ["semantics", "scope", "cache", "vector", "type", "dst", "address"],
         )
+        self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
         self.assertEqual(
-            [value.value for value in ld.variants[2].modifiers[1].values],
+            [value.value for value in next(modifier for modifier in ld.variants[2].modifiers if modifier.name == "vector").values],
             ["v2", "v4"],
         )
         vector_binding = vector_variant.operand_layouts[0].bindings[0]
@@ -842,16 +877,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
         self.assertEqual(
             [field.name for field in store.variants[0].fields],
-            ["cache", "type", "address", "src"],
+            ["semantics", "scope", "mmio", "cache", "type", "address", "src"],
         )
         self.assertEqual(
-            store.variants[0].modifier_bindings[0].default_value.value,
+            next(binding for binding in store.variants[0].modifier_bindings
+                 if binding.source_kind_id == "cache").default_value.value,
             "unspecified",
         )
         self.assertEqual(
             [
                 availability.value
                 for availability in store.variants[0].modifier_value_availabilities
+                if availability.source_kind_id == "cache"
             ],
             ["wb", "cg", "cs", "wt"],
         )
@@ -899,11 +936,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (
-                    availability.value,
-                    dict(availability.availability),
-                )
-                for availability in store.variants[1].modifier_value_availabilities
+                (entry.value, dict(entry.availability))
+                for entry in store.variants[1].modifier_value_availabilities
+                if entry.source_kind_id in {"cache", "type"}
             ],
             [
                 ("wb", {"ptx": "2.0", "sm": 20}),
@@ -924,10 +959,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         store_vector = store.variants[2]
         self.assertEqual(
             [field.name for field in store_vector.fields],
-            ["cache", "vector", "type", "address", "src"],
+            ["semantics", "scope", "cache", "vector", "type", "address", "src"],
         )
+        self.assertEqual(store_vector.memory_consistency.mmio_field_id, "")
         self.assertEqual(
-            [value.value for value in st.variants[2].modifiers[1].values],
+            [value.value for value in next(modifier for modifier in st.variants[2].modifiers if modifier.name == "vector").values],
             ["v2", "v4"],
         )
         store_vector_binding = store_vector.operand_layouts[0].bindings[1]
@@ -1170,6 +1206,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".enclosing_function_kind =", source)
         self.assertIn(".parameter_direction = parameter_direction", source)
         self.assertIn("CheckResult check<Ld>(", source)
+        self.assertIn("check_memory_consistency(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = load_codegen_database(
@@ -1213,6 +1250,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("const auto operand_check = check_operands(", source)
         self.assertIn("const auto layout_check = check_operand_layout_tag(", source)
         self.assertIn("check_modifier_value_availability(", source)
+        self.assertNotIn("check_memory_consistency(", source)
         self.assertIn("Add::get_checker_descriptor(), \"IntegerNoSat\"", source)
         self.assertNotIn("struct Bar {", source)
 
@@ -1313,6 +1351,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("checker::VariantDescriptor", source)
         self.assertIn("checker::OperandLayoutDescriptor", source)
         self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
+        self.assertIn(".memory_consistency = {", source)
+        self.assertIn(".semantics_field_id = \"semantics\",", source)
         self.assertIn(
             ".special_register_kind = base::SpecialRegisterKind::Tid,",
             source,

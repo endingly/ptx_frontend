@@ -2,8 +2,6 @@ name: Linux CI
 
 on:
   pull_request:
-    branches:
-      - feat/ld-st
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -11,8 +9,6 @@ permissions:
 
 env:
   VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
-  VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   CCACHE_MAXSIZE: 1G
 
@@ -89,27 +85,13 @@ jobs:
           .venv/bin/python -m pip install -r requirements.txt
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Restore vcpkg caches
-        uses: actions/cache@v6
-        with:
-          path: |
-            .cache/vcpkg/archives
-            .cache/vcpkg/downloads
-          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-${{ runner.arch }}-
-
       - name: Set up vcpkg
-        shell: bash
-        run: |
-          baseline="$(python3 -c 'import json; print(json.load(open("vcpkg.json"))["builtin-baseline"])')"
-          mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
-          git init "$VCPKG_ROOT"
-          git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "$VCPKG_ROOT" fetch --depth=1 origin "$baseline"
-          git -C "$VCPKG_ROOT" checkout --detach FETCH_HEAD
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-          "$VCPKG_ROOT/vcpkg" version
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ env.VCPKG_ROOT }}
+          vcpkgJsonGlob: '**/vcpkg.json'
+          runVcpkgInstall: false
+          doNotCache: false
 
       - name: Restore compiler cache
         uses: actions/cache@v6

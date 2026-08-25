@@ -1003,6 +1003,7 @@ $defs:
           - implies_modifier
           - custom
           - memory_consistency
+          - address_alignment
 
       operands:
         type: array
@@ -1041,6 +1042,12 @@ $defs:
         $ref: "#/$defs/schema_identifier"
 
       state_space_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      type_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      vector_modifier:
         $ref: "#/$defs/schema_identifier"
 
   example:

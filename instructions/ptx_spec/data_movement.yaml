@@ -472,6 +472,9 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "ld.u32 %r0, [%rd0+4];"
@@ -520,6 +523,9 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "ld.global.u32 %r0, [global_value];"
@@ -562,6 +568,10 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
 
         examples:
           - ptx: "ld.v2.u32 {%r0, %r1}, [%rd0];"
@@ -613,6 +623,10 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
 
         examples:
           - ptx: "ld.global.v2.u32 {%r0, %r1}, [global_value];"
@@ -668,6 +682,9 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "st.u32 [%rd0+4], %r0;"
@@ -714,6 +731,9 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "st.global.u32 [global_value], %r0;"
@@ -756,6 +776,10 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
 
         examples:
           - ptx: "st.v2.u32 [%rd0], {%r0, %r1};"
@@ -807,6 +831,10 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
 
         examples:
           - ptx: "st.global.v2.u32 [global_value], {%r0, %r1};"

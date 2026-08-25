@@ -25,8 +25,9 @@ for 14 bit-size, integer, and floating-point types from 8 through 64 bits.
 Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
 types through 64 bits, `.v4` through 32 bits, and `.v4` 64-bit remains deferred.
 Other source forms, modern memory vectors, remaining qualifier extensions,
-static address alignment, `call` groups, CFG/SSA, and target lowering remain
-later work.
+`call` groups, CFG/SSA, and target lowering remain later work. Static natural
+alignment checks bound data symbols with constant byte offsets and absolute
+immediate addresses; register and standalone unresolved addresses stay unknown.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -227,8 +228,9 @@ distinct from explicit `.weak`; `.volatile`, `.relaxed`, `.acquire`, and
 for relaxed/acquire/release, rejects cache with volatile/ordered/mmio forms,
 uses known address-space identity without guessing unknown generic addresses,
 and applies the global/shared, `volatile.local` PTX 9.1, and scalar
-`.mmio.relaxed.sys` rules. Modern vector forms and static alignment checks are
-still deferred.
+`.mmio.relaxed.sys` rules. Static natural alignment covers scalar and legacy
+`.v2/.v4` total access sizes when the address is known; modern vector forms
+remain deferred.
 
 `ResolvedAddress` separately records the enclosing function kind. Generated
 address views derive an optional parameter direction only from a bound
@@ -409,7 +411,6 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 
 Function-local call-argument `.param` memory, qualified `::entry`/`::func`
 forms, call adjacency/predication constraints, modern memory vector forms,
-`.b128`, declaration-type availability for wider `.b128` registers, modern
-memory vector forms, and static memory-address alignment checks remain outside
-this slice. Legacy scalar/vector `ld/st` cache operators, legacy `.v2/.v4`
+`.b128`, declaration-type availability for wider `.b128` registers, and modern
+memory vector forms remain outside this slice. Legacy scalar/vector `ld/st` cache operators, legacy `.v2/.v4`
 braced memory vectors, and memory-consistency qualifiers are covered here.

@@ -880,4 +880,47 @@ CheckResult check_memory_consistency(
   return std::unexpected(std::move(diagnostics));
 }
 
+CheckResult check_address_alignment(
+    const AddressAlignmentConstraint& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context) {
+  if (descriptor.address_field_id.empty())
+    return {};
+  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  const FieldView* type = find_field(fields, descriptor.type_field_id);
+  const FieldView* vector = descriptor.vector_field_id.empty()
+                                ? nullptr
+                                : find_field(fields, descriptor.vector_field_id);
+  if (address == nullptr || type == nullptr || !type->scalar_type ||
+      (!descriptor.vector_field_id.empty() &&
+       (vector == nullptr || !vector->vector_arity))) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Generated address-alignment descriptor has missing fields.",
+    }});
+  }
+  const uint64_t element_size = base::scalar_size_of(*type->scalar_type);
+  const uint64_t arity = vector == nullptr ? 1 : vector_arity_count(*vector->vector_arity);
+  if (element_size == 0 || arity == 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Generated address-alignment descriptor has invalid type or vector fields.",
+    }});
+  }
+  const uint64_t required = element_size * arity;
+  // Register/standalone addresses remain unknown and are intentionally valid.
+  if (!address->address_alignment || *address->address_alignment == 0 ||
+      *address->address_alignment >= required)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::AddressAlignmentMismatch,
+      .range = diagnostic_range(address->locations, context),
+      .message = fmt::format(
+          "Address operand '{}' is aligned to {} byte(s), but this access requires {} byte alignment.",
+          descriptor.address_field_id, *address->address_alignment, required),
+  }});
+}
+
 }  // namespace ptx_frontend::resolved_ir::checker

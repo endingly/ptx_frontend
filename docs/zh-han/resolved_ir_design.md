@@ -22,7 +22,9 @@ generic 与 basic explicit-space scalar 以及 legacy `.v2/.v4` braced-vector `l
 legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 32-bit type，`.v4` 64-bit 仍是尚待实现的 modern form。
 其余 source form、modern vector memory operation、其余 memory qualifier extension、
-静态 address alignment、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。静态 natural
+alignment 会检查已绑定 data symbol 的常量 byte offset 和 absolute immediate；register 与
+standalone unresolved address 保持 unknown。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -179,7 +181,8 @@ memory consistency 采用生成的 cross-modifier descriptor，而不是把每�
 checker 只允许 relaxed/acquire/release 携带 scope，拒绝 volatile/ordered/mmio 与
 cache 的组合；对已知 address space 执行 global/shared、PTX 9.1 的
 `volatile.local` 及 scalar `.mmio.relaxed.sys` 规则，而不猜测 unknown generic
-address。modern vector form 与静态地址 alignment 检查仍留作后续。
+address。scalar 与 legacy `.v2/.v4` 的静态 natural alignment 会按 total access size
+检查已知 address；modern vector form 仍留作后续。
 
 `ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的
 `InputParameter`/`ReturnParameter` 推导可选 parameter direction，不根据 spelling 猜测。
@@ -338,6 +341,6 @@ instruction 约束仍不属于当前 ABI。
 
 function-local call-argument `.param` memory、带限定的 `::entry`/`::func` form、call
 adjacency/predication constraint、modern memory vector form、`.b128`、wider `.b128` register
-所需的 declaration-type availability 与静态地址 alignment 检查仍不在本切片范围内。
+所需的 declaration-type availability 仍不在本切片范围内。
 legacy scalar/vector `ld/st` cache operator、legacy `.v2/.v4` braced memory vector 与
 memory consistency qualifier 已纳入本切片。

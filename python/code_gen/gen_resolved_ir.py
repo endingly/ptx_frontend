@@ -474,6 +474,15 @@ def _emit_check_operand_dispatch(
                                  consistency_check.error().end());
             }}
 """
+    alignment_check = ""
+    if variant.address_alignment is not None:
+        alignment_check = f"""            const auto alignment_check = check_address_alignment(
+                {checker_variant_expr}.address_alignment, fields, operands, context);
+            if (!alignment_check) {{
+              diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
+                                 alignment_check.error().end());
+            }}
+"""
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -503,7 +512,7 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-{consistency_check}          }}"""
+{consistency_check}{alignment_check}          }}"""
 
     layout_lambdas = "\n\n".join(
         _emit_check_multi_layout_lambda(
@@ -560,7 +569,7 @@ def _emit_check_multi_layout_lambda(
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                     .operand_type_compatibilities,
                 context);"""
-    if variant.memory_consistency is not None:
+    if variant.memory_consistency is not None or variant.address_alignment is not None:
         consistency_return = f"""
             const auto operand_check = check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
@@ -572,10 +581,7 @@ def _emit_check_multi_layout_lambda(
                 context);
             if (!operand_check)
               return operand_check;
-            return check_memory_consistency(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .memory_consistency,
-                fields, operands, context);"""
+{_emit_post_operand_checks(instruction, variant, variant_index)}"""
     return f"""          const auto {lambda_name} =
               [&](const {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands& payload)
                   -> CheckResult {{
@@ -599,6 +605,30 @@ def _check_layout_lambda_name(
     variant: ResolvedVariant, layout: ResolvedOperandLayout
 ) -> str:
     return f"check_{variant.variant_id}_{layout.layout_id}_operands"
+
+
+def _emit_post_operand_checks(
+    instruction: ResolvedInstruction, variant: ResolvedVariant, variant_index: int
+) -> str:
+    checker_variant = (
+        f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
+    )
+    checks: list[str] = []
+    if variant.memory_consistency is not None:
+        checks.append(
+            f"""            const auto consistency_check = check_memory_consistency(
+                {checker_variant}.memory_consistency, fields, operands, context);
+            if (!consistency_check)
+              return consistency_check;"""
+        )
+    if variant.address_alignment is not None:
+        checks.append(
+            f"""            return check_address_alignment(
+                {checker_variant}.address_alignment, fields, operands, context);"""
+        )
+    else:
+        checks.append("            return CheckResult{};")
+    return "\n".join(checks)
 
 
 def _check_lambda_name(
@@ -982,6 +1012,23 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     parameter_direction = ParameterDirection::Return;
                   }}
                 }}
+                std::optional<uint64_t> address_alignment;
+                const auto low_bit = [](uint64_t value) {{
+                  return value == 0 ? uint64_t{{0}} : value & (~value + 1);
+                }};
+                if (symbol != nullptr) {{
+                  address_alignment = symbol->address_alignment;
+                }} else if (const auto* immediate = std::get_if<ResolvedImmediate>(
+                               &{object_name}.{field.name}.value.base)) {{
+                  address_alignment = low_bit(immediate->bits);
+                }}
+                if (address_alignment && {object_name}.{field.name}.value.offset) {{
+                  const uint64_t offset_alignment = low_bit(
+                      {object_name}.{field.name}.value.offset->value.bits);
+                  if (offset_alignment != 0 &&
+                      (*address_alignment == 0 || offset_alignment < *address_alignment))
+                    address_alignment = offset_alignment;
+                }}
                 // Register, immediate, and unresolved standalone address
                 // bases remain unknown; spelling is not semantic evidence.
                 return OperandView{{
@@ -990,6 +1037,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .immediate_type = std::nullopt,
                   .register_type = std::nullopt,
                   .address_state_space = effective_state_space,
+                  .address_alignment = address_alignment,
                   .enclosing_function_kind =
                       {object_name}.{field.name}.value.enclosing_function_kind,
                   .parameter_direction = parameter_direction,

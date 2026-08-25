@@ -806,6 +806,78 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported register_width"):
             normalize_width(register_width="wider")
 
+    def test_address_alignment_constraint_normalization_rejects_invalid_links(self) -> None:
+        def normalize_constraint(
+            constraint: object, *, operand_kind: str = "addr"
+        ) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_alignment",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [
+                                        {
+                                            "name": "type",
+                                            "kind": "type",
+                                            "domain": "scalar_types",
+                                            "presence": "fixed",
+                                            "value": "u32",
+                                        },
+                                        {
+                                            "name": "vector",
+                                            "kind": "vector",
+                                            "domain": "vector_arities",
+                                            "presence": "fixed",
+                                            "value": "v2",
+                                        },
+                                    ],
+                                    "operands": [
+                                        {
+                                            "name": "address",
+                                            "kind": operand_kind,
+                                            "role": "addr",
+                                            "access": "read",
+                                        }
+                                    ],
+                                    "constraints": (
+                                        constraint
+                                        if isinstance(constraint, list)
+                                        else [constraint]
+                                    ),
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        valid = {
+            "kind": "address_alignment",
+            "address_operand": "address",
+            "type_modifier": "type",
+        }
+        cases = (
+            ({"kind": "address_alignment", "address_operand": "address"},
+             "is missing"),
+            ({**valid, "type_modifier": "missing"}, "inactive modifier"),
+            ({**valid, "type_modifier": "vector"}, "must name a 'type'"),
+            (valid, "kind 'addr'"),
+            ([valid, valid], "at most one address_alignment"),
+        )
+        for constraint, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    normalize_constraint(
+                        constraint,
+                        operand_kind="reg" if message == "kind 'addr'" else "addr",
+                    )
+
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(
             {

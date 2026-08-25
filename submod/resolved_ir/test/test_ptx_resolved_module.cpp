@@ -61,6 +61,9 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_TRUE(function.is_entry);
   EXPECT_FALSE(function.is_prototype);
   EXPECT_EQ(resolved->symbols.symbol(function.symbol_id).name, "kernel");
+  EXPECT_FALSE(
+      resolved->symbols.symbol(function.symbol_id).parameterized_count);
+  EXPECT_TRUE(resolved->symbols.symbol(function.symbol_id).function_is_entry);
   ASSERT_EQ(function.body.size(), 1u);
 
   const Add::IntegerNoSat& add = resolvedIntegerAdd(function.body.front());
@@ -779,8 +782,8 @@ TEST(ResolvedModule, ChecksBoundLoadStoreRegisterWidthPolicy) {
 
 TEST(ResolvedModule, ResolvesAndChecksLegacyLoadStoreRegisterVectors) {
   const auto ast = parseModule(R"ptx(
-.global .u32 global_value;
-.shared .u16 shared_value;
+.global .align 8 .u32 global_value;
+.shared .align 8 .u16 shared_value;
 .entry kernel() {
   .reg .u64 %rd0;
   .reg .u32 %r<4>;
@@ -852,6 +855,49 @@ TEST(ResolvedModule, ResolvesAndChecksLegacyLoadStoreRegisterVectors) {
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(checker::check(std::get<Ld>(body[2]), old_target).has_value());
   EXPECT_TRUE(checker::check(std::get<St>(body[6]), old_target).has_value());
+}
+
+TEST(ResolvedModule, ChecksBoundAndImmediateAddressAlignment) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 scalar_value;
+.global .align 16 .u32 vector_value;
+.global .f16x2 half2_value;
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r<4>;
+  ld.global.u32 %r0, [scalar_value];
+  ld.global.u32 %r0, [scalar_value+2];
+  ld.global.v4.u32 {%r0, %r1, %r2, %r3}, [vector_value];
+  st.global.v4.u32 [vector_value+8], {%r0, %r1, %r2, %r3};
+  ld.global.u32 %r0, [4];
+  ld.global.u32 %r0, [2];
+  ld.global.u32 %r0, [%rd0];
+  ld.global.b32 %r0, [half2_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  const checker::Context context{
+      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+      .instruction_range = ast.range,
+  };
+  for (const size_t index : {0u, 2u, 4u, 6u, 7u}) {
+    const auto checked = std::visit(
+        [&](const auto& instruction) { return checker::check(instruction, context); },
+        body[index]);
+    EXPECT_TRUE(checked.has_value());
+  }
+  for (const size_t index : {1u, 3u, 5u}) {
+    const auto checked = std::visit(
+        [&](const auto& instruction) { return checker::check(instruction, context); },
+        body[index]);
+    ASSERT_FALSE(checked.has_value());
+    ASSERT_EQ(checked.error().size(), 1u);
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
 }
 
 TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {

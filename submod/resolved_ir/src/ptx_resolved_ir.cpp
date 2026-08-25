@@ -1,4 +1,3 @@
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -6,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <limits>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <string_view>
 #include <vector>
 #include "resolved_value_domains.gen.hpp"
@@ -529,7 +529,7 @@ std::expected<WithLocs<ResolvedSpecialRegisterRef>, ResolveDiagnostic>
 resolve_special_register(const syntax_ast::AstOperand& operand) {
   std::string spelling;
   SourceRange range;
-  std::optional<special_registers::VectorComponent> component;
+  std::optional<base::VectorComponent> component;
   if (const auto* identifier =
           std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
     spelling = identifier->syntax.text;
@@ -540,13 +540,13 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
     range = member->range;
     switch (member->selector.text.back()) {
       case 'x':
-        component = special_registers::VectorComponent::X;
+        component = base::VectorComponent::X;
         break;
       case 'y':
-        component = special_registers::VectorComponent::Y;
+        component = base::VectorComponent::Y;
         break;
       case 'z':
-        component = special_registers::VectorComponent::Z;
+        component = base::VectorComponent::Z;
         break;
       default:
         break;
@@ -558,7 +558,7 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
     });
   }
 
-  auto info = special_registers::lookup(spelling);
+  auto info = base::lookup(spelling);
   if (!info) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
@@ -794,6 +794,7 @@ std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     std::string_view text, bool negative, int base) {
+  using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
       kind != ScalarKind::Bit) {
@@ -823,7 +824,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
     return std::unexpected(magnitude.error());
 
   uint64_t limit = bit_mask;
-  if (kind == ScalarKind::Signed) {
+  if (kind == base::ScalarKind::Signed) {
     limit = negative ? (uint64_t{1} << (bit_width - 1))
                      : (uint64_t{1} << (bit_width - 1)) - 1;
   }
@@ -964,7 +965,7 @@ resolve_mov_vector(const syntax_ast::AstOperand& operand,
         .message = "Expected a vector-pack operand.",
     });
   }
-  if (scalar_kind(instruction_type) != ScalarKind::Bit) {
+  if (scalar_kind(instruction_type) != base::ScalarKind::Bit) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
         .message = "A vector mov requires a bit-size instruction type.",
@@ -1068,6 +1069,7 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
   const auto reject_address_type =
       [&](SourceRange range,
           bool function_address = false) -> std::optional<ResolveDiagnostic> {
+    using base::ScalarKind;
     const ScalarKind kind = scalar_kind(type);
     const uint8_t width = scalar_size_of(type);
     const bool integer_address =
@@ -1157,7 +1159,7 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
     });
   }
 
-  if (special_registers::lookup(identifier->syntax.text)) {
+  if (base::lookup(identifier->syntax.text)) {
     if (auto rejected = reject_shape(checker::OperandShape::SpecialRegister,
                                      identifier->syntax.range)) {
       return std::unexpected(std::move(*rejected));

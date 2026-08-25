@@ -1,3 +1,5 @@
+include(generate_ptx_frontend)
+
 file(GLOB_RECURSE resolved_ir_srcs CONFIGURE_DEPENDS src/*.cpp)
 add_library(resolved_ir ${resolved_ir_srcs} ${PTX_RESOLVED_IR_GENERATED_SRCS})
 add_library(ptx_frontend::resolved_ir ALIAS resolved_ir)
@@ -8,8 +10,8 @@ register_headers(
 )
 target_include_directories(
     resolved_ir
-    PUBLIC $<BUILD_INTERFACE:${PTX_GEN_PUBLIC_DIR}>
-    PRIVATE ${PTX_GEN_PRIVATE_DIR}
+    PUBLIC $<BUILD_INTERFACE:${PTX_RESOLVED_IR_GENERATED_PUBLIC_INCLUDE_DIR}>
+    PRIVATE ${PTX_RESOLVED_IR_GENERATED_PRIVATE_INCLUDE_DIR}
 )
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(
@@ -18,7 +20,7 @@ target_link_libraries(
             ptx_frontend::common fmt::fmt
     PRIVATE ptx_frontend::semantic
 )
-add_dependencies(resolved_ir auto_gen_code)
+add_dependencies(resolved_ir resolved_ir_codegen)
 
 if(BUILD_TESTING)
     file(GLOB resolved_ir_test_srcs CONFIGURE_DEPENDS test/*.cpp)

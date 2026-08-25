@@ -15,7 +15,7 @@ static_assert(!std::is_nothrow_constructible_v<WithLocs<std::string>,
                                                std::string&&, SourceRange>);
 
 TEST(ScalarTypeMetadata, InvalidHasInvalidKindAndZeroSize) {
-  EXPECT_EQ(scalar_kind(ScalarType::Invalid), ScalarKind::Invalid);
+  EXPECT_EQ(scalar_kind(ScalarType::Invalid), base::ScalarKind::Invalid);
   EXPECT_EQ(scalar_size_of(ScalarType::Invalid), 0U);
 }
 

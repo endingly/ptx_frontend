@@ -99,24 +99,32 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 
 ## C++ emitter 与产物
 
-`python/scripts/gen_all.py` 协调生成一个公共声明头、按 category 分片的实现源以及
-三份 descriptor 源文件：
+`python/scripts/gen_all.py` 原子生成 Resolved IR 阶段所需的公共声明、运行期映射、
+dispatch、按 category 分片的实现以及 descriptor：
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
 | `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | 全部 opcode structs，以及 `resolve<T>`、`check<T>` 的显式特化声明 |
+| `private/resolved_value_domains.gen.hpp` | `gen_resolved_value_domains.py` | resolver 使用的运行期 value-domain lookup table |
+| `private/resolved_ir_dispatch.gen.cpp` | `gen_resolved_ir.py` | opcode-independent resolve/check dispatch |
 | `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | 该 category 下两组显式特化的 out-of-line 定义 |
 | `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source syntax descriptors 与 getter |
 | `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors 与 getter |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors 与 getter |
 
-生成的公开头在构建树中仍平铺于 `public` include root；CMake 会将这个特定
-文件安装为 `include/ptx_ir/resolved/resolved_ir.gen.hpp`。
+生成的公开头在 `submod/resolved_ir` 的构建树中仍平铺于 `generated/public` include
+root。`submod/resolved_ir` include 工程级的 `cmake/generate_ptx_frontend.cmake`；
+该 helper 原子调用 `gen_all.py`，负责列出输出、生成文件并将其编译进 `resolved_ir`
+target。顶层只提供 submodule 编排与 facade target。
+
+`syntax_descriptor.gen.cpp` 虽描述 source syntax，但它实现的是 generated Resolved IR
+opcode 类型的 getter，并由 variant selection/resolution 消费；在生成器依赖边界改变前，
+它仍与其他 `gen_all.py` 输出一起归属 `resolved_ir`，不按文件名拆入 `syntax` submodule。
 
 公共头不包含生成函数体。生成分片使用归一化后的 `codegen_category`；它与记录 PTX
 文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
 `codegen_category`，生成脚本据此产生稳定的 category 源文件，
-并由 CMake 编译进 `ptx_frontend` library。这样 consumer 仍只有一个 include 入口，
+并由 CMake 编译进 `resolved_ir` library。这样 consumer 仍只有一个 include 入口，
 但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
 
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或

@@ -4,7 +4,7 @@
 #include <array>
 #include <charconv>
 
-namespace ptx_frontend::special_registers {
+namespace ptx_frontend::base {
 namespace {
 
 struct Entry {
@@ -197,4 +197,4 @@ Info metadata(SpecialRegisterId id) noexcept {
   }
 }
 
-}  // namespace ptx_frontend::special_registers
+}  // namespace ptx_frontend::base

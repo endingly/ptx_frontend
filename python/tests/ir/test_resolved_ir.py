@@ -783,7 +783,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ".actual_shape = check_end::OperandShape::SpecialRegister", source
         )
         self.assertIn(
-            "special_registers::metadata(special_register->id)",
+            "base::metadata(special_register->id)",
             source,
         )
         self.assertIn(".special_register_id = special_register->id", source)
@@ -939,7 +939,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("checker::OperandLayoutDescriptor", source)
         self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
         self.assertIn(
-            ".special_register_kind = special_registers::SpecialRegisterKind::Tid,",
+            ".special_register_kind = base::SpecialRegisterKind::Tid,",
             source,
         )
         self.assertIn(".instruction_width = 16,", source)

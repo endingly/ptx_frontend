@@ -1,6 +1,6 @@
 #include <ptx_frontend/base/base.hpp>
 
-namespace ptx_frontend {
+namespace ptx_frontend::base {
 
 ScalarKind scalar_kind(ScalarType t) {
   switch (t) {

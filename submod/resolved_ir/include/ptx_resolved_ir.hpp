@@ -20,7 +20,8 @@
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 namespace ptx_frontend::resolved_ir {
-
+using base::ScalarType;
+using base::RoundingMode;
 namespace check_end {
 
 using OperandShape = checker::OperandShape;
@@ -229,8 +230,8 @@ struct ResolvedBranchTarget {
 /** A predefined read-only PTX special register with target-independent identity. */
 struct ResolvedSpecialRegisterRef {
   std::string spelling;
-  special_registers::SpecialRegisterId id;
-  std::optional<special_registers::VectorComponent> component;
+  base::SpecialRegisterId id;
+  std::optional<base::VectorComponent> component;
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
 };
 

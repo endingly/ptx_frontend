@@ -104,7 +104,7 @@ std::string_view referenceDescription(ReferenceKind kind) {
 }  // namespace
 
 bool isSpecialRegister(std::string_view spelling) noexcept {
-  return special_registers::lookup(spelling).has_value();
+  return base::lookup(spelling).has_value();
 }
 
 const Scope& SymbolTable::scope(ScopeId id) const {

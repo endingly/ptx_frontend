@@ -135,9 +135,9 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
   const auto& scalar = scalarMovOperands(u32);
   const auto& special = std::get<ResolvedSpecialRegisterRef>(scalar.src.value);
   EXPECT_EQ(special.spelling, "%laneid");
-  EXPECT_EQ(special.id.kind, special_registers::SpecialRegisterKind::LaneId);
+  EXPECT_EQ(special.id.kind, base::SpecialRegisterKind::LaneId);
   EXPECT_FALSE(special.component.has_value());
-  const auto special_info = special_registers::metadata(special.id);
+  const auto special_info = base::metadata(special.id);
   EXPECT_EQ(special_info.element_type, ScalarType::U32);
   EXPECT_EQ(special_info.vector_width, 1u);
   EXPECT_EQ(special_info.minimum_ptx_major, 1u);
@@ -221,9 +221,9 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
   const auto& component = std::get<ResolvedSpecialRegisterRef>(
       scalarMovOperands(std::get<Mov>(*component_resolved)).src.value);
   EXPECT_EQ(component.spelling, "%tid.x");
-  EXPECT_EQ(component.id.kind, special_registers::SpecialRegisterKind::Tid);
-  EXPECT_EQ(component.component, special_registers::VectorComponent::X);
-  const auto component_info = special_registers::metadata(component.id);
+  EXPECT_EQ(component.id.kind, base::SpecialRegisterKind::Tid);
+  EXPECT_EQ(component.component, base::VectorComponent::X);
+  const auto component_info = base::metadata(component.id);
   EXPECT_EQ(component_info.vector_width, 4u);
   EXPECT_EQ(component_info.minimum_ptx_major, 2u);
 
@@ -379,8 +379,8 @@ TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
       scalarMovOperands(std::get<Mov>(body[3])).src.value);
   EXPECT_EQ(special_source.spelling, "%clock64");
   EXPECT_EQ(special_source.id.kind,
-            special_registers::SpecialRegisterKind::Clock64);
-  EXPECT_EQ(special_registers::metadata(special_source.id).element_type,
+            base::SpecialRegisterKind::Clock64);
+  EXPECT_EQ(base::metadata(special_source.id).element_type,
             ScalarType::U64);
 }
 
@@ -619,7 +619,7 @@ TEST(ResolvedModule, ChecksLegacySpecialRegisterMoveWidths) {
       scalarMovOperands(std::get<Mov>(body[1])).src.value);
   EXPECT_EQ(tid.id, current_tid.id);
   EXPECT_EQ(tid.component, current_tid.component);
-  const auto tid_info = special_registers::metadata(tid.id);
+  const auto tid_info = base::metadata(tid.id);
   EXPECT_EQ(tid_info.element_type, ScalarType::U32);
   EXPECT_EQ(tid_info.minimum_ptx_major, 2u);
   EXPECT_EQ(tid_info.minimum_ptx_minor, 0u);

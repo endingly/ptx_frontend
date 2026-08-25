@@ -108,26 +108,38 @@ Otherwise model construction fails instead of generating ambiguous code.
 
 ## C++ emitters and artifacts
 
-`python/scripts/gen_all.py` coordinates one public declaration header,
-category-partitioned implementation sources, and three descriptor sources:
+`python/scripts/gen_all.py` atomically generates the public declarations,
+runtime mappings, dispatch, category-partitioned implementations, and
+descriptors required by the Resolved IR stage:
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
 | `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | all opcode structs plus explicit-specialization declarations for `resolve<T>` and `check<T>` |
+| `private/resolved_value_domains.gen.hpp` | `gen_resolved_value_domains.py` | runtime value-domain lookup tables used by the resolver |
+| `private/resolved_ir_dispatch.gen.cpp` | `gen_resolved_ir.py` | opcode-independent resolve/check dispatch |
 | `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | out-of-line definitions of those two specialization sets for one category |
 | `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source-syntax descriptors and getters |
 | `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors and getters |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors and getters |
 
-The generated public header remains flat under the build-tree `public` include
-root. CMake installs that specific file as
-`include/ptx_ir/resolved/resolved_ir.gen.hpp`.
+The generated public header remains flat under the `generated/public` include
+root in the `submod/resolved_ir` build tree. `submod/resolved_ir` includes the
+project-level `cmake/generate_ptx_frontend.cmake` helper, which invokes
+`gen_all.py` atomically to list and generate all outputs before compiling them
+into `resolved_ir`. The top level only orchestrates submodules and provides the
+facade target.
+
+Although `syntax_descriptor.gen.cpp` describes source syntax, it implements
+getters on generated Resolved IR opcode types and is consumed by variant
+selection and resolution. Until that generator dependency boundary changes, it
+belongs to `resolved_ir` with the other atomic `gen_all.py` outputs rather than
+to the `syntax` submodule by filename alone.
 
 The public header contains no generated function bodies. Generation uses the
 normalized `codegen_category`, which is separate from PTX documentation
 `source_categories`. Every definition of one opcode must use the same
 `codegen_category`. The generator uses that value to create stable category
-sources, which CMake compiles into the `ptx_frontend` library. Consumers retain
+sources, which CMake compiles into the `resolved_ir` library. Consumers retain
 one include entry point, while the complex `std::visit` code, lambdas, and
 resolve builders are compiled only once inside the library.
 

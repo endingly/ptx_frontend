@@ -239,6 +239,33 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - C++ 回归覆盖 2/4-element pack、unpack、sink、`.b128` 双向读取、target 门槛及损坏
   Resolved IR 的 element-width 检查。
 
+## 已完成：小模块的 source-bearing interface library
+
+- `base`、`cst`、`syntax`、`binding` 与 `semantic` 改为 CMake interface library，
+  由最终实体 target 统一编译这些小模块的实现源；
+- 实现源通过 `target_sources(... INTERFACE ...)` 传播，而不是作为
+  `add_library(... INTERFACE ...)` 的私有 source 丢失；
+- include path 与依赖使用 `INTERFACE` usage requirements，模块测试和
+  `resolved_ir` 等消费者得到同一组源码与编译依赖。
+
+## 已完成：resolved_ir CMake codegen 归属
+
+- `gen_all.py` 的输出发现、生成命令、输入依赖和 topology reconfigure tracking 已迁入
+  `cmake/generate_ptx_frontend.cmake`，仅由 `submod/resolved_ir` include；
+- 生成文件位于 `submod/resolved_ir` 自身 binary directory，`resolved_ir_codegen` target
+  负责生成，`resolved_ir` 消费生成源码及 public/private include path；
+- `gen_all.py` 当前保持原子调用；包括 syntax descriptor 在内的全部输出均实现或依赖
+  generated Resolved IR 类型，因此不按文件名伪拆到更早的 submodule；
+- 顶层 CMake 仅保留工程配置、子模块与 facade target，不再拥有 resolved IR codegen。
+
+## 已完成：英文项目 README
+
+- 根目录 `README.md` 说明项目定位、当前 PTX/Resolved IR 覆盖边界、frontend pipeline、
+  构建测试命令、source-tree CMake 接入方式、最小 parse/resolve 示例与代码生成流程；
+- 明确 pre-1.0 API、未启用 install/export、非完整 PTX validator/code generator，以及已添加
+  [MIT license](LICENSE) 文件，避免对未实现能力作出承诺；
+- README 示例已通过独立 source consumer 编译和运行验证。
+
 ## 下一步评审与调整
 
 原计划的方向正确，但依赖顺序需要拆开：
@@ -262,5 +289,5 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 
 - Python unit tests：51/51；
 - Debug C++ build：通过；
-- Debug CTest：154/154（包含 C++、Python IR 与 installed package consumer）；
+- Debug CTest：152/152（包含 C++、Python IR 与 installed package consumer）；
 - `git diff --check`：通过。

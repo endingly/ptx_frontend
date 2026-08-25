@@ -283,7 +283,7 @@ CheckResult check_operands(
 
     if (operand->actual_shape == OperandShape::Vector) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
-      if (scalar_kind(expected_type) != ScalarKind::Bit) {
+      if (scalar_kind(expected_type) != base::ScalarKind::Bit) {
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::OperandTypeMismatch,
             .range = range,

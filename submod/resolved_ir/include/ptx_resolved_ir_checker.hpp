@@ -18,7 +18,8 @@
 #include <ptx_frontend/common/source_loc.hpp>
 
 namespace ptx_frontend::resolved_ir::checker {
-
+using base::ScalarType;
+using base::RoundingMode;
 namespace detail {
 
 /** Combine variant-specific lambdas into the visitor accepted by std::visit. */
@@ -125,8 +126,8 @@ struct AvailabilityDescriptor {
 /** A generated instruction-context override for one special-register value. */
 struct OperandTypeCompatibilityDescriptor {
   std::string_view target_field_id;
-  special_registers::SpecialRegisterKind special_register_kind =
-      special_registers::SpecialRegisterKind::Invalid;
+  base::SpecialRegisterKind special_register_kind =
+      base::SpecialRegisterKind::Invalid;
   uint8_t instruction_width = 0;
   ScalarType effective_type = ScalarType::Invalid;
   AvailabilityDescriptor availability;
@@ -139,7 +140,7 @@ struct OperandView {
   std::optional<ScalarType> immediate_type;
   std::optional<ScalarType> register_type;
   std::optional<ScalarType> special_register_type;
-  std::optional<special_registers::SpecialRegisterId> special_register_id;
+  std::optional<base::SpecialRegisterId> special_register_id;
   std::array<ScalarType, 4> vector_element_types{};
   uint8_t vector_arity = 0;
   uint8_t vector_sink_count = 0;

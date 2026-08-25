@@ -6,7 +6,7 @@
 
 #include <ptx_frontend/base/base.hpp>
 
-namespace ptx_frontend::special_registers {
+namespace ptx_frontend::base {
 
 /** Target-independent identity shared by a vector base and its components. */
 enum class SpecialRegisterKind : uint8_t {

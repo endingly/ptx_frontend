@@ -4,7 +4,7 @@
 #include <string>
 #include <type_traits>
 
-namespace ptx_frontend {
+namespace ptx_frontend::base {
 
 enum class ScalarType : uint8_t {
   Invalid = 0,

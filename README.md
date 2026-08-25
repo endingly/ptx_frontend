@@ -1,0 +1,182 @@
+# PTX Frontend
+
+PTX Frontend is an experimental C++23 frontend for parsing and analysing a
+deliberately limited subset of NVIDIA PTX. It provides a lossless concrete
+syntax tree, a typed syntax AST, lexical symbol binding, declaration checks,
+and generated Resolved IR with target-aware checking for selected opcodes.
+
+> **Status:** pre-1.0. The public API and generated IR types may change without
+> notice. This is not a complete PTX ISA implementation, assembler, or code
+> generator.
+
+## Current scope
+
+The frontend currently provides:
+
+- tokenization and CST parsing with source locations and retained source text;
+- Syntax AST lowering for supported module, function, declaration, expression,
+  initializer, and instruction forms;
+- module/function symbol scopes, reference classification, and declaration
+  semantics;
+- generated resolution and checking for YAML-modelled `bra`, `add`, `sub`,
+  `bar`, selected `mov` forms, and generic `ld.u32` forms;
+- explicit PTX ISA version, SM version, and target-family availability checks
+  for modelled variants, modifiers, layouts, and operands.
+
+These checks cover only the currently modelled instruction subset. They do not
+validate the full PTX ISA, every module directive, or link-time behaviour.
+
+Some constructs can be tokenized or represented in the Syntax AST without
+being supported by Resolved IR. See the
+[syntax coverage matrix](docs/us-en/syntax_coverage.md) for the exact current
+boundary and known exclusions.
+
+## Frontend pipeline
+
+```text
+PTX source
+  -> lexer
+  -> lossless CST
+  -> Syntax AST
+  -> symbol binding
+  -> declaration semantics
+  -> Resolved IR
+  -> target-aware instruction checking
+```
+
+`PtxSyntaxParser` is the convenience source-to-AST facade. Use `PtxCstParser`
+and the explicit lowering functions when retained tokens and source text are
+required. `resolved_ir::resolveModule` runs binding and declaration checks as
+part of module resolution and returns their diagnostics together with
+instruction-resolution diagnostics.
+
+## Requirements
+
+- CMake 3.28 or newer;
+- a C++23 compiler;
+- Python 3 with the packages in `requirements.txt`;
+- Flex and `clang-format` on `PATH`;
+- `fmt` and `magic_enum` (`gtest` is also required when tests are enabled).
+
+The checked-in presets use Ninja, GCC/G++, and the vcpkg manifest. Set
+`VCPKG_ROOT` to an initialized vcpkg checkout before configuring.
+
+## Build and test
+
+Install the Python generator dependencies in your preferred environment:
+
+```sh
+python3 -m pip install -r requirements.txt
+```
+
+Configure, build, and run the C++ test suite:
+
+```sh
+cmake --preset ci-linux-gcc-debug
+cmake --build --preset ci-linux-gcc-debug
+ctest --preset ci-linux-gcc-debug --output-on-failure
+```
+
+Run the Python generator/model tests separately:
+
+```sh
+PYTHONPATH=python python3 -m unittest discover \
+  -s python/tests -t python -p 'test_*.py' -v
+```
+
+The `ci-linux-gcc-release` preset provides the equivalent Release workflow.
+
+## Use from a source tree
+
+The install/export path is not currently wired into the top-level build. Add
+the project as a source subdirectory instead:
+
+```cmake
+add_subdirectory(path/to/ptx_frontend)
+
+add_executable(example main.cpp)
+target_compile_features(example PRIVATE cxx_std_23)
+target_link_libraries(example PRIVATE ptx_frontend::ptx_frontend)
+```
+
+A minimal parse-and-resolve example:
+
+```cpp
+#include <iostream>
+#include <string_view>
+
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+int main() {
+  constexpr std::string_view source = R"ptx(
+.version 8.0
+.target sm_80
+.address_size 64
+.entry kernel() {
+  .reg .u32 %r<2>;
+  add.u32 %r0, %r1, 1;
+}
+)ptx";
+
+  ptx_frontend::PtxSyntaxParser parser(source);
+  auto ast = parser.parseModule();
+  if (!ast) {
+    std::cerr << ast.error().message << '\n';
+    return 1;
+  }
+
+  auto module = ptx_frontend::resolved_ir::resolveModule(*ast);
+  if (!module) {
+    for (const auto& diagnostic : module.error())
+      std::cerr << diagnostic.message << '\n';
+    return 1;
+  }
+
+  std::cout << "resolved functions: " << module->functions.size() << '\n';
+}
+```
+
+Resolved instruction checking is a separate operation. Visit each
+`ResolvedInstruction` and call `resolved_ir::checker::check` with a
+`checker::Context` containing the intended PTX ISA version, SM version, target
+families, and instruction source range.
+
+## Generated code
+
+The YAML files under `instructions/ptx_spec` are the source of truth for the
+currently generated opcode variants and descriptors. CMake invokes
+`python/scripts/gen_all.py` during configuration to enumerate outputs and
+during the build to generate the Resolved IR public header, runtime lookup
+tables, dispatch, category implementations, and checker descriptors in the
+`resolved_ir` build directory.
+
+The generated files are build artifacts. Do not edit them or treat their
+layout as a stable pre-1.0 ABI. See the
+[YAML instruction specification](docs/us-en/yaml_instruction_spec.md) and
+[Python generator model](docs/us-en/python_generator_model.md) before changing
+the instruction database or generator.
+
+## Repository layout
+
+```text
+submod/       C++ frontend stages and tests
+instructions/ PTX instruction specs, backend mappings, and schemas
+python/       normalization models, C++ generators, and Python tests
+cmake/        shared CMake helpers
+docs/us-en/   English design and coverage documentation
+docs/zh-han/  Simplified Chinese design and coverage documentation
+```
+
+The detailed designs are documented in:
+
+- [lexer](docs/us-en/lexer_design.md),
+  [Syntax AST](docs/us-en/syntax_ast_design.md), and
+  [control-flow syntax](docs/us-en/control_flow_syntax_design.md);
+- [symbol binding](docs/us-en/symbol_binding_design.md) and
+  [declaration semantics](docs/us-en/declaration_semantics_design.md);
+- [Resolved IR and checker](docs/us-en/resolved_ir_design.md).
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

@@ -55,8 +55,8 @@ jobs:
         env:
           APT_CACHE_DIR: ${{ github.workspace }}/.cache/apt/archives
         run: |
-          sudo mkdir -p "$APT_CACHE_DIR/partial"
-          sudo chmod 0777 "$APT_CACHE_DIR" "$APT_CACHE_DIR/partial"
+          mkdir -p "$APT_CACHE_DIR/partial"
+          chmod 0777 "$APT_CACHE_DIR" "$APT_CACHE_DIR/partial"
           sudo apt-get update
           sudo apt-get \
             -o Dir::Cache::archives="$APT_CACHE_DIR" \

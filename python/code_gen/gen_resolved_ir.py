@@ -58,8 +58,8 @@ def generate_resolved_ir_header(
 #include <variant>
 #include <vector>
 
-#include "ptx_ir/resolved/ptx_resolved_ir.hpp"
-#include "ptx_ir/ptx_resolved_ir_checker.hpp"
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
 
 namespace ptx_frontend::resolved_ir {{
 
@@ -728,7 +728,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
               }}"""
     if field.value_cpp_type == "ResolvedSpecialRegisterRef":
         return f"""              [&]() -> OperandView {{
-                const auto info = special_registers::metadata(
+                const auto info = base::metadata(
                     {object_name}.{field.name}.value.id);
                 return OperandView{{
                   .field_id = "{field.name}",
@@ -814,7 +814,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                         std::get_if<ResolvedSpecialRegisterRef>(
                             &{object_name}.{field.name}.value)) {{
                   const auto info =
-                      special_registers::metadata(special_register->id);
+                      base::metadata(special_register->id);
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},

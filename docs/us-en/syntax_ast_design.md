@@ -20,7 +20,7 @@ source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved 
 
 ## CST ownership and representation
 
-Public CST headers live under `include/ptx_ir/cst`. A `syntax_cst::CstFile`
+Public CST headers live under `submod/cst/include`. A `syntax_cst::CstFile`
 owns the complete `PtxToken` buffer. Its `CstRoot` distinguishes a standalone
 instruction fragment from a `CstModule`; nodes refer to the file buffer with
 `TokenId`, and composite nodes also store half-open `CstTokenRange` values.

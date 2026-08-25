@@ -9,6 +9,9 @@ permissions:
 
 env:
   VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
+  VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
+  VCPKG_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.cache/vcpkg/archives,readwrite"
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   CCACHE_MAXSIZE: 1G
 
@@ -85,13 +88,27 @@ jobs:
           .venv/bin/python -m pip install -r requirements.txt
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cache/vcpkg/archives
+            .cache/vcpkg/downloads
+          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Prepare vcpkg cache directories
+        shell: bash
+        run: mkdir -p "$VCPKG_BINARY_CACHE" "$VCPKG_DOWNLOADS"
+
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: ${{ env.VCPKG_ROOT }}
           vcpkgJsonGlob: '**/vcpkg.json'
           runVcpkgInstall: false
-          doNotCache: false
+          doNotCache: true
 
       - name: Restore compiler cache
         uses: actions/cache@v6

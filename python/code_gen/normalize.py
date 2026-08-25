@@ -9,6 +9,7 @@ from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
+    MemoryVectorConstraint,
     ModifierSpec,
     ModifierValueSpec,
     OperandLayoutSpec,
@@ -69,8 +70,8 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
             vector_arities = tuple(raw_arities)
         else:
             raise TypeError("vector.arity must be an integer, list, or expression")
-        if vector_arities and any(arity > 4 for arity in vector_arities):
-            raise ValueError("resolved vector operands support at most four elements")
+        if vector_arities and any(arity > 8 for arity in vector_arities):
+            raise ValueError("resolved vector operands support at most eight elements")
         try:
             vector_type_policy = OperandVectorTypePolicy(
                 vector.get("type_policy", "aggregate")
@@ -718,6 +719,85 @@ def _normalize_memory_consistency_constraint(
     )
 
 
+def _normalize_memory_vector_constraint(
+    raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...],
+    layouts: tuple[OperandLayoutSpec, ...]
+) -> MemoryVectorConstraint | None:
+    """Lower the typed PTX 8.8 256-bit ld/st vector rule, if present."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "memory_vector"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: at most one memory_vector "
+            "constraint is supported"
+        )
+    raw = matches[0]
+    required = {"type_modifier", "vector_operand", "address_operand", "availability"}
+    missing = required - raw.keys()
+    if missing:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_vector constraint "
+            f"is missing {sorted(missing)}"
+        )
+    modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
+    for key, expected_kind in (("type_modifier", "type"),):
+        value = raw[key]
+        if value not in modifiers_by_name:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_vector {key} "
+                f"references inactive modifier {value!r}"
+            )
+        if modifiers_by_name[value].kind != expected_kind:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_vector {key} "
+                f"must name a {expected_kind!r} modifier"
+            )
+    operand_by_name = {
+        operand.name: operand for layout in layouts for operand in layout.operands
+    }
+    for key, expected_kind in (("vector_operand", "reg_vector"), ("address_operand", "addr")):
+        value = raw[key]
+        operand = operand_by_name.get(value)
+        if operand is None:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_vector {key} "
+                f"references unknown operand {value!r}"
+            )
+        if operand.kind != expected_kind:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_vector {key} "
+                f"must name a {expected_kind!r} operand"
+            )
+    state_space_modifier = raw.get("state_space_modifier")
+    if state_space_modifier is not None:
+        modifier = modifiers_by_name.get(state_space_modifier)
+        if modifier is None:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_vector state_space_modifier "
+                f"references inactive modifier {state_space_modifier!r}"
+            )
+        if modifier.kind != "state_space":
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_vector state_space_modifier "
+                "must name a 'state_space' modifier"
+            )
+    availability = raw["availability"]
+    if not isinstance(availability, dict):
+        raise TypeError("memory_vector availability must be an object")
+    return MemoryVectorConstraint(
+        type_modifier=raw["type_modifier"],
+        vector_operand=raw["vector_operand"],
+        address_operand=raw["address_operand"],
+        availability=dict(availability),
+        state_space_modifier=state_space_modifier,
+    )
+
+
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
@@ -769,6 +849,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                         )
                     ),
                     memory_consistency=_normalize_memory_consistency_constraint(
+                        raw_variant, modifiers, operand_layouts
+                    ),
+                    memory_vector=_normalize_memory_vector_constraint(
                         raw_variant, modifiers, operand_layouts
                     ),
                 )

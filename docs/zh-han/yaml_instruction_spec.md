@@ -247,7 +247,8 @@ modifier-value availability。explicit `.f64` 附加 SM 13 availability；generi
 `type: {expr: modifier(type)}`，由 runtime modifier 及其位置驱动公共
 fundamental-type 检查。register operand 还可以选择显式 width policy：
 legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
-32-bit type；`.v4` 64-bit 尚待实现。
+32-bit type；生成的 `memory_vector` constraint 另只允许 PTX 8.8/SM 100 的
+256-bit `.v8` × 32-bit 与 `.v4` × 64-bit，且地址已知时必须 global。
 
 ```yaml
 - name: dst
@@ -266,14 +267,15 @@ runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source�
 instruction size；通过 size 检查后，任一侧 bit type 与 signed/unsigned integer pair 兼容，
 float 要求 exact type/size，integer/float 不兼容。immediate 与 special-register check 仍为
 same-width。wider actual register 当前只覆盖到 64-bit；在 declaration type 的 target availability
-得到检查前，`.b128` 仍明确拒绝。`.b128` instruction type 与 modern vector form 仍不属于当前范围。
+得到检查前，`.b128` 仍明确拒绝。scalar `.b128` instruction type 仍不属于当前范围。
 
 `reg_vector` operand 必须用 `vector.arity` 声明合法元素数。静态形式使用整数或列表：
 
 ```yaml
 vector: {arity: [2, 4], type_policy: aggregate, allow_sink: true}
 ```
-该能力还受 operand access 的 write 约束。
+memory vector 的 generated cross rule 只允许精确 256-bit modern payload 使用部分 sink；
+legacy vector 与 all-sink form 仍拒绝。
 
 legacy memory vector 则把 arity 链接到 required runtime vector modifier：
 
@@ -289,8 +291,8 @@ legacy memory vector 则把 arity 链接到 required runtime vector modifier：
 
 `type_policy: aggregate` 按整条 instruction 的 bit width 检查 vector payload，用于
 `mov` pack/unpack；`type_policy: element` 逐元素按 instruction type 检查，用于 legacy
-memory vector。该 memory vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
-32-bit type；`.v4` 64-bit 尚待实现。`VectorArity` 是 required modifier domain，不支持
+memory vector。该 memory vector 保留最多 128-bit 的 legacy form（`.v2` 到 64-bit type，
+`.v4` 到 32-bit type），并加入上述 PTX 8.8 的 256-bit form。`VectorArity` 是 required modifier domain，不支持
 optional/default 形式。
 
 应使用语义 role（如 `dst`、`src1`、`barrier`、`thread_count`）而不是为了复用字段

@@ -21,9 +21,11 @@ The frontend currently provides:
 - generated resolution and checking for YAML-modelled `bra`, `add`, `sub`,
   `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
   the 14 `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`,
-  `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` with a
-  128-bit payload maximum (`.v2` through 64-bit types and `.v4` through
-  32-bit types; `.v4` 64-bit remains deferred), legacy `ld` cache operators
+  `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` and the
+  PTX 8.8/SM 100 256-bit modern forms (`.v8` × 32-bit or `.v4` × 64-bit);
+  modern vectors require global space when known and permit partial `_` sinks,
+  while legacy vectors remain limited to 128 bits and reject sinks. Legacy `ld`
+  cache operators
   `.ca/.cg/.cs/.lu/.cv`, legacy `st` cache operators
   `.wb/.cg/.cs/.wt`, explicit `.const/.global/.local/.param/.shared` loads,
   and explicit `.global/.local/.param/.shared` stores, including data-driven

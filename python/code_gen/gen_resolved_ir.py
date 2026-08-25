@@ -474,6 +474,15 @@ def _emit_check_operand_dispatch(
                                  consistency_check.error().end());
             }}
 """
+    memory_vector_check = ""
+    if variant.memory_vector is not None:
+        memory_vector_check = f"""            const auto memory_vector_check = check_memory_vector(
+                {checker_variant_expr}.memory_vector, fields, operands, context);
+            if (!memory_vector_check) {{
+              diagnostics.insert(diagnostics.end(), memory_vector_check.error().begin(),
+                                 memory_vector_check.error().end());
+            }}
+"""
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -503,7 +512,7 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-{consistency_check}          }}"""
+{consistency_check}{memory_vector_check}          }}"""
 
     layout_lambdas = "\n\n".join(
         _emit_check_multi_layout_lambda(
@@ -560,7 +569,7 @@ def _emit_check_multi_layout_lambda(
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                     .operand_type_compatibilities,
                 context);"""
-    if variant.memory_consistency is not None:
+    if variant.memory_consistency is not None or variant.memory_vector is not None:
         consistency_return = f"""
             const auto operand_check = check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
@@ -570,12 +579,16 @@ def _emit_check_multi_layout_lambda(
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                     .operand_type_compatibilities,
                 context);
-            if (!operand_check)
-              return operand_check;
-            return check_memory_consistency(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .memory_consistency,
-                fields, operands, context);"""
+            CheckDiagnostics diagnostics;
+            if (!operand_check) {{
+              diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
+                                 operand_check.error().end());
+            }}
+{_emit_multi_layout_memory_vector_check(
+    instruction, variant, variant_index
+)}            if (diagnostics.empty())
+              return CheckResult{{}};
+            return std::unexpected(std::move(diagnostics));"""
     return f"""          const auto {lambda_name} =
               [&](const {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands& payload)
                   -> CheckResult {{
@@ -593,6 +606,37 @@ def _emit_check_multi_layout_lambda(
           static_assert(detail::VariantCheckFunction<
               decltype({lambda_name}),
               {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands>);"""
+
+
+def _emit_multi_layout_memory_vector_check(
+    instruction: ResolvedInstruction,
+    variant: ResolvedVariant,
+    variant_index: int,
+) -> str:
+    """Emit the cross-rule calls shared by every payload-layout lambda."""
+
+    checks = ""
+    if variant.memory_consistency is not None:
+        checks += f"""            const auto consistency_check = check_memory_consistency(
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .memory_consistency,
+                fields, operands, context);
+            if (!consistency_check) {{
+              diagnostics.insert(diagnostics.end(), consistency_check.error().begin(),
+                                 consistency_check.error().end());
+            }}
+"""
+    if variant.memory_vector is not None:
+        checks += f"""            const auto memory_vector_check = check_memory_vector(
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .memory_vector,
+                fields, operands, context);
+            if (!memory_vector_check) {{
+              diagnostics.insert(diagnostics.end(), memory_vector_check.error().begin(),
+                                 memory_vector_check.error().end());
+            }}
+"""
+    return checks
 
 
 def _check_layout_lambda_name(

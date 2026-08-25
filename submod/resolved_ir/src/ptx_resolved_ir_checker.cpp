@@ -492,7 +492,7 @@ CheckResult check_operands(
         });
         continue;
       }
-      if (operand->vector_arity == 0 || operand->vector_arity > 4 ||
+      if (operand->vector_arity == 0 || operand->vector_arity > 8 ||
           (required_vector_arity &&
            operand->vector_arity != *required_vector_arity) ||
           (!required_vector_arity &&
@@ -528,8 +528,6 @@ CheckResult check_operands(
         continue;
       }
       if ((!descriptor.allow_vector_sink && operand->vector_sink_count != 0) ||
-          (descriptor.access != OperandAccess::Write &&
-           operand->vector_sink_count != 0) ||
           operand->vector_sink_count >= operand->vector_arity) {
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::InvalidVectorOperand,
@@ -873,6 +871,102 @@ CheckResult check_memory_consistency(
       violation(*mmio_field,
                 "mmio requires a global address space when the address space is known.");
     }
+  }
+
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_memory_vector(
+    const VariantDescriptor::MemoryVectorDescriptor& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context) {
+  if (descriptor.vector_field_id.empty())
+    return {};
+
+  const FieldView* type = find_field(fields, descriptor.type_field_id);
+  const OperandView* vector = find_operand(operands, descriptor.vector_field_id);
+  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  if (type == nullptr || vector == nullptr || address == nullptr ||
+      !type->scalar_type || vector->actual_shape != OperandShape::Vector) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Generated memory-vector descriptor has missing fields.",
+    }});
+  }
+
+  const size_t payload_bits =
+      static_cast<size_t>(vector->vector_arity) * scalar_size_of(*type->scalar_type) * 8u;
+  const bool modern_candidate = vector->vector_arity > 4 ||
+                                payload_bits > 128 ||
+                                vector->vector_sink_count != 0;
+  if (!modern_candidate)
+    return {};
+
+  CheckDiagnostics diagnostics;
+  const SourceRange& vector_range = diagnostic_range(vector->locations, context);
+  if (payload_bits != 256) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = vector_range,
+        .message = "Modern memory vectors require an exact 256-bit payload.",
+    });
+  }
+
+  std::optional<MemoryStateSpace> state_space = address->address_state_space;
+  const FieldView* state_space_field = nullptr;
+  if (!descriptor.state_space_field_id.empty()) {
+    state_space_field = find_field(fields, descriptor.state_space_field_id);
+    if (state_space_field == nullptr || !state_space_field->memory_state_space) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = context.instruction_range,
+          .message = "Generated memory-vector descriptor has an invalid state-space field.",
+      });
+    } else {
+      state_space = *state_space_field->memory_state_space;
+    }
+  }
+  if (state_space && *state_space != MemoryStateSpace::Global) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = state_space_field != nullptr
+                     ? diagnostic_range(state_space_field->locations, context)
+                     : diagnostic_range(address->locations, context),
+        .message = "Modern memory vectors require a global address space when known.",
+    });
+  }
+
+  const auto& availability = descriptor.availability;
+  if (context.target.ptx_version < availability.minimum_ptx_version) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = vector_range,
+        .message = fmt::format(
+            "Modern memory vectors require PTX ISA >= {}, but target PTX ISA is {}.",
+            format_version(availability.minimum_ptx_version),
+            format_version(context.target.ptx_version)),
+    });
+  }
+  if (context.target.sm_version < availability.minimum_sm_version) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+        .range = vector_range,
+        .message = fmt::format(
+            "Modern memory vectors require SM >= {}, but target SM is {}.",
+            availability.minimum_sm_version, context.target.sm_version),
+    });
+  }
+  if (!availability.required_family.empty() &&
+      !has_family(context.target.families, availability.required_family)) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
+        .range = vector_range,
+        .message = fmt::format("Modern memory vectors require target family '{}'.",
+                               availability.required_family),
+    });
   }
 
   if (diagnostics.empty())

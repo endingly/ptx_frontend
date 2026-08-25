@@ -17,11 +17,11 @@ lexical symbol binding 与 module resolution 已接通，execution predicate 会
 32/64-bit form 还接入 data-symbol、`symbol+offset`、function-address 与合法 formal parameter
 地址；bit-size form 还支持 2/4-element vector pack/unpack，`.b128` 仅用于 vector form；
 `mov.pred` 复用 declaration-aware `ResolvedPredicate` 表示；
-generic 与 basic explicit-space scalar 以及 legacy `.v2/.v4` braced-vector `ld`/`st` 已为
+generic 与 basic explicit-space scalar 以及 braced-vector `ld`/`st` 已为
 14 种 8--64-bit bit-size、integer 与 floating-point type 接入解引用 address operand。
 legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
-32-bit type，`.v4` 64-bit 仍是尚待实现的 modern form。
-其余 source form、modern vector memory operation、其余 memory qualifier extension、
+32-bit type；PTX 8.8/SM 100 另支持精确 256-bit 的 `.v8` × 32-bit 与 `.v4` × 64-bit。
+其余 source form、其余 memory qualifier extension、
 静态 address alignment、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
@@ -136,15 +136,16 @@ register、data symbol 与 address expression，避免这些 identifier 形状�
 `ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
 value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
 addressable data-symbol 或 formal-parameter base 的地址值；
-scalar 与 legacy `.v2/.v4` `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
+scalar 与 braced-vector `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
 bound-symbol base。每个 opcode 使用 `GenericScalar`、`ExplicitScalar`、`GenericVector`
 与 `ExplicitVector` variant；runtime type field 接受 `.b8/.b16/.b32/.b64`、
 `.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64` 与 `.f32/.f64`，当前 memory type 不包含
-`.b128`。vector variant 额外要求 runtime `.v2/.v4` field，register-vector operand
+`.b128`。vector variant 额外要求 runtime `.v2/.v4/.v8` field，register-vector operand
 descriptor 将期望元素数链接到该 field，而不是按 arity 复制 variant。memory vector 使用
 element type policy：每个 register element 都按 instruction type 检查，允许
-`EqualOrWider` register width，并拒绝 `_` sink。payload 最多 128 bit：`.v2` 到
-64-bit type，`.v4` 到 32-bit type，`.v4` 64-bit 仍待实现。默认 register-width policy 为 `SameWidth`，
+`EqualOrWider` register width。legacy payload 最多 128 bit；generated cross constraint
+另加入 PTX 8.8/SM 100 的精确 256-bit `.v8` × 32-bit 与 `.v4` × 64-bit form，地址已知时
+要求 global，并允许部分 sink。默认 register-width policy 为 `SameWidth`，
 保持 `mov/add/sub`、immediate 与 special-register 的既有行为；只有 `ld` destination 与
 `st` source register descriptor 选择 `EqualOrWider`，因此声明 register 位宽可大于等于
 instruction type。通过 size 检查后，任一侧为 bit type 即兼容，fundamental signed/unsigned
@@ -179,7 +180,10 @@ memory consistency 采用生成的 cross-modifier descriptor，而不是把每�
 checker 只允许 relaxed/acquire/release 携带 scope，拒绝 volatile/ordered/mmio 与
 cache 的组合；对已知 address space 执行 global/shared、PTX 9.1 的
 `volatile.local` 及 scalar `.mmio.relaxed.sys` 规则，而不猜测 unknown generic
-address。modern vector form 与静态地址 alignment 检查仍留作后续。
+address。生成的 `memory_vector` cross constraint 以 arity > 4、payload > 128 或 sink
+识别 modern candidate，要求 256 bit、地址已知时 global、以及 PTX 8.8/SM 100；只有这些
+modern load/store vector 可使用部分 sink，all-sink 与 legacy sink 仍拒绝。静态地址 alignment
+检查仍留作后续。
 
 `ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的
 `InputParameter`/`ReturnParameter` 推导可选 parameter direction，不根据 spelling 猜测。
@@ -337,7 +341,7 @@ instruction 约束仍不属于当前 ABI。
 `resolved_ir.gen.hpp`。
 
 function-local call-argument `.param` memory、带限定的 `::entry`/`::func` form、call
-adjacency/predication constraint、modern memory vector form、`.b128`、wider `.b128` register
-所需的 declaration-type availability 与静态地址 alignment 检查仍不在本切片范围内。
+adjacency/predication constraint、scalar `.b128`、wider `.b128` register 所需的
+declaration-type availability 与静态地址 alignment 检查仍不在本切片范围内。
 legacy scalar/vector `ld/st` cache operator、legacy `.v2/.v4` braced memory vector 与
 memory consistency qualifier 已纳入本切片。

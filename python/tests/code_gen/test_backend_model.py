@@ -119,6 +119,10 @@ class BackendModelTests(unittest.TestCase):
             "MemoryScope::None",
         )
         self.assertEqual(
+            unit.domains[CppDomain.VECTOR_ARITIES.value].values["v8"],
+            "VectorArity::V8",
+        )
+        self.assertEqual(
             unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
                 "MemoryConsistency"
             ],

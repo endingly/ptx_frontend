@@ -56,7 +56,8 @@ bool isImmediate(TokenKind kind) {
 bool isModifier(TokenKind kind) {
   return kind == TokenKind::DotIdent || kind == TokenKind::DotGlobal ||
          kind == TokenKind::DotConst || kind == TokenKind::DotShared ||
-         kind == TokenKind::DotLocal || kind == TokenKind::DotParam;
+         kind == TokenKind::DotLocal || kind == TokenKind::DotParam ||
+         kind == TokenKind::DotWeak;
 }
 
 bool isModuleDirective(TokenKind kind) {

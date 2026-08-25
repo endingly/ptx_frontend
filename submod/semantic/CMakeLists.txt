@@ -1,12 +1,11 @@
 file(GLOB_RECURSE semantic_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(semantic INTERFACE)
-target_sources(semantic INTERFACE ${semantic_srcs})
+add_library(semantic STATIC ${semantic_srcs})
 add_library(ptx_frontend::semantic ALIAS semantic)
-register_headers(semantic semantic INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+register_headers(semantic semantic PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(
     semantic
-    INTERFACE
+    PUBLIC
     ptx_frontend::binding
     fmt::fmt
 )

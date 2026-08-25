@@ -1,5 +1,5 @@
 file(GLOB_RECURSE lexer_srcs src/*cpp)
-add_library(lexer)
+add_library(lexer STATIC)
 target_sources(lexer PRIVATE ${lexer_srcs})
 add_library(ptx_frontend::lexer ALIAS lexer)
 register_headers(

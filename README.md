@@ -100,10 +100,39 @@ PYTHONPATH=python python3 -m unittest discover \
 
 The `ci-linux-gcc-release` preset provides the equivalent Release workflow.
 
+## Use after installing
+
+Build and install the package into the configured prefix:
+
+```sh
+cmake --preset ci-linux-gcc-debug
+cmake --build --preset ci-linux-gcc-debug
+cmake --install out/build/ci-linux-gcc-debug
+```
+
+Consumers can select one or more frontend components and link their namespaced
+targets:
+
+```cmake
+find_package(
+    ptx_frontend 0.0.1 CONFIG REQUIRED
+    COMPONENTS resolved_ir
+)
+
+add_executable(example main.cpp)
+target_link_libraries(example PRIVATE ptx_frontend::resolved_ir)
+```
+
+Available components are `ptx_frontend`, `common`, `base`, `lexer`, `cst`,
+`syntax`, `binding`, `semantic`, and `resolved_ir`. Each component is exposed
+as `ptx_frontend::<component>`. The aggregate
+`ptx_frontend::ptx_frontend` target links the complete frontend. The package
+locates its public `fmt` and `magic_enum` dependencies, so those packages must
+be reachable through the consumer's toolchain or package search prefix.
+
 ## Use from a source tree
 
-The install/export path is not currently wired into the top-level build. Add
-the project as a source subdirectory instead:
+The same namespaced targets are available when the project is added directly:
 
 ```cmake
 add_subdirectory(path/to/ptx_frontend)

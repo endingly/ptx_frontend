@@ -309,6 +309,21 @@ $defs:
       - surf
       - generic
 
+  state_space_with_availability:
+    description: >
+      One operand state space with a target requirement that applies when the
+      resolved address is known to use this space.
+    type: object
+    additionalProperties: false
+    required:
+      - value
+      - availability
+    properties:
+      value:
+        $ref: "#/$defs/state_space"
+      availability:
+        $ref: "#/$defs/availability"
+
   memory_scope:
     description: "PTX memory/synchronization scope without leading dot."
     type: string
@@ -385,6 +400,7 @@ $defs:
       - scope
       - semantics
       - cache
+      - vector
       - eviction_priority
       - prefetch_size
       - rounding
@@ -567,6 +583,7 @@ $defs:
                 - scope
                 - semantics
                 - cache
+                - vector
                 - eviction_priority
                 - prefetch_size
                 - rounding
@@ -618,7 +635,7 @@ $defs:
       - func
       - reg_or_imm
       - mov_scalar_src
-      - mov_vector
+      - reg_vector
       - addr_or_symbol
       - reg_list
       - pred_list
@@ -707,15 +724,33 @@ $defs:
               $ref: "#/$defs/ptx_type_name"
           - $ref: "#/$defs/type_expr"
 
+      register_width:
+        description: >
+          Width relation accepted for a register operand relative to its
+          resolved instruction type. The default requires equal width.
+        type: string
+        enum:
+          - same_width
+          - equal_or_wider
+        default: same_width
+
       state_space:
-        description: "Allowed operand state space or state spaces."
+        description: >
+          Allowed operand state space, state spaces, or an expression derived
+          from an active state-space modifier.
         oneOf:
           - $ref: "#/$defs/state_space"
           - type: array
             minItems: 1
+            uniqueItems: true
             items:
-              $ref: "#/$defs/state_space"
-              uniqueItems: true
+              oneOf:
+                - $ref: "#/$defs/state_space"
+                - $ref: "#/$defs/state_space_with_availability"
+          - $ref: "#/$defs/state_space_expr"
+
+      parameter:
+        $ref: "#/$defs/parameter_address_constraint"
 
       vector:
         $ref: "#/$defs/vector_spec"
@@ -760,7 +795,9 @@ $defs:
           - matrix_fragment
 
       arity:
-        description: "Allowed number or numbers of elements."
+        description: >
+          Allowed number/numbers of elements, or an expression derived from an
+          active vector-arity modifier.
         oneOf:
           - type: integer
             minimum: 1
@@ -770,6 +807,23 @@ $defs:
             items:
               type: integer
               minimum: 1
+          - $ref: "#/$defs/vector_arity_expr"
+
+      type_policy:
+        description: >
+          How the instruction type applies to the vector elements. ``aggregate``
+          means the instruction width is split across the vector arity; ``element``
+          means the instruction type already names each register element type.
+        type: string
+        enum:
+          - aggregate
+          - element
+        default: aggregate
+
+      allow_sink:
+        description: "Whether ``_`` is accepted as a vector element sink."
+        type: boolean
+        default: false
 
       components:
         description: "Allowed component names, for example x/y/z/w or 0..f."
@@ -814,13 +868,67 @@ $defs:
       doc:
         type: string
 
+  vector_arity_expr:
+    description: >
+      Vector arity expression interpreted by the normalizer. Supported:
+      modifier(name), where the named modifier resolves to a vector arity.
+    type: object
+    additionalProperties: false
+    required:
+      - expr
+    properties:
+      expr:
+        type: string
+        pattern: "^modifier\\([A-Za-z_][A-Za-z0-9_]*\\)$"
+      doc:
+        type: string
+
+  state_space_expr:
+    description: >
+      State-space expression interpreted by the normalizer. Only
+      ``modifier(name)`` is currently supported.
+    type: object
+    additionalProperties: false
+    required:
+      - expr
+    properties:
+      expr:
+        type: string
+        pattern: "^modifier\\([A-Za-z_][A-Za-z0-9_]*\\)$"
+        description: >
+          Read the memory state space of an active state-space modifier in the
+          current variant, for example modifier(state_space).
+        examples:
+          - "modifier(state_space)"
+      doc:
+        type: string
+
+  parameter_address_constraint:
+    description: >
+      Direction and enclosing-function availability for an explicit .param
+      address operand.
+    type: object
+    additionalProperties: false
+    required:
+      - direction
+      - function_availability
+    properties:
+      direction:
+        type: string
+        enum:
+          - input
+          - return
+      function_availability:
+        $ref: "#/$defs/availability"
+
   # ---------------------------------------------------------------------------
   # Availability and semantic validation hooks
   # ---------------------------------------------------------------------------
 
   availability:
     description: >
-      PTX/SM availability constraints for an instruction variant.
+      PTX/SM availability constraints for a variant, layout, modifier value,
+      or operand state-space entry.
     type: object
     additionalProperties: false
 
@@ -894,6 +1002,7 @@ $defs:
           - mutually_exclusive_modifiers
           - implies_modifier
           - custom
+          - memory_consistency
 
       operands:
         type: array
@@ -915,6 +1024,24 @@ $defs:
 
       message:
         type: string
+
+      semantics_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      scope_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      mmio_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      cache_modifier:
+        $ref: "#/$defs/schema_identifier"
+
+      address_operand:
+        $ref: "#/$defs/schema_identifier"
+
+      state_space_modifier:
+        $ref: "#/$defs/schema_identifier"
 
   example:
     description: "Positive or negative PTX example for an instruction or variant."

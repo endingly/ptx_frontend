@@ -465,6 +465,15 @@ def _emit_check_operand_dispatch(
     checker_variant_expr = (
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
+    consistency_check = ""
+    if variant.memory_consistency is not None:
+        consistency_check = f"""            const auto consistency_check = check_memory_consistency(
+                {checker_variant_expr}.memory_consistency, fields, operands, context);
+            if (!consistency_check) {{
+              diagnostics.insert(diagnostics.end(), consistency_check.error().begin(),
+                                 consistency_check.error().end());
+            }}
+"""
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -494,7 +503,7 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-          }}"""
+{consistency_check}          }}"""
 
     layout_lambdas = "\n\n".join(
         _emit_check_multi_layout_lambda(
@@ -542,6 +551,31 @@ def _emit_check_multi_layout_lambda(
     operand_views = ",\n".join(
         _emit_check_operand_view(field, "payload") for field in layout.fields
     )
+    consistency_return = f"""
+            return check_operands(
+                {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
+                    .operand_layouts[{layout_index}]
+                    .bindings,
+                fields, operands,
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .operand_type_compatibilities,
+                context);"""
+    if variant.memory_consistency is not None:
+        consistency_return = f"""
+            const auto operand_check = check_operands(
+                {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
+                    .operand_layouts[{layout_index}]
+                    .bindings,
+                fields, operands,
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .operand_type_compatibilities,
+                context);
+            if (!operand_check)
+              return operand_check;
+            return check_memory_consistency(
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .memory_consistency,
+                fields, operands, context);"""
     return f"""          const auto {lambda_name} =
               [&](const {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands& payload)
                   -> CheckResult {{
@@ -554,15 +588,7 @@ def _emit_check_multi_layout_lambda(
             }}
             const std::array<OperandView, {len(layout.fields)}> operands = {{{{
 {operand_views}
-            }}}};
-            return check_operands(
-                {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
-                    .operand_layouts[{layout_index}]
-                    .bindings,
-                fields, operands,
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .operand_type_compatibilities,
-                context);
+            }}}};{consistency_return}
           }};
           static_assert(detail::VariantCheckFunction<
               decltype({lambda_name}),
@@ -588,22 +614,80 @@ def _emit_check_modifier_view(
     field: ResolvedField,
 ) -> str:
     if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
+        bool_value = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "bool" else "std::nullopt"
+        )
         scalar_type = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "ScalarType"
             else "std::nullopt"
         )
+        vector_arity = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "VectorArity"
+            else "std::nullopt"
+        )
+        memory_state_space = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MemoryStateSpace"
+            else "std::nullopt"
+        )
+        memory_consistency = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MemoryConsistency" else "std::nullopt"
+        )
+        memory_scope = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MemoryScope" else "std::nullopt"
+        )
+        cache_operator = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "CacheOperator" else "std::nullopt"
+        )
         locations = "std::span<const SourceRange>{}"
     else:
+        bool_value = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "bool" else "std::nullopt"
+        )
         scalar_type = (
             f"selected.{field.name}.value"
             if field.value_cpp_type == "ScalarType"
             else "std::nullopt"
         )
+        vector_arity = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "VectorArity"
+            else "std::nullopt"
+        )
+        memory_state_space = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MemoryStateSpace"
+            else "std::nullopt"
+        )
+        memory_consistency = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MemoryConsistency" else "std::nullopt"
+        )
+        memory_scope = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MemoryScope" else "std::nullopt"
+        )
+        cache_operator = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "CacheOperator" else "std::nullopt"
+        )
         locations = f"selected.{field.name}.locs"
     return f"""              FieldView{{
                   .field_id = "{field.name}",
+                  .bool_value = {bool_value},
+                  .cache_operator = {cache_operator},
                   .scalar_type = {scalar_type},
+                  .vector_arity = {vector_arity},
+                  .memory_state_space = {memory_state_space},
+                  .memory_consistency = {memory_consistency},
+                  .memory_scope = {memory_scope},
                   .locations = {locations},
               }}"""
 
@@ -623,6 +707,8 @@ def _emit_check_modifier_value_view(
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
         )
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif field.value_cpp_type == "bool":
         value_kind = cpp_value(
             CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "bool"
@@ -634,6 +720,8 @@ def _emit_check_modifier_value_view(
         )
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif field.value_cpp_type == "RoundingMode":
         value_kind = cpp_value(
             CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "RoundingMode"
@@ -641,6 +729,79 @@ def _emit_check_modifier_value_view(
         bool_value = "false"
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    elif field.value_cpp_type == "CacheOperator":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "CacheOperator"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    elif field.value_cpp_type == "VectorArity":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "VectorArity"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    elif field.value_cpp_type == "MemoryStateSpace":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MemoryStateSpace"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "MemoryConsistency":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MemoryConsistency"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        memory_consistency = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "MemoryScope":
+        value_kind = cpp_value(CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MemoryScope")
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        memory_scope = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
@@ -656,21 +817,45 @@ def _emit_check_modifier_value_view(
         if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
         else f"selected.{field.name}.locs"
     )
+    if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
+        is_present = "true"
+    elif field.value_cpp_type == "CacheOperator":
+        is_present = (
+            f"selected.{field.name}.value != "
+            f"{cpp_default(CppDomain.CACHE_OPERATORS)}"
+        )
+    else:
+        is_present = "true"
     if field.value_cpp_type != "RoundingMode":
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+    if field.value_cpp_type != "CacheOperator":
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+    if field.value_cpp_type != "VectorArity":
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    if field.value_cpp_type != "MemoryStateSpace":
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    if field.value_cpp_type != "MemoryConsistency":
+        memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
+    if field.value_cpp_type != "MemoryScope":
+        memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
                   .bool_value = {bool_value},
                   .scalar_type = {scalar_type},
                   .rounding_mode = {rounding_mode},
-                  .is_present = true,
+                  .cache_operator = {cache_operator},
+                  .vector_arity = {vector_arity},
+                  .memory_state_space = {memory_state_space},
+                  .memory_consistency = {memory_consistency},
+                  .memory_scope = {memory_scope},
+                  .is_present = {is_present},
                   .locations = {locations},
               }}"""
 
 
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
-    if field.value_cpp_type == "ResolvedMovVector":
+    if field.value_cpp_type == "ResolvedRegisterVector":
         return f"""              [&]() -> OperandView {{
                 OperandView view{{
                     .field_id = "{field.name}",
@@ -759,13 +944,58 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedAddress":
-        return f"""              OperandView{{
+        return f"""              [&]() -> OperandView {{
+                const auto* symbol = std::get_if<ResolvedSymbolRef>(
+                    &{object_name}.{field.name}.value.base);
+                std::optional<MemoryStateSpace> effective_state_space;
+                ParameterDirection parameter_direction = ParameterDirection::None;
+                if (symbol != nullptr && symbol->address_state_space) {{
+                  // Preserve the declaration-derived effective space. In
+                  // particular, device parameters may produce local rather
+                  // than declaration-space addresses in other instructions.
+                  switch (*symbol->address_state_space) {{
+                    case syntax_ast::AstStateSpace::Global:
+                      effective_state_space = MemoryStateSpace::Global;
+                      break;
+                    case syntax_ast::AstStateSpace::Shared:
+                      effective_state_space = MemoryStateSpace::Shared;
+                      break;
+                    case syntax_ast::AstStateSpace::Local:
+                      effective_state_space = MemoryStateSpace::Local;
+                      break;
+                    case syntax_ast::AstStateSpace::Parameter:
+                      effective_state_space = MemoryStateSpace::Parameter;
+                      break;
+                    case syntax_ast::AstStateSpace::Constant:
+                      effective_state_space = MemoryStateSpace::Constant;
+                      break;
+                    case syntax_ast::AstStateSpace::Register:
+                      break;
+                  }}
+                }}
+                if (symbol != nullptr && symbol->declaration_kind) {{
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::InputParameter) {{
+                    parameter_direction = ParameterDirection::Input;
+                  }} else if (*symbol->declaration_kind ==
+                             binding::SymbolKind::ReturnParameter) {{
+                    parameter_direction = ParameterDirection::Return;
+                  }}
+                }}
+                // Register, immediate, and unresolved standalone address
+                // bases remain unknown; spelling is not semantic evidence.
+                return OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
                   .immediate_type = std::nullopt,
                   .register_type = std::nullopt,
+                  .address_state_space = effective_state_space,
+                  .enclosing_function_kind =
+                      {object_name}.{field.name}.value.enclosing_function_kind,
+                  .parameter_direction = parameter_direction,
                   .locations = {object_name}.{field.name}.locs,
-              }}"""
+                }};
+              }}()"""
     if field.value_cpp_type == "RegOrImm":
         return f"""              [&]() -> OperandView {{
                 if (const auto* immediate =

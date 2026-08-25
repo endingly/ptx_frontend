@@ -33,7 +33,9 @@ from ir.resolved_ir import (
     ResolvedOperandShape,
     ResolvedOperandTypeExpression,
     ResolvedOperandTypeExpressionKind,
+    ResolvedRegisterWidthPolicy,
     ResolvedValueKind,
+    ResolvedVectorTypePolicy,
     from_instruction_spec,
 )
 from code_gen.model import (
@@ -520,8 +522,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
                 ("src", "WithLocs<ResolvedMovSource>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
-                ("src", "WithLocs<ResolvedMovVector>"),
-                ("dst", "WithLocs<ResolvedMovVector>"),
+                ("src", "WithLocs<ResolvedRegisterVector>"),
+                ("dst", "WithLocs<ResolvedRegisterVector>"),
                 ("src", "WithLocs<ResolvedRegisterRef>"),
             ],
         )
@@ -594,7 +596,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ),
             )
 
-    def test_ld_generic_u32_uses_resolved_address(self) -> None:
+    def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
@@ -606,16 +608,122 @@ class ResolvedIrBuildTest(unittest.TestCase):
         instruction = from_instruction_spec(ld)
 
         self.assertEqual(instruction.cpp_name, "Ld")
-        self.assertEqual(len(instruction.variants), 1)
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            [
+                "GenericScalar",
+                "ExplicitScalar",
+                "GenericVector",
+                "ExplicitVector",
+            ],
+        )
+        self.assertEqual(ld.variants[1].modifiers[0].presence, "required")
+        self.assertEqual(
+            [value.value for value in ld.variants[1].modifiers[0].values],
+            ["const", "global", "local", "param", "shared"],
+        )
         variant = instruction.variants[0]
-        self.assertEqual(variant.cpp_name, "GenericU32")
+        explicit_variant = instruction.variants[1]
+        vector_variant = instruction.variants[2]
+        explicit_vector_variant = instruction.variants[3]
+        self.assertEqual(variant.cpp_name, "GenericScalar")
+        expected_types = [
+            "b8",
+            "b16",
+            "b32",
+            "b64",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "s8",
+            "s16",
+            "s32",
+            "s64",
+            "f32",
+            "f64",
+        ]
+        for syntax_variant in ld.variants:
+            self.assertEqual(
+                [value.value for value in syntax_variant.modifiers[-1].values],
+                expected_types,
+            )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
-                ("type", "ScalarType"),
+                ("semantics", "WithLocs<MemoryConsistency>"),
+                ("scope", "WithLocs<MemoryScope>"),
+                ("mmio", "WithLocs<bool>"),
+                ("cache", "WithLocs<CacheOperator>"),
+                ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
                 ("address", "WithLocs<ResolvedAddress>"),
             ],
+        )
+        self.assertEqual(
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "cache").default_value.value_cpp_type,
+            "CacheOperator",
+        )
+        self.assertEqual(
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "cache").default_value.value,
+            "unspecified",
+        )
+        self.assertEqual(
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "semantics").default_value.value,
+            "omitted",
+        )
+        self.assertEqual(
+            next(binding for binding in variant.modifier_bindings
+                 if binding.source_kind_id == "scope").default_value.value,
+            "none",
+        )
+        self.assertEqual(
+            [
+                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                for entry in variant.modifier_value_availabilities
+                if entry.source_kind_id == "cache"
+            ],
+            [
+                ("cache", "CacheOperator", "ca"),
+                ("cache", "CacheOperator", "cg"),
+                ("cache", "CacheOperator", "cs"),
+                ("cache", "CacheOperator", "lu"),
+                ("cache", "CacheOperator", "cv"),
+            ],
+        )
+        self.assertEqual(
+            [
+                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                for entry in variant.modifier_value_availabilities
+                if entry.source_kind_id == "semantics"
+            ],
+            [
+                ("semantics", "MemoryConsistency", "weak"),
+                ("semantics", "MemoryConsistency", "volatile"),
+                ("semantics", "MemoryConsistency", "relaxed"),
+                ("semantics", "MemoryConsistency", "acquire"),
+            ],
+        )
+        self.assertIn(
+            ("mmio", "bool", True),
+            [(entry.source_kind_id, entry.value_cpp_type, entry.value)
+             for entry in variant.modifier_value_availabilities],
+        )
+        self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
+        self.assertEqual(variant.memory_consistency.address_field_id, "address")
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                modifier_field_id="type",
+            ),
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
         )
         address_binding = variant.operand_layouts[0].bindings[1]
         self.assertEqual(address_binding.role, ResolvedOperandRole.ADDRESS)
@@ -628,6 +736,280 @@ class ResolvedIrBuildTest(unittest.TestCase):
             address_binding.type_expression.kind,
             ResolvedOperandTypeExpressionKind.NONE,
         )
+        self.assertEqual(
+            address_binding.register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in address_binding.allowed_address_state_spaces
+            ],
+            [
+                ("const", {"ptx": "3.1"}),
+                ("global", {}),
+                ("local", {}),
+                ("shared", {}),
+            ],
+        )
+        self.assertIsNone(address_binding.state_space_modifier_field_id)
+
+        self.assertEqual(explicit_variant.cpp_name, "ExplicitScalar")
+        self.assertEqual(
+            (
+                explicit_variant.modifier_fields[0].name,
+                explicit_variant.modifier_fields[0].cpp_type,
+                explicit_variant.modifier_fields[0].storage,
+            ),
+            (
+                "state_space",
+                "WithLocs<MemoryStateSpace>",
+                ResolvedFieldStorage.INSTANCE,
+            ),
+        )
+        self.assertEqual(
+            (
+                explicit_variant.modifier_fields[1].name,
+                explicit_variant.modifier_fields[1].cpp_type,
+                explicit_variant.modifier_bindings[1].default_value.value,
+            ),
+            ("cache", "WithLocs<CacheOperator>", "unspecified"),
+        )
+        self.assertEqual(
+            explicit_variant.operand_layouts[0]
+            .bindings[1]
+            .state_space_modifier_field_id,
+            "state_space",
+        )
+        self.assertEqual(
+            explicit_variant.operand_layouts[0]
+            .bindings[1]
+            .allowed_address_state_spaces,
+            (),
+        )
+        self.assertEqual(
+            explicit_variant.operand_layouts[0]
+            .bindings[0]
+            .register_width_policy,
+            ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in explicit_variant.modifier_value_availabilities
+                if entry.source_kind_id in {"cache", "type"}
+            ],
+            [
+                ("ca", {"ptx": "2.0", "sm": 20}),
+                ("cg", {"ptx": "2.0", "sm": 20}),
+                ("cs", {"ptx": "2.0", "sm": 20}),
+                ("lu", {"ptx": "2.0", "sm": 20}),
+                ("cv", {"ptx": "2.0", "sm": 20}),
+                ("f64", {"ptx": "1.0", "sm": 13}),
+            ],
+        )
+        load_parameter = (
+            explicit_variant.operand_layouts[0].bindings[1].parameter_constraint
+        )
+        self.assertEqual(load_parameter.direction, "input")
+        self.assertEqual(
+            dict(load_parameter.function_availability),
+            {"ptx": "2.0", "sm": 20},
+        )
+        self.assertEqual(vector_variant.cpp_name, "GenericVector")
+        self.assertEqual(
+            [field.name for field in vector_variant.fields],
+            ["semantics", "scope", "cache", "vector", "type", "dst", "address"],
+        )
+        self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
+        self.assertEqual(
+            [value.value for value in next(modifier for modifier in ld.variants[2].modifiers if modifier.name == "vector").values],
+            ["v2", "v4"],
+        )
+        vector_binding = vector_variant.operand_layouts[0].bindings[0]
+        self.assertEqual(vector_binding.allowed_vector_arities, ())
+        self.assertEqual(vector_binding.vector_arity_modifier_field_id, "vector")
+        self.assertEqual(
+            vector_binding.vector_type_policy,
+            ResolvedVectorTypePolicy.ELEMENT,
+        )
+        self.assertFalse(vector_binding.allow_vector_sink)
+        self.assertEqual(
+            explicit_vector_variant.operand_layouts[0]
+            .bindings[0]
+            .vector_arity_modifier_field_id,
+            "vector",
+        )
+        load_vector_parameter = (
+            explicit_vector_variant.operand_layouts[0]
+            .bindings[1]
+            .parameter_constraint
+        )
+        self.assertEqual(load_vector_parameter.direction, "input")
+        self.assertEqual(
+            dict(load_vector_parameter.function_availability),
+            {"ptx": "2.0", "sm": 20},
+        )
+
+        st = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "st"
+        )
+        store = from_instruction_spec(st)
+        self.assertEqual(
+            [value.value for value in st.variants[1].modifiers[0].values],
+            ["global", "local", "param", "shared"],
+        )
+        self.assertEqual(
+            [variant.cpp_name for variant in store.variants],
+            [
+                "GenericScalar",
+                "ExplicitScalar",
+                "GenericVector",
+                "ExplicitVector",
+            ],
+        )
+        for syntax_variant in st.variants:
+            self.assertEqual(
+                [value.value for value in syntax_variant.modifiers[-1].values],
+                expected_types,
+            )
+        self.assertEqual(
+            [field.name for field in store.variants[0].fields],
+            ["semantics", "scope", "mmio", "cache", "type", "address", "src"],
+        )
+        self.assertEqual(
+            next(binding for binding in store.variants[0].modifier_bindings
+                 if binding.source_kind_id == "cache").default_value.value,
+            "unspecified",
+        )
+        self.assertEqual(
+            [
+                availability.value
+                for availability in store.variants[0].modifier_value_availabilities
+                if availability.source_kind_id == "cache"
+            ],
+            ["wb", "cg", "cs", "wt"],
+        )
+        self.assertEqual(
+            [
+                entry.value
+                for entry in store.variants[0]
+                .operand_layouts[0]
+                .bindings[0]
+                .allowed_address_state_spaces
+            ],
+            ["global", "local", "shared"],
+        )
+        self.assertEqual(
+            store.variants[1]
+            .operand_layouts[0]
+            .bindings[0]
+            .state_space_modifier_field_id,
+            "state_space",
+        )
+        self.assertEqual(
+            store.variants[1].modifier_bindings[1].default_value.value,
+            "unspecified",
+        )
+        self.assertEqual(
+            store.variants[0].operand_layouts[0].bindings[1].type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                modifier_field_id="type",
+            ),
+        )
+        self.assertEqual(
+            store.variants[0]
+            .operand_layouts[0]
+            .bindings[1]
+            .register_width_policy,
+            ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
+        self.assertEqual(
+            store.variants[1]
+            .operand_layouts[0]
+            .bindings[1]
+            .register_width_policy,
+            ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
+        self.assertEqual(
+            [
+                (entry.value, dict(entry.availability))
+                for entry in store.variants[1].modifier_value_availabilities
+                if entry.source_kind_id in {"cache", "type"}
+            ],
+            [
+                ("wb", {"ptx": "2.0", "sm": 20}),
+                ("cg", {"ptx": "2.0", "sm": 20}),
+                ("cs", {"ptx": "2.0", "sm": 20}),
+                ("wt", {"ptx": "2.0", "sm": 20}),
+                ("f64", {"ptx": "1.0", "sm": 13}),
+            ],
+        )
+        store_parameter = (
+            store.variants[1].operand_layouts[0].bindings[0].parameter_constraint
+        )
+        self.assertEqual(store_parameter.direction, "return")
+        self.assertEqual(
+            dict(store_parameter.function_availability),
+            {"ptx": "2.0", "sm": 20},
+        )
+        store_vector = store.variants[2]
+        self.assertEqual(
+            [field.name for field in store_vector.fields],
+            ["semantics", "scope", "cache", "vector", "type", "address", "src"],
+        )
+        self.assertEqual(store_vector.memory_consistency.mmio_field_id, "")
+        self.assertEqual(
+            [value.value for value in next(modifier for modifier in st.variants[2].modifiers if modifier.name == "vector").values],
+            ["v2", "v4"],
+        )
+        store_vector_binding = store_vector.operand_layouts[0].bindings[1]
+        self.assertEqual(store_vector_binding.allowed_vector_arities, ())
+        self.assertEqual(
+            store_vector_binding.vector_arity_modifier_field_id,
+            "vector",
+        )
+        self.assertEqual(
+            store_vector_binding.vector_type_policy,
+            ResolvedVectorTypePolicy.ELEMENT,
+        )
+        store_vector_parameter = (
+            store.variants[3].operand_layouts[0].bindings[0].parameter_constraint
+        )
+        self.assertEqual(store_vector_parameter.direction, "return")
+        self.assertEqual(
+            dict(store_vector_parameter.function_availability),
+            {"ptx": "2.0", "sm": 20},
+        )
+
+    def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+
+        for opcode in ("ld", "st"):
+            spec = next(
+                instruction
+                for instruction in database.instructions
+                if instruction.opcode == opcode
+            )
+            resolved = from_instruction_spec(spec)
+            for variant in resolved.variants:
+                cache_binding = next(
+                    binding
+                    for binding in variant.modifier_bindings
+                    if binding.source_kind_id == "cache"
+                )
+                self.assertIsNotNone(cache_binding.default_value)
+                assert cache_binding.default_value is not None
+                self.assertEqual(
+                    cache_binding.default_value.value_cpp_type,
+                    "CacheOperator",
+                )
+                self.assertEqual(cache_binding.default_value.value, "unspecified")
 
     def test_generate_resolved_ir_header(self) -> None:
         database = load_codegen_database(
@@ -788,7 +1170,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".special_register_id = special_register->id", source)
         self.assertIn(".operand_type_compatibilities, context", source)
-        self.assertIn("resolved_operand<ResolvedMovVector>", source)
+        self.assertIn("resolved_operand<ResolvedRegisterVector>", source)
         self.assertIn(
             ".actual_shape = check_end::OperandShape::Vector", source
         )
@@ -811,7 +1193,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::Address", source
         )
+        self.assertIn(
+            "parameter_direction = ParameterDirection::Input", source
+        )
+        self.assertIn(
+            "parameter_direction = ParameterDirection::Return", source
+        )
+        self.assertIn(
+            "ParameterDirection parameter_direction = ParameterDirection::None",
+            source,
+        )
+        self.assertIn(".enclosing_function_kind =", source)
+        self.assertIn(".parameter_direction = parameter_direction", source)
         self.assertIn("CheckResult check<Ld>(", source)
+        self.assertIn("check_memory_consistency(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = load_codegen_database(
@@ -855,6 +1250,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("const auto operand_check = check_operands(", source)
         self.assertIn("const auto layout_check = check_operand_layout_tag(", source)
         self.assertIn("check_modifier_value_availability(", source)
+        self.assertNotIn("check_memory_consistency(", source)
         self.assertIn("Add::get_checker_descriptor(), \"IntegerNoSat\"", source)
         self.assertNotIn("struct Bar {", source)
 
@@ -884,6 +1280,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("ResolvedConstantDescriptor", source)
         self.assertIn("check_end::ResolvedModifierBindingDescriptor", source)
         self.assertIn("check_end::ResolvedOperandBindingDescriptor", source)
+        self.assertIn("checker::AddressStateSpaceDescriptor", source)
+        self.assertIn(".allowed_address_state_spaces =", source)
+        self.assertIn(".parameter_constraint = {", source)
+        self.assertIn(
+            ".register_width_policy = "
+            "base::ScalarTypeSizePolicy::EqualOrWider,",
+            source,
+        )
+        self.assertIn(
+            ".register_width_policy = base::ScalarTypeSizePolicy::SameWidth,",
+            source,
+        )
+        self.assertIn(".direction = ParameterDirection::Input,", source)
+        self.assertIn(".direction = ParameterDirection::Return,", source)
+        self.assertIn(".function_availability = {", source)
+        self.assertIn(".state_space = MemoryStateSpace::Constant,", source)
+        self.assertIn(".minimum_ptx_version = {3, 1},", source)
         self.assertIn("check_end::TypeExpressionDescriptor", source)
         self.assertIn(
             ".kind = check_end::OperandTypeExpressionKind::ModifierField,",
@@ -938,6 +1351,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("checker::VariantDescriptor", source)
         self.assertIn("checker::OperandLayoutDescriptor", source)
         self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
+        self.assertIn(".memory_consistency = {", source)
+        self.assertIn(".semantics_field_id = \"semantics\",", source)
         self.assertIn(
             ".special_register_kind = base::SpecialRegisterKind::Tid,",
             source,

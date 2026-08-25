@@ -3,6 +3,7 @@
 #include <array>
 #include <compare>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <functional>
@@ -17,9 +18,58 @@
 #include <ptx_frontend/base/ptx_special_register.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 
-namespace ptx_frontend::resolved_ir::checker {
+namespace ptx_frontend::resolved_ir {
+
+/** State-space identity used by resolved modifiers and effective addresses. */
+enum class MemoryStateSpace : uint8_t {
+  Invalid,
+  Generic,
+  Global,
+  Shared,
+  Local,
+  Parameter,
+  Constant,
+};
+
+/** Semantic value of a PTX vector-arity modifier such as ``.v2``. */
+enum class VectorArity : uint8_t {
+  Invalid,
+  V2,
+  V4,
+};
+
+constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
+  switch (arity) {
+    case VectorArity::V2:
+      return 2;
+    case VectorArity::V4:
+      return 4;
+    case VectorArity::Invalid:
+      return 0;
+  }
+  return 0;
+}
+
+/** Enclosing function provenance retained only for resolved memory addresses. */
+enum class EnclosingFunctionKind : uint8_t {
+  Unknown,
+  Entry,
+  Device,
+};
+
+/** Formal-parameter direction independent of binding-layer enum types. */
+enum class ParameterDirection : uint8_t {
+  None,
+  Input,
+  Return,
+};
+
+namespace checker {
 using base::ScalarType;
 using base::RoundingMode;
+using base::CacheOperator;
+using base::MemoryConsistency;
+using base::MemoryScope;
 namespace detail {
 
 /** Combine variant-specific lambdas into the visitor accepted by std::visit. */
@@ -79,35 +129,6 @@ enum class OperandTypeExpressionKind : uint8_t {
   ModifierField,
 };
 
-/**
- * Type information generated from YAML rather than parsed at C++ runtime.
- *
- * ``modifier_field_id`` names the resolved modifier field for
- * ``modifier(name)`` expressions.  It is otherwise empty.
- */
-struct TypeExpressionDescriptor {
-  OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;
-  ScalarType fixed_scalar_type = ScalarType::Invalid;
-  std::string_view modifier_field_id{};
-};
-
-/** Semantic constraints for one operand position in a resolved layout. */
-struct OperandDescriptor {
-  std::string_view target_field_id;
-  TypeExpressionDescriptor type_expression;
-  OperandRole role;
-  OperandAccess access;
-  OperandShape allowed_shapes;
-  std::span<const uint8_t> allowed_vector_arities;
-};
-
-/** A non-owning semantic view of one resolved modifier field. */
-struct FieldView {
-  std::string_view field_id;
-  std::optional<ScalarType> scalar_type;
-  std::span<const SourceRange> locations;
-};
-
 /** A PTX ISA version used by both checker descriptors and compilation targets. */
 struct PtxVersion {
   uint16_t major = 0;
@@ -121,6 +142,74 @@ struct AvailabilityDescriptor {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
   std::string_view required_family{};
+};
+
+/**
+ * Type information generated from YAML rather than parsed at C++ runtime.
+ *
+ * ``modifier_field_id`` names the resolved modifier field for
+ * ``modifier(name)`` expressions.  It is otherwise empty.
+ */
+struct TypeExpressionDescriptor {
+  OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;
+  ScalarType fixed_scalar_type = ScalarType::Invalid;
+  std::string_view modifier_field_id{};
+};
+
+/** One statically accepted effective address space and its target requirement. */
+struct AddressStateSpaceDescriptor {
+  MemoryStateSpace state_space = MemoryStateSpace::Invalid;
+  AvailabilityDescriptor availability;
+};
+
+/** Direction and function-specific target requirement for explicit .param. */
+struct ParameterAddressConstraint {
+  ParameterDirection direction = ParameterDirection::None;
+  AvailabilityDescriptor function_availability;
+};
+
+/** How a vector operand derives each element type from the instruction type. */
+enum class VectorTypePolicy : uint8_t {
+  Aggregate,
+  Element,
+};
+
+/** Current ResolvedRegisterVector/checker payload ceiling; modern memory-vector
+ * support must raise or model it. */
+inline constexpr size_t kMaxRegisterVectorPayloadBits = 128;
+
+/** Semantic constraints for one operand position in a resolved layout. */
+struct OperandDescriptor {
+  std::string_view target_field_id;
+  TypeExpressionDescriptor type_expression;
+  base::ScalarTypeSizePolicy register_width_policy =
+      base::ScalarTypeSizePolicy::SameWidth;
+  OperandRole role;
+  OperandAccess access;
+  OperandShape allowed_shapes;
+  std::span<const uint8_t> allowed_vector_arities;
+  /** Resolved modifier field supplying the required vector element count. */
+  std::string_view vector_arity_modifier_field_id{};
+  VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
+  bool allow_vector_sink = false;
+  /** Static effective-address allowlist; empty means no static restriction. */
+  std::span<const AddressStateSpaceDescriptor> allowed_address_state_spaces;
+  /** Resolved modifier field supplying an explicit address-space constraint. */
+  std::string_view state_space_modifier_field_id{};
+  ParameterAddressConstraint parameter_constraint;
+};
+
+/** A non-owning semantic view of one resolved modifier field. */
+struct FieldView {
+  std::string_view field_id;
+  std::optional<bool> bool_value;
+  std::optional<CacheOperator> cache_operator;
+  std::optional<ScalarType> scalar_type;
+  std::optional<VectorArity> vector_arity;
+  std::optional<MemoryStateSpace> memory_state_space;
+  std::optional<MemoryConsistency> memory_consistency;
+  std::optional<MemoryScope> memory_scope;
+  std::span<const SourceRange> locations;
 };
 
 /** A generated instruction-context override for one special-register value. */
@@ -141,6 +230,12 @@ struct OperandView {
   std::optional<ScalarType> register_type;
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
+  /** Effective address space; unknown for register/immediate/standalone bases. */
+  std::optional<MemoryStateSpace> address_state_space;
+  /** Function provenance is independent of whether the base binds a symbol. */
+  EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
+  /** None unless the base binds an input or return parameter declaration. */
+  ParameterDirection parameter_direction = ParameterDirection::None;
   std::array<ScalarType, 4> vector_element_types{};
   uint8_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
@@ -173,6 +268,11 @@ enum class ModifierValueKind : uint8_t {
   Bool,
   ScalarType,
   RoundingMode,
+  CacheOperator,
+  VectorArity,
+  MemoryStateSpace,
+  MemoryConsistency,
+  MemoryScope,
 };
 
 /** Target requirement attached to one legal semantic modifier value. */
@@ -182,6 +282,11 @@ struct ModifierValueAvailabilityDescriptor {
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
+  CacheOperator cache_operator = CacheOperator::Unspecified;
+  VectorArity vector_arity = VectorArity::Invalid;
+  MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
+  MemoryScope memory_scope = MemoryScope::None;
   AvailabilityDescriptor availability;
 };
 
@@ -192,6 +297,11 @@ struct ModifierValueView {
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
+  CacheOperator cache_operator = CacheOperator::Unspecified;
+  VectorArity vector_arity = VectorArity::Invalid;
+  MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
+  MemoryScope memory_scope = MemoryScope::None;
   bool is_present = false;
   std::span<const SourceRange> locations;
 };
@@ -213,6 +323,15 @@ struct VariantDescriptor {
   std::span<const OperandTypeCompatibilityDescriptor>
       operand_type_compatibilities;
   std::string_view rule_id;
+  /** Empty field IDs mean this variant has no memory-consistency rule. */
+  struct MemoryConsistencyDescriptor {
+    std::string_view semantics_field_id;
+    std::string_view scope_field_id;
+    std::string_view mmio_field_id;
+    std::string_view cache_field_id;
+    std::string_view address_field_id;
+    std::string_view state_space_field_id;
+  } memory_consistency;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -232,8 +351,13 @@ enum class CheckDiagnosticKind : uint8_t {
   InvalidOperandLayoutTag,
   OperandLayoutPayloadMismatch,
   MissingTypeField,
+  MissingStateSpaceField,
+  MissingVectorArityField,
   OperandTypeMismatch,
+  AddressStateSpaceMismatch,
+  ParameterDirectionMismatch,
   InvalidVectorOperand,
+  MemoryConsistencyViolation,
   RuleViolation,
 };
 
@@ -326,6 +450,12 @@ CheckResult check_modifier_value_availability(
     std::span<const ModifierValueAvailabilityDescriptor> descriptors,
     std::span<const ModifierValueView> actual_values, const Context& context);
 
+/** Check generated ld/st memory-order and address-space cross constraints. */
+CheckResult check_memory_consistency(
+    const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context);
+
 /**
  * Check one generated resolved instruction.
  *
@@ -337,4 +467,5 @@ CheckResult check_modifier_value_availability(
 template <typename T>
 CheckResult check(const T& instruction, const Context& context);
 
-}  // namespace ptx_frontend::resolved_ir::checker
+}  // namespace checker
+}  // namespace ptx_frontend::resolved_ir

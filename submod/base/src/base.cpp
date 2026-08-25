@@ -88,10 +88,20 @@ uint8_t scalar_size_of(ScalarType t) {
   return 0;
 }
 
-bool scalar_types_compatible(ScalarType actual, ScalarType instruction) {
+bool scalar_types_compatible(ScalarType actual, ScalarType instruction,
+                             ScalarTypeSizePolicy size_policy) {
   if (actual == instruction)
     return true;
-  if (scalar_size_of(actual) != scalar_size_of(instruction))
+  // ponytail: reject wider .b128 until declaration-type availability is
+  // checked centrally; remove this guard when that registry/checker exists.
+  if (size_policy == ScalarTypeSizePolicy::EqualOrWider &&
+      actual == ScalarType::B128)
+    return false;
+  const uint8_t actual_size = scalar_size_of(actual);
+  const uint8_t instruction_size = scalar_size_of(instruction);
+  if (actual_size != instruction_size &&
+      (size_policy != ScalarTypeSizePolicy::EqualOrWider ||
+       actual_size < instruction_size))
     return false;
 
   const ScalarKind actual_kind = scalar_kind(actual);

@@ -179,6 +179,7 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .bool_value = {bool_value},
                   .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
                   .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
+                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
               }}"""
     if default.value_cpp_type == "ScalarType" and isinstance(default.value, str):
         scalar_type = cpp_value(CppDomain.SCALAR_TYPES, default.value)
@@ -187,6 +188,7 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .bool_value = false,
                   .scalar_type = {scalar_type},
                   .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
+                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
               }}"""
     if default.value_cpp_type == "RoundingMode" and isinstance(
         default.value, str
@@ -197,6 +199,46 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .bool_value = false,
                   .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
                   .rounding_mode = {rounding_mode},
+                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
+              }}"""
+    if default.value_cpp_type == "CacheOperator" and isinstance(
+        default.value, str
+    ):
+        cache_operator = cpp_value(CppDomain.CACHE_OPERATORS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "CacheOperator")},
+                  .bool_value = false,
+                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
+                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
+                  .cache_operator = {cache_operator},
+              }}"""
+    if default.value_cpp_type == "MemoryStateSpace" and isinstance(
+        default.value, str
+    ):
+        memory_state_space = cpp_value(
+            CppDomain.MEMORY_STATE_SPACES, default.value
+        )
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryStateSpace")},
+                  .bool_value = false,
+                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
+                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
+                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
+                  .memory_state_space = {memory_state_space},
+              }}"""
+    if default.value_cpp_type == "MemoryConsistency" and isinstance(
+        default.value, str
+    ):
+        value = cpp_value(CppDomain.MEMORY_CONSISTENCIES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryConsistency")},
+                  .memory_consistency = {value},
+              }}"""
+    if default.value_cpp_type == "MemoryScope" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.MEMORY_SCOPES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryScope")},
+                  .memory_scope = {value},
               }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "
@@ -220,14 +262,25 @@ def _emit_operand_layout_storage(
         for binding_index, binding in enumerate(layout.bindings)
         if binding.allowed_vector_arities
     )
+    address_state_spaces = "\n\n".join(
+        f"""  static constexpr std::array<checker::AddressStateSpaceDescriptor, {len(binding.allowed_address_state_spaces)}>
+      {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces = {{{{
+{_emit_address_state_spaces(binding.allowed_address_state_spaces)}
+      }}}};"""
+        for binding_index, binding in enumerate(layout.bindings)
+        if binding.allowed_address_state_spaces
+    )
     bindings = ",\n".join(
         _emit_operand_binding_descriptor(
             binding,
             f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities",
+            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces",
         )
         for binding_index, binding in enumerate(layout.bindings)
     )
     return f"""{vector_arities}
+
+{address_state_spaces}
 
   static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(layout.fields)}>
       {variant_name}_operand_layout_{layout_index}_fields = {{
@@ -244,7 +297,27 @@ def _emit_vector_arities(arities: tuple[int, ...]) -> str:
     return ",\n".join(f"          {arity}" for arity in arities)
 
 
-def _emit_operand_binding_descriptor(binding, vector_arities_name: str) -> str:
+def _emit_address_state_spaces(entries) -> str:
+    result: list[str] = []
+    for entry in entries:
+        availability = dict(entry.availability)
+        minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
+        result.append(
+            f"""          checker::AddressStateSpaceDescriptor{{
+              .state_space = {cpp_value(CppDomain.MEMORY_STATE_SPACES, entry.value)},
+              .availability = {{
+                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                  .minimum_sm_version = {int(availability.get("sm", 0))},
+                  .required_family = "{str(availability.get("family", ""))}",
+              }},
+          }}"""
+        )
+    return ",\n".join(result)
+
+
+def _emit_operand_binding_descriptor(
+    binding, vector_arities_name: str, address_state_spaces_name: str
+) -> str:
     allowed_shapes = " | ".join(
         cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
         for shape in binding.allowed_shapes
@@ -254,12 +327,64 @@ def _emit_operand_binding_descriptor(binding, vector_arities_name: str) -> str:
         if binding.allowed_vector_arities
         else ""
     )
+    vector_arity_modifier = (
+        "\n              .vector_arity_modifier_field_id = "
+        f'"{binding.vector_arity_modifier_field_id}",'
+        if binding.vector_arity_modifier_field_id is not None
+        else ""
+    )
+    vector_policy = (
+        "\n              .vector_type_policy = "
+        f"checker::VectorTypePolicy::{binding.vector_type_policy.value},"
+        if binding.allowed_vector_arities
+        or binding.vector_arity_modifier_field_id is not None
+        else ""
+    )
+    allow_vector_sink = (
+        "\n              .allow_vector_sink = "
+        f'{"true" if binding.allow_vector_sink else "false"},'
+        if binding.allowed_vector_arities
+        or binding.vector_arity_modifier_field_id is not None
+        else ""
+    )
+    address_state_spaces = (
+        "\n              .allowed_address_state_spaces = "
+        f"{address_state_spaces_name},"
+        if binding.allowed_address_state_spaces
+        else ""
+    )
+    state_space = (
+        "\n              .state_space_modifier_field_id = "
+        f'"{binding.state_space_modifier_field_id}",'
+        if binding.state_space_modifier_field_id is not None
+        else ""
+    )
+    parameter_constraint = ""
+    if binding.parameter_constraint is not None:
+        availability = dict(
+            binding.parameter_constraint.function_availability
+        )
+        minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
+        parameter_constraint = f"""
+              .parameter_constraint = {{
+                  .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction)},
+                  .function_availability = {{
+                      .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                      .minimum_sm_version = {int(availability.get("sm", 0))},
+                      .required_family = "{str(availability.get("family", ""))}",
+                  }},
+              }},"""
+    register_width_policy = cpp_value(
+        CppDomain.REGISTER_WIDTH_POLICIES,
+        binding.register_width_policy.value,
+    )
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
               .type_expression = {_emit_type_expression_descriptor(binding.type_expression)},
+              .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 
@@ -292,6 +417,17 @@ def _emit_resolved_variant_descriptor(variant: ResolvedVariant) -> str:
               .modifier_bindings = {name}_modifier_bindings,
               .operand_layouts = {name}_operand_layouts,
           }}"""
+
+
+def _parse_ptx_version(value: object) -> tuple[int, int]:
+    text = str(value)
+    pieces = text.split(".")
+    if len(pieces) != 2 or not all(piece.isdecimal() for piece in pieces):
+        raise ValueError(f"invalid PTX availability version {value!r}")
+    major, minor = (int(piece) for piece in pieces)
+    if not (0 <= major <= 0xFFFF and 0 <= minor <= 0xFFFF):
+        raise ValueError(f"PTX availability version is out of range: {value!r}")
+    return major, minor
 
 
 def _validate_unique_cpp_names(instructions: tuple[ResolvedInstruction, ...]) -> None:

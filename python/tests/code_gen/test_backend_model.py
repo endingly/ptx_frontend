@@ -102,6 +102,40 @@ class BackendModelTests(unittest.TestCase):
             ],
             "check_end::OperandRole::Source",
         )
+        self.assertEqual(
+            unit.domains[CppDomain.CACHE_OPERATORS.value].values["ca"],
+            "CacheOperator::Ca",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.CACHE_OPERATORS.value].default,
+            "CacheOperator::Unspecified",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
+            "MemoryConsistency::Weak",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.MEMORY_SCOPES.value].default,
+            "MemoryScope::None",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
+                "MemoryConsistency"
+            ],
+            "MemoryConsistency",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
+                "MemoryScope"
+            ],
+            "MemoryScope",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.REGISTER_WIDTH_POLICIES.value].values[
+                "equal_or_wider"
+            ],
+            "base::ScalarTypeSizePolicy::EqualOrWider",
+        )
         self.assertIs(
             unit.domains[CppDomain.SCALAR_TYPES.value].runtime_lookup,
             RuntimeLookupKind.PTX_SUFFIX,

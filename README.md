@@ -19,7 +19,24 @@ The frontend currently provides:
 - module/function symbol scopes, reference classification, and declaration
   semantics;
 - generated resolution and checking for YAML-modelled `bra`, `add`, `sub`,
-  `bar`, selected `mov` forms, and generic `ld.u32` forms;
+  `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
+  the 14 `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`,
+  `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` with a
+  128-bit payload maximum (`.v2` through 64-bit types and `.v4` through
+  32-bit types; `.v4` 64-bit remains deferred), legacy `ld` cache operators
+  `.ca/.cg/.cs/.lu/.cv`, legacy `st` cache operators
+  `.wb/.cg/.cs/.wt`, explicit `.const/.global/.local/.param/.shared` loads,
+  and explicit `.global/.local/.param/.shared` stores, including data-driven
+  `.weak/.volatile/.relaxed.scope/.acquire.scope/.release.scope` consistency
+  qualifiers and PTX 8.2 `.mmio.relaxed.sys` (legacy vectors intentionally
+  exclude mmio),
+  generic bound-space policies, exact explicit bound-symbol address-space
+  checks, and input/return direction checks for bound `.param` addresses;
+  operand register compatibility permits PTX's wider load destination/store
+  source forms while retaining bit/integer/float kind restrictions for declared
+  registers through 64 bits; wider `.b128` declarations remain deferred until
+  declaration-type target availability is checked, and other instructions
+  remain exact-width;
 - explicit PTX ISA version, SM version, and target-family availability checks
   for modelled variants, modifiers, layouts, and operands.
 
@@ -86,10 +103,39 @@ PYTHONPATH=python python3 -m unittest discover \
 
 The `ci-linux-gcc-release` preset provides the equivalent Release workflow.
 
+## Use after installing
+
+Build and install the package into the configured prefix:
+
+```sh
+cmake --preset ci-linux-gcc-debug
+cmake --build --preset ci-linux-gcc-debug
+cmake --install out/build/ci-linux-gcc-debug
+```
+
+Consumers can select one or more frontend components and link their namespaced
+targets:
+
+```cmake
+find_package(
+    ptx_frontend 0.0.1 CONFIG REQUIRED
+    COMPONENTS resolved_ir
+)
+
+add_executable(example main.cpp)
+target_link_libraries(example PRIVATE ptx_frontend::resolved_ir)
+```
+
+Available components are `ptx_frontend`, `common`, `base`, `lexer`, `cst`,
+`syntax`, `binding`, `semantic`, and `resolved_ir`. Each component is exposed
+as `ptx_frontend::<component>`. The aggregate
+`ptx_frontend::ptx_frontend` target links the complete frontend. The package
+locates its public `fmt` and `magic_enum` dependencies, so those packages must
+be reachable through the consumer's toolchain or package search prefix.
+
 ## Use from a source tree
 
-The install/export path is not currently wired into the top-level build. Add
-the project as a source subdirectory instead:
+The same namespaced targets are available when the project is added directly:
 
 ```cmake
 add_subdirectory(path/to/ptx_frontend)

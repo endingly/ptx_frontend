@@ -136,7 +136,7 @@ _OPERAND_SYNTAX_SHAPES = {
     "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
     "symbol": OperandSyntaxShape.IDENTIFIER_REF,
     "addr": OperandSyntaxShape.ADDRESS,
-    "mov_vector": OperandSyntaxShape.VECTOR_PACK,
+    "reg_vector": OperandSyntaxShape.VECTOR_PACK,
 }
 
 def _build_variant_descriptor_view(

@@ -260,6 +260,97 @@ std::expected<WithLocs<RoundingMode>, ResolveDiagnostic> resolve_rounding_mode(
   return WithLocs<RoundingMode>{*mode, modifier.syntax.range};
 }
 
+std::optional<CacheOperator> cache_operator_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kCacheOperators, spelling);
+}
+
+std::expected<WithLocs<CacheOperator>, ResolveDiagnostic> resolve_cache_operator(
+    const syntax_ast::AstModifier& modifier) {
+  const auto cache_operator = cache_operator_from_ptx_name(modifier.syntax.text);
+  if (!cache_operator) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown cache operator '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<CacheOperator>{*cache_operator, modifier.syntax.range};
+}
+
+std::optional<MemoryConsistency> memory_consistency_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kMemoryConsistencies, spelling);
+}
+
+std::expected<WithLocs<MemoryConsistency>, ResolveDiagnostic>
+resolve_memory_consistency(const syntax_ast::AstModifier& modifier) {
+  const auto value = memory_consistency_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown memory consistency '{}'.",
+                               modifier.syntax.text),
+    });
+  }
+  return WithLocs<MemoryConsistency>{*value, modifier.syntax.range};
+}
+
+std::optional<MemoryScope> memory_scope_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kMemoryScopes, spelling);
+}
+
+std::expected<WithLocs<MemoryScope>, ResolveDiagnostic> resolve_memory_scope(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value = memory_scope_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown memory scope '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<MemoryScope>{*value, modifier.syntax.range};
+}
+
+std::optional<VectorArity> vector_arity_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kVectorArities, spelling);
+}
+
+std::expected<WithLocs<VectorArity>, ResolveDiagnostic> resolve_vector_arity(
+    const syntax_ast::AstModifier& modifier) {
+  const auto arity = vector_arity_from_ptx_name(modifier.syntax.text);
+  if (!arity) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown vector arity '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<VectorArity>{*arity, modifier.syntax.range};
+}
+
+std::optional<MemoryStateSpace> memory_state_space_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kMemoryStateSpaces, spelling);
+}
+
+std::expected<WithLocs<MemoryStateSpace>, ResolveDiagnostic>
+resolve_memory_state_space(const syntax_ast::AstModifier& modifier) {
+  const auto state_space =
+      memory_state_space_from_ptx_name(modifier.syntax.text);
+  if (!state_space) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown memory state space '{}'.",
+                        modifier.syntax.text),
+    });
+  }
+  return WithLocs<MemoryStateSpace>{*state_space, modifier.syntax.range};
+}
+
 struct ParsedNumberedRegister {
   std::string_view prefix;
   uint32_t index;
@@ -761,7 +852,14 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     return std::unexpected(offset.error());
 
   return WithLocs<ResolvedAddress>{
-      ResolvedAddress{.base = std::move(*base), .offset = std::move(*offset)},
+      ResolvedAddress{
+          .base = std::move(*base),
+          .offset = std::move(*offset),
+          .enclosing_function_kind =
+              context == nullptr ? EnclosingFunctionKind::Unknown
+              : context->function_is_entry ? EnclosingFunctionKind::Entry
+                                           : EnclosingFunctionKind::Device,
+      },
       address->range};
 }
 
@@ -953,10 +1051,14 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
   });
 }
 
-std::expected<WithLocs<ResolvedMovVector>, ResolveDiagnostic>
-resolve_mov_vector(const syntax_ast::AstOperand& operand,
+std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
+resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    ScalarType instruction_type, checker::OperandAccess access,
                    std::span<const uint8_t> allowed_arities,
+                   std::optional<uint8_t> required_arity,
+                   checker::VectorTypePolicy vector_type_policy,
+                   base::ScalarTypeSizePolicy register_width_policy,
+                   bool allow_sink,
                    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
@@ -965,7 +1067,8 @@ resolve_mov_vector(const syntax_ast::AstOperand& operand,
         .message = "Expected a vector-pack operand.",
     });
   }
-  if (scalar_kind(instruction_type) != base::ScalarKind::Bit) {
+  if (vector_type_policy == checker::VectorTypePolicy::Aggregate &&
+      scalar_kind(instruction_type) != base::ScalarKind::Bit) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
         .message = "A vector mov requires a bit-size instruction type.",
@@ -973,22 +1076,49 @@ resolve_mov_vector(const syntax_ast::AstOperand& operand,
   }
 
   const size_t arity = vector->elements.size();
-  if (std::ranges::find(allowed_arities, arity) == allowed_arities.end()) {
+  if (required_arity && arity != *required_arity) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message =
+            fmt::format("This vector operand requires {} elements.",
+                        *required_arity),
+    });
+  }
+  const size_t vector_payload_bits =
+      (vector_type_policy == checker::VectorTypePolicy::Aggregate
+           ? scalar_size_of(instruction_type)
+           : arity * scalar_size_of(instruction_type)) *
+      8u;
+  if (vector_payload_bits > checker::kMaxRegisterVectorPayloadBits) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = fmt::format(
+            "This vector operand's payload width ({} bits) exceeds the supported "
+            "{} bit limit.",
+            vector_payload_bits,
+            checker::kMaxRegisterVectorPayloadBits),
+    });
+  }
+  if (!required_arity &&
+      std::ranges::find(allowed_arities, arity) == allowed_arities.end()) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
         .message = "A vector mov requires two or four elements.",
     });
   }
-  const size_t instruction_bytes = scalar_size_of(instruction_type);
-  if (instruction_bytes % arity != 0 || instruction_bytes / arity == 0) {
-    return std::unexpected(ResolveDiagnostic{
-        .range = vector->range,
-        .message = "Vector mov elements must be at least eight bits wide.",
-    });
+  size_t element_bytes = scalar_size_of(instruction_type);
+  if (vector_type_policy == checker::VectorTypePolicy::Aggregate) {
+    const size_t instruction_bytes = scalar_size_of(instruction_type);
+    if (instruction_bytes % arity != 0 || instruction_bytes / arity == 0) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = vector->range,
+          .message = "Vector mov elements must be at least eight bits wide.",
+      });
+    }
+    element_bytes = instruction_bytes / arity;
   }
-  const size_t element_bytes = instruction_bytes / arity;
 
-  ResolvedMovVector result;
+  ResolvedRegisterVector result;
   result.elements.reserve(arity);
   std::vector<SourceRange> locations;
   locations.reserve(arity);
@@ -999,12 +1129,12 @@ resolve_mov_vector(const syntax_ast::AstOperand& operand,
     if (identifier == nullptr) {
       return std::unexpected(ResolveDiagnostic{
           .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
-          .message = "A vector mov element must be a register or '_' sink.",
+          .message = "A register-vector element must be a register or '_' sink.",
       });
     }
     locations.push_back(identifier->syntax.range);
     if (identifier->syntax.text == "_") {
-      if (access != checker::OperandAccess::Write) {
+      if (access != checker::OperandAccess::Write || !allow_sink) {
         return std::unexpected(ResolveDiagnostic{
             .range = identifier->syntax.range,
             .message = "The '_' sink is allowed only in a destination vector.",
@@ -1019,16 +1149,22 @@ resolve_mov_vector(const syntax_ast::AstOperand& operand,
     auto register_ref = resolve_register(register_operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
-    if (register_ref->value.declared_type &&
-        scalar_size_of(*register_ref->value.declared_type) != element_bytes) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = identifier->syntax.range,
-          .message = fmt::format(
-              "Vector element '{}' has type '{}' but this mov requires "
-              "{}-bit elements.",
-              identifier->syntax.text,
-              to_string(*register_ref->value.declared_type), element_bytes * 8),
-      });
+    if (register_ref->value.declared_type) {
+      const auto declared_type = *register_ref->value.declared_type;
+      const bool type_mismatch =
+          vector_type_policy == checker::VectorTypePolicy::Aggregate
+              ? scalar_size_of(declared_type) != element_bytes
+              : !scalar_types_compatible(declared_type, instruction_type,
+                                         register_width_policy);
+      if (type_mismatch) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = identifier->syntax.range,
+            .message = fmt::format(
+                "Vector element '{}' has type '{}' incompatible with this "
+                "instruction.",
+                identifier->syntax.text, to_string(declared_type)),
+        });
+      }
     }
     result.elements.emplace_back(std::move(register_ref->value));
   }
@@ -1038,7 +1174,7 @@ resolve_mov_vector(const syntax_ast::AstOperand& operand,
         .message = "A destination vector must contain at least one register.",
     });
   }
-  WithLocs<ResolvedMovVector> resolved{std::move(result)};
+  WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
   resolved.locs = std::move(locations);
   return resolved;
 }
@@ -1405,6 +1541,28 @@ std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
       binding.target_field_id, field_id));
 }
 
+std::expected<std::optional<uint8_t>, ResolveDiagnostic> vector_arity_for_operand(
+    const ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const SourceRange& range) {
+  if (binding.vector_arity_modifier_field_id.empty())
+    return std::nullopt;
+
+  const std::string_view field_id = binding.vector_arity_modifier_field_id;
+  const auto it = fields.modifiers.find(std::string(field_id));
+  if (it == fields.modifiers.end()) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format("Operand '{}' requires vector arity field '{}'.",
+                               binding.target_field_id, field_id),
+    });
+  }
+  if (const auto* arity = std::get_if<WithLocs<VectorArity>>(&it->second))
+    return vector_arity_count(arity->value);
+  throw ResolveException(fmt::format(
+      "Operand '{}' expects modifier '{}' to resolve as VectorArity.",
+      binding.target_field_id, field_id));
+}
+
 std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const ResolvedFieldDescriptor& field,
     const ResolvedOperandBindingDescriptor& binding,
@@ -1486,13 +1644,22 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
-    case ResolvedValueKind::MovVector: {
+    case ResolvedValueKind::RegisterVector: {
       const auto type =
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      auto value = resolve_mov_vector(operand, *type, binding.access,
-                                      binding.allowed_vector_arities, context);
+      const auto arity =
+          vector_arity_for_operand(binding, fields, syntax_ast::sourceRange(operand));
+      if (!arity)
+        return std::unexpected(arity.error());
+      auto value =
+          resolve_reg_vector(operand, *type, binding.access,
+                             binding.allowed_vector_arities,
+                             *arity,
+                             binding.vector_type_policy,
+                             binding.register_width_policy,
+                             binding.allow_vector_sink, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -1500,6 +1667,11 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
+    case ResolvedValueKind::CacheOperator:
+    case ResolvedValueKind::MemoryConsistency:
+    case ResolvedValueKind::MemoryScope:
+    case ResolvedValueKind::VectorArity:
+    case ResolvedValueKind::MemoryStateSpace:
       throw ResolveException(fmt::format(
           "Operand slot '{}' has a non-operand resolved value kind.",
           field.field_id));
@@ -1540,6 +1712,41 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{
           WithLocs<RoundingMode>{default_value.rounding_mode}};
+    case ResolvedValueKind::CacheOperator:
+      if (default_value.kind != ResolvedModifierDefaultKind::CacheOperator) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a cache-operator default for "
+            "resolved field '{}'.",
+            binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<CacheOperator>{
+          default_value.cache_operator}};
+    case ResolvedValueKind::MemoryConsistency:
+      if (default_value.kind != ResolvedModifierDefaultKind::MemoryConsistency) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a memory-consistency default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MemoryConsistency>{
+          default_value.memory_consistency}};
+    case ResolvedValueKind::MemoryScope:
+      if (default_value.kind != ResolvedModifierDefaultKind::MemoryScope) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a memory-scope default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MemoryScope>{default_value.memory_scope}};
+    case ResolvedValueKind::MemoryStateSpace:
+      if (default_value.kind !=
+              ResolvedModifierDefaultKind::MemoryStateSpace ||
+          default_value.memory_state_space == MemoryStateSpace::Invalid) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a memory-state-space default "
+            "for resolved field '{}'.",
+            binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MemoryStateSpace>{
+          default_value.memory_state_space}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::Immediate:
@@ -1549,7 +1756,8 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
-    case ResolvedValueKind::MovVector:
+    case ResolvedValueKind::RegisterVector:
+    case ResolvedValueKind::VectorArity:
       throw ResolveException(fmt::format(
           "Optional modifier '{}' targets non-modifier resolved field '{}'.",
           binding.source_kind_id, field.field_id));
@@ -1746,6 +1954,36 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));
       } break;
+      case ResolvedValueKind::CacheOperator: {
+        auto value = resolve_cache_operator(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MemoryConsistency: {
+        auto value = resolve_memory_consistency(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MemoryScope: {
+        auto value = resolve_memory_scope(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::VectorArity: {
+        auto value = resolve_vector_arity(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MemoryStateSpace: {
+        auto value = resolve_memory_state_space(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
       case ResolvedValueKind::Register:
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::Immediate:
@@ -1755,7 +1993,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::SpecialRegister:
       case ResolvedValueKind::Symbol:
       case ResolvedValueKind::Address:
-      case ResolvedValueKind::MovVector:
+      case ResolvedValueKind::RegisterVector:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

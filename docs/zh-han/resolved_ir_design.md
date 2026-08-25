@@ -17,9 +17,12 @@ lexical symbol binding 与 module resolution 已接通，execution predicate 会
 32/64-bit form 还接入 data-symbol、`symbol+offset`、function-address 与合法 formal parameter
 地址；bit-size form 还支持 2/4-element vector pack/unpack，`.b128` 仅用于 vector form；
 `mov.pred` 复用 declaration-aware `ResolvedPredicate` 表示；
-`ld.u32 d, [address]` 已接入解引用 address operand。
-其余 type/source form、完整 memory qualifier、
-`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+generic 与 basic explicit-space scalar 以及 legacy `.v2/.v4` braced-vector `ld`/`st` 已为
+14 种 8--64-bit bit-size、integer 与 floating-point type 接入解引用 address operand。
+legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
+32-bit type，`.v4` 64-bit 仍是尚待实现的 modern form。
+其余 source form、modern vector memory operation、其余 memory qualifier extension、
+静态 address alignment、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -105,7 +108,7 @@ signed/unsigned integer 组合，但仍拒绝 integer/float 混用；`.f64` 值�
 
 scalar 与 vector `mov` 共享同一动态 type modifier variant，因为 `.b16/.b32/.b64` 的
 modifier 形式相同；三种 operand layout 分别表示 scalar、pack 与 unpack，不建立重复 variant。
-`ResolvedMovVector` 保存 2/4 个可选 `ResolvedRegisterRef`，空元素表示 destination-only `_`
+`ResolvedRegisterVector` 保存 2/4 个可选 `ResolvedRegisterRef`，空元素表示 destination-only `_`
 sink。resolver 与 checker 都要求 bit-size instruction type、vector 总位宽等于 instruction
 位宽，并拒绝 source sink、全 sink destination 与 sub-byte element。`.b128` 仅由 pack/unpack
 layout 接受，并携带 PTX 8.3 / SM 70 modifier-value availability。
@@ -133,8 +136,60 @@ register、data symbol 与 address expression，避免这些 identifier 形状�
 `ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
 value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
 addressable data-symbol 或 formal-parameter base 的地址值；
-`ld.u32 d, [address]` 则要求方括号解引用，覆盖 generic addressing 的 register、immediate 与
-bound-symbol base。explicit state space 与完整 memory qualifier 仍不在这一子集中。
+scalar 与 legacy `.v2/.v4` `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
+bound-symbol base。每个 opcode 使用 `GenericScalar`、`ExplicitScalar`、`GenericVector`
+与 `ExplicitVector` variant；runtime type field 接受 `.b8/.b16/.b32/.b64`、
+`.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64` 与 `.f32/.f64`，当前 memory type 不包含
+`.b128`。vector variant 额外要求 runtime `.v2/.v4` field，register-vector operand
+descriptor 将期望元素数链接到该 field，而不是按 arity 复制 variant。memory vector 使用
+element type policy：每个 register element 都按 instruction type 检查，允许
+`EqualOrWider` register width，并拒绝 `_` sink。payload 最多 128 bit：`.v2` 到
+64-bit type，`.v4` 到 32-bit type，`.v4` 64-bit 仍待实现。默认 register-width policy 为 `SameWidth`，
+保持 `mov/add/sub`、immediate 与 special-register 的既有行为；只有 `ld` destination 与
+`st` source register descriptor 选择 `EqualOrWider`，因此声明 register 位宽可大于等于
+instruction type。通过 size 检查后，任一侧为 bit type 即兼容，fundamental signed/unsigned
+integer 互相兼容，float 只接受 exact type/size，integer/float 仍不兼容。这同时覆盖声明
+register 不超过 64-bit 的 wider load destination 与 store source（包括 store truncation）。
+wider actual `.b128` register 在 declaration type 的 target availability 得到表示与检查前明确
+拒绝；既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。
+
+explicit load 接受 `.const/.global/.local/.param/.shared`，store 接受
+`.global/.local/.param/.shared`；`WithLocs` 同时保留 runtime state-space/type modifier 的值与
+源码位置。explicit `.f64` 通过 modifier-value availability 增加 SM 13；generic `.f64` 不需要
+额外 SM rule，因为 generic variant 已要求 SM 20。generated operand view 转换 bound symbol
+的 effective address space，而不是按 declaration spelling 猜测；若它与 runtime field
+不同，checker 报告 `AddressStateSpaceMismatch`。generic operand descriptor 携带带逐项
+availability 的静态 bound-space allowlist：load 接受已知
+`.const/.global/.local/.shared` address，其中 `.const` 要求 PTX 3.1；store 接受
+`.global/.local/.shared`，并拒绝已知 `.const/.param` address。explicit `ld.const` 本身仍属于
+PTX 1.0 basic explicit baseline。
+
+legacy cache operator 复用同一组 scalar/vector `ld/st` variant，而不是为每个 cache
+spelling 复制 variant。load 接受 runtime `.ca/.cg/.cs/.lu/.cv`，store 接受 runtime
+`.wb/.cg/.cs/.wt`，每个显式 cache spelling 都携带 PTX 2.0 / SM 20 的
+modifier-value availability。源码省略 cache 时，Resolved IR 保存
+`CacheOperator::Unspecified` 且 `locs` 为空。这个 sentinel 是刻意保留的 provenance
+元数据，不表示 PTX 没有实际硬件默认语义：ISA 仍规定省略时 `ld` 按 `.ca`、`st` 按 `.wb`
+生效；IR 保留 `Unspecified`，是为了不把“源码未写”伪装成“显式写了默认值”，也避免它触发
+cache value availability 检查。
+
+memory consistency 采用生成的 cross-modifier descriptor，而不是把每种 qualifier
+组合展开成 `ld/st` variant。`MemoryConsistency::Omitted`（空 `locs`）与显式
+`.weak` 保持不同；`.volatile/.relaxed/.acquire/.release` 保留 modifier location。
+checker 只允许 relaxed/acquire/release 携带 scope，拒绝 volatile/ordered/mmio 与
+cache 的组合；对已知 address space 执行 global/shared、PTX 9.1 的
+`volatile.local` 及 scalar `.mmio.relaxed.sys` 规则，而不猜测 unknown generic
+address。modern vector form 与静态地址 alignment 检查仍留作后续。
+
+`ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的
+`InputParameter`/`ReturnParameter` 推导可选 parameter direction，不根据 spelling 猜测。
+对于 explicit `.param`，生成的 operand constraint 要求 `ld` 使用 input parameter、`st`
+使用 return parameter；已知方向错误只报告 `ParameterDirectionMismatch`，不叠加 target
+诊断。device-function `ld.param` 与所有 `st.param` 都应用 YAML 提供的 PTX 2.0 / SM 20
+function availability；kernel input `ld.param` 保持 explicit-form baseline。identity 未知的
+address 不猜方向，但已知 device-function provenance 仍触发 load 门槛；standalone load 的
+unknown context 不触发。该上下文规则不会修改 `ResolvedSymbolRef::address_availability`，后者
+继续描述 `mov` 等 address-value 语义。
 
 ## 按 opcode 生成的结构
 
@@ -241,7 +296,7 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 | Descriptor | 用途 |
 | --- | --- |
 | Syntax descriptor | modifier spellings、presence、AST operand shape 与 layout slots |
-| Resolved descriptor | resolved field kind、modifier binding、operand binding、结构化类型表达式与语义 role/access |
+| Resolved descriptor | resolved field kind、modifier binding、operand binding、结构化 type/state-space 表达式、带逐项 availability 的静态 state-space allowlist 与语义 role/access |
 | Checker descriptor | variant/layout/value 的 availability、operand type compatibility 与 rule ID |
 
 三者不互相复制职责。Syntax descriptor 不应保存 resolved C++ 类型；Resolved descriptor
@@ -258,10 +313,15 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
   register 声明类型。
 - special-register intrinsic 元数据，以及由当前 instruction width 选择的上下文类型兼容与
   availability；该选择只产生临时检查视图，不改变 Resolved IR。
+- static generic state-space allowlist、explicit modifier-derived constraint 与已知
+  bound-symbol effective address space 的匹配，并检查 allowlist entry availability；
+  register、immediate 与 standalone base 的未知 space 不推断。
+- 由 generated operand constraint 描述的 explicit `.param` input/return direction 与
+  function-context availability；方向错误优先于上下文 availability。
 
 `rule_id` 留给指令特有规则的 typed wrapper。寄存器符号可见性与 `.reg` state-space 在
-module resolution 阶段检查；地址空间和跨 instruction 约束仍不属于当前公共 checker
-ABI。
+module resolution 阶段检查；公共 checker 已处理生成的 address-space constraint，跨
+instruction 约束仍不属于当前 ABI。
 
 ## 扩展规则
 
@@ -275,3 +335,9 @@ ABI。
 实现入口见 `submod/resolved_ir/include/ptx_resolved_ir.hpp`、
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp` 与生成的
 `resolved_ir.gen.hpp`。
+
+function-local call-argument `.param` memory、带限定的 `::entry`/`::func` form、call
+adjacency/predication constraint、modern memory vector form、`.b128`、wider `.b128` register
+所需的 declaration-type availability 与静态地址 alignment 检查仍不在本切片范围内。
+legacy scalar/vector `ld/st` cache operator、legacy `.v2/.v4` braced memory vector 与
+memory consistency qualifier 已纳入本切片。

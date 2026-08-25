@@ -1,12 +1,11 @@
 file(GLOB_RECURSE binding_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(binding INTERFACE)
-target_sources(binding INTERFACE ${binding_srcs})
+add_library(binding STATIC ${binding_srcs})
 add_library(ptx_frontend::binding ALIAS binding)
-register_headers(binding binding INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+register_headers(binding binding PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(
     binding
-    INTERFACE
+    PUBLIC
     ptx_frontend::base
     ptx_frontend::syntax
     fmt::fmt

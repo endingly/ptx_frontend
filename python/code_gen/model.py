@@ -14,6 +14,62 @@ class OperandTypeExpressionKind(Enum):
     MODIFIER = "modifier"
 
 
+class OperandRegisterWidthPolicy(str, Enum):
+    """Register-width relation accepted by an operand type constraint."""
+
+    SAME_WIDTH = "same_width"
+    EQUAL_OR_WIDER = "equal_or_wider"
+
+
+class OperandVectorTypePolicy(str, Enum):
+    """How an instruction type maps onto a register-vector operand."""
+
+    AGGREGATE = "aggregate"
+    ELEMENT = "element"
+
+
+@dataclass(frozen=True)
+class OperandVectorArityExpression:
+    """A parsed register-vector arity expression from the YAML specification."""
+
+    modifier_name: str
+
+
+@dataclass(frozen=True)
+class OperandStateSpaceExpression:
+    """A parsed operand state-space expression from the YAML specification."""
+
+    modifier_name: str
+
+
+@dataclass(frozen=True)
+class OperandStateSpaceValue:
+    """One statically allowed operand state space and its target requirement."""
+
+    value: str
+    availability: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OperandParameterConstraint:
+    """Direction and function-specific availability for a .param address."""
+
+    direction: str
+    function_availability: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MemoryConsistencyConstraint:
+    """Typed cross-modifier rule for a family of ld/st variants."""
+
+    semantics_modifier: str
+    scope_modifier: str
+    cache_modifier: str
+    address_operand: str
+    mmio_modifier: str | None = None
+    state_space_modifier: str | None = None
+
+
 class RuntimeLookupKind(str, Enum):
     """Runtime C++ lookup forms emitted for backend value domains."""
 
@@ -78,7 +134,16 @@ class OperandSpec:
     role: str | None = None
     access: str | None = None
     type_expression: OperandTypeExpression | None = None
+    register_width_policy: OperandRegisterWidthPolicy = (
+        OperandRegisterWidthPolicy.SAME_WIDTH
+    )
+    state_space_values: tuple[OperandStateSpaceValue, ...] = ()
+    state_space_expression: OperandStateSpaceExpression | None = None
+    parameter_constraint: OperandParameterConstraint | None = None
     vector_arities: tuple[int, ...] = ()
+    vector_arity_expression: OperandVectorArityExpression | None = None
+    vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
+    vector_allow_sink: bool = False
 
 
 @dataclass(frozen=True)
@@ -114,6 +179,7 @@ class VariantSpec:
     operand_layouts: tuple[OperandLayoutSpec, ...]
     rule: str | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
+    memory_consistency: MemoryConsistencyConstraint | None = None
 
 
 @dataclass(frozen=True)

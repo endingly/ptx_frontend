@@ -46,6 +46,19 @@ TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
 }
 
+TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {
+  PtxCstParser parser("ld.weak.u32 %r0, [%rd0];");
+
+  const auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->modifiers.size(), 2u);
+  EXPECT_EQ(result->token(instruction->modifiers[0]).kind, TokenKind::DotWeak);
+  EXPECT_EQ(result->token(instruction->modifiers[0]).text, ".weak");
+}
+
 TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
   PtxCstParser parser("mov.b32 [%rd1-4], %r2.x, {%r3, 1};");
 

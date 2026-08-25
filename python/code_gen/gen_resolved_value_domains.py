@@ -32,6 +32,7 @@ def generate_resolved_value_domain_header(
 #include <string_view>
 
 #include <ptx_frontend/base/base.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
 
 namespace ptx_frontend::resolved_ir::generated_detail {{
 

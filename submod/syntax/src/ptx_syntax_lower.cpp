@@ -542,6 +542,18 @@ syntax_ast::AstLocDirective lowerLocDirective(
   };
 }
 
+syntax_ast::AstPragma lowerPragma(const syntax_cst::CstFile& cst,
+                                  const syntax_cst::CstPragma& pragma) {
+  std::vector<syntax_ast::AstSyntax> strings;
+  strings.reserve(pragma.strings.size());
+  for (const auto string : pragma.strings)
+    strings.push_back(leafSyntax(cst, string));
+  return syntax_ast::AstPragma{
+      .strings = std::move(strings),
+      .range = cst.sourceRange(pragma.token_range),
+  };
+}
+
 syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
                                 const syntax_cst::CstBlock& block);
 
@@ -572,6 +584,8 @@ syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
           std::get_if<syntax_cst::CstLocDirective>(&body_item)) {
     return lowerLocDirective(cst, *location);
   }
+  if (const auto* pragma = std::get_if<syntax_cst::CstPragma>(&body_item))
+    return lowerPragma(cst, *pragma);
   if (const auto* block =
           std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body_item)) {
     return std::make_unique<syntax_ast::AstBlock>(lowerBlock(cst, **block));
@@ -689,6 +703,11 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       continue;
     }
 
+    if (const auto* pragma = std::get_if<syntax_cst::CstPragma>(&item)) {
+      ast.items.emplace_back(lowerPragma(cst, *pragma));
+      continue;
+    }
+
     if (const auto* declaration =
             std::get_if<syntax_cst::CstVariableDeclaration>(&item)) {
       ast.items.emplace_back(lowerVariableDeclaration(cst, *declaration));
@@ -704,6 +723,7 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         .name = lowerIdentifier(cst, {function.name}),
         .return_parameters = {},
         .parameters = {},
+        .pragmas = {},
         .body = {},
         .range = cst.sourceRange(function.token_range),
     };
@@ -722,6 +742,9 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       for (const auto& parameter : function.parameters->parameters)
         lowered.parameters.push_back(lowerFunctionParameter(cst, parameter));
     }
+    lowered.pragmas.reserve(function.pragmas.size());
+    for (const auto& pragma : function.pragmas)
+      lowered.pragmas.push_back(lowerPragma(cst, pragma));
     lowered.body.reserve(function.body.size());
     for (const auto& body_item : function.body)
       lowered.body.push_back(lowerFunctionBodyItem(cst, body_item));

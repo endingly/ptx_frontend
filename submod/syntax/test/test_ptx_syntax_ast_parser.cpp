@@ -412,6 +412,43 @@ Lend:
   EXPECT_EQ(section.payload.at(29).range.start.line, 9u);
 }
 
+TEST(PtxSyntaxParser, LowersPragmasAtAllSupportedScopes) {
+  constexpr std::string_view source = R"ptx(.pragma "module", "opaque";
+.entry kernel() .pragma "nounroll"; {
+  .pragma "frequency 32";
+  {
+    .pragma "nested", "opaque";
+  }
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& module_pragma =
+      std::get<syntax_ast::AstPragma>(result->items.front());
+  ASSERT_EQ(module_pragma.strings.size(), 2u);
+  EXPECT_EQ(module_pragma.strings[1].text, "\"opaque\"");
+  EXPECT_EQ(module_pragma.range.start.line, 1u);
+
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(result->items[1]);
+  ASSERT_EQ(function.pragmas.size(), 1u);
+  EXPECT_EQ(function.pragmas[0].strings[0].text, "\"nounroll\"");
+  EXPECT_EQ(function.pragmas[0].range.start.line, 2u);
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& body_pragma =
+      std::get<syntax_ast::AstPragma>(function.body.front());
+  EXPECT_EQ(body_pragma.strings[0].text, "\"frequency 32\"");
+  const auto& block =
+      *std::get<std::unique_ptr<syntax_ast::AstBlock>>(function.body[1]);
+  const auto& nested_pragma =
+      std::get<syntax_ast::AstPragma>(block.body.front());
+  ASSERT_EQ(nested_pragma.strings.size(), 2u);
+  EXPECT_EQ(nested_pragma.range.start.line, 5u);
+}
+
 TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 2 4237 0

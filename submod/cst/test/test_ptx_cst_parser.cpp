@@ -513,6 +513,61 @@ TEST(PtxCstParser, RejectsMalformedOrNonlocalSectionDirectives) {
   }
 }
 
+TEST(PtxCstParser, RetainsPragmasAtAllSupportedScopes) {
+  constexpr std::string_view source = R"ptx(.pragma "module", "opaque";
+.entry kernel() .pragma "nounroll"; {
+  .pragma "frequency 32";
+  {
+    .pragma "nested", "opaque";
+  }
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& module_pragma = std::get<syntax_cst::CstPragma>(
+      result->module()->items.front());
+  EXPECT_EQ(result->token(module_pragma.directive).kind, TokenKind::DotPragma);
+  ASSERT_EQ(module_pragma.strings.size(), 2u);
+  ASSERT_EQ(module_pragma.commas.size(), 1u);
+  EXPECT_EQ(result->token(module_pragma.strings[1]).text, "\"opaque\"");
+
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items[1]);
+  ASSERT_EQ(function.pragmas.size(), 1u);
+  EXPECT_EQ(result->token(function.pragmas[0].strings[0]).text,
+            "\"nounroll\"");
+  EXPECT_EQ(result->sourceRange(function.pragmas[0].token_range).start.line,
+            2u);
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& body_pragma =
+      std::get<syntax_cst::CstPragma>(function.body.front());
+  EXPECT_EQ(result->sourceRange(body_pragma.token_range).start.line, 3u);
+  const auto& block = *std::get<std::unique_ptr<syntax_cst::CstBlock>>(
+      function.body[1]);
+  const auto& nested_pragma =
+      std::get<syntax_cst::CstPragma>(block.body.front());
+  ASSERT_EQ(nested_pragma.strings.size(), 2u);
+  EXPECT_EQ(result->token(nested_pragma.terminator).kind, TokenKind::Semicolon);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrInvalidHeaderPragmas) {
+  for (const std::string_view source : {
+           ".pragma ;",
+           ".pragma \"one\",;",
+           ".pragma one;",
+           ".pragma \"one\"",
+           ".entry kernel() .pragma \"one\" {}",
+           ".func device() .pragma \"one\"; {}",
+       }) {
+    PtxCstParser parser(source);
+    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+  }
+}
+
 TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 2 4237 0

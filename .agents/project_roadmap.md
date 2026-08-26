@@ -1367,7 +1367,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 | M8-I03 | ✅ | 独立 | 支持 `.file` directive | outermost `.file` 的编号、路径和 2/4 参数 payload 有无损 CST 与带 range 的 AST；duplicate index/.loc table 留给 C02 |
 | M8-I04 | ✅ | 独立 | 支持 `.loc` directive | function/nested-block `.loc` basic triple 与完整成对的 `function_name`/`inlined_at` payload 进入带 range 的 CST/AST；`.file`/DWARF 解析和 source-location attachment 留给 C02 |
 | M8-I05 | ✅ | 独立 | 支持 `.section` directive | outermost `.section` 的 name、matched brace 和有序 raw DWARF payload 进入 CST/AST；payload/label/offset semantics 留给 C02 |
-| M8-I06 | ⬜ | 独立 | 支持 `.pragma` directive | pragma payload lossless 保存，不误入 semantic |
+| M8-I06 | ✅ | 独立 | 支持 `.pragma` directive | module、entry header 与 function/nested statement 的非空 string list 进入 CST/AST，不误入 binding/semantic/Resolved IR |
 | M8-I07 | ⬜ | 独立 | 支持第一组 kernel-resource directive | `.maxnreg/.maxntid/.reqntid/.minnctapersm` 分别有 grammar 和 availability |
 | M8-I08 | ⬜ | 独立 | 建立 directive coverage registry | 每个 directive 标记 tokenize/CST/AST/semantic/rejected |
 | M8-I09 | ⬜ | 独立 | 建立 `DiagnosticCollection` | parser 可返回多个有序 diagnostic |

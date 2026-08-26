@@ -1264,6 +1264,34 @@ PtxCstParser::parseLocDirective() {
   };
 }
 
+std::expected<syntax_cst::CstPragma, CstParseDiagnostic>
+PtxCstParser::parsePragma() {
+  const TokenId directive = consume();
+  auto first = expect(TokenKind::String, "pragma string");
+  if (!first)
+    return std::unexpected(first.error());
+
+  std::vector<TokenId> strings{*first};
+  std::vector<TokenId> commas;
+  while (token(peek()).kind == TokenKind::Comma) {
+    commas.push_back(consume());
+    auto string = expect(TokenKind::String, "pragma string after comma");
+    if (!string)
+      return std::unexpected(string.error());
+    strings.push_back(*string);
+  }
+  auto terminator = expect(TokenKind::Semicolon, "pragma terminator");
+  if (!terminator)
+    return std::unexpected(terminator.error());
+  return syntax_cst::CstPragma{
+      .directive = directive,
+      .strings = std::move(strings),
+      .commas = std::move(commas),
+      .terminator = *terminator,
+      .token_range = {directive, *terminator + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
 PtxCstParser::parseFunctionBodyItem() {
   if (token(peek()).kind == TokenKind::LBrace) {
@@ -1284,6 +1312,13 @@ PtxCstParser::parseFunctionBodyItem() {
     if (!location)
       return std::unexpected(location.error());
     return std::move(*location);
+  }
+
+  if (token(peek()).kind == TokenKind::DotPragma) {
+    auto pragma = parsePragma();
+    if (!pragma)
+      return std::unexpected(pragma.error());
+    return std::move(*pragma);
   }
 
   if (token(peek()).kind == TokenKind::Ident) {
@@ -1553,6 +1588,20 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     header_tokens.push_back(*noreturn_directive);
   }
 
+  std::vector<syntax_cst::CstPragma> pragmas;
+  while (token(peek()).kind == TokenKind::DotPragma) {
+    if (token(directive).kind != TokenKind::DotEntry) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.pragma' is only valid in an entry function header"});
+    }
+    auto pragma = parsePragma();
+    if (!pragma)
+      return std::unexpected(pragma.error());
+    append_range(pragma->token_range);
+    pragmas.push_back(std::move(*pragma));
+  }
+
   if (token(peek()).kind == TokenKind::Eof) {
     return std::unexpected(CstParseDiagnostic{
         token(peek()).range, "expected function body or prototype terminator"});
@@ -1577,6 +1626,7 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
         .name = *name,
         .parameters = std::move(parameters),
         .noreturn_directive = noreturn_directive,
+        .pragmas = std::move(pragmas),
         .header_tokens = std::move(header_tokens),
         .left_brace = std::nullopt,
         .body = {},
@@ -1608,6 +1658,7 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       .name = *name,
       .parameters = std::move(parameters),
       .noreturn_directive = noreturn_directive,
+      .pragmas = std::move(pragmas),
       .header_tokens = std::move(header_tokens),
       .left_brace = left_brace,
       .body = std::move(body),
@@ -1628,6 +1679,15 @@ PtxCstParser::parseModule() {
     std::vector<TokenId> qualifiers;
     while (isFunctionQualifier(token(peek()).kind))
       qualifiers.push_back(consume());
+
+    if (qualifiers.empty() && token(peek()).kind == TokenKind::DotPragma) {
+      auto pragma = parsePragma();
+      if (!pragma)
+        return std::unexpected(pragma.error());
+      last = pragma->token_range.last - 1;
+      items.emplace_back(std::move(*pragma));
+      continue;
+    }
 
     if (qualifiers.empty() && token(peek()).kind == TokenKind::DotSection) {
       auto section = parseSectionDirective();

@@ -490,7 +490,8 @@ bool is_staging_load(const syntax_ast::AstFunctionBodyItem& item,
 }
 
 bool is_staging_transparent(const syntax_ast::AstFunctionBodyItem& item) {
-  return std::holds_alternative<syntax_ast::AstLocDirective>(item);
+  return std::holds_alternative<syntax_ast::AstLocDirective>(item) ||
+         std::holds_alternative<syntax_ast::AstPragma>(item);
 }
 
 bool call_uses_parameter(const syntax_ast::AstInstruction& call,

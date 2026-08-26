@@ -57,7 +57,9 @@ index、DWARF label 以及向 instruction/label 附着 source location 仍留待
 也在 outermost scope 接受 `.section name { ... }`，CST/AST 保留匹配 brace 和 raw DWARF
 payload token spelling；section name 只是 syntax，不是普通可绑定 identifier。DWARF payload type、
 private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar
-仍不接受 kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
+会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
+comma-separated string list；它不进入 binding 或 Resolved IR。当前仍不接受 kernel-tuning
+directive、错误恢复节点、missing-token 插入或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 
@@ -79,8 +81,8 @@ fragment client 与 module client 执行 source→CST→AST。
 `AstFile` 采用相同的 root 区分方式，`AstModule` 则为 module directive 与 function
 提供 typed container。`AstFunction` 当前包含 function 类别、qualifier、名称，以及由
 `AstVariableDeclaration`、`AstLabel`、`AstCallPrototype`、`AstCallTargets`、
-`AstBranchTargets`、`AstBlock` 与 `AstInstruction` 组成的有序 body variant；`AstBlock`
-保留有序 body item 与完整 source range。`AstCallPrototype` 保留 label、sink、formal return/input payload，以及带
+`AstBranchTargets`、`AstLocDirective`、`AstPragma`、`AstBlock` 与 `AstInstruction`
+组成的有序 body variant；`AstBlock` 保留有序 body item 与完整 source range。`AstCallPrototype` 保留 label、sink、formal return/input payload，以及带
 range 的 PTX 9.3 `.noreturn` / ABI-preservation suffix；
 返回与输入 parameter 会保留 state space、alignment、type、pointer attribute、array
 形式、名称与 range。`AstConstantExpression` 结构化表示 literal/symbol、括号、cast、

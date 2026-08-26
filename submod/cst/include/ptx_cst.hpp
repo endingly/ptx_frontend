@@ -267,6 +267,15 @@ struct CstLocDirective {
   CstTokenRange token_range;
 };
 
+/** An opaque backend pragma at module, entry, or statement scope. */
+struct CstPragma {
+  TokenId directive{};
+  std::vector<TokenId> strings;
+  std::vector<TokenId> commas;
+  TokenId terminator{};
+  CstTokenRange token_range;
+};
+
 /** A module-level directive and its concrete token payload. */
 struct CstModuleDirective {
   TokenId keyword{};
@@ -367,7 +376,7 @@ struct CstBlock;
 
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
-                 CstCallTargets, CstBranchTargets, CstLocDirective,
+                 CstCallTargets, CstBranchTargets, CstLocDirective, CstPragma,
                  std::unique_ptr<CstBlock>, CstInstruction>;
 
 /** A lexically nested function-body block. */
@@ -385,6 +394,7 @@ struct CstFunction {
   TokenId name{};
   std::optional<CstFunctionParameterList> parameters;
   std::optional<TokenId> noreturn_directive;
+  std::vector<CstPragma> pragmas;
   std::vector<TokenId> header_tokens;
   std::optional<TokenId> left_brace;
   std::vector<CstFunctionBodyItem> body;
@@ -394,7 +404,7 @@ struct CstFunction {
 };
 
 using CstModuleItem =
-    std::variant<CstModuleDirective, CstSectionDirective,
+    std::variant<CstModuleDirective, CstSectionDirective, CstPragma,
                  CstVariableDeclaration, CstFunction>;
 
 struct CstModule {

@@ -288,6 +288,17 @@ TEST(PtxLexerNew, SectionDirectiveRemainsDedicated) {
   expect_token(toks[1], TokenKind::DotIdent, ".debug_str");
 }
 
+TEST(PtxLexerNew, PragmaDirectiveRemainsDedicated) {
+  const auto toks = lex_all(".pragma \"nounroll\", \"frequency 32\";");
+
+  ASSERT_EQ(toks.size(), 5u);
+  expect_token(toks[0], TokenKind::DotPragma, ".pragma");
+  expect_token(toks[1], TokenKind::String, "\"nounroll\"");
+  expect_token(toks[2], TokenKind::Comma, ",");
+  expect_token(toks[3], TokenKind::String, "\"frequency 32\"");
+  expect_token(toks[4], TokenKind::Semicolon, ";");
+}
+
 TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
   const auto toks = lex_all(
       ".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");

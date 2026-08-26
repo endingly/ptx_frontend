@@ -72,7 +72,10 @@ CST preserves its punctuation and AST retains fields and ranges. Resolving
 deferred. At outermost scope, `.section name { ... }` preserves its matched
 braces and raw DWARF payload token spelling in CST and AST; section names are
 syntax, not ordinary bound identifiers. DWARF payload typing, private labels,
-and `.loc` offset validation remain deferred. The module grammar does not yet accept kernel-tuning directives,
+and `.loc` offset validation remain deferred. `.pragma` preserves a nonempty
+comma-separated string list at module, entry-header, and function/nested-block
+statement scope; it does not enter binding or Resolved IR. The module grammar
+does not yet accept kernel-tuning directives,
 recovery nodes, missing-token insertion, or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
@@ -100,8 +103,9 @@ clients respectively.
 containers for the supported module directives and functions. `AstFunction`
 contains the function kind, qualifiers, name, and an ordered body variant of
 `AstVariableDeclaration`, `AstLabel`, `AstCallPrototype`, `AstCallTargets`,
-`AstBranchTargets`, `AstBlock`, and `AstInstruction`. `AstBlock` keeps ordered
-body items and its whole source range.
+`AstBranchTargets`, `AstLocDirective`, `AstPragma`, `AstBlock`, and
+`AstInstruction`. `AstBlock` keeps ordered body items and its whole source
+range.
 `AstCallPrototype` retains its label, sink, formal return/input payloads, and
 the PTX 9.3 `.noreturn` / ABI-preservation suffixes with ranges. Return and input
 parameters retain state space, alignment, type, pointer attributes, array form,

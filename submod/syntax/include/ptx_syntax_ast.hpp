@@ -329,6 +329,12 @@ struct AstLocDirective {
   SourceRange range;
 };
 
+/** An opaque backend pragma at module, entry, or statement scope. */
+struct AstPragma {
+  std::vector<AstSyntax> strings;
+  SourceRange range;
+};
+
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
@@ -384,7 +390,7 @@ struct AstBlock;
 
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
-                 AstCallTargets, AstBranchTargets, AstLocDirective,
+                 AstCallTargets, AstBranchTargets, AstLocDirective, AstPragma,
                  std::unique_ptr<AstBlock>, AstInstruction>;
 
 /** A lexically nested function-body block. */
@@ -402,6 +408,7 @@ struct AstFunction {
   AstIdentifierRef name;
   std::vector<AstFunctionParameter> return_parameters;
   std::vector<AstFunctionParameter> parameters;
+  std::vector<AstPragma> pragmas;
   std::vector<AstFunctionBodyItem> body;
   SourceRange range;
 };
@@ -409,7 +416,7 @@ struct AstFunction {
 using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
                  AstAddressSizeDirective, AstFileDirective, AstSectionDirective,
-                 AstVariableDeclaration, AstFunction>;
+                 AstPragma, AstVariableDeclaration, AstFunction>;
 
 struct AstModule {
   std::vector<AstModuleItem> items;

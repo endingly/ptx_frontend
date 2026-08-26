@@ -1378,7 +1378,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 | M8-I14 | ⏸ | 独立 | 收集 optional fixed-address 证据 | 只有取得规范 grammar 或可复现 `ptxas` 行为后才开始实现 |
 | M8-C01 | 🚧 | 耦合 | 定义 recovered CST → AST contract | recovery node 保持 CST-only；module lowering 过滤它们、保留相邻合法 AST node，并只一次透传 parser diagnostic |
 | M8-C02 | 🚧 | 耦合 | 连接 directive 与 binding/semantic | `.file`/`.debug_str` identity 在独立 metadata namespace 进入 binding，`.loc` 递归解析 file/function-name reference；纯 metadata 不污染 Resolved IR |
-| M8-C03 | ⬜ | 耦合 | 建立真实 PTX module corpus | 合法/错误/未知 directive module 无 silent drop |
+| M8-C03 | 🚧 | 耦合 | 建立真实 PTX module corpus | installed consumer 覆盖合法 PTX 9.3 directive module、semantic directive error 与 unknown directive recovery，均无 silent drop |
 
 ---
 

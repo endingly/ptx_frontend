@@ -380,12 +380,31 @@ struct CstBranchTargets {
   CstTokenRange token_range;
 };
 
+enum class CstRecoveryKind : uint8_t {
+  Inserted,
+  Skipped,
+  Error,
+};
+
+/**
+ * CST-only recovery marker. Inserted nodes have an expected token kind and a
+ * zero-width range, without a token-buffer span. Skipped nodes have a
+ * nonempty span of real tokens. Error nodes have either such a span or an EOF
+ * zero-width range. The parser does not produce these nodes yet.
+ */
+struct CstRecoveryNode {
+  CstRecoveryKind kind{};
+  std::optional<TokenKind> expected_kind;
+  std::optional<CstTokenRange> token_range;
+  SourceRange range;
+};
+
 struct CstBlock;
 
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
                  CstCallTargets, CstBranchTargets, CstLocDirective, CstPragma,
-                 std::unique_ptr<CstBlock>, CstInstruction>;
+                 std::unique_ptr<CstBlock>, CstInstruction, CstRecoveryNode>;
 
 /** A lexically nested function-body block. */
 struct CstBlock {
@@ -414,7 +433,7 @@ struct CstFunction {
 
 using CstModuleItem =
     std::variant<CstModuleDirective, CstSectionDirective, CstPragma,
-                 CstVariableDeclaration, CstFunction>;
+                 CstVariableDeclaration, CstFunction, CstRecoveryNode>;
 
 struct CstModule {
   std::vector<CstModuleItem> items;

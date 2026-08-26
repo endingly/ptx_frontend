@@ -59,14 +59,19 @@ payload token spelling；section name 只是 syntax，不是普通可绑定 iden
 private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar
 会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
 comma-separated string list；它不进入 binding 或 Resolved IR。entry header 中 pragma 可与四个
-已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。当前
-仍不接受其他 kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
+已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。
+`CstRecoveryNode` 是供后续恢复使用的带 tag 的纯 CST 模型：`Inserted` 持有 expected
+`TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token
+span；`Error` 则持有这种 span 或 EOF 的 zero-width range。它可作为 module 或
+function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`。parser 目前仍不产生
+recovery node；其 AST lowering contract 和 parser synchronization 留待后续工作。当前仍不接受其他
+kernel-tuning directive、missing-token 插入或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 
 公开 parser/lowering root 返回 `ResultWithDiagnostics<T, D>`：optional value 加有序
-`DiagnosticCollection<D>`。这样 I10 可在不再改变 API 的情况下，同时返回 recovered CST 与
-diagnostic。I10/I11 的 recovery 与 synchronization 尚未实现，因此当前仍 fail-fast：成功结果
+`DiagnosticCollection<D>`。这样后续 recovery 可在不再改变 API 的情况下，同时返回 CST 与
+diagnostic。parser recovery 与 synchronization 留待 I11，因此当前仍 fail-fast：成功结果
 有空 collection，失败结果没有 value 且只有一条 diagnostic。
 
 ## CST 到 Syntax AST lowering

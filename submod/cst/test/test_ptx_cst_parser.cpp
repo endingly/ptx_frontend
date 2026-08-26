@@ -18,6 +18,9 @@ using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstCallPrototype;
 using syntax_cst::CstCallTargets;
 using syntax_cst::CstBranchTargets;
+using syntax_cst::CstRecoveryKind;
+using syntax_cst::CstRecoveryNode;
+using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -854,6 +857,90 @@ TEST(PtxCstParser, RetainsNestedFunctionBlocks) {
   EXPECT_EQ(result->token(inner.left_brace).range.start.line, 4u);
   ASSERT_EQ(inner.body.size(), 1u);
   EXPECT_TRUE(std::holds_alternative<syntax_cst::CstInstruction>(inner.body[0]));
+}
+
+TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
+  constexpr std::string_view source =
+      ".entry kernel() { add.u32 %r0, %r1, %r2; }";
+  PtxCstParser parser(source);
+
+  auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  auto file = std::move(*result);
+  const auto original_source = file.sourceText();
+  const auto token_count = file.tokens.size();
+  auto& module = std::get<syntax_cst::CstModule>(file.root);
+  auto& function = std::get<syntax_cst::CstFunction>(module.items.front());
+  const auto& instruction =
+      std::get<syntax_cst::CstInstruction>(function.body.front());
+  const CstTokenRange first_token{instruction.token_range.first,
+                                  instruction.token_range.first + 1};
+  const auto first_range = file.sourceRange(first_token);
+  const CstTokenRange second_token{instruction.token_range.first + 1,
+                                   instruction.token_range.first + 2};
+  const auto second_range = file.sourceRange(second_token);
+  const auto eof_range = file.tokens.back().range;
+
+  function.body.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Skipped,
+      .expected_kind = std::nullopt,
+      .token_range = first_token,
+      .range = first_range,
+  });
+  function.body.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Error,
+      .expected_kind = std::nullopt,
+      .token_range = second_token,
+      .range = second_range,
+  });
+
+  const auto& skipped =
+      std::get<CstRecoveryNode>(function.body[function.body.size() - 2]);
+  EXPECT_EQ(skipped.kind, CstRecoveryKind::Skipped);
+  EXPECT_FALSE(skipped.expected_kind.has_value());
+  ASSERT_TRUE(skipped.token_range.has_value());
+  EXPECT_TRUE(skipped.token_range->first < skipped.token_range->last);
+  EXPECT_EQ(file.sourceRange(*skipped.token_range), skipped.range);
+
+  const auto& spanned_error =
+      std::get<CstRecoveryNode>(function.body.back());
+  EXPECT_EQ(spanned_error.kind, CstRecoveryKind::Error);
+  EXPECT_FALSE(spanned_error.expected_kind.has_value());
+  ASSERT_TRUE(spanned_error.token_range.has_value());
+  EXPECT_TRUE(spanned_error.token_range->first <
+              spanned_error.token_range->last);
+  EXPECT_EQ(file.sourceRange(*spanned_error.token_range), spanned_error.range);
+
+  module.items.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Inserted,
+      .expected_kind = TokenKind::Semicolon,
+      .token_range = std::nullopt,
+      .range = SourceRange{first_range.start, first_range.start},
+  });
+  module.items.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Error,
+      .expected_kind = std::nullopt,
+      .token_range = std::nullopt,
+      .range = eof_range,
+  });
+
+  const auto& inserted =
+      std::get<CstRecoveryNode>(module.items[module.items.size() - 2]);
+  EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
+  ASSERT_TRUE(inserted.expected_kind.has_value());
+  EXPECT_EQ(*inserted.expected_kind, TokenKind::Semicolon);
+  EXPECT_FALSE(inserted.token_range.has_value());
+  EXPECT_EQ(inserted.range.start, inserted.range.end);
+
+  const auto& eof_error = std::get<CstRecoveryNode>(module.items.back());
+  EXPECT_EQ(eof_error.kind, CstRecoveryKind::Error);
+  EXPECT_FALSE(eof_error.expected_kind.has_value());
+  EXPECT_FALSE(eof_error.token_range.has_value());
+  EXPECT_EQ(eof_error.range, eof_range);
+  EXPECT_EQ(eof_error.range.start, eof_error.range.end);
+  EXPECT_EQ(file.tokens.size(), token_count);
+  EXPECT_EQ(file.sourceText(), original_source);
 }
 
 TEST(PtxCstParser, RejectsNestedBlockMissingRightBrace) {

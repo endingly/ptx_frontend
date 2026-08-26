@@ -76,17 +76,24 @@ and `.loc` offset validation remain deferred. `.pragma` preserves a nonempty
 comma-separated string list at module, entry-header, and function/nested-block
 statement scope; it does not enter binding or Resolved IR. Entry-header
 pragmas may be interleaved with the four supported kernel-resource directives;
-their concrete order remains lossless in the CST header token sequence. The
-module grammar does not yet accept other kernel-tuning directives,
-recovery nodes, missing-token insertion, or a token-edit API. The parser validates initializer
+their concrete order remains lossless in the CST header token sequence.
+`CstRecoveryNode` is a tagged CST-only model for future recovery: `Inserted`
+holds an expected `TokenKind` and a zero-width range without a token-buffer
+span; `Skipped` holds a nonempty span of real source tokens; and `Error` holds
+either such a span or an EOF zero-width range. It can occur as a module or
+function-body item, does not carry a diagnostic ID, and never creates a
+synthetic `PtxToken`. The parser does not produce recovery nodes yet; their AST
+lowering contract and parser synchronization remain later work. The module
+grammar does not yet accept other kernel-tuning directives, missing-token
+insertion, or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
 
 Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
-optional value plus an ordered `DiagnosticCollection<D>`. This permits I10 to
-return a recovered CST with diagnostics without another API change. Until I10
-and I11 add recovery and synchronization, parsing remains fail-fast: success
+optional value plus an ordered `DiagnosticCollection<D>`. This permits later
+recovery to return a CST with diagnostics without another API change. Until
+I11 adds parser recovery and synchronization, parsing remains fail-fast: success
 has an empty collection, and failure has one diagnostic with no value.
 
 ## CST to Syntax AST lowering

@@ -105,6 +105,23 @@ TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
             "Unresolved instruction operand '%missing'.");
 }
 
+TEST(ResolvedModule, RejectsNestedBlocksUntilLexicalScopesAreImplemented) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  { add.u32 %r0, %r1, %r2; }
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "Nested blocks are parsed but are not supported by module "
+            "resolution yet.");
+  EXPECT_EQ(resolved.error().front().range.start.line, 3u);
+}
+
 TEST(ResolvedModule, DistinguishesSpecialRegistersFromMissingDeclarations) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

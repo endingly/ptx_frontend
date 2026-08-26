@@ -347,9 +347,18 @@ struct AstBranchTargets {
   SourceRange range;
 };
 
+struct AstBlock;
+
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
-                 AstCallTargets, AstBranchTargets, AstInstruction>;
+                 AstCallTargets, AstBranchTargets, std::unique_ptr<AstBlock>,
+                 AstInstruction>;
+
+/** A lexically nested function-body block. */
+struct AstBlock {
+  std::vector<AstFunctionBodyItem> body;
+  SourceRange range;
+};
 
 /** Initial function container; declarations and parameters refine this later. */
 struct AstFunction {

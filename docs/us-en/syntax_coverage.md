@@ -14,7 +14,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Functions | Supported subset | `.entry`/`.func` definitions, `.func` prototypes, visibility/linkage qualifiers, return and input parameter lists, `.noreturn` |
 | Formal parameters | Supported subset | `.reg`/`.param`, alignment, scalar type, pointer space/alignment, and arrays sized by structured constant expressions |
 | Variable declarations | Supported subset | Module/function scope, linkage qualifiers, `.reg`/`.param`/`.local`/`.shared`/`.global`/`.const`, alignment, vector/base type, parameterized names, multidimensional arrays, and `.global`/`.const` initializers |
-| Function body | Supported subset | Variable declarations, labels, and supported instruction syntax |
+| Function body | Supported subset | Variable declarations, labels, supported instruction syntax, and recursively retained nested blocks; lexical block binding and module resolution are not implemented yet, so module resolution rejects nested blocks explicitly |
 | Constant expressions | Supported subset | Literals/symbols, parentheses, `.s64`/`.u64` casts, unary/binary/conditional operators, `generic(symbol)`, and mask initializer operators |
 | Initializers | Supported subset | Scalar expressions, recursive brace lists, and an unsized first dimension; `.extern`, parameterized-name, and non-`.global`/`.const` initializers are rejected |
 | Symbol binding | Supported subset | Module/function scopes, variables/parameters/functions/labels, local shadowing, parameterized members, and instruction/initializer/dimension/control-flow references |

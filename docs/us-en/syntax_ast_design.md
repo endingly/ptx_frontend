@@ -55,9 +55,12 @@ if (cst)
 ```
 
 `parseInstruction()` accepts exactly one complete instruction fragment, while
-`parseModule()` requires a module root. The module grammar does not yet accept
-debug or kernel-tuning directives, nested statement scopes, recovery nodes,
-missing-token insertion, or a token-edit API. The parser validates initializer
+`parseModule()` requires a module root. Function bodies may contain nested
+blocks; CST retains their braces, ordered body items, and source ranges, while
+Syntax AST retains their body items and whole source ranges. Nested blocks are syntax-only for now: module
+resolution reports a clear unsupported diagnostic until lexical binding scopes
+are added. The module grammar does not yet accept debug or kernel-tuning
+directives, recovery nodes, missing-token insertion, or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
@@ -84,7 +87,8 @@ clients respectively.
 containers for the supported module directives and functions. `AstFunction`
 contains the function kind, qualifiers, name, and an ordered body variant of
 `AstVariableDeclaration`, `AstLabel`, `AstCallPrototype`, `AstCallTargets`,
-`AstBranchTargets`, and `AstInstruction`.
+`AstBranchTargets`, `AstBlock`, and `AstInstruction`. `AstBlock` keeps ordered
+body items and its whole source range.
 `AstCallPrototype` retains its label, sink, formal return/input payloads, and
 the PTX 9.3 `.noreturn` / ABI-preservation suffixes with ranges. Return and input
 parameters retain state space, alignment, type, pointer attributes, array form,

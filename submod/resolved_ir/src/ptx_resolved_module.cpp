@@ -603,6 +603,24 @@ void check_call_staging(const syntax_ast::AstFunction& function,
 
 std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     const syntax_ast::AstModule& ast) {
+  for (const syntax_ast::AstModuleItem& item : ast.items) {
+    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+    if (function == nullptr)
+      continue;
+    for (const syntax_ast::AstFunctionBodyItem& body_item : function->body) {
+      const auto* block =
+          std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&body_item);
+      if (block != nullptr) {
+        return std::unexpected(ModuleResolveDiagnostics{ResolveDiagnostic{
+            .range = *block ? (*block)->range : function->range,
+            .message =
+                "Nested blocks are parsed but are not supported by module "
+                "resolution yet.",
+        }});
+      }
+    }
+  }
+
   binding::SymbolBinding binding_result = binding::bindSymbols(ast);
 
   ModuleResolveDiagnostics diagnostics;

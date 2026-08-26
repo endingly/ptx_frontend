@@ -11,6 +11,7 @@ namespace {
 using syntax_cst::CstAddress;
 using syntax_cst::CstBranchTarget;
 using syntax_cst::CstBranchTargetSet;
+using syntax_cst::CstBlock;
 using syntax_cst::CstCallParameterList;
 using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
@@ -525,6 +526,42 @@ TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
   EXPECT_TRUE(
       std::holds_alternative<syntax_cst::CstInstruction>(function.body[2]));
   EXPECT_EQ(result->sourceText(), source);
+}
+
+TEST(PtxCstParser, RetainsNestedFunctionBlocks) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  {
+    outer:
+    { add.u32 %r0, %r1, %r2; }
+  }
+})ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& outer = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
+  EXPECT_EQ(result->token(outer.left_brace).kind, TokenKind::LBrace);
+  EXPECT_EQ(result->token(outer.right_brace).kind, TokenKind::RBrace);
+  EXPECT_EQ(result->sourceRange(outer.token_range).start.line, 2u);
+  ASSERT_EQ(outer.body.size(), 2u);
+  const auto& inner = *std::get<std::unique_ptr<CstBlock>>(outer.body[1]);
+  EXPECT_EQ(result->token(inner.left_brace).range.start.line, 4u);
+  ASSERT_EQ(inner.body.size(), 1u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstInstruction>(inner.body[0]));
+}
+
+TEST(PtxCstParser, RejectsNestedBlockMissingRightBrace) {
+  PtxCstParser parser(".entry kernel() { { add.u32 %r0, %r1, %r2;");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error().message, "expected '}' at end of nested block");
 }
 
 TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {

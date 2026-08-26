@@ -13,6 +13,7 @@ using syntax_ast::AstAddress;
 using syntax_ast::AstAddressOffset;
 using syntax_ast::AstBranchTarget;
 using syntax_ast::AstBranchTargetSet;
+using syntax_ast::AstBlock;
 using syntax_ast::AstCallParameterList;
 using syntax_ast::AstCallTarget;
 using syntax_ast::AstCallTargetSet;
@@ -163,6 +164,32 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
   EXPECT_EQ(prototype.abi_preserve_control->count.text, "2");
   EXPECT_EQ(prototype.range.start.line, 3u);
   EXPECT_EQ(prototype.label.syntax.range.start.column, 3u);
+}
+
+TEST(PtxSyntaxParser, LowersNestedFunctionBlocks) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  {
+    outer:
+    { add.u32 %r0, %r1, %r2; }
+  }
+})ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& outer = *std::get<std::unique_ptr<AstBlock>>(function.body[0]);
+  EXPECT_EQ(outer.range.start.line, 2u);
+  ASSERT_EQ(outer.body.size(), 2u);
+  const auto& inner = *std::get<std::unique_ptr<AstBlock>>(outer.body[1]);
+  EXPECT_EQ(inner.range.start.line, 4u);
+  EXPECT_EQ(inner.range.end.line, 4u);
+  ASSERT_EQ(inner.body.size(), 1u);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_ast::AstInstruction>(inner.body[0]));
 }
 
 TEST(PtxSyntaxParser, LowersFunctionLocalCallTargetsPayload) {

@@ -1162,6 +1162,97 @@ PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
   };
 }
 
+std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
+PtxCstParser::parseFunctionBodyItem() {
+  if (token(peek()).kind == TokenKind::LBrace) {
+    auto block = parseBlock();
+    if (!block)
+      return std::unexpected(block.error());
+    return std::make_unique<syntax_cst::CstBlock>(std::move(*block));
+  }
+  if (isVariableStateSpace(token(peek()).kind)) {
+    auto declaration = parseVariableDeclaration();
+    if (!declaration)
+      return std::unexpected(declaration.error());
+    return std::move(*declaration);
+  }
+
+  if (token(peek()).kind == TokenKind::Ident) {
+    const TokenId first_token = consume();
+    if (token(peek()).kind == TokenKind::Colon) {
+      const TokenId colon = consume();
+      if (token(peek()).kind == TokenKind::DotCallPrototype) {
+        auto prototype = parseCallPrototype(first_token, colon);
+        if (!prototype)
+          return std::unexpected(prototype.error());
+        return std::move(*prototype);
+      }
+      if (token(peek()).kind == TokenKind::DotCallTargets) {
+        auto targets = parseCallTargets(first_token, colon);
+        if (!targets)
+          return std::unexpected(targets.error());
+        return std::move(*targets);
+      }
+      if (token(peek()).kind == TokenKind::DotBranchTargets) {
+        auto targets = parseBranchTargets(first_token, colon);
+        if (!targets)
+          return std::unexpected(targets.error());
+        return std::move(*targets);
+      }
+      return syntax_cst::CstLabel{first_token, colon,
+                                  {first_token, colon + 1}};
+    }
+    auto instruction = parseInstructionNode(first_token);
+    if (!instruction)
+      return std::unexpected(instruction.error());
+    return std::move(*instruction);
+  }
+
+  if (token(peek()).kind == TokenKind::DotCallPrototype) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "'.callprototype' requires a preceding function-local label"});
+  }
+  if (token(peek()).kind == TokenKind::DotCallTargets) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "'.calltargets' requires a preceding function-local label"});
+  }
+  if (token(peek()).kind == TokenKind::DotBranchTargets) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "'.branchtargets' requires a preceding function-local label"});
+  }
+
+  auto instruction = parseInstructionNode();
+  if (!instruction)
+    return std::unexpected(instruction.error());
+  return std::move(*instruction);
+}
+
+std::expected<syntax_cst::CstBlock, CstParseDiagnostic>
+PtxCstParser::parseBlock() {
+  const TokenId left_brace = consume();
+  std::vector<syntax_cst::CstFunctionBodyItem> body;
+  while (token(peek()).kind != TokenKind::RBrace) {
+    if (token(peek()).kind == TokenKind::Eof) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range, "expected '}' at end of nested block"});
+    }
+    auto item = parseFunctionBodyItem();
+    if (!item)
+      return std::unexpected(item.error());
+    body.push_back(std::move(*item));
+  }
+  const TokenId right_brace = consume();
+  return syntax_cst::CstBlock{
+      .left_brace = left_brace,
+      .body = std::move(body),
+      .right_brace = right_brace,
+      .token_range = {left_brace, right_brace + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFile, CstParseDiagnostic>
 PtxCstParser::parseInstruction() {
   auto root = parseInstructionNode();
@@ -1317,70 +1408,10 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range, "expected '}' at end of function body"});
     }
-    if (isVariableStateSpace(token(peek()).kind)) {
-      auto declaration = parseVariableDeclaration();
-      if (!declaration)
-        return std::unexpected(declaration.error());
-      body.emplace_back(std::move(*declaration));
-      continue;
-    }
-
-    if (token(peek()).kind == TokenKind::Ident) {
-      const TokenId first_token = consume();
-      if (token(peek()).kind == TokenKind::Colon) {
-        const TokenId colon = consume();
-        if (token(peek()).kind == TokenKind::DotCallPrototype) {
-          auto prototype = parseCallPrototype(first_token, colon);
-          if (!prototype)
-            return std::unexpected(prototype.error());
-          body.emplace_back(std::move(*prototype));
-          continue;
-        }
-        if (token(peek()).kind == TokenKind::DotCallTargets) {
-          auto targets = parseCallTargets(first_token, colon);
-          if (!targets)
-            return std::unexpected(targets.error());
-          body.emplace_back(std::move(*targets));
-          continue;
-        }
-        if (token(peek()).kind == TokenKind::DotBranchTargets) {
-          auto targets = parseBranchTargets(first_token, colon);
-          if (!targets)
-            return std::unexpected(targets.error());
-          body.emplace_back(std::move(*targets));
-          continue;
-        }
-        body.emplace_back(
-            syntax_cst::CstLabel{first_token, colon, {first_token, colon + 1}});
-        continue;
-      }
-      auto instruction = parseInstructionNode(first_token);
-      if (!instruction)
-        return std::unexpected(instruction.error());
-      body.emplace_back(std::move(*instruction));
-      continue;
-    }
-
-    if (token(peek()).kind == TokenKind::DotCallPrototype) {
-      return std::unexpected(CstParseDiagnostic{
-          token(peek()).range,
-          "'.callprototype' requires a preceding function-local label"});
-    }
-    if (token(peek()).kind == TokenKind::DotCallTargets) {
-      return std::unexpected(CstParseDiagnostic{
-          token(peek()).range,
-          "'.calltargets' requires a preceding function-local label"});
-    }
-    if (token(peek()).kind == TokenKind::DotBranchTargets) {
-      return std::unexpected(CstParseDiagnostic{
-          token(peek()).range,
-          "'.branchtargets' requires a preceding function-local label"});
-    }
-
-    auto instruction = parseInstructionNode();
-    if (!instruction)
-      return std::unexpected(instruction.error());
-    body.emplace_back(std::move(*instruction));
+    auto item = parseFunctionBodyItem();
+    if (!item)
+      return std::unexpected(item.error());
+    body.push_back(std::move(*item));
   }
   const TokenId right_brace = consume();
 

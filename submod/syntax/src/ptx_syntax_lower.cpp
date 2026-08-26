@@ -515,6 +515,52 @@ syntax_ast::AstBranchTargets lowerBranchTargets(
   };
 }
 
+syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
+                                const syntax_cst::CstBlock& block);
+
+syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstFunctionBodyItem& body_item) {
+  if (const auto* declaration =
+          std::get_if<syntax_cst::CstVariableDeclaration>(&body_item)) {
+    return lowerVariableDeclaration(cst, *declaration);
+  }
+  if (const auto* label = std::get_if<syntax_cst::CstLabel>(&body_item)) {
+    return syntax_ast::AstLabel{lowerIdentifier(cst, {label->name}),
+                                cst.sourceRange(label->token_range)};
+  }
+  if (const auto* prototype =
+          std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
+    return lowerCallPrototype(cst, *prototype);
+  }
+  if (const auto* targets =
+          std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
+    return lowerCallTargets(cst, *targets);
+  }
+  if (const auto* targets =
+          std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
+    return lowerBranchTargets(cst, *targets);
+  }
+  if (const auto* block =
+          std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body_item)) {
+    return std::make_unique<syntax_ast::AstBlock>(lowerBlock(cst, **block));
+  }
+  return lowerInstructionNode(
+      cst, std::get<syntax_cst::CstInstruction>(body_item));
+}
+
+syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
+                                const syntax_cst::CstBlock& block) {
+  std::vector<syntax_ast::AstFunctionBodyItem> body;
+  body.reserve(block.body.size());
+  for (const auto& item : block.body)
+    body.push_back(lowerFunctionBodyItem(cst, item));
+  return syntax_ast::AstBlock{
+      .body = std::move(body),
+      .range = cst.sourceRange(block.token_range),
+  };
+}
+
 }  // namespace
 
 std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
@@ -610,29 +656,8 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         lowered.parameters.push_back(lowerFunctionParameter(cst, parameter));
     }
     lowered.body.reserve(function.body.size());
-    for (const auto& body_item : function.body) {
-      if (const auto* declaration =
-              std::get_if<syntax_cst::CstVariableDeclaration>(&body_item)) {
-        lowered.body.emplace_back(lowerVariableDeclaration(cst, *declaration));
-      } else if (const auto* label =
-                     std::get_if<syntax_cst::CstLabel>(&body_item)) {
-        lowered.body.emplace_back(
-            syntax_ast::AstLabel{lowerIdentifier(cst, {label->name}),
-                                 cst.sourceRange(label->token_range)});
-      } else if (const auto* prototype =
-                     std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
-        lowered.body.emplace_back(lowerCallPrototype(cst, *prototype));
-      } else if (const auto* targets =
-                     std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
-        lowered.body.emplace_back(lowerCallTargets(cst, *targets));
-      } else if (const auto* targets =
-                     std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
-        lowered.body.emplace_back(lowerBranchTargets(cst, *targets));
-      } else {
-        lowered.body.emplace_back(lowerInstructionNode(
-            cst, std::get<syntax_cst::CstInstruction>(body_item)));
-      }
-    }
+    for (const auto& body_item : function.body)
+      lowered.body.push_back(lowerFunctionBodyItem(cst, body_item));
     ast.items.emplace_back(std::move(lowered));
   }
   return ast;

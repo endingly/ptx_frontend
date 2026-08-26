@@ -327,9 +327,20 @@ struct CstBranchTargets {
   CstTokenRange token_range;
 };
 
+struct CstBlock;
+
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
-                 CstCallTargets, CstBranchTargets, CstInstruction>;
+                 CstCallTargets, CstBranchTargets, std::unique_ptr<CstBlock>,
+                 CstInstruction>;
+
+/** A lexically nested function-body block. */
+struct CstBlock {
+  TokenId left_brace{};
+  std::vector<CstFunctionBodyItem> body;
+  TokenId right_brace{};
+  CstTokenRange token_range;
+};
 
 struct CstFunction {
   std::vector<TokenId> qualifiers;

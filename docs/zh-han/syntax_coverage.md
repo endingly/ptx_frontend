@@ -13,7 +13,7 @@
 | Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回与输入参数列表、`.noreturn` |
 | Formal parameter | 支持子集 | `.reg/.param`、alignment、scalar type、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
 | Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、alignment、vector/base type、parameterized name、多维 array，以及 `.global/.const` initializer |
-| Function body | 支持子集 | variable declaration、label 与当前 instruction grammar |
+| Function body | 支持子集 | variable declaration、label、当前 instruction grammar，以及递归保留的 nested block；lexical block binding 与 module resolution 尚未实现，因此 module resolution 会明确拒绝 nested block |
 | Constant expression | 支持子集 | literal/symbol、括号、`.s64/.u64` cast、一元/二元/三元运算、`generic(symbol)` 与 mask initializer operator |
 | Initializer | 支持子集 | scalar expression、递归 brace list、未定长首维；拒绝 `.extern`、parameterized name 及非 `.global/.const` initializer |
 | Symbol binding | 支持子集 | module/function scope、变量/参数/函数/label、局部遮蔽、parameterized member、instruction/initializer/dimension/control-flow reference |

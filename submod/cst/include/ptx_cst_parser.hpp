@@ -72,6 +72,9 @@ class PtxCstParser {
   parseCallTargets(TokenId label, TokenId colon);
   std::expected<syntax_cst::CstBranchTargets, CstParseDiagnostic>
   parseBranchTargets(TokenId label, TokenId colon);
+  std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
+  parseFunctionBodyItem();
+  std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock();
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(

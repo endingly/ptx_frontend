@@ -2686,9 +2686,10 @@ TEST(ResolvedModule, RejectsIndirectCallsUntilTargetMetadataExists) {
             "Indirect call targets require a target list or prototype, which is not supported yet.");
 
   const auto target_set = parseModule(R"ptx(
+.func maybe_callee();
 .entry caller() {
   .reg .u64 %fptr;
-targets:
+targets: .calltargets maybe_callee;
   call %fptr, (), targets;
 }
 )ptx");

@@ -41,6 +41,12 @@ The frontend currently provides:
   remain exact-width;
 - explicit PTX ISA version, SM version, and target-family availability checks
   for modelled variants, modifiers, layouts, and operands.
+- direct named-function `call` in the three currently modelled layouts:
+  `call function;`, `call function, (arguments);`, and
+  `call (return), function, (arguments);`. Optional return/input groups and
+  untyped immediate literals are retained when no callee signature is
+  available; signature/ABI comparison and indirect target-list/prototype
+  metadata are not yet supported.
 
 These checks cover only the currently modelled instruction subset. They do not
 validate the full PTX ISA, every module directive, or link-time behaviour.
@@ -214,7 +220,13 @@ python/       normalization models, C++ generators, and Python tests
 cmake/        shared CMake helpers
 docs/us-en/   English design and coverage documentation
 docs/zh-han/  Simplified Chinese design and coverage documentation
+.agents/project_roadmap.md  authoritative roadmap and implementation priority
+docs/deprecated/next_step.md frozen historical implementation log
 ```
+
+The [project roadmap](.agents/project_roadmap.md) is the single source for
+implementation status and priority. The
+[deprecated next-step log](docs/deprecated/next_step.md) is historical only.
 
 The detailed designs are documented in:
 

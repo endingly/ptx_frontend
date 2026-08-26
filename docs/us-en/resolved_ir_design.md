@@ -34,7 +34,7 @@ The generated public layer also provides an opcode-independent boundary:
 
 ```cpp
 using ResolvedInstruction =
-    std::variant<Add, Sub, Bar, Bra, Mov, Ld /* ... */>;
+    std::variant<Add, Sub, Bar, Bra, Call, Mov, Ld /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);

@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -752,6 +753,53 @@ TEST(ResolveImmediateLiteral, SupportsFloatingLexicalForms) {
   EXPECT_EQ(incompatible.error().message,
             "Decimal floating literal '1.5' is incompatible with scalar type "
             "'U32'.");
+}
+
+TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
+  const declaration_semantics::FunctionParameterContract u16{.type = ".u16"};
+  const auto typed_immediate = parse_immediate("42");
+  const auto typed = resolve_call_literal(
+      ResolvedCallLiteral{.spelling = typed_immediate.syntax.text,
+                          .kind = typed_immediate.kind},
+      typed_immediate.syntax.range, u16);
+  ASSERT_TRUE(typed.has_value()) << typed.error().message;
+  EXPECT_EQ(typed->value,
+            (ResolvedImmediate{.bits = 42, .type = ScalarType::U16}));
+  EXPECT_EQ(typed->locs, std::vector{typed_immediate.syntax.range});
+
+  const auto overflow_immediate = parse_immediate("65536");
+  const auto overflow = resolve_call_literal(
+      ResolvedCallLiteral{.spelling = overflow_immediate.syntax.text,
+                          .kind = overflow_immediate.kind},
+      overflow_immediate.syntax.range, u16);
+  ASSERT_FALSE(overflow.has_value());
+  EXPECT_EQ(overflow.error().range, overflow_immediate.syntax.range);
+  EXPECT_EQ(overflow.error().message,
+            "Integer literal '65536' is out of range for scalar type 'U16'.");
+
+  const declaration_semantics::FunctionParameterContract u32{.type = ".u32"};
+  const auto float_immediate = parse_immediate("1.5");
+  const auto mismatch = resolve_call_literal(
+      ResolvedCallLiteral{.spelling = float_immediate.syntax.text,
+                          .kind = float_immediate.kind},
+      float_immediate.syntax.range, u32);
+  ASSERT_FALSE(mismatch.has_value());
+  EXPECT_EQ(mismatch.error().range, float_immediate.syntax.range);
+  EXPECT_EQ(mismatch.error().message,
+            "Decimal floating literal '1.5' is incompatible with scalar type "
+            "'U32'.");
+
+  const declaration_semantics::FunctionParameterContract unsupported_type{
+      .type = ".v2"};
+  const auto unsupported_immediate = parse_immediate("1");
+  const auto unsupported = resolve_call_literal(
+      ResolvedCallLiteral{.spelling = unsupported_immediate.syntax.text,
+                          .kind = unsupported_immediate.kind},
+      unsupported_immediate.syntax.range, unsupported_type);
+  ASSERT_FALSE(unsupported.has_value());
+  EXPECT_EQ(unsupported.error().range, unsupported_immediate.syntax.range);
+  EXPECT_EQ(unsupported.error().message,
+            "Call literal '1' has unsupported formal scalar type '.v2'.");
 }
 
 TEST(ResolveAdd, PreservesOptionalModifierPresence) {

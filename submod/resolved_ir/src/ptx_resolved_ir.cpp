@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <string_view>
 #include <vector>
 #include "resolved_value_domains.gen.hpp"
@@ -1989,6 +1990,29 @@ ResolvedFieldValue resolve_default_modifier_value(
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type) {
   return resolve_immediate_value(immediate, type);
+}
+
+std::expected<WithLocs<ResolvedImmediate>, ResolveDiagnostic>
+resolve_call_literal(
+    const ResolvedCallLiteral& literal, SourceRange range,
+    const declaration_semantics::FunctionParameterContract& formal) {
+  const auto type = scalar_type_from_ptx_name(formal.type);
+  if (!type) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Call literal '{}' has unsupported formal scalar type '{}'.",
+            literal.spelling, formal.type),
+    });
+  }
+  const syntax_ast::AstImmediate immediate{
+      .syntax = {.text = literal.spelling, .range = range},
+      .kind = literal.kind,
+  };
+  auto resolved = resolve_immediate_literal(immediate, *type);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  return WithLocs<ResolvedImmediate>{std::move(*resolved), range};
 }
 
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(

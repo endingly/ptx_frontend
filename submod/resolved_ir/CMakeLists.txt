@@ -20,8 +20,7 @@ find_package(fmt CONFIG REQUIRED)
 target_link_libraries(
     resolved_ir
     PUBLIC ptx_frontend::base ptx_frontend::binding ptx_frontend::syntax
-           ptx_frontend::common fmt::fmt
-    PRIVATE ptx_frontend::semantic
+           ptx_frontend::common ptx_frontend::semantic fmt::fmt
 )
 add_dependencies(resolved_ir resolved_ir_codegen)
 

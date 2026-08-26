@@ -1291,7 +1291,7 @@ call (return), function, (arguments);
 | M6-I02 | ✅ | 独立 | 实现 direct-call Resolved IR | 三个 `Call` layout、direct `.func` target、argument identity/range 和明确 indirect rejection |
 | M6-I03 | ✅ | 独立 | 修正 direct-call 基线文档 | 本轮已同步 README、coverage 和设计文档；priority 只由本文维护 |
 | M6-I04 | ✅ | 独立 | 建立 canonical `FunctionSignature` | prototype/definition 可转换为统一 return/input parameter contract |
-| M6-I05 | ⬜ | 独立 | 建立 call literal typing helper | immediate 按一个 formal parameter 定型；溢出和 kind mismatch 可诊断 |
+| M6-I05 | ✅ | 独立 | 建立 call literal typing helper | immediate 按一个 formal parameter 定型；溢出和 kind mismatch 可诊断 |
 | M6-I06 | ⬜ | 独立 | 建立 call argument compatibility helper | `.reg/.param`、type、alignment、array、pointer 和 state-space 可逐项比较 |
 | M6-I07 | ⬜ | 独立 | 建模 function-local call-argument `.param` | 与 formal parameter 分离，scope、lifetime、direction 和 address rule 明确 |
 | M6-I08 | ⬜ | 独立 | 建模 call-context syntax/semantics | `::entry/::func`、adjacency、predication 和 `.uni` 的 call-specific rule 明确 |

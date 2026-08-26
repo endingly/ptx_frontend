@@ -41,7 +41,7 @@ SyntaxInstructionParseResult PtxSyntaxParser::parseInstruction() {
 SyntaxModuleParseResult PtxSyntaxParser::parseModule() {
   PtxCstParser parser(source_);
   auto cst = parser.parseModule();
-  if (!cst || !cst.diagnostics.empty()) {
+  if (!cst) {
     return {.value = std::nullopt,
             .diagnostics = mapDiagnostics(cst.diagnostics)};
   }

@@ -4,6 +4,8 @@
 #include <string_view>
 #include <variant>
 
+#include <ptx_frontend/cst/ptx_cst_parser.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_lower.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend {
@@ -22,6 +24,7 @@ using syntax_ast::AstCallTargets;
 using syntax_ast::AstBranchTargets;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
+using syntax_ast::AstInstruction;
 using syntax_ast::AstPredicateOperand;
 using syntax_ast::AstVectorMember;
 using syntax_ast::AstVectorPack;
@@ -301,22 +304,40 @@ TEST(PtxSyntaxParser, MapsCstDiagnosticsToSyntaxDiagnostics) {
   EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
 }
 
-TEST(PtxSyntaxParser, DoesNotLowerRecoveredModuleCstBeforeC01) {
-  constexpr std::string_view source =
-      ".version nope; .target sm_30";
+TEST(PtxSyntaxParser, LowersOnlyValidNeighborsOfRecoveredModuleCst) {
+  constexpr std::string_view source = R"ptx(.version nope;
+.target;
+.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }
+)ptx";
   PtxCstParser cst_parser(source);
   PtxSyntaxParser syntax_parser(source);
 
   const auto cst = cst_parser.parseModule();
+  ASSERT_TRUE(cst.has_value());
+  ASSERT_EQ(cst.diagnostics.size(), 3u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstRecoveryNode>(
+      cst->module()->items[0]));
+  const auto lowered = lowerSyntaxModule(*cst);
   const auto syntax = syntax_parser.parseModule();
 
-  ASSERT_TRUE(cst.has_value());
-  ASSERT_FALSE(cst.diagnostics.empty());
-  ASSERT_FALSE(syntax.has_value());
+  ASSERT_TRUE(lowered.has_value());
+  EXPECT_TRUE(lowered.diagnostics.empty());
+  ASSERT_EQ(lowered->items.size(), 1u);
+  const auto& function = std::get<syntax_ast::AstFunction>(lowered->items[0]);
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& block =
+      *std::get<std::unique_ptr<AstBlock>>(function.body[0]);
+  ASSERT_EQ(block.body.size(), 1u);
+  EXPECT_EQ(std::get<AstInstruction>(block.body[0]).opcode.syntax.text, "sub");
+
+  ASSERT_TRUE(syntax.has_value());
+  ASSERT_EQ(syntax->items.size(), 1u);
   ASSERT_EQ(syntax.diagnostics.size(), cst.diagnostics.size());
-  EXPECT_EQ(syntax.diagnostics.front().message,
-            cst.diagnostics.front().message);
-  EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
+  for (std::size_t index = 0; index < cst.diagnostics.size(); ++index) {
+    EXPECT_EQ(syntax.diagnostics[index].message,
+              cst.diagnostics[index].message);
+    EXPECT_EQ(syntax.diagnostics[index].range, cst.diagnostics[index].range);
+  }
 }
 
 TEST(PtxSyntaxParser, RejectsEmptyVectorPack) {

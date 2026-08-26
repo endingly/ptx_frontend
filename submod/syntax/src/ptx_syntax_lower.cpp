@@ -629,8 +629,11 @@ syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
                                 const syntax_cst::CstBlock& block) {
   std::vector<syntax_ast::AstFunctionBodyItem> body;
   body.reserve(block.body.size());
-  for (const auto& item : block.body)
+  for (const auto& item : block.body) {
+    if (std::holds_alternative<syntax_cst::CstRecoveryNode>(item))
+      continue;
     body.push_back(lowerFunctionBodyItem(cst, item));
+  }
   return syntax_ast::AstBlock{
       .body = std::move(body),
       .range = cst.sourceRange(block.token_range),
@@ -669,6 +672,8 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
   ast.items.reserve(root->items.size());
 
   for (const auto& item : root->items) {
+    if (std::holds_alternative<syntax_cst::CstRecoveryNode>(item))
+      continue;
     if (const auto* directive =
             std::get_if<syntax_cst::CstModuleDirective>(&item)) {
       const SourceRange range = cst.sourceRange(directive->token_range);
@@ -784,8 +789,11 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
     for (const auto& resource : function.resources)
       lowered.resources.push_back(lowerKernelResourceDirective(cst, resource));
     lowered.body.reserve(function.body.size());
-    for (const auto& body_item : function.body)
+    for (const auto& body_item : function.body) {
+      if (std::holds_alternative<syntax_cst::CstRecoveryNode>(body_item))
+        continue;
       lowered.body.push_back(lowerFunctionBodyItem(cst, body_item));
+    }
     ast.items.emplace_back(std::move(lowered));
   }
   return {.value = std::move(ast), .diagnostics = {}};

@@ -80,7 +80,7 @@ comma-separated string list at module, entry-header, and function/nested-block
 statement scope; it does not enter binding or Resolved IR. Entry-header
 pragmas may be interleaved with the four supported kernel-resource directives;
 their concrete order remains lossless in the CST header token sequence.
-`CstRecoveryNode` is a tagged CST-only model for future recovery: `Inserted`
+`CstRecoveryNode` is the tagged CST-only recovery model: `Inserted`
 holds an expected `TokenKind` and a zero-width range without a token-buffer
 span; `Skipped` holds a nonempty span of real source tokens; and `Error` holds
 either such a span or an EOF zero-width range. It can occur as a module or
@@ -90,9 +90,11 @@ recovered CST: it synchronizes malformed module/body items at `;`, `}`, EOF,
 the next function (including qualifiers), or a supported module-only directive.
 It preserves those anchors, inserts only missing `;`/`}` markers at zero width,
 and otherwise records real discarded spans. `parseInstruction()` remains
-fail-fast. Recovered CST is intentionally not lowered by `PtxSyntaxParser`
-until C01 defines that contract; round-trip serialization uses the original
-token buffer rather than recovery markers. A nested block missing its required `}`
+fail-fast. Recovered CST lowers only its valid neighboring nodes: recovery
+markers remain CST-only, while `PtxSyntaxParser` returns the filtered AST with
+the original parser diagnostics once and in source order. Round-trip
+serialization uses the original token buffer rather than recovery markers. A
+nested block missing its required `}`
 retains its parsed body and an inserted marker, with no `right_brace` token.
 The opt-in Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzzes raw lexer and CST
 input; its entry point is also exercised by a small GTest seed smoke. It has no
@@ -107,8 +109,8 @@ semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
 
 Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
-optional value plus an ordered `DiagnosticCollection<D>`. This permits later
-recovery to return a CST with diagnostics without another API change. Module
+optional value plus an ordered `DiagnosticCollection<D>`. This lets module
+recovery return a CST with diagnostics without another API change. Module
 recovery may return both a value and diagnostics; standalone instruction
 fragments remain fail-fast with no value on error.
 

@@ -390,7 +390,8 @@ enum class CstRecoveryKind : uint8_t {
  * CST-only recovery marker. Inserted nodes have an expected token kind and a
  * zero-width range, without a token-buffer span. Skipped nodes have a
  * nonempty span of real tokens. Error nodes have either such a span or an EOF
- * zero-width range. The parser does not produce these nodes yet.
+ * zero-width range. parseModule() produces these nodes; AST lowering filters
+ * them rather than representing recovery in the AST.
  */
 struct CstRecoveryNode {
   CstRecoveryKind kind{};

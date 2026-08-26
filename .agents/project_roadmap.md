@@ -1376,7 +1376,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 | M8-I12 | 🚧 | 独立 | 建立 CST round-trip serializer | docs/tests-only：复用 `CstFile::sourceText()` 从未修改 token buffer 逐字节重建；recovery marker 不输出，EOF sentinel 数非公开契约 |
 | M8-I13 | 🚧 | 独立 | 建立 lexer/CST fuzz harness | opt-in Clang libFuzzer target 与同 entry point 的 GTest seed smoke 覆盖 arbitrary bytes 和 malformed nesting；M11 再接入 sanitizer/CI matrix |
 | M8-I14 | ⏸ | 独立 | 收集 optional fixed-address 证据 | 只有取得规范 grammar 或可复现 `ptxas` 行为后才开始实现 |
-| M8-C01 | ⬜ | 耦合 | 定义 recovered CST → AST contract | error node 不伪装成正常 AST，相邻合法结构仍可 lowering |
+| M8-C01 | 🚧 | 耦合 | 定义 recovered CST → AST contract | recovery node 保持 CST-only；module lowering 过滤它们、保留相邻合法 AST node，并只一次透传 parser diagnostic |
 | M8-C02 | ⬜ | 耦合 | 连接 directive 与 binding/semantic | 需要 identity 的进入 binding，纯 metadata 不污染 Resolved IR |
 | M8-C03 | ⬜ | 耦合 | 建立真实 PTX module corpus | 合法/错误/未知 directive module 无 silent drop |
 

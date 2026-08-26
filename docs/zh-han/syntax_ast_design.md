@@ -62,15 +62,15 @@ private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当
 会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
 comma-separated string list；它不进入 binding 或 Resolved IR。entry header 中 pragma 可与四个
 已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。
-`CstRecoveryNode` 是供后续恢复使用的带 tag 的纯 CST 模型：`Inserted` 持有 expected
+`CstRecoveryNode` 是当前带 tag 的纯 CST recovery 模型：`Inserted` 持有 expected
 `TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token
 span；`Error` 则持有这种 span 或 EOF 的 zero-width range。它可作为 module 或
 function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`。`parseModule()` 会附加有序
 diagnostic 并返回 recovered CST：它在 `;`、`}`、EOF、下一 function（含 qualifier）或受支持的
 module-only directive 处同步，保留这些 anchor，只在 zero-width 处插入缺失的 `;`/`}` marker，其余被丢弃
-的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。C01 定义 recovered CST 的
-lowering contract 前，`PtxSyntaxParser` 有意不 lower recovered CST；round-trip serialization 使用
-原始 token buffer 而非 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
+的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。recovered CST 只 lower 其合法相邻 node：
+recovery marker 保持 CST-only，`PtxSyntaxParser` 返回过滤后的 AST，并且只一次、按 source order 返回原 parser diagnostic。
+round-trip serialization 使用原始 token buffer 而非 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
 但没有 `right_brace` token。可选的 Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzz raw lexer/CST input；同一 entry point 也有小型
 GTest seed smoke。尚未加入 ASan/UBSan 或 CI matrix。它必须单独 configure：
 从 source root 运行

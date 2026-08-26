@@ -5,6 +5,11 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
+    paths:
+      - .github/workflows/linux-ci.yml
+      - vcpkg.json
+  schedule:
+    - cron: "0 0 1 * *"
 
 permissions:
   contents: read

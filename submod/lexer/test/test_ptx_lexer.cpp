@@ -280,6 +280,18 @@ TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
   expect_token(toks[6], TokenKind::Decimal, "18446744073709551615U");
 }
 
+TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
+  const auto toks = lex_all(
+      ".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");
+
+  ASSERT_EQ(toks.size(), 14u);
+  expect_token(toks[0], TokenKind::DotLoc, ".loc");
+  expect_token(toks[5], TokenKind::Ident, "function_name");
+  expect_token(toks[6], TokenKind::DotIdent, ".debug_str");
+  expect_token(toks[7], TokenKind::Plus, "+");
+  expect_token(toks[10], TokenKind::Ident, "inlined_at");
+}
+
 TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak");
 

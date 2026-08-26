@@ -376,6 +376,45 @@ TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
   EXPECT_EQ(full_form.range.start.line, 2u);
 }
 
+TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  .loc 2 4237 0
+  {
+    .loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5;
+  }
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(result->items.front());
+  const auto& basic =
+      std::get<syntax_ast::AstLocDirective>(function.body.front());
+  EXPECT_EQ(basic.file_index.text, "2");
+  EXPECT_EQ(basic.line_number.text, "4237");
+  EXPECT_EQ(basic.column_position.text, "0");
+  EXPECT_FALSE(basic.inline_context.has_value());
+  EXPECT_EQ(basic.range.start.line, 2u);
+
+  const auto& block =
+      *std::get<std::unique_ptr<syntax_ast::AstBlock>>(function.body[1]);
+  const auto& full = std::get<syntax_ast::AstLocDirective>(block.body.front());
+  ASSERT_TRUE(full.inline_context.has_value());
+  const auto& context = *full.inline_context;
+  EXPECT_EQ(context.function_name_label.syntax.text, ".debug_str");
+  ASSERT_TRUE(context.function_name_offset.has_value());
+  EXPECT_EQ(context.function_name_offset->text, "16");
+  EXPECT_EQ(context.file_index.text, "1");
+  EXPECT_EQ(context.line_number.text, "10");
+  EXPECT_EQ(context.column_position.text, "5");
+  EXPECT_EQ(context.function_name_label.syntax.range.start.line, 4u);
+  EXPECT_EQ(context.range.start.line, 4u);
+  EXPECT_EQ(full.range.start.line, 4u);
+}
+
 TEST(PtxSyntaxParser, LowersFuncDefinition) {
   PtxSyntaxParser parser(
       ".func (.param .b32 result) helper(.param .b32 input) { ret; }");

@@ -2149,6 +2149,30 @@ TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
   expect_availability(load);
 }
 
+TEST(ResolvedModule, IgnoresLocDirectivesForCallParameterStaging) {
+  const auto ast = parseModule(R"ptx(
+.func (.param .u32 result) callee(.param .u32 input);
+.entry caller() {
+  .reg .u32 %r0, %r1;
+  .param .u32 input_staging, return_staging;
+  st.param.u32 [input_staging], %r0;
+  .loc 1 5 1
+  call (return_staging), callee, (input_staging);
+  .loc 1 6 1
+  ld.param.u32 %r1, [return_staging];
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions[1].body;
+  ASSERT_EQ(body.size(), 3u);
+  EXPECT_TRUE(std::holds_alternative<St>(body[0]));
+  EXPECT_TRUE(std::holds_alternative<Call>(body[1]));
+  EXPECT_TRUE(std::holds_alternative<Ld>(body[2]));
+}
+
 TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   PtxSyntaxParser mov_parser("mov.u64 %rd0, global_value;");
   const auto mov_ast = mov_parser.parseInstruction();

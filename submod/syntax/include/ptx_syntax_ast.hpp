@@ -304,6 +304,24 @@ struct AstLabel {
   SourceRange range;
 };
 
+struct AstLocInlineContext {
+  AstIdentifierRef function_name_label;
+  std::optional<AstSyntax> function_name_offset;
+  AstSyntax file_index;
+  AstSyntax line_number;
+  AstSyntax column_position;
+  SourceRange range;
+};
+
+/** A function-body source location directive. */
+struct AstLocDirective {
+  AstSyntax file_index;
+  AstSyntax line_number;
+  AstSyntax column_position;
+  std::optional<AstLocInlineContext> inline_context;
+  SourceRange range;
+};
+
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
@@ -359,8 +377,8 @@ struct AstBlock;
 
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
-                 AstCallTargets, AstBranchTargets, std::unique_ptr<AstBlock>,
-                 AstInstruction>;
+                 AstCallTargets, AstBranchTargets, AstLocDirective,
+                 std::unique_ptr<AstBlock>, AstInstruction>;
 
 /** A lexically nested function-body block. */
 struct AstBlock {

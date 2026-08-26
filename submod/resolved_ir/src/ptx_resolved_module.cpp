@@ -489,6 +489,10 @@ bool is_staging_load(const syntax_ast::AstFunctionBodyItem& item,
          staging_parameter(*instruction, symbols, scope).has_value();
 }
 
+bool is_staging_transparent(const syntax_ast::AstFunctionBodyItem& item) {
+  return std::holds_alternative<syntax_ast::AstLocDirective>(item);
+}
+
 bool call_uses_parameter(const syntax_ast::AstInstruction& call,
                          syntax_ast::AstCallParameterListKind group_kind,
                          const CallParameterIdentity& parameter,
@@ -602,7 +606,8 @@ void check_call_staging_body(
     if (is_store) {
       size_t call_index = index + 1;
       while (call_index < body.size() &&
-             is_staging_store(body[call_index], symbols, scope)) {
+             (is_staging_store(body[call_index], symbols, scope) ||
+              is_staging_transparent(body[call_index]))) {
         ++call_index;
       }
       const auto* call = call_index < body.size()
@@ -625,7 +630,8 @@ void check_call_staging_body(
 
     size_t call_index = index;
     while (call_index > 0 &&
-           is_staging_load(body[call_index - 1], symbols, scope)) {
+           (is_staging_load(body[call_index - 1], symbols, scope) ||
+            is_staging_transparent(body[call_index - 1]))) {
       --call_index;
     }
     const auto* call =

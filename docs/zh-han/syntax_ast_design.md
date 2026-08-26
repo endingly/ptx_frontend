@@ -50,8 +50,11 @@ module root。outermost module scope 的 `.file` 只接受
 两个 optional numeric field 必须成对，省略时保留 PTX 默认零而不伪造 source location。function body 现在可含 nested block；CST 保留其 brace、有序 body item 与
 完整 source range，Syntax AST 则保留有序 body item 与完整 source range。binding 会加入 lexical
 scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序平铺的 body；不会引入
-`ResolvedBlock`。当前 module grammar
-仍不接受 debug directive、kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
+`ResolvedBlock`。function body（含 nested block）也接受 `.loc`：basic
+`file line column` triple，或成对的 PTX 7.2 `function_name label {+ integer}` /
+`inlined_at file line column` payload；CST 保留标点，AST 保留 field 与 range。`.file`
+index、DWARF label 以及向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
+仍不接受 kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 

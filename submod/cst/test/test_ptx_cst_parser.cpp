@@ -462,6 +462,67 @@ TEST(PtxCstParser, RejectsMalformedOrNonlocalFileDirectives) {
   }
 }
 
+TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  .loc 2 4237 0
+  {
+    .loc 1 9 3, function_name info_string0, inlined_at 1 21 3
+    .loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5;
+    add.u32 %r0, %r1, %r2;
+  }
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& basic = std::get<syntax_cst::CstLocDirective>(function.body[0]);
+  EXPECT_EQ(result->token(basic.directive).kind, TokenKind::DotLoc);
+  EXPECT_FALSE(basic.inline_context.has_value());
+  EXPECT_FALSE(basic.terminator.has_value());
+  EXPECT_EQ(result->sourceRange(basic.token_range).start.line, 2u);
+
+  const auto& block = *std::get<std::unique_ptr<syntax_cst::CstBlock>>(
+      function.body[1]);
+  ASSERT_EQ(block.body.size(), 3u);
+  const auto& named = std::get<syntax_cst::CstLocDirective>(block.body[0]);
+  ASSERT_TRUE(named.inline_context.has_value());
+  EXPECT_EQ(result->token(named.inline_context->function_name_label).text,
+            "info_string0");
+
+  const auto& dotted =
+      std::get<syntax_cst::CstLocDirective>(block.body[1]);
+  ASSERT_TRUE(dotted.inline_context.has_value());
+  const auto& context = *dotted.inline_context;
+  EXPECT_EQ(result->token(context.function_name_keyword).text,
+            "function_name");
+  EXPECT_EQ(result->token(context.function_name_label).text, ".debug_str");
+  ASSERT_TRUE(context.plus.has_value());
+  ASSERT_TRUE(context.function_name_offset.has_value());
+  EXPECT_EQ(result->token(*context.function_name_offset).text, "16");
+  EXPECT_EQ(result->token(context.inlined_at_keyword).text, "inlined_at");
+  EXPECT_EQ(result->token(context.line_number).text, "10");
+  EXPECT_TRUE(dotted.terminator.has_value());
+}
+
+TEST(PtxCstParser, RejectsMalformedOrModuleScopeLocDirectives) {
+  for (const std::string_view source : {
+           ".entry f() { .loc 1 2 }",
+           ".entry f() { .loc 1 2 3, function_name name }",
+           ".entry f() { .loc 1 2 3, inlined_at 1 2 3 }",
+           ".entry f() { .loc 1 2 3, function_name name + 1.5, inlined_at 1 2 3 }",
+           ".loc 1 2 3",
+       }) {
+    PtxCstParser parser(source);
+    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+  }
+}
+
 TEST(PtxCstParser, FindsFuncNameAfterReturnParameterList) {
   constexpr std::string_view source =
       ".func (.param .b32 result) helper(.param .b32 input) { ret; }";

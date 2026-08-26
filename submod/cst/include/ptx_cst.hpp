@@ -242,6 +242,31 @@ struct CstLabel {
   CstTokenRange token_range;
 };
 
+struct CstLocInlineContext {
+  TokenId function_name_comma{};
+  TokenId function_name_keyword{};
+  TokenId function_name_label{};
+  std::optional<TokenId> plus;
+  std::optional<TokenId> function_name_offset;
+  TokenId inlined_at_comma{};
+  TokenId inlined_at_keyword{};
+  TokenId file_index{};
+  TokenId line_number{};
+  TokenId column_position{};
+  CstTokenRange token_range;
+};
+
+/** A function-body source location directive. */
+struct CstLocDirective {
+  TokenId directive{};
+  TokenId file_index{};
+  TokenId line_number{};
+  TokenId column_position{};
+  std::optional<CstLocInlineContext> inline_context;
+  std::optional<TokenId> terminator;
+  CstTokenRange token_range;
+};
+
 /** A module-level directive and its concrete token payload. */
 struct CstModuleDirective {
   TokenId keyword{};
@@ -331,8 +356,8 @@ struct CstBlock;
 
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
-                 CstCallTargets, CstBranchTargets, std::unique_ptr<CstBlock>,
-                 CstInstruction>;
+                 CstCallTargets, CstBranchTargets, CstLocDirective,
+                 std::unique_ptr<CstBlock>, CstInstruction>;
 
 /** A lexically nested function-body block. */
 struct CstBlock {

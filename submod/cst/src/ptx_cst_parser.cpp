@@ -53,6 +53,14 @@ bool isImmediate(TokenKind kind) {
   }
 }
 
+bool isIntegerLiteral(TokenKind kind) {
+  return kind == TokenKind::Decimal || kind == TokenKind::Hex;
+}
+
+bool isLocFunctionNameLabel(TokenKind kind) {
+  return kind == TokenKind::Ident || kind == TokenKind::DotIdent;
+}
+
 bool isModifier(TokenKind kind) {
   return kind == TokenKind::DotIdent || kind == TokenKind::DotGlobal ||
          kind == TokenKind::DotConst || kind == TokenKind::DotShared ||
@@ -1162,6 +1170,100 @@ PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
   };
 }
 
+std::expected<syntax_cst::CstLocDirective, CstParseDiagnostic>
+PtxCstParser::parseLocDirective() {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotLoc) {
+    return std::unexpected(CstParseDiagnostic{token(directive).range,
+                                              "expected '.loc'"});
+  }
+  auto file_index = expect(TokenKind::Decimal, "source file index");
+  if (!file_index)
+    return std::unexpected(file_index.error());
+  auto line_number = expect(TokenKind::Decimal, "source line number");
+  if (!line_number)
+    return std::unexpected(line_number.error());
+  auto column_position =
+      expect(TokenKind::Decimal, "source column position");
+  if (!column_position)
+    return std::unexpected(column_position.error());
+
+  std::optional<syntax_cst::CstLocInlineContext> inline_context;
+  TokenId last = *column_position;
+  if (token(peek()).kind == TokenKind::Comma) {
+    const TokenId function_name_comma = consume();
+    const TokenId function_name_keyword = consume();
+    if (token(function_name_keyword).kind != TokenKind::Ident ||
+        token(function_name_keyword).text != "function_name") {
+      return std::unexpected(CstParseDiagnostic{
+          token(function_name_keyword).range, "expected 'function_name'"});
+    }
+    const TokenId function_name_label = consume();
+    if (!isLocFunctionNameLabel(token(function_name_label).kind)) {
+      return std::unexpected(CstParseDiagnostic{
+          token(function_name_label).range, "expected function name label"});
+    }
+    std::optional<TokenId> plus;
+    std::optional<TokenId> function_name_offset;
+    if (token(peek()).kind == TokenKind::Plus) {
+      plus = consume();
+      const TokenId offset = consume();
+      if (!isIntegerLiteral(token(offset).kind)) {
+        return std::unexpected(CstParseDiagnostic{
+            token(offset).range, "expected integer function name offset"});
+      }
+      function_name_offset = offset;
+    }
+    auto inlined_at_comma = expect(TokenKind::Comma, "comma before inlined_at");
+    if (!inlined_at_comma)
+      return std::unexpected(inlined_at_comma.error());
+    const TokenId inlined_at_keyword = consume();
+    if (token(inlined_at_keyword).kind != TokenKind::Ident ||
+        token(inlined_at_keyword).text != "inlined_at") {
+      return std::unexpected(CstParseDiagnostic{
+          token(inlined_at_keyword).range, "expected 'inlined_at'"});
+    }
+    auto inline_file_index = expect(TokenKind::Decimal, "inlined source file index");
+    if (!inline_file_index)
+      return std::unexpected(inline_file_index.error());
+    auto inline_line_number = expect(TokenKind::Decimal, "inlined source line number");
+    if (!inline_line_number)
+      return std::unexpected(inline_line_number.error());
+    auto inline_column_position =
+        expect(TokenKind::Decimal, "inlined source column position");
+    if (!inline_column_position)
+      return std::unexpected(inline_column_position.error());
+    last = *inline_column_position;
+    inline_context = syntax_cst::CstLocInlineContext{
+        .function_name_comma = function_name_comma,
+        .function_name_keyword = function_name_keyword,
+        .function_name_label = function_name_label,
+        .plus = plus,
+        .function_name_offset = function_name_offset,
+        .inlined_at_comma = *inlined_at_comma,
+        .inlined_at_keyword = inlined_at_keyword,
+        .file_index = *inline_file_index,
+        .line_number = *inline_line_number,
+        .column_position = *inline_column_position,
+        .token_range = {function_name_comma, last + 1},
+    };
+  }
+  std::optional<TokenId> terminator;
+  if (token(peek()).kind == TokenKind::Semicolon) {
+    terminator = consume();
+    last = *terminator;
+  }
+  return syntax_cst::CstLocDirective{
+      .directive = directive,
+      .file_index = *file_index,
+      .line_number = *line_number,
+      .column_position = *column_position,
+      .inline_context = std::move(inline_context),
+      .terminator = terminator,
+      .token_range = {directive, last + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
 PtxCstParser::parseFunctionBodyItem() {
   if (token(peek()).kind == TokenKind::LBrace) {
@@ -1175,6 +1277,13 @@ PtxCstParser::parseFunctionBodyItem() {
     if (!declaration)
       return std::unexpected(declaration.error());
     return std::move(*declaration);
+  }
+
+  if (token(peek()).kind == TokenKind::DotLoc) {
+    auto location = parseLocDirective();
+    if (!location)
+      return std::unexpected(location.error());
+    return std::move(*location);
   }
 
   if (token(peek()).kind == TokenKind::Ident) {

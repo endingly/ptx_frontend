@@ -515,6 +515,33 @@ syntax_ast::AstBranchTargets lowerBranchTargets(
   };
 }
 
+syntax_ast::AstLocDirective lowerLocDirective(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstLocDirective& location) {
+  std::optional<syntax_ast::AstLocInlineContext> inline_context;
+  if (location.inline_context) {
+    const auto& context = *location.inline_context;
+    inline_context = syntax_ast::AstLocInlineContext{
+        .function_name_label = lowerIdentifier(cst, {context.function_name_label}),
+        .function_name_offset =
+            context.function_name_offset
+                ? std::optional{leafSyntax(cst, *context.function_name_offset)}
+                : std::nullopt,
+        .file_index = leafSyntax(cst, context.file_index),
+        .line_number = leafSyntax(cst, context.line_number),
+        .column_position = leafSyntax(cst, context.column_position),
+        .range = cst.sourceRange(context.token_range),
+    };
+  }
+  return syntax_ast::AstLocDirective{
+      .file_index = leafSyntax(cst, location.file_index),
+      .line_number = leafSyntax(cst, location.line_number),
+      .column_position = leafSyntax(cst, location.column_position),
+      .inline_context = std::move(inline_context),
+      .range = cst.sourceRange(location.token_range),
+  };
+}
+
 syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
                                 const syntax_cst::CstBlock& block);
 
@@ -540,6 +567,10 @@ syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
   if (const auto* targets =
           std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
     return lowerBranchTargets(cst, *targets);
+  }
+  if (const auto* location =
+          std::get_if<syntax_cst::CstLocDirective>(&body_item)) {
+    return lowerLocDirective(cst, *location);
   }
   if (const auto* block =
           std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body_item)) {

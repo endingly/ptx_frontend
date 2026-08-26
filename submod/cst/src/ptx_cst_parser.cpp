@@ -73,6 +73,12 @@ bool isModuleDirective(TokenKind kind) {
          kind == TokenKind::DotAddressSize || kind == TokenKind::DotFile;
 }
 
+bool isKernelResourceDirective(TokenKind kind) {
+  return kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMaxntid ||
+         kind == TokenKind::DotReqntid ||
+         kind == TokenKind::DotMinnctapersm;
+}
+
 bool isFunctionQualifier(TokenKind kind) {
   return kind == TokenKind::DotExtern || kind == TokenKind::DotVisible ||
          kind == TokenKind::DotWeak;
@@ -1292,6 +1298,49 @@ PtxCstParser::parsePragma() {
   };
 }
 
+std::expected<syntax_cst::CstKernelResourceDirective, CstParseDiagnostic>
+PtxCstParser::parseKernelResourceDirective() {
+  const TokenId directive = consume();
+  const TokenKind kind = token(directive).kind;
+  if (!isKernelResourceDirective(kind)) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected kernel resource directive"});
+  }
+
+  auto first = expect(TokenKind::Decimal, "kernel resource value");
+  if (!first)
+    return std::unexpected(first.error());
+  std::vector<TokenId> values{*first};
+  std::vector<TokenId> commas;
+
+  if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMinnctapersm) {
+    if (token(peek()).kind == TokenKind::Comma) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range, "this kernel resource directive accepts one value"});
+    }
+  } else {
+    while (token(peek()).kind == TokenKind::Comma) {
+      commas.push_back(consume());
+      if (values.size() == 3) {
+        return std::unexpected(CstParseDiagnostic{
+            token(peek()).range,
+            "thread-count kernel resource directives accept at most three values"});
+      }
+      auto value = expect(TokenKind::Decimal, "kernel resource value after comma");
+      if (!value)
+        return std::unexpected(value.error());
+      values.push_back(*value);
+    }
+  }
+  const TokenId last = values.back();
+  return syntax_cst::CstKernelResourceDirective{
+      .directive = directive,
+      .values = std::move(values),
+      .commas = std::move(commas),
+      .token_range = {directive, last + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
 PtxCstParser::parseFunctionBodyItem() {
   if (token(peek()).kind == TokenKind::LBrace) {
@@ -1319,6 +1368,12 @@ PtxCstParser::parseFunctionBodyItem() {
     if (!pragma)
       return std::unexpected(pragma.error());
     return std::move(*pragma);
+  }
+
+  if (isKernelResourceDirective(token(peek()).kind)) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "kernel resource directives are only valid in an entry function header"});
   }
 
   if (token(peek()).kind == TokenKind::Ident) {
@@ -1589,17 +1644,30 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
   }
 
   std::vector<syntax_cst::CstPragma> pragmas;
-  while (token(peek()).kind == TokenKind::DotPragma) {
+  std::vector<syntax_cst::CstKernelResourceDirective> resources;
+  while (token(peek()).kind == TokenKind::DotPragma ||
+         isKernelResourceDirective(token(peek()).kind)) {
     if (token(directive).kind != TokenKind::DotEntry) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
-          "'.pragma' is only valid in an entry function header"});
+          token(peek()).kind == TokenKind::DotPragma
+              ? "'.pragma' is only valid in an entry function header"
+              : "kernel resource directives are only valid in an entry "
+                "function header"});
     }
-    auto pragma = parsePragma();
-    if (!pragma)
-      return std::unexpected(pragma.error());
-    append_range(pragma->token_range);
-    pragmas.push_back(std::move(*pragma));
+    if (token(peek()).kind == TokenKind::DotPragma) {
+      auto pragma = parsePragma();
+      if (!pragma)
+        return std::unexpected(pragma.error());
+      append_range(pragma->token_range);
+      pragmas.push_back(std::move(*pragma));
+    } else {
+      auto resource = parseKernelResourceDirective();
+      if (!resource)
+        return std::unexpected(resource.error());
+      append_range(resource->token_range);
+      resources.push_back(std::move(*resource));
+    }
   }
 
   if (token(peek()).kind == TokenKind::Eof) {
@@ -1627,6 +1695,7 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
         .parameters = std::move(parameters),
         .noreturn_directive = noreturn_directive,
         .pragmas = std::move(pragmas),
+        .resources = std::move(resources),
         .header_tokens = std::move(header_tokens),
         .left_brace = std::nullopt,
         .body = {},
@@ -1659,6 +1728,7 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       .parameters = std::move(parameters),
       .noreturn_directive = noreturn_directive,
       .pragmas = std::move(pragmas),
+      .resources = std::move(resources),
       .header_tokens = std::move(header_tokens),
       .left_brace = left_brace,
       .body = std::move(body),
@@ -1741,6 +1811,11 @@ PtxCstParser::parseModule() {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
           "'.branchtargets' is only valid inside a function body"});
+    }
+    if (isKernelResourceDirective(token(peek()).kind)) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "kernel resource directives are only valid in an entry function header"});
     }
 
     if (token(peek()).kind == TokenKind::Ident) {

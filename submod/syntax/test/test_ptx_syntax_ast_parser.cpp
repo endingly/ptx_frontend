@@ -449,6 +449,48 @@ TEST(PtxSyntaxParser, LowersPragmasAtAllSupportedScopes) {
   EXPECT_EQ(nested_pragma.range.start.line, 5u);
 }
 
+TEST(PtxSyntaxParser, LowersEntryKernelResourceDirectives) {
+  constexpr std::string_view source = R"ptx(.entry kernel() .pragma "before";
+    .maxnreg 32 .maxntid 16, 8, 4 .pragma "after";
+    .minnctapersm 2 { }
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(result->items.front());
+  ASSERT_EQ(function.pragmas.size(), 2u);
+  ASSERT_EQ(function.resources.size(), 3u);
+  const auto& maxnreg = function.resources[0];
+  EXPECT_EQ(maxnreg.kind, syntax_ast::AstKernelResourceKind::MaxNreg);
+  ASSERT_EQ(maxnreg.values.size(), 1u);
+  EXPECT_EQ(maxnreg.values[0].text, "32");
+  EXPECT_EQ(maxnreg.range.start.line, 2u);
+  const auto& maxntid = function.resources[1];
+  EXPECT_EQ(maxntid.kind, syntax_ast::AstKernelResourceKind::MaxNtid);
+  ASSERT_EQ(maxntid.values.size(), 3u);
+  EXPECT_EQ(maxntid.values[1].text, "8");
+  EXPECT_EQ(maxntid.values[2].range.start.line, 2u);
+  EXPECT_EQ(function.resources[2].kind,
+            syntax_ast::AstKernelResourceKind::MinNctaPerSm);
+}
+
+TEST(PtxSyntaxParser, LowersRequiredThreadCountDirective) {
+  PtxSyntaxParser parser(".entry kernel() .reqntid 64, 2 { }");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(result->items.front());
+  ASSERT_EQ(function.resources.size(), 1u);
+  EXPECT_EQ(function.resources[0].kind,
+            syntax_ast::AstKernelResourceKind::ReqNtid);
+  EXPECT_EQ(function.resources[0].values.size(), 2u);
+}
+
 TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 2 4237 0

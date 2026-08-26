@@ -30,8 +30,8 @@ body 中的 instruction 由现有 instruction parser 处理。variable declarati
 array dimension 与 scalar initializer 使用结构化 constant-expression tree；brace
 initializer 则递归保留每一层花括号、元素和逗号。CST 同时保留受支持 function grammar
 的 qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
-尚未结构化建模的 function header token（例如 `.maxntid`）会在 CST 边界直接报错，不会
-作为 opaque token 被接受后再由 AST lowering 静默丢弃。
+entry header 还会结构化保留 `.maxnreg`、`.maxntid`、`.reqntid` 与
+`.minnctapersm`：CST 保留 directive、整数 value 与 comma，AST 保留 kind、value 与 range。
 
 CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
 token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此
@@ -58,8 +58,9 @@ index、DWARF label 以及向 instruction/label 附着 source location 仍留待
 payload token spelling；section name 只是 syntax，不是普通可绑定 identifier。DWARF payload type、
 private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar
 会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
-comma-separated string list；它不进入 binding 或 Resolved IR。当前仍不接受 kernel-tuning
-directive、错误恢复节点、missing-token 插入或 token edit API。initializer
+comma-separated string list；它不进入 binding 或 Resolved IR。entry header 中 pragma 可与四个
+已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。当前
+仍不接受其他 kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 

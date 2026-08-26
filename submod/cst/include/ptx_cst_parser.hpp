@@ -75,6 +75,8 @@ class PtxCstParser {
   std::expected<syntax_cst::CstLocDirective, CstParseDiagnostic>
   parseLocDirective();
   std::expected<syntax_cst::CstPragma, CstParseDiagnostic> parsePragma();
+  std::expected<syntax_cst::CstKernelResourceDirective, CstParseDiagnostic>
+  parseKernelResourceDirective();
   std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
   parseFunctionBodyItem();
   std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock();

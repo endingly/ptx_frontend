@@ -38,9 +38,9 @@ Array dimensions and scalar initializers use structured constant-expression
 trees; brace initializers recursively retain every brace level, element, and
 comma. Function qualifiers and the complete token sequence for the supported
 header grammar remain in the CST; the entry/function kind and name are also
-identified explicitly. An unmodeled function-header token such as `.maxntid`
-is rejected at the CST boundary instead of being accepted as an opaque token
-and silently discarded during AST lowering.
+identified explicitly. Entry headers additionally retain typed `.maxnreg`,
+`.maxntid`, `.reqntid`, and `.minnctapersm` constraints: CST retains directive,
+integer values, and commas, while AST retains kind, values, and ranges.
 
 The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
 selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the
@@ -74,8 +74,10 @@ braces and raw DWARF payload token spelling in CST and AST; section names are
 syntax, not ordinary bound identifiers. DWARF payload typing, private labels,
 and `.loc` offset validation remain deferred. `.pragma` preserves a nonempty
 comma-separated string list at module, entry-header, and function/nested-block
-statement scope; it does not enter binding or Resolved IR. The module grammar
-does not yet accept kernel-tuning directives,
+statement scope; it does not enter binding or Resolved IR. Entry-header
+pragmas may be interleaved with the four supported kernel-resource directives;
+their concrete order remains lossless in the CST header token sequence. The
+module grammar does not yet accept other kernel-tuning directives,
 recovery nodes, missing-token insertion, or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.

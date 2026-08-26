@@ -335,6 +335,20 @@ struct AstPragma {
   SourceRange range;
 };
 
+enum class AstKernelResourceKind : uint8_t {
+  MaxNreg,
+  MaxNtid,
+  ReqNtid,
+  MinNctaPerSm,
+};
+
+/** A per-entry kernel resource constraint retained from the function header. */
+struct AstKernelResourceDirective {
+  AstKernelResourceKind kind{};
+  std::vector<AstSyntax> values;
+  SourceRange range;
+};
+
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
@@ -409,6 +423,7 @@ struct AstFunction {
   std::vector<AstFunctionParameter> return_parameters;
   std::vector<AstFunctionParameter> parameters;
   std::vector<AstPragma> pragmas;
+  std::vector<AstKernelResourceDirective> resources;
   std::vector<AstFunctionBodyItem> body;
   SourceRange range;
 };

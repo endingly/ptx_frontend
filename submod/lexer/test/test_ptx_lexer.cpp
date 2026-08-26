@@ -266,6 +266,17 @@ TEST(PtxLexerNew, ModuleDirectivesRemainDedicatedTokens) {
   expect_token(toks[5], TokenKind::Decimal, "64");
 }
 
+TEST(PtxLexerNew, KernelResourceDirectivesRemainDedicatedTokens) {
+  const auto toks = lex_all(
+      ".maxnreg 32 .maxntid 16, 8 .reqntid 64 .minnctapersm 2");
+
+  ASSERT_EQ(toks.size(), 10u);
+  expect_token(toks[0], TokenKind::DotMaxnreg, ".maxnreg");
+  expect_token(toks[2], TokenKind::DotMaxntid, ".maxntid");
+  expect_token(toks[6], TokenKind::DotReqntid, ".reqntid");
+  expect_token(toks[8], TokenKind::DotMinnctapersm, ".minnctapersm");
+}
+
 TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
   const auto toks = lex_all(
       ".file 0 \"source.ptx\", 0, 18446744073709551615U");

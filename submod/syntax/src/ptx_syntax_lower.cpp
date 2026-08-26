@@ -554,6 +554,37 @@ syntax_ast::AstPragma lowerPragma(const syntax_cst::CstFile& cst,
   };
 }
 
+syntax_ast::AstKernelResourceDirective lowerKernelResourceDirective(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstKernelResourceDirective& resource) {
+  syntax_ast::AstKernelResourceKind kind;
+  switch (cst.token(resource.directive).kind) {
+    case TokenKind::DotMaxnreg:
+      kind = syntax_ast::AstKernelResourceKind::MaxNreg;
+      break;
+    case TokenKind::DotMaxntid:
+      kind = syntax_ast::AstKernelResourceKind::MaxNtid;
+      break;
+    case TokenKind::DotReqntid:
+      kind = syntax_ast::AstKernelResourceKind::ReqNtid;
+      break;
+    case TokenKind::DotMinnctapersm:
+      kind = syntax_ast::AstKernelResourceKind::MinNctaPerSm;
+      break;
+    default:
+      throw std::logic_error("invalid kernel resource directive in CST");
+  }
+  std::vector<syntax_ast::AstSyntax> values;
+  values.reserve(resource.values.size());
+  for (const auto value : resource.values)
+    values.push_back(leafSyntax(cst, value));
+  return syntax_ast::AstKernelResourceDirective{
+      .kind = kind,
+      .values = std::move(values),
+      .range = cst.sourceRange(resource.token_range),
+  };
+}
+
 syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
                                 const syntax_cst::CstBlock& block);
 
@@ -724,6 +755,7 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         .return_parameters = {},
         .parameters = {},
         .pragmas = {},
+        .resources = {},
         .body = {},
         .range = cst.sourceRange(function.token_range),
     };
@@ -745,6 +777,9 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
     lowered.pragmas.reserve(function.pragmas.size());
     for (const auto& pragma : function.pragmas)
       lowered.pragmas.push_back(lowerPragma(cst, pragma));
+    lowered.resources.reserve(function.resources.size());
+    for (const auto& resource : function.resources)
+      lowered.resources.push_back(lowerKernelResourceDirective(cst, resource));
     lowered.body.reserve(function.body.size());
     for (const auto& body_item : function.body)
       lowered.body.push_back(lowerFunctionBodyItem(cst, body_item));

@@ -276,6 +276,14 @@ struct CstPragma {
   CstTokenRange token_range;
 };
 
+/** A per-entry kernel resource constraint in a function header. */
+struct CstKernelResourceDirective {
+  TokenId directive{};
+  std::vector<TokenId> values;
+  std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+
 /** A module-level directive and its concrete token payload. */
 struct CstModuleDirective {
   TokenId keyword{};
@@ -395,6 +403,7 @@ struct CstFunction {
   std::optional<CstFunctionParameterList> parameters;
   std::optional<TokenId> noreturn_directive;
   std::vector<CstPragma> pragmas;
+  std::vector<CstKernelResourceDirective> resources;
   std::vector<TokenId> header_tokens;
   std::optional<TokenId> left_brace;
   std::vector<CstFunctionBodyItem> body;

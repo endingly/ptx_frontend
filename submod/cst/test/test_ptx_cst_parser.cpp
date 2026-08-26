@@ -568,6 +568,68 @@ TEST(PtxCstParser, RejectsMalformedOrInvalidHeaderPragmas) {
   }
 }
 
+TEST(PtxCstParser, RetainsEntryKernelResourceDirectives) {
+  constexpr std::string_view source = R"ptx(.entry kernel() .pragma "before";
+    .maxnreg 32 .maxntid 16, 8, 4 .pragma "after";
+    .minnctapersm 2 { }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.pragmas.size(), 2u);
+  ASSERT_EQ(function.resources.size(), 3u);
+  const auto& maxnreg = function.resources[0];
+  EXPECT_EQ(result->token(maxnreg.directive).kind, TokenKind::DotMaxnreg);
+  ASSERT_EQ(maxnreg.values.size(), 1u);
+  EXPECT_EQ(result->token(maxnreg.values[0]).text, "32");
+  EXPECT_TRUE(maxnreg.commas.empty());
+  const auto& maxntid = function.resources[1];
+  EXPECT_EQ(result->token(maxntid.directive).kind, TokenKind::DotMaxntid);
+  ASSERT_EQ(maxntid.values.size(), 3u);
+  EXPECT_EQ(result->token(maxntid.values[2]).text, "4");
+  ASSERT_EQ(maxntid.commas.size(), 2u);
+  EXPECT_EQ(result->sourceRange(maxntid.token_range).start.line, 2u);
+  EXPECT_EQ(result->token(function.resources[2].directive).kind,
+            TokenKind::DotMinnctapersm);
+}
+
+TEST(PtxCstParser, ParsesRequiredThreadCountDimensions) {
+  PtxCstParser parser(".entry kernel() .reqntid 16, 8 { }");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.resources.size(), 1u);
+  EXPECT_EQ(result->token(function.resources[0].directive).kind,
+            TokenKind::DotReqntid);
+  EXPECT_EQ(function.resources[0].values.size(), 2u);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrMisplacedKernelResourceDirectives) {
+  for (const std::string_view source : {
+           ".maxnreg 32",
+           ".func device() .maxnreg 32 { }",
+           ".entry kernel() { .maxnreg 32 }",
+           ".entry kernel() { { .reqntid 32 } }",
+           ".entry kernel() .maxnreg { }",
+           ".entry kernel() .maxnreg 1, 2 { }",
+           ".entry kernel() .maxntid 1, { }",
+           ".entry kernel() .maxntid 1, 2, 3, 4 { }",
+           ".entry kernel() .reqntid 1.0 { }",
+           ".entry kernel() .minnctapersm 2; { }",
+       }) {
+    PtxCstParser parser(source);
+    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+  }
+}
+
 TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 2 4237 0
@@ -691,7 +753,6 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
 
 TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
   for (const std::string_view source : {
-           ".entry kernel() .maxntid 128, 1, 1 {}",
            ".func helper() unexpected;",
        }) {
     PtxCstParser parser(source);

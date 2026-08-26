@@ -30,6 +30,7 @@ enum class SymbolKind : uint8_t {
   Variable,
   InputParameter,
   ReturnParameter,
+  CallParameter,
   Function,
   Label,
 };

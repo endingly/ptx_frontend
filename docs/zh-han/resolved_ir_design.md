@@ -126,8 +126,8 @@ address 与 kernel formal parameter 的 `mov` 取址仍得到 `.param` address�
 formal parameter 经 `mov` 取址会将参数物化到 stack，因此得到 `.local` address。
 device-function formal parameter 的 `mov` 地址值携带 PTX 2.0 / SM 20 baseline；return
 parameter 再把最低 PTX 提升至 6.0，供 checker 按 target 检查。function-local `.param`
-call-argument variable 不能由
-`mov` 取址。standalone resolution 无法完成 lexical binding，因此和 branch target 一样保留
+call-argument variable 是独立的 bound symbol：direct `ld.param`/`st.param` 地址保留 `.param`、
+匹配任一 parameter direction，并要求 PTX 2.0 / SM 20；仍不能由 `mov` 取址。standalone resolution 无法完成 lexical binding，因此和 branch target 一样保留
 空 identity/state-space。`ResolvedMovSource` 在 binding 后区分 register、immediate、special
 register、data symbol 与 address expression，避免这些 identifier 形状在 variant/layout 选择
 阶段产生歧义。standalone resolution 无法区分未绑定名称是 data 还是 function，因此仍保留为
@@ -187,7 +187,7 @@ modern load/store vector 可使用部分 sink，all-sink 与 legacy sink 仍拒�
 `.v2/.v4` 与 modern 256-bit 的静态 natural alignment 会按 total access size 检查已知 address。
 
 `ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的
-`InputParameter`/`ReturnParameter` 推导可选 parameter direction，不根据 spelling 猜测。
+`InputParameter`/`ReturnParameter`/function-local call argument 推导可选 parameter direction，不根据 spelling 猜测。
 对于 explicit `.param`，生成的 operand constraint 要求 `ld` 使用 input parameter、`st`
 使用 return parameter；已知方向错误只报告 `ParameterDirectionMismatch`，不叠加 target
 诊断。device-function `ld.param` 与所有 `st.param` 都应用 YAML 提供的 PTX 2.0 / SM 20

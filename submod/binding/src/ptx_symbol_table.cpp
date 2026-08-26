@@ -337,8 +337,13 @@ struct SymbolTableBuilder {
       ScopeId scope, const syntax_ast::AstVariableDeclaration& declaration) {
     const SymbolLinkage declaration_linkage =
         linkage(declaration.qualifiers, declaration.range);
+    const SymbolKind kind =
+        scope != result.table.moduleScope() &&
+                declaration.state_space == syntax_ast::AstStateSpace::Parameter
+            ? SymbolKind::CallParameter
+            : SymbolKind::Variable;
     for (const auto& declarator : declaration.declarators) {
-      addSymbol(scope, SymbolKind::Variable, declarator.name.syntax.text,
+      addSymbol(scope, kind, declarator.name.syntax.text,
                 declarator.name.syntax.range, declaration_linkage,
                 declaration.state_space, declaration.type.text,
                 declarationAlignment(declaration.alignment,
@@ -425,7 +430,8 @@ struct SymbolTableBuilder {
   bool isRegisterOrParameter(const Symbol& symbol) const {
     const bool supported_kind = symbol.kind == SymbolKind::Variable ||
                                 symbol.kind == SymbolKind::InputParameter ||
-                                symbol.kind == SymbolKind::ReturnParameter;
+                                symbol.kind == SymbolKind::ReturnParameter ||
+                                symbol.kind == SymbolKind::CallParameter;
     return supported_kind && symbol.state_space &&
            (*symbol.state_space == syntax_ast::AstStateSpace::Register ||
             *symbol.state_space == syntax_ast::AstStateSpace::Parameter);

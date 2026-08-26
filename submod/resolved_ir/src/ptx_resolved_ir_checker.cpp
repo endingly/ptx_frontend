@@ -179,6 +179,8 @@ std::string_view parameter_direction_name(ParameterDirection direction) noexcept
       return "input";
     case ParameterDirection::Return:
       return "return";
+    case ParameterDirection::CallArgument:
+      return "call argument";
   }
   return "unknown";
 }
@@ -198,6 +200,7 @@ void append_parameter_address_diagnostics(
   }
 
   if (operand.parameter_direction != ParameterDirection::None &&
+      operand.parameter_direction != ParameterDirection::CallArgument &&
       operand.parameter_direction != constraint.direction) {
     // Direction is the more specific error and suppresses contextual target
     // diagnostics for the same address.
@@ -215,7 +218,8 @@ void append_parameter_address_diagnostics(
   }
 
   if (constraint.direction == ParameterDirection::Return ||
-      operand.enclosing_function_kind == EnclosingFunctionKind::Device) {
+      operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
+      operand.parameter_direction == ParameterDirection::CallArgument) {
     append_address_constraint_availability_diagnostics(
         constraint.function_availability, "Parameter address", operand,
         context, diagnostics);

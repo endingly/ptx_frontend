@@ -664,7 +664,8 @@ resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
   const bool parameter_or_variable =
       symbol.kind == binding::SymbolKind::Variable ||
       symbol.kind == binding::SymbolKind::InputParameter ||
-      symbol.kind == binding::SymbolKind::ReturnParameter;
+      symbol.kind == binding::SymbolKind::ReturnParameter ||
+      symbol.kind == binding::SymbolKind::CallParameter;
   const bool allowed_space = symbol.state_space &&
       (*symbol.state_space == syntax_ast::AstStateSpace::Register ||
        *symbol.state_space == syntax_ast::AstStateSpace::Parameter);
@@ -897,7 +898,10 @@ bool is_addressable_data_symbol(const binding::Symbol& symbol,
   }
   return parameter_policy != FormalParameterAddressPolicy::Reject &&
          (symbol.kind == binding::SymbolKind::InputParameter ||
-          symbol.kind == binding::SymbolKind::ReturnParameter) &&
+          symbol.kind == binding::SymbolKind::ReturnParameter ||
+          (parameter_policy ==
+               FormalParameterAddressPolicy::PreserveParameterSpace &&
+           symbol.kind == binding::SymbolKind::CallParameter)) &&
          symbol.state_space == syntax_ast::AstStateSpace::Parameter;
 }
 

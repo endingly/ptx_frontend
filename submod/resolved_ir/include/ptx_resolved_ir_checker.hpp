@@ -60,11 +60,12 @@ enum class EnclosingFunctionKind : uint8_t {
   Device,
 };
 
-/** Formal-parameter direction independent of binding-layer enum types. */
+/** Parameter role independent of binding-layer enum types. */
 enum class ParameterDirection : uint8_t {
   None,
   Input,
   Return,
+  CallArgument,
 };
 
 namespace checker {
@@ -248,7 +249,7 @@ struct OperandView {
   std::optional<uint64_t> address_alignment;
   /** Function provenance is independent of whether the base binds a symbol. */
   EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
-  /** None unless the base binds an input or return parameter declaration. */
+  /** None unless the base binds a formal or call-argument parameter. */
   ParameterDirection parameter_direction = ParameterDirection::None;
   std::array<ScalarType, 8> vector_element_types{};
   uint8_t vector_arity = 0;

@@ -107,8 +107,8 @@ parameterized member、declaration kind、声明 state space 与实际 address s
 parameter memory address 与 kernel formal parameter 的 `mov` 地址属于 `.param`，
 device-function formal parameter 的 `mov` 地址属于 `.local`，且 return parameter 取址由
 checker 在所有 device parameter 上要求 PTX 2.0 / SM 20 baseline，并将 return parameter 的
-最低 PTX 提升至 6.0。function-local `.param` variable 仍拒绝取址；
-standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
+最低 PTX 提升至 6.0。function-local `.param` call-argument variable 与 formal parameter 分开绑定；
+direct `ld.param`/`st.param` 可取址，`mov` 仍拒绝取址。standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
 同一稳定 `SymbolId` 与 `.func/.entry` 类别；kernel function 地址由 checker 要求 PTX 3.1 /
 SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
 后续语义阶段仍需完成：

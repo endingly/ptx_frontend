@@ -51,6 +51,7 @@ enum class DeclarationDiagnosticKind : uint8_t {
   MultipleDefinitions,
   InvalidLinkage,
   InvalidAlignment,
+  ModuleScopeParameter,
 };
 
 struct DeclarationDiagnostic {

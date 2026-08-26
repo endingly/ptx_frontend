@@ -1300,6 +1300,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "parameter_direction = ParameterDirection::Return", source
         )
         self.assertIn(
+            "parameter_direction = ParameterDirection::CallArgument", source
+        )
+        self.assertIn(
             "ParameterDirection parameter_direction = ParameterDirection::None",
             source,
         )

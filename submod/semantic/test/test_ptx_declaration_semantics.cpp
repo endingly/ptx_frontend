@@ -214,5 +214,13 @@ TEST(PtxDeclarationSemantics, RequiresPositivePowerOfTwoAlignment) {
             4u);
 }
 
+TEST(PtxDeclarationSemantics, RejectsModuleScopeParameterVariables) {
+  const CheckedModule result = check(".param .u32 staging;");
+
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::ModuleScopeParameter),
+            1u);
+}
+
 }  // namespace
 }  // namespace ptx_frontend::declaration_semantics

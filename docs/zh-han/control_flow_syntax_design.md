@@ -68,6 +68,13 @@ directive、非空且有序的 function-name list、comma、semicolon，以及�
 Parser 会拒绝 empty list、trailing comma、缺少 local label 或 module scope 中的使用；但会有意
 保留 duplicate name，I05 将利用逐项 range 诊断它们，并检查 declaration order 与 signature rule。
 
+## function-local `.branchtargets` 语法
+
+`.branchtargets` 现在有自己的 function-body CST/AST node。其非空且有序的 list 会保留
+普通 label 与 `N<5>` 这样的 compact entry；后者保留 name、count、angle punctuation 和单项
+range，不会展开为 synthetic label。duplicate 会保留给 I05 处理。本 issue 不 binding member，
+也不把 declaration 连接到 instruction：PTX 9.3 通过 `brx.idx` 使用它，该 integration 仍在范围外。
+
 对于 module 中的 direct named call，resolution 会查找 callee 的 canonical
 prototype/definition signature，按顺序比较 return/input 的数量；随后复用 call-argument
 compatibility contract 检查 `.reg/.param` type 与 vector shape、`.param .b8` array 的

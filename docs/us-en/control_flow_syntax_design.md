@@ -94,6 +94,15 @@ list, a trailing comma, and use without a local label or at module scope. It
 intentionally preserves duplicate names: I05 will diagnose them using the
 individual member ranges, together with declaration order and signature rules.
 
+## Function-local `.branchtargets` syntax
+
+`.branchtargets` now has its own function-body CST/AST node. Its non-empty
+ordered list preserves ordinary labels and compact entries such as `N<5>`;
+the latter retain name, count, angle punctuation, and one entry range without
+expanding into synthetic labels. Duplicates remain intact for I05. This issue
+does not bind members or connect the declaration to an instruction: PTX 9.3
+uses it with `brx.idx`, and that integration remains out of scope.
+
 ## PTX 9.3 call parameter context
 
 `ld` accepts `.param`, `.param::entry`, and `.param::func`; `st` accepts

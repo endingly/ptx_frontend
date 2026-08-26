@@ -15,6 +15,7 @@ using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstCallPrototype;
 using syntax_cst::CstCallTargets;
+using syntax_cst::CstBranchTargets;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -259,6 +260,60 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallTargetsGrammar) {
             "'.calltargets' requires a preceding function-local label"},
            {"outside: .calltargets first;",
             "'.calltargets' is only valid inside a function body"},
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsFunctionLocalBranchTargetsStructure) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  table: .branchtargets L1, N<5>, L1;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& targets = std::get<CstBranchTargets>(function.body.front());
+  EXPECT_EQ(result->token(targets.label).text, "table");
+  EXPECT_EQ(result->token(targets.colon).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(targets.directive).kind, TokenKind::DotBranchTargets);
+  ASSERT_EQ(targets.targets.size(), 3u);
+  ASSERT_EQ(targets.commas.size(), 2u);
+  EXPECT_EQ(result->token(targets.targets[0].name).text, "L1");
+  EXPECT_FALSE(targets.targets[0].count.has_value());
+  EXPECT_EQ(result->token(targets.targets[1].name).text, "N");
+  ASSERT_TRUE(targets.targets[1].left_angle.has_value());
+  ASSERT_TRUE(targets.targets[1].count.has_value());
+  ASSERT_TRUE(targets.targets[1].right_angle.has_value());
+  EXPECT_EQ(result->token(*targets.targets[1].count).text, "5");
+  EXPECT_EQ(result->token(targets.targets[2].name).text, "L1");
+}
+
+TEST(PtxCstParser, RejectsMalformedAndNonlocalBranchTargetsGrammar) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".func f() { table: .branchtargets; }",
+            ".branchtargets requires at least one label target"},
+           {".func f() { table: .branchtargets L1,; }",
+            "branch target list cannot end with a trailing comma"},
+           {".func f() { table: .branchtargets N<>; }",
+            "expected branch target count"},
+           {".func f() { table: .branchtargets N<5; }",
+            "expected '>' after branch target count"},
+           {".func f() { .branchtargets L1; }",
+            "'.branchtargets' requires a preceding function-local label"},
+           {"outside: .branchtargets L1;",
+            "'.branchtargets' is only valid inside a function body"},
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();

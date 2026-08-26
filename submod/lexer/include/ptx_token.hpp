@@ -97,6 +97,7 @@ enum class TokenKind : uint16_t {
   // Control-flow metadata directives
   DotCallPrototype,
   DotCallTargets,
+  DotBranchTargets,
 
   // Kernel tuning directives
   DotMaxnreg,

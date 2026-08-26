@@ -1330,16 +1330,17 @@ ABI checker
 
 ### 当前状态
 
-M7-I01/I02 已完成：function-local `.callprototype` 与 `.calltargets` 以专用 lexer token
-和 CST/AST node 保留 label、signature payload/ordered target、PTX 9.3 suffix（prototype）
-与 SourceRange。两者尚未进入 binding、declaration semantics、Resolved IR 或 indirect-call
-descriptor；其余 M7 issue 仍未完成。
+M7-I01/I02/I03 已完成：function-local `.callprototype`、`.calltargets` 与
+`.branchtargets` 以专用 lexer token 和 CST/AST node 保留 label、signature payload/ordered
+target（包括未展开 compact branch entry）、PTX 9.3 suffix（prototype）与 SourceRange。三者
+尚未进入 binding、declaration semantics、Resolved IR 或 indirect-call descriptor；其余 M7
+issue 仍未完成。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
 | M7-I01 | ✅ | 独立 | 建模 `.callprototype` CST/AST | grammar、signature payload、scope 和 SourceRange 明确 |
 | M7-I02 | ✅ | 独立 | 建模 `.calltargets` CST/AST | target list、empty/duplicate rule 和 range 明确 |
-| M7-I03 | ⬜ | 独立 | 建模 `.branchtargets` CST/AST | label list 和 function scope 明确 |
+| M7-I03 | ✅ | 独立 | 建模 `.branchtargets` CST/AST | label list 和 function scope 明确 |
 | M7-I04 | ⬜ | 独立 | 扩展 metadata symbol kind | prototype、call-target set、branch-target set 拥有稳定 SymbolId |
 | M7-I05 | ⬜ | 独立 | 实现 metadata declaration semantics | duplicate、unresolved、scope 和 signature conflict 可检查 |
 | M7-I06 | ⬜ | 独立 | 建立 indirect callee resolved value | register target、prototype ref 和 target-set ref 表示明确 |

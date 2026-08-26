@@ -17,6 +17,7 @@ using syntax_ast::AstCallTarget;
 using syntax_ast::AstCallTargetSet;
 using syntax_ast::AstCallPrototype;
 using syntax_ast::AstCallTargets;
+using syntax_ast::AstBranchTargets;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstPredicateOperand;
@@ -174,6 +175,33 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallTargetsPayload) {
   EXPECT_EQ(targets.targets[2].syntax.text, "second");
   EXPECT_EQ(targets.range.start.line, 3u);
   EXPECT_EQ(targets.targets[1].syntax.range.start.column, 29u);
+}
+
+TEST(PtxSyntaxParser, LowersFunctionLocalBranchTargetsPayload) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  table: .branchtargets L1, N<5>, L1;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& targets = std::get<AstBranchTargets>(function.body.front());
+  EXPECT_EQ(targets.label.syntax.text, "table");
+  ASSERT_EQ(targets.targets.size(), 3u);
+  EXPECT_EQ(targets.targets[0].name.syntax.text, "L1");
+  EXPECT_FALSE(targets.targets[0].count.has_value());
+  EXPECT_EQ(targets.targets[1].name.syntax.text, "N");
+  ASSERT_TRUE(targets.targets[1].count.has_value());
+  EXPECT_EQ(targets.targets[1].count->text, "5");
+  EXPECT_EQ(targets.targets[2].name.syntax.text, "L1");
+  EXPECT_EQ(targets.targets[1].range.start.line, 3u);
+  EXPECT_EQ(targets.targets[1].count->range.start.line, 3u);
 }
 
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {

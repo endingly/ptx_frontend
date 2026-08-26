@@ -329,9 +329,22 @@ struct AstCallTargets {
   SourceRange range;
 };
 
+struct AstBranchTargetEntry {
+  AstIdentifierRef name;
+  std::optional<AstSyntax> count;
+  SourceRange range;
+};
+
+/** A function-local label-associated indexed branch target list. */
+struct AstBranchTargets {
+  AstIdentifierRef label;
+  std::vector<AstBranchTargetEntry> targets;
+  SourceRange range;
+};
+
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
-                 AstCallTargets, AstInstruction>;
+                 AstCallTargets, AstBranchTargets, AstInstruction>;
 
 /** Initial function container; declarations and parameters refine this later. */
 struct AstFunction {

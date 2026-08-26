@@ -189,6 +189,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".func"                 { TOK(DotFunc); }
 ".callprototype"        { TOK(DotCallPrototype); }
 ".calltargets"          { TOK(DotCallTargets); }
+".branchtargets"        { TOK(DotBranchTargets); }
 
 ".maxnreg"              { TOK(DotMaxnreg); }
 ".maxntid"              { TOK(DotMaxntid); }

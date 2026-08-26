@@ -1068,6 +1068,73 @@ PtxCstParser::parseCallTargets(TokenId label, TokenId colon) {
   };
 }
 
+std::expected<syntax_cst::CstBranchTargets, CstParseDiagnostic>
+PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotBranchTargets) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected '.branchtargets'"});
+  }
+  if (token(peek()).kind == TokenKind::Semicolon) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        ".branchtargets requires at least one label target"});
+  }
+
+  std::vector<syntax_cst::CstBranchTargetEntry> targets;
+  std::vector<TokenId> commas;
+  for (;;) {
+    auto name = expect(TokenKind::Ident, "branch target label");
+    if (!name)
+      return std::unexpected(name.error());
+    std::optional<TokenId> left_angle;
+    std::optional<TokenId> count;
+    std::optional<TokenId> right_angle;
+    TokenId last = *name;
+    if (token(peek()).kind == TokenKind::Lt) {
+      left_angle = consume();
+      auto parsed_count = expect(TokenKind::Decimal, "branch target count");
+      if (!parsed_count)
+        return std::unexpected(parsed_count.error());
+      count = *parsed_count;
+      auto parsed_right_angle = expect(TokenKind::Gt, "'>' after branch target count");
+      if (!parsed_right_angle)
+        return std::unexpected(parsed_right_angle.error());
+      right_angle = *parsed_right_angle;
+      last = *right_angle;
+    }
+    targets.push_back(syntax_cst::CstBranchTargetEntry{
+        .name = *name,
+        .left_angle = left_angle,
+        .count = count,
+        .right_angle = right_angle,
+        .token_range = {*name, last + 1},
+    });
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+    if (token(peek()).kind == TokenKind::Semicolon) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "branch target list cannot end with a trailing comma"});
+    }
+  }
+
+  const auto semicolon =
+      expect(TokenKind::Semicolon, "';' after .branchtargets");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstBranchTargets{
+      .label = label,
+      .colon = colon,
+      .directive = directive,
+      .targets = std::move(targets),
+      .commas = std::move(commas),
+      .semicolon = *semicolon,
+      .token_range = {label, *semicolon + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFile, CstParseDiagnostic>
 PtxCstParser::parseInstruction() {
   auto root = parseInstructionNode();
@@ -1249,6 +1316,13 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
           body.emplace_back(std::move(*targets));
           continue;
         }
+        if (token(peek()).kind == TokenKind::DotBranchTargets) {
+          auto targets = parseBranchTargets(first_token, colon);
+          if (!targets)
+            return std::unexpected(targets.error());
+          body.emplace_back(std::move(*targets));
+          continue;
+        }
         body.emplace_back(
             syntax_cst::CstLabel{first_token, colon, {first_token, colon + 1}});
         continue;
@@ -1269,6 +1343,11 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
           "'.calltargets' requires a preceding function-local label"});
+    }
+    if (token(peek()).kind == TokenKind::DotBranchTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.branchtargets' requires a preceding function-local label"});
     }
 
     auto instruction = parseInstructionNode();
@@ -1345,6 +1424,11 @@ PtxCstParser::parseModule() {
           token(peek()).range,
           "'.calltargets' is only valid inside a function body"});
     }
+    if (token(peek()).kind == TokenKind::DotBranchTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.branchtargets' is only valid inside a function body"});
+    }
 
     if (token(peek()).kind == TokenKind::Ident) {
       consume();
@@ -1359,6 +1443,11 @@ PtxCstParser::parseModule() {
           return std::unexpected(CstParseDiagnostic{
               token(peek()).range,
               "'.calltargets' is only valid inside a function body"});
+        }
+        if (token(peek()).kind == TokenKind::DotBranchTargets) {
+          return std::unexpected(CstParseDiagnostic{
+              token(peek()).range,
+              "'.branchtargets' is only valid inside a function body"});
         }
       }
     }

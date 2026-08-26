@@ -299,6 +299,19 @@ TEST(PtxLexerNew, CallTargetsIsAControlFlowMetadataToken) {
   expect_token(toks[3], TokenKind::Ident, "second");
 }
 
+TEST(PtxLexerNew, BranchTargetsIsAControlFlowMetadataToken) {
+  auto toks = lex_all(".branchtargets L1, N<5>");
+
+  ASSERT_EQ(toks.size(), 7u);
+  expect_token(toks[0], TokenKind::DotBranchTargets, ".branchtargets");
+  expect_token(toks[1], TokenKind::Ident, "L1");
+  expect_token(toks[2], TokenKind::Comma, ",");
+  expect_token(toks[3], TokenKind::Ident, "N");
+  expect_token(toks[4], TokenKind::Lt, "<");
+  expect_token(toks[5], TokenKind::Decimal, "5");
+  expect_token(toks[6], TokenKind::Gt, ">");
+}
+
 TEST(PtxLexerNew, DeclarationDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".reg .align .ptr .global .const .shared .local .param");
 

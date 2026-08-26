@@ -488,6 +488,28 @@ syntax_ast::AstCallTargets lowerCallTargets(
   };
 }
 
+syntax_ast::AstBranchTargets lowerBranchTargets(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstBranchTargets& targets) {
+  std::vector<syntax_ast::AstBranchTargetEntry> lowered_targets;
+  lowered_targets.reserve(targets.targets.size());
+  for (const auto& target : targets.targets) {
+    std::optional<syntax_ast::AstSyntax> count;
+    if (target.count)
+      count = leafSyntax(cst, *target.count);
+    lowered_targets.push_back(syntax_ast::AstBranchTargetEntry{
+        .name = lowerIdentifier(cst, {target.name}),
+        .count = std::move(count),
+        .range = cst.sourceRange(target.token_range),
+    });
+  }
+  return syntax_ast::AstBranchTargets{
+      .label = lowerIdentifier(cst, {targets.label}),
+      .targets = std::move(lowered_targets),
+      .range = cst.sourceRange(targets.token_range),
+  };
+}
+
 }  // namespace
 
 std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
@@ -598,6 +620,9 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       } else if (const auto* targets =
                      std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
         lowered.body.emplace_back(lowerCallTargets(cst, *targets));
+      } else if (const auto* targets =
+                     std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
+        lowered.body.emplace_back(lowerBranchTargets(cst, *targets));
       } else {
         lowered.body.emplace_back(lowerInstructionNode(
             cst, std::get<syntax_cst::CstInstruction>(body_item)));

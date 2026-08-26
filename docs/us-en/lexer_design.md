@@ -221,8 +221,8 @@ token kinds. These include:
 - Module and debug directives such as `.version`, `.target`, and `.file`.
 - Visibility and linking directives such as `.visible` and `.extern`.
 - Function directives such as `.entry` and `.func`, plus the structurally
-  significant function-local `.callprototype` and `.calltargets` metadata
-  directives.
+  significant function-local `.callprototype`, `.calltargets`, and
+  `.branchtargets` metadata directives.
 - Kernel tuning directives such as `.maxnreg` and `.reqntid`.
 - Declaration directives such as `.reg`, `.global`, and `.param`.
 

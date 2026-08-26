@@ -68,7 +68,7 @@ fragment client 与 module client 执行 source→CST→AST。
 `AstFile` 采用相同的 root 区分方式，`AstModule` 则为 module directive 与 function
 提供 typed container。`AstFunction` 当前包含 function 类别、qualifier、名称，以及由
 `AstVariableDeclaration`、`AstLabel`、`AstCallPrototype`、`AstCallTargets` 和
-`AstInstruction` 组成的有序 body variant；`AstCallPrototype` 保留 label、sink、formal return/input payload，以及带
+`AstBranchTargets`、`AstInstruction` 组成的有序 body variant；`AstCallPrototype` 保留 label、sink、formal return/input payload，以及带
 range 的 PTX 9.3 `.noreturn` / ABI-preservation suffix；
 返回与输入 parameter 会保留 state space、alignment、type、pointer attribute、array
 形式、名称与 range。`AstConstantExpression` 结构化表示 literal/symbol、括号、cast、
@@ -89,6 +89,7 @@ Syntax AST 不再保存 trivia、标点 token 或组合 operand 的重建文本�
 - direct branch label target；
 - function-local `.callprototype` label、signature payload 和 PTX 9.3 suffix payload；
 - function-local `.calltargets` label 和有序 target identifier；
+- function-local `.branchtargets` label 和未展开的 compact target entry；
 - declaration array dimension、constant expression 与递归 initializer 结构；
 - diagnostic 所需的 source range；
 - generated layout descriptor 需要的 operand grammar alternative。

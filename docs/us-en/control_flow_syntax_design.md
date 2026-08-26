@@ -65,3 +65,21 @@ or a `CallTargetSet` fourth operand is rejected clearly: indirect calls need
 the still-unmodeled `.calltargets`/`.callprototype` metadata. Direct function
 signature/ABI comparison is deferred too; the existing declaration pass has
 no reusable call-contract representation.
+
+## PTX 9.3 call parameter context
+
+`ld` accepts `.param`, `.param::entry`, and `.param::func`; `st` accepts
+`.param` and `.param::func`. `::entry` addresses only an entry's formal input.
+`::func` addresses a device-function parameter or a function-local call
+parameter. The unqualified spelling defaults to entry parameters in an entry,
+to function parameters in a device function, and to function-local call
+parameters in either context.
+
+Only function-local `.param` variables are call staging. Their `st.param` input
+stores must be unpredicated and form the contiguous block immediately before a
+call that passes the same variable; their `ld.param` return loads must be
+unpredicated and form the contiguous block immediately after a call returning
+the same variable. Labels, declarations, and other instructions break a block.
+`call` itself may be predicated. `.uni` is retained as the programmer's
+uniformity assertion, so the frontend does not attempt unprovable static
+uniformity analysis or reject a predicated direct `call.uni`.

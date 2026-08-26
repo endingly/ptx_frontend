@@ -185,6 +185,50 @@ std::string_view parameter_direction_name(ParameterDirection direction) noexcept
   return "unknown";
 }
 
+std::string_view parameter_qualifier_name(
+    ParameterAddressQualifier qualifier) noexcept {
+  switch (qualifier) {
+    case ParameterAddressQualifier::Default:
+      return ".param";
+    case ParameterAddressQualifier::Entry:
+      return ".param::entry";
+    case ParameterAddressQualifier::Function:
+      return ".param::func";
+  }
+  return ".param";
+}
+
+void append_parameter_qualifier_diagnostics(
+    const OperandDescriptor& descriptor, const OperandView& operand,
+    std::optional<MemoryStateSpace> selected_state_space,
+    const Context& context, CheckDiagnostics& diagnostics) {
+  if (selected_state_space != MemoryStateSpace::Parameter ||
+      operand.parameter_qualifier == ParameterAddressQualifier::Default) {
+    return;
+  }
+
+  bool mismatch = false;
+  if (operand.parameter_qualifier == ParameterAddressQualifier::Entry) {
+    mismatch = operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
+               operand.parameter_direction == ParameterDirection::Return ||
+               operand.parameter_direction == ParameterDirection::CallArgument;
+  } else {
+    mismatch = operand.enclosing_function_kind == EnclosingFunctionKind::Entry &&
+               operand.parameter_direction == ParameterDirection::Input;
+  }
+  if (!mismatch)
+    return;
+
+  diagnostics.push_back(CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ParameterQualifierMismatch,
+      .range = diagnostic_range(operand.locations, context),
+      .message = fmt::format(
+          "Address operand '{}' uses {} for an incompatible parameter context.",
+          descriptor.target_field_id,
+          parameter_qualifier_name(operand.parameter_qualifier)),
+  });
+}
+
 void append_parameter_address_diagnostics(
     const OperandDescriptor& descriptor, const OperandView& operand,
     std::optional<MemoryStateSpace> selected_state_space,
@@ -372,6 +416,9 @@ CheckResult check_operands(
         }
       }
     }
+    append_parameter_qualifier_diagnostics(descriptor, *operand,
+                                           selected_state_space, context,
+                                           diagnostics);
     append_parameter_address_diagnostics(descriptor, *operand,
                                          selected_state_space, context,
                                          diagnostics);

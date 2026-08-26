@@ -2,7 +2,7 @@
 # yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
-ptx_isa: "9.2"
+ptx_isa: "9.3"
 category: data_movement_and_conversion
 codegen_category: data_movement
 section: "9.7.9"
@@ -404,7 +404,7 @@ instructions:
       Scalar and legacy v2/v4 forms, plus PTX 8.8 256-bit v8 32-bit and v4
       64-bit vector loads through a generic address or explicit global space.
       Alignment and other qualifiers remain separate coverage.
-    syntax: "ld{.const|.global|.local|.param|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} dst, [address]"
+    syntax: "ld{.const|.global|.local|.param|.param::entry|.param::func|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} dst, [address]"
 
     variants:
       - name: ld_generic_scalar
@@ -494,7 +494,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [const, global, local, param, shared]
+            values: [const, global, local, param, param::entry, param::func, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -601,7 +601,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [const, global, local, param, shared]
+            values: [const, global, local, param, param::entry, param::func, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -662,7 +662,7 @@ instructions:
       Scalar and legacy v2/v4 forms, plus PTX 8.8 256-bit v8 32-bit and v4
       64-bit vector stores through a generic address or explicit global space.
       Alignment and other qualifiers remain separate coverage.
-    syntax: "st{.global|.local|.param|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} [address], src"
+    syntax: "st{.global|.local|.param|.param::func|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} [address], src"
 
     variants:
       - name: st_generic_scalar
@@ -720,7 +720,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [global, local, param, shared]
+            values: [global, local, param, param::func, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -827,7 +827,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [global, local, param, shared]
+            values: [global, local, param, param::func, shared]
           - name: cache
             kind: cache
             domain: cache_operators

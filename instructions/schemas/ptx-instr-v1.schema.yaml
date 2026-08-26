@@ -304,6 +304,8 @@ $defs:
       - global
       - local
       - param
+      - param::entry
+      - param::func
       - shared
       - tex
       - surf

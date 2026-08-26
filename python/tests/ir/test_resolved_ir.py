@@ -708,7 +708,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(ld.variants[1].modifiers[0].presence, "required")
         self.assertEqual(
             [value.value for value in ld.variants[1].modifiers[0].values],
-            ["const", "global", "local", "param", "shared"],
+            [
+                "const",
+                "global",
+                "local",
+                "param",
+                "param::entry",
+                "param::func",
+                "shared",
+            ],
         )
         variant = instruction.variants[0]
         explicit_variant = instruction.variants[1]
@@ -957,7 +965,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         store = from_instruction_spec(st)
         self.assertEqual(
             [value.value for value in st.variants[1].modifiers[0].values],
-            ["global", "local", "param", "shared"],
+            ["global", "local", "param", "param::func", "shared"],
         )
         self.assertEqual(
             [variant.cpp_name for variant in store.variants],

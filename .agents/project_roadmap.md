@@ -1294,7 +1294,7 @@ call (return), function, (arguments);
 | M6-I05 | ✅ | 独立 | 建立 call literal typing helper | immediate 按一个 formal parameter 定型；溢出和 kind mismatch 可诊断 |
 | M6-I06 | ⬜ | 独立 | 建立 call argument compatibility helper | `.reg/.param`、type、alignment、array、pointer 和 state-space 可逐项比较 |
 | M6-I07 | ✅ | 独立 | 建模 function-local call-argument `.param` | 与 formal parameter 分离，scope、lifetime、direction 和 address rule 明确 |
-| M6-I08 | ⬜ | 独立 | 建模 call-context syntax/semantics | `::entry/::func`、adjacency、predication 和 `.uni` 的 call-specific rule 明确 |
+| M6-I08 | ✅ | 独立 | 建模 call-context syntax/semantics | PTX 9.3 `::entry/::func`、function-local `.param` staging adjacency/predication 与 predicated `call.uni` 规则已明确 |
 | M6-C01 | ⬜ | 耦合 | 实现 direct-call ABI checker | callee signature 与 return/input actual 按数量、顺序、类型和 shape 完整比较 |
 | M6-C02 | ⬜ | 耦合 | 完成 direct-call 端到端回归 | prototype、definition、extern、recursive、wrong arity/type/space 和 immediate 全覆盖 |
 | M6-C03 | ⬜ | 耦合 | 同步 direct-call 文档和 package regression | 双语设计、coverage、README、installed consumer 全部通过 |

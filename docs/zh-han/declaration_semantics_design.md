@@ -57,8 +57,9 @@ symbol；缺失或 overlap label 使用 compact-entry range 诊断。
 
 `.callprototype` 拒绝同时出现 return parameter 与 `.noreturn`，对 formal 使用既有
 alignment/array-extent 检查，并要求 array formal 使用 `.param`。duplicate declaration label 仍由
-binding 负责。instruction 到 metadata 的使用、ABI suffix availability 和 indirect-call ABI 检查仍
-留给后续工作。
+binding 负责。module resolution 会把有效 prototype 转为与 function 相同的 canonical signature，
+并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
+availability 仍留给后续工作。
 
 ## 当前边界
 

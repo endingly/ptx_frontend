@@ -67,9 +67,10 @@ symbols, and report the compact-entry range for missing or overlapping labels.
 
 `.callprototype` rejects `.noreturn` with return parameters, applies existing
 alignment/array-extent checks to its formals, and requires an array formal to
-use `.param`. Binding remains the owner of duplicate declaration labels. Call
-instruction-to-metadata use, ABI suffix availability, and indirect-call ABI
-checking remain later work.
+use `.param`. Binding remains the owner of duplicate declaration labels.
+Module resolution converts a valid prototype to the same canonical signature
+as a function and reuses the validated first `.calltargets` member signature
+for indirect-call ABI checking. ABI suffix availability remains later work.
 
 ## Current boundary
 

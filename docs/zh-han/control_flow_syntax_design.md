@@ -58,10 +58,12 @@ modifier variant 仍名为 `call_direct`。
 
 `ResolvedIndirectCallee` 现在表示一个 indirect-call component：non-predicate `.reg` target，或
 function-local metadata label。module 中后者保留 `SymbolId`，并区分 `.callprototype` 与
-`.calltargets`；standalone resolution 只保留 spelling。它不携带 signature、member list 或 ABI fact。
-generated `call` layout 与 normal module resolution 已使用此值，但不建立 indirect-call ABI；该工作
-仍属于 C01。C03 的临时 fallback 只保留给未匹配任何 descriptor 的 malformed metadata-bearing call
-syntax。
+`.calltargets`；standalone resolution 只保留 spelling。它不携带 signature 或 member list。module
+resolution 将每个 function-local metadata `SymbolId` 索引到 canonical signature：`.callprototype`
+转换自身的 return/input contract（包括 `.noreturn`），`.calltargets` 则复用 declaration semantics
+已经验证的首个 member signature。direct 与 indirect call 随后共享同一 arity、literal typing 与
+argument-compatibility 检查；后者的 diagnostic 会指出 metadata label。C03 的临时 fallback 只保留给
+未匹配任何 descriptor 的 malformed metadata-bearing call syntax。
 
 ## function-local `.callprototype` 语法
 

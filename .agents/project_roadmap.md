@@ -1330,14 +1330,15 @@ ABI checker
 
 ### 当前状态
 
-M7-I01/I02/I03/I04/I05/I06/I07 已完成：function-local `.callprototype`、`.calltargets` 与
+M7-I01/I02/I03/I04/I05/I06/I07/M7-C01 已完成：function-local `.callprototype`、`.calltargets` 与
 `.branchtargets` 以专用 lexer token 和 CST/AST node 保留 label、signature payload/ordered
 target（包括未展开 compact branch entry）、PTX 9.3 suffix（prototype）与 SourceRange。三者
 现在以稳定的 function-scope SymbolId 进入 binding，并检查 declaration order、member、scope、
 duplicate 与 signature contract。`ResolvedIndirectCallee` 可保留 `.reg` target 或 metadata label
 identity；`call_direct` 保持一个公开 modifier variant，并新增三种 PTX 2.1 / SM 20 的专用
-`IndirectCall` layout，正常 module resolution 可绑定 `.reg` target 与 function-local metadata。
-间接 ABI、branch connection 与 temporary fallback 清理仍未完成。
+`IndirectCall` layout，正常 module resolution 可绑定 `.reg` target 与 function-local metadata，
+并以同一 canonical `FunctionSignature` / argument-compatibility contract 检查 indirect ABI。
+branch connection 与 temporary fallback 清理仍未完成。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
@@ -1348,7 +1349,7 @@ identity；`call_direct` 保持一个公开 modifier variant，并新增三种 P
 | M7-I05 | ✅ | 独立 | 实现 metadata declaration semantics | duplicate、unresolved、scope 和 signature conflict 可检查 |
 | M7-I06 | ✅ | 独立 | 建立 indirect callee resolved value | register target、prototype ref 和 target-set ref 表示明确 |
 | M7-I07 | ✅ | 独立 | 建立 indirect-call descriptor layout | 专用 `IndirectCall` layout、target/metadata shape 与 module identity 贯通 |
-| M7-C01 | ⬜ | 耦合 | 实现 indirect-call ABI checker | actual 对 prototype，target-set member 全部兼容 prototype |
+| M7-C01 | ✅ | 耦合 | 实现 indirect-call ABI checker | prototype/target-set 复用 canonical signature、arity、literal 与 argument compatibility |
 | M7-C02 | ⬜ | 耦合 | 连接 `.branchtargets` 与 `bra` | label identity、membership 和 current function 一致 |
 | M7-C03 | ⬜ | 耦合 | 删除 temporary call special case | 移除通用 resolver 中 opcode-string indirect rejection，全部走正式 descriptor |
 | M7-C04 | ⬜ | 耦合 | 完成 indirect-control-flow corpus | direct/indirect/prototype/target-set/branch metadata 全覆盖 |

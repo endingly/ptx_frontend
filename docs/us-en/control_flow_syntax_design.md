@@ -83,10 +83,14 @@ belongs to module resolution, not the generated single-instruction checker.
 non-predicate `.reg` target or a function-local metadata label. In a module,
 the latter retains its `SymbolId` and whether it names `.callprototype` or
 `.calltargets`; standalone resolution retains only its spelling. It carries no
-signature, member list, or ABI fact. Generated `call` layouts and normal module
-resolution use this value. It does not establish the indirect-call ABI; that
-remains C01. The temporary C03 fallback stays only for malformed
-metadata-bearing call syntax that matches no descriptor.
+signature or member list. Module resolution indexes each function-local
+metadata `SymbolId` to the canonical signature: `.callprototype` converts its
+own return/input contract (including `.noreturn`), while `.calltargets` reuses
+the first member signature already validated by declaration semantics. Direct
+and indirect calls then share the same arity, literal typing, and
+argument-compatibility check; the latter reports the metadata label. The
+temporary C03 fallback stays only for malformed metadata-bearing call syntax
+that matches no descriptor.
 
 ## Function-local `.callprototype` syntax
 

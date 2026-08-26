@@ -28,7 +28,8 @@ qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改
 `.callprototype`/`.calltargets` label 提供 descriptor-independent identity；它有意不携带 metadata
 payload 或 ABI。generated `Call::Direct` 现有三个额外的 `IndirectCall` layout
 （target/metadata、target/input/metadata、return/target/input/metadata），均要求 PTX 2.1 / SM 20；
-normal module indirect call 会保留已绑定的 target 与 metadata identity。ABI comparison 仍留给后续工作。
+normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
+canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -51,7 +52,8 @@ standalone `resolveInstruction` 与 `resolve<T>` 不要求声明上下文，继�
 directive、declaration 与 label 目前仍由 Syntax AST/symbol table 保存，不复制成未解析的
 Resolved IR 字符串字段。
 
-module resolution 还负责不能放入 generated single-instruction checker 的 direct-call ABI 与
+module resolution 还负责不能放入 generated single-instruction checker 的 direct 与 metadata-backed
+indirect-call ABI 以及
 call-context 工作：它取得 canonical prototype/definition signature，检查 return/input actual
 和按 formal 定型的 literal，并执行 function-local `.param` 的 qualifier、predicate 与 staging
 adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor

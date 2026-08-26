@@ -40,6 +40,10 @@ struct FunctionSignature {
 [[nodiscard]] FunctionSignature functionSignature(
     const syntax_ast::AstFunction& function);
 
+/** Build the same canonical ABI signature for a local call prototype. */
+[[nodiscard]] FunctionSignature functionSignature(
+    const syntax_ast::AstCallPrototype& prototype);
+
 /** Return a nonnegative constant array extent when the expression has one. */
 [[nodiscard]] std::optional<uint64_t> constantArrayExtent(
     const syntax_ast::AstConstantExpression& expression);

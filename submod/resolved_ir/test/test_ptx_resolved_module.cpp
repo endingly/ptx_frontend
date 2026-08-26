@@ -2716,11 +2716,12 @@ TEST(ResolvedModule, ResolvesIndirectCallsWithFunctionLocalMetadata) {
 
   const auto indirect_forms = parseModule(R"ptx(
 .func maybe_callee(.reg .u32 input);
+.func another_callee(.reg .u32 value);
 .entry caller() {
   .reg .u64 %fptr;
   .reg .u32 %result, %input;
 empty_prototype: .callprototype _;
-targets: .calltargets maybe_callee;
+targets: .calltargets maybe_callee, another_callee;
 returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
   call %fptr, empty_prototype;
   call %fptr, (%input), targets;
@@ -2730,7 +2731,7 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
   const auto resolved = resolveModule(indirect_forms);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto caller_scope =
-      *resolved->symbols.symbol(resolved->functions[1].symbol_id).owned_scope;
+      *resolved->symbols.symbol(resolved->functions[2].symbol_id).owned_scope;
   const auto fptr = resolved->symbols.lookup(caller_scope, "%fptr");
   const auto empty_prototype =
       resolved->symbols.lookup(caller_scope, "empty_prototype");
@@ -2741,7 +2742,7 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
   ASSERT_TRUE(empty_prototype.has_value());
   ASSERT_TRUE(targets.has_value());
   ASSERT_TRUE(returning_prototype.has_value());
-  const auto& body = resolved->functions[1].body;
+  const auto& body = resolved->functions[2].body;
   ASSERT_EQ(body.size(), 3u);
   const auto& first = std::get<Call::Direct::TargetMetadataOperands>(
       std::get<Call::Direct>(std::get<Call>(body[0]).variant).operands);
@@ -2790,6 +2791,65 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
       checker::check(std::get<Call>(body[0]), supported_target).has_value());
+}
+
+TEST(ResolvedModule, ReportsIndirectCallAbiMismatches) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.func target(.reg .u32 input);
+.func another_target(.reg .u32 value);
+.entry caller(.param .u64 .ptr .shared .align 32 wrong_space) {
+  .reg .u64 %fptr, %wide;
+  .reg .b8 %byte;
+arity: .callprototype (.reg .u32 result) _;
+targets: .calltargets target, another_target;
+bytes: .callprototype _ (.param .align 16 .b8 expected[8]);
+pointer: .callprototype _ (.param .u64 .ptr .global .align 16 expected);
+literal: .callprototype _ (.param .u16 expected);
+  call %fptr, arity;
+  call %fptr, (%wide), targets;
+  call %fptr, (%byte), bytes;
+  call %fptr, (wrong_space), pointer;
+  call %fptr, (65536), literal;
+}
+)ptx"));
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 5u);
+  EXPECT_EQ(resolved.error()[0].message,
+            "Indirect call via metadata 'arity' has 0 return arguments but "
+            "callee requires 1.");
+  EXPECT_EQ(resolved.error()[1].message,
+            "Indirect call via metadata 'targets' input argument 1 has type "
+            "or vector shape mismatch.");
+  EXPECT_EQ(resolved.error()[2].message,
+            "Indirect call via metadata 'bytes' input argument 1 has call "
+            "argument state-space mismatch.");
+  EXPECT_EQ(resolved.error()[3].message,
+            "Indirect call via metadata 'pointer' input argument 1 has "
+            "pointed state-space mismatch.");
+  EXPECT_EQ(resolved.error()[4].message,
+            "Integer literal '65536' is out of range for scalar type 'U16'.");
+}
+
+TEST(ResolvedModule, IsolatesSameNamedIndirectMetadataByFunctionScope) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.func first() {
+  .reg .u64 %fptr;
+metadata: .callprototype _ (.reg .u32 input);
+  call %fptr, metadata;
+}
+.func second() {
+  .reg .u64 %fptr;
+metadata: .callprototype _;
+  call %fptr, metadata;
+}
+)ptx"));
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "Indirect call via metadata 'metadata' has 0 input "
+            "arguments but callee requires 1.");
 }
 
 TEST(ResolvedModule, RejectsEntryAsDirectCallTarget) {

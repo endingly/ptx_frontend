@@ -189,6 +189,37 @@ void index_function_call_arguments(const syntax_ast::AstFunction& function,
   }
 }
 
+void index_function_metadata_signatures(
+    const syntax_ast::AstFunction& function, const binding::SymbolTable& symbols,
+    binding::ScopeId scope, FunctionSignatureIndex& signatures) {
+  for (const auto& item : function.body) {
+    if (const auto* prototype =
+            std::get_if<syntax_ast::AstCallPrototype>(&item)) {
+      const auto lookup = symbols.lookup(scope, prototype->label.syntax.text);
+      if (!lookup)
+        throw ResolveException("Bound .callprototype has no local symbol.");
+      signatures.try_emplace(lookup->symbol.value,
+                             declaration_semantics::functionSignature(
+                                 *prototype));
+      continue;
+    }
+    const auto* targets = std::get_if<syntax_ast::AstCallTargets>(&item);
+    if (targets == nullptr)
+      continue;
+    if (targets->targets.empty())
+      throw ResolveException("Validated .calltargets has no member.");
+    const auto metadata = symbols.lookup(scope, targets->label.syntax.text);
+    const auto target = symbols.lookup(symbols.moduleScope(),
+                                       targets->targets.front().syntax.text);
+    if (!metadata || !target)
+      throw ResolveException("Validated .calltargets has no bound symbol.");
+    const auto signature = signatures.find(target->symbol.value);
+    if (signature == signatures.end())
+      throw ResolveException("Validated .calltargets member has no signature.");
+    signatures.try_emplace(metadata->symbol.value, signature->second);
+  }
+}
+
 std::string_view compatibility_message(
     CallArgumentCompatibility compatibility) {
   switch (compatibility) {
@@ -216,21 +247,24 @@ std::string_view compatibility_message(
   return "incompatible";
 }
 
-void check_direct_call_abi(const syntax_ast::AstInstruction& call,
-                           const binding::SymbolTable& symbols,
-                           binding::ScopeId scope,
-                           const FunctionSignatureIndex& signatures,
-                           const CallArgumentPropertyIndex& properties,
-                           ModuleResolveDiagnostics& diagnostics) {
+void check_call_abi(const syntax_ast::AstInstruction& call,
+                    const binding::SymbolTable& symbols, binding::ScopeId scope,
+                    const FunctionSignatureIndex& signatures,
+                    const CallArgumentPropertyIndex& properties,
+                    ModuleResolveDiagnostics& diagnostics) {
   if (call.opcode.syntax.text != "call")
     return;
 
   const syntax_ast::AstCallTarget* target = nullptr;
+  const syntax_ast::AstCallTargetSet* metadata = nullptr;
   const syntax_ast::AstCallParameterList* returns = nullptr;
   const syntax_ast::AstCallParameterList* inputs = nullptr;
   for (const auto& operand : call.operands) {
     if (const auto* value = std::get_if<syntax_ast::AstCallTarget>(&operand))
       target = value;
+    else if (const auto* value =
+                 std::get_if<syntax_ast::AstCallTargetSet>(&operand))
+      metadata = value;
     else if (const auto* value =
                  std::get_if<syntax_ast::AstCallParameterList>(&operand)) {
       if (value->kind == syntax_ast::AstCallParameterListKind::Return)
@@ -239,15 +273,40 @@ void check_direct_call_abi(const syntax_ast::AstInstruction& call,
         inputs = value;
     }
   }
-  if (target == nullptr)
-    return;  // indirect calls remain outside M6-C01.
+  const declaration_semantics::FunctionSignature* signature = nullptr;
+  std::string callee_name;
+  std::string call_subject;
+  SourceRange target_range;
+  if (metadata != nullptr) {
+    const auto lookup = symbols.lookup(scope, metadata->name.syntax.text);
+    if (!lookup)
+      throw ResolveException(
+          "Validated indirect call metadata has no local symbol.");
+    const auto found = signatures.find(lookup->symbol.value);
+    if (found == signatures.end())
+      throw ResolveException(
+          "Validated indirect call metadata has no canonical signature.");
+    signature = &found->second;
+    callee_name = metadata->name.syntax.text;
+    call_subject = fmt::format("Indirect call via metadata '{}'", callee_name);
+    target_range = metadata->range;
+  } else {
+    if (target == nullptr)
+      return;
+    const auto lookup = symbols.lookup(scope, target->name.syntax.text);
+    if (!lookup || symbols.symbol(lookup->symbol).kind !=
+                       binding::SymbolKind::Function)
+      return;
+    const auto found = signatures.find(lookup->symbol.value);
+    if (found == signatures.end())
+      return;
+    signature = &found->second;
+    callee_name = target->name.syntax.text;
+    call_subject = fmt::format("Direct call to '{}'", callee_name);
+    target_range = target->range;
+  }
 
-  const auto target_lookup = symbols.lookup(scope, target->name.syntax.text);
-  if (!target_lookup || symbols.symbol(target_lookup->symbol).kind !=
-                            binding::SymbolKind::Function)
-    return;
-  const auto signature = signatures.find(target_lookup->symbol.value);
-  if (signature == signatures.end())
+  if (signature == nullptr)
     return;
 
   const auto check_group = [&](std::string_view kind, const auto* actuals,
@@ -256,10 +315,9 @@ void check_direct_call_abi(const syntax_ast::AstInstruction& call,
         actuals == nullptr ? 0 : actuals->parameters.size();
     if (actual_count != formals.size()) {
       diagnostics.push_back(ResolveDiagnostic{
-          .range = actuals == nullptr ? target->range : actuals->range,
-          .message = fmt::format("Direct call to '{}' has {} {} argument{} but "
-                                 "callee requires {}.",
-                                 target->name.syntax.text, actual_count, kind,
+          .range = actuals == nullptr ? target_range : actuals->range,
+          .message = fmt::format("{} has {} {} argument{} but callee requires {}.",
+                                 call_subject, actual_count, kind,
                                  actual_count == 1 ? "" : "s", formals.size()),
       });
     }
@@ -309,16 +367,21 @@ void check_direct_call_abi(const syntax_ast::AstInstruction& call,
       if (compatibility != CallArgumentCompatibility::Compatible) {
         diagnostics.push_back(ResolveDiagnostic{
             .range = range,
-            .message = fmt::format(
-                "Direct call {} argument {} for '{}' has {}.", kind, index + 1,
-                target->name.syntax.text, compatibility_message(compatibility)),
+            .message = metadata == nullptr
+                ? fmt::format("Direct call {} argument {} for '{}' has {}.",
+                              kind, index + 1, callee_name,
+                              compatibility_message(compatibility))
+                : fmt::format("Indirect call via metadata '{}' {} argument {} "
+                              "has {}.",
+                              callee_name, kind, index + 1,
+                              compatibility_message(compatibility)),
         });
       }
     }
   };
 
-  check_group("return", returns, signature->second.return_parameters);
-  check_group("input", inputs, signature->second.parameters);
+  check_group("return", returns, signature->return_parameters);
+  check_group("input", inputs, signature->parameters);
 }
 
 struct CallParameterIdentity {
@@ -562,29 +625,52 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
 
   FunctionSignatureIndex signatures;
   CallArgumentPropertyIndex call_argument_properties;
+  std::vector<binding::ScopeId> function_scopes;
+  for (const binding::Scope& scope : binding_result.table.scopes()) {
+    if (scope.kind == binding::ScopeKind::Function)
+      function_scopes.push_back(scope.id);
+  }
+  size_t function_index = 0;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
+    if (function_index >= function_scopes.size())
+      throw ResolveException(
+          "Bound module has no function scope for syntax function.");
+    const binding::ScopeId scope = function_scopes[function_index++];
     const auto lookup = binding_result.table.lookup(
         binding_result.table.moduleScope(), function->name.syntax.text);
     if (!lookup)
       continue;
     signatures.try_emplace(lookup->symbol.value,
                            declaration_semantics::functionSignature(*function));
-    const binding::Symbol& symbol = binding_result.table.symbol(lookup->symbol);
-    if (symbol.owned_scope) {
-      index_function_call_arguments(*function, binding_result.table,
-                                    *symbol.owned_scope,
-                                    call_argument_properties);
-    }
+    index_function_call_arguments(*function, binding_result.table, scope,
+                                  call_argument_properties);
   }
-
-  std::vector<ResolvedFunction> functions;
+  function_index = 0;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
+    if (function_index >= function_scopes.size())
+      throw ResolveException(
+          "Bound module has no function scope for syntax function.");
+    index_function_metadata_signatures(*function, binding_result.table,
+                                       function_scopes[function_index++],
+                                       signatures);
+  }
+
+  std::vector<ResolvedFunction> functions;
+  function_index = 0;
+  for (const syntax_ast::AstModuleItem& item : ast.items) {
+    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+    if (function == nullptr)
+      continue;
+    if (function_index >= function_scopes.size())
+      throw ResolveException(
+          "Bound module has no function scope for syntax function.");
+    const binding::ScopeId scope = function_scopes[function_index++];
 
     const auto lookup = binding_result.table.lookup(
         binding_result.table.moduleScope(), function->name.syntax.text);
@@ -593,14 +679,14 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
           "Bound module has no symbol for a syntax function.");
     }
     const binding::Symbol& symbol = binding_result.table.symbol(lookup->symbol);
-    if (symbol.kind != binding::SymbolKind::Function || !symbol.owned_scope) {
+    if (symbol.kind != binding::SymbolKind::Function) {
       throw ResolveException(
           "Bound function symbol has no associated function scope.");
     }
 
     ResolveContext context{
         .symbols = binding_result.table,
-        .scope = *symbol.owned_scope,
+        .scope = scope,
         .function_is_entry = function->is_entry,
     };
     ResolvedFunction resolved_function{
@@ -621,13 +707,11 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
         diagnostics.push_back(std::move(resolved.error()));
         continue;
       }
-      check_direct_call_abi(*instruction, binding_result.table,
-                            *symbol.owned_scope, signatures,
-                            call_argument_properties, diagnostics);
+      check_call_abi(*instruction, binding_result.table, scope, signatures,
+                     call_argument_properties, diagnostics);
       resolved_function.body.push_back(std::move(*resolved));
     }
-    check_call_staging(*function, binding_result.table, *symbol.owned_scope,
-                       diagnostics);
+    check_call_staging(*function, binding_result.table, scope, diagnostics);
     functions.push_back(std::move(resolved_function));
   }
 

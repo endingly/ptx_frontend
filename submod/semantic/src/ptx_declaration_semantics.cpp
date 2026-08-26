@@ -1164,6 +1164,21 @@ FunctionSignature functionSignature(const syntax_ast::AstFunction& function) {
   return signature;
 }
 
+FunctionSignature functionSignature(
+    const syntax_ast::AstCallPrototype& prototype) {
+  FunctionSignature signature{
+      .is_noreturn = prototype.noreturn_directive.has_value(),
+  };
+  const auto append_contracts = [](const auto& parameters, auto& contracts) {
+    contracts.reserve(parameters.size());
+    for (const auto& parameter : parameters)
+      contracts.push_back(parameterContract(parameter));
+  };
+  append_contracts(prototype.return_parameters, signature.return_parameters);
+  append_contracts(prototype.parameters, signature.parameters);
+  return signature;
+}
+
 std::optional<uint64_t> constantArrayExtent(
     const syntax_ast::AstConstantExpression& expression) {
   return nonnegativeIntegerValue(classifyExpression(expression));

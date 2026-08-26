@@ -34,8 +34,9 @@ function-local `.callprototype`/`.calltargets` label; it intentionally omits
 metadata payload and ABI. Generated `Call::Direct` now has three additional
 `IndirectCall` layouts (target/metadata, target/input/metadata, and
 return/target/input/metadata), each available from PTX 2.1 / SM 20; normal
-module indirect calls preserve the bound target and metadata identities. ABI
-comparison remains later work.
+module indirect calls preserve the bound target and metadata identities, then
+reuse the direct-call ABI contract through metadata-indexed canonical
+signatures. ABI comparison does not create a second indirect-call model.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -61,7 +62,8 @@ declaration-free for single-instruction tools. Directives, declarations, and
 labels remain in the Syntax AST/symbol table instead of being copied into
 Resolved IR as unresolved string fields.
 
-Module resolution additionally performs direct-call ABI and call-context work
+Module resolution additionally performs direct and metadata-backed indirect
+call ABI and call-context work
 that cannot live in the generated single-instruction checker: it obtains the
 canonical prototype/definition signature, checks return/input actuals and
 formal-typed literals, and enforces function-local `.param` qualification,
@@ -431,10 +433,9 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
 `resolved_ir.gen.hpp`.
 
-Direct-call ABI plus function-local call-argument `.param` memory, qualified
+Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
-by module resolution. Indirect-call descriptor resolution is covered, but its
-metadata-to-ABI comparison, scalar `.b128`, and
+by module resolution. Scalar `.b128` and
 declaration-type availability for wider `.b128` registers remain outside this
 slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are

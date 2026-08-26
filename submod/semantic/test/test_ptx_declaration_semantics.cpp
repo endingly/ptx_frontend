@@ -141,6 +141,11 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
     .param .u64 .ptr .global .align 16 address,
     .param .u32 data[4]) { ret; }
 .entry kernel() .noreturn { }
+.func indirect() {
+  prototype: .callprototype (.param .align 16 .u32 output) _
+      (.param .u64 .ptr .global .align 16 address, .param .u32 data[4]);
+  noreturn_prototype: .callprototype _ .noreturn;
+}
 )ptx");
   const auto module = parser.parseModule();
   ASSERT_TRUE(module.has_value()) << module.error().message;
@@ -166,6 +171,13 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
       functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
   EXPECT_TRUE(kernel_signature.is_entry);
   EXPECT_TRUE(kernel_signature.is_noreturn);
+  const auto& indirect = std::get<syntax_ast::AstFunction>(module->items[3]);
+  const auto& indirect_prototype =
+      std::get<syntax_ast::AstCallPrototype>(indirect.body[0]);
+  EXPECT_EQ(prototype_signature, functionSignature(indirect_prototype));
+  const auto& noreturn_prototype =
+      std::get<syntax_ast::AstCallPrototype>(indirect.body[1]);
+  EXPECT_TRUE(functionSignature(noreturn_prototype).is_noreturn);
   EXPECT_TRUE(
       checkDeclarations(*module, binding::bindSymbols(*module).table).empty());
 }

@@ -46,8 +46,9 @@ if (cst)
 
 `parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
 module root。function body 现在可含 nested block；CST 保留其 brace、有序 body item 与
-完整 source range，Syntax AST 则保留有序 body item 与完整 source range。nested block 当前仅完成 syntax：在加入 lexical
-binding scope 前，module resolution 会明确报 unsupported diagnostic。当前 module grammar
+完整 source range，Syntax AST 则保留有序 body item 与完整 source range。binding 会加入 lexical
+scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序平铺的 body；不会引入
+`ResolvedBlock`。当前 module grammar
 仍不接受 debug directive、kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。

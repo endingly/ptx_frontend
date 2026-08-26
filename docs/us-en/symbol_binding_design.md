@@ -21,13 +21,15 @@ lifetime.
 ## Scopes and symbols
 
 Each module has one root scope. Every `.entry`/`.func` item has a function
-scope whose parent is the module scope. The initial pass collects:
+scope whose parent is the module scope, and every nested `AstBlock` has a
+range-identified child block scope. The initial pass collects:
 
 - module and function variable declarations;
 - function input and return parameters;
 - function symbols;
 - labels and function-local `.callprototype`, `.calltargets`, and
-  `.branchtargets` declarations.
+  `.branchtargets` declarations into the owning function scope, even when
+  written inside a nested block.
 
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
@@ -38,8 +40,9 @@ prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.
 
 Lookup checks exact names first, parameterized names second, and then walks to
-the parent scope. A function-local declaration therefore shadows a module
-symbol.
+the parent scope. A block declaration can therefore shadow an outer or module
+symbol, while sibling blocks remain invisible to each other. Labels and
+control-flow metadata are deliberately function-local rather than block-local.
 
 ## Parameterized variable names
 

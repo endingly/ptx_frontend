@@ -119,6 +119,111 @@ start:
             binding::SymbolKind::Label);
 }
 
+TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
+  constexpr std::string_view source = R"ptx(
+.func callee();
+.entry kernel() {
+  .reg .u32 %value;
+  {
+    .reg .u32 %value;
+    .reg .u64 %function_pointer;
+    inner_label:
+    prototype: .callprototype _;
+    targets: .calltargets callee;
+    branches: .branchtargets inner_label;
+    add.u32 %value, %value, %value;
+    call %function_pointer, prototype;
+    brx.idx %value, branches;
+    bra inner_label;
+  }
+  { .reg .u32 %sibling; }
+  add.u32 %value, %value, %value;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto binding_result = binding::bindSymbols(*module);
+  ASSERT_TRUE(binding_result.diagnostics.empty());
+
+  const auto kernel =
+      binding_result.table.lookup(binding_result.table.moduleScope(), "kernel");
+  ASSERT_TRUE(kernel.has_value());
+  const auto function_scope =
+      *binding_result.table.symbol(kernel->symbol).owned_scope;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items[1]);
+  const auto& first_block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
+      function.body[1]);
+  const auto& second_block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
+      function.body[2]);
+  const auto inner_scope =
+      binding_result.table.blockScope(function_scope, first_block.range);
+  const auto sibling_scope =
+      binding_result.table.blockScope(function_scope, second_block.range);
+  ASSERT_TRUE(inner_scope.has_value());
+  ASSERT_TRUE(sibling_scope.has_value());
+  EXPECT_EQ(binding_result.table.scope(*inner_scope).kind,
+            binding::ScopeKind::Block);
+  EXPECT_EQ(binding_result.table.scope(*inner_scope).parent, function_scope);
+
+  const auto outer_value = binding_result.table.lookup(function_scope, "%value");
+  const auto inner_value = binding_result.table.lookup(*inner_scope, "%value");
+  ASSERT_TRUE(outer_value.has_value());
+  ASSERT_TRUE(inner_value.has_value());
+  EXPECT_NE(outer_value->symbol, inner_value->symbol);
+  EXPECT_FALSE(binding_result.table.lookup(function_scope, "%sibling"));
+  EXPECT_FALSE(binding_result.table.lookup(*inner_scope, "%sibling"));
+  EXPECT_TRUE(binding_result.table.lookup(*sibling_scope, "%sibling"));
+  EXPECT_EQ(binding_result.table.lookup(*sibling_scope, "%value")->symbol,
+            outer_value->symbol);
+  const auto expect_add_references = [&](const syntax_ast::AstInstruction& add,
+                                         binding::SymbolId expected) {
+    for (const auto& operand : add.operands) {
+      const auto* identifier =
+          std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+      ASSERT_NE(identifier, nullptr);
+      const auto reference = std::ranges::find_if(
+          binding_result.table.references(), [&](const auto& candidate) {
+            return candidate.kind == binding::ReferenceKind::InstructionOperand &&
+                   candidate.range == identifier->syntax.range;
+          });
+      ASSERT_NE(reference, binding_result.table.references().end());
+      ASSERT_TRUE(reference->target.has_value());
+      EXPECT_EQ(reference->target->symbol, expected);
+    }
+  };
+  expect_add_references(
+      std::get<syntax_ast::AstInstruction>(first_block.body[6]),
+      inner_value->symbol);
+  expect_add_references(
+      std::get<syntax_ast::AstInstruction>(function.body[3]),
+      outer_value->symbol);
+
+  for (const auto [name, kind] : std::initializer_list<
+           std::pair<std::string_view, binding::SymbolKind>>{
+           {"inner_label", binding::SymbolKind::Label},
+           {"prototype", binding::SymbolKind::CallPrototype},
+           {"targets", binding::SymbolKind::CallTargetSet},
+           {"branches", binding::SymbolKind::BranchTargetSet}}) {
+    const auto symbol = binding_result.table.lookup(function_scope, name);
+    ASSERT_TRUE(symbol.has_value()) << name;
+    EXPECT_EQ(binding_result.table.symbol(symbol->symbol).kind, kind);
+    EXPECT_EQ(binding_result.table.symbol(symbol->symbol).scope, function_scope);
+  }
+  for (const auto [name, kind] : std::initializer_list<
+           std::pair<std::string_view, binding::ReferenceKind>>{
+           {"prototype", binding::ReferenceKind::CallTargetSet},
+           {"branches", binding::ReferenceKind::BranchTargetSet},
+           {"inner_label", binding::ReferenceKind::BranchTarget}}) {
+    const auto* reference = findReference(binding_result.table, name, kind);
+    ASSERT_NE(reference, nullptr) << name;
+    ASSERT_TRUE(reference->target.has_value()) << name;
+    EXPECT_EQ(binding_result.table.symbol(reference->target->symbol).scope,
+              function_scope);
+  }
+}
+
 TEST(PtxSymbolTable, SupportsParameterizedNamesOutsideRegisterSpace) {
   PtxSyntaxParser parser(
       ".global .u32 item<2>; .entry kernel() { .reg .u32 %r0; "

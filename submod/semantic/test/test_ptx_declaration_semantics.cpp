@@ -71,6 +71,26 @@ TEST(PtxDeclarationSemantics, ValidatesArrayDimensionsAndInitializerShape) {
       2u);
 }
 
+TEST(PtxDeclarationSemantics, ChecksDeclarationsAndMetadataInsideNestedBlocks) {
+  const CheckedModule result = check(R"ptx(
+.func callee();
+.func dispatch() {
+  {
+    .local .u32 invalid_extent[0];
+    target: .calltargets missing;
+  }
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
+      1u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+      1u);
+}
+
 TEST(PtxDeclarationSemantics,
      EvaluatesTypedSignedAndUnsignedIntegerDimensions) {
   const CheckedModule result = check(R"ptx(

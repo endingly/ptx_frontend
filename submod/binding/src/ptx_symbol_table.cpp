@@ -159,6 +159,16 @@ const Symbol& SymbolTable::symbol(SymbolId id) const {
   return symbols_.at(id.value);
 }
 
+std::optional<ScopeId> SymbolTable::blockScope(ScopeId parent,
+                                               SourceRange range) const {
+  const auto found = std::ranges::find_if(
+      scopes_, [parent, range](const Scope& scope) {
+        return scope.kind == ScopeKind::Block && scope.parent == parent &&
+               scope.range == range;
+      });
+  return found == scopes_.end() ? std::nullopt : std::optional{found->id};
+}
+
 std::optional<SymbolLookup> SymbolTable::lookup(ScopeId scope_id,
                                                 std::string_view name) const {
   for (;;) {
@@ -197,6 +207,7 @@ struct SymbolTableBuilder {
         .kind = ScopeKind::Module,
         .parent = std::nullopt,
         .owner = std::nullopt,
+        .range = std::nullopt,
     });
   }
 
@@ -207,10 +218,23 @@ struct SymbolTableBuilder {
         .kind = ScopeKind::Function,
         .parent = result.table.moduleScope(),
         .owner = owner,
+        .range = std::nullopt,
     });
     Symbol& symbol = result.table.symbols_[owner.value];
     if (!symbol.owned_scope || prefer_as_owned_scope)
       symbol.owned_scope = id;
+    return id;
+  }
+
+  ScopeId addBlockScope(ScopeId parent, SourceRange range) {
+    const ScopeId id{static_cast<uint32_t>(result.table.scopes_.size())};
+    result.table.scopes_.push_back(Scope{
+        .id = id,
+        .kind = ScopeKind::Block,
+        .parent = parent,
+        .owner = std::nullopt,
+        .range = range,
+    });
     return id;
   }
 
@@ -381,10 +405,15 @@ struct SymbolTableBuilder {
                 declarationAlignment(parameter.alignment, std::nullopt,
                                      parameter.type.text));
     }
-    for (const auto& item : function.body) {
+    collectBody(function.body, function_scope, function_scope);
+  }
+
+  void collectBody(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+                   ScopeId function_scope, ScopeId lexical_scope) {
+    for (const auto& item : body) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-        collectVariableDeclaration(function_scope, *declaration);
+        collectVariableDeclaration(lexical_scope, *declaration);
       } else if (const auto* label = std::get_if<syntax_ast::AstLabel>(&item)) {
         addSymbol(function_scope, SymbolKind::Label, label->name.syntax.text,
                   label->name.syntax.range);
@@ -401,6 +430,12 @@ struct SymbolTableBuilder {
                      std::get_if<syntax_ast::AstBranchTargets>(&item)) {
         addSymbol(function_scope, SymbolKind::BranchTargetSet,
                   targets->label.syntax.text, targets->label.syntax.range);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &item);
+                 block != nullptr && *block) {
+        collectBody((*block)->body, function_scope,
+                    addBlockScope(lexical_scope, (*block)->range));
       }
     }
   }
@@ -532,9 +567,10 @@ struct SymbolTableBuilder {
     }
   }
 
-  void bindOperand(ScopeId scope, const syntax_ast::AstOperand& operand) {
+  void bindOperand(ScopeId scope, ScopeId function_scope,
+                   const syntax_ast::AstOperand& operand) {
     std::visit(
-        [this, scope](const auto& value) {
+        [this, scope, function_scope](const auto& value) {
           using Value = std::remove_cvref_t<decltype(value)>;
           if constexpr (std::same_as<Value, syntax_ast::AstIdentifierRef>) {
             addReference(scope, ReferenceKind::InstructionOperand, value);
@@ -627,7 +663,7 @@ struct SymbolTableBuilder {
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
                   reference, symbol.kind == SymbolKind::BranchTargetSet &&
-                                 symbol.scope == scope,
+                                 symbol.scope == function_scope,
                   fmt::format("Branch target set '{}' must name a "
                               ".branchtargets declaration in the current "
                               "function.",
@@ -640,7 +676,8 @@ struct SymbolTableBuilder {
               const Symbol& symbol =
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
-                  reference, symbol.kind == SymbolKind::Label,
+                  reference, symbol.kind == SymbolKind::Label &&
+                                 symbol.scope == function_scope,
                   fmt::format("Branch target '{}' must name a label in the "
                               "current function.",
                               value.name.syntax.text));
@@ -650,13 +687,13 @@ struct SymbolTableBuilder {
         operand);
   }
 
-  void bindInstruction(ScopeId scope,
+  void bindInstruction(ScopeId scope, ScopeId function_scope,
                        const syntax_ast::AstInstruction& instruction) {
     if (instruction.predicate)
       addReference(scope, ReferenceKind::Predicate,
                    instruction.predicate->name);
     for (const auto& operand : instruction.operands)
-      bindOperand(scope, operand);
+      bindOperand(scope, function_scope, operand);
   }
 
   void bindFunction(const FunctionContext& context) {
@@ -673,13 +710,27 @@ struct SymbolTableBuilder {
                                *parameter.array_size);
       }
     }
-    for (const auto& item : function.body) {
+    bindBody(function.body, context.scope, context.scope);
+  }
+
+  void bindBody(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+                ScopeId function_scope, ScopeId lexical_scope) {
+    for (const auto& item : body) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-        bindVariableDeclaration(context.scope, *declaration);
+        bindVariableDeclaration(lexical_scope, *declaration);
       } else if (const auto* instruction =
                      std::get_if<syntax_ast::AstInstruction>(&item)) {
-        bindInstruction(context.scope, *instruction);
+        bindInstruction(lexical_scope, function_scope, *instruction);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &item);
+                 block != nullptr && *block) {
+        const auto block_scope =
+            result.table.blockScope(lexical_scope, (*block)->range);
+        if (!block_scope)
+          throw std::logic_error("Collected syntax block has no scope.");
+        bindBody((*block)->body, function_scope, *block_scope);
       }
     }
   }

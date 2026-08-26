@@ -105,10 +105,86 @@ TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
             "Unresolved instruction operand '%missing'.");
 }
 
-TEST(ResolvedModule, RejectsNestedBlocksUntilLexicalScopesAreImplemented) {
+TEST(ResolvedModule, ResolvesNestedBlocksInSourceOrder) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {
-  { add.u32 %r0, %r1, %r2; }
+  .reg .u32 %value;
+  {
+    .reg .u32 %value;
+    add.u32 %value, %value, %value;
+  }
+  add.u32 %value, %value, %value;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.size(), 1u);
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& inner = resolvedIntegerAdd(body[0]);
+  const auto& outer = resolvedIntegerAdd(body[1]);
+  const auto& inner_value = inner.dst.value;
+  const auto& outer_value = outer.dst.value;
+  ASSERT_TRUE(inner_value.symbol_id.has_value());
+  ASSERT_TRUE(outer_value.symbol_id.has_value());
+  EXPECT_NE(inner_value.symbol_id, outer_value.symbol_id);
+}
+
+TEST(ResolvedModule, ResolvesFunctionLocalControlTargetsInsideNestedBlocks) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  {
+    .reg .u32 %index;
+    .reg .u64 %function_pointer;
+label:
+prototype: .callprototype _;
+branches: .branchtargets label;
+    bra label;
+    brx.idx %index, branches;
+    call %function_pointer, prototype;
+  }
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto function_scope =
+      *resolved->symbols.symbol(resolved->functions.front().symbol_id).owned_scope;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& branch = std::get<Bra::Direct>(
+      std::get<Bra>(body[0]).variant);
+  ASSERT_TRUE(branch.target.value.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*branch.target.value.symbol_id).scope,
+            function_scope);
+  const auto& indexed = std::get<Brx::Idx>(std::get<Brx>(body[1]).variant);
+  ASSERT_TRUE(indexed.tlist.value.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*indexed.tlist.value.symbol_id).scope,
+            function_scope);
+  const auto& call = std::get<Call::Direct::TargetMetadataOperands>(
+      std::get<Call::Direct>(std::get<Call>(body[2]).variant).operands);
+  const auto& metadata =
+      std::get<ResolvedIndirectMetadataRef>(call.metadata.value);
+  ASSERT_TRUE(metadata.symbol_id.has_value());
+  EXPECT_EQ(resolved->symbols.symbol(*metadata.symbol_id).scope,
+            function_scope);
+}
+
+TEST(ResolvedModule, DoesNotStageCallsAcrossNestedBlockBoundaries) {
+  const auto ast = parseModule(R"ptx(
+.func callee(.param .u32 input);
+.entry caller() {
+  .reg .u32 %value;
+  .param .u32 outer_staging;
+  st.param.u32 [outer_staging], %value;
+  {
+    .param .u32 inner_staging;
+    st.param.u32 [inner_staging], %value;
+    call callee, (inner_staging);
+  }
 }
 )ptx");
 
@@ -117,9 +193,8 @@ TEST(ResolvedModule, RejectsNestedBlocksUntilLexicalScopesAreImplemented) {
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().message,
-            "Nested blocks are parsed but are not supported by module "
-            "resolution yet.");
-  EXPECT_EQ(resolved.error().front().range.start.line, 3u);
+            "A function-local .param argument store must be in the "
+            "contiguous block immediately before a call that uses it.");
 }
 
 TEST(ResolvedModule, DistinguishesSpecialRegistersFromMissingDeclarations) {

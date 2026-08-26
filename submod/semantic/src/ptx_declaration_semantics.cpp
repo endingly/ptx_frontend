@@ -589,13 +589,7 @@ class Checker {
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         checkFunctionAlignments(*function);
         checkFunctionArrays(*function);
-        for (const auto& body_item : function->body) {
-          if (const auto* declaration =
-                  std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
-            checkAlignment(declaration->alignment);
-            checkVariableDeclaration(*declaration);
-          }
-        }
+        checkFunctionBodyDeclarations(function->body);
       }
     }
     return std::move(diagnostics_);
@@ -930,18 +924,47 @@ class Checker {
                              ? std::optional{function_scopes[function_index]}
                              : std::nullopt;
       ++function_index;
-      for (const auto& body_item : function->body) {
-        if (const auto* prototype =
-                std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
-          checkCallPrototype(*prototype);
-        } else if (const auto* targets =
-                       std::get_if<syntax_ast::AstCallTargets>(&body_item)) {
-          checkCallTargets(*targets, seen_functions);
-        } else if (const auto* targets =
-                       std::get_if<syntax_ast::AstBranchTargets>(&body_item)) {
-          if (scope)
-            checkBranchTargets(*scope, *targets);
-        }
+      if (scope)
+        checkControlFlowMetadataBody(function->body, *scope, seen_functions);
+    }
+  }
+
+  void checkControlFlowMetadataBody(
+      const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+      binding::ScopeId function_scope,
+      const std::unordered_map<std::string, SeenFunction>& seen_functions) {
+    for (const auto& body_item : body) {
+      if (const auto* prototype =
+              std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
+        checkCallPrototype(*prototype);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstCallTargets>(&body_item)) {
+        checkCallTargets(*targets, seen_functions);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstBranchTargets>(&body_item)) {
+        checkBranchTargets(function_scope, *targets);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &body_item);
+                 block != nullptr && *block) {
+        checkControlFlowMetadataBody((*block)->body, function_scope,
+                                     seen_functions);
+      }
+    }
+  }
+
+  void checkFunctionBodyDeclarations(
+      const std::vector<syntax_ast::AstFunctionBodyItem>& body) {
+    for (const auto& body_item : body) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
+        checkAlignment(declaration->alignment);
+        checkVariableDeclaration(*declaration);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &body_item);
+                 block != nullptr && *block) {
+        checkFunctionBodyDeclarations((*block)->body);
       }
     }
   }

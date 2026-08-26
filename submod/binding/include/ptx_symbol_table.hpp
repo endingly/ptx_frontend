@@ -24,6 +24,7 @@ struct ScopeId {
 enum class ScopeKind : uint8_t {
   Module,
   Function,
+  Block,
 };
 
 enum class SymbolKind : uint8_t {
@@ -70,6 +71,7 @@ struct Scope {
   ScopeKind kind{};
   std::optional<ScopeId> parent;
   std::optional<SymbolId> owner;
+  std::optional<SourceRange> range;
 };
 
 struct Symbol {
@@ -136,6 +138,10 @@ class SymbolTable {
 
   [[nodiscard]] const Scope& scope(ScopeId id) const;
   [[nodiscard]] const Symbol& symbol(SymbolId id) const;
+
+  /** Return the lexical child block identified by its parent and AST range. */
+  [[nodiscard]] std::optional<ScopeId> blockScope(
+      ScopeId parent, SourceRange range) const;
 
   /** Look up an exact or parameterized name, walking parent scopes. */
   [[nodiscard]] std::optional<SymbolLookup> lookup(ScopeId scope,

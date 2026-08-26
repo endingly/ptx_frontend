@@ -634,6 +634,8 @@ resolve_branch_target(const syntax_ast::AstOperand& operand,
 
   ResolvedBranchTarget resolved{.spelling = target->name.syntax.text};
   if (context != nullptr) {
+    const binding::ScopeId function_scope =
+        context->function_scope.value_or(context->scope);
     const auto lookup =
         context->symbols.lookup(context->scope, target->name.syntax.text);
     if (!lookup) {
@@ -645,7 +647,7 @@ resolve_branch_target(const syntax_ast::AstOperand& operand,
     }
     const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
     if (symbol.kind != binding::SymbolKind::Label ||
-        symbol.scope != context->scope) {
+        symbol.scope != function_scope) {
       return std::unexpected(ResolveDiagnostic{
           .range = target->range,
           .message = fmt::format(
@@ -673,6 +675,8 @@ resolve_branch_target_set(const syntax_ast::AstOperand& operand,
 
   ResolvedBranchTargetSet resolved{.spelling = target_set->name.syntax.text};
   if (context != nullptr) {
+    const binding::ScopeId function_scope =
+        context->function_scope.value_or(context->scope);
     const auto lookup =
         context->symbols.lookup(context->scope, target_set->name.syntax.text);
     if (!lookup) {
@@ -684,7 +688,7 @@ resolve_branch_target_set(const syntax_ast::AstOperand& operand,
     }
     const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
     if (symbol.kind != binding::SymbolKind::BranchTargetSet ||
-        symbol.scope != context->scope) {
+        symbol.scope != function_scope) {
       return std::unexpected(ResolveDiagnostic{
           .range = target_set->range,
           .message = fmt::format(
@@ -823,6 +827,8 @@ resolve_indirect_callee(const syntax_ast::AstOperand& operand,
 
   ResolvedIndirectMetadataRef resolved{.spelling = metadata->name.syntax.text};
   if (context != nullptr) {
+    const binding::ScopeId function_scope =
+        context->function_scope.value_or(context->scope);
     const auto lookup =
         context->symbols.lookup(context->scope, metadata->name.syntax.text);
     if (!lookup) {
@@ -841,7 +847,7 @@ resolve_indirect_callee(const syntax_ast::AstOperand& operand,
                      "are not supported.",
       });
     }
-    if (symbol.scope != context->scope ||
+    if (symbol.scope != function_scope ||
         (symbol.kind != binding::SymbolKind::CallPrototype &&
          symbol.kind != binding::SymbolKind::CallTargetSet)) {
       return std::unexpected(ResolveDiagnostic{

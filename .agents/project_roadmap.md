@@ -1363,7 +1363,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
 | M8-I01 | ✅ | 独立 | 支持 nested block CST/AST | `{...}` nested scope 有独立 node 和 source range |
-| M8-I02 | ⬜ | 独立 | 支持 nested lexical binding scope | shadowing 和 label/function-local visibility 有测试 |
+| M8-I02 | ✅ | 独立 | 支持 nested lexical binding scope | shadowing、sibling/outer visibility、function-local label/metadata、recursive semantic/resolution 与 block-local call staging 有测试 |
 | M8-I03 | ⬜ | 独立 | 支持 `.file` directive | 文件编号、路径和合法参数结构化保存 |
 | M8-I04 | ⬜ | 独立 | 支持 `.loc` directive | file/line/column 和可选属性结构化保存 |
 | M8-I05 | ⬜ | 独立 | 支持 `.section` directive | section name、payload 和 preservation 明确 |

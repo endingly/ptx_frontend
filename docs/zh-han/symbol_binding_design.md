@@ -20,13 +20,13 @@ auto binding = binding::bindSymbols(module);
 ## Scope 与 symbol
 
 每个 module 有一个根 scope，每个 `.entry/.func` item 有一个以 module scope 为 parent 的
-function scope。当前收集：
+function scope，每个 nested `AstBlock` 则有按 source range 识别的 child block scope。当前收集：
 
 - module/function variable declaration；
 - function input 与 return parameter；
 - function symbol；
 - label，以及 function-local `.callprototype`、`.calltargets` 与
-  `.branchtargets` declaration。
+  `.branchtargets` declaration；即使写在 nested block 内，也放入所属的 function scope。
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
 parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
@@ -35,7 +35,8 @@ function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 
 同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
-因此 function-local declaration 可以遮蔽 module symbol。
+因此 block declaration 可以遮蔽 outer/module symbol，sibling block 彼此不可见；label 和
+control-flow metadata 则有意保持 function-local，而非 block-local。
 
 ## Parameterized variable name
 

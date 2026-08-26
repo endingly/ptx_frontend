@@ -100,6 +100,9 @@ enum class OperandShape : uint16_t {
   Vector = 1 << 5,
   BranchTarget = 1 << 6,
   SpecialRegister = 1 << 7,
+  DirectCallTarget = 1 << 8,
+  CallReturnParameter = 1 << 9,
+  CallArguments = 1 << 10,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {

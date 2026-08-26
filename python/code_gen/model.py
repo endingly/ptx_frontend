@@ -28,6 +28,13 @@ class OperandVectorTypePolicy(str, Enum):
     ELEMENT = "element"
 
 
+class OperandLayoutKind(str, Enum):
+    """Matching algorithm selected by one operand layout."""
+
+    FLAT = "flat"
+    CALL = "call"
+
+
 @dataclass(frozen=True)
 class OperandVectorArityExpression:
     """A parsed register-vector arity expression from the YAML specification."""
@@ -172,6 +179,7 @@ class OperandLayoutSpec:
 
     name: str
     operands: tuple[OperandSpec, ...]
+    kind: OperandLayoutKind = OperandLayoutKind.FLAT
     # Empty means that this layout introduces no target requirement beyond its
     # containing variant's availability.
     availability: dict[str, Any] = field(default_factory=dict)

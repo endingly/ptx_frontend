@@ -68,6 +68,44 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
+        call = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "call"
+        )
+        cls.call_instruction = from_instruction_spec(call)
+
+    def test_call_has_layout_local_group_payloads(self) -> None:
+        self.assertEqual(self.call_instruction.cpp_name, "Call")
+        variant = self.call_instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Direct")
+        self.assertEqual(
+            [layout.layout_id for layout in variant.operand_layouts],
+            ["target", "target_input", "return_target_input"],
+        )
+        self.assertEqual(
+            [
+                [field.value_cpp_type for field in layout.fields]
+                for layout in variant.operand_layouts
+            ],
+            [
+                ["ResolvedFunctionRef"],
+                ["ResolvedFunctionRef", "ResolvedCallArguments"],
+                [
+                    "ResolvedCallParameterRef",
+                    "ResolvedFunctionRef",
+                    "ResolvedCallArguments",
+                ],
+            ],
+        )
+        self.assertEqual(
+            [field.value_kind for field in variant.operand_layouts[2].fields],
+            [
+                ResolvedValueKind.CALL_RETURN_PARAMETER,
+                ResolvedValueKind.DIRECT_CALL_TARGET,
+                ResolvedValueKind.CALL_ARGUMENTS,
+            ],
+        )
 
     def test_normalizes_memory_vector_cross_constraint(self) -> None:
         variant = {

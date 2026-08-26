@@ -636,6 +636,9 @@ $defs:
       - reg_or_imm
       - mov_scalar_src
       - reg_vector
+      - direct_call_target
+      - call_return_param
+      - call_arguments
       - addr_or_symbol
       - reg_list
       - pred_list
@@ -1101,6 +1104,12 @@ $defs:
     properties:
       name:
         $ref: "#/$defs/schema_identifier"
+      kind:
+        description: "Operand matching algorithm; omitted layouts are flat."
+        type: string
+        enum:
+          - flat
+          - call
       operands:
         description: "A $name operand-pattern reference or an explicit operand list."
         oneOf:

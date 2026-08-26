@@ -87,6 +87,33 @@ bool allows_shape(checker::OperandShape allowed, checker::OperandShape actual) {
  */
 bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
                             const syntax_ast::AstInstruction& ast) {
+  if (layout.kind == check_end::OperandLayoutKind::Call) {
+    if (ast.operands.size() != layout.slots.size())
+      return false;
+    for (size_t index = 0; index < layout.slots.size(); ++index) {
+      if (!allows_shape(layout.slots[index].allowed_shapes,
+                         check_end::get_operand_syntax_shape(
+                             ast.operands[index]))) {
+        return false;
+      }
+    }
+    if (ast.operands.size() == 2) {
+      const auto* arguments =
+          std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[1]);
+      return arguments != nullptr &&
+             arguments->kind == syntax_ast::AstCallParameterListKind::Input;
+    }
+    if (ast.operands.size() == 3) {
+      const auto* returns =
+          std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[0]);
+      const auto* arguments =
+          std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[2]);
+      return returns != nullptr && arguments != nullptr &&
+             returns->kind == syntax_ast::AstCallParameterListKind::Return &&
+             arguments->kind == syntax_ast::AstCallParameterListKind::Input;
+    }
+    return ast.operands.size() == 1;
+  }
   if (ast.operands.size() > layout.slots.size())
     return false;
 
@@ -614,6 +641,167 @@ resolve_branch_target(const syntax_ast::AstOperand& operand,
   }
 
   return WithLocs<ResolvedBranchTarget>{std::move(resolved), target->range};
+}
+
+std::expected<ResolvedCallParameterRef, ResolveDiagnostic>
+resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
+                       const ResolveContext* context) {
+  ResolvedCallParameterRef resolved{.spelling = identifier.syntax.text};
+  if (context == nullptr)
+    return resolved;
+
+  const auto lookup =
+      context->symbols.lookup(context->scope, identifier.syntax.text);
+  if (!lookup) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier.syntax.range,
+        .message = fmt::format("Unresolved call parameter '{}'.",
+                               identifier.syntax.text),
+    });
+  }
+  const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+  const bool parameter_or_variable =
+      symbol.kind == binding::SymbolKind::Variable ||
+      symbol.kind == binding::SymbolKind::InputParameter ||
+      symbol.kind == binding::SymbolKind::ReturnParameter;
+  const bool allowed_space = symbol.state_space &&
+      (*symbol.state_space == syntax_ast::AstStateSpace::Register ||
+       *symbol.state_space == syntax_ast::AstStateSpace::Parameter);
+  if (!parameter_or_variable || !allowed_space) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier.syntax.range,
+        .message = fmt::format("Call parameter '{}' must name a .reg or "
+                               ".param variable.",
+                               identifier.syntax.text),
+    });
+  }
+  resolved.symbol_id = lookup->symbol;
+  resolved.parameterized_index = lookup->parameterized_index;
+  resolved.state_space = symbol.state_space;
+  if (!symbol.type) {
+    throw ResolveException(fmt::format(
+        "Call parameter symbol '{}' has no declaration type.", symbol.name));
+  }
+  const auto declared_type = scalar_type_from_ptx_name(*symbol.type);
+  if (!declared_type) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = symbol.declaration_range,
+        .message = fmt::format(
+            "Call parameter '{}' has unsupported declared type '{}'.",
+            symbol.name, *symbol.type),
+    });
+  }
+  resolved.declared_type = *declared_type;
+  return resolved;
+}
+
+std::expected<WithLocs<ResolvedFunctionRef>, ResolveDiagnostic>
+resolve_direct_call_target(const syntax_ast::AstOperand& operand,
+                           const ResolveContext* context) {
+  const auto* target = std::get_if<syntax_ast::AstCallTarget>(&operand);
+  if (target == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a direct call target.",
+    });
+  }
+
+  ResolvedFunctionRef resolved{.spelling = target->name.syntax.text};
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, target->name.syntax.text);
+    if (!lookup) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target->range,
+          .message = fmt::format("Unresolved call target '{}'.",
+                                 target->name.syntax.text),
+      });
+    }
+    const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+    if (symbol.kind != binding::SymbolKind::Function) {
+      const bool is_register = symbol.kind == binding::SymbolKind::Variable &&
+          symbol.state_space == syntax_ast::AstStateSpace::Register;
+      return std::unexpected(ResolveDiagnostic{
+          .range = target->range,
+          .message = is_register
+              ? "Indirect call targets require a target list or prototype, "
+                "which is not supported yet."
+              : fmt::format("Call target '{}' must name a function.",
+                            target->name.syntax.text),
+      });
+    }
+    if (symbol.function_is_entry) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target->range,
+          .message = fmt::format(
+              "Direct call target '{}' must name a device .func, not an .entry.",
+              target->name.syntax.text),
+      });
+    }
+    resolved.symbol_id = symbol.id;
+    resolved.is_entry = symbol.function_is_entry;
+  }
+  return WithLocs<ResolvedFunctionRef>{std::move(resolved), target->range};
+}
+
+std::expected<WithLocs<ResolvedCallParameterRef>, ResolveDiagnostic>
+resolve_call_return_parameter(const syntax_ast::AstOperand& operand,
+                              const ResolveContext* context) {
+  const auto* group = std::get_if<syntax_ast::AstCallParameterList>(&operand);
+  if (group == nullptr ||
+      group->kind != syntax_ast::AstCallParameterListKind::Return ||
+      group->parameters.size() != 1) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a single call return parameter.",
+    });
+  }
+  const auto* identifier =
+      std::get_if<syntax_ast::AstIdentifierRef>(&group->parameters.front());
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = group->range,
+        .message = "A call return parameter must be a .reg or .param variable.",
+    });
+  }
+  auto resolved = resolve_call_parameter(*identifier, context);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  return WithLocs<ResolvedCallParameterRef>{std::move(*resolved),
+                                             group->range};
+}
+
+std::expected<WithLocs<ResolvedCallArguments>, ResolveDiagnostic>
+resolve_call_arguments(const syntax_ast::AstOperand& operand,
+                       const ResolveContext* context) {
+  const auto* group = std::get_if<syntax_ast::AstCallParameterList>(&operand);
+  if (group == nullptr ||
+      group->kind != syntax_ast::AstCallParameterListKind::Input) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a call input parameter group.",
+    });
+  }
+
+  ResolvedCallArguments resolved;
+  resolved.values.reserve(group->parameters.size());
+  for (const auto& parameter : group->parameters) {
+    if (const auto* identifier =
+            std::get_if<syntax_ast::AstIdentifierRef>(&parameter)) {
+      auto value = resolve_call_parameter(*identifier, context);
+      if (!value)
+        return std::unexpected(value.error());
+      resolved.values.emplace_back(ResolvedCallArgument{std::move(*value)},
+                                   identifier->syntax.range);
+      continue;
+    }
+    const auto& immediate = std::get<syntax_ast::AstImmediate>(parameter);
+    resolved.values.emplace_back(
+        ResolvedCallArgument{ResolvedCallLiteral{
+            .spelling = immediate.syntax.text, .kind = immediate.kind}},
+        immediate.syntax.range);
+  }
+  return WithLocs<ResolvedCallArguments>{std::move(resolved), group->range};
 }
 
 std::expected<WithLocs<ResolvedSpecialRegisterRef>, ResolveDiagnostic>
@@ -1674,6 +1862,24 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::DirectCallTarget: {
+      auto value = resolve_direct_call_target(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::CallReturnParameter: {
+      auto value = resolve_call_return_parameter(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::CallArguments: {
+      auto value = resolve_call_arguments(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
@@ -1767,6 +1973,9 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
     case ResolvedValueKind::RegisterVector:
+    case ResolvedValueKind::DirectCallTarget:
+    case ResolvedValueKind::CallReturnParameter:
+    case ResolvedValueKind::CallArguments:
     case ResolvedValueKind::VectorArity:
       throw ResolveException(fmt::format(
           "Optional modifier '{}' targets non-modifier resolved field '{}'.",
@@ -1874,8 +2083,19 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   const ResolvedVariantDescriptor& resolved_variant =
       find_resolved_variant_descriptor(resolved_instruction, variant_name);
   const auto selected_layout = select_operand_layout(syntax_variant, ast);
-  if (!selected_layout)
+  if (!selected_layout) {
+    if (ast.opcode.syntax.text == "call" &&
+        std::ranges::any_of(ast.operands, [](const auto& operand) {
+          return std::holds_alternative<syntax_ast::AstCallTargetSet>(operand);
+        })) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = ast.range,
+          .message = "Indirect call target lists and prototypes are not "
+                     "supported yet.",
+      });
+    }
     return std::unexpected(selected_layout.error());
+  }
 
   if (selected_layout->index >= resolved_variant.operand_layouts.size()) {
     throw ResolveException(fmt::format(
@@ -2004,6 +2224,9 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Symbol:
       case ResolvedValueKind::Address:
       case ResolvedValueKind::RegisterVector:
+      case ResolvedValueKind::DirectCallTarget:
+      case ResolvedValueKind::CallReturnParameter:
+      case ResolvedValueKind::CallArguments:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

@@ -23,7 +23,7 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 32-bit type；PTX 8.8/SM 100 另支持精确 256-bit 的 `.v8` × 32-bit 与 `.v4` × 64-bit。
 静态 natural alignment 会检查已绑定 data symbol 的常量 byte offset 和 absolute immediate；
 register 与 standalone unresolved address 保持 unknown。其余 source form、其余 memory
-qualifier extension、`call` group、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+qualifier extension、indirect-call metadata、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -261,9 +261,9 @@ tag 合法、tag 与 payload alternative 一致，以及 payload 的每个 opera
 tag/payload 不一致是损坏的 resolved IR，诊断种类为
 `OperandLayoutPayloadMismatch`。
 
-当前唯一实现的 layout algorithm 是 `Flat`：逗号分隔的、位置固定的 operand slots。
-Syntax AST 已能表示 `Group` 和 call 参数组，但 descriptor/resolver 仍需增加新的 layout
-kind 才能消费它们；可变参数与 call group 不能伪装成 `Flat`。
+`Flat` 用于逗号分隔、位置固定的 operand slot。唯一新增的 layout algorithm 是 `Call`：它识别
+三种 direct-call group 排列，并把 input group 解析为一个 variadic field。它是固定 algorithm，
+不是通用 repeat DSL；可变参数与 call group 仍不能伪装成 `Flat`。
 
 ## Resolution 协议
 

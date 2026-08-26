@@ -15,6 +15,56 @@ operand_patterns:
       access: control
 
 instructions:
+  - opcode: call
+    section: "9.7.13.1"
+    doc: "Direct call to a named function; indirect target lists and prototypes are deferred."
+    syntax: "call{.uni} [(return),] function [(arguments)]"
+    variants:
+      - name: call_direct
+        description: "Direct call with optional return and input parameter groups."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: uni
+            kind: flag
+            presence: optional
+            default: false
+            token: ".uni"
+        operand_layouts:
+          - name: target
+            kind: call
+            operands:
+              - name: target
+                kind: direct_call_target
+                role: label
+                access: control
+          - name: target_input
+            kind: call
+            operands:
+              - name: target
+                kind: direct_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+          - name: return_target_input
+            kind: call
+            operands:
+              - name: return_value
+                kind: call_return_param
+                role: dst
+                access: write
+              - name: target
+                kind: direct_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
   - opcode: bra
     section: "9.7.13.3"
     doc: "Branch to a direct function-local label, optionally marked uniform."

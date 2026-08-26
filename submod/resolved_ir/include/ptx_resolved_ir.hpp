@@ -80,6 +80,9 @@ enum class ResolvedValueKind : uint8_t {
   Symbol,
   Address,
   RegisterVector,
+  DirectCallTarget,
+  CallReturnParameter,
+  CallArguments,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -89,6 +92,7 @@ struct SyntaxOperandSlotDescriptor {
 
 enum class OperandLayoutKind : uint8_t {
   Flat,  // normal layout
+  Call,  // fixed direct-call group layouts
 };
 
 struct SyntaxOperandLayoutDescriptor {
@@ -251,13 +255,39 @@ struct ResolvedSpecialRegisterRef {
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
 };
 
-/** A function address, bound to a device or kernel function declaration. */
+/** A function reference, bound to a device or kernel function declaration. */
 struct ResolvedFunctionRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;
   bool is_entry{};
   std::optional<checker::AvailabilityDescriptor> address_availability;
   bool operator==(const ResolvedFunctionRef&) const = default;
+};
+
+/** A .reg or .param symbol passed through a direct call boundary. */
+struct ResolvedCallParameterRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<uint32_t> parameterized_index;
+  std::optional<syntax_ast::AstStateSpace> state_space;
+  std::optional<ScalarType> declared_type;
+  bool operator==(const ResolvedCallParameterRef&) const = default;
+};
+
+/** A call immediate retained until a callee signature supplies its type. */
+struct ResolvedCallLiteral {
+  std::string spelling;
+  syntax_ast::AstImmediateKind kind{};
+  bool operator==(const ResolvedCallLiteral&) const = default;
+};
+
+using ResolvedCallArgument =
+    std::variant<ResolvedCallParameterRef, ResolvedCallLiteral>;
+
+/** The variadic input group of a direct call, with element source ranges. */
+struct ResolvedCallArguments {
+  std::vector<WithLocs<ResolvedCallArgument>> values;
+  bool operator==(const ResolvedCallArguments&) const = default;
 };
 
 /** An addressable data symbol, optionally bound to a module declaration. */
@@ -331,7 +361,10 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
-                 WithLocs<ResolvedRegisterVector>>;
+                 WithLocs<ResolvedRegisterVector>,
+                 WithLocs<ResolvedFunctionRef>,
+                 WithLocs<ResolvedCallParameterRef>,
+                 WithLocs<ResolvedCallArguments>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 
 struct ResolvedInstructionFields {

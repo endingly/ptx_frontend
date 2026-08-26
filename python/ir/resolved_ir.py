@@ -67,6 +67,9 @@ class ResolvedValueKind(Enum):
     SYMBOL = "Symbol"
     ADDRESS = "Address"
     REGISTER_VECTOR = "RegisterVector"
+    DIRECT_CALL_TARGET = "DirectCallTarget"
+    CALL_RETURN_PARAMETER = "CallReturnParameter"
+    CALL_ARGUMENTS = "CallArguments"
 
 
 class ResolvedFieldStorage(Enum):
@@ -108,6 +111,9 @@ class ResolvedOperandShape(Enum):
     VECTOR = "Vector"
     BRANCH_TARGET = "BranchTarget"
     SPECIAL_REGISTER = "SpecialRegister"
+    DIRECT_CALL_TARGET = "DirectCallTarget"
+    CALL_RETURN_PARAMETER = "CallReturnParameter"
+    CALL_ARGUMENTS = "CallArguments"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -390,6 +396,9 @@ _OPERAND_ALLOWED_SHAPES = {
     "symbol": (ResolvedOperandShape.SYMBOL,),
     "addr": (ResolvedOperandShape.ADDRESS,),
     "reg_vector": (ResolvedOperandShape.VECTOR,),
+    "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
+    "call_return_param": (ResolvedOperandShape.CALL_RETURN_PARAMETER,),
+    "call_arguments": (ResolvedOperandShape.CALL_ARGUMENTS,),
 }
 
 _OPERAND_ROLES = {

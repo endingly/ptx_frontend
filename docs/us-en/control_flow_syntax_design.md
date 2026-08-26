@@ -51,7 +51,17 @@ the current function label's stable `SymbolId`; standalone resolution retains
 only the source spelling. `.uni` and the execution predicate are preserved as
 a generated modifier field and an opcode-common field respectively.
 
-`call` still cannot be disguised as `Flat`. It needs a layout algorithm for
-groups and variadic operands, plus binding-aware resolved values for function
-targets, call parameters, and target-set/prototype symbols, before it can join
-unified dispatch and checking.
+`call` now uses the non-`Flat` `Call` layout algorithm. One generated direct
+variant has exactly three fixed payload layouts: target only, target plus the
+variadic input group, and return group plus target plus input group. The group
+role is checked during layout selection, so a return group cannot match the
+input position. `ResolvedFunctionRef` preserves a bound direct target,
+`ResolvedCallParameterRef` preserves each `.reg`/`.param` identity, type, and
+state space, and `ResolvedCallArguments` owns per-element ranges. Literals are
+retained untyped until a future call-signature pass can type them.
+
+Only direct named-function calls are resolved in this slice. A `.reg` target
+or a `CallTargetSet` fourth operand is rejected clearly: indirect calls need
+the still-unmodeled `.calltargets`/`.callprototype` metadata. Direct function
+signature/ABI comparison is deferred too; the existing declaration pass has
+no reusable call-contract representation.

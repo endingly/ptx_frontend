@@ -62,7 +62,7 @@ bool isModifier(TokenKind kind) {
 
 bool isModuleDirective(TokenKind kind) {
   return kind == TokenKind::DotVersion || kind == TokenKind::DotTarget ||
-         kind == TokenKind::DotAddressSize;
+         kind == TokenKind::DotAddressSize || kind == TokenKind::DotFile;
 }
 
 bool isFunctionQualifier(TokenKind kind) {
@@ -1299,6 +1299,32 @@ PtxCstParser::parseModuleDirective() {
       auto size = expect(TokenKind::Decimal, "address size");
       if (!size)
         return std::unexpected(size.error());
+      arguments.push_back(*size);
+      break;
+    }
+    case TokenKind::DotFile: {
+      auto index = expect(TokenKind::Decimal, "file index");
+      if (!index)
+        return std::unexpected(index.error());
+      auto filename = expect(TokenKind::String, "file name");
+      if (!filename)
+        return std::unexpected(filename.error());
+      arguments.push_back(*index);
+      arguments.push_back(*filename);
+      if (token(peek()).kind != TokenKind::Comma)
+        break;
+      separators.push_back(consume());
+      auto timestamp = expect(TokenKind::Decimal, "file timestamp");
+      if (!timestamp)
+        return std::unexpected(timestamp.error());
+      auto comma = expect(TokenKind::Comma, "comma before file size");
+      if (!comma)
+        return std::unexpected(comma.error());
+      auto size = expect(TokenKind::Decimal, "file size");
+      if (!size)
+        return std::unexpected(size.error());
+      arguments.push_back(*timestamp);
+      separators.push_back(*comma);
       arguments.push_back(*size);
       break;
     }

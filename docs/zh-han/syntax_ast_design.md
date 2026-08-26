@@ -45,7 +45,9 @@ if (cst)
 ```
 
 `parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
-module root。function body 现在可含 nested block；CST 保留其 brace、有序 body item 与
+module root。outermost module scope 的 `.file` 只接受
+`file_index "filename"` 或 `file_index "filename", timestamp, file_size`；
+两个 optional numeric field 必须成对，省略时保留 PTX 默认零而不伪造 source location。function body 现在可含 nested block；CST 保留其 brace、有序 body item 与
 完整 source range，Syntax AST 则保留有序 body item 与完整 source range。binding 会加入 lexical
 scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序平铺的 body；不会引入
 `ResolvedBlock`。当前 module grammar

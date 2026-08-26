@@ -613,6 +613,28 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
           ast.items.emplace_back(syntax_ast::AstAddressSizeDirective{
               leafSyntax(cst, directive->arguments.at(0)), range});
           break;
+        case TokenKind::DotFile:
+          if (directive->arguments.size() != 2 &&
+              directive->arguments.size() != 4) {
+            return std::unexpected(AstLowerDiagnostic{
+                .range = range,
+                .message = "invalid .file directive payload in CST",
+            });
+          }
+          ast.items.emplace_back(syntax_ast::AstFileDirective{
+              .file_index = leafSyntax(cst, directive->arguments.at(0)),
+              .filename = leafSyntax(cst, directive->arguments.at(1)),
+              .timestamp = directive->arguments.size() == 4
+                               ? std::optional{leafSyntax(
+                                     cst, directive->arguments.at(2))}
+                               : std::nullopt,
+              .file_size = directive->arguments.size() == 4
+                               ? std::optional{leafSyntax(
+                                     cst, directive->arguments.at(3))}
+                               : std::nullopt,
+              .range = range,
+          });
+          break;
         default:
           return std::unexpected(AstLowerDiagnostic{
               .range = cst.token(directive->keyword).range,

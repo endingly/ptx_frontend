@@ -419,6 +419,49 @@ TEST(PtxCstParser, ParsesAndRoundTripsMinimalModule) {
       "ret");
 }
 
+TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
+  constexpr std::string_view source = R"ptx(.file 0 "source.ptx"
+.file 1 "large.ptx", 0, 18446744073709551615U;
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& items = result->module()->items;
+  ASSERT_EQ(items.size(), 2u);
+  const auto& short_form =
+      std::get<syntax_cst::CstModuleDirective>(items[0]);
+  EXPECT_EQ(result->token(short_form.keyword).kind, TokenKind::DotFile);
+  ASSERT_EQ(short_form.arguments.size(), 2u);
+  EXPECT_TRUE(short_form.separators.empty());
+  EXPECT_FALSE(short_form.terminator.has_value());
+  EXPECT_EQ(result->token(short_form.arguments[1]).text, "\"source.ptx\"");
+
+  const auto& full_form =
+      std::get<syntax_cst::CstModuleDirective>(items[1]);
+  ASSERT_EQ(full_form.arguments.size(), 4u);
+  ASSERT_EQ(full_form.separators.size(), 2u);
+  ASSERT_TRUE(full_form.terminator.has_value());
+  EXPECT_EQ(result->token(full_form.arguments[2]).text, "0");
+  EXPECT_EQ(result->token(full_form.arguments[3]).text,
+            "18446744073709551615U");
+  EXPECT_EQ(result->sourceRange(full_form.token_range).start.line, 2u);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrNonlocalFileDirectives) {
+  for (const std::string_view source : {
+           ".file 0 \"source.ptx\", 0",
+           ".file 0 \"source.ptx\", , 0",
+           ".file 0 source.ptx",
+           ".entry kernel() { .file 0 \"source.ptx\" }",
+       }) {
+    PtxCstParser parser(source);
+    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+  }
+}
+
 TEST(PtxCstParser, FindsFuncNameAfterReturnParameterList) {
   constexpr std::string_view source =
       ".func (.param .b32 result) helper(.param .b32 input) { ret; }";

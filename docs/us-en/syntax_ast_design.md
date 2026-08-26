@@ -55,7 +55,11 @@ if (cst)
 ```
 
 `parseInstruction()` accepts exactly one complete instruction fragment, while
-`parseModule()` requires a module root. Function bodies may contain nested
+`parseModule()` requires a module root. At outermost module scope, `.file`
+accepts exactly `file_index "filename"` or
+`file_index "filename", timestamp, file_size`; the optional numeric fields
+are a required pair and their absence retains PTX's default zero without
+inventing source locations. Function bodies may contain nested
 blocks; CST retains their braces, ordered body items, and source ranges, while
 Syntax AST retains their body items and whole source ranges. Module resolution
 binds lexical block scopes and recursively resolves their instructions

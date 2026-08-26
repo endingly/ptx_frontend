@@ -347,6 +347,35 @@ TEST(PtxSyntaxParser, LowersMinimalModuleToTypedAst) {
       "add");
 }
 
+TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
+  constexpr std::string_view source = R"ptx(.file 0 "source.ptx"
+.file 1 "large.ptx", 0, 18446744073709551615U;
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_EQ(result->items.size(), 2u);
+  const auto& short_form =
+      std::get<syntax_ast::AstFileDirective>(result->items[0]);
+  EXPECT_EQ(short_form.file_index.text, "0");
+  EXPECT_EQ(short_form.filename.text, "\"source.ptx\"");
+  EXPECT_FALSE(short_form.timestamp.has_value());
+  EXPECT_FALSE(short_form.file_size.has_value());
+  EXPECT_EQ(short_form.range.start.line, 1u);
+
+  const auto& full_form =
+      std::get<syntax_ast::AstFileDirective>(result->items[1]);
+  ASSERT_TRUE(full_form.timestamp.has_value());
+  ASSERT_TRUE(full_form.file_size.has_value());
+  EXPECT_EQ(full_form.timestamp->text, "0");
+  EXPECT_EQ(full_form.file_size->text, "18446744073709551615U");
+  EXPECT_EQ(full_form.timestamp->range.start.line, 2u);
+  EXPECT_EQ(full_form.file_size->range.start.line, 2u);
+  EXPECT_EQ(full_form.range.start.line, 2u);
+}
+
 TEST(PtxSyntaxParser, LowersFuncDefinition) {
   PtxSyntaxParser parser(
       ".func (.param .b32 result) helper(.param .b32 input) { ret; }");

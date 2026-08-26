@@ -167,6 +167,14 @@ struct AstAddressSizeDirective {
   SourceRange range;
 };
 
+struct AstFileDirective {
+  AstSyntax file_index;
+  AstSyntax filename;
+  std::optional<AstSyntax> timestamp;
+  std::optional<AstSyntax> file_size;
+  SourceRange range;
+};
+
 struct AstConstantExpression;
 using AstConstantExpressionPtr = std::unique_ptr<AstConstantExpression>;
 
@@ -375,7 +383,8 @@ struct AstFunction {
 
 using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
-                 AstAddressSizeDirective, AstVariableDeclaration, AstFunction>;
+                 AstAddressSizeDirective, AstFileDirective,
+                 AstVariableDeclaration, AstFunction>;
 
 struct AstModule {
   std::vector<AstModuleItem> items;

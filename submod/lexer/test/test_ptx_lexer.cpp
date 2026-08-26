@@ -266,6 +266,20 @@ TEST(PtxLexerNew, ModuleDirectivesRemainDedicatedTokens) {
   expect_token(toks[5], TokenKind::Decimal, "64");
 }
 
+TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
+  const auto toks = lex_all(
+      ".file 0 \"source.ptx\", 0, 18446744073709551615U");
+
+  ASSERT_EQ(toks.size(), 7u);
+  expect_token(toks[0], TokenKind::DotFile, ".file");
+  expect_token(toks[1], TokenKind::Decimal, "0");
+  expect_token(toks[2], TokenKind::String, "\"source.ptx\"");
+  expect_token(toks[3], TokenKind::Comma, ",");
+  expect_token(toks[4], TokenKind::Decimal, "0");
+  expect_token(toks[5], TokenKind::Comma, ",");
+  expect_token(toks[6], TokenKind::Decimal, "18446744073709551615U");
+}
+
 TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak");
 

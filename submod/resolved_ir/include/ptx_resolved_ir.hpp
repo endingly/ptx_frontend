@@ -338,6 +338,9 @@ struct ResolvedAddress {
   std::optional<ResolvedAddressOffset> offset;
   /** Instruction context captured by module resolution; standalone is unknown. */
   EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
+  /** PTX 9.3 .param subqualifier selected by this memory instruction. */
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
   bool operator==(const ResolvedAddress&) const = default;
 };
 

@@ -379,6 +379,15 @@ resolve_memory_state_space(const syntax_ast::AstModifier& modifier) {
   return WithLocs<MemoryStateSpace>{*state_space, modifier.syntax.range};
 }
 
+ParameterAddressQualifier parameter_address_qualifier_from_modifier(
+    std::string_view spelling) noexcept {
+  if (spelling == ".param::entry")
+    return ParameterAddressQualifier::Entry;
+  if (spelling == ".param::func")
+    return ParameterAddressQualifier::Function;
+  return ParameterAddressQualifier::Default;
+}
+
 struct ParsedNumberedRegister {
   std::string_view prefix;
   uint32_t index;
@@ -2269,6 +2278,14 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
                                        fields, context);
     if (!value)
       return std::unexpected(value.error());
+    if (auto* address = std::get_if<WithLocs<ResolvedAddress>>(&*value)) {
+      const auto state_space = actual_modifiers->find("state_space");
+      if (state_space != actual_modifiers->end()) {
+        address->value.parameter_qualifier =
+            parameter_address_qualifier_from_modifier(
+                state_space->second->syntax.text);
+      }
+    }
     const auto [_, inserted] =
         fields.operands.emplace(std::string(field.field_id), std::move(*value));
     if (!inserted) {

@@ -1098,6 +1098,8 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .enclosing_function_kind =
                       {object_name}.{field.name}.value.enclosing_function_kind,
                   .parameter_direction = parameter_direction,
+                  .parameter_qualifier =
+                      {object_name}.{field.name}.value.parameter_qualifier,
                   .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

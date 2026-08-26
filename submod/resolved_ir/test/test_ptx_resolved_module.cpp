@@ -2346,6 +2346,126 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
             checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
 }
 
+TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
+  const auto ast = parseModule(R"ptx(
+.func callee(.param .u32 input);
+.entry caller(.param .u32 entry_input) {
+  .reg .pred %p;
+  .reg .u32 %r0;
+  .param .u32 input0, input1, output;
+  ld.param::entry.u32 %r0, [entry_input];
+  ld.param.u32 %r0, [entry_input];
+  st.param::func.u32 [input0], %r0;
+  st.param.u32 [input1], %r0;
+  @%p call.uni (output), callee, (input0, input1);
+  ld.param::func.u32 %r0, [output];
+}
+.func device(.param .u32 input) {
+  .reg .u32 %r0;
+  ld.param::func.u32 %r0, [input];
+  ld.param.u32 %r0, [input];
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& caller = resolved->functions[1].body;
+  ASSERT_EQ(caller.size(), 6u);
+  const auto& entry_load = std::get<Ld::ExplicitScalar>(
+      std::get<Ld>(caller[0]).variant);
+  EXPECT_EQ(entry_load.address.value.parameter_qualifier,
+            ParameterAddressQualifier::Entry);
+  const auto& staged_store = std::get<St::ExplicitScalar>(
+      std::get<St>(caller[2]).variant);
+  EXPECT_EQ(staged_store.address.value.parameter_qualifier,
+            ParameterAddressQualifier::Function);
+  const auto& default_load = std::get<Ld::ExplicitScalar>(
+      std::get<Ld>(caller[1]).variant);
+  EXPECT_EQ(default_load.address.value.parameter_qualifier,
+            ParameterAddressQualifier::Default);
+  const auto& call = std::get<Call>(caller[4]);
+  EXPECT_TRUE(call.execution_predicate.has_value());
+  EXPECT_TRUE(std::get<Call::Direct>(call.variant).uni.value);
+  const auto& return_load = std::get<Ld::ExplicitScalar>(
+      std::get<Ld>(caller[5]).variant);
+  EXPECT_EQ(return_load.address.value.parameter_qualifier,
+            ParameterAddressQualifier::Function);
+}
+
+TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
+  const auto resolve_source = [](std::string_view body) {
+    return resolveModule(parseModule(fmt::format(R"ptx(
+.func callee(.param .u32 input);
+.entry caller(.param .u32 entry_input) {{
+  .reg .pred %p;
+  .reg .u32 %r0;
+  .param .u32 input, other, output;
+  {}
+}}
+.func device(.param .u32 input) {{
+  .reg .u32 %r0;
+  ld.param::entry.u32 %r0, [input];
+}}
+)ptx",
+                                                body)));
+  };
+
+  const auto entry_as_function = resolve_source(
+      "ld.param::func.u32 %r0, [entry_input];");
+  ASSERT_FALSE(entry_as_function.has_value());
+  EXPECT_EQ(entry_as_function.error().front().message,
+            ".param::func may access only a device-function parameter or "
+            "function-local call parameter.");
+
+  const auto device_as_entry = resolve_source("mov.u32 %r0, %r0;");
+  ASSERT_FALSE(device_as_entry.has_value());
+  EXPECT_EQ(device_as_entry.error().front().message,
+            ".param::entry may access only a kernel entry input parameter.");
+
+  const auto predicated_store = resolve_source(
+      "@%p st.param.u32 [input], %r0;\n  call callee, (input);");
+  ASSERT_FALSE(predicated_store.has_value());
+  EXPECT_EQ(predicated_store.error().front().message,
+            "A function-local .param argument store cannot be predicated.");
+
+  const auto non_adjacent_store = resolve_source(
+      "st.param.u32 [input], %r0;\n  mov.u32 %r0, %r0;\n  call callee, (input);");
+  ASSERT_FALSE(non_adjacent_store.has_value());
+  EXPECT_EQ(non_adjacent_store.error().front().message,
+            "A function-local .param argument store must be in the contiguous "
+            "block immediately before a call that uses it.");
+
+  const auto wrong_call_argument = resolve_source(
+      "st.param.u32 [input], %r0;\n  call callee, (other);");
+  ASSERT_FALSE(wrong_call_argument.has_value());
+  EXPECT_EQ(wrong_call_argument.error().front().message,
+            "A function-local .param argument store must be in the contiguous "
+            "block immediately before a call that uses it.");
+
+  const auto predicated_return_load = resolve_source(
+      "call (output), callee, ();\n  @%p ld.param.u32 %r0, [output];");
+  ASSERT_FALSE(predicated_return_load.has_value());
+  EXPECT_EQ(predicated_return_load.error().front().message,
+            "A function-local .param return load cannot be predicated.");
+
+  const auto non_adjacent_return_load = resolve_source(
+      "call (output), callee, ();\n  mov.u32 %r0, %r0;\n  ld.param.u32 %r0, [output];");
+  ASSERT_FALSE(non_adjacent_return_load.has_value());
+  EXPECT_EQ(non_adjacent_return_load.error().front().message,
+            "A function-local .param return load must be in the contiguous "
+            "block immediately after a call that returns it.");
+
+  const auto entry_store = resolveModule(parseModule(R"ptx(
+.entry caller() {
+  .reg .u32 %r0;
+  .param .u32 output;
+  st.param::entry.u32 [output], %r0;
+}
+)ptx"));
+  EXPECT_FALSE(entry_store.has_value());
+}
+
 TEST(ResolvedModule, RejectsIndirectCallsUntilTargetMetadataExists) {
   const auto indirect = parseModule(R"ptx(
 .entry caller() {

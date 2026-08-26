@@ -68,6 +68,13 @@ enum class ParameterDirection : uint8_t {
   CallArgument,
 };
 
+/** PTX 9.3 subqualifier retained for a .param memory access. */
+enum class ParameterAddressQualifier : uint8_t {
+  Default,
+  Entry,
+  Function,
+};
+
 namespace checker {
 using base::ScalarType;
 using base::RoundingMode;
@@ -251,6 +258,8 @@ struct OperandView {
   EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
   /** None unless the base binds a formal or call-argument parameter. */
   ParameterDirection parameter_direction = ParameterDirection::None;
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
   std::array<ScalarType, 8> vector_element_types{};
   uint8_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
@@ -382,6 +391,7 @@ enum class CheckDiagnosticKind : uint8_t {
   AddressStateSpaceMismatch,
   AddressAlignmentMismatch,
   ParameterDirectionMismatch,
+  ParameterQualifierMismatch,
   InvalidVectorOperand,
   MemoryConsistencyViolation,
   RuleViolation,

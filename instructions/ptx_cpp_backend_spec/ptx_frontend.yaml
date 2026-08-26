@@ -121,6 +121,8 @@ domains:
       global: MemoryStateSpace::Global
       local: MemoryStateSpace::Local
       param: MemoryStateSpace::Parameter
+      param::entry: MemoryStateSpace::Parameter
+      param::func: MemoryStateSpace::Parameter
       shared: MemoryStateSpace::Shared
 
   parameter_directions:

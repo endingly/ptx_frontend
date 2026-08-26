@@ -175,6 +175,13 @@ struct AstFileDirective {
   SourceRange range;
 };
 
+/** An outermost DWARF section whose payload remains raw syntax. */
+struct AstSectionDirective {
+  AstSyntax name;
+  std::vector<AstSyntax> payload;
+  SourceRange range;
+};
+
 struct AstConstantExpression;
 using AstConstantExpressionPtr = std::unique_ptr<AstConstantExpression>;
 
@@ -401,7 +408,7 @@ struct AstFunction {
 
 using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
-                 AstAddressSizeDirective, AstFileDirective,
+                 AstAddressSizeDirective, AstFileDirective, AstSectionDirective,
                  AstVariableDeclaration, AstFunction>;
 
 struct AstModule {

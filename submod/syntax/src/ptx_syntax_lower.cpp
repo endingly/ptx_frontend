@@ -675,6 +675,20 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       continue;
     }
 
+    if (const auto* section =
+            std::get_if<syntax_cst::CstSectionDirective>(&item)) {
+      std::vector<syntax_ast::AstSyntax> payload;
+      payload.reserve(section->payload.size());
+      for (const auto token : section->payload)
+        payload.push_back(leafSyntax(cst, token));
+      ast.items.emplace_back(syntax_ast::AstSectionDirective{
+          .name = leafSyntax(cst, section->name),
+          .payload = std::move(payload),
+          .range = cst.sourceRange(section->token_range),
+      });
+      continue;
+    }
+
     if (const auto* declaration =
             std::get_if<syntax_cst::CstVariableDeclaration>(&item)) {
       ast.items.emplace_back(lowerVariableDeclaration(cst, *declaration));

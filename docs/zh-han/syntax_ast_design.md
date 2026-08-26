@@ -54,6 +54,9 @@ scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序�
 `file line column` triple，或成对的 PTX 7.2 `function_name label {+ integer}` /
 `inlined_at file line column` payload；CST 保留标点，AST 保留 field 与 range。`.file`
 index、DWARF label 以及向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
+也在 outermost scope 接受 `.section name { ... }`，CST/AST 保留匹配 brace 和 raw DWARF
+payload token spelling；section name 只是 syntax，不是普通可绑定 identifier。DWARF payload type、
+private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar
 仍不接受 kernel-tuning directive、错误恢复节点、missing-token 插入或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。

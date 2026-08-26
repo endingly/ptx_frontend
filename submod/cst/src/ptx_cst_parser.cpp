@@ -57,7 +57,7 @@ bool isIntegerLiteral(TokenKind kind) {
   return kind == TokenKind::Decimal || kind == TokenKind::Hex;
 }
 
-bool isLocFunctionNameLabel(TokenKind kind) {
+bool isIdentifierToken(TokenKind kind) {
   return kind == TokenKind::Ident || kind == TokenKind::DotIdent;
 }
 
@@ -1199,7 +1199,7 @@ PtxCstParser::parseLocDirective() {
           token(function_name_keyword).range, "expected 'function_name'"});
     }
     const TokenId function_name_label = consume();
-    if (!isLocFunctionNameLabel(token(function_name_label).kind)) {
+    if (!isIdentifierToken(token(function_name_label).kind)) {
       return std::unexpected(CstParseDiagnostic{
           token(function_name_label).range, "expected function name label"});
     }
@@ -1453,6 +1453,57 @@ PtxCstParser::parseModuleDirective() {
                                         {keyword, last + 1}};
 }
 
+std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
+PtxCstParser::parseSectionDirective() {
+  const TokenId directive = consume();
+  const TokenId name = consume();
+  if (!isIdentifierToken(token(name).kind)) {
+    return std::unexpected(CstParseDiagnostic{token(name).range,
+                                              "expected section name"});
+  }
+  auto left_brace = expect(TokenKind::LBrace, "section opening brace");
+  if (!left_brace)
+    return std::unexpected(left_brace.error());
+
+  std::vector<TokenId> payload;
+  size_t brace_depth = 1;
+  TokenId right_brace{};
+  while (brace_depth != 0) {
+    const TokenId next = consume();
+    if (token(next).kind == TokenKind::Eof) {
+      return std::unexpected(CstParseDiagnostic{token(next).range,
+                                                "expected section closing brace"});
+    }
+    if (token(next).kind == TokenKind::LBrace) {
+      ++brace_depth;
+      payload.push_back(next);
+      continue;
+    }
+    if (token(next).kind == TokenKind::RBrace) {
+      --brace_depth;
+      if (brace_depth == 0) {
+        right_brace = next;
+        break;
+      }
+    }
+    payload.push_back(next);
+  }
+
+  std::optional<TokenId> terminator;
+  if (token(peek()).kind == TokenKind::Semicolon)
+    terminator = consume();
+  const TokenId last = terminator.value_or(right_brace);
+  return syntax_cst::CstSectionDirective{
+      .directive = directive,
+      .name = name,
+      .left_brace = *left_brace,
+      .payload = std::move(payload),
+      .right_brace = right_brace,
+      .terminator = terminator,
+      .token_range = {directive, last + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFunction, CstParseDiagnostic>
 PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
                             TokenId first_token) {
@@ -1577,6 +1628,15 @@ PtxCstParser::parseModule() {
     std::vector<TokenId> qualifiers;
     while (isFunctionQualifier(token(peek()).kind))
       qualifiers.push_back(consume());
+
+    if (qualifiers.empty() && token(peek()).kind == TokenKind::DotSection) {
+      auto section = parseSectionDirective();
+      if (!section)
+        return std::unexpected(section.error());
+      last = section->token_range.last - 1;
+      items.emplace_back(std::move(*section));
+      continue;
+    }
 
     if (qualifiers.empty() && isModuleDirective(token(peek()).kind)) {
       auto directive = parseModuleDirective();

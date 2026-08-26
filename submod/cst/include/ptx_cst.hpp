@@ -276,6 +276,17 @@ struct CstModuleDirective {
   CstTokenRange token_range;
 };
 
+/** An outermost DWARF section with a lossless, uninterpreted payload. */
+struct CstSectionDirective {
+  TokenId directive{};
+  TokenId name{};
+  TokenId left_brace{};
+  std::vector<TokenId> payload;
+  TokenId right_brace{};
+  std::optional<TokenId> terminator;
+  CstTokenRange token_range;
+};
+
 /** Initial function container; declaration/body grammar will refine it. */
 struct CstFunctionParameter {
   TokenId state_space{};
@@ -383,7 +394,8 @@ struct CstFunction {
 };
 
 using CstModuleItem =
-    std::variant<CstModuleDirective, CstVariableDeclaration, CstFunction>;
+    std::variant<CstModuleDirective, CstSectionDirective,
+                 CstVariableDeclaration, CstFunction>;
 
 struct CstModule {
   std::vector<CstModuleItem> items;

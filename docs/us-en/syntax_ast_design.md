@@ -69,7 +69,10 @@ with its basic `file line column` triple or its paired PTX 7.2
 `function_name label {+ integer}` / `inlined_at file line column` payload;
 CST preserves its punctuation and AST retains fields and ranges. Resolving
 `.file` indices, DWARF labels, and attachment to instructions or labels remains
-deferred. The module grammar does not yet accept kernel-tuning directives,
+deferred. At outermost scope, `.section name { ... }` preserves its matched
+braces and raw DWARF payload token spelling in CST and AST; section names are
+syntax, not ordinary bound identifiers. DWARF payload typing, private labels,
+and `.loc` offset validation remain deferred. The module grammar does not yet accept kernel-tuning directives,
 recovery nodes, missing-token insertion, or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.

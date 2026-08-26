@@ -462,6 +462,57 @@ TEST(PtxCstParser, RejectsMalformedOrNonlocalFileDirectives) {
   }
 }
 
+TEST(PtxCstParser, RetainsOutermostSectionPayload) {
+  constexpr std::string_view source = R"ptx(.section .debug_info {
+Lbegin:
+  .b8 -128, 0, 255
+  .b16 -32768, 65535
+  .b32 -2147483648, 4294967295U
+  .b64 -9223372036854775808, 18446744073709551615U
+  .b32 .debug_abbrev
+  .b64 Lbegin
+  .b32 .debug_str+0x4
+  .b64 Lbegin+12
+  .b32 Lend-Lbegin
+  .b64 Lbegin-Lend
+Lend:
+};
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& section = std::get<syntax_cst::CstSectionDirective>(
+      result->module()->items.front());
+  EXPECT_EQ(result->token(section.directive).kind, TokenKind::DotSection);
+  EXPECT_EQ(result->token(section.name).text, ".debug_info");
+  EXPECT_EQ(result->token(section.left_brace).kind, TokenKind::LBrace);
+  EXPECT_EQ(result->token(section.right_brace).kind, TokenKind::RBrace);
+  ASSERT_TRUE(section.terminator.has_value());
+  ASSERT_EQ(section.payload.size(), 46u);
+  EXPECT_EQ(result->token(section.payload.front()).text, "Lbegin");
+  EXPECT_EQ(result->token(section.payload.at(1)).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(section.payload.at(29)).text, ".debug_str");
+  EXPECT_EQ(result->token(section.payload.at(30)).kind, TokenKind::Plus);
+  EXPECT_EQ(result->token(section.payload.at(40)).text, ".b64");
+  EXPECT_EQ(result->sourceRange(section.token_range).start.line, 1u);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrNonlocalSectionDirectives) {
+  for (const std::string_view source : {
+           ".section",
+           ".section .debug_info",
+           ".section .debug_info { .b8 0",
+           ".entry kernel() { .section .debug_info { .b8 0 } }",
+           ".entry kernel() { { .section .debug_info { .b8 0 } } }",
+       }) {
+    PtxCstParser parser(source);
+    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+  }
+}
+
 TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 2 4237 0

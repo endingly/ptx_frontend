@@ -280,6 +280,14 @@ TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
   expect_token(toks[6], TokenKind::Decimal, "18446744073709551615U");
 }
 
+TEST(PtxLexerNew, SectionDirectiveRemainsDedicated) {
+  const auto toks = lex_all(".section .debug_str { .b8 0 }");
+
+  ASSERT_EQ(toks.size(), 6u);
+  expect_token(toks[0], TokenKind::DotSection, ".section");
+  expect_token(toks[1], TokenKind::DotIdent, ".debug_str");
+}
+
 TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
   const auto toks = lex_all(
       ".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");

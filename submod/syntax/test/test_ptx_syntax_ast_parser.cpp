@@ -376,6 +376,42 @@ TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
   EXPECT_EQ(full_form.range.start.line, 2u);
 }
 
+TEST(PtxSyntaxParser, LowersRawSectionPayloadSyntax) {
+  constexpr std::string_view source = R"ptx(.section .debug_info {
+Lbegin:
+  .b8 -128, 0, 255
+  .b16 -32768, 65535
+  .b32 -2147483648, 4294967295U
+  .b64 -9223372036854775808, 18446744073709551615U
+  .b32 .debug_abbrev
+  .b64 Lbegin
+  .b32 .debug_str+0x4
+  .b64 Lbegin+12
+  .b32 Lend-Lbegin
+  .b64 Lbegin-Lend
+Lend:
+};
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  const auto& section =
+      std::get<syntax_ast::AstSectionDirective>(result->items.front());
+  EXPECT_EQ(section.name.text, ".debug_info");
+  ASSERT_EQ(section.payload.size(), 46u);
+  EXPECT_EQ(section.payload.front().text, "Lbegin");
+  EXPECT_EQ(section.payload.at(29).text, ".debug_str");
+  EXPECT_EQ(section.payload.at(30).text, "+");
+  EXPECT_EQ(section.payload.at(31).text, "0x4");
+  EXPECT_EQ(section.payload.at(36).text, ".b32");
+  EXPECT_EQ(section.payload.at(37).text, "Lend");
+  EXPECT_EQ(section.payload.at(38).text, "-");
+  EXPECT_EQ(section.range.start.line, 1u);
+  EXPECT_EQ(section.payload.at(29).range.start.line, 9u);
+}
+
 TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 2 4237 0

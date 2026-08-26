@@ -86,7 +86,7 @@ TEST(CallArgumentCompatibility, ChecksParameterByteArrays) {
 TEST(CallArgumentCompatibility, AcceptsSizedActualForUnsizedArrayFormal) {
   const CallArgumentProperties formal{
       .state_space = StateSpace::Parameter,
-      .type_speling = ".b8",
+      .type_spelling = ".b8",
       .array_alignment = 8,
       .is_array = true,
   };

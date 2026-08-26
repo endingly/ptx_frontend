@@ -388,6 +388,19 @@ struct SymbolTableBuilder {
       } else if (const auto* label = std::get_if<syntax_ast::AstLabel>(&item)) {
         addSymbol(function_scope, SymbolKind::Label, label->name.syntax.text,
                   label->name.syntax.range);
+      } else if (const auto* prototype =
+                     std::get_if<syntax_ast::AstCallPrototype>(&item)) {
+        addSymbol(function_scope, SymbolKind::CallPrototype,
+                  prototype->label.syntax.text,
+                  prototype->label.syntax.range);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstCallTargets>(&item)) {
+        addSymbol(function_scope, SymbolKind::CallTargetSet,
+                  targets->label.syntax.text, targets->label.syntax.range);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstBranchTargets>(&item)) {
+        addSymbol(function_scope, SymbolKind::BranchTargetSet,
+                  targets->label.syntax.text, targets->label.syntax.range);
       }
     }
   }
@@ -593,7 +606,18 @@ struct SymbolTableBuilder {
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCallTargetSet>) {
-            addReference(scope, ReferenceKind::CallTargetSet, value.name);
+            const SymbolReference& reference =
+                addReference(scope, ReferenceKind::CallTargetSet, value.name);
+            if (reference.target) {
+              const SymbolKind kind =
+                  result.table.symbol(reference.target->symbol).kind;
+              diagnoseInvalidTarget(
+                  reference, kind == SymbolKind::CallPrototype ||
+                                 kind == SymbolKind::CallTargetSet,
+                  fmt::format("Call target set '{}' must name a "
+                              ".callprototype or .calltargets declaration.",
+                              value.name.syntax.text));
+            }
           } else {
             const SymbolReference& reference =
                 addReference(scope, ReferenceKind::BranchTarget, value.name);

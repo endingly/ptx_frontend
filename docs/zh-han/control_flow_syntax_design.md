@@ -27,9 +27,9 @@ branch target。binding 会检查当前已可判定的 symbol kind：
 - call return/input identifier 必须是 `.reg` 或 `.param` variable/parameter；
 - direct branch target 必须是当前 function scope 的 label。
 
-target-set/prototype 的 symbol kind 要等 `.calltargets/.callprototype` directive 进入 AST 与
-symbol table 后才能完整校验；当前仍会保留 reference，并在没有 declaration 时给出明确的
-unresolved target-set diagnostic。
+indirect-call 的 target-set operand 必须指向 function-local `.callprototype` 或
+`.calltargets` declaration。它们的 label，以及 `.branchtargets` label，现在都有稳定的
+function-scope symbol；member/signature semantics 仍属于 I05。
 
 ## Descriptor 与 Resolved IR 边界
 

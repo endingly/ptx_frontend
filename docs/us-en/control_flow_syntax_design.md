@@ -35,10 +35,9 @@ the symbol kinds it can already determine:
   parameters;
 - a direct branch target names a label in the current function scope.
 
-Complete target-set/prototype validation depends on
-`.calltargets`/`.callprototype` directives entering AST and the symbol table.
-For now the reference is retained, and a missing declaration produces a
-specific unresolved target-set diagnostic.
+An indirect-call target-set operand must name a function-local `.callprototype`
+or `.calltargets` declaration. Their labels, and `.branchtargets` labels, now
+have stable function-scope symbols; member/signature semantics remain I05.
 
 ## Descriptor and Resolved IR boundary
 

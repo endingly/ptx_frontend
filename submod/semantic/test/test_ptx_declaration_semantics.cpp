@@ -131,6 +131,44 @@ TEST(PtxDeclarationSemantics,
             helper->symbol);
 }
 
+TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
+  PtxSyntaxParser parser(R"ptx(
+.func (.param .align 16 .u32 result) helper(
+    .param .u64 .ptr .global .align 16 pointer,
+    .param .u32 values[2 * 2]);
+.func (.param .align 16 .u32 output) helper(
+    .param .u64 .ptr .global .align 16 address,
+    .param .u32 data[4]) { ret; }
+.entry kernel() .noreturn { }
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& prototype = std::get<syntax_ast::AstFunction>(module->items[0]);
+  const auto& definition = std::get<syntax_ast::AstFunction>(module->items[1]);
+
+  const FunctionSignature prototype_signature = functionSignature(prototype);
+  EXPECT_EQ(prototype_signature, functionSignature(definition));
+  ASSERT_EQ(prototype_signature.return_parameters.size(), 1u);
+  const auto& result = prototype_signature.return_parameters[0];
+  EXPECT_EQ(result.state_space, syntax_ast::AstStateSpace::Parameter);
+  EXPECT_EQ(result.alignment, "16");
+  EXPECT_EQ(result.type, ".u32");
+  const auto& pointer = prototype_signature.parameters[0];
+  EXPECT_TRUE(pointer.is_pointer);
+  EXPECT_EQ(pointer.pointer_space, ".global");
+  EXPECT_EQ(pointer.pointer_alignment, "16");
+  ASSERT_EQ(prototype_signature.parameters.size(), 2u);
+  const auto& values = prototype_signature.parameters[1];
+  EXPECT_TRUE(values.is_array);
+  EXPECT_EQ(values.array_extent, "#4");
+  const FunctionSignature kernel_signature =
+      functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
+  EXPECT_TRUE(kernel_signature.is_entry);
+  EXPECT_TRUE(kernel_signature.is_noreturn);
+  EXPECT_TRUE(
+      checkDeclarations(*module, binding::bindSymbols(*module).table).empty());
+}
+
 TEST(PtxDeclarationSemantics, RejectsIncompatibleRedeclarationsAndDefinitions) {
   const CheckedModule result = check(R"ptx(
 .extern .global .u32 value[4];

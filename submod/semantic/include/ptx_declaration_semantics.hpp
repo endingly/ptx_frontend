@@ -21,6 +21,7 @@ enum class DeclarationDiagnosticKind : uint8_t {
   IncompatibleRedeclaration,
   MultipleDefinitions,
   InvalidLinkage,
+  InvalidAlignment,
 };
 
 struct DeclarationDiagnostic {

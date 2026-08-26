@@ -61,6 +61,9 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_TRUE(function.is_entry);
   EXPECT_FALSE(function.is_prototype);
   EXPECT_EQ(resolved->symbols.symbol(function.symbol_id).name, "kernel");
+  EXPECT_FALSE(
+      resolved->symbols.symbol(function.symbol_id).parameterized_count);
+  EXPECT_TRUE(resolved->symbols.symbol(function.symbol_id).function_is_entry);
   ASSERT_EQ(function.body.size(), 1u);
 
   const Add::IntegerNoSat& add = resolvedIntegerAdd(function.body.front());
@@ -779,8 +782,8 @@ TEST(ResolvedModule, ChecksBoundLoadStoreRegisterWidthPolicy) {
 
 TEST(ResolvedModule, ResolvesAndChecksLegacyLoadStoreRegisterVectors) {
   const auto ast = parseModule(R"ptx(
-.global .u32 global_value;
-.shared .u16 shared_value;
+.global .align 8 .u32 global_value;
+.shared .align 8 .u16 shared_value;
 .entry kernel() {
   .reg .u64 %rd0;
   .reg .u32 %r<4>;
@@ -854,6 +857,49 @@ TEST(ResolvedModule, ResolvesAndChecksLegacyLoadStoreRegisterVectors) {
   EXPECT_TRUE(checker::check(std::get<St>(body[6]), old_target).has_value());
 }
 
+TEST(ResolvedModule, ChecksBoundAndImmediateAddressAlignment) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 scalar_value;
+.global .align 16 .u32 vector_value;
+.global .f16x2 half2_value;
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r<4>;
+  ld.global.u32 %r0, [scalar_value];
+  ld.global.u32 %r0, [scalar_value+2];
+  ld.global.v4.u32 {%r0, %r1, %r2, %r3}, [vector_value];
+  st.global.v4.u32 [vector_value+8], {%r0, %r1, %r2, %r3};
+  ld.global.u32 %r0, [4];
+  ld.global.u32 %r0, [2];
+  ld.global.u32 %r0, [%rd0];
+  ld.global.b32 %r0, [half2_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  const checker::Context context{
+      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+      .instruction_range = ast.range,
+  };
+  for (const size_t index : {0u, 2u, 4u, 6u, 7u}) {
+    const auto checked = std::visit(
+        [&](const auto& instruction) { return checker::check(instruction, context); },
+        body[index]);
+    EXPECT_TRUE(checked.has_value());
+  }
+  for (const size_t index : {1u, 3u, 5u}) {
+    const auto checked = std::visit(
+        [&](const auto& instruction) { return checker::check(instruction, context); },
+        body[index]);
+    ASSERT_FALSE(checked.has_value());
+    ASSERT_EQ(checked.error().size(), 1u);
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
 TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
   const auto resolve_source = [](std::string_view instruction) {
     const std::string source = fmt::format(R"ptx(
@@ -915,7 +961,7 @@ TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
 
 TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
   const auto ast = parseModule(R"ptx(
-.global .u64 global64;
+.global .align 32 .u64 global64;
 .shared .u32 shared32;
 .entry kernel() {
   .reg .u64 %rd0;
@@ -923,6 +969,7 @@ TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
   .reg .u64 %d<4>;
   ld.v8.u32 {_, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];
   st.global.v4.u64 [global64], {_, %d1, %d2, %d3};
+  st.global.v4.u64 [global64+8], {_, %d1, %d2, %d3};
   ld.v4.u64 {%d0, %d1, %d2, %d3}, [%rd0];
   ld.shared.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [shared32];
   ld.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [shared32];
@@ -933,7 +980,7 @@ TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 7u);
+  ASSERT_EQ(body.size(), 8u);
 
   const checker::Context supported{
       .target = {.ptx_version = {8, 8}, .sm_version = 100},
@@ -941,32 +988,37 @@ TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
   };
   EXPECT_TRUE(checker::check(std::get<Ld>(body[0]), supported).has_value());
   EXPECT_TRUE(checker::check(std::get<St>(body[1]), supported).has_value());
-  EXPECT_TRUE(checker::check(std::get<Ld>(body[2]), supported).has_value());
-  EXPECT_TRUE(checker::check(std::get<St>(body[6]), supported).has_value());
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[3]), supported).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[7]), supported).has_value());
 
-  const auto explicit_non_global = checker::check(std::get<Ld>(body[3]), supported);
+  const auto underaligned = checker::check(std::get<St>(body[2]), supported);
+  ASSERT_FALSE(underaligned.has_value());
+  EXPECT_EQ(underaligned.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const auto explicit_non_global = checker::check(std::get<Ld>(body[4]), supported);
   ASSERT_FALSE(explicit_non_global.has_value());
   EXPECT_EQ(explicit_non_global.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
   const auto generic_bound_non_global =
-      checker::check(std::get<Ld>(body[4]), supported);
+      checker::check(std::get<Ld>(body[5]), supported);
   ASSERT_FALSE(generic_bound_non_global.has_value());
   EXPECT_EQ(generic_bound_non_global.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
-  const auto wrong_width = checker::check(std::get<Ld>(body[5]), supported);
+  const auto wrong_width = checker::check(std::get<Ld>(body[6]), supported);
   ASSERT_FALSE(wrong_width.has_value());
   EXPECT_EQ(wrong_width.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
 
   auto old_ptx = supported;
   old_ptx.target.ptx_version = {8, 7};
-  const auto ptx_rejected = checker::check(std::get<Ld>(body[2]), old_ptx);
+  const auto ptx_rejected = checker::check(std::get<Ld>(body[3]), old_ptx);
   ASSERT_FALSE(ptx_rejected.has_value());
   EXPECT_EQ(ptx_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   auto old_sm = supported;
   old_sm.target.sm_version = 90;
-  const auto sm_rejected = checker::check(std::get<Ld>(body[2]), old_sm);
+  const auto sm_rejected = checker::check(std::get<Ld>(body[3]), old_sm);
   ASSERT_FALSE(sm_rejected.has_value());
   EXPECT_EQ(sm_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);

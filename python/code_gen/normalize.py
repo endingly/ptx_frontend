@@ -7,6 +7,7 @@ from typing import Any
 
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
+    AddressAlignmentConstraint,
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
@@ -719,6 +720,65 @@ def _normalize_memory_consistency_constraint(
     )
 
 
+def _normalize_address_alignment_constraint(
+    raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...],
+    layouts: tuple[OperandLayoutSpec, ...]
+) -> AddressAlignmentConstraint | None:
+    """Lower one data-driven natural-address-alignment rule."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "address_alignment"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: at most one address_alignment "
+            "constraint is supported"
+        )
+    raw = matches[0]
+    required = {"address_operand", "type_modifier"}
+    missing = required - raw.keys()
+    if missing:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: address_alignment constraint "
+            f"is missing {sorted(missing)}"
+        )
+    modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
+    for key, expected_kind in (("type_modifier", "type"),
+                               ("vector_modifier", "vector")):
+        value = raw.get(key)
+        if value is None:
+            continue
+        if value not in modifiers_by_name:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: address_alignment {key} "
+                f"references inactive modifier {value!r}"
+            )
+        if modifiers_by_name[value].kind != expected_kind:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: address_alignment {key} "
+                f"must name a {expected_kind!r} modifier"
+            )
+    address_operand = raw["address_operand"]
+    matching_operands = [
+        operand for layout in layouts for operand in layout.operands
+        if operand.name == address_operand
+    ]
+    if not matching_operands or any(operand.kind != "addr"
+                                    for operand in matching_operands):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: address_alignment address "
+            "operand must name an active kind 'addr' operand"
+        )
+    return AddressAlignmentConstraint(
+        address_operand=address_operand,
+        type_modifier=raw["type_modifier"],
+        vector_modifier=raw.get("vector_modifier"),
+    )
+
+
 def _normalize_memory_vector_constraint(
     raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...],
     layouts: tuple[OperandLayoutSpec, ...]
@@ -849,6 +909,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                         )
                     ),
                     memory_consistency=_normalize_memory_consistency_constraint(
+                        raw_variant, modifiers, operand_layouts
+                    ),
+                    address_alignment=_normalize_address_alignment_constraint(
                         raw_variant, modifiers, operand_layouts
                     ),
                     memory_vector=_normalize_memory_vector_constraint(

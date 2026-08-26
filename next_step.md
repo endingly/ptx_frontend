@@ -382,8 +382,9 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
   unknown address 继续允许；
 - 只接受 `.v8` × `b32/u32/s32/f32` 与 `.v4` × `b64/u64/s64/f64` 的 256-bit payload；
   load destination 与 store source 可部分使用 `_`，但 all-sink 仍拒绝，legacy sink 仍拒绝；
-- 未加入 scalar `.b128`、alignment、cache-hint/eviction/prefetch/unified、param/shared
-  subqualifier 或 call-context；alignment 继续延期。
+- 未加入 scalar `.b128`、cache-hint/eviction/prefetch/unified、param/shared subqualifier
+  或 call-context；后续 static-alignment slice 已覆盖包括 32-byte modern access 在内的
+  已知 address total-access alignment。
 
 ## 已完成：小模块的 source-bearing interface library
 
@@ -428,8 +429,9 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 1. 为 `ld/st` 增加 modern vector form、alignment 与其余跨 modifier 规则；已完成
    PTX ≤9.2 的 omission/`.weak`/`.volatile`/scoped
    `.relaxed/.acquire/.release` 及 PTX 8.2 scalar `.mmio.relaxed.sys` consistency
-   qualifier。legacy `.v2/.v4` 明确不接受 mmio；PTX 8.8 256-bit modern vector 已完成，
-   static address-alignment checking 仍保留为后续工作；
+   qualifier。legacy `.v2/.v4` 明确不接受 mmio；PTX 8.8/SM 100 256-bit modern vector
+   已完成；static address-alignment checking 已覆盖 bound data symbol 加常量 byte offset
+   与 absolute immediate，register/standalone unknown address 不推断；
    function-local call-argument `.param` 及相关 call-context 规则留到 `call` 阶段；
 2. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
    接入统一 dispatch/checker；

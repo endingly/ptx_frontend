@@ -764,6 +764,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
         self.assertEqual(variant.memory_consistency.address_field_id, "address")
+        self.assertEqual(variant.address_alignment.address_field_id, "address")
+        self.assertEqual(variant.address_alignment.type_field_id, "type")
+        self.assertIsNone(variant.address_alignment.vector_field_id)
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].type_expression,
             ResolvedOperandTypeExpression(
@@ -872,6 +875,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["semantics", "scope", "cache", "vector", "type", "dst", "address"],
         )
         self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
+        self.assertEqual(vector_variant.address_alignment.vector_field_id, "vector")
         self.assertEqual(
             [value.value for value in next(modifier for modifier in ld.variants[2].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
@@ -1265,6 +1269,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".parameter_direction = parameter_direction", source)
         self.assertIn("CheckResult check<Ld>(", source)
         self.assertIn("check_memory_consistency(", source)
+        self.assertIn("check_address_alignment(", source)
+        self.assertIn(".address_alignment = address_alignment", source)
         self.assertIn("check_memory_vector(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
@@ -1411,6 +1417,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("checker::OperandLayoutDescriptor", source)
         self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
         self.assertIn(".memory_consistency = {", source)
+        self.assertIn(".address_alignment = {", source)
+        self.assertIn('.vector_field_id = "vector",', source)
         self.assertIn(".memory_vector = {", source)
         self.assertIn('.vector_field_id = "dst",', source)
         self.assertIn('.vector_field_id = "src",', source)

@@ -24,10 +24,11 @@ plus braced-vector `ld`/`st` exercise the dereferenced-address path
 for 14 bit-size, integer, and floating-point types from 8 through 64 bits.
 Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
 types through 64 bits and `.v4` through 32 bits. PTX 8.8/SM 100 additionally
-accepts exactly 256-bit `.v8` × 32-bit and `.v4` × 64-bit forms. Other source forms,
-remaining qualifier extensions,
-static address alignment, `call` groups, CFG/SSA, and target lowering remain
-later work.
+accepts exactly 256-bit `.v8` × 32-bit and `.v4` × 64-bit forms. Static natural
+alignment checks bound data symbols with constant byte offsets and absolute
+immediate addresses; register and standalone unresolved addresses stay unknown.
+Other source forms, remaining qualifier extensions, `call` groups, CFG/SSA, and
+target lowering remain later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -231,8 +232,9 @@ and applies the global/shared, `volatile.local` PTX 9.1, and scalar
 `.mmio.relaxed.sys` rules. A generated `memory_vector` cross constraint detects
 arity > 4, payload > 128, or sinks; it requires a 256-bit payload, global space
 when known, and PTX 8.8/SM 100. Partial sinks are valid only for those modern
-load/store vectors; all-sink and legacy sinks remain invalid. Static alignment
-checks are still deferred.
+load/store vectors; all-sink and legacy sinks remain invalid. Static natural
+alignment covers scalar, legacy `.v2/.v4`, and modern 256-bit total access sizes
+when the address is known.
 
 `ResolvedAddress` separately records the enclosing function kind. Generated
 address views derive an optional parameter direction only from a bound
@@ -412,7 +414,7 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 `resolved_ir.gen.hpp`.
 
 Function-local call-argument `.param` memory, qualified `::entry`/`::func`
-forms, call adjacency/predication constraints, scalar `.b128`, declaration-type
-availability for wider `.b128` registers, and static memory-address alignment checks remain outside
-this slice. Legacy scalar/vector `ld/st` cache operators, PTX 8.8 modern memory
-vectors, and memory-consistency qualifiers are covered here.
+forms, call adjacency/predication constraints, scalar `.b128`, and declaration-type
+availability for wider `.b128` registers remain outside this slice. Legacy scalar/vector
+`ld/st` cache operators, PTX 8.8 modern memory vectors, static memory-address alignment,
+and memory-consistency qualifiers are covered here.

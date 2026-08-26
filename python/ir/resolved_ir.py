@@ -19,6 +19,7 @@ from code_gen.cpp_backend import (
     cpp_value,
 )
 from code_gen.model import (
+    AddressAlignmentConstraint,
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
@@ -169,6 +170,15 @@ class ResolvedMemoryConsistencyConstraint:
 
 
 @dataclass(frozen=True)
+class ResolvedAddressAlignmentConstraint:
+    """Generated field identities for one natural address-alignment rule."""
+
+    address_field_id: str
+    type_field_id: str
+    vector_field_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ResolvedMemoryVectorConstraint:
     """Generated field identities for the PTX 8.8 vector cross-rule."""
 
@@ -262,6 +272,7 @@ class ResolvedVariant:
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
+    address_alignment: ResolvedAddressAlignmentConstraint | None
     memory_vector: ResolvedMemoryVectorConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
@@ -462,6 +473,10 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_consistency,
             {field.source_name: field.name for field in modifier_fields},
         ),
+        address_alignment=_build_address_alignment_constraint(
+            variant.address_alignment,
+            {field.source_name: field.name for field in modifier_fields},
+        ),
         memory_vector=_build_memory_vector_constraint(
             variant.memory_vector,
             {field.source_name: field.name for field in modifier_fields},
@@ -490,6 +505,22 @@ def _build_memory_consistency_constraint(
         state_space_field_id=(
             modifier_field_ids[constraint.state_space_modifier]
             if constraint.state_space_modifier is not None else None
+        ),
+    )
+
+
+def _build_address_alignment_constraint(
+    constraint: AddressAlignmentConstraint | None,
+    modifier_field_ids: dict[str, str],
+) -> ResolvedAddressAlignmentConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedAddressAlignmentConstraint(
+        address_field_id=constraint.address_operand,
+        type_field_id=modifier_field_ids[constraint.type_modifier],
+        vector_field_id=(
+            modifier_field_ids[constraint.vector_modifier]
+            if constraint.vector_modifier is not None else None
         ),
     )
 

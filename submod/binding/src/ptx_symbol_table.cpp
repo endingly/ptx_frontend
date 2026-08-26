@@ -77,6 +77,50 @@ SymbolLinkage linkageFromSpelling(std::string_view spelling) {
   return SymbolLinkage::None;
 }
 
+std::optional<uint64_t> scalarAlignment(std::string_view type) {
+  if (type == ".u8" || type == ".s8" || type == ".b8" ||
+      type == ".pred")
+    return 1;
+  if (type == ".u16" || type == ".s16" || type == ".b16" ||
+      type == ".f16" || type == ".bf16")
+    return 2;
+  if (type == ".u32" || type == ".s32" || type == ".b32" ||
+      type == ".f32" || type == ".f16x2" || type == ".tf32")
+    return 4;
+  if (type == ".u64" || type == ".s64" || type == ".b64" ||
+      type == ".f64")
+    return 8;
+  if (type == ".b128")
+    return 16;
+  return std::nullopt;
+}
+
+std::optional<uint64_t> parseAlignment(std::string_view text) {
+  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
+    text.remove_suffix(1);
+  uint64_t value = 0;
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value);
+  if (text.empty() || error != std::errc{} || end != text.data() + text.size() ||
+      value == 0 || (value & (value - 1)) != 0)
+    return std::nullopt;
+  return value;
+}
+
+std::optional<uint64_t> declarationAlignment(
+    const std::optional<syntax_ast::AstSyntax>& alignment,
+    const std::optional<syntax_ast::AstSyntax>& vector_type,
+    std::string_view type) {
+  if (alignment)
+    return parseAlignment(alignment->text);
+  const auto scalar = scalarAlignment(type);
+  if (!scalar)
+    return std::nullopt;
+  if (!vector_type)
+    return scalar;
+  return *scalar * (vector_type->text == ".v2" ? 2 : 4);
+}
+
 std::string_view referenceDescription(ReferenceKind kind) {
   switch (kind) {
     case ReferenceKind::InstructionOperand:
@@ -189,6 +233,7 @@ struct SymbolTableBuilder {
       SymbolLinkage linkage = SymbolLinkage::None,
       std::optional<syntax_ast::AstStateSpace> state_space = std::nullopt,
       std::optional<std::string_view> type = std::nullopt,
+      std::optional<uint64_t> address_alignment = std::nullopt,
       std::optional<uint32_t> parameterized_count = std::nullopt,
       bool allow_redeclaration = false, bool function_is_entry = false) {
     if (const auto previous = exactSymbol(scope, name, parameterized_count)) {
@@ -233,6 +278,7 @@ struct SymbolTableBuilder {
         .state_space = state_space,
         .type = type ? std::optional<std::string>{std::string{*type}}
                      : std::nullopt,
+        .address_alignment = address_alignment,
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
         .function_is_entry = function_is_entry,
@@ -295,6 +341,9 @@ struct SymbolTableBuilder {
       addSymbol(scope, SymbolKind::Variable, declarator.name.syntax.text,
                 declarator.name.syntax.range, declaration_linkage,
                 declaration.state_space, declaration.type.text,
+                declarationAlignment(declaration.alignment,
+                                     declaration.vector_type,
+                                     declaration.type.text),
                 parameterizedCount(declarator),
                 scope == result.table.moduleScope());
     }
@@ -305,7 +354,8 @@ struct SymbolTableBuilder {
         addSymbol(result.table.moduleScope(), SymbolKind::Function,
                   function.name.syntax.text, function.name.syntax.range,
                   linkage(function.qualifiers, function.range), std::nullopt,
-                  std::nullopt, std::nullopt, true, function.is_entry);
+                  std::nullopt, std::nullopt, std::nullopt, true,
+                  function.is_entry);
     const ScopeId function_scope =
         addFunctionScope(function_symbol, !function.is_prototype);
     functions.push_back(FunctionContext{&function, function_scope});
@@ -314,13 +364,17 @@ struct SymbolTableBuilder {
       addSymbol(function_scope, SymbolKind::ReturnParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
                 SymbolLinkage::None, parameter.state_space,
-                parameter.type.text);
+                parameter.type.text,
+                declarationAlignment(parameter.alignment, std::nullopt,
+                                     parameter.type.text));
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
                 SymbolLinkage::None, parameter.state_space,
-                parameter.type.text);
+                parameter.type.text,
+                declarationAlignment(parameter.alignment, std::nullopt,
+                                     parameter.type.text));
     }
     for (const auto& item : function.body) {
       if (const auto* declaration =

@@ -71,6 +71,15 @@ class MemoryConsistencyConstraint:
 
 
 @dataclass(frozen=True)
+class AddressAlignmentConstraint:
+    """Typed static alignment rule for an ld/st address operand."""
+
+    address_operand: str
+    type_modifier: str
+    vector_modifier: str | None = None
+
+
+@dataclass(frozen=True)
 class MemoryVectorConstraint:
     """Typed PTX 8.8 256-bit ld/st vector cross-rule."""
 
@@ -191,6 +200,7 @@ class VariantSpec:
     rule: str | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None
+    address_alignment: AddressAlignmentConstraint | None = None
     memory_vector: MemoryVectorConstraint | None = None
 
 

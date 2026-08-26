@@ -277,6 +277,8 @@ struct ResolvedSymbolRef {
    */
   std::optional<syntax_ast::AstStateSpace> address_state_space;
   std::optional<ScalarType> declared_type;
+  /** Guaranteed byte alignment for a bound declaration address. */
+  std::optional<uint64_t> address_alignment;
   /** Target requirement contributed by this address value, if any. */
   std::optional<checker::AvailabilityDescriptor> address_availability;
   bool operator==(const ResolvedSymbolRef&) const = default;

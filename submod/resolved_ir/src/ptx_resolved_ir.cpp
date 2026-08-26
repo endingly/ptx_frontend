@@ -772,6 +772,7 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
   }
   if (symbol.type)
     resolved.declared_type = scalar_type_from_ptx_name(*symbol.type);
+  resolved.address_alignment = symbol.address_alignment;
   return resolved;
 }
 

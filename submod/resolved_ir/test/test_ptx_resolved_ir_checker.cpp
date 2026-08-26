@@ -969,6 +969,71 @@ TEST(ResolvedIrChecker, ChecksGeneratedMemoryConsistencyCrossRules) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
+  constexpr AddressAlignmentConstraint scalar_descriptor{
+      .address_field_id = "address",
+      .type_field_id = "type",
+  };
+  const FieldView scalar_fields[] = {{
+      .field_id = "type",
+      .scalar_type = ScalarType::U32,
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView address{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_alignment = 4,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  EXPECT_TRUE(check_address_alignment(scalar_descriptor, scalar_fields,
+                                      std::span{&address, 1}, context)
+                  .has_value());
+
+  address.address_alignment = 2;
+  const auto scalar_mismatch = check_address_alignment(
+      scalar_descriptor, scalar_fields, std::span{&address, 1}, context);
+  ASSERT_FALSE(scalar_mismatch.has_value());
+  EXPECT_EQ(scalar_mismatch.error().front().kind,
+            CheckDiagnosticKind::AddressAlignmentMismatch);
+  EXPECT_EQ(scalar_mismatch.error().front().range, kInstructionRange);
+
+  constexpr AddressAlignmentConstraint vector_descriptor{
+      .address_field_id = "address",
+      .type_field_id = "type",
+      .vector_field_id = "vector",
+  };
+  const FieldView vector_fields[] = {
+      {.field_id = "type", .scalar_type = ScalarType::U32},
+      {.field_id = "vector", .vector_arity = VectorArity::V4},
+  };
+  address.address_alignment = 8;
+  const auto vector_mismatch = check_address_alignment(
+      vector_descriptor, vector_fields, std::span{&address, 1}, context);
+  ASSERT_FALSE(vector_mismatch.has_value());
+  EXPECT_EQ(vector_mismatch.error().front().kind,
+            CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  constexpr AddressAlignmentConstraint invalid_descriptor{
+      .address_field_id = "address",
+      .type_field_id = "missing_type",
+  };
+  const auto invalid = check_address_alignment(
+      invalid_descriptor, scalar_fields, std::span{&address, 1}, context);
+  ASSERT_FALSE(invalid.has_value());
+  EXPECT_EQ(invalid.error().front().kind, CheckDiagnosticKind::RuleViolation);
+
+  constexpr AddressAlignmentConstraint missing_vector_descriptor{
+      .address_field_id = "address",
+      .type_field_id = "type",
+      .vector_field_id = "missing_vector",
+  };
+  const auto missing_vector = check_address_alignment(
+      missing_vector_descriptor, scalar_fields, std::span{&address, 1}, context);
+  ASSERT_FALSE(missing_vector.has_value());
+  EXPECT_EQ(missing_vector.error().front().kind,
+            CheckDiagnosticKind::RuleViolation);
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedModernMemoryVectorCrossRules) {
   constexpr VariantDescriptor::MemoryVectorDescriptor descriptor{
       .type_field_id = "type",

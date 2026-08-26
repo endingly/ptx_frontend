@@ -112,6 +112,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
     family = str(availability.get("family", ""))
     rule_id = variant.rule or ""
     consistency = variant.memory_consistency
+    alignment = variant.address_alignment
     memory_consistency = ""
     if consistency is not None:
         memory_consistency = f'''
@@ -158,8 +159,19 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   {variant.cpp_name}_operand_type_compatibilities,
               .rule_id = "{rule_id}",
 {memory_consistency}
+{_emit_address_alignment_descriptor(alignment)}
 {memory_vector}
           }}"""
+
+
+def _emit_address_alignment_descriptor(alignment) -> str:
+    if alignment is None:
+        return ""
+    return f'''              .address_alignment = {{
+                  .address_field_id = "{alignment.address_field_id}",
+                  .type_field_id = "{alignment.type_field_id}",
+                  .vector_field_id = "{alignment.vector_field_id or ""}",
+              }},'''
 
 
 def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:

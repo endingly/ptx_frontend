@@ -475,6 +475,9 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "ld.u32 %r0, [%rd0+4];"
@@ -523,6 +526,9 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "ld.global.u32 %r0, [global_value];"
@@ -568,6 +574,10 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
           - kind: memory_vector
             type_modifier: type
             vector_operand: dst
@@ -629,6 +639,10 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
           - kind: memory_vector
             type_modifier: type
             vector_operand: dst
@@ -689,6 +703,9 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "st.u32 [%rd0+4], %r0;"
@@ -735,6 +752,9 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
 
         examples:
           - ptx: "st.global.u32 [global_value], %r0;"
@@ -780,6 +800,10 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
           - kind: memory_vector
             type_modifier: type
             vector_operand: src
@@ -841,6 +865,10 @@ instructions:
             cache_modifier: cache
             address_operand: address
             state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
           - kind: memory_vector
             type_modifier: type
             vector_operand: src

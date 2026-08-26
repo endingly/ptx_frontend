@@ -514,6 +514,17 @@ bool initializerTypeAccepts(std::string_view type,
   return false;
 }
 
+bool isValidAlignment(std::string_view text) {
+  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
+    text.remove_suffix(1);
+  uint64_t value = 0;
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value);
+  return !text.empty() && error == std::errc{} &&
+         end == text.data() + text.size() && value != 0 &&
+         (value & (value - 1)) == 0;
+}
+
 class Checker {
  public:
   explicit Checker(const binding::SymbolTable& symbols) : symbols_(symbols) {}
@@ -523,13 +534,16 @@ class Checker {
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+        checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration);
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
+        checkFunctionAlignments(*function);
         checkFunctionArrays(*function);
         for (const auto& body_item : function->body) {
           if (const auto* declaration =
                   std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
+            checkAlignment(declaration->alignment);
             checkVariableDeclaration(*declaration);
           }
         }
@@ -648,6 +662,24 @@ class Checker {
       for (const auto& parameter : parameters) {
         if (parameter.array_size)
           checkDimension(*parameter.array_size);
+      }
+    };
+    check_parameters(function.return_parameters);
+    check_parameters(function.parameters);
+  }
+
+  void checkAlignment(const std::optional<syntax_ast::AstSyntax>& alignment) {
+    if (alignment && !isValidAlignment(alignment->text)) {
+      diagnose(DeclarationDiagnosticKind::InvalidAlignment, alignment->range,
+               "Declaration alignment must be a positive power of two.");
+    }
+  }
+
+  void checkFunctionAlignments(const syntax_ast::AstFunction& function) {
+    const auto check_parameters = [this](const auto& parameters) {
+      for (const auto& parameter : parameters) {
+        checkAlignment(parameter.alignment);
+        checkAlignment(parameter.pointer_alignment);
       }
     };
     check_parameters(function.return_parameters);

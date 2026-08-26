@@ -162,5 +162,19 @@ TEST(PtxDeclarationSemantics, RejectsIncompatibleRedeclarationsAndDefinitions) {
   }
 }
 
+TEST(PtxDeclarationSemantics, RequiresPositivePowerOfTwoAlignment) {
+  const CheckedModule result = check(R"ptx(
+.global .align 0 .u32 zero;
+.global .align 3 .u32 non_power;
+.global .align 16 .u32 valid;
+.entry kernel(.param .align 6 .u32 input,
+              .param .u64 .ptr .global .align 6 bad_pointer,
+              .param .u64 .ptr .global .align 16 valid_pointer) { }
+)ptx");
+
+  EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::InvalidAlignment),
+            4u);
+}
+
 }  // namespace
 }  // namespace ptx_frontend::declaration_semantics

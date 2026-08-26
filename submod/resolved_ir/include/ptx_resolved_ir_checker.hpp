@@ -171,6 +171,13 @@ struct ParameterAddressConstraint {
   AvailabilityDescriptor function_availability;
 };
 
+/** Fields needed to derive one natural total-access alignment requirement. */
+struct AddressAlignmentConstraint {
+  std::string_view address_field_id;
+  std::string_view type_field_id;
+  std::string_view vector_field_id;
+};
+
 /** How a vector operand derives each element type from the instruction type. */
 enum class VectorTypePolicy : uint8_t {
   Aggregate,
@@ -234,6 +241,8 @@ struct OperandView {
   std::optional<base::SpecialRegisterId> special_register_id;
   /** Effective address space; unknown for register/immediate/standalone bases. */
   std::optional<MemoryStateSpace> address_state_space;
+  /** Guaranteed byte alignment; zero denotes an absolute address of zero. */
+  std::optional<uint64_t> address_alignment;
   /** Function provenance is independent of whether the base binds a symbol. */
   EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
   /** None unless the base binds an input or return parameter declaration. */
@@ -334,6 +343,8 @@ struct VariantDescriptor {
     std::string_view address_field_id;
     std::string_view state_space_field_id;
   } memory_consistency;
+  /** Empty field IDs mean this variant has no static alignment rule. */
+  AddressAlignmentConstraint address_alignment;
   /** Empty field IDs mean this variant has no modern memory-vector rule. */
   struct MemoryVectorDescriptor {
     std::string_view type_field_id;
@@ -365,6 +376,7 @@ enum class CheckDiagnosticKind : uint8_t {
   MissingVectorArityField,
   OperandTypeMismatch,
   AddressStateSpaceMismatch,
+  AddressAlignmentMismatch,
   ParameterDirectionMismatch,
   InvalidVectorOperand,
   MemoryConsistencyViolation,
@@ -463,6 +475,12 @@ CheckResult check_modifier_value_availability(
 /** Check generated ld/st memory-order and address-space cross constraints. */
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context);
+
+/** Check a natural-alignment rule when an address is statically known. */
+CheckResult check_address_alignment(
+    const AddressAlignmentConstraint& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     const Context& context);
 

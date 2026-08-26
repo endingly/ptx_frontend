@@ -2444,6 +2444,115 @@ TEST(ResolvedModule, ReportsDirectCallAbiPropertyAndLiteralMismatches) {
             "qualification mismatch.");
 }
 
+TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.func prototype_only(.reg .u32 input);
+.extern .func external(.reg .u32 input);
+.func defined_before(.reg .u32 input) { }
+.func bytes(.param .align 8 .b8 input[]);
+.func generic_pointer(.param .u64 .ptr .align 8 input);
+.func global_pointer(.param .u64 .ptr .global .align 16 input);
+.func immediate(.reg .u8 high, .reg .s8 low, .reg .f32 float);
+.entry caller(.param .u64 .ptr .global .align 16 global_actual) {
+  .reg .u32 %r;
+  .param .align 8 .b8 blob[8];
+  call prototype_only, (%r);
+  call external, (%r);
+  call defined_before, (%r);
+  call defined_after, (%r);
+  call renamed, (%r);
+  call bytes, (blob);
+  call generic_pointer, (global_actual);
+  call global_pointer, (global_actual);
+  call immediate, (255, -128, 0f3f800000);
+}
+.func defined_after(.reg .u32 input) { }
+.func renamed(.reg .u32 declaration_name);
+.func renamed(.reg .u32 definition_name) {
+  .reg .u32 %self;
+  call renamed, (%self);
+}
+)ptx"));
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+}
+
+TEST(ResolvedModule, ReportsDirectCallArityAndElementRanges) {
+  const auto ast = parseModule(R"ptx(
+.func (.param .u32 result) one_return();
+.func no_returns();
+.func needs_input(.reg .u32 input);
+.func no_inputs();
+.func signed(.reg .s8 input);
+.entry caller() {
+  .reg .u32 narrow;
+  .reg .u64 wide;
+  .param .u32 return_value;
+  call one_return;
+  call (return_value), no_returns, ();
+  call needs_input;
+  call no_inputs, (narrow);
+  call needs_input, (wide);
+  call signed, (128);
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 6u);
+  EXPECT_EQ(resolved.error()[0].message,
+            "Direct call to 'one_return' has 0 return arguments but callee "
+            "requires 1.");
+  EXPECT_EQ(resolved.error()[1].message,
+            "Direct call to 'no_returns' has 1 return argument but callee "
+            "requires 0.");
+  EXPECT_EQ(resolved.error()[2].message,
+            "Direct call to 'needs_input' has 0 input arguments but callee "
+            "requires 1.");
+  EXPECT_EQ(resolved.error()[3].message,
+            "Direct call to 'no_inputs' has 1 input argument but callee "
+            "requires 0.");
+  EXPECT_EQ(resolved.error()[4].message,
+            "Direct call input argument 1 for 'needs_input' has type or "
+            "vector shape mismatch.");
+  EXPECT_EQ(resolved.error()[5].message,
+            "Integer literal '128' is out of range for scalar type 'S8'.");
+
+  const auto& caller = std::get<syntax_ast::AstFunction>(ast.items[5]);
+  const auto& extra_inputs = std::get<syntax_ast::AstInstruction>(caller.body[6]);
+  const auto& type_mismatch =
+      std::get<syntax_ast::AstInstruction>(caller.body[7]);
+  const auto& extra_group =
+      std::get<syntax_ast::AstCallParameterList>(extra_inputs.operands[1]);
+  const auto& wide_group =
+      std::get<syntax_ast::AstCallParameterList>(type_mismatch.operands[1]);
+  EXPECT_EQ(resolved.error()[3].range, extra_group.range);
+  EXPECT_EQ(resolved.error()[4].range,
+            std::get<syntax_ast::AstIdentifierRef>(wide_group.parameters[0])
+                .syntax.range);
+}
+
+TEST(ResolvedModule, RejectsLocalAndGlobalDirectCallActuals) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.func needs_input(.reg .u32 input);
+.entry caller() {
+  .local .u32 local_value;
+  call needs_input, (local_value);
+  call needs_input, (global_value);
+}
+)ptx"));
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 2u);
+  EXPECT_EQ(resolved.error()[0].message,
+            "Call parameter 'local_value' must name a .reg or .param "
+            "variable.");
+  EXPECT_EQ(resolved.error()[1].message,
+            "Call parameter 'global_value' must name a .reg or .param "
+            "variable.");
+}
+
 TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
   const auto ast = parseModule(R"ptx(
 .func (.param .u32 result) callee(.param .u32 input0, .param .u32 input1);

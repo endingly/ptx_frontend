@@ -1105,7 +1105,7 @@ Coverage matrix 负责回答：
 | M3 | ✅ | 建立 typed value、address、special-register 和 `mov` |
 | M4 | ✅ | 完成当前已建模 basic scalar/vector `ld/st` 子集 |
 | M5 | ✅ | 完成模块化构建、安装 package、consumer test 和 PR CI |
-| M6 | 🚧 | 完成 direct-call signature、ABI 和 call-context |
+| M6 | ✅ | 完成 direct-call signature、ABI 和 call-context |
 | M7 | ⬜ | 完成 indirect call 和 control-flow metadata |
 | M8 | ⬜ | 扩展 module grammar、nested scope 和 parser recovery |
 | M9 | ⬜ | 完成 simulator MVP 的核心 opcode 集 |
@@ -1260,7 +1260,8 @@ Coverage matrix 负责回答：
 
 ### 当前状态
 
-M6 已完成 direct-call operand resolution，但没有完成 call contract。
+M6 已完成 direct-call operand resolution、canonical signature ABI comparison 与
+PTX 9.3 call-context 约束。
 
 当前实现精确支持三个 layout：
 
@@ -1279,9 +1280,14 @@ call (return), function, (arguments);
 - declared type；
 - state space；
 - per-element SourceRange；
-- untyped immediate spelling；
+- standalone resolution 的 untyped immediate spelling；
 - `.uni`；
 - execution predicate。
+
+module resolution 会使用 prototype/definition 的 canonical signature 检查 direct call 的
+return/input 数量、顺序与 argument compatibility，并按 formal 定型 literal；function-local
+`.param` 的 qualifier、predication 与 staging adjacency 同时生效。indirect
+`.calltargets/.callprototype` metadata 仍留给 M7。
 
 
 
@@ -1295,9 +1301,9 @@ call (return), function, (arguments);
 | M6-I06 | ✅ | 独立 | 建立 call argument compatibility helper | `.reg/.param`、type、alignment、array、pointer 和 state-space 可逐项比较 |
 | M6-I07 | ✅ | 独立 | 建模 function-local call-argument `.param` | 与 formal parameter 分离，scope、lifetime、direction 和 address rule 明确 |
 | M6-I08 | ✅ | 独立 | 建模 call-context syntax/semantics | PTX 9.3 `::entry/::func`、function-local `.param` staging adjacency/predication 与 predicated `call.uni` 规则已明确 |
-| M6-C01 | ⬜ | 耦合 | 实现 direct-call ABI checker | callee signature 与 return/input actual 按数量、顺序、类型和 shape 完整比较 |
-| M6-C02 | ⬜ | 耦合 | 完成 direct-call 端到端回归 | prototype、definition、extern、recursive、wrong arity/type/space 和 immediate 全覆盖 |
-| M6-C03 | ⬜ | 耦合 | 同步 direct-call 文档和 package regression | 双语设计、coverage、README、installed consumer 全部通过 |
+| M6-C01 | ✅ | 耦合 | 实现 direct-call ABI checker | canonical callee signature 与 return/input actual 按数量、顺序、type/shape、array/pointer 和 literal 完整比较 |
+| M6-C02 | ✅ | 耦合 | 完成 direct-call 端到端回归 | prototype、definition、extern、recursive、arity/type/space、literal 与 diagnostic range 覆盖 |
+| M6-C03 | ✅ | 耦合 | 同步 direct-call 文档和 package regression | README、双语设计/coverage 与 installed consumer 验证 module ABI 已通过 |
 
 ### 出口
 

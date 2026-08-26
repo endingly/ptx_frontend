@@ -4,6 +4,7 @@
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
@@ -85,5 +86,47 @@ int main() {
       !std::holds_alternative<ptx_frontend::syntax_ast::AstCallTarget>(
           call->operands[1]))
     return 13;
+
+  constexpr std::string_view valid_call_module = R"ptx(
+.func callee(.reg .u32 register_input, .param .u32 parameter_input,
+             .param .s16 literal_input);
+.entry caller() {
+  .reg .u32 %r;
+  .param .u32 parameter_argument;
+  call callee, (%r, parameter_argument, -4);
+}
+)ptx";
+  ptx_frontend::PtxSyntaxParser valid_call_parser(valid_call_module);
+  const auto valid_call_ast = valid_call_parser.parseModule();
+  if (!valid_call_ast)
+    return 14;
+  const auto valid_call_resolved =
+      ptx_frontend::resolved_ir::resolveModule(*valid_call_ast);
+  if (!valid_call_resolved || valid_call_resolved->functions.size() != 2 ||
+      valid_call_resolved->functions[1].body.size() != 1 ||
+      !std::holds_alternative<ptx_frontend::resolved_ir::Call>(
+          valid_call_resolved->functions[1].body.front())) {
+    return 15;
+  }
+
+  constexpr std::string_view invalid_call_module = R"ptx(
+.func callee(.reg .u32 input);
+.entry caller() {
+  .reg .u64 %wide;
+  call callee, (%wide);
+}
+)ptx";
+  ptx_frontend::PtxSyntaxParser invalid_call_parser(invalid_call_module);
+  const auto invalid_call_ast = invalid_call_parser.parseModule();
+  if (!invalid_call_ast)
+    return 16;
+  const auto invalid_call_resolved =
+      ptx_frontend::resolved_ir::resolveModule(*invalid_call_ast);
+  if (invalid_call_resolved || invalid_call_resolved.error().size() != 1 ||
+      invalid_call_resolved.error().front().message !=
+          "Direct call input argument 1 for 'callee' has type or vector "
+          "shape mismatch.") {
+    return 17;
+  }
   return 0;
 }

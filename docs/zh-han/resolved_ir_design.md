@@ -46,6 +46,12 @@ standalone `resolveInstruction` 与 `resolve<T>` 不要求声明上下文，继�
 directive、declaration 与 label 目前仍由 Syntax AST/symbol table 保存，不复制成未解析的
 Resolved IR 字符串字段。
 
+module resolution 还负责不能放入 generated single-instruction checker 的 direct-call ABI 与
+call-context 工作：它取得 canonical prototype/definition signature，检查 return/input actual
+和按 formal 定型的 literal，并执行 function-local `.param` 的 qualifier、predicate 与 staging
+adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor
+规则。
+
 ## 位置与基本值
 
 每个可独立诊断的 resolved 值使用：
@@ -341,8 +347,8 @@ instruction 约束仍不属于当前 ABI。
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp` 与生成的
 `resolved_ir.gen.hpp`。
 
-function-local call-argument `.param` memory、带限定的 `::entry`/`::func` form、call
-adjacency/predication constraint、scalar `.b128`、wider `.b128` register 所需的
-declaration-type availability 仍不在本切片范围内。
-legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
+direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
+form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call
+metadata、scalar `.b128` 与 wider `.b128` register 所需的 declaration-type availability 仍不在
+本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。

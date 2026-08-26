@@ -13,6 +13,7 @@ using syntax_cst::CstBranchTarget;
 using syntax_cst::CstCallParameterList;
 using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
+using syntax_cst::CstCallPrototype;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -149,6 +150,63 @@ TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
             "direct branch accepts exactly one label target"}}) {
     PtxCstParser parser(source);
     const auto result = parser.parseInstruction();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  no_args: .callprototype _;
+  inputs: .callprototype _ (.param .u32 _);
+  returns: .callprototype (.reg .u32 result) _;
+  full: .callprototype (.param .u32 result) _ (.param .b8 arg[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 4u);
+  for (const auto& item : function.body)
+    EXPECT_TRUE(std::holds_alternative<CstCallPrototype>(item));
+
+  const auto& full = std::get<CstCallPrototype>(function.body.back());
+  EXPECT_EQ(result->token(full.label).text, "full");
+  EXPECT_EQ(result->token(full.colon).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(full.directive).kind, TokenKind::DotCallPrototype);
+  ASSERT_TRUE(full.return_parameters.has_value());
+  ASSERT_TRUE(full.parameters.has_value());
+  EXPECT_EQ(full.return_parameters->parameters.size(), 1u);
+  EXPECT_EQ(full.parameters->parameters.size(), 1u);
+  ASSERT_TRUE(full.noreturn_directive.has_value());
+  ASSERT_TRUE(full.abi_preserve.has_value());
+  ASSERT_TRUE(full.abi_preserve_control.has_value());
+  EXPECT_EQ(result->token(full.abi_preserve->directive).text,
+            ".abi_preserve");
+  EXPECT_EQ(result->token(full.abi_preserve->count).text, "10");
+  EXPECT_EQ(result->token(full.abi_preserve_control->count).text, "2");
+}
+
+TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".func f() { p: .callprototype (.reg .u32 a, .reg .u32 b) _; }",
+            ".callprototype return parameter list must contain exactly one parameter"},
+           {".func f() { p: .callprototype value; }",
+            "expected '_' in .callprototype"},
+           {".func f() { .callprototype _; }",
+            "'.callprototype' requires a preceding function-local label"},
+           {"outside: .callprototype _;",
+            "'.callprototype' is only valid inside a function body"},
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
     ASSERT_FALSE(result.has_value()) << source;
     EXPECT_EQ(result.error().message, message) << source;
   }

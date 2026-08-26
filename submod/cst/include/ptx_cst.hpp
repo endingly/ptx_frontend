@@ -236,9 +236,6 @@ struct CstLabel {
   CstTokenRange token_range;
 };
 
-using CstFunctionBodyItem =
-    std::variant<CstVariableDeclaration, CstLabel, CstInstruction>;
-
 /** A module-level directive and its concrete token payload. */
 struct CstModuleDirective {
   TokenId keyword{};
@@ -272,6 +269,31 @@ struct CstFunctionParameterList {
   TokenId right_paren{};
   CstTokenRange token_range;
 };
+
+struct CstCallPrototypeAbiSuffix {
+  TokenId directive{};
+  TokenId count{};
+  CstTokenRange token_range;
+};
+
+/** A function-local label-associated indirect-call prototype. */
+struct CstCallPrototype {
+  TokenId label{};
+  TokenId colon{};
+  TokenId directive{};
+  std::optional<CstFunctionParameterList> return_parameters;
+  TokenId sink{};
+  std::optional<CstFunctionParameterList> parameters;
+  std::optional<TokenId> noreturn_directive;
+  std::optional<CstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<CstCallPrototypeAbiSuffix> abi_preserve_control;
+  TokenId semicolon{};
+  CstTokenRange token_range;
+};
+
+using CstFunctionBodyItem =
+    std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
+                 CstInstruction>;
 
 struct CstFunction {
   std::vector<TokenId> qualifiers;

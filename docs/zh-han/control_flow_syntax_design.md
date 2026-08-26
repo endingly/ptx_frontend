@@ -51,6 +51,16 @@ untyped。
 本切片只解析 direct named-function call。`.reg` target 或第四个 `CallTargetSet` operand 会给出
 明确拒绝：indirect call 仍需要尚未建模的 `.calltargets/.callprototype` metadata。
 
+## function-local `.callprototype` 语法
+
+Parser 现在将 PTX 9.3 的 `.callprototype` declaration 保留为专用的 function-body
+CST/AST node，而不是 label 加 instruction。支持四种 signature form：`_`、`_ (params)`、
+`(return) _` 和 `(return) _ (params)`。CST 保留 label、colon、sink、parameter-list
+punctuation、`.noreturn`、`.abi_preserve N` 和 `.abi_preserve_control N`；AST 保留相应的
+semantic spelling 与 source range。return parameter 是否与 `.noreturn` 冲突不在 parser 判断，
+留给 declaration semantics。module scope 会明确拒绝该 grammar；本 issue 尚不 binding 或
+resolve prototype label。
+
 对于 module 中的 direct named call，resolution 会查找 callee 的 canonical
 prototype/definition signature，按顺序比较 return/input 的数量；随后复用 call-argument
 compatibility contract 检查 `.reg/.param` type 与 vector shape、`.param .b8` array 的

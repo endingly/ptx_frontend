@@ -942,6 +942,88 @@ PtxCstParser::parseFunctionParameterList() {
                                               {*left, *right + 1}};
 }
 
+std::expected<syntax_cst::CstCallPrototype, CstParseDiagnostic>
+PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotCallPrototype) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected '.callprototype'"});
+  }
+
+  std::optional<syntax_cst::CstFunctionParameterList> return_parameters;
+  if (token(peek()).kind == TokenKind::LParen) {
+    auto parsed = parseFunctionParameterList();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    if (parsed->parameters.size() != 1) {
+      return std::unexpected(CstParseDiagnostic{
+          SourceRange{token(parsed->token_range.first).range.start,
+                      token(parsed->token_range.last - 1).range.end},
+          ".callprototype return parameter list must contain exactly one parameter"});
+    }
+    return_parameters = std::move(*parsed);
+  }
+
+  const auto sink = expect(TokenKind::Ident, "'_' in .callprototype");
+  if (!sink)
+    return std::unexpected(sink.error());
+  if (token(*sink).text != "_") {
+    return std::unexpected(CstParseDiagnostic{
+        token(*sink).range, "expected '_' in .callprototype"});
+  }
+
+  std::optional<syntax_cst::CstFunctionParameterList> parameters;
+  if (token(peek()).kind == TokenKind::LParen) {
+    auto parsed = parseFunctionParameterList();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    parameters = std::move(*parsed);
+  }
+
+  std::optional<TokenId> noreturn_directive;
+  if (token(peek()).kind == TokenKind::DotNoreturn)
+    noreturn_directive = consume();
+
+  const auto parse_abi_suffix = [this](std::string_view spelling)
+      -> std::expected<std::optional<syntax_cst::CstCallPrototypeAbiSuffix>,
+                       CstParseDiagnostic> {
+    if (token(peek()).kind != TokenKind::DotIdent ||
+        token(peek()).text != spelling) {
+      return std::optional<syntax_cst::CstCallPrototypeAbiSuffix>{};
+    }
+    const TokenId suffix = consume();
+    auto count = expect(TokenKind::Decimal, "ABI-preserve register count");
+    if (!count)
+      return std::unexpected(count.error());
+    return syntax_cst::CstCallPrototypeAbiSuffix{
+        suffix, *count, {suffix, *count + 1}};
+  };
+
+  auto abi_preserve = parse_abi_suffix(".abi_preserve");
+  if (!abi_preserve)
+    return std::unexpected(abi_preserve.error());
+  auto abi_preserve_control = parse_abi_suffix(".abi_preserve_control");
+  if (!abi_preserve_control)
+    return std::unexpected(abi_preserve_control.error());
+
+  const auto semicolon = expect(TokenKind::Semicolon, "';' after .callprototype");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstCallPrototype{
+      .label = label,
+      .colon = colon,
+      .directive = directive,
+      .return_parameters = std::move(return_parameters),
+      .sink = *sink,
+      .parameters = std::move(parameters),
+      .noreturn_directive = noreturn_directive,
+      .abi_preserve = std::move(*abi_preserve),
+      .abi_preserve_control = std::move(*abi_preserve_control),
+      .semicolon = *semicolon,
+      .token_range = {label, *semicolon + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFile, CstParseDiagnostic>
 PtxCstParser::parseInstruction() {
   auto root = parseInstructionNode();
@@ -1109,6 +1191,13 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       const TokenId first_token = consume();
       if (token(peek()).kind == TokenKind::Colon) {
         const TokenId colon = consume();
+        if (token(peek()).kind == TokenKind::DotCallPrototype) {
+          auto prototype = parseCallPrototype(first_token, colon);
+          if (!prototype)
+            return std::unexpected(prototype.error());
+          body.emplace_back(std::move(*prototype));
+          continue;
+        }
         body.emplace_back(
             syntax_cst::CstLabel{first_token, colon, {first_token, colon + 1}});
         continue;
@@ -1118,6 +1207,12 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
         return std::unexpected(instruction.error());
       body.emplace_back(std::move(*instruction));
       continue;
+    }
+
+    if (token(peek()).kind == TokenKind::DotCallPrototype) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.callprototype' requires a preceding function-local label"});
     }
 
     auto instruction = parseInstructionNode();
@@ -1182,6 +1277,24 @@ PtxCstParser::parseModule() {
       last = declaration->token_range.last - 1;
       items.emplace_back(std::move(*declaration));
       continue;
+    }
+
+    if (token(peek()).kind == TokenKind::DotCallPrototype) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.callprototype' is only valid inside a function body"});
+    }
+
+    if (token(peek()).kind == TokenKind::Ident) {
+      consume();
+      if (token(peek()).kind == TokenKind::Colon) {
+        consume();
+        if (token(peek()).kind == TokenKind::DotCallPrototype) {
+          return std::unexpected(CstParseDiagnostic{
+              token(peek()).range,
+              "'.callprototype' is only valid inside a function body"});
+        }
+      }
     }
 
     return std::unexpected(CstParseDiagnostic{

@@ -83,7 +83,9 @@ clients respectively.
 `AstFile` mirrors the same root distinction and `AstModule` provides typed
 containers for the supported module directives and functions. `AstFunction`
 contains the function kind, qualifiers, name, and an ordered body variant of
-`AstVariableDeclaration`, `AstLabel`, and `AstInstruction`. Return and input
+`AstVariableDeclaration`, `AstLabel`, `AstCallPrototype`, and `AstInstruction`.
+`AstCallPrototype` retains its label, sink, formal return/input payloads, and
+the PTX 9.3 `.noreturn` / ABI-preservation suffixes with ranges. Return and input
 parameters retain state space, alignment, type, pointer attributes, array form,
 name, and range. `AstConstantExpression` represents literals/symbols,
 parentheses, casts, unary/binary/conditional expressions, and initializer
@@ -104,6 +106,8 @@ for composite operands. It retains only:
 - vector member and vector pack structure;
 - call return/input parameter groups, callees, and target-set/prototype symbols;
 - direct branch label targets;
+- function-local `.callprototype` labels, signature payloads, and PTX 9.3
+  suffix payloads;
 - declaration array dimensions, constant expressions, and recursive
   initializer structure;
 - source ranges for diagnostics;

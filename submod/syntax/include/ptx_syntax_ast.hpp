@@ -291,9 +291,6 @@ struct AstLabel {
   SourceRange range;
 };
 
-using AstFunctionBodyItem =
-    std::variant<AstVariableDeclaration, AstLabel, AstInstruction>;
-
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
@@ -306,6 +303,28 @@ struct AstFunctionParameter {
   std::optional<AstConstantExpression> array_size;
   SourceRange range;
 };
+
+struct AstCallPrototypeAbiSuffix {
+  AstSyntax directive;
+  AstSyntax count;
+  SourceRange range;
+};
+
+/** A function-local label-associated indirect-call prototype. */
+struct AstCallPrototype {
+  AstIdentifierRef label;
+  std::vector<AstFunctionParameter> return_parameters;
+  AstIdentifierRef sink;
+  std::vector<AstFunctionParameter> parameters;
+  std::optional<AstSyntax> noreturn_directive;
+  std::optional<AstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<AstCallPrototypeAbiSuffix> abi_preserve_control;
+  SourceRange range;
+};
+
+using AstFunctionBodyItem =
+    std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
+                 AstInstruction>;
 
 /** Initial function container; declarations and parameters refine this later. */
 struct AstFunction {

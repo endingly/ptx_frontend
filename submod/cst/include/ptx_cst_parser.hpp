@@ -64,6 +64,8 @@ class PtxCstParser {
   parseFunctionParameter();
   std::expected<syntax_cst::CstFunctionParameterList, CstParseDiagnostic>
   parseFunctionParameterList();
+  std::expected<syntax_cst::CstCallPrototype, CstParseDiagnostic>
+  parseCallPrototype(TokenId label, TokenId colon);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(

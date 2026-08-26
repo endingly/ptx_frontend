@@ -1328,9 +1328,15 @@ ABI checker
 
 正式建模 `.callprototype`、`.calltargets` 和 `.branchtargets`。
 
+### 当前状态
+
+M7-I01 已完成：function-local `.callprototype` 以专用 lexer token 和 CST/AST node
+保留 label、signature payload、PTX 9.3 suffix 与 SourceRange。它尚未进入 binding、
+declaration semantics、Resolved IR 或 indirect-call descriptor；其余 M7 issue 仍未完成。
+
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M7-I01 | ⬜ | 独立 | 建模 `.callprototype` CST/AST | grammar、signature payload、scope 和 SourceRange 明确 |
+| M7-I01 | ✅ | 独立 | 建模 `.callprototype` CST/AST | grammar、signature payload、scope 和 SourceRange 明确 |
 | M7-I02 | ⬜ | 独立 | 建模 `.calltargets` CST/AST | target list、empty/duplicate rule 和 range 明确 |
 | M7-I03 | ⬜ | 独立 | 建模 `.branchtargets` CST/AST | label list 和 function scope 明确 |
 | M7-I04 | ⬜ | 独立 | 扩展 metadata symbol kind | prototype、call-target set、branch-target set 拥有稳定 SymbolId |

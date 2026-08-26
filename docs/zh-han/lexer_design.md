@@ -207,7 +207,8 @@ Ident("add") DotIdent(".sat") DotIdent(".s32")
 
 - `.version`、`.target` 和 `.file` 等 module/debug directive。
 - `.visible` 和 `.extern` 等 visibility/linking directive。
-- `.entry` 和 `.func` 等 function directive。
+- `.entry`、`.func` 以及具有重要 function-local 结构意义的 `.callprototype`
+  metadata directive。
 - `.maxnreg` 和 `.reqntid` 等 kernel tuning directive。
 - `.reg`、`.global` 和 `.param` 等 declaration directive。
 

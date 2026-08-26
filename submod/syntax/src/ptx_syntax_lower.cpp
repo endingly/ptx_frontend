@@ -433,6 +433,47 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   };
 }
 
+syntax_ast::AstCallPrototype lowerCallPrototype(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstCallPrototype& prototype) {
+  const auto lower_parameters = [&cst](
+                                    const std::optional<syntax_cst::CstFunctionParameterList>&
+                                        parameters) {
+    std::vector<syntax_ast::AstFunctionParameter> lowered;
+    if (!parameters)
+      return lowered;
+    lowered.reserve(parameters->parameters.size());
+    for (const auto& parameter : parameters->parameters)
+      lowered.push_back(lowerFunctionParameter(cst, parameter));
+    return lowered;
+  };
+  const auto lower_suffix = [&cst](
+                                const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>&
+                                    suffix)
+      -> std::optional<syntax_ast::AstCallPrototypeAbiSuffix> {
+    if (!suffix)
+      return std::nullopt;
+    return syntax_ast::AstCallPrototypeAbiSuffix{
+        .directive = leafSyntax(cst, suffix->directive),
+        .count = leafSyntax(cst, suffix->count),
+        .range = cst.sourceRange(suffix->token_range),
+    };
+  };
+  std::optional<syntax_ast::AstSyntax> noreturn_directive;
+  if (prototype.noreturn_directive)
+    noreturn_directive = leafSyntax(cst, *prototype.noreturn_directive);
+  return syntax_ast::AstCallPrototype{
+      .label = lowerIdentifier(cst, {prototype.label}),
+      .return_parameters = lower_parameters(prototype.return_parameters),
+      .sink = lowerIdentifier(cst, {prototype.sink}),
+      .parameters = lower_parameters(prototype.parameters),
+      .noreturn_directive = std::move(noreturn_directive),
+      .abi_preserve = lower_suffix(prototype.abi_preserve),
+      .abi_preserve_control = lower_suffix(prototype.abi_preserve_control),
+      .range = cst.sourceRange(prototype.token_range),
+  };
+}
+
 }  // namespace
 
 std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
@@ -537,6 +578,9 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         lowered.body.emplace_back(
             syntax_ast::AstLabel{lowerIdentifier(cst, {label->name}),
                                  cst.sourceRange(label->token_range)});
+      } else if (const auto* prototype =
+                     std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
+        lowered.body.emplace_back(lowerCallPrototype(cst, *prototype));
       } else {
         lowered.body.emplace_back(lowerInstructionNode(
             cst, std::get<syntax_cst::CstInstruction>(body_item)));

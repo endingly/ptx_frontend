@@ -73,6 +73,18 @@ Only direct named-function calls are resolved in this slice. A `.reg` target
 or a `CallTargetSet` fourth operand is rejected clearly: indirect calls still
 need the unmodeled `.calltargets`/`.callprototype` metadata.
 
+## Function-local `.callprototype` syntax
+
+The parser now retains PTX 9.3 `.callprototype` declarations as dedicated
+function-body CST/AST nodes rather than a label followed by an instruction.
+All four signature forms are accepted: `_`, `_ (params)`, `(return) _`, and
+`(return) _ (params)`. CST preserves the label, colon, sink, parameter-list
+punctuation, `.noreturn`, `.abi_preserve N`, and `.abi_preserve_control N`.
+AST retains their semantic spellings and source ranges. The parser does not
+decide whether return parameters conflict with `.noreturn`; that is declaration
+semantics work. Parsing at module scope is rejected, and this issue does not
+yet bind or resolve prototype labels.
+
 ## PTX 9.3 call parameter context
 
 `ld` accepts `.param`, `.param::entry`, and `.param::func`; `st` accepts

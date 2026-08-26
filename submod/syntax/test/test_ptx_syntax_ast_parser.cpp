@@ -15,6 +15,7 @@ using syntax_ast::AstBranchTarget;
 using syntax_ast::AstCallParameterList;
 using syntax_ast::AstCallTarget;
 using syntax_ast::AstCallTargetSet;
+using syntax_ast::AstCallPrototype;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstPredicateOperand;
@@ -113,6 +114,41 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
   ASSERT_EQ(branch->operands.size(), 1u);
   EXPECT_EQ(std::get<AstBranchTarget>(branch->operands[0]).name.syntax.text,
             "done");
+}
+
+TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  prototype: .callprototype (.param .u32 result) _ (.reg .u32 arg, .param .b8 bytes[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function = std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& prototype = std::get<AstCallPrototype>(function.body.front());
+  EXPECT_EQ(prototype.label.syntax.text, "prototype");
+  EXPECT_EQ(prototype.sink.syntax.text, "_");
+  ASSERT_EQ(prototype.return_parameters.size(), 1u);
+  EXPECT_EQ(prototype.return_parameters.front().name.syntax.text, "result");
+  ASSERT_EQ(prototype.parameters.size(), 2u);
+  EXPECT_EQ(prototype.parameters[0].name.syntax.text, "arg");
+  EXPECT_EQ(prototype.parameters[1].name.syntax.text, "bytes");
+  EXPECT_TRUE(prototype.parameters[1].is_array);
+  ASSERT_TRUE(prototype.noreturn_directive.has_value());
+  EXPECT_EQ(prototype.noreturn_directive->text, ".noreturn");
+  ASSERT_TRUE(prototype.abi_preserve.has_value());
+  EXPECT_EQ(prototype.abi_preserve->directive.text, ".abi_preserve");
+  EXPECT_EQ(prototype.abi_preserve->count.text, "10");
+  ASSERT_TRUE(prototype.abi_preserve_control.has_value());
+  EXPECT_EQ(prototype.abi_preserve_control->directive.text,
+            ".abi_preserve_control");
+  EXPECT_EQ(prototype.abi_preserve_control->count.text, "2");
+  EXPECT_EQ(prototype.range.start.line, 3u);
+  EXPECT_EQ(prototype.label.syntax.range.start.column, 3u);
 }
 
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {

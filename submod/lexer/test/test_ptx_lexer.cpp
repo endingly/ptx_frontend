@@ -279,6 +279,16 @@ TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   expect_token(toks[5], TokenKind::DotWeak, ".weak");
 }
 
+TEST(PtxLexerNew, CallPrototypeIsAControlFlowMetadataToken) {
+  auto toks = lex_all(".callprototype _ .abi_preserve 10");
+
+  ASSERT_EQ(toks.size(), 4u);
+  expect_token(toks[0], TokenKind::DotCallPrototype, ".callprototype");
+  expect_token(toks[1], TokenKind::Ident, "_");
+  expect_token(toks[2], TokenKind::DotIdent, ".abi_preserve");
+  expect_token(toks[3], TokenKind::Decimal, "10");
+}
+
 TEST(PtxLexerNew, DeclarationDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".reg .align .ptr .global .const .shared .local .param");
 

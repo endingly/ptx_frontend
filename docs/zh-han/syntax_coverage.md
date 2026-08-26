@@ -26,15 +26,10 @@
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。
 
-## 近期实现顺序
+## 实现优先级
 
-1. 完成 `ld/st` 其余跨 modifier
-   规则；`.b128` 不属于当前 scalar family；
-   function-local call-argument `.param`、`::entry`/`::func` 以及 call
-   adjacency/predication 留到后续 call-context 工作；
-2. 增加 call signature/ABI 对比及 indirect `.calltargets/.callprototype` metadata；
-3. 表示 `.branchtargets` 及其余 module/function directive；
-4. PTX module grammar 与 YAML instruction coverage 分别独立扩展。
+[项目 roadmap](../../.agents/project_roadmap.md) 是实现状态、依赖和优先级的唯一权威来源。
+本矩阵只记录能力边界，刻意不重复该排序。
 
 PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立
 语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的

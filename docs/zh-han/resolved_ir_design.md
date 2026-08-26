@@ -29,7 +29,7 @@ qualifier extension、indirect-call metadata、CFG、SSA 和目标 lowering 仍�
 
 ```cpp
 using ResolvedInstruction =
-    std::variant<Add, Sub, Bar, Bra, Mov, Ld /* ... */>;
+    std::variant<Add, Sub, Bar, Bra, Call, Mov, Ld /* ... */>;
 
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);

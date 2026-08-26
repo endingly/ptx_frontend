@@ -11,13 +11,13 @@ punctuation, literals, identifiers, selected stable directives, whitespace,
 and comments. It does not maintain an exhaustive list of PTX instructions,
 instruction suffixes, types, shapes, cache operators, or scopes.
 
-The main implementation files are:
+The lexer source tree is `submod/lexer/`. Its main implementation files are:
 
-- `src/ptx_lexer.l`: Flex rules, scanner configuration, and position tracking.
-- `src/ptx_lexer.cpp`: C++ ownership wrapper around the generated scanner.
-- `include/ptx_lexer.hpp`: public lexer interface and token representation.
-- `include/ptx_token.hpp`: token kinds and Flex semantic value types.
-- `test/test_ptx_lexer.cpp`: lexer behavior tests.
+- `submod/lexer/src/ptx_lexer.l`: Flex rules, scanner configuration, and position tracking.
+- `submod/lexer/src/ptx_lexer.cpp`: C++ ownership wrapper around the generated scanner.
+- `submod/lexer/include/ptx_lexer.hpp`: public lexer interface and token representation.
+- `submod/lexer/include/ptx_token.hpp`: token kinds and Flex semantic value types.
+- `submod/lexer/test/test_ptx_lexer.cpp`: lexer behavior tests.
 
 ## Design Goals
 
@@ -298,15 +298,16 @@ position range.
 
 CMake uses `FLEX_TARGET` to generate the scanner implementation and header in
 the private generated directory. The generated source is compiled into the
-`ptx_frontend` library together with `src/ptx_lexer.cpp`.
+`lexer` target together with `submod/lexer/src/ptx_lexer.cpp`.
 
-Changes to `src/ptx_lexer.l` cause the scanner to be regenerated as part of a
-normal build.
+Changes to `submod/lexer/src/ptx_lexer.l` cause the scanner to be regenerated
+as part of a normal build.
 
 ## Testing Strategy
 
-Lexer tests are built as the independent `ptx_lexer_test` executable. They do
-not share a test executable with higher-level components.
+When `BUILD_TESTING` is enabled, CMake builds lexer tests as the independent
+`test_lexer` executable. They do not share a test executable with higher-level
+components.
 
 The current test suite covers:
 
@@ -323,10 +324,10 @@ The current test suite covers:
 - Unterminated block comment errors.
 - `peek()` and `consume()` behavior.
 
-Run the lexer tests directly with:
+Build the lexer test target with:
 
 ```sh
-./out/build/ci-linux-gcc-debug/ptx_lexer_test
+cmake --build out/build/ci-linux-gcc-debug --target test_lexer
 ```
 
 or through CTest:

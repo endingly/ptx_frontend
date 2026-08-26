@@ -410,7 +410,7 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - 根目录 `README.md` 说明项目定位、当前 PTX/Resolved IR 覆盖边界、frontend pipeline、
   构建测试命令、source-tree CMake 接入方式、最小 parse/resolve 示例与代码生成流程；
 - 明确 pre-1.0 API、未启用 install/export、非完整 PTX validator/code generator，以及已添加
-  [MIT license](LICENSE) 文件，避免对未实现能力作出承诺；
+  [MIT license](../../LICENSE) 文件，避免对未实现能力作出承诺；
 - README 示例已通过独立 source consumer 编译和运行验证。
 
 ## 下一步评审与调整

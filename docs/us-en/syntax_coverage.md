@@ -28,15 +28,11 @@ The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be
 lowered to Resolved IR.
 
-## Near-term order
+## Implementation priority
 
-1. Complete the remaining `ld/st`
-   remaining cross-modifier rules. `.b128` is not part of the current
-   scalar family. Function-local call argument `.param`, `::entry`/`::func`,
-   and call adjacency/predication remain part of the later call-context work.
-2. Add call signatures/ABI comparison and indirect `.calltargets`/`.callprototype` metadata.
-3. Represent `.branchtargets` and remaining module/function directives.
-4. Expand YAML instruction coverage independently of module grammar work.
+The [project roadmap](../../.agents/project_roadmap.md) is the sole authority
+for implementation status, dependencies, and priority. This matrix records
+capability boundaries only and intentionally does not repeat that ordering.
 
 The PTX ISA variable-declaration overview mentions an optional fixed address,
 but the current specification provides no separate grammar, constraints, or

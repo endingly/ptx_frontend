@@ -28,7 +28,8 @@ TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   PtxCstParser parser(source);
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_TRUE(result.diagnostics.empty());
 
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
@@ -56,7 +57,7 @@ TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {
 
   const auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->modifiers.size(), 2u);
@@ -68,7 +69,7 @@ TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
   PtxCstParser parser("mov.b32 [%rd1-4], %r2.x, {%r3, 1};");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->operands.size(), 3u);
@@ -99,7 +100,7 @@ TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
 
   auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
@@ -132,7 +133,7 @@ TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
 
   auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->operands.size(), 1u);
@@ -147,7 +148,7 @@ TEST(PtxCstParser, RetainsIndexedBranchTargetList) {
 
   const auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
@@ -180,8 +181,36 @@ TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
     PtxCstParser parser(source);
     const auto result = parser.parseInstruction();
     ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
+}
+
+TEST(PtxCstParser, ReportsSingleDiagnosticWithoutAValue) {
+  PtxCstParser parser("add.u32 %r1, %r2, %r3");
+
+  const auto result = parser.parseInstruction();
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{1, 22}, SourcePos{1, 22}}));
+}
+
+TEST(ParseResult, RetainsAValueAndOrderedDiagnostics) {
+  const ResultWithDiagnostics<int, CstParseDiagnostic> result{
+      .value = 7,
+      .diagnostics = {
+          {{{1, 1}, {1, 2}}, "first"},
+          {{{2, 1}, {2, 2}}, "second"},
+      },
+  };
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 7);
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].message, "first");
+  EXPECT_EQ(result.diagnostics[1].message, "second");
 }
 
 TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
@@ -197,7 +226,7 @@ TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function = std::get<syntax_cst::CstFunction>(
       result->module()->items.front());
@@ -237,7 +266,7 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
     ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
 
@@ -253,7 +282,7 @@ TEST(PtxCstParser, RetainsFunctionLocalCallTargetsStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function = std::get<syntax_cst::CstFunction>(
       result->module()->items.front());
@@ -291,7 +320,7 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallTargetsGrammar) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
     ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
 
@@ -305,7 +334,7 @@ TEST(PtxCstParser, RetainsFunctionLocalBranchTargetsStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function = std::get<syntax_cst::CstFunction>(
       result->module()->items.front());
@@ -345,7 +374,7 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalBranchTargetsGrammar) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
     ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
 
@@ -354,7 +383,7 @@ TEST(PtxCstParser, RejectsTrailingSignificantInput) {
 
   auto result = parser.parseInstruction();
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().message, "expected end of input");
+  EXPECT_EQ(result.diagnostics.front().message, "expected end of input");
 }
 
 TEST(CstFile, DistinguishesInstructionFragmentAndModuleRoots) {
@@ -382,7 +411,7 @@ TEST(PtxCstParser, ParsesAndRoundTripsMinimalModule) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   ASSERT_NE(result->module(), nullptr);
   EXPECT_EQ(result->instruction(), nullptr);
@@ -427,7 +456,7 @@ TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& items = result->module()->items;
   ASSERT_EQ(items.size(), 2u);
@@ -482,7 +511,7 @@ Lend:
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& section = std::get<syntax_cst::CstSectionDirective>(
       result->module()->items.front());
@@ -526,7 +555,7 @@ TEST(PtxCstParser, RetainsPragmasAtAllSupportedScopes) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& module_pragma = std::get<syntax_cst::CstPragma>(
       result->module()->items.front());
@@ -577,7 +606,7 @@ TEST(PtxCstParser, RetainsEntryKernelResourceDirectives) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items.front());
@@ -603,7 +632,7 @@ TEST(PtxCstParser, ParsesRequiredThreadCountDimensions) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items.front());
   ASSERT_EQ(function.resources.size(), 1u);
@@ -644,7 +673,7 @@ TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items.front());
@@ -698,7 +727,7 @@ TEST(PtxCstParser, FindsFuncNameAfterReturnParameterList) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_NE(result->module(), nullptr);
   ASSERT_EQ(result->module()->items.size(), 1u);
   const auto& function =
@@ -724,7 +753,7 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items[0]);
   EXPECT_FALSE(function.left_brace.has_value());
@@ -761,7 +790,8 @@ TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
 
     ASSERT_FALSE(result.has_value()) << source;
     EXPECT_TRUE(
-        result.error().message.starts_with("unsupported function header token"))
+        result.diagnostics.front().message.starts_with(
+            "unsupported function header token"))
         << source;
   }
 }
@@ -773,7 +803,7 @@ TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items[0]);
   ASSERT_EQ(function.body.size(), 3u);
@@ -810,7 +840,7 @@ TEST(PtxCstParser, RetainsNestedFunctionBlocks) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items.front());
@@ -832,7 +862,8 @@ TEST(PtxCstParser, RejectsNestedBlockMissingRightBrace) {
   const auto result = parser.parseModule();
 
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().message, "expected '}' at end of nested block");
+  EXPECT_EQ(result.diagnostics.front().message,
+            "expected '}' at end of nested block");
 }
 
 TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
@@ -848,7 +879,7 @@ TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->module()->items.size(), 2u);
   const auto& global =
       std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
@@ -889,7 +920,7 @@ TEST(PtxCstParser, RetainsStructuredConstantExpressionsAndInitializers) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->module()->items.size(), 4u);
   const auto& table =
       std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
@@ -951,7 +982,7 @@ TEST(PtxCstParser, RetainsNestedAndUnsizedArrayInitializer) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& declaration =
       std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
   const auto& declarator = declaration.declarators[0];
@@ -996,7 +1027,7 @@ TEST(PtxCstParser, RejectsInitializersInUnsupportedDeclarations) {
     PtxCstParser parser(source_and_message.first);
     const auto result = parser.parseModule();
     ASSERT_FALSE(result.has_value()) << source_and_message.first;
-    EXPECT_EQ(result.error().message, source_and_message.second);
+    EXPECT_EQ(result.diagnostics.front().message, source_and_message.second);
   }
 }
 

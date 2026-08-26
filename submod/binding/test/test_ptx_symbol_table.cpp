@@ -37,7 +37,7 @@ start:
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -142,7 +142,7 @@ TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto binding_result = binding::bindSymbols(*module);
   ASSERT_TRUE(binding_result.diagnostics.empty());
 
@@ -229,7 +229,7 @@ TEST(PtxSymbolTable, SupportsParameterizedNamesOutsideRegisterSpace) {
       ".global .u32 item<2>; .entry kernel() { .reg .u32 %r0; "
       "ld.u32 %r0, item1; }");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -250,7 +250,7 @@ TEST(PtxSymbolTable, DiagnosesTrulyUnresolvedReferences) {
   PtxSyntaxParser parser(
       ".entry kernel() { .reg .u32 %r<1>; add.u32 %r0, %missing, 1; }");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -282,7 +282,7 @@ TEST(PtxSymbolTable, ClassifiesSpecialRegistersAndExternalSymbols) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -338,7 +338,7 @@ again:
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -367,7 +367,7 @@ TEST(PtxSymbolTable, ClassifiesLocalCallParametersInTheirFunctionScope) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
   ASSERT_TRUE(binding_result.diagnostics.empty());
@@ -409,7 +409,7 @@ TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto first = binding::bindSymbols(*module);
   const auto second = binding::bindSymbols(*module);
@@ -469,7 +469,7 @@ TEST(PtxSymbolTable, DiagnosesNonCallMetadataTargetSetReference) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -491,7 +491,7 @@ TEST(PtxSymbolTable, DiagnosesInvalidIndexedBranchTargetSetReference) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -517,7 +517,7 @@ TEST(PtxSymbolTable, DiagnosesInvalidCallAndBranchTargetKinds) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -607,7 +607,7 @@ loop:
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -655,7 +655,7 @@ TEST(PtxSymbolTable, DiagnosesOverlappingParameterizedNameSets) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 

@@ -30,7 +30,8 @@ TEST(PtxSyntaxParser, ParsesInstructionWithoutCstTrivia) {
   PtxSyntaxParser parser("  // leading\nadd.sat.s32 %r1, %r2, -1;");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_TRUE(result.diagnostics.empty());
 
   const auto& instruction = *result;
   EXPECT_EQ(instruction.opcode.syntax.text, "add");
@@ -52,7 +53,7 @@ TEST(PtxSyntaxParser, ParsesPredicateAddressAndVectorMember) {
   PtxSyntaxParser parser("@!%p add.u32 [%rd1+16], %r2.x, %r3;");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
 
   const auto& instruction = *result;
   ASSERT_TRUE(instruction.predicate.has_value());
@@ -77,7 +78,7 @@ TEST(PtxSyntaxParser, ParsesVectorPack) {
   PtxSyntaxParser parser("mov.b32 {%r1, -2, 0x10}, %r2;");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
 
   ASSERT_EQ(result->operands.size(), 2u);
   ASSERT_TRUE(std::holds_alternative<AstVectorPack>(result->operands[0]));
@@ -92,7 +93,7 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
   PtxSyntaxParser call_parser(
       "call.uni (%result), %callee, (%arg, 4), targets;");
   auto call = call_parser.parseInstruction();
-  ASSERT_TRUE(call.has_value()) << call.error().message;
+  ASSERT_TRUE(call.has_value()) << call.diagnostics.front().message;
   ASSERT_EQ(call->operands.size(), 4u);
 
   const auto& returns = std::get<AstCallParameterList>(call->operands[0]);
@@ -114,14 +115,15 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
 
   PtxSyntaxParser branch_parser("bra done;");
   auto branch = branch_parser.parseInstruction();
-  ASSERT_TRUE(branch.has_value()) << branch.error().message;
+  ASSERT_TRUE(branch.has_value()) << branch.diagnostics.front().message;
   ASSERT_EQ(branch->operands.size(), 1u);
   EXPECT_EQ(std::get<AstBranchTarget>(branch->operands[0]).name.syntax.text,
             "done");
 
   PtxSyntaxParser indexed_branch_parser("brx.idx %r0, targets;");
   auto indexed_branch = indexed_branch_parser.parseInstruction();
-  ASSERT_TRUE(indexed_branch.has_value()) << indexed_branch.error().message;
+  ASSERT_TRUE(indexed_branch.has_value())
+      << indexed_branch.diagnostics.front().message;
   ASSERT_EQ(indexed_branch->operands.size(), 2u);
   EXPECT_EQ(std::get<AstIdentifierRef>(indexed_branch->operands[0]).syntax.text,
             "%r0");
@@ -141,7 +143,7 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
 
   const auto module = parser.parseModule();
 
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto& function = std::get<syntax_ast::AstFunction>(module->items.front());
   ASSERT_EQ(function.body.size(), 1u);
   const auto& prototype = std::get<AstCallPrototype>(function.body.front());
@@ -177,7 +179,7 @@ TEST(PtxSyntaxParser, LowersNestedFunctionBlocks) {
 
   const auto module = parser.parseModule();
 
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto& function =
       std::get<syntax_ast::AstFunction>(module->items.front());
   ASSERT_EQ(function.body.size(), 1u);
@@ -202,7 +204,7 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallTargetsPayload) {
 
   const auto module = parser.parseModule();
 
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto& function =
       std::get<syntax_ast::AstFunction>(module->items.front());
   ASSERT_EQ(function.body.size(), 1u);
@@ -226,7 +228,7 @@ TEST(PtxSyntaxParser, LowersFunctionLocalBranchTargetsPayload) {
 
   const auto module = parser.parseModule();
 
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto& function =
       std::get<syntax_ast::AstFunction>(module->items.front());
   ASSERT_EQ(function.body.size(), 1u);
@@ -247,7 +249,7 @@ TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {
   PtxSyntaxParser parser("ld.u32 %r1, %rd1-4;");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
 
   ASSERT_EQ(result->operands.size(), 2u);
   ASSERT_TRUE(std::holds_alternative<AstAddress>(result->operands[1]));
@@ -262,7 +264,7 @@ TEST(PtxSyntaxParser, ParsesNegatedPredicateOperand) {
   PtxSyntaxParser parser("bar.red.popc.u32 %r0, 1, !%p1;");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
 
   ASSERT_EQ(result->operands.size(), 3u);
   ASSERT_TRUE(std::holds_alternative<AstPredicateOperand>(result->operands[2]));
@@ -276,7 +278,27 @@ TEST(PtxSyntaxParser, RejectsMissingInstructionTerminator) {
 
   auto result = parser.parseInstruction();
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().message, "expected ';'");
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{1, 22}, SourcePos{1, 22}}));
+}
+
+TEST(PtxSyntaxParser, MapsCstDiagnosticsToSyntaxDiagnostics) {
+  constexpr std::string_view source = "add.u32 %r1, %r2, %r3";
+  PtxCstParser cst_parser(source);
+  PtxSyntaxParser syntax_parser(source);
+
+  const auto cst = cst_parser.parseInstruction();
+  const auto syntax = syntax_parser.parseInstruction();
+
+  ASSERT_FALSE(cst.has_value());
+  ASSERT_FALSE(syntax.has_value());
+  ASSERT_EQ(cst.diagnostics.size(), 1u);
+  ASSERT_EQ(syntax.diagnostics.size(), 1u);
+  EXPECT_EQ(syntax.diagnostics.front().message,
+            cst.diagnostics.front().message);
+  EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
 }
 
 TEST(PtxSyntaxParser, RejectsEmptyVectorPack) {
@@ -284,7 +306,7 @@ TEST(PtxSyntaxParser, RejectsEmptyVectorPack) {
 
   auto result = parser.parseInstruction();
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().message, "vector operand cannot be empty");
+  EXPECT_EQ(result.diagnostics.front().message, "vector operand cannot be empty");
 }
 
 TEST(AstFile, DistinguishesInstructionFragmentAndModuleRoots) {
@@ -304,7 +326,7 @@ TEST(SyntaxLower, RejectsModuleRootAsInstructionFragment) {
   const auto result = lowerSyntaxInstruction(module_file);
 
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().message,
+  EXPECT_EQ(result.diagnostics.front().message,
             "expected an instruction-fragment CST root");
 }
 
@@ -320,7 +342,7 @@ TEST(PtxSyntaxParser, LowersMinimalModuleToTypedAst) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->items.size(), 4u);
   const auto& version =
       std::get<syntax_ast::AstVersionDirective>(result->items[0]);
@@ -355,7 +377,7 @@ TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->items.size(), 2u);
   const auto& short_form =
       std::get<syntax_ast::AstFileDirective>(result->items[0]);
@@ -396,7 +418,7 @@ Lend:
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& section =
       std::get<syntax_ast::AstSectionDirective>(result->items.front());
   EXPECT_EQ(section.name.text, ".debug_info");
@@ -425,7 +447,7 @@ TEST(PtxSyntaxParser, LowersPragmasAtAllSupportedScopes) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& module_pragma =
       std::get<syntax_ast::AstPragma>(result->items.front());
   ASSERT_EQ(module_pragma.strings.size(), 2u);
@@ -458,7 +480,7 @@ TEST(PtxSyntaxParser, LowersEntryKernelResourceDirectives) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_ast::AstFunction>(result->items.front());
   ASSERT_EQ(function.pragmas.size(), 2u);
@@ -482,7 +504,7 @@ TEST(PtxSyntaxParser, LowersRequiredThreadCountDirective) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_ast::AstFunction>(result->items.front());
   ASSERT_EQ(function.resources.size(), 1u);
@@ -503,7 +525,7 @@ TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_ast::AstFunction>(result->items.front());
   const auto& basic =
@@ -536,7 +558,7 @@ TEST(PtxSyntaxParser, LowersFuncDefinition) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->items.size(), 1u);
   const auto& function = std::get<syntax_ast::AstFunction>(result->items[0]);
   EXPECT_FALSE(function.is_entry);
@@ -561,7 +583,7 @@ TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function = std::get<syntax_ast::AstFunction>(result->items[0]);
   EXPECT_TRUE(function.is_prototype);
   EXPECT_TRUE(function.is_noreturn);
@@ -598,7 +620,7 @@ TEST(PtxSyntaxParser, LowersRegisterDeclarationsAndLabels) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function = std::get<syntax_ast::AstFunction>(result->items[0]);
   ASSERT_EQ(function.body.size(), 3u);
 
@@ -632,7 +654,7 @@ TEST(PtxSyntaxParser, LowersModuleAndFunctionVariableDeclarations) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->items.size(), 2u);
   const auto& global =
       std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
@@ -670,7 +692,7 @@ TEST(PtxSyntaxParser, LowersConstantExpressionPrecedenceAndConditional) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& declaration =
       std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
   const auto& initializer = *declaration.declarators[0].initializer;
@@ -727,7 +749,7 @@ TEST(PtxSyntaxParser, LowersEveryConstantBinaryOperator) {
                            std::string{test_case.expression} + ";");
     const auto result = parser.parseModule();
     ASSERT_TRUE(result.has_value())
-        << test_case.expression << ": " << result.error().message;
+        << test_case.expression << ": " << result.diagnostics.front().message;
     const auto& declaration =
         std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
     const auto& initializer = *declaration.declarators[0].initializer;
@@ -748,7 +770,7 @@ TEST(PtxSyntaxParser, LowersRemainingConstantUnaryOperators) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& declaration =
       std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
   const auto& initializer = *declaration.declarators[0].initializer;
@@ -771,7 +793,7 @@ TEST(PtxSyntaxParser, LowersNestedInitializerAndSymbolAddressOperator) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& declaration =
       std::get<syntax_ast::AstVariableDeclaration>(result->items[0]);
   const auto& declarator = declaration.declarators[0];

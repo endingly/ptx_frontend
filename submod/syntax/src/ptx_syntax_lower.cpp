@@ -639,26 +639,27 @@ syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
 
 }  // namespace
 
-std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
-lowerSyntaxInstruction(const syntax_cst::CstFile& cst) {
+AstInstructionLowerResult lowerSyntaxInstruction(
+    const syntax_cst::CstFile& cst) {
   const auto* root = cst.instruction();
   if (root == nullptr) {
-    return std::unexpected(AstLowerDiagnostic{
-        .range = {},
-        .message = "expected an instruction-fragment CST root",
-    });
+    return {.value = std::nullopt,
+            .diagnostics = {AstLowerDiagnostic{
+                .range = {},
+                .message = "expected an instruction-fragment CST root",
+            }}};
   }
-  return lowerInstructionNode(cst, *root);
+  return {.value = lowerInstructionNode(cst, *root), .diagnostics = {}};
 }
 
-std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
-    const syntax_cst::CstFile& cst) {
+AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
   const auto* root = cst.module();
   if (root == nullptr) {
-    return std::unexpected(AstLowerDiagnostic{
-        .range = {},
-        .message = "expected a module CST root",
-    });
+    return {.value = std::nullopt,
+            .diagnostics = {AstLowerDiagnostic{
+                .range = {},
+                .message = "expected a module CST root",
+            }}};
   }
 
   syntax_ast::AstModule ast{
@@ -692,10 +693,11 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         case TokenKind::DotFile:
           if (directive->arguments.size() != 2 &&
               directive->arguments.size() != 4) {
-            return std::unexpected(AstLowerDiagnostic{
-                .range = range,
-                .message = "invalid .file directive payload in CST",
-            });
+            return {.value = std::nullopt,
+                    .diagnostics = {AstLowerDiagnostic{
+                        .range = range,
+                        .message = "invalid .file directive payload in CST",
+                    }}};
           }
           ast.items.emplace_back(syntax_ast::AstFileDirective{
               .file_index = leafSyntax(cst, directive->arguments.at(0)),
@@ -712,10 +714,11 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
           });
           break;
         default:
-          return std::unexpected(AstLowerDiagnostic{
-              .range = cst.token(directive->keyword).range,
-              .message = "unsupported module directive in CST",
-          });
+          return {.value = std::nullopt,
+                  .diagnostics = {AstLowerDiagnostic{
+                      .range = cst.token(directive->keyword).range,
+                      .message = "unsupported module directive in CST",
+                  }}};
       }
       continue;
     }
@@ -785,7 +788,7 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       lowered.body.push_back(lowerFunctionBodyItem(cst, body_item));
     ast.items.emplace_back(std::move(lowered));
   }
-  return ast;
+  return {.value = std::move(ast), .diagnostics = {}};
 }
 
 }  // namespace ptx_frontend

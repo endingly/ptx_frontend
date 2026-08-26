@@ -1,6 +1,5 @@
 #pragma once
 
-#include <expected>
 #include <string>
 
 #include <ptx_frontend/cst/ptx_cst.hpp>
@@ -13,12 +12,17 @@ struct AstLowerDiagnostic {
   std::string message;
 };
 
+using AstLowerDiagnostics = DiagnosticCollection<AstLowerDiagnostic>;
+using AstInstructionLowerResult =
+    ResultWithDiagnostics<syntax_ast::AstInstruction, AstLowerDiagnostic>;
+using AstModuleLowerResult =
+    ResultWithDiagnostics<syntax_ast::AstModule, AstLowerDiagnostic>;
+
 /** Project a lossless CST instruction into the resolution-oriented AST. */
-std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
-lowerSyntaxInstruction(const syntax_cst::CstFile& cst);
+AstInstructionLowerResult lowerSyntaxInstruction(
+    const syntax_cst::CstFile& cst);
 
 /** Project a lossless CST module into its semantic syntax representation. */
-std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
-    const syntax_cst::CstFile& cst);
+AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst);
 
 }  // namespace ptx_frontend

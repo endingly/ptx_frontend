@@ -19,7 +19,7 @@ struct CheckedModule {
 CheckedModule check(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value()) << module.error().message;
+  EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
   auto binding = binding::bindSymbols(*module);
   auto diagnostics = checkDeclarations(*module, binding.table);
   return {std::move(binding), std::move(diagnostics)};
@@ -168,7 +168,7 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
 }
 )ptx");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto& prototype = std::get<syntax_ast::AstFunction>(module->items[0]);
   const auto& definition = std::get<syntax_ast::AstFunction>(module->items[1]);
 

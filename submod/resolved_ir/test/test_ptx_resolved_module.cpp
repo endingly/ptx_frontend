@@ -11,7 +11,7 @@ namespace {
 syntax_ast::AstModule parseModule(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value()) << module.error().message;
+  EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
   return std::move(*module);
 }
 
@@ -264,7 +264,8 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
 TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   PtxSyntaxParser cluster_parser("mov.u32 %r0, %cluster_ctarank;");
   const auto cluster_ast = cluster_parser.parseInstruction();
-  ASSERT_TRUE(cluster_ast.has_value()) << cluster_ast.error().message;
+  ASSERT_TRUE(cluster_ast.has_value())
+      << cluster_ast.diagnostics.front().message;
   const auto cluster_resolved = resolveInstruction(*cluster_ast);
   ASSERT_TRUE(cluster_resolved.has_value()) << cluster_resolved.error().message;
   const auto& cluster_mov = std::get<Mov>(*cluster_resolved);
@@ -284,7 +285,7 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
 
   PtxSyntaxParser wide_parser("mov.u32 %r0, %clock64;");
   const auto wide_ast = wide_parser.parseInstruction();
-  ASSERT_TRUE(wide_ast.has_value()) << wide_ast.error().message;
+  ASSERT_TRUE(wide_ast.has_value()) << wide_ast.diagnostics.front().message;
   const auto wide_resolved = resolveInstruction(*wide_ast);
   ASSERT_TRUE(wide_resolved.has_value()) << wide_resolved.error().message;
   const auto wide_check =
@@ -309,7 +310,8 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
 TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
   PtxSyntaxParser component_parser("mov.u32 %r0, %tid.x;");
   const auto component_ast = component_parser.parseInstruction();
-  ASSERT_TRUE(component_ast.has_value()) << component_ast.error().message;
+  ASSERT_TRUE(component_ast.has_value())
+      << component_ast.diagnostics.front().message;
   const auto component_resolved = resolveInstruction(*component_ast);
   ASSERT_TRUE(component_resolved.has_value())
       << component_resolved.error().message;
@@ -324,7 +326,8 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
 
   PtxSyntaxParser vector_parser("mov.u32 %r0, %tid;");
   const auto vector_ast = vector_parser.parseInstruction();
-  ASSERT_TRUE(vector_ast.has_value()) << vector_ast.error().message;
+  ASSERT_TRUE(vector_ast.has_value())
+      << vector_ast.diagnostics.front().message;
   const auto vector_resolved = resolveInstruction(*vector_ast);
   ASSERT_FALSE(vector_resolved.has_value());
   EXPECT_EQ(vector_resolved.error().message,
@@ -395,7 +398,7 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
 TEST(ResolvedModule, ChecksGenericLoadAvailability) {
   PtxSyntaxParser parser("ld.u32 %r0, [%rd0+4];");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolveInstruction(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto& load = std::get<Ld>(*resolved);
@@ -500,7 +503,7 @@ TEST(ResolvedModule, ResolvesGenericAndExplicitScalarLoadStoreForms) {
   const auto resolve_standalone = [](std::string_view source) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
-    EXPECT_TRUE(ast.has_value()) << ast.error().message;
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     auto resolved = resolveInstruction(*ast);
     EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
     return std::move(*resolved);
@@ -562,7 +565,7 @@ TEST(ResolvedModule, ResolvesEveryLegalLoadStoreCacheOperator) {
   const auto resolve = [](const std::string& source) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
-    EXPECT_TRUE(ast.has_value()) << ast.error().message;
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     auto resolved = resolveInstruction(*ast);
     EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
     return std::pair{std::move(*ast), std::move(*resolved)};
@@ -624,7 +627,7 @@ TEST(ResolvedModule, ChecksExplicitCacheOperatorAvailabilityAndOmittedBaseline) 
   const auto resolve = [](std::string_view source) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
-    EXPECT_TRUE(ast.has_value()) << ast.error().message;
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     auto resolved = resolveInstruction(*ast);
     EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
     return std::pair{std::move(*ast), std::move(*resolved)};
@@ -699,7 +702,7 @@ TEST(ResolvedModule, ResolvesAndChecksLoadStoreScalarTypeFamily) {
   const auto resolve = [](const std::string& source) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
-    EXPECT_TRUE(ast.has_value()) << ast.error().message;
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const SourceRange type_range = ast->modifiers.back().syntax.range;
     auto resolved = resolveInstruction(*ast);
     EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -759,7 +762,7 @@ TEST(ResolvedModule, ChecksLoadStoreF64Availability) {
   const auto resolve = [](std::string_view source) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
-    EXPECT_TRUE(ast.has_value()) << ast.error().message;
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const SourceRange type_range = ast->modifiers.back().syntax.range;
     auto resolved = resolveInstruction(*ast);
     EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -1251,7 +1254,7 @@ TEST(ResolvedModule, ChecksBasicExplicitAddressStateSpaces) {
 TEST(ResolvedModule, RejectsConstStoreModifier) {
   PtxSyntaxParser parser("st.const.u32 [%rd0], %r0;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolveInstruction(*ast);
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().message, "Unknown modifier '.const'.");
@@ -1376,7 +1379,7 @@ TEST(ResolvedModule, ChecksStandaloneExplicitParameterAvailability) {
   const auto resolve_standalone = [](std::string_view source) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
-    EXPECT_TRUE(ast.has_value()) << ast.error().message;
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     auto resolved = resolveInstruction(*ast);
     EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
     return std::move(*resolved);
@@ -1434,7 +1437,7 @@ TEST(ResolvedModule, RejectsNarrowStoreSourceRegisterType) {
 TEST(ResolvedModule, RejectsUnbracketedStoreAddress) {
   PtxSyntaxParser parser("st.u32 %rd0, %r0;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolveInstruction(*ast);
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(
@@ -1820,7 +1823,8 @@ TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
 
   PtxSyntaxParser parser("mov.pred %p0, %p1;");
   const auto standalone_ast = parser.parseInstruction();
-  ASSERT_TRUE(standalone_ast.has_value()) << standalone_ast.error().message;
+  ASSERT_TRUE(standalone_ast.has_value())
+      << standalone_ast.diagnostics.front().message;
   const auto standalone = resolveInstruction(*standalone_ast);
   ASSERT_TRUE(standalone.has_value()) << standalone.error().message;
   const auto& standalone_predicate =
@@ -2200,7 +2204,7 @@ TEST(ResolvedModule, IgnoresPragmasForCallParameterStaging) {
 TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   PtxSyntaxParser mov_parser("mov.u64 %rd0, global_value;");
   const auto mov_ast = mov_parser.parseInstruction();
-  ASSERT_TRUE(mov_ast.has_value()) << mov_ast.error().message;
+  ASSERT_TRUE(mov_ast.has_value()) << mov_ast.diagnostics.front().message;
   const auto mov_resolved = resolveInstruction(*mov_ast);
   ASSERT_TRUE(mov_resolved.has_value()) << mov_resolved.error().message;
   const auto& symbol = std::get<ResolvedSymbolRef>(
@@ -2213,7 +2217,7 @@ TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
 
   PtxSyntaxParser load_parser("ld.u32 %r0, [%rd0+4];");
   const auto load_ast = load_parser.parseInstruction();
-  ASSERT_TRUE(load_ast.has_value()) << load_ast.error().message;
+  ASSERT_TRUE(load_ast.has_value()) << load_ast.diagnostics.front().message;
   const auto load_resolved = resolveInstruction(*load_ast);
   ASSERT_TRUE(load_resolved.has_value()) << load_resolved.error().message;
   const auto& address =
@@ -2227,7 +2231,7 @@ TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
 TEST(ResolvedModule, RejectsUnbracketedLoadAddress) {
   PtxSyntaxParser parser("ld.u32 %r0, %rd0+4;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto invalid_address = resolveInstruction(*ast);
   ASSERT_FALSE(invalid_address.has_value());
   EXPECT_EQ(invalid_address.error().message,
@@ -2406,7 +2410,7 @@ done:
 TEST(ResolvedModule, StandaloneBranchTargetRemainsUnbound) {
   PtxSyntaxParser parser("bra target;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   const auto resolved = resolveInstruction(*ast);
 
@@ -3071,7 +3075,7 @@ TEST(ResolvedModule, RejectsEntryAsDirectCallTarget) {
 TEST(ResolvedModule, StandaloneDirectCallRemainsUnbound) {
   PtxSyntaxParser parser("call callee, (argument, 4);");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   const auto resolved = resolveInstruction(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -3088,7 +3092,7 @@ TEST(ResolvedModule, StandaloneDirectCallRemainsUnbound) {
 TEST(ResolvedModule, StandaloneResolutionRemainsDeclarationFree) {
   PtxSyntaxParser parser("@!%p7 add.u32 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   const auto resolved = resolveInstruction(*ast);
 

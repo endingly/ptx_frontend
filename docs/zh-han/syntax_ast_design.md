@@ -64,6 +64,11 @@ comma-separated string list；它不进入 binding 或 Resolved IR。entry heade
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 
+公开 parser/lowering root 返回 `ResultWithDiagnostics<T, D>`：optional value 加有序
+`DiagnosticCollection<D>`。这样 I10 可在不再改变 API 的情况下，同时返回 recovered CST 与
+diagnostic。I10/I11 的 recovery 与 synchronization 尚未实现，因此当前仍 fail-fast：成功结果
+有空 collection，失败结果没有 value 且只有一条 diagnostic。
+
 ## CST 到 Syntax AST lowering
 
 `lowerSyntaxInstruction()` 与 `lowerSyntaxModule()` 是明确的 CST→AST 边界：
@@ -77,7 +82,7 @@ auto module = lowerSyntaxModule(module_cst);
 的 leaf spelling 会连同 `SourceRange` 一起复制到 AST。
 
 `PtxSyntaxParser` 继续作为便利 facade；`parseInstruction()` 与 `parseModule()` 分别为
-fragment client 与 module client 执行 source→CST→AST。
+fragment client 与 module client 执行 source→CST→AST，并按顺序映射 CST/lowering diagnostic。
 
 `AstFile` 采用相同的 root 区分方式，`AstModule` 则为 module directive 与 function
 提供 typed container。`AstFunction` 当前包含 function 类别、qualifier、名称，以及由

@@ -16,13 +16,17 @@ struct CstParseDiagnostic {
   std::string message;
 };
 
+using CstParseDiagnostics = DiagnosticCollection<CstParseDiagnostic>;
+using CstParseResult =
+    ResultWithDiagnostics<syntax_cst::CstFile, CstParseDiagnostic>;
+
 /** Parses a PTX instruction fragment or module into a lossless CST. */
 class PtxCstParser {
  public:
   explicit PtxCstParser(std::string_view source);
 
-  std::expected<syntax_cst::CstFile, CstParseDiagnostic> parseInstruction();
-  std::expected<syntax_cst::CstFile, CstParseDiagnostic> parseModule();
+  CstParseResult parseInstruction();
+  CstParseResult parseModule();
 
  private:
   using TokenId = syntax_cst::TokenId;

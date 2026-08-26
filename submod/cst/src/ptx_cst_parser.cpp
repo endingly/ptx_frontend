@@ -79,6 +79,10 @@ bool isKernelResourceDirective(TokenKind kind) {
          kind == TokenKind::DotMinnctapersm;
 }
 
+CstParseResult parseFailure(CstParseDiagnostic diagnostic) {
+  return {.value = std::nullopt, .diagnostics = {std::move(diagnostic)}};
+}
+
 bool isFunctionQualifier(TokenKind kind) {
   return kind == TokenKind::DotExtern || kind == TokenKind::DotVisible ||
          kind == TokenKind::DotWeak;
@@ -1452,18 +1456,18 @@ PtxCstParser::parseBlock() {
   };
 }
 
-std::expected<syntax_cst::CstFile, CstParseDiagnostic>
-PtxCstParser::parseInstruction() {
+CstParseResult PtxCstParser::parseInstruction() {
   auto root = parseInstructionNode();
   if (!root)
-    return std::unexpected(root.error());
+    return parseFailure(std::move(root.error()));
 
   const TokenId eof = peek();
   if (token(eof).kind != TokenKind::Eof) {
-    return std::unexpected(
+    return parseFailure(
         CstParseDiagnostic{token(eof).range, "expected end of input"});
   }
-  return syntax_cst::CstFile{std::move(tokens_), std::move(*root)};
+  return {.value = syntax_cst::CstFile{std::move(tokens_), std::move(*root)},
+          .diagnostics = {}};
 }
 
 std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
@@ -1738,8 +1742,7 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
   };
 }
 
-std::expected<syntax_cst::CstFile, CstParseDiagnostic>
-PtxCstParser::parseModule() {
+CstParseResult PtxCstParser::parseModule() {
   std::vector<syntax_cst::CstModuleItem> items;
   const TokenId first = peek();
   TokenId last = first;
@@ -1753,7 +1756,7 @@ PtxCstParser::parseModule() {
     if (qualifiers.empty() && token(peek()).kind == TokenKind::DotPragma) {
       auto pragma = parsePragma();
       if (!pragma)
-        return std::unexpected(pragma.error());
+        return parseFailure(std::move(pragma.error()));
       last = pragma->token_range.last - 1;
       items.emplace_back(std::move(*pragma));
       continue;
@@ -1762,7 +1765,7 @@ PtxCstParser::parseModule() {
     if (qualifiers.empty() && token(peek()).kind == TokenKind::DotSection) {
       auto section = parseSectionDirective();
       if (!section)
-        return std::unexpected(section.error());
+        return parseFailure(std::move(section.error()));
       last = section->token_range.last - 1;
       items.emplace_back(std::move(*section));
       continue;
@@ -1771,7 +1774,7 @@ PtxCstParser::parseModule() {
     if (qualifiers.empty() && isModuleDirective(token(peek()).kind)) {
       auto directive = parseModuleDirective();
       if (!directive)
-        return std::unexpected(directive.error());
+        return parseFailure(std::move(directive.error()));
       last = directive->token_range.last - 1;
       items.emplace_back(std::move(*directive));
       continue;
@@ -1781,7 +1784,7 @@ PtxCstParser::parseModule() {
         token(peek()).kind == TokenKind::DotFunc) {
       auto function = parseFunction(std::move(qualifiers), item_first);
       if (!function)
-        return std::unexpected(function.error());
+        return parseFailure(std::move(function.error()));
       last = function->token_range.last - 1;
       items.emplace_back(std::move(*function));
       continue;
@@ -1791,29 +1794,29 @@ PtxCstParser::parseModule() {
       auto declaration =
           parseVariableDeclaration(std::move(qualifiers), item_first);
       if (!declaration)
-        return std::unexpected(declaration.error());
+        return parseFailure(std::move(declaration.error()));
       last = declaration->token_range.last - 1;
       items.emplace_back(std::move(*declaration));
       continue;
     }
 
     if (token(peek()).kind == TokenKind::DotCallPrototype) {
-      return std::unexpected(CstParseDiagnostic{
+      return parseFailure(CstParseDiagnostic{
           token(peek()).range,
           "'.callprototype' is only valid inside a function body"});
     }
     if (token(peek()).kind == TokenKind::DotCallTargets) {
-      return std::unexpected(CstParseDiagnostic{
+      return parseFailure(CstParseDiagnostic{
           token(peek()).range,
           "'.calltargets' is only valid inside a function body"});
     }
     if (token(peek()).kind == TokenKind::DotBranchTargets) {
-      return std::unexpected(CstParseDiagnostic{
+      return parseFailure(CstParseDiagnostic{
           token(peek()).range,
           "'.branchtargets' is only valid inside a function body"});
     }
     if (isKernelResourceDirective(token(peek()).kind)) {
-      return std::unexpected(CstParseDiagnostic{
+      return parseFailure(CstParseDiagnostic{
           token(peek()).range,
           "kernel resource directives are only valid in an entry function header"});
     }
@@ -1823,34 +1826,35 @@ PtxCstParser::parseModule() {
       if (token(peek()).kind == TokenKind::Colon) {
         consume();
         if (token(peek()).kind == TokenKind::DotCallPrototype) {
-          return std::unexpected(CstParseDiagnostic{
+          return parseFailure(CstParseDiagnostic{
               token(peek()).range,
               "'.callprototype' is only valid inside a function body"});
         }
         if (token(peek()).kind == TokenKind::DotCallTargets) {
-          return std::unexpected(CstParseDiagnostic{
+          return parseFailure(CstParseDiagnostic{
               token(peek()).range,
               "'.calltargets' is only valid inside a function body"});
         }
         if (token(peek()).kind == TokenKind::DotBranchTargets) {
-          return std::unexpected(CstParseDiagnostic{
+          return parseFailure(CstParseDiagnostic{
               token(peek()).range,
               "'.branchtargets' is only valid inside a function body"});
         }
       }
     }
 
-    return std::unexpected(CstParseDiagnostic{
+    return parseFailure(CstParseDiagnostic{
         token(peek()).range,
         "expected module directive, variable declaration, or function"});
   }
 
   if (items.empty()) {
-    return std::unexpected(
+    return parseFailure(
         CstParseDiagnostic{token(first).range, "expected module item"});
   }
   syntax_cst::CstModule module{std::move(items), {first, last + 1}};
-  return syntax_cst::CstFile{std::move(tokens_), std::move(module)};
+  return {.value = syntax_cst::CstFile{std::move(tokens_), std::move(module)},
+          .diagnostics = {}};
 }
 
 }  // namespace ptx_frontend

@@ -83,6 +83,12 @@ grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
 
+Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
+optional value plus an ordered `DiagnosticCollection<D>`. This permits I10 to
+return a recovered CST with diagnostics without another API change. Until I10
+and I11 add recovery and synchronization, parsing remains fail-fast: success
+has an empty collection, and failure has one diagnostic with no value.
+
 ## CST to Syntax AST lowering
 
 `lowerSyntaxInstruction()` and `lowerSyntaxModule()` are the explicit
@@ -99,7 +105,7 @@ with their `SourceRange`.
 
 `PtxSyntaxParser` remains as a convenience facade. Its `parseInstruction()`
 and `parseModule()` perform source -> CST -> AST for fragment and module
-clients respectively.
+clients respectively, mapping CST/lowering diagnostics in order.
 
 `AstFile` mirrors the same root distinction and `AstModule` provides typed
 containers for the supported module directives and functions. `AstFunction`

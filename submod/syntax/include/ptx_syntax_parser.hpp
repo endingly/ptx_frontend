@@ -1,6 +1,5 @@
 #pragma once
 
-#include <expected>
 #include <string>
 #include <string_view>
 
@@ -14,14 +13,19 @@ struct SyntaxParseDiagnostic {
   std::string message;
 };
 
+using SyntaxParseDiagnostics = DiagnosticCollection<SyntaxParseDiagnostic>;
+using SyntaxInstructionParseResult =
+    ResultWithDiagnostics<syntax_ast::AstInstruction, SyntaxParseDiagnostic>;
+using SyntaxModuleParseResult =
+    ResultWithDiagnostics<syntax_ast::AstModule, SyntaxParseDiagnostic>;
+
 /** Convenience facade for source -> CST -> Syntax AST. */
 class PtxSyntaxParser {
  public:
   explicit PtxSyntaxParser(std::string_view source);
 
-  std::expected<syntax_ast::AstInstruction, SyntaxParseDiagnostic>
-  parseInstruction();
-  std::expected<syntax_ast::AstModule, SyntaxParseDiagnostic> parseModule();
+  SyntaxInstructionParseResult parseInstruction();
+  SyntaxModuleParseResult parseModule();
 
  private:
   std::string source_;

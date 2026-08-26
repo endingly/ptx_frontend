@@ -50,7 +50,7 @@ TEST(ScalarTypeMetadata, AppliesExplicitRegisterSizePolicy) {
 TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
   PtxSyntaxParser call_parser("call (%result), callee, (%argument), targets;");
   const auto call = call_parser.parseInstruction();
-  ASSERT_TRUE(call.has_value()) << call.error().message;
+  ASSERT_TRUE(call.has_value()) << call.diagnostics.front().message;
   ASSERT_EQ(call->operands.size(), 4u);
   EXPECT_EQ(check_end::get_operand_syntax_shape(call->operands[0]),
             check_end::OperandSyntaxShape::Group);
@@ -63,14 +63,15 @@ TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
 
   PtxSyntaxParser branch_parser("bra done;");
   const auto branch = branch_parser.parseInstruction();
-  ASSERT_TRUE(branch.has_value()) << branch.error().message;
+  ASSERT_TRUE(branch.has_value()) << branch.diagnostics.front().message;
   ASSERT_EQ(branch->operands.size(), 1u);
   EXPECT_EQ(check_end::get_operand_syntax_shape(branch->operands[0]),
             check_end::OperandSyntaxShape::BranchTarget);
 
   PtxSyntaxParser indexed_branch_parser("brx.idx %r0, targets;");
   const auto indexed_branch = indexed_branch_parser.parseInstruction();
-  ASSERT_TRUE(indexed_branch.has_value()) << indexed_branch.error().message;
+  ASSERT_TRUE(indexed_branch.has_value())
+      << indexed_branch.diagnostics.front().message;
   ASSERT_EQ(indexed_branch->operands.size(), 2u);
   EXPECT_EQ(check_end::get_operand_syntax_shape(indexed_branch->operands[1]),
             check_end::OperandSyntaxShape::BranchTargetSet);
@@ -79,7 +80,7 @@ TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto ast = parser.parseInstruction();
-  EXPECT_TRUE(ast.has_value()) << ast.error().message;
+  EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   return std::move(*ast);
 }
 
@@ -201,7 +202,7 @@ TEST(ResolveIndirectCallee, BindsRegisterAndMetadataDeclarations) {
 }
 )ptx");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto binding = binding::bindSymbols(*module);
   EXPECT_TRUE(binding.diagnostics.empty());
   const auto caller =
@@ -254,7 +255,7 @@ TEST(ResolveIndirectCallee, RejectsInvalidMetadataAndDirectCalleeKinds) {
 }
 )ptx");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto binding = binding::bindSymbols(*module);
   ASSERT_TRUE(binding.diagnostics.empty());
   const auto caller =

@@ -43,10 +43,16 @@ The frontend currently provides:
   for modelled variants, modifiers, layouts, and operands.
 - direct named-function `call` in the three currently modelled layouts:
   `call function;`, `call function, (arguments);`, and
-  `call (return), function, (arguments);`. Optional return/input groups and
-  untyped immediate literals are retained when no callee signature is
-  available; signature/ABI comparison and indirect target-list/prototype
-  metadata are not yet supported.
+  `call (return), function, (arguments);`. Module resolution uses the canonical
+  prototype/definition signature to check return/input arity and order,
+  `.reg/.param` type and vector shape, `.param .b8` array extent/alignment, and
+  pointer state-space/alignment. Input literals are typed against their formal,
+  including literal-kind and overflow diagnostics. Function-local `.param`
+  staging also enforces PTX 9.3 `::entry`/`::func` qualification plus
+  unpredicated contiguous store/call/load adjacency; the call itself may remain
+  predicated. Standalone instruction resolution has no callee context, so its
+  call literals remain untyped. Indirect target-list/prototype metadata is not
+  supported.
 
 These checks cover only the currently modelled instruction subset. They do not
 validate the full PTX ISA, every module directive, or link-time behaviour.

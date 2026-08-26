@@ -28,6 +28,7 @@ foreach(_header IN ITEMS
         "${_install_dir}/include/ptx_frontend/cst/ptx_cst.hpp"
         "${_install_dir}/include/ptx_frontend/syntax/ptx_syntax_ast.hpp"
         "${_install_dir}/include/ptx_frontend/binding/ptx_symbol_table.hpp"
+        "${_install_dir}/include/ptx_frontend/semantic/ptx_call_argument_compatibility.hpp"
         "${_install_dir}/include/ptx_frontend/semantic/ptx_declaration_semantics.hpp"
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir.hpp")
     if(NOT EXISTS "${_header}")

@@ -45,8 +45,29 @@ generated modifier field 与 opcode 公共字段保留。
 group。layout 选择时会检查 group role，因此 return group 不会匹配 input 位置。
 `ResolvedFunctionRef` 保存已绑定的 direct target，`ResolvedCallParameterRef` 保存每个
 `.reg/.param` 的 identity、type 与 state space，`ResolvedCallArguments` 保存逐项 range。
-literal 在后续 call-signature pass 给出类型之前保持 untyped。
+standalone instruction resolution 没有 callee declaration context，因此其中的 literal 保持
+untyped。
 
 本切片只解析 direct named-function call。`.reg` target 或第四个 `CallTargetSet` operand 会给出
-明确拒绝：indirect call 需要尚未建模的 `.calltargets/.callprototype` metadata。direct function
-signature/ABI 对比也暂缓；现有 declaration pass 没有可复用的 call-contract 表示。
+明确拒绝：indirect call 仍需要尚未建模的 `.calltargets/.callprototype` metadata。
+
+对于 module 中的 direct named call，resolution 会查找 callee 的 canonical
+prototype/definition signature，按顺序比较 return/input 的数量；随后复用 call-argument
+compatibility contract 检查 `.reg/.param` type 与 vector shape、`.param .b8` array 的
+extent/alignment，以及 pointer state-space/alignment。每个 input literal 都按对应 formal 定型，
+literal kind 或 overflow 在该 literal 位置诊断。该检查属于 module resolution，不属于 generated
+single-instruction checker。
+
+## PTX 9.3 call parameter context
+
+`ld` 接受 `.param`、`.param::entry` 与 `.param::func`；`st` 接受 `.param` 与
+`.param::func`。`::entry` 只能访问 entry 的 formal input；`::func` 只能访问 device-function
+parameter 或 function-local call parameter。未限定的拼写在 entry 中默认访问 entry parameter，
+在 device function 中默认访问 function parameter，并可在两种上下文中访问 function-local call
+parameter。
+
+只有 function-local `.param` variable 是 call staging。其 `st.param` input store 必须不带
+predicate，并与使用同一 variable 的 call 形成紧邻的连续块；其 `ld.param` return load 也必须不带
+predicate，并紧跟在返回同一 variable 的 call 后。label、declaration 或其他 instruction 会打断该块。
+`call` 自身可以带 predicate。`.uni` 仅保留为程序员的 uniformity assertion，frontend 不尝试不可
+证明的 static uniformity analysis，也不会因 predicated direct `call.uni` 而拒绝它。

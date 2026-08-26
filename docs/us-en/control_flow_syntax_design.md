@@ -58,13 +58,20 @@ role is checked during layout selection, so a return group cannot match the
 input position. `ResolvedFunctionRef` preserves a bound direct target,
 `ResolvedCallParameterRef` preserves each `.reg`/`.param` identity, type, and
 state space, and `ResolvedCallArguments` owns per-element ranges. Literals are
-retained untyped until a future call-signature pass can type them.
+retained untyped by standalone instruction resolution, which deliberately has
+no callee declaration context.
+
+For a direct named call in a module, resolution looks up the callee's canonical
+prototype/definition signature. It compares return and input arity and order,
+then reuses the call-argument compatibility contract for `.reg/.param` type
+and vector shape, `.param .b8` array extent/alignment, and pointer
+state-space/alignment. Each input literal is typed against its corresponding
+formal and reports literal-kind or overflow errors at that literal. The check
+belongs to module resolution, not the generated single-instruction checker.
 
 Only direct named-function calls are resolved in this slice. A `.reg` target
-or a `CallTargetSet` fourth operand is rejected clearly: indirect calls need
-the still-unmodeled `.calltargets`/`.callprototype` metadata. Direct function
-signature/ABI comparison is deferred too; the existing declaration pass has
-no reusable call-contract representation.
+or a `CallTargetSet` fourth operand is rejected clearly: indirect calls still
+need the unmodeled `.calltargets`/`.callprototype` metadata.
 
 ## PTX 9.3 call parameter context
 

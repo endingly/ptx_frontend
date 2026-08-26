@@ -71,7 +71,12 @@ module-only directive 处同步，保留这些 anchor，只在 zero-width 处插
 的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。C01 定义 recovered CST 的
 lowering contract 前，`PtxSyntaxParser` 有意不 lower recovered CST；round-trip serialization 使用
 原始 token buffer 而非 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
-但没有 `right_brace` token。当前仍不接受其他 kernel-tuning directive 或 token edit API。initializer
+但没有 `right_brace` token。可选的 Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzz raw lexer/CST input；同一 entry point 也有小型
+GTest seed smoke。尚未加入 ASan/UBSan 或 CI matrix。它必须单独 configure：
+从 source root 运行
+`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`，
+`cmake --build out/fuzz --target fuzz_lexer_cst`，再运行
+`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`。当前仍不接受其他 kernel-tuning directive 或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 

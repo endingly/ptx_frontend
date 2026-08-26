@@ -94,6 +94,12 @@ fail-fast. Recovered CST is intentionally not lowered by `PtxSyntaxParser`
 until C01 defines that contract; round-trip serialization uses the original
 token buffer rather than recovery markers. A nested block missing its required `}`
 retains its parsed body and an inserted marker, with no `right_brace` token.
+The opt-in Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzzes raw lexer and CST
+input; its entry point is also exercised by a small GTest seed smoke. It has no
+ASan/UBSan or CI matrix yet. From the source root, run
+`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`,
+`cmake --build out/fuzz --target fuzz_lexer_cst`, then
+`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`.
 The module grammar does not yet accept
 other kernel-tuning directives or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration

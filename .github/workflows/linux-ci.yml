@@ -3,6 +3,13 @@ name: Linux CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/linux-ci.yml
+      - vcpkg.json
+  schedule:
+    - cron: "0 0 1 * *"
 
 permissions:
   contents: read
@@ -21,7 +28,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     concurrency:
-      group: linux-ci-${{ github.event.pull_request.number }}-${{ matrix.preset }}
+      group: linux-ci-${{ github.ref }}-${{ matrix.preset }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -114,9 +121,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/ccache
-          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ github.sha }}
+          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.cache-epoch.outputs.month }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
+            ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
 
       - name: Run CMake workflow preset
         shell: bash

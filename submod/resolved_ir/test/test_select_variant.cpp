@@ -5,6 +5,7 @@
 #include <string>
 #include <type_traits>
 
+#include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -79,6 +80,216 @@ syntax_ast::AstImmediate parse_immediate(std::string_view literal) {
   const auto ast = parse_instruction(std::string("add.u32 %r0, %r1, ") +
                                      std::string(literal) + ";");
   return std::get<syntax_ast::AstImmediate>(ast.operands.back());
+}
+
+std::expected<ResolvedInstructionFields, ResolveDiagnostic>
+resolve_indirect_callee_field(const syntax_ast::AstInstruction& ast,
+                              const ResolveContext* context = nullptr) {
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1> syntax_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::CallTarget |
+                         check_end::OperandSyntaxShape::CallTargetSet,
+       .presence = check_end::OperandPresence::Required},
+  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts = {{
+      {.layout_id = "indirect_callee",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = syntax_slots},
+  }};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{
+      {.variant_name = "indirect_callee",
+       .modifiers = {},
+       .operand_layouts = syntax_layouts},
+  }};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "call",
+      .variants = syntax_variants,
+  };
+
+  const std::array<check_end::ResolvedFieldDescriptor, 1> operand_fields = {{
+      {.field_id = "callee",
+       .value_kind = check_end::ResolvedValueKind::IndirectCallee},
+  }};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 1>
+      operand_bindings = {{
+          {.target_field_id = "callee",
+           .type_expression = {},
+           .role = check_end::OperandRole::Source,
+           .access = check_end::OperandAccess::Control,
+           .allowed_shapes = checker::OperandShape::Register,
+           .allowed_vector_arities = {},
+           .allowed_address_state_spaces = {}},
+      }};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1>
+      resolved_layouts = {{
+          {.layout_id = "indirect_callee",
+           .fields = operand_fields,
+           .bindings = operand_bindings},
+      }};
+  const std::array<check_end::ResolvedVariantDescriptor, 1>
+      resolved_variants = {{
+          {.variant_name = "indirect_callee",
+           .fields = {},
+           .modifier_bindings = {},
+           .operand_layouts = resolved_layouts},
+      }};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "call",
+      .variants = resolved_variants,
+  };
+  return resolve_fields(ast, syntax_descriptor, resolved_descriptor,
+                        "indirect_callee", context);
+}
+
+syntax_ast::AstInstruction indirect_metadata_instruction(std::string spelling) {
+  const SourceRange range{{1, 1}, {1, 1}};
+  syntax_ast::AstInstruction ast{
+      .opcode = syntax_ast::AstOpcode{.syntax = {"call", range}},
+      .range = range,
+  };
+  ast.operands.emplace_back(syntax_ast::AstCallTargetSet{
+      .name = syntax_ast::AstIdentifierRef{.syntax = {std::move(spelling),
+                                                       range}},
+      .range = range,
+  });
+  return ast;
+}
+
+const WithLocs<ResolvedIndirectCallee>& indirect_callee_field(
+    const ResolvedInstructionFields& fields) {
+  return std::get<WithLocs<ResolvedIndirectCallee>>(
+      fields.operands.at("callee"));
+}
+
+TEST(ResolveIndirectCallee, ResolvesStandaloneRegisterAndMetadataSpelling) {
+  const auto register_fields =
+      resolve_indirect_callee_field(parse_instruction("call %r12;"));
+  ASSERT_TRUE(register_fields.has_value()) << register_fields.error().message;
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(
+      &indirect_callee_field(*register_fields).value);
+  ASSERT_NE(register_ref, nullptr);
+  EXPECT_EQ(register_ref->spelling, "%r12");
+  EXPECT_EQ(register_ref->index, 12u);
+  EXPECT_FALSE(register_ref->symbol_id.has_value());
+
+  const auto metadata_fields = resolve_indirect_callee_field(
+      indirect_metadata_instruction("prototype"));
+  ASSERT_TRUE(metadata_fields.has_value()) << metadata_fields.error().message;
+  const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(
+      &indirect_callee_field(*metadata_fields).value);
+  ASSERT_NE(metadata, nullptr);
+  EXPECT_EQ(metadata->spelling, "prototype");
+  EXPECT_FALSE(metadata->symbol_id.has_value());
+  EXPECT_FALSE(metadata->declaration_kind.has_value());
+}
+
+TEST(ResolveIndirectCallee, BindsRegisterAndMetadataDeclarations) {
+  PtxSyntaxParser parser(R"ptx(
+.func target();
+.entry caller() {
+  .reg .u64 %fptr;
+  L:
+  prototype: .callprototype _;
+  targets: .calltargets target;
+  branches: .branchtargets L;
+}
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto binding = binding::bindSymbols(*module);
+  EXPECT_TRUE(binding.diagnostics.empty());
+  const auto caller =
+      binding.table.lookup(binding.table.moduleScope(), "caller");
+  ASSERT_TRUE(caller.has_value());
+  const auto scope = binding.table.symbol(caller->symbol).owned_scope;
+  ASSERT_TRUE(scope.has_value());
+  const ResolveContext context{
+      .symbols = binding.table,
+      .scope = *scope,
+      .function_is_entry = true,
+  };
+
+  const auto register_fields =
+      resolve_indirect_callee_field(parse_instruction("call %fptr;"), &context);
+  ASSERT_TRUE(register_fields.has_value()) << register_fields.error().message;
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(
+      &indirect_callee_field(*register_fields).value);
+  ASSERT_NE(register_ref, nullptr);
+  const auto fptr = binding.table.lookup(*scope, "%fptr");
+  ASSERT_TRUE(fptr.has_value());
+  EXPECT_EQ(register_ref->symbol_id, fptr->symbol);
+  EXPECT_EQ(register_ref->declared_type, ScalarType::U64);
+
+  const auto expect_metadata = [&](std::string spelling,
+                                   binding::SymbolKind expected_kind) {
+    const auto fields = resolve_indirect_callee_field(
+        indirect_metadata_instruction(std::move(spelling)), &context);
+    ASSERT_TRUE(fields.has_value()) << fields.error().message;
+    const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(
+        &indirect_callee_field(*fields).value);
+    ASSERT_NE(metadata, nullptr);
+    const auto expected = binding.table.lookup(*scope, metadata->spelling);
+    ASSERT_TRUE(expected.has_value());
+    EXPECT_EQ(metadata->symbol_id, expected->symbol);
+    EXPECT_EQ(metadata->declaration_kind, expected_kind);
+  };
+  expect_metadata("prototype", binding::SymbolKind::CallPrototype);
+  expect_metadata("targets", binding::SymbolKind::CallTargetSet);
+}
+
+TEST(ResolveIndirectCallee, RejectsInvalidMetadataAndDirectCalleeKinds) {
+  PtxSyntaxParser parser(R"ptx(
+.global .u64 table[1];
+.func target();
+.entry caller() {
+  .reg .u64 %table<2>;
+  L:
+  branches: .branchtargets L;
+}
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto binding = binding::bindSymbols(*module);
+  ASSERT_TRUE(binding.diagnostics.empty());
+  const auto caller =
+      binding.table.lookup(binding.table.moduleScope(), "caller");
+  ASSERT_TRUE(caller.has_value());
+  const auto scope = binding.table.symbol(caller->symbol).owned_scope;
+  ASSERT_TRUE(scope.has_value());
+  const ResolveContext context{.symbols = binding.table,
+                               .scope = *scope,
+                               .function_is_entry = true};
+
+  const auto function =
+      resolve_indirect_callee_field(parse_instruction("call target;"), &context);
+  ASSERT_FALSE(function.has_value());
+  EXPECT_EQ(function.error().message, "Symbol 'target' is not a .reg variable.");
+
+  const auto branch = resolve_indirect_callee_field(
+      indirect_metadata_instruction("branches"), &context);
+  ASSERT_FALSE(branch.has_value());
+  EXPECT_EQ(branch.error().message,
+            "Indirect call metadata 'branches' must name a function-local "
+            ".callprototype or .calltargets declaration.");
+
+  const auto array = resolve_indirect_callee_field(
+      indirect_metadata_instruction("%table0"), &context);
+  ASSERT_FALSE(array.has_value());
+  EXPECT_EQ(array.error().message,
+            "Indirect call metadata variables and call-table arrays are not "
+            "supported.");
+
+  const auto global_array = resolve_indirect_callee_field(
+      indirect_metadata_instruction("table"), &context);
+  ASSERT_FALSE(global_array.has_value());
+  EXPECT_EQ(global_array.error().message,
+            "Indirect call metadata variables and call-table arrays are not "
+            "supported.");
+
+  const auto missing = resolve_indirect_callee_field(
+      indirect_metadata_instruction("missing"), &context);
+  ASSERT_FALSE(missing.has_value());
+  EXPECT_EQ(missing.error().message,
+            "Unresolved indirect call metadata 'missing'.");
 }
 
 TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {

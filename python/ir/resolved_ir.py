@@ -68,6 +68,7 @@ class ResolvedValueKind(Enum):
     ADDRESS = "Address"
     REGISTER_VECTOR = "RegisterVector"
     DIRECT_CALL_TARGET = "DirectCallTarget"
+    INDIRECT_CALLEE = "IndirectCallee"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
 

@@ -23,7 +23,10 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 32-bit type；PTX 8.8/SM 100 另支持精确 256-bit 的 `.v8` × 32-bit 与 `.v4` × 64-bit。
 静态 natural alignment 会检查已绑定 data symbol 的常量 byte offset 和 absolute immediate；
 register 与 standalone unresolved address 保持 unknown。其余 source form、其余 memory
-qualifier extension、indirect-call metadata、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
+`ResolvedIndirectCallee` 现在为 non-predicate `.reg` indirect target 或已绑定的 function-local
+`.callprototype`/`.calltargets` label 提供 descriptor-independent identity；它有意不携带 metadata
+payload 或 ABI。generated call layout 与 normal module indirect call 仍留给后续工作。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 

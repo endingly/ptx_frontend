@@ -191,6 +191,7 @@ domains:
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
       DirectCallTarget: ResolvedFunctionRef
+      IndirectCallee: ResolvedIndirectCallee
       CallReturnParameter: ResolvedCallParameterRef
       CallArguments: ResolvedCallArguments
 
@@ -254,6 +255,7 @@ domains:
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
+      IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
       CallReturnParameter: check_end::ResolvedValueKind::CallReturnParameter
       CallArguments: check_end::ResolvedValueKind::CallArguments
 

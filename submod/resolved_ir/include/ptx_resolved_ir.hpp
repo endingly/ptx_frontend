@@ -85,6 +85,7 @@ enum class ResolvedValueKind : uint8_t {
   Address,
   RegisterVector,
   DirectCallTarget,
+  IndirectCallee,
   CallReturnParameter,
   CallArguments,
 };
@@ -268,6 +269,18 @@ struct ResolvedFunctionRef {
   bool operator==(const ResolvedFunctionRef&) const = default;
 };
 
+/** A function-local .callprototype or .calltargets declaration reference. */
+struct ResolvedIndirectMetadataRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<binding::SymbolKind> declaration_kind;
+  bool operator==(const ResolvedIndirectMetadataRef&) const = default;
+};
+
+/** One component of an indirect call: its .reg target or metadata label. */
+using ResolvedIndirectCallee =
+    std::variant<ResolvedRegisterRef, ResolvedIndirectMetadataRef>;
+
 /** A .reg or .param symbol passed through a direct call boundary. */
 struct ResolvedCallParameterRef {
   std::string spelling;
@@ -370,6 +383,7 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
                  WithLocs<ResolvedRegisterVector>,
                  WithLocs<ResolvedFunctionRef>,
+                 WithLocs<ResolvedIndirectCallee>,
                  WithLocs<ResolvedCallParameterRef>,
                  WithLocs<ResolvedCallArguments>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;

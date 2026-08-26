@@ -755,6 +755,64 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
   return WithLocs<ResolvedFunctionRef>{std::move(resolved), target->range};
 }
 
+std::expected<WithLocs<ResolvedIndirectCallee>, ResolveDiagnostic>
+resolve_indirect_callee(const syntax_ast::AstOperand& operand,
+                        const ResolveContext* context) {
+  if (const auto* target = std::get_if<syntax_ast::AstCallTarget>(&operand)) {
+    auto register_ref = resolve_register(syntax_ast::AstOperand{target->name},
+                                         context);
+    if (!register_ref)
+      return std::unexpected(register_ref.error());
+    return WithLocs<ResolvedIndirectCallee>{
+        ResolvedIndirectCallee{std::move(register_ref->value)}, target->range};
+  }
+
+  const auto* metadata = std::get_if<syntax_ast::AstCallTargetSet>(&operand);
+  if (metadata == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected an indirect call register target or metadata label.",
+    });
+  }
+
+  ResolvedIndirectMetadataRef resolved{.spelling = metadata->name.syntax.text};
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, metadata->name.syntax.text);
+    if (!lookup) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = metadata->range,
+          .message = fmt::format("Unresolved indirect call metadata '{}'.",
+                                 metadata->name.syntax.text),
+      });
+    }
+    const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+    if (lookup->parameterized_index ||
+        symbol.kind == binding::SymbolKind::Variable) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = metadata->range,
+          .message = "Indirect call metadata variables and call-table arrays "
+                     "are not supported.",
+      });
+    }
+    if (symbol.scope != context->scope ||
+        (symbol.kind != binding::SymbolKind::CallPrototype &&
+         symbol.kind != binding::SymbolKind::CallTargetSet)) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = metadata->range,
+          .message = fmt::format(
+              "Indirect call metadata '{}' must name a function-local "
+              ".callprototype or .calltargets declaration.",
+              metadata->name.syntax.text),
+      });
+    }
+    resolved.symbol_id = symbol.id;
+    resolved.declaration_kind = symbol.kind;
+  }
+  return WithLocs<ResolvedIndirectCallee>{
+      ResolvedIndirectCallee{std::move(resolved)}, metadata->range};
+}
+
 std::expected<WithLocs<ResolvedCallParameterRef>, ResolveDiagnostic>
 resolve_call_return_parameter(const syntax_ast::AstOperand& operand,
                               const ResolveContext* context) {
@@ -1882,6 +1940,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::IndirectCallee: {
+      auto value = resolve_indirect_callee(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::CallReturnParameter: {
       auto value = resolve_call_return_parameter(operand, context);
       if (!value)
@@ -1988,6 +2052,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Address:
     case ResolvedValueKind::RegisterVector:
     case ResolvedValueKind::DirectCallTarget:
+    case ResolvedValueKind::IndirectCallee:
     case ResolvedValueKind::CallReturnParameter:
     case ResolvedValueKind::CallArguments:
     case ResolvedValueKind::VectorArity:
@@ -2262,6 +2327,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Address:
       case ResolvedValueKind::RegisterVector:
       case ResolvedValueKind::DirectCallTarget:
+      case ResolvedValueKind::IndirectCallee:
       case ResolvedValueKind::CallReturnParameter:
       case ResolvedValueKind::CallArguments:
         throw ResolveException(

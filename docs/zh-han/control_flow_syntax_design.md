@@ -30,7 +30,8 @@ branch target。binding 会检查当前已可判定的 symbol kind：
 indirect-call 的 target-set operand 必须指向 function-local `.callprototype` 或
 `.calltargets` declaration。它们的 label，以及 `.branchtargets` label，现在都有稳定的
 function-scope symbol。declaration semantics 会检查 metadata member 与 target-set signature；
-instruction 到 metadata 的使用仍属于 I06/C02。
+generated instruction layout 与 normal module metadata use 仍属于 I07/C03，branch integration
+仍属于 C02。
 
 ## Descriptor 与 Resolved IR 边界
 
@@ -49,8 +50,11 @@ group。layout 选择时会检查 group role，因此 return group 不会匹配 
 standalone instruction resolution 没有 callee declaration context，因此其中的 literal 保持
 untyped。
 
-本切片只解析 direct named-function call。`.reg` target 或第四个 `CallTargetSet` operand 会给出
-明确拒绝：indirect call 仍需要尚未建模的 `.calltargets/.callprototype` metadata。
+`ResolvedIndirectCallee` 现在表示一个 indirect-call component：non-predicate `.reg` target，或
+function-local metadata label。module 中后者保留 `SymbolId`，并区分 `.callprototype` 与
+`.calltargets`；standalone resolution 只保留 spelling。它不携带 signature、member list 或 ABI fact。
+当前仅通过 manual field descriptor 使用此值；generated `call` layout 与 normal module resolution
+在 I07/C03 前仍明确拒绝 indirect call。
 
 ## function-local `.callprototype` 语法
 
@@ -59,8 +63,8 @@ CST/AST node，而不是 label 加 instruction。支持四种 signature form：`
 `(return) _` 和 `(return) _ (params)`。CST 保留 label、colon、sink、parameter-list
 punctuation、`.noreturn`、`.abi_preserve N` 和 `.abi_preserve_control N`；AST 保留相应的
 semantic spelling 与 source range。declaration semantics 会拒绝 return parameter 与 `.noreturn`
-同时出现，并检查 array formal；module scope 会明确拒绝该 grammar。binding 负责 local label，
-通过它的 indirect call resolution 仍留给后续工作。
+同时出现，并检查 array formal；module scope 会明确拒绝该 grammar。binding 负责 local label；I06
+可以保留其 resolved identity，但 instruction layout 与 ABI use 仍留给后续工作。
 
 ## function-local `.calltargets` 语法
 

@@ -38,7 +38,8 @@ the symbol kinds it can already determine:
 An indirect-call target-set operand must name a function-local `.callprototype`
 or `.calltargets` declaration. Their labels, and `.branchtargets` labels, now
 have stable function-scope symbols. Declaration semantics validates metadata
-members and target-set signatures; instruction-to-metadata use remains I06/C02.
+members and target-set signatures; generated instruction layout and normal
+module metadata use remain I07/C03, while branch integration remains C02.
 
 ## Descriptor and Resolved IR boundary
 
@@ -69,9 +70,13 @@ state-space/alignment. Each input literal is typed against its corresponding
 formal and reports literal-kind or overflow errors at that literal. The check
 belongs to module resolution, not the generated single-instruction checker.
 
-Only direct named-function calls are resolved in this slice. A `.reg` target
-or a `CallTargetSet` fourth operand is rejected clearly: indirect calls still
-need the unmodeled `.calltargets`/`.callprototype` metadata.
+`ResolvedIndirectCallee` now represents one indirect-call component: either a
+non-predicate `.reg` target or a function-local metadata label. In a module,
+the latter retains its `SymbolId` and whether it names `.callprototype` or
+`.calltargets`; standalone resolution retains only its spelling. It carries no
+signature, member list, or ABI fact. This value is currently exercised through
+manual field descriptors only: generated `call` layouts and normal module
+resolution still reject indirect calls until I07/C03.
 
 ## Function-local `.callprototype` syntax
 
@@ -82,8 +87,8 @@ All four signature forms are accepted: `_`, `_ (params)`, `(return) _`, and
 punctuation, `.noreturn`, `.abi_preserve N`, and `.abi_preserve_control N`.
 AST retains their semantic spellings and source ranges. Declaration semantics
 rejects `.noreturn` with return parameters and validates array formals; parsing
-at module scope is rejected. Binding owns the local label, while resolution of
-an indirect call through it remains later work.
+at module scope is rejected. Binding owns the local label; I06 can retain its
+resolved identity, while instruction layout and ABI use remain later work.
 
 ## Function-local `.calltargets` syntax
 

@@ -1330,12 +1330,12 @@ ABI checker
 
 ### 当前状态
 
-M7-I01/I02/I03/I04/I05 已完成：function-local `.callprototype`、`.calltargets` 与
+M7-I01/I02/I03/I04/I05/I06 已完成：function-local `.callprototype`、`.calltargets` 与
 `.branchtargets` 以专用 lexer token 和 CST/AST node 保留 label、signature payload/ordered
 target（包括未展开 compact branch entry）、PTX 9.3 suffix（prototype）与 SourceRange。三者
 现在以稳定的 function-scope SymbolId 进入 binding，并检查 declaration order、member、scope、
-duplicate 与 signature contract；Resolved IR 与 indirect-call descriptor 尚未实现，其余 M7 issue
-仍未完成。
+duplicate 与 signature contract。`ResolvedIndirectCallee` 可保留 `.reg` target 或 metadata label
+identity；indirect-call descriptor 尚未实现，其余 M7 issue 仍未完成。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
@@ -1344,7 +1344,7 @@ duplicate 与 signature contract；Resolved IR 与 indirect-call descriptor 尚�
 | M7-I03 | ✅ | 独立 | 建模 `.branchtargets` CST/AST | label list 和 function scope 明确 |
 | M7-I04 | ✅ | 独立 | 扩展 metadata symbol kind | prototype、call-target set、branch-target set 拥有稳定 SymbolId |
 | M7-I05 | ✅ | 独立 | 实现 metadata declaration semantics | duplicate、unresolved、scope 和 signature conflict 可检查 |
-| M7-I06 | ⬜ | 独立 | 建立 indirect callee resolved value | register target、prototype ref 和 target-set ref 表示明确 |
+| M7-I06 | ✅ | 独立 | 建立 indirect callee resolved value | register target、prototype ref 和 target-set ref 表示明确 |
 | M7-I07 | ⬜ | 独立 | 建立 indirect-call descriptor layout | 不复用 direct layout，不伪装为 `Flat` |
 | M7-C01 | ⬜ | 耦合 | 实现 indirect-call ABI checker | actual 对 prototype，target-set member 全部兼容 prototype |
 | M7-C02 | ⬜ | 耦合 | 连接 `.branchtargets` 与 `bra` | label identity、membership 和 current function 一致 |

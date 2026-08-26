@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include <fmt/format.h>
 
@@ -459,24 +460,24 @@ std::string optionalSyntaxKey(
   return syntax ? syntax->text : "-";
 }
 
-std::string parameterKey(const syntax_ast::AstFunctionParameter& parameter) {
-  return fmt::format(
-      "{}:{}:{}:{}:{}:{}:{}:{}", static_cast<int>(parameter.state_space),
-      optionalSyntaxKey(parameter.alignment), parameter.type.text,
-      parameter.is_pointer, optionalSyntaxKey(parameter.pointer_space),
-      optionalSyntaxKey(parameter.pointer_alignment), parameter.is_array,
-      parameter.array_size ? dimensionKey(*parameter.array_size) : "-");
-}
-
-std::string functionSignature(const syntax_ast::AstFunction& function) {
-  std::string signature =
-      fmt::format("function:{}:{}", function.is_entry, function.is_noreturn);
-  for (const auto& parameter : function.return_parameters)
-    signature += "|r:" + parameterKey(parameter);
-  signature += "|inputs";
-  for (const auto& parameter : function.parameters)
-    signature += "|p:" + parameterKey(parameter);
-  return signature;
+FunctionParameterContract parameterContract(
+    const syntax_ast::AstFunctionParameter& parameter) {
+  const auto syntax_text =
+      [](const auto& syntax) -> std::optional<std::string> {
+    return syntax ? std::optional<std::string>{syntax->text} : std::nullopt;
+  };
+  return {
+      .state_space = parameter.state_space,
+      .alignment = syntax_text(parameter.alignment),
+      .type = parameter.type.text,
+      .is_pointer = parameter.is_pointer,
+      .pointer_space = syntax_text(parameter.pointer_space),
+      .pointer_alignment = syntax_text(parameter.pointer_alignment),
+      .is_array = parameter.is_array,
+      .array_extent = parameter.array_size
+                          ? std::optional{dimensionKey(*parameter.array_size)}
+                          : std::nullopt,
+  };
 }
 
 std::string variableSignature(
@@ -554,7 +555,7 @@ class Checker {
 
  private:
   struct SeenDeclaration {
-    std::string signature;
+    std::variant<std::string, FunctionSignature> signature;
     binding::SymbolLinkage linkage{};
     SourceRange range;
     std::optional<SourceRange> definition_range;
@@ -575,10 +576,10 @@ class Checker {
     });
   }
 
-  void rememberDeclaration(std::string key, std::string_view name,
-                           std::string signature,
-                           binding::SymbolLinkage linkage, bool is_definition,
-                           SourceRange range) {
+  void rememberDeclaration(
+      std::string key, std::string_view name,
+      std::variant<std::string, FunctionSignature> signature,
+      binding::SymbolLinkage linkage, bool is_definition, SourceRange range) {
     auto iterator = declarations_.find(key);
     if (iterator == declarations_.end()) {
       declarations_.emplace(
@@ -849,6 +850,21 @@ class Checker {
 };
 
 }  // namespace
+
+FunctionSignature functionSignature(const syntax_ast::AstFunction& function) {
+  FunctionSignature signature{
+      .is_entry = function.is_entry,
+      .is_noreturn = function.is_noreturn,
+  };
+  const auto append_contracts = [](const auto& parameters, auto& contracts) {
+    contracts.reserve(parameters.size());
+    for (const auto& parameter : parameters)
+      contracts.push_back(parameterContract(parameter));
+  };
+  append_contracts(function.return_parameters, signature.return_parameters);
+  append_contracts(function.parameters, signature.parameters);
+  return signature;
+}
 
 std::vector<DeclarationDiagnostic> checkDeclarations(
     const syntax_ast::AstModule& module, const binding::SymbolTable& symbols) {

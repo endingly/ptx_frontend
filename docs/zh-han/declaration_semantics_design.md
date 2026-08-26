@@ -69,6 +69,13 @@ availability 仍留给后续工作。
 directive，并以先出现的 range 为上下文。单独的 `.minnctapersm` 在 PTX 中是 warning 而非 error；
 warning severity、backend resource feasibility 与数值上限仍不属于本 pass。
 
+## Debug metadata 边界
+
+`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复 file index 幂等，
+`.loc` file reference 必须解析，`function_name` 只能标识 `.debug_str` 自身或其中 raw label。
+本 declaration pass 不增加 DWARF payload expression、source attachment 或 resource
+feasibility semantic。
+
 ## 当前边界
 
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module

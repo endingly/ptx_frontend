@@ -37,6 +37,10 @@ enum class SymbolKind : uint8_t {
   CallPrototype,
   CallTargetSet,
   BranchTargetSet,
+  /** Debug-only module metadata; excluded from ordinary lexical lookup. */
+  DebugFile,
+  /** `.debug_str` and its raw payload labels; metadata-only. */
+  DebugStringLabel,
 };
 
 enum class SymbolLinkage : uint8_t {
@@ -57,6 +61,8 @@ enum class ReferenceKind : uint8_t {
   CallTargetSet,
   BranchTarget,
   BranchTargetSet,
+  DebugFile,
+  DebugFunctionName,
 };
 
 enum class ReferenceClassification : uint8_t {
@@ -108,6 +114,7 @@ struct SymbolReference {
 enum class BindDiagnosticKind : uint8_t {
   DuplicateSymbol,
   InvalidParameterizedCount,
+  InvalidDebugFileId,
   ConflictingLinkageQualifiers,
   UnresolvedReference,
   InvalidReferenceTarget,

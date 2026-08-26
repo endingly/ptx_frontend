@@ -203,6 +203,15 @@ std::expected<PtxCstParser::TokenId, CstParseDiagnostic> PtxCstParser::expect(
       token(id).range, "expected " + std::string(name), kind});
 }
 
+std::expected<PtxCstParser::TokenId, CstParseDiagnostic>
+PtxCstParser::expectIntegerLiteral(std::string_view name) {
+  const TokenId id = peek();
+  if (isIntegerLiteral(token(id).kind))
+    return consume();
+  return std::unexpected(CstParseDiagnostic{
+      token(id).range, "expected " + std::string(name)});
+}
+
 PtxCstParser::RecoveryResult PtxCstParser::recover(
     TokenId first,
     const CstParseDiagnostic& diagnostic,
@@ -1315,7 +1324,7 @@ PtxCstParser::parseLocDirective() {
     return std::unexpected(CstParseDiagnostic{token(directive).range,
                                               "expected '.loc'"});
   }
-  auto file_index = expect(TokenKind::Decimal, "source file index");
+  auto file_index = expectIntegerLiteral("source file index");
   if (!file_index)
     return std::unexpected(file_index.error());
   auto line_number = expect(TokenKind::Decimal, "source line number");
@@ -1361,7 +1370,8 @@ PtxCstParser::parseLocDirective() {
       return std::unexpected(CstParseDiagnostic{
           token(inlined_at_keyword).range, "expected 'inlined_at'"});
     }
-    auto inline_file_index = expect(TokenKind::Decimal, "inlined source file index");
+    auto inline_file_index =
+        expectIntegerLiteral("inlined source file index");
     if (!inline_file_index)
       return std::unexpected(inline_file_index.error());
     auto inline_line_number = expect(TokenKind::Decimal, "inlined source line number");
@@ -1662,7 +1672,7 @@ PtxCstParser::parseModuleDirective() {
       break;
     }
     case TokenKind::DotFile: {
-      auto index = expect(TokenKind::Decimal, "file index");
+      auto index = expectIntegerLiteral("file index");
       if (!index)
         return std::unexpected(index.error());
       auto filename = expect(TokenKind::String, "file name");

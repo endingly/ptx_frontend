@@ -38,6 +38,15 @@ definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 def
 因此 block declaration 可以遮蔽 outer/module symbol，sibling block 彼此不可见；label 和
 control-flow metadata 则有意保持 function-local，而非 block-local。
 
+debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
+`uint64_t`（decimal/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
+有意复用第一个 `SymbolId`。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
+`DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
+program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
+`DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为
+`.debug_str` section 自身或其中 label。这些 metadata identity 会诊断 unresolved reference，
+但绝不作为 PTX operand。
+
 ## Parameterized variable name
 
 `name<count>` 依 PTX 语法表示 `name0` 到 `name(count-1)`。symbol table 不展开这些名称，

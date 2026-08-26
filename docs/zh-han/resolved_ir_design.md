@@ -50,7 +50,8 @@ resolveModule(const syntax_ast::AstModule& ast);
 `ResolvedModule` 拥有 symbol table，`ResolvedFunction` 以函数 `SymbolId` 标识。
 standalone `resolveInstruction` 与 `resolve<T>` 不要求声明上下文，继续服务单指令工具。
 directive、declaration 与 label 目前仍由 Syntax AST/symbol table 保存，不复制成未解析的
-Resolved IR 字符串字段。
+Resolved IR 字符串字段。`.file` 与 `.debug_str` identity 会在那里验证 `.loc` metadata，
+但 `.loc`、`.section` 与 `.pragma` 不产生 Resolved IR node，也不附着到 instruction。
 
 module resolution 还负责不能放入 generated single-instruction checker 的 direct 与 metadata-backed
 indirect-call ABI 以及

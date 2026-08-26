@@ -2155,6 +2155,7 @@ TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
 
 TEST(ResolvedModule, IgnoresLocDirectivesForCallParameterStaging) {
   const auto ast = parseModule(R"ptx(
+.file 1 "caller.ptx"
 .func (.param .u32 result) callee(.param .u32 input);
 .entry caller() {
   .reg .u32 %r0, %r1;

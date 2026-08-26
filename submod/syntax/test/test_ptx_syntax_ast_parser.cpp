@@ -409,7 +409,7 @@ TEST(PtxSyntaxParser, LowersMinimalModuleToTypedAst) {
 }
 
 TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
-  constexpr std::string_view source = R"ptx(.file 0 "source.ptx"
+  constexpr std::string_view source = R"ptx(.file 0x1U "source.ptx"
 .file 1 "large.ptx", 0, 18446744073709551615U;
 )ptx";
   PtxSyntaxParser parser(source);
@@ -420,7 +420,7 @@ TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
   ASSERT_EQ(result->items.size(), 2u);
   const auto& short_form =
       std::get<syntax_ast::AstFileDirective>(result->items[0]);
-  EXPECT_EQ(short_form.file_index.text, "0");
+  EXPECT_EQ(short_form.file_index.text, "0x1U");
   EXPECT_EQ(short_form.filename.text, "\"source.ptx\"");
   EXPECT_FALSE(short_form.timestamp.has_value());
   EXPECT_FALSE(short_form.file_size.has_value());
@@ -554,9 +554,9 @@ TEST(PtxSyntaxParser, LowersRequiredThreadCountDirective) {
 
 TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
-  .loc 2 4237 0
+  .loc 0x2U 4237 0
   {
-    .loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5;
+    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;
   }
 }
 )ptx";
@@ -569,7 +569,7 @@ TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
       std::get<syntax_ast::AstFunction>(result->items.front());
   const auto& basic =
       std::get<syntax_ast::AstLocDirective>(function.body.front());
-  EXPECT_EQ(basic.file_index.text, "2");
+  EXPECT_EQ(basic.file_index.text, "0x2U");
   EXPECT_EQ(basic.line_number.text, "4237");
   EXPECT_EQ(basic.column_position.text, "0");
   EXPECT_FALSE(basic.inline_context.has_value());
@@ -583,7 +583,7 @@ TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   EXPECT_EQ(context.function_name_label.syntax.text, ".debug_str");
   ASSERT_TRUE(context.function_name_offset.has_value());
   EXPECT_EQ(context.function_name_offset->text, "16");
-  EXPECT_EQ(context.file_index.text, "1");
+  EXPECT_EQ(context.file_index.text, "0x1U");
   EXPECT_EQ(context.line_number.text, "10");
   EXPECT_EQ(context.column_position.text, "5");
   EXPECT_EQ(context.function_name_label.syntax.range.start.line, 4u);

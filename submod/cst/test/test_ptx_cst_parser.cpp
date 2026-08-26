@@ -514,7 +514,7 @@ TEST(PtxCstParser, ParsesAndRoundTripsMinimalModule) {
 }
 
 TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
-  constexpr std::string_view source = R"ptx(.file 0 "source.ptx"
+  constexpr std::string_view source = R"ptx(.file 0x1U "source.ptx"
 .file 1 "large.ptx", 0, 18446744073709551615U;
 )ptx";
   PtxCstParser parser(source);
@@ -529,6 +529,8 @@ TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
       std::get<syntax_cst::CstModuleDirective>(items[0]);
   EXPECT_EQ(result->token(short_form.keyword).kind, TokenKind::DotFile);
   ASSERT_EQ(short_form.arguments.size(), 2u);
+  EXPECT_EQ(result->token(short_form.arguments[0]).kind, TokenKind::Hex);
+  EXPECT_EQ(result->token(short_form.arguments[0]).text, "0x1U");
   EXPECT_TRUE(short_form.separators.empty());
   EXPECT_FALSE(short_form.terminator.has_value());
   EXPECT_EQ(result->token(short_form.arguments[1]).text, "\"source.ptx\"");
@@ -734,10 +736,10 @@ TEST(PtxCstParser, RejectsMalformedOrMisplacedKernelResourceDirectives) {
 
 TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
-  .loc 2 4237 0
+  .loc 0x2U 4237 0
   {
     .loc 1 9 3, function_name info_string0, inlined_at 1 21 3
-    .loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5;
+    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;
     add.u32 %r0, %r1, %r2;
   }
 }
@@ -753,6 +755,7 @@ TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   ASSERT_EQ(function.body.size(), 2u);
   const auto& basic = std::get<syntax_cst::CstLocDirective>(function.body[0]);
   EXPECT_EQ(result->token(basic.directive).kind, TokenKind::DotLoc);
+  EXPECT_EQ(result->token(basic.file_index).text, "0x2U");
   EXPECT_FALSE(basic.inline_context.has_value());
   EXPECT_FALSE(basic.terminator.has_value());
   EXPECT_EQ(result->sourceRange(basic.token_range).start.line, 2u);
@@ -776,6 +779,7 @@ TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   ASSERT_TRUE(context.function_name_offset.has_value());
   EXPECT_EQ(result->token(*context.function_name_offset).text, "16");
   EXPECT_EQ(result->token(context.inlined_at_keyword).text, "inlined_at");
+  EXPECT_EQ(result->token(context.file_index).text, "0x1U");
   EXPECT_EQ(result->token(context.line_number).text, "10");
   EXPECT_TRUE(dotted.terminator.has_value());
 }

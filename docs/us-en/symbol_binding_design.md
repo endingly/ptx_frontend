@@ -44,6 +44,17 @@ the parent scope. A block declaration can therefore shadow an outer or module
 symbol, while sibling blocks remain invisible to each other. Labels and
 control-flow metadata are deliberately function-local rather than block-local.
 
+Debug identities use a separate module metadata namespace. `.file` indices are
+normalized to `uint64_t` (decimal/hex and an optional `u`/`U` suffix) and bind
+as `DebugFile` symbols; repeated indices intentionally reuse the first
+`SymbolId`. A `.debug_str` section binds its name and each raw `name:` payload
+label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
+both debug kinds, so a program declaration may use the same spelling. `.loc`
+creates `DebugFile` references for its basic and `inlined_at` file fields, plus
+a `DebugFunctionName` reference for `function_name`; the latter can resolve
+only the `.debug_str` section itself or one of its labels. These metadata
+identities diagnose unresolved references but never behave as PTX operands.
+
 ## Parameterized variable names
 
 PTX `name<count>` denotes `name0` through `name(count-1)`. The symbol table

@@ -672,5 +672,128 @@ TEST(PtxSymbolTable, DiagnosesOverlappingParameterizedNameSets) {
   }
 }
 
+TEST(PtxSymbolTable, BindsDebugMetadataInItsOwnNamespace) {
+  constexpr std::string_view source = R"ptx(
+.file 1 "first.ptx"
+.file 0x1U "same-id.ptx"
+.section .debug_str {
+debug_name:
+  .b8 0;
+};
+.section .debug_str { };
+.global .u32 debug_name;
+.entry kernel() {
+  .loc 0x1U 7 0
+  {
+    .loc 1 8 0, function_name .debug_str+0, inlined_at 0x1U 1 0;
+    .loc 1 9 0, function_name debug_name, inlined_at 1 2 0;
+  }
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_TRUE(binding_result.diagnostics.empty());
+  const auto& table = binding_result.table;
+  const auto debug_files = std::ranges::count_if(
+      table.symbols(), [](const auto& symbol) {
+        return symbol.kind == binding::SymbolKind::DebugFile;
+      });
+  EXPECT_EQ(debug_files, 1u);
+  const auto debug_file = std::ranges::find_if(
+      table.symbols(), [](const auto& symbol) {
+        return symbol.kind == binding::SymbolKind::DebugFile;
+      });
+  ASSERT_NE(debug_file, table.symbols().end());
+  EXPECT_EQ(debug_file->name, "1");
+
+  const auto* first_file = findReference(
+      table, "0x1U", binding::ReferenceKind::DebugFile);
+  const auto* inline_file = findReference(
+      table, "1", binding::ReferenceKind::DebugFile);
+  ASSERT_NE(first_file, nullptr);
+  ASSERT_NE(inline_file, nullptr);
+  ASSERT_TRUE(first_file->target.has_value());
+  ASSERT_TRUE(inline_file->target.has_value());
+  EXPECT_EQ(first_file->target->symbol, debug_file->id);
+  EXPECT_EQ(inline_file->target->symbol, debug_file->id);
+
+  const auto* section_name = findReference(
+      table, ".debug_str", binding::ReferenceKind::DebugFunctionName);
+  const auto* label_name = findReference(
+      table, "debug_name", binding::ReferenceKind::DebugFunctionName);
+  ASSERT_NE(section_name, nullptr);
+  ASSERT_NE(label_name, nullptr);
+  ASSERT_TRUE(section_name->target.has_value());
+  ASSERT_TRUE(label_name->target.has_value());
+  EXPECT_EQ(table.symbol(section_name->target->symbol).kind,
+            binding::SymbolKind::DebugStringLabel);
+  EXPECT_EQ(table.symbol(label_name->target->symbol).kind,
+            binding::SymbolKind::DebugStringLabel);
+
+  const auto ordinary = table.lookup(table.moduleScope(), "debug_name");
+  ASSERT_TRUE(ordinary.has_value());
+  EXPECT_EQ(table.symbol(ordinary->symbol).kind,
+            binding::SymbolKind::Variable);
+  EXPECT_FALSE(table.lookup(table.moduleScope(), ".debug_str").has_value());
+}
+
+TEST(PtxSymbolTable, DiagnosesUnresolvedDebugMetadataAndDuplicateDebugLabel) {
+  constexpr std::string_view source = R"ptx(
+.file 1 "known.ptx"
+.section .debug_info { other_name: };
+.section .debug_str { duplicate: duplicate: };
+.entry kernel() {
+  .loc 2 1 0
+  .loc 1 2 0, function_name other_name, inlined_at 1 1 0;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  EXPECT_EQ(std::ranges::count_if(
+                binding_result.diagnostics, [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         binding::BindDiagnosticKind::UnresolvedReference;
+                }),
+            2);
+  EXPECT_EQ(std::ranges::count_if(
+                binding_result.diagnostics, [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         binding::BindDiagnosticKind::DuplicateSymbol;
+                }),
+            1);
+  const auto* file = findReference(binding_result.table, "2",
+                                   binding::ReferenceKind::DebugFile);
+  const auto* name = findReference(binding_result.table, "other_name",
+                                   binding::ReferenceKind::DebugFunctionName);
+  ASSERT_NE(file, nullptr);
+  ASSERT_NE(name, nullptr);
+  EXPECT_FALSE(file->target.has_value());
+  EXPECT_FALSE(name->target.has_value());
+}
+
+TEST(PtxSymbolTable, DiagnosesDebugFileIndexOutsideUint64) {
+  PtxSyntaxParser parser(
+      ".file 18446744073709551616U \"too-large.ptx\"\n"
+      ".entry kernel() { }");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::InvalidDebugFileId);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Debug file index must be an unsigned 64-bit integer.");
+}
+
 }  // namespace
 }  // namespace ptx_frontend

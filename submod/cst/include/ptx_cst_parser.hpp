@@ -62,6 +62,8 @@ class PtxCstParser {
 
   std::expected<TokenId, CstParseDiagnostic> expect(TokenKind kind,
                                                     std::string_view name);
+  std::expected<TokenId, CstParseDiagnostic> expectIntegerLiteral(
+      std::string_view name);
   std::expected<syntax_cst::CstImmediate, CstParseDiagnostic> parseImmediate(
       bool allow_sign = true);
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic> parseOperand();

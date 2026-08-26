@@ -11,9 +11,9 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Tokens and trivia | Partial | Identifiers, dot identifiers, literals, punctuation, comments, whitespace, and selected stable directives; unmodified `CstFile::sourceText()` round-trips its token buffer byte-for-byte |
 | Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, vector members/packs, and dedicated call/branch operand shapes |
 | Module header | Supported subset | `.version`, `.target`, `.address_size` |
-| Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; CST is lossless and AST retains field ranges, while duplicate-index tables remain unsupported |
-| Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with paired PTX 7.2 `function_name`/`inlined_at` payload, is retained losslessly in CST and structurally in AST; `.file`/DWARF validation and association to instructions or labels remain unsupported |
-| Debug section directive | Supported subset | Outermost `.section name { ... }` retains matched braces and ordered raw DWARF payload tokens in lossless CST and range-bearing AST; payload widths, private labels, relocations, `.target debug`, and `.loc` offset validation remain unsupported |
+| Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/hex uint64 IDs bind in a debug-only namespace, repeated IDs are idempotent, and overflow diagnoses |
+| Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it does not attach to instructions or enter Resolved IR |
+| Debug section directive | Supported subset | Outermost `.section name { ... }` retains matched braces and ordered raw DWARF payload tokens; `.debug_str` and raw `name:` labels bind as debug identity, while payload widths, relocations, and offset semantics remain unsupported |
 | Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; pragmas neither bind nor enter Resolved IR |
 | Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, and `.minnctapersm ncta` with dedicated CST/AST; declaration semantics checks their source `.version` minima and rejects same-entry `.maxntid` plus `.reqntid` |
 | Functions | Supported subset | `.entry`/`.func` definitions, `.func` prototypes, visibility/linkage qualifiers, return and input parameter lists, `.noreturn` |
@@ -22,7 +22,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Function body | Supported subset | Variable declarations, labels, supported instruction syntax, and recursively bound nested blocks; resolution recursively flattens nested instructions in source order, with call staging confined to each lexical block |
 | Constant expressions | Supported subset | Literals/symbols, parentheses, `.s64`/`.u64` casts, unary/binary/conditional operators, `generic(symbol)`, and mask initializer operators |
 | Initializers | Supported subset | Scalar expressions, recursive brace lists, and an unsized first dimension; `.extern`, parameterized-name, and non-`.global`/`.const` initializers are rejected |
-| Symbol binding | Supported subset | Module/function/nested-block scopes, variables/parameters/functions/labels, lexical shadowing, parameterized members, and instruction/initializer/dimension/control-flow references; labels and control-flow metadata remain function-local |
+| Symbol binding | Supported subset | Module/function/nested-block scopes, variables/parameters/functions/labels, lexical shadowing, parameterized members, instruction/initializer/dimension/control-flow references, and isolated debug file/string metadata identity; labels and control-flow metadata remain function-local |
 | Declaration semantics | Supported subset | Positive array extents, inferred first extent, initializer type/brace shape/element limits, symbol addresses, module linkage-compatible redeclarations, and the supported entry resource-version/conflict rules |
 | Other directives | Not supported (rejected) | Module variable and other structured kernel-tuning directives; unmodeled function-header tokens never silently enter the AST |
 | Structured control syntax | Supported subset | `.callprototype`, `.calltargets`, and `.branchtargets` have dedicated function-local CST/AST syntax; binding and declaration semantics validate their labels/members/contracts. Generated `IndirectCall` layouts resolve a `.reg` target plus bound prototype/target-set metadata at PTX 2.1 / SM 20, and module resolution applies the shared call ABI contract. `brx.idx` resolves a `.u32` index and current-function `.branchtargets` identity at PTX 6.0 / SM 30; it does not expand target entries or build CFG |
@@ -67,11 +67,11 @@ stage.
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
 | `.explicitcluster` | G | R | — | — | — | — | Unmodeled entry-header directive |
 | `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.file` | D | T | T | — | — | — | File table semantics deferred to C02 |
+| `.file` | D | T | T | Y | — | C | Decimal/hex uint64 identity; repeated ID idempotent, overflow diagnoses |
 | `.func` | D | E | E | Y | Y | C | Existing function node |
 | `.global` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.local` | D | E | E | Y | Y | C | Existing variable declaration |
-| `.loc` | D | T | T | — | — | — | Attachment/file validation deferred to C02 |
+| `.loc` | D | T | T | Y | — | C | Decimal/hex file ID plus `.debug_str` function-name identity; no attachment |
 | `.maxclusterrank` | G | R | — | — | — | — | Unmodeled entry-header directive |
 | `.maxnctapersm` | G | R | — | — | — | — | Unmodeled deprecated resource directive |
 | `.maxnreg` | D | T | T | — | — | C | Entry-only source-version minimum |
@@ -83,7 +83,7 @@ stage.
 | `.reg` | D | E | E | Y | Y | C | Existing variable/formal declaration |
 | `.reqnctapercluster` | G | R | — | — | — | — | Unmodeled entry-header directive |
 | `.reqntid` | D | T | T | — | — | C | Entry-only; conflicts with `.maxntid` |
-| `.section` | D | T | T | — | — | — | Raw DWARF payload only; C02 owns semantics |
+| `.section` | D | T | T | Y | — | C | Only `.debug_str` plus raw `name:` labels bind; payload stays raw |
 | `.shared` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.sreg` | G | R | — | — | — | — | Unmodeled special-register declaration |
 | `.target` | D | T | T | — | — | — | Module syntax retained; not checker context |

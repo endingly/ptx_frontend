@@ -291,9 +291,20 @@ struct CstCallPrototype {
   CstTokenRange token_range;
 };
 
+/** A function-local label-associated indirect-call target list. */
+struct CstCallTargets {
+  TokenId label{};
+  TokenId colon{};
+  TokenId directive{};
+  std::vector<TokenId> targets;
+  std::vector<TokenId> commas;
+  TokenId semicolon{};
+  CstTokenRange token_range;
+};
+
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
-                 CstInstruction>;
+                 CstCallTargets, CstInstruction>;
 
 struct CstFunction {
   std::vector<TokenId> qualifiers;

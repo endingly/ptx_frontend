@@ -289,6 +289,16 @@ TEST(PtxLexerNew, CallPrototypeIsAControlFlowMetadataToken) {
   expect_token(toks[3], TokenKind::Decimal, "10");
 }
 
+TEST(PtxLexerNew, CallTargetsIsAControlFlowMetadataToken) {
+  auto toks = lex_all(".calltargets first, second");
+
+  ASSERT_EQ(toks.size(), 4u);
+  expect_token(toks[0], TokenKind::DotCallTargets, ".calltargets");
+  expect_token(toks[1], TokenKind::Ident, "first");
+  expect_token(toks[2], TokenKind::Comma, ",");
+  expect_token(toks[3], TokenKind::Ident, "second");
+}
+
 TEST(PtxLexerNew, DeclarationDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".reg .align .ptr .global .const .shared .local .param");
 

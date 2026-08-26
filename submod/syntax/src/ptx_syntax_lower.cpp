@@ -474,6 +474,20 @@ syntax_ast::AstCallPrototype lowerCallPrototype(
   };
 }
 
+syntax_ast::AstCallTargets lowerCallTargets(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstCallTargets& targets) {
+  std::vector<syntax_ast::AstIdentifierRef> lowered_targets;
+  lowered_targets.reserve(targets.targets.size());
+  for (const auto target : targets.targets)
+    lowered_targets.push_back(lowerIdentifier(cst, {target}));
+  return syntax_ast::AstCallTargets{
+      .label = lowerIdentifier(cst, {targets.label}),
+      .targets = std::move(lowered_targets),
+      .range = cst.sourceRange(targets.token_range),
+  };
+}
+
 }  // namespace
 
 std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
@@ -581,6 +595,9 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       } else if (const auto* prototype =
                      std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
         lowered.body.emplace_back(lowerCallPrototype(cst, *prototype));
+      } else if (const auto* targets =
+                     std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
+        lowered.body.emplace_back(lowerCallTargets(cst, *targets));
       } else {
         lowered.body.emplace_back(lowerInstructionNode(
             cst, std::get<syntax_cst::CstInstruction>(body_item)));

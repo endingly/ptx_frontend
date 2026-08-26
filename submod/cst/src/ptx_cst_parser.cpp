@@ -1024,6 +1024,50 @@ PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
   };
 }
 
+std::expected<syntax_cst::CstCallTargets, CstParseDiagnostic>
+PtxCstParser::parseCallTargets(TokenId label, TokenId colon) {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotCallTargets) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected '.calltargets'"});
+  }
+  if (token(peek()).kind == TokenKind::Semicolon) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        ".calltargets requires at least one function target"});
+  }
+
+  std::vector<TokenId> targets;
+  std::vector<TokenId> commas;
+  for (;;) {
+    auto target = expect(TokenKind::Ident, "call target function");
+    if (!target)
+      return std::unexpected(target.error());
+    targets.push_back(*target);
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+    if (token(peek()).kind == TokenKind::Semicolon) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "call target list cannot end with a trailing comma"});
+    }
+  }
+
+  const auto semicolon = expect(TokenKind::Semicolon, "';' after .calltargets");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstCallTargets{
+      .label = label,
+      .colon = colon,
+      .directive = directive,
+      .targets = std::move(targets),
+      .commas = std::move(commas),
+      .semicolon = *semicolon,
+      .token_range = {label, *semicolon + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFile, CstParseDiagnostic>
 PtxCstParser::parseInstruction() {
   auto root = parseInstructionNode();
@@ -1198,6 +1242,13 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
           body.emplace_back(std::move(*prototype));
           continue;
         }
+        if (token(peek()).kind == TokenKind::DotCallTargets) {
+          auto targets = parseCallTargets(first_token, colon);
+          if (!targets)
+            return std::unexpected(targets.error());
+          body.emplace_back(std::move(*targets));
+          continue;
+        }
         body.emplace_back(
             syntax_cst::CstLabel{first_token, colon, {first_token, colon + 1}});
         continue;
@@ -1213,6 +1264,11 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
           "'.callprototype' requires a preceding function-local label"});
+    }
+    if (token(peek()).kind == TokenKind::DotCallTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.calltargets' requires a preceding function-local label"});
     }
 
     auto instruction = parseInstructionNode();
@@ -1284,6 +1340,11 @@ PtxCstParser::parseModule() {
           token(peek()).range,
           "'.callprototype' is only valid inside a function body"});
     }
+    if (token(peek()).kind == TokenKind::DotCallTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.calltargets' is only valid inside a function body"});
+    }
 
     if (token(peek()).kind == TokenKind::Ident) {
       consume();
@@ -1293,6 +1354,11 @@ PtxCstParser::parseModule() {
           return std::unexpected(CstParseDiagnostic{
               token(peek()).range,
               "'.callprototype' is only valid inside a function body"});
+        }
+        if (token(peek()).kind == TokenKind::DotCallTargets) {
+          return std::unexpected(CstParseDiagnostic{
+              token(peek()).range,
+              "'.calltargets' is only valid inside a function body"});
         }
       }
     }

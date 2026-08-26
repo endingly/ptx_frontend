@@ -85,6 +85,15 @@ decide whether return parameters conflict with `.noreturn`; that is declaration
 semantics work. Parsing at module scope is rejected, and this issue does not
 yet bind or resolve prototype labels.
 
+## Function-local `.calltargets` syntax
+
+PTX 9.3 `.calltargets` is likewise a dedicated function-body CST/AST node.
+It retains its label, colon, directive, non-empty ordered function-name list,
+commas, semicolon, and whole/member source ranges. The parser rejects an empty
+list, a trailing comma, and use without a local label or at module scope. It
+intentionally preserves duplicate names: I05 will diagnose them using the
+individual member ranges, together with declaration order and signature rules.
+
 ## PTX 9.3 call parameter context
 
 `ld` accepts `.param`, `.param::entry`, and `.param::func`; `st` accepts

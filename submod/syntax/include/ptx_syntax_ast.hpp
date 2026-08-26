@@ -322,9 +322,16 @@ struct AstCallPrototype {
   SourceRange range;
 };
 
+/** A function-local label-associated indirect-call target list. */
+struct AstCallTargets {
+  AstIdentifierRef label;
+  std::vector<AstIdentifierRef> targets;
+  SourceRange range;
+};
+
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
-                 AstInstruction>;
+                 AstCallTargets, AstInstruction>;
 
 /** Initial function container; declarations and parameters refine this later. */
 struct AstFunction {

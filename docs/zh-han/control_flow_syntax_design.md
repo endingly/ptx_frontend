@@ -61,6 +61,13 @@ semantic spelling 与 source range。return parameter 是否与 `.noreturn` 冲�
 留给 declaration semantics。module scope 会明确拒绝该 grammar；本 issue 尚不 binding 或
 resolve prototype label。
 
+## function-local `.calltargets` 语法
+
+PTX 9.3 `.calltargets` 同样使用专用的 function-body CST/AST node。它保留 label、colon、
+directive、非空且有序的 function-name list、comma、semicolon，以及整体/member source range。
+Parser 会拒绝 empty list、trailing comma、缺少 local label 或 module scope 中的使用；但会有意
+保留 duplicate name，I05 将利用逐项 range 诊断它们，并检查 declaration order 与 signature rule。
+
 对于 module 中的 direct named call，resolution 会查找 callee 的 canonical
 prototype/definition signature，按顺序比较 return/input 的数量；随后复用 call-argument
 compatibility contract 检查 `.reg/.param` type 与 vector shape、`.param .b8` array 的

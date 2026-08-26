@@ -14,6 +14,7 @@ using syntax_cst::CstCallParameterList;
 using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstCallPrototype;
+using syntax_cst::CstCallTargets;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -204,6 +205,60 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
             "'.callprototype' requires a preceding function-local label"},
            {"outside: .callprototype _;",
             "'.callprototype' is only valid inside a function body"},
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsFunctionLocalCallTargetsStructure) {
+  constexpr std::string_view source = R"ptx(
+.func caller() {
+  one: .calltargets first;
+  many: .calltargets first, second, third;
+  duplicate: .calltargets first, first;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 3u);
+  for (const auto& item : function.body)
+    EXPECT_TRUE(std::holds_alternative<CstCallTargets>(item));
+
+  const auto& many = std::get<CstCallTargets>(function.body[1]);
+  EXPECT_EQ(result->token(many.label).text, "many");
+  EXPECT_EQ(result->token(many.colon).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(many.directive).kind, TokenKind::DotCallTargets);
+  ASSERT_EQ(many.targets.size(), 3u);
+  ASSERT_EQ(many.commas.size(), 2u);
+  EXPECT_EQ(result->token(many.targets[0]).text, "first");
+  EXPECT_EQ(result->token(many.targets[2]).text, "third");
+
+  const auto& duplicate = std::get<CstCallTargets>(function.body[2]);
+  ASSERT_EQ(duplicate.targets.size(), 2u);
+  EXPECT_EQ(result->token(duplicate.targets[0]).text, "first");
+  EXPECT_EQ(result->token(duplicate.targets[1]).text, "first");
+}
+
+TEST(PtxCstParser, RejectsMalformedAndNonlocalCallTargetsGrammar) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".func f() { list: .calltargets; }",
+            ".calltargets requires at least one function target"},
+           {".func f() { list: .calltargets first,; }",
+            "call target list cannot end with a trailing comma"},
+           {".func f() { .calltargets first; }",
+            "'.calltargets' requires a preceding function-local label"},
+           {"outside: .calltargets first;",
+            "'.calltargets' is only valid inside a function body"},
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();

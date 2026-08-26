@@ -16,6 +16,7 @@ using syntax_ast::AstCallParameterList;
 using syntax_ast::AstCallTarget;
 using syntax_ast::AstCallTargetSet;
 using syntax_ast::AstCallPrototype;
+using syntax_ast::AstCallTargets;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstPredicateOperand;
@@ -149,6 +150,30 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
   EXPECT_EQ(prototype.abi_preserve_control->count.text, "2");
   EXPECT_EQ(prototype.range.start.line, 3u);
   EXPECT_EQ(prototype.label.syntax.range.start.column, 3u);
+}
+
+TEST(PtxSyntaxParser, LowersFunctionLocalCallTargetsPayload) {
+  constexpr std::string_view source = R"ptx(
+.func caller() {
+  list: .calltargets first, second, second;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& targets = std::get<AstCallTargets>(function.body.front());
+  EXPECT_EQ(targets.label.syntax.text, "list");
+  ASSERT_EQ(targets.targets.size(), 3u);
+  EXPECT_EQ(targets.targets[0].syntax.text, "first");
+  EXPECT_EQ(targets.targets[1].syntax.text, "second");
+  EXPECT_EQ(targets.targets[2].syntax.text, "second");
+  EXPECT_EQ(targets.range.start.line, 3u);
+  EXPECT_EQ(targets.targets[1].syntax.range.start.column, 29u);
 }
 
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {

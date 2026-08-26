@@ -29,7 +29,8 @@ branch target。binding 会检查当前已可判定的 symbol kind：
 
 indirect-call 的 target-set operand 必须指向 function-local `.callprototype` 或
 `.calltargets` declaration。它们的 label，以及 `.branchtargets` label，现在都有稳定的
-function-scope symbol；member/signature semantics 仍属于 I05。
+function-scope symbol。declaration semantics 会检查 metadata member 与 target-set signature；
+instruction 到 metadata 的使用仍属于 I06/C02。
 
 ## Descriptor 与 Resolved IR 边界
 
@@ -57,23 +58,25 @@ Parser 现在将 PTX 9.3 的 `.callprototype` declaration 保留为专用的 fun
 CST/AST node，而不是 label 加 instruction。支持四种 signature form：`_`、`_ (params)`、
 `(return) _` 和 `(return) _ (params)`。CST 保留 label、colon、sink、parameter-list
 punctuation、`.noreturn`、`.abi_preserve N` 和 `.abi_preserve_control N`；AST 保留相应的
-semantic spelling 与 source range。return parameter 是否与 `.noreturn` 冲突不在 parser 判断，
-留给 declaration semantics。module scope 会明确拒绝该 grammar；本 issue 尚不 binding 或
-resolve prototype label。
+semantic spelling 与 source range。declaration semantics 会拒绝 return parameter 与 `.noreturn`
+同时出现，并检查 array formal；module scope 会明确拒绝该 grammar。binding 负责 local label，
+通过它的 indirect call resolution 仍留给后续工作。
 
 ## function-local `.calltargets` 语法
 
 PTX 9.3 `.calltargets` 同样使用专用的 function-body CST/AST node。它保留 label、colon、
 directive、非空且有序的 function-name list、comma、semicolon，以及整体/member source range。
-Parser 会拒绝 empty list、trailing comma、缺少 local label 或 module scope 中的使用；但会有意
-保留 duplicate name，I05 将利用逐项 range 诊断它们，并检查 declaration order 与 signature rule。
+Parser 会拒绝 empty list、trailing comma、缺少 local label 或 module scope 中的使用。declaration
+semantics 要求每个 member 是此前声明的 device `.func`，以逐项 range 诊断 duplicate，并要求
+canonical signature 相同。
 
 ## function-local `.branchtargets` 语法
 
 `.branchtargets` 现在有自己的 function-body CST/AST node。其非空且有序的 list 会保留
 普通 label 与 `N<5>` 这样的 compact entry；后者保留 name、count、angle punctuation 和单项
-range，不会展开为 synthetic label。duplicate 会保留给 I05 处理。本 issue 不 binding member，
-也不把 declaration 连接到 instruction：PTX 9.3 通过 `brx.idx` 使用它，该 integration 仍在范围外。
+range，不会展开为 synthetic label。declaration semantics 在不增加 symbol 的前提下检查 local label
+membership、compact overlap 与 count validity；仍不把 declaration 连接到 instruction：PTX 9.3 通过
+`brx.idx` 使用它，该 integration 仍在范围外。
 
 对于 module 中的 direct named call，resolution 会查找 callee 的 canonical
 prototype/definition signature，按顺序比较 return/input 的数量；随后复用 call-argument

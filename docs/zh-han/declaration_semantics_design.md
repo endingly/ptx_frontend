@@ -47,6 +47,19 @@ function prototype 与 definition 各自仍拥有 lexical scope。function symbo
 `owned_scope` 优先指向 definition scope，从而使后续 module resolution 使用 definition
 中的 parameter/local declaration。
 
+## Control-flow metadata
+
+同一 pass 还检查 function-local 的 indirect-control metadata。`.calltargets` member 必须是
+此前已声明的 device `.func`；重复 member 会以两个 member range 诊断，所有有效 member 必须有
+相同的 canonical `FunctionSignature`。`.branchtargets` member 必须是所属 function 中的 label，
+允许 forward label。`N<5>` 这样的 compact entry 会基于已有 local label 检查，不创建 synthetic
+symbol；缺失或 overlap label 使用 compact-entry range 诊断。
+
+`.callprototype` 拒绝同时出现 return parameter 与 `.noreturn`，对 formal 使用既有
+alignment/array-extent 检查，并要求 array formal 使用 `.param`。duplicate declaration label 仍由
+binding 负责。instruction 到 metadata 的使用、ABI suffix availability 和 indirect-call ABI 检查仍
+留给后续工作。
+
 ## 当前边界
 
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module

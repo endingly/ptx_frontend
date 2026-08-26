@@ -88,8 +88,8 @@ call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 
 `.reg` function pointer、call parameter 属于 `.reg/.param`、direct branch target 是当前
 function 的 label，且 indirect target-set operand 是 `.callprototype` 或 `.calltargets`
 symbol。三种 metadata declaration 都拥有稳定的 function-scope `SymbolId`。member validation、
-duplicate policy 与 prototype/signature semantics 仍属于 I05。详见
-`control_flow_syntax_design.md`。
+duplicate policy 与 prototype/signature semantics 由 declaration semantics 检查；binding 不
+resolve metadata member 或 instruction use。详见 `control_flow_syntax_design.md`。
 
 ## 当前诊断与边界
 

@@ -56,6 +56,11 @@ enum class DeclarationDiagnosticKind : uint8_t {
   InvalidLinkage,
   InvalidAlignment,
   ModuleScopeParameter,
+  DuplicateMetadataTarget,
+  UnresolvedMetadataTarget,
+  InvalidMetadataTarget,
+  IncompatibleCallTargetSignature,
+  InvalidCallPrototype,
 };
 
 struct DeclarationDiagnostic {

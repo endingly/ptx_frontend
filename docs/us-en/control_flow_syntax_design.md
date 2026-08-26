@@ -37,7 +37,8 @@ the symbol kinds it can already determine:
 
 An indirect-call target-set operand must name a function-local `.callprototype`
 or `.calltargets` declaration. Their labels, and `.branchtargets` labels, now
-have stable function-scope symbols; member/signature semantics remain I05.
+have stable function-scope symbols. Declaration semantics validates metadata
+members and target-set signatures; instruction-to-metadata use remains I06/C02.
 
 ## Descriptor and Resolved IR boundary
 
@@ -79,28 +80,30 @@ function-body CST/AST nodes rather than a label followed by an instruction.
 All four signature forms are accepted: `_`, `_ (params)`, `(return) _`, and
 `(return) _ (params)`. CST preserves the label, colon, sink, parameter-list
 punctuation, `.noreturn`, `.abi_preserve N`, and `.abi_preserve_control N`.
-AST retains their semantic spellings and source ranges. The parser does not
-decide whether return parameters conflict with `.noreturn`; that is declaration
-semantics work. Parsing at module scope is rejected, and this issue does not
-yet bind or resolve prototype labels.
+AST retains their semantic spellings and source ranges. Declaration semantics
+rejects `.noreturn` with return parameters and validates array formals; parsing
+at module scope is rejected. Binding owns the local label, while resolution of
+an indirect call through it remains later work.
 
 ## Function-local `.calltargets` syntax
 
 PTX 9.3 `.calltargets` is likewise a dedicated function-body CST/AST node.
 It retains its label, colon, directive, non-empty ordered function-name list,
 commas, semicolon, and whole/member source ranges. The parser rejects an empty
-list, a trailing comma, and use without a local label or at module scope. It
-intentionally preserves duplicate names: I05 will diagnose them using the
-individual member ranges, together with declaration order and signature rules.
+list, a trailing comma, and use without a local label or at module scope.
+Declaration semantics requires every member to be a prior device `.func`,
+diagnoses duplicates using individual member ranges, and requires equal
+canonical signatures.
 
 ## Function-local `.branchtargets` syntax
 
 `.branchtargets` now has its own function-body CST/AST node. Its non-empty
 ordered list preserves ordinary labels and compact entries such as `N<5>`;
 the latter retain name, count, angle punctuation, and one entry range without
-expanding into synthetic labels. Duplicates remain intact for I05. This issue
-does not bind members or connect the declaration to an instruction: PTX 9.3
-uses it with `brx.idx`, and that integration remains out of scope.
+expanding into synthetic labels. Declaration semantics checks local-label
+membership, compact overlap, and count validity without adding symbols. It
+does not connect the declaration to an instruction: PTX 9.3 uses it with
+`brx.idx`, and that integration remains out of scope.
 
 ## PTX 9.3 call parameter context
 

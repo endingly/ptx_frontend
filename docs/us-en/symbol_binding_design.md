@@ -103,7 +103,8 @@ belong to `.reg`/`.param`, a direct branch target is a label in the current
 function, and an indirect target-set operand is a `.callprototype` or
 `.calltargets` symbol. The three metadata declaration kinds have stable
 function-scope `SymbolId` values. Member validation, duplicate policy, and
-prototype/signature semantics remain I05 work. See
+prototype/signature semantics are checked by declaration semantics; binding
+does not resolve metadata members or instruction use. See
 `control_flow_syntax_design.md`.
 
 ## Current diagnostics and boundary

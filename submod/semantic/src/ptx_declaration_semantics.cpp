@@ -460,6 +460,48 @@ std::string optionalSyntaxKey(
   return syntax ? syntax->text : "-";
 }
 
+std::optional<uint64_t> compactLabelIndex(std::string_view prefix,
+                                          std::string_view label) {
+  if (!label.starts_with(prefix) || label.size() == prefix.size())
+    return std::nullopt;
+  const std::string_view suffix = label.substr(prefix.size());
+  if (suffix.size() > 1 && suffix.front() == '0')
+    return std::nullopt;
+  uint64_t index = 0;
+  const auto [end, error] =
+      std::from_chars(suffix.data(), suffix.data() + suffix.size(), index);
+  if (error != std::errc{} || end != suffix.data() + suffix.size())
+    return std::nullopt;
+  return index;
+}
+
+std::optional<uint64_t> positiveCount(std::string_view text) {
+  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
+    text.remove_suffix(1);
+  uint64_t count = 0;
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), count);
+  if (text.empty() || error != std::errc{} ||
+      end != text.data() + text.size() || count == 0) {
+    return std::nullopt;
+  }
+  return count;
+}
+
+bool compactTargetsOverlap(std::string_view existing_prefix,
+                           uint64_t existing_count,
+                           std::string_view candidate_prefix,
+                           uint64_t candidate_count) {
+  const std::string existing_first = std::string{existing_prefix} + "0";
+  const std::string candidate_first = std::string{candidate_prefix} + "0";
+  const auto candidate_in_existing =
+      compactLabelIndex(existing_prefix, candidate_first);
+  const auto existing_in_candidate =
+      compactLabelIndex(candidate_prefix, existing_first);
+  return (candidate_in_existing && *candidate_in_existing < existing_count) ||
+         (existing_in_candidate && *existing_in_candidate < candidate_count);
+}
+
 FunctionParameterContract parameterContract(
     const syntax_ast::AstFunctionParameter& parameter) {
   const auto syntax_text =
@@ -532,6 +574,7 @@ class Checker {
 
   std::vector<DeclarationDiagnostic> run(const syntax_ast::AstModule& module) {
     checkRedeclarations(module);
+    checkControlFlowMetadata(module);
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
@@ -564,6 +607,16 @@ class Checker {
     binding::SymbolLinkage linkage{};
     SourceRange range;
     std::optional<SourceRange> definition_range;
+  };
+
+  struct SeenFunction {
+    FunctionSignature signature;
+  };
+
+  struct FirstCallTarget {
+    std::string name;
+    FunctionSignature signature;
+    SourceRange range;
   };
 
   const binding::SymbolTable& symbols_;
@@ -650,6 +703,246 @@ class Checker {
                           function->name.syntax.text,
                           functionSignature(*function), linkage,
                           !function->is_prototype, function->name.syntax.range);
+    }
+  }
+
+  void checkCallTargets(
+      const syntax_ast::AstCallTargets& targets,
+      const std::unordered_map<std::string, SeenFunction>& seen_functions) {
+    std::unordered_map<std::string, SourceRange> seen_targets;
+    std::optional<FirstCallTarget> first_target;
+    for (const auto& target : targets.targets) {
+      const auto [duplicate, inserted] = seen_targets.emplace(
+          target.syntax.text, target.syntax.range);
+      if (!inserted) {
+        diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget,
+                 target.syntax.range,
+                 fmt::format("Duplicate .calltargets member '{}'.",
+                             target.syntax.text),
+                 duplicate->second);
+      }
+
+      const auto symbol =
+          symbols_.lookup(symbols_.moduleScope(), target.syntax.text);
+      if (!symbol) {
+        diagnose(DeclarationDiagnosticKind::UnresolvedMetadataTarget,
+                 target.syntax.range,
+                 fmt::format("Call target '{}' must be declared before its "
+                             ".calltargets directive.",
+                             target.syntax.text));
+        continue;
+      }
+      const binding::Symbol& bound = symbols_.symbol(symbol->symbol);
+      if (bound.kind != binding::SymbolKind::Function ||
+          bound.function_is_entry) {
+        diagnose(DeclarationDiagnosticKind::InvalidMetadataTarget,
+                 target.syntax.range,
+                 fmt::format("Call target '{}' must name a device .func "
+                             "declaration.",
+                             target.syntax.text),
+                 bound.declaration_range);
+        continue;
+      }
+      const auto seen = seen_functions.find(target.syntax.text);
+      if (seen == seen_functions.end()) {
+        diagnose(DeclarationDiagnosticKind::UnresolvedMetadataTarget,
+                 target.syntax.range,
+                 fmt::format("Call target '{}' must be declared before its "
+                             ".calltargets directive.",
+                             target.syntax.text));
+        continue;
+      }
+
+      if (!first_target) {
+        first_target.emplace(target.syntax.text, seen->second.signature,
+                             target.syntax.range);
+      } else if (seen->second.signature != first_target->signature) {
+        diagnose(DeclarationDiagnosticKind::IncompatibleCallTargetSignature,
+                 target.syntax.range,
+                 fmt::format("Call target '{}' has a signature incompatible "
+                             "with '{}'.",
+                             target.syntax.text, first_target->name),
+                 first_target->range);
+      }
+    }
+  }
+
+  void checkBranchTargets(
+      binding::ScopeId function_scope,
+      const syntax_ast::AstBranchTargets& targets) {
+    std::unordered_map<std::string_view, SourceRange> labels;
+    for (const binding::Symbol& symbol : symbols_.symbols()) {
+      if (symbol.scope == function_scope &&
+          symbol.kind == binding::SymbolKind::Label) {
+        labels.emplace(symbol.name, symbol.declaration_range);
+      }
+    }
+
+    struct CompactTarget {
+      std::string_view prefix;
+      uint64_t count;
+      SourceRange range;
+    };
+    std::unordered_map<std::string, SourceRange> seen_labels;
+    std::vector<CompactTarget> seen_compact_targets;
+    const auto check_label = [this, function_scope, &labels, &seen_labels,
+                              &seen_compact_targets](std::string_view name,
+                                                     SourceRange range) {
+      const auto [previous, inserted] =
+          seen_labels.emplace(std::string{name}, range);
+      if (!inserted) {
+        diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget, range,
+                 fmt::format("Duplicate .branchtargets member '{}'.", name),
+                 previous->second);
+      } else {
+        for (const auto& compact : seen_compact_targets) {
+          const auto index = compactLabelIndex(compact.prefix, name);
+          if (index && *index < compact.count) {
+            diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget,
+                     range,
+                     fmt::format("Duplicate .branchtargets member '{}'.",
+                                 name),
+                     compact.range);
+            break;
+          }
+        }
+      }
+      const auto label = labels.find(name);
+      if (label == labels.end()) {
+        const auto bound = symbols_.lookup(function_scope, name);
+        if (bound) {
+          diagnose(DeclarationDiagnosticKind::InvalidMetadataTarget, range,
+                   fmt::format("Branch target '{}' must name a label in the "
+                               "current function.",
+                               name),
+                   symbols_.symbol(bound->symbol).declaration_range);
+        } else {
+          diagnose(DeclarationDiagnosticKind::UnresolvedMetadataTarget, range,
+                   fmt::format("Branch target '{}' is not declared in the "
+                               "current function.",
+                               name));
+        }
+        return;
+      }
+    };
+
+    for (const auto& target : targets.targets) {
+      if (!target.count) {
+        check_label(target.name.syntax.text, target.range);
+        continue;
+      }
+      const auto count = positiveCount(target.count->text);
+      if (!count) {
+        diagnose(DeclarationDiagnosticKind::InvalidMetadataTarget,
+                 target.count->range,
+                 "Compact branch target count must be a positive unsigned "
+                 "integer.");
+        continue;
+      }
+
+      std::optional<SourceRange> duplicate_range;
+      for (const auto& compact : seen_compact_targets) {
+        if (compactTargetsOverlap(compact.prefix, compact.count,
+                                  target.name.syntax.text, *count)) {
+          duplicate_range = compact.range;
+          break;
+        }
+      }
+      if (!duplicate_range) {
+        for (const auto& [label, range] : seen_labels) {
+          const auto index =
+              compactLabelIndex(target.name.syntax.text, label);
+          if (index && *index < *count) {
+            duplicate_range = range;
+            break;
+          }
+        }
+      }
+      if (duplicate_range) {
+        diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget,
+                 target.range,
+                 fmt::format("Duplicate .branchtargets member '{}<{}>'.",
+                             target.name.syntax.text, target.count->text),
+                 *duplicate_range);
+      }
+
+      uint64_t matched = 0;
+      for (const auto& entry : labels) {
+        const auto index =
+            compactLabelIndex(target.name.syntax.text, entry.first);
+        if (!index || *index >= *count)
+          continue;
+        ++matched;
+      }
+      if (matched != *count) {
+        diagnose(DeclarationDiagnosticKind::UnresolvedMetadataTarget,
+                 target.range,
+                 fmt::format("Compact branch target '{}<{}>' includes labels "
+                             "not declared in the current function.",
+                             target.name.syntax.text, target.count->text));
+      }
+      seen_compact_targets.push_back(
+          CompactTarget{target.name.syntax.text, *count, target.range});
+    }
+  }
+
+  void checkCallPrototype(const syntax_ast::AstCallPrototype& prototype) {
+    if (prototype.noreturn_directive && !prototype.return_parameters.empty()) {
+      diagnose(DeclarationDiagnosticKind::InvalidCallPrototype,
+               prototype.noreturn_directive->range,
+               "A .callprototype with return parameters cannot specify "
+               ".noreturn.", prototype.return_parameters.front().range);
+    }
+    const auto check_parameters = [this](const auto& parameters) {
+      for (const auto& parameter : parameters) {
+        checkAlignment(parameter.alignment);
+        checkAlignment(parameter.pointer_alignment);
+        if (parameter.array_size)
+          checkDimension(*parameter.array_size);
+        if (parameter.is_array &&
+            parameter.state_space != syntax_ast::AstStateSpace::Parameter) {
+          diagnose(DeclarationDiagnosticKind::InvalidCallPrototype,
+                   parameter.range,
+                   "A .callprototype array parameter must use .param state "
+                   "space.");
+        }
+      }
+    };
+    check_parameters(prototype.return_parameters);
+    check_parameters(prototype.parameters);
+  }
+
+  void checkControlFlowMetadata(const syntax_ast::AstModule& module) {
+    std::unordered_map<std::string, SeenFunction> seen_functions;
+    std::vector<binding::ScopeId> function_scopes;
+    for (const auto& scope : symbols_.scopes()) {
+      if (scope.kind == binding::ScopeKind::Function)
+        function_scopes.push_back(scope.id);
+    }
+    size_t function_index = 0;
+    for (const auto& item : module.items) {
+      const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+      if (function == nullptr)
+        continue;
+      seen_functions.try_emplace(function->name.syntax.text,
+                                 SeenFunction{functionSignature(*function)});
+      const auto scope = function_index < function_scopes.size()
+                             ? std::optional{function_scopes[function_index]}
+                             : std::nullopt;
+      ++function_index;
+      for (const auto& body_item : function->body) {
+        if (const auto* prototype =
+                std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
+          checkCallPrototype(*prototype);
+        } else if (const auto* targets =
+                       std::get_if<syntax_ast::AstCallTargets>(&body_item)) {
+          checkCallTargets(*targets, seen_functions);
+        } else if (const auto* targets =
+                       std::get_if<syntax_ast::AstBranchTargets>(&body_item)) {
+          if (scope)
+            checkBranchTargets(*scope, *targets);
+        }
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
@@ -198,6 +199,141 @@ TEST(PtxDeclarationSemantics, RejectsIncompatibleRedeclarationsAndDefinitions) {
       EXPECT_TRUE(diagnostic.previous_range.has_value());
     }
   }
+}
+
+TEST(PtxDeclarationSemantics, AcceptsCompatibleControlFlowMetadata) {
+  const CheckedModule result = check(R"ptx(
+.func (.reg .u32 output) first(.reg .u32 input);
+.func (.reg .u32 output) second(.reg .u32 value) { ret; }
+.func dispatch() {
+L0:
+L1:
+N0:
+N1:
+  prototype: .callprototype _ (.param .b8 payload[12]) .noreturn;
+  targets: .calltargets first, second;
+  branches: .branchtargets L0, N<2U>;
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics, ValidatesControlFlowMetadataDeclarations) {
+  const CheckedModule result = check(R"ptx(
+.func (.reg .u32 output) first(.reg .u32 input);
+.func (.reg .u32 output) mismatch(.reg .u64 input);
+.entry kernel() { }
+.func dispatch() {
+local:
+N0:
+N1:
+  targets: .calltargets first, first, later, kernel, mismatch;
+  branches: .branchtargets local, local, Other, N<3>, N<2>, Z<0>;
+  returning: .callprototype (.param .u32 output) _ .noreturn;
+  register_array: .callprototype _ (.reg .b8 values[4]);
+  zero_array: .callprototype _ (.param .b8 values[0]);
+}
+.func later();
+.func other() { Other: ret; }
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::DuplicateMetadataTarget),
+            3u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            3u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::InvalidMetadataTarget),
+            2u);
+  EXPECT_EQ(
+      diagnosticCount(result,
+                      DeclarationDiagnosticKind::IncompatibleCallTargetSignature),
+      1u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::InvalidCallPrototype),
+            2u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::InvalidArrayDimension),
+            1u);
+
+  const auto compact_duplicate = std::ranges::find_if(
+      result.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind ==
+                   DeclarationDiagnosticKind::DuplicateMetadataTarget &&
+               diagnostic.message.find("N<2>") != std::string::npos;
+      });
+  ASSERT_NE(compact_duplicate, result.diagnostics.end());
+  ASSERT_TRUE(compact_duplicate->previous_range.has_value());
+  EXPECT_EQ(compact_duplicate->previous_range->start.line, 10);
+  EXPECT_EQ(compact_duplicate->range.start.line, 10);
+
+  const auto incompatible = std::ranges::find_if(
+      result.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind ==
+               DeclarationDiagnosticKind::IncompatibleCallTargetSignature;
+      });
+  ASSERT_NE(incompatible, result.diagnostics.end());
+  ASSERT_TRUE(incompatible->previous_range.has_value());
+  EXPECT_EQ(incompatible->previous_range->start.line, 9);
+  EXPECT_EQ(incompatible->range.start.line, 9);
+}
+
+TEST(PtxDeclarationSemantics,
+     DiagnosesSymbolicDuplicateBranchTargetsBeforeResolution) {
+  const CheckedModule result = check(R"ptx(
+.func dispatch() {
+  branches: .branchtargets Missing, Missing, N<3>, N<2>;
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::DuplicateMetadataTarget),
+            2u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            4u);
+}
+
+TEST(PtxDeclarationSemantics, DiagnosesOverlappingCompactBranchTargetPrefixes) {
+  const CheckedModule result = check(R"ptx(
+.func dispatch() {
+  branches: .branchtargets N<20>, N1<2>;
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::DuplicateMetadataTarget),
+            1u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            2u);
+}
+
+TEST(PtxDeclarationSemantics, UsesEachFunctionBodyScopeForBranchTargets) {
+  const CheckedModule result = check(R"ptx(
+.func duplicate() {
+first_label:
+  first_targets: .branchtargets first_label;
+}
+.func duplicate() {
+second_label:
+  second_targets: .branchtargets second_label;
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            0u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::MultipleDefinitions),
+            1u);
 }
 
 TEST(PtxDeclarationSemantics, RequiresPositivePowerOfTwoAlignment) {

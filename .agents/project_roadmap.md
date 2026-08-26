@@ -1099,7 +1099,7 @@ Coverage matrix 负责回答：
 | M4 | ✅ | 完成当前已建模 basic scalar/vector `ld/st` 子集 |
 | M5 | ✅ | 完成模块化构建、安装 package、consumer test 和 PR CI |
 | M6 | ✅ | 完成 direct-call signature、ABI 和 call-context |
-| M7 | ⬜ | 完成 indirect call 和 control-flow metadata |
+| M7 | ✅ | 完成 indirect call 和 control-flow metadata |
 | M8 | ⬜ | 扩展 module grammar、nested scope 和 parser recovery |
 | M9 | ⬜ | 完成 simulator MVP 的核心 opcode 集 |
 | M10 | ⬜ | 扩展 memory、atomic、warp、async-copy 和 matrix instruction |
@@ -1333,7 +1333,8 @@ identity；`call_direct` 保持一个公开 modifier variant，并新增三种 P
 并以同一 canonical `FunctionSignature` / argument-compatibility contract 检查 indirect ABI。
 `brx.idx` 已以 `.u32` index 与 function-local branch-target-set identity 连接 `.branchtargets`，
 并要求 PTX 6.0 / SM 30；不会展开 metadata entry。合法 indirect call 全部走正式 descriptor，
-malformed metadata-bearing call 使用通用 layout diagnostic。
+malformed metadata-bearing call 使用通用 layout diagnostic。installed package consumer 以单一 PTX
+9.3 corpus 覆盖 direct/indirect call、prototype/target-set 与 `brx.idx` metadata 闭环。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
@@ -1347,7 +1348,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。
 | M7-C01 | ✅ | 耦合 | 实现 indirect-call ABI checker | prototype/target-set 复用 canonical signature、arity、literal 与 argument compatibility |
 | M7-C02 | ✅ | 耦合 | 连接 `.branchtargets` 与 `brx.idx` | `.u32` index、target-list identity 与 current function scope 一致 |
 | M7-C03 | ✅ | 耦合 | 删除 temporary call special case | 移除通用 resolver 中 opcode-string indirect rejection，malformed syntax 走通用 layout diagnostic |
-| M7-C04 | ⬜ | 耦合 | 完成 indirect-control-flow corpus | direct/indirect/prototype/target-set/branch metadata 全覆盖 |
+| M7-C04 | ✅ | 耦合 | 完成 indirect-control-flow corpus | installed package consumer 覆盖 direct/indirect/prototype/target-set/branch metadata 闭环 |
 
 ---
 

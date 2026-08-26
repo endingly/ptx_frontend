@@ -2282,14 +2282,17 @@ TEST(ResolvedModule, StandaloneBranchTargetRemainsUnbound) {
 
 TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
   const auto ast = parseModule(R"ptx(
-.func callee(.param .u32 input);
+.func callee();
+.func callee_empty();
+.func (.param .u32 result) callee_full(
+    .param .u32 input0, .param .u32 input1, .param .s32 literal);
 .entry caller() {
   .reg .pred %p;
   .reg .u32 %out, %arg;
   .param .u32 parameter;
   call callee;
-  call callee, ();
-  @%p call.uni (%out), callee, (%arg, parameter, -4);
+  call callee_empty, ();
+  @%p call.uni (%out), callee_full, (%arg, parameter, -4);
 }
 )ptx");
 
@@ -2346,9 +2349,104 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
             checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
 }
 
+TEST(ResolvedModule, ChecksDirectCallAbiForMixedParametersAndLiterals) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.func (.param .u32 result) callee(
+    .reg .u32 register_input, .param .u32 parameter_input,
+    .param .s16 literal_input, .reg .u32 parameterized_register_input);
+.entry caller() {
+  .reg .u32 register_argument;
+  .reg .u32 %r<1>;
+  .param .u32 parameter_argument, return_argument;
+  call (return_argument), callee,
+      (register_argument, parameter_argument, -4, %r0);
+}
+)ptx"));
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+}
+
+TEST(ResolvedModule, ReportsDirectCallAbiArityMismatches) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.func (.param .u32 return0, .param .u32 return1) callee(
+    .param .u32 input0, .param .u32 input1);
+.entry caller() {
+  .param .u32 return0, input0;
+  call (return0), callee, (input0);
+}
+)ptx"));
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 2u);
+  EXPECT_EQ(resolved.error()[0].message,
+            "Direct call to 'callee' has 1 return argument but callee requires "
+            "2.");
+  EXPECT_EQ(resolved.error()[1].message,
+            "Direct call to 'callee' has 1 input argument but callee requires "
+            "2.");
+}
+
+TEST(ResolvedModule, ReportsDirectCallAbiPropertyAndLiteralMismatches) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.func scalar(.param .u32 input);
+.func bytes(.param .align 16 .b8 input[8]);
+.func pointer(.param .u64 .ptr .global .align 16 input);
+.func literal(.param .u16 input);
+.entry caller(.param .u64 .ptr .shared .align 32 wrong_space,
+              .param .u64 .ptr .global .align 8 weak_alignment) {
+  .reg .v2 .u32 vector_argument;
+  .reg .b8 register_byte;
+  .param .align 16 .b8 wrong_size[4];
+  .param .align 8 .b8 weak_array_alignment[8];
+  call scalar, (vector_argument);
+  call bytes, (register_byte);
+  call bytes, (wrong_size);
+  call bytes, (weak_array_alignment);
+  call pointer, (wrong_space);
+  call pointer, (weak_alignment);
+  call literal, (1.5);
+  call literal, (65536);
+  call bytes, (1);
+  call pointer, (1);
+}
+)ptx"));
+
+  ASSERT_FALSE(resolved.has_value());
+  ASSERT_EQ(resolved.error().size(), 10u);
+  EXPECT_EQ(resolved.error()[0].message,
+            "Direct call input argument 1 for 'scalar' has type or vector "
+            "shape mismatch.");
+  EXPECT_EQ(resolved.error()[1].message,
+            "Direct call input argument 1 for 'bytes' has call argument "
+            "state-space mismatch.");
+  EXPECT_EQ(
+      resolved.error()[2].message,
+      "Direct call input argument 1 for 'bytes' has array size mismatch.");
+  EXPECT_EQ(resolved.error()[3].message,
+            "Direct call input argument 1 for 'bytes' has array alignment "
+            "mismatch.");
+  EXPECT_EQ(resolved.error()[4].message,
+            "Direct call input argument 1 for 'pointer' has pointed "
+            "state-space mismatch.");
+  EXPECT_EQ(resolved.error()[5].message,
+            "Direct call input argument 1 for 'pointer' has pointed alignment "
+            "mismatch.");
+  EXPECT_EQ(resolved.error()[6].message,
+            "Decimal floating literal '1.5' is incompatible with scalar type "
+            "'U16'.");
+  EXPECT_EQ(resolved.error()[7].message,
+            "Integer literal '65536' is out of range for scalar type 'U16'.");
+  EXPECT_EQ(resolved.error()[8].message,
+            "Direct call input argument 1 for 'bytes' has call argument "
+            "state-space mismatch.");
+  EXPECT_EQ(resolved.error()[9].message,
+            "Direct call input argument 1 for 'pointer' has pointer "
+            "qualification mismatch.");
+}
+
 TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
   const auto ast = parseModule(R"ptx(
-.func callee(.param .u32 input);
+.func (.param .u32 result) callee(.param .u32 input0, .param .u32 input1);
 .entry caller(.param .u32 entry_input) {
   .reg .pred %p;
   .reg .u32 %r0;
@@ -2396,7 +2494,7 @@ TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
 TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
   const auto resolve_source = [](std::string_view body) {
     return resolveModule(parseModule(fmt::format(R"ptx(
-.func callee(.param .u32 input);
+.func (.param .u32 result) callee(.param .u32 input);
 .entry caller(.param .u32 entry_input) {{
   .reg .pred %p;
   .reg .u32 %r0;
@@ -2424,33 +2522,33 @@ TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
             ".param::entry may access only a kernel entry input parameter.");
 
   const auto predicated_store = resolve_source(
-      "@%p st.param.u32 [input], %r0;\n  call callee, (input);");
+      "@%p st.param.u32 [input], %r0;\n  call (output), callee, (input);");
   ASSERT_FALSE(predicated_store.has_value());
   EXPECT_EQ(predicated_store.error().front().message,
             "A function-local .param argument store cannot be predicated.");
 
   const auto non_adjacent_store = resolve_source(
-      "st.param.u32 [input], %r0;\n  mov.u32 %r0, %r0;\n  call callee, (input);");
+      "st.param.u32 [input], %r0;\n  mov.u32 %r0, %r0;\n  call (output), callee, (input);");
   ASSERT_FALSE(non_adjacent_store.has_value());
   EXPECT_EQ(non_adjacent_store.error().front().message,
             "A function-local .param argument store must be in the contiguous "
             "block immediately before a call that uses it.");
 
   const auto wrong_call_argument = resolve_source(
-      "st.param.u32 [input], %r0;\n  call callee, (other);");
+      "st.param.u32 [input], %r0;\n  call (output), callee, (other);");
   ASSERT_FALSE(wrong_call_argument.has_value());
   EXPECT_EQ(wrong_call_argument.error().front().message,
             "A function-local .param argument store must be in the contiguous "
             "block immediately before a call that uses it.");
 
   const auto predicated_return_load = resolve_source(
-      "call (output), callee, ();\n  @%p ld.param.u32 %r0, [output];");
+      "call (output), callee, (input);\n  @%p ld.param.u32 %r0, [output];");
   ASSERT_FALSE(predicated_return_load.has_value());
   EXPECT_EQ(predicated_return_load.error().front().message,
             "A function-local .param return load cannot be predicated.");
 
   const auto non_adjacent_return_load = resolve_source(
-      "call (output), callee, ();\n  mov.u32 %r0, %r0;\n  ld.param.u32 %r0, [output];");
+      "call (output), callee, (input);\n  mov.u32 %r0, %r0;\n  ld.param.u32 %r0, [output];");
   ASSERT_FALSE(non_adjacent_return_load.has_value());
   EXPECT_EQ(non_adjacent_return_load.error().front().message,
             "A function-local .param return load must be in the contiguous "

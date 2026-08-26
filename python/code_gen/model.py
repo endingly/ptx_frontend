@@ -79,6 +79,17 @@ class AddressAlignmentConstraint:
     vector_modifier: str | None = None
 
 
+@dataclass(frozen=True)
+class MemoryVectorConstraint:
+    """Typed PTX 8.8 256-bit ld/st vector cross-rule."""
+
+    type_modifier: str
+    vector_operand: str
+    address_operand: str
+    availability: dict[str, Any] = field(default_factory=dict)
+    state_space_modifier: str | None = None
+
+
 class RuntimeLookupKind(str, Enum):
     """Runtime C++ lookup forms emitted for backend value domains."""
 
@@ -190,6 +201,7 @@ class VariantSpec:
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None
     address_alignment: AddressAlignmentConstraint | None = None
+    memory_vector: MemoryVectorConstraint | None = None
 
 
 @dataclass(frozen=True)

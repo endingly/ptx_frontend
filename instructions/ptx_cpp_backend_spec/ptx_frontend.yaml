@@ -109,6 +109,7 @@ domains:
     values:
       v2: VectorArity::V2
       v4: VectorArity::V4
+      v8: VectorArity::V8
 
   memory_state_spaces:
     cpp_type: MemoryStateSpace

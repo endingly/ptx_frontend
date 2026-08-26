@@ -141,6 +141,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_sink: true
     - name: address
       kind: addr
       role: addr
@@ -166,6 +167,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_sink: true
     - name: address
       kind: addr
       role: addr
@@ -210,6 +212,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_sink: true
 
   st_explicit_vector:
     - name: address
@@ -235,6 +238,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_sink: true
 
   st_explicit_scalar:
     - name: address
@@ -397,11 +401,10 @@ instructions:
   - opcode: ld
     section: "9.7.9.8"
     doc: >
-      Scalar and legacy v2/v4 8/16/32/64-bit integer, bit-size, and 32/64-bit
-      floating-point load through a generic address or the basic explicit
-      const, global, local, parameter, and shared spaces. Other qualifiers and
-      newer vector extensions remain separate coverage.
-    syntax: "ld{.const|.global|.local|.param|.shared}{.v2|.v4}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} dst, [address]"
+      Scalar and legacy v2/v4 forms, plus PTX 8.8 256-bit v8 32-bit and v4
+      64-bit vector loads through a generic address or explicit global space.
+      Alignment and other qualifiers remain separate coverage.
+    syntax: "ld{.const|.global|.local|.param|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} dst, [address]"
 
     variants:
       - name: ld_generic_scalar
@@ -552,7 +555,10 @@ instructions:
             kind: vector
             domain: vector_arities
             presence: required
-            values: [v2, v4]
+            values:
+              - v2
+              - v4
+              - v8
           - name: type
             kind: type
             domain: scalar_types
@@ -572,11 +578,18 @@ instructions:
             address_operand: address
             type_modifier: type
             vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: dst
+            address_operand: address
+            availability: {ptx: "8.8", sm: 100}
 
         examples:
           - ptx: "ld.v2.u32 {%r0, %r1}, [%rd0];"
             valid: true
           - ptx: "ld.v4.u16 {%h0, %h1, %h2, %h3}, [%rd0];"
+            valid: true
+          - ptx: "ld.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];"
             valid: true
 
       - name: ld_explicit_vector
@@ -603,7 +616,10 @@ instructions:
             kind: vector
             domain: vector_arities
             presence: required
-            values: [v2, v4]
+            values:
+              - v2
+              - v4
+              - v8
           - name: type
             kind: type
             domain: scalar_types
@@ -627,6 +643,12 @@ instructions:
             address_operand: address
             type_modifier: type
             vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: dst
+            address_operand: address
+            state_space_modifier: state_space
+            availability: {ptx: "8.8", sm: 100}
 
         examples:
           - ptx: "ld.global.v2.u32 {%r0, %r1}, [global_value];"
@@ -637,11 +659,10 @@ instructions:
   - opcode: st
     section: "9.7.9.11"
     doc: >
-      Scalar and legacy v2/v4 8/16/32/64-bit integer, bit-size, and 32/64-bit
-      floating-point store through a generic address or the basic explicit
-      global, local, parameter, and shared spaces. Other qualifiers and newer
-      vector extensions remain separate coverage.
-    syntax: "st{.global|.local|.param|.shared}{.v2|.v4}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} [address], src"
+      Scalar and legacy v2/v4 forms, plus PTX 8.8 256-bit v8 32-bit and v4
+      64-bit vector stores through a generic address or explicit global space.
+      Alignment and other qualifiers remain separate coverage.
+    syntax: "st{.global|.local|.param|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} [address], src"
 
     variants:
       - name: st_generic_scalar
@@ -760,7 +781,10 @@ instructions:
             kind: vector
             domain: vector_arities
             presence: required
-            values: [v2, v4]
+            values:
+              - v2
+              - v4
+              - v8
           - name: type
             kind: type
             domain: scalar_types
@@ -780,11 +804,18 @@ instructions:
             address_operand: address
             type_modifier: type
             vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: src
+            address_operand: address
+            availability: {ptx: "8.8", sm: 100}
 
         examples:
           - ptx: "st.v2.u32 [%rd0], {%r0, %r1};"
             valid: true
           - ptx: "st.v4.u16 [%rd0], {%h0, %h1, %h2, %h3};"
+            valid: true
+          - ptx: "st.v4.u64 [%rd0], {%rd0, %rd1, %rd2, %rd3};"
             valid: true
 
       - name: st_explicit_vector
@@ -811,7 +842,10 @@ instructions:
             kind: vector
             domain: vector_arities
             presence: required
-            values: [v2, v4]
+            values:
+              - v2
+              - v4
+              - v8
           - name: type
             kind: type
             domain: scalar_types
@@ -835,6 +869,12 @@ instructions:
             address_operand: address
             type_modifier: type
             vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: src
+            address_operand: address
+            state_space_modifier: state_space
+            availability: {ptx: "8.8", sm: 100}
 
         examples:
           - ptx: "st.global.v2.u32 [global_value], {%r0, %r1};"

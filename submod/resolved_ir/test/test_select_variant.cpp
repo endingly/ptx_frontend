@@ -200,11 +200,12 @@ TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
             invalid_store.modifiers.front().syntax.range);
   EXPECT_EQ(invalid_store_selected.error().message, "Unknown modifier '.ca'.");
 
-  const auto invalid_vector = parse_instruction(
+  const auto modern_vector = parse_instruction(
       "ld.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];");
-  const auto invalid_vector_selected = selectVariant<Ld>(invalid_vector);
-  ASSERT_FALSE(invalid_vector_selected.has_value());
-  EXPECT_EQ(invalid_vector_selected.error().message, "Unknown modifier '.v8'.");
+  const auto modern_vector_selected = selectVariant<Ld>(modern_vector);
+  ASSERT_TRUE(modern_vector_selected.has_value())
+      << modern_vector_selected.error().message;
+  EXPECT_EQ(*modern_vector_selected, Ld::VariantType::GenericVector);
 
   const auto vector_mmio = parse_instruction(
       "ld.mmio.relaxed.sys.v2.u32 {%r0, %r1}, [%rd0];");

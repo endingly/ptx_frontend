@@ -1054,7 +1054,7 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
 
 std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
 resolve_reg_vector(const syntax_ast::AstOperand& operand,
-                   ScalarType instruction_type, checker::OperandAccess access,
+                   ScalarType instruction_type,
                    std::span<const uint8_t> allowed_arities,
                    std::optional<uint8_t> required_arity,
                    checker::VectorTypePolicy vector_type_policy,
@@ -1104,7 +1104,9 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
       std::ranges::find(allowed_arities, arity) == allowed_arities.end()) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message = "A vector mov requires two or four elements.",
+        .message = vector_type_policy == checker::VectorTypePolicy::Aggregate
+                       ? "A vector mov requires two or four elements."
+                       : "A vector operand requires two, four, or eight elements.",
     });
   }
   size_t element_bytes = scalar_size_of(instruction_type);
@@ -1135,10 +1137,17 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     }
     locations.push_back(identifier->syntax.range);
     if (identifier->syntax.text == "_") {
-      if (access != checker::OperandAccess::Write || !allow_sink) {
+      if (!allow_sink) {
         return std::unexpected(ResolveDiagnostic{
             .range = identifier->syntax.range,
             .message = "The '_' sink is allowed only in a destination vector.",
+        });
+      }
+      if (vector_type_policy == checker::VectorTypePolicy::Element &&
+          vector_payload_bits != 256) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = identifier->syntax.range,
+            .message = "The '_' sink is allowed only in a 256-bit memory vector.",
         });
       }
       ++sink_count;
@@ -1172,7 +1181,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   if (sink_count == arity) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message = "A destination vector must contain at least one register.",
+        .message = "A vector must contain at least one register.",
     });
   }
   WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
@@ -1655,7 +1664,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!arity)
         return std::unexpected(arity.error());
       auto value =
-          resolve_reg_vector(operand, *type, binding.access,
+          resolve_reg_vector(operand, *type,
                              binding.allowed_vector_arities,
                              *arity,
                              binding.vector_type_policy,

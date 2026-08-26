@@ -40,6 +40,7 @@ class ResolvedValueDomainGenerationTests(unittest.TestCase):
         self.assertIn("std::array<PtxSuffixEntry<RoundingMode>, 4>", source)
         self.assertIn("kRoundingModes", source)
         self.assertIn('{"rn", RoundingMode::Rn}', source)
+        self.assertIn('{"v8", VectorArity::V8}', source)
         self.assertNotIn("resolved_value_kinds =", source)
 
 

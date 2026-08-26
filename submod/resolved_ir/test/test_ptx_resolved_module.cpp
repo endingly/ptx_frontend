@@ -915,9 +915,11 @@ TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
     return resolveModule(parseModule(source));
   };
 
-  const auto v8 = resolve_source("ld.v8.u32 {%r0, %r1}, [%rd0];");
-  ASSERT_FALSE(v8.has_value());
-  EXPECT_EQ(v8.error().front().message, "Unknown modifier '.v8'.");
+  const auto v8_arity_mismatch =
+      resolve_source("ld.v8.u32 {%r0, %r1}, [%rd0];");
+  ASSERT_FALSE(v8_arity_mismatch.has_value());
+  EXPECT_EQ(v8_arity_mismatch.error().front().message,
+            "This vector operand requires 8 elements.");
 
   const auto scalar_load = resolve_source("ld.v2.u32 %r0, [%rd0];");
   ASSERT_FALSE(scalar_load.has_value());
@@ -937,24 +939,10 @@ TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
   EXPECT_EQ(arity_mismatch.error().front().message,
             "This vector operand requires 4 elements.");
 
-  const auto overwide_load =
-      resolve_source("ld.v4.u64 {%r0, %r1, %r2, %r3}, [%rd0];");
-  ASSERT_FALSE(overwide_load.has_value());
-  EXPECT_EQ(overwide_load.error().front().message,
-            "This vector operand's payload width (256 bits) exceeds the "
-            "supported 128 bit limit.");
-
   const auto sink = resolve_source("st.v2.u32 [%rd0], {%r0, _};");
   ASSERT_FALSE(sink.has_value());
   EXPECT_EQ(sink.error().front().message,
-            "The '_' sink is allowed only in a destination vector.");
-
-  const auto overwide_store =
-      resolve_source("st.v4.u64 [%rd0], {%r0, %r1, %r2, %r3};");
-  ASSERT_FALSE(overwide_store.has_value());
-  EXPECT_EQ(overwide_store.error().front().message,
-            "This vector operand's payload width (256 bits) exceeds the "
-            "supported 128 bit limit.");
+            "The '_' sink is allowed only in a 256-bit memory vector.");
 
   EXPECT_TRUE(resolve_source("ld.v2.u16 {%r0, %r1}, [%rd0];").has_value());
 
@@ -969,6 +957,95 @@ TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
   EXPECT_EQ(kind_mismatch.error().front().message,
             "Vector element '%f0' has type 'F32' incompatible with this "
             "instruction.");
+}
+
+TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
+  const auto ast = parseModule(R"ptx(
+.global .align 32 .u64 global64;
+.shared .u32 shared32;
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r<8>;
+  .reg .u64 %d<4>;
+  ld.v8.u32 {_, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];
+  st.global.v4.u64 [global64], {_, %d1, %d2, %d3};
+  st.global.v4.u64 [global64+8], {_, %d1, %d2, %d3};
+  ld.v4.u64 {%d0, %d1, %d2, %d3}, [%rd0];
+  ld.shared.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [shared32];
+  ld.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [shared32];
+  ld.v8.u16 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];
+  st.v8.u32 [%rd0], {_, %r1, %r2, %r3, %r4, %r5, %r6, %r7};
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+
+  const checker::Context supported{
+      .target = {.ptx_version = {8, 8}, .sm_version = 100},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[0]), supported).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[1]), supported).has_value());
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[3]), supported).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[7]), supported).has_value());
+
+  const auto underaligned = checker::check(std::get<St>(body[2]), supported);
+  ASSERT_FALSE(underaligned.has_value());
+  EXPECT_EQ(underaligned.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const auto explicit_non_global = checker::check(std::get<Ld>(body[4]), supported);
+  ASSERT_FALSE(explicit_non_global.has_value());
+  EXPECT_EQ(explicit_non_global.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+  const auto generic_bound_non_global =
+      checker::check(std::get<Ld>(body[5]), supported);
+  ASSERT_FALSE(generic_bound_non_global.has_value());
+  EXPECT_EQ(generic_bound_non_global.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+  const auto wrong_width = checker::check(std::get<Ld>(body[6]), supported);
+  ASSERT_FALSE(wrong_width.has_value());
+  EXPECT_EQ(wrong_width.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+
+  auto old_ptx = supported;
+  old_ptx.target.ptx_version = {8, 7};
+  const auto ptx_rejected = checker::check(std::get<Ld>(body[3]), old_ptx);
+  ASSERT_FALSE(ptx_rejected.has_value());
+  EXPECT_EQ(ptx_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  auto old_sm = supported;
+  old_sm.target.sm_version = 90;
+  const auto sm_rejected = checker::check(std::get<Ld>(body[3]), old_sm);
+  ASSERT_FALSE(sm_rejected.has_value());
+  EXPECT_EQ(sm_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto overwide = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u64 %d<8>;
+  ld.v8.u64 {%d0, %d1, %d2, %d3, %d4, %d5, %d6, %d7}, [%rd0];
+}
+)ptx");
+  const auto overwide_resolved = resolveModule(overwide);
+  ASSERT_FALSE(overwide_resolved.has_value());
+  EXPECT_EQ(overwide_resolved.error().front().message,
+            "This vector operand's payload width (512 bits) exceeds the "
+            "supported 256 bit limit.");
+
+  const auto all_sinks = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  ld.v8.u32 {_, _, _, _, _, _, _, _}, [%rd0];
+}
+)ptx");
+  const auto all_sinks_resolved = resolveModule(all_sinks);
+  ASSERT_FALSE(all_sinks_resolved.has_value());
+  EXPECT_EQ(all_sinks_resolved.error().front().message,
+            "A vector must contain at least one register.");
 }
 
 TEST(ResolvedModule, KeepsNonMemoryRegisterWidthChecksStrict) {
@@ -1521,7 +1598,7 @@ TEST(ResolvedModule, RejectsInvalidMovRegisterVectorForms) {
   const auto all_sinks = resolve_source("mov.b32 {_, _}, %r0;");
   ASSERT_FALSE(all_sinks.has_value());
   EXPECT_EQ(all_sinks.error().front().message,
-            "A destination vector must contain at least one register.");
+            "A vector must contain at least one register.");
 
   const auto scalar_b128 = resolve_source("mov.b128 %q0, %q0;");
   ASSERT_FALSE(scalar_b128.has_value());

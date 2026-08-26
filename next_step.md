@@ -264,8 +264,8 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 - Python schema/model/normalizer/generator 与 C++ resolver/checker 回归覆盖 static plain/
   availability entry、非法输入、descriptor、generic allow/reject/availability、runtime
   explicit field/location、store source type、方括号要求及损坏 descriptor field；
-- legacy `.v2/.v4` vector memory form 已在后续切片完成；memory consistency、modern vector
-  form 与 `.b128` 仍待后续。explicit `ld.const` 本身属于 PTX 1.0 basic explicit baseline。
+- legacy `.v2/.v4` vector memory form 已在后续切片完成；memory consistency 与 modern vector
+  form 已由后续切片完成，scalar `.b128` 仍待后续。explicit `ld.const` 本身属于 PTX 1.0 basic explicit baseline。
 
 ## 已完成：ld/st explicit `.param` direction 与 function availability
 
@@ -365,13 +365,26 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
   descriptor、resolver 与 checker；descriptor 保存 `vector_arity_modifier_field_id`，实际
   braced operand arity 会与 runtime field 对齐检查；
 - vector type policy 改为数据驱动：`mov` 使用 aggregate policy，memory vector 使用 element
-  policy；memory vector element 复用 `EqualOrWider` register-width policy，不允许 `_` sink；
+  policy；memory vector element 复用 `EqualOrWider` register-width policy；
 - generic/explicit baseline、14-type family、cache operator、address allowlist、`.param`
   direction/function availability、explicit `.f64` SM13 与 generic PTX2/SM20 规则继续复用
   既有 scalar 数据；
-- 本切片只覆盖 legacy braced operands，memory vector payload 最多 128 bit（`.v2` 到
-  64-bit type、`.v4` 到 32-bit type）；`.v4` 64-bit 与 `.v8`、modern sink、`.b128`、
-  vector-variable shorthand、consistency qualifier 或 alignment 规则均仍未实现。
+- legacy braced operands 保持最多 128 bit（`.v2` 到 64-bit type、`.v4` 到 32-bit
+  type）与无 sink；其余现代 form 由下一项覆盖。
+
+## 已完成：ld/st PTX 8.8 256-bit modern vector
+
+- 仍复用四个 `GenericVector`/`ExplicitVector` variants；runtime `.v8` 贯通 schema、
+  normalizer、resolved model、value domain、resolver、checker descriptor 与生成 wrapper；
+- 生成的 typed `memory_vector` cross constraint 以 arity > 4、payload > 128 或 sink
+  为现代候选，要求精确 256 bit、PTX 8.8/SM 100，以及地址已知时为 global；对 explicit form
+  则在现代候选上要求 runtime state-space 为 `.global`，generic 的 register/immediate/standalone
+  unknown address 继续允许；
+- 只接受 `.v8` × `b32/u32/s32/f32` 与 `.v4` × `b64/u64/s64/f64` 的 256-bit payload；
+  load destination 与 store source 可部分使用 `_`，但 all-sink 仍拒绝，legacy sink 仍拒绝；
+- 未加入 scalar `.b128`、cache-hint/eviction/prefetch/unified、param/shared subqualifier
+  或 call-context；后续 static-alignment slice 已覆盖包括 32-byte modern access 在内的
+  已知 address total-access alignment。
 
 ## 已完成：小模块的 source-bearing interface library
 
@@ -416,9 +429,9 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
 1. 为 `ld/st` 增加 modern vector form、alignment 与其余跨 modifier 规则；已完成
    PTX ≤9.2 的 omission/`.weak`/`.volatile`/scoped
    `.relaxed/.acquire/.release` 及 PTX 8.2 scalar `.mmio.relaxed.sys` consistency
-   qualifier。legacy `.v2/.v4` 明确不接受 mmio；static address-alignment checking 已覆盖
-   bound data symbol 加常量 byte offset 与 absolute immediate，register/standalone unknown
-   address 不推断；modern vector extension 仍保留为后续工作；
+   qualifier。legacy `.v2/.v4` 明确不接受 mmio；PTX 8.8/SM 100 256-bit modern vector
+   已完成；static address-alignment checking 已覆盖 bound data symbol 加常量 byte offset
+   与 absolute immediate，register/standalone unknown address 不推断；
    function-local call-argument `.param` 及相关 call-context 规则留到 `call` 阶段；
 2. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
    接入统一 dispatch/checker；

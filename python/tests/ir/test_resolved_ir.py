@@ -69,6 +69,56 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
 
+    def test_normalizes_memory_vector_cross_constraint(self) -> None:
+        variant = {
+            "name": "sample_vector",
+            "availability": {"ptx": "1.0"},
+            "modifiers": [
+                {
+                    "name": "type",
+                    "kind": "type",
+                    "presence": "required",
+                    "domain": "scalar_types",
+                    "values": ["u32"],
+                }
+            ],
+            "operands": [
+                {
+                    "name": "dst",
+                    "kind": "reg_vector",
+                    "role": "dst",
+                    "access": "write",
+                    "type": {"expr": "modifier(type)"},
+                    "vector": {"kind": "vector", "arity": [8]},
+                },
+                {"name": "address", "kind": "addr", "role": "addr", "access": "read"},
+            ],
+            "constraints": [
+                {
+                    "kind": "memory_vector",
+                    "type_modifier": "type",
+                    "vector_operand": "dst",
+                    "address_operand": "address",
+                    "availability": {"ptx": "8.8", "sm": 100},
+                }
+            ],
+        }
+        spec = {
+            "category": "test",
+            "codegen_category": "test",
+            "instructions": [{"opcode": "sample", "variants": [variant]}],
+        }
+        normalized = normalize_instruction_spec(spec)[0].variants[0]
+        assert normalized.memory_vector is not None
+        self.assertEqual(normalized.memory_vector.vector_operand, "dst")
+        self.assertEqual(normalized.memory_vector.availability["sm"], 100)
+
+        invalid = dict(variant)
+        invalid["constraints"] = [dict(variant["constraints"][0], availability="8.8")]
+        spec["instructions"][0]["variants"] = [invalid]
+        with self.assertRaisesRegex(TypeError, "availability must be an object"):
+            normalize_instruction_spec(spec)
+
     def test_add_variant_names(self) -> None:
         self.assertEqual(self.instruction.opcode, "add")
         self.assertEqual(self.instruction.cpp_name, "Add")
@@ -828,7 +878,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(vector_variant.address_alignment.vector_field_id, "vector")
         self.assertEqual(
             [value.value for value in next(modifier for modifier in ld.variants[2].modifiers if modifier.name == "vector").values],
-            ["v2", "v4"],
+            ["v2", "v4", "v8"],
         )
         vector_binding = vector_variant.operand_layouts[0].bindings[0]
         self.assertEqual(vector_binding.allowed_vector_arities, ())
@@ -837,7 +887,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             vector_binding.vector_type_policy,
             ResolvedVectorTypePolicy.ELEMENT,
         )
-        self.assertFalse(vector_binding.allow_vector_sink)
+        self.assertTrue(vector_binding.allow_vector_sink)
+        self.assertEqual(vector_variant.memory_vector.type_field_id, "type")
+        self.assertEqual(vector_variant.memory_vector.vector_field_id, "dst")
+        self.assertEqual(
+            dict(vector_variant.memory_vector.availability),
+            {"ptx": "8.8", "sm": 100},
+        )
         self.assertEqual(
             explicit_vector_variant.operand_layouts[0]
             .bindings[0]
@@ -968,7 +1024,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(store_vector.memory_consistency.mmio_field_id, "")
         self.assertEqual(
             [value.value for value in next(modifier for modifier in st.variants[2].modifiers if modifier.name == "vector").values],
-            ["v2", "v4"],
+            ["v2", "v4", "v8"],
         )
         store_vector_binding = store_vector.operand_layouts[0].bindings[1]
         self.assertEqual(store_vector_binding.allowed_vector_arities, ())
@@ -980,6 +1036,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             store_vector_binding.vector_type_policy,
             ResolvedVectorTypePolicy.ELEMENT,
         )
+        self.assertTrue(store_vector_binding.allow_vector_sink)
+        self.assertEqual(store_vector.memory_vector.vector_field_id, "src")
         store_vector_parameter = (
             store.variants[3].operand_layouts[0].bindings[0].parameter_constraint
         )
@@ -1213,6 +1271,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_memory_consistency(", source)
         self.assertIn("check_address_alignment(", source)
         self.assertIn(".address_alignment = address_alignment", source)
+        self.assertIn("check_memory_vector(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = load_codegen_database(
@@ -1360,6 +1419,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".memory_consistency = {", source)
         self.assertIn(".address_alignment = {", source)
         self.assertIn('.vector_field_id = "vector",', source)
+        self.assertIn(".memory_vector = {", source)
+        self.assertIn('.vector_field_id = "dst",', source)
+        self.assertIn('.vector_field_id = "src",', source)
         self.assertIn(".semantics_field_id = \"semantics\",", source)
         self.assertIn(
             ".special_register_kind = base::SpecialRegisterKind::Tid,",

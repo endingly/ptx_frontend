@@ -316,7 +316,7 @@ TEST(ResolvedIrChecker, ChecksDynamicVectorArityAndElementPolicy) {
 }
 
 TEST(ResolvedIrChecker, RejectsOverwideVectorOperandPayload) {
-  const std::array<uint8_t, 2> allowed_vector_arities = {2, 4};
+  const std::array<uint8_t, 3> allowed_vector_arities = {2, 4, 8};
   const OperandDescriptor descriptors[] = {{
       .target_field_id = "dst",
       .type_expression =
@@ -335,8 +335,9 @@ TEST(ResolvedIrChecker, RejectsOverwideVectorOperandPayload) {
       .field_id = "dst",
       .actual_shape = OperandShape::Vector,
       .vector_element_types = {ScalarType::U64, ScalarType::U64, ScalarType::U64,
-                              ScalarType::U64},
-      .vector_arity = 4,
+                               ScalarType::U64, ScalarType::U64, ScalarType::U64,
+                               ScalarType::U64, ScalarType::U64},
+      .vector_arity = 8,
       .locations = std::span<const SourceRange>{&kInstructionRange, 1},
   };
   const Context context{.target = {}, .instruction_range = kInstructionRange};
@@ -350,8 +351,8 @@ TEST(ResolvedIrChecker, RejectsOverwideVectorOperandPayload) {
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(rejected.error().front().message,
-            "Vector operand 'dst' payload width (256 bits) exceeds the "
-            "supported 128 bit limit.");
+            "Vector operand 'dst' payload width (512 bits) exceeds the "
+            "supported 256 bit limit.");
   EXPECT_EQ(rejected.error().front().range, kInstructionRange);
 }
 
@@ -1031,6 +1032,47 @@ TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
   ASSERT_FALSE(missing_vector.has_value());
   EXPECT_EQ(missing_vector.error().front().kind,
             CheckDiagnosticKind::RuleViolation);
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedModernMemoryVectorCrossRules) {
+  constexpr VariantDescriptor::MemoryVectorDescriptor descriptor{
+      .type_field_id = "type",
+      .vector_field_id = "vector",
+      .address_field_id = "address",
+      .availability = {.minimum_ptx_version = {8, 8}, .minimum_sm_version = 100},
+  };
+  const FieldView fields[] = {{.field_id = "type", .scalar_type = ScalarType::U32}};
+  OperandView operands[] = {
+      {.field_id = "vector",
+       .actual_shape = OperandShape::Vector,
+       .vector_arity = 8,
+       .vector_sink_count = 1},
+      {.field_id = "address", .actual_shape = OperandShape::Address},
+  };
+  const Context supported{
+      .target = {.ptx_version = {8, 8}, .sm_version = 100},
+      .instruction_range = kInstructionRange,
+  };
+  EXPECT_TRUE(check_memory_vector(descriptor, fields, operands, supported)
+                  .has_value());
+
+  auto old_ptx = supported;
+  old_ptx.target.ptx_version = {8, 7};
+  const auto ptx_rejected = check_memory_vector(descriptor, fields, operands, old_ptx);
+  ASSERT_FALSE(ptx_rejected.has_value());
+  EXPECT_EQ(ptx_rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  auto old_sm = supported;
+  old_sm.target.sm_version = 90;
+  const auto sm_rejected = check_memory_vector(descriptor, fields, operands, old_sm);
+  ASSERT_FALSE(sm_rejected.has_value());
+  EXPECT_EQ(sm_rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  operands[1].address_state_space = MemoryStateSpace::Shared;
+  const auto non_global = check_memory_vector(descriptor, fields, operands, supported);
+  ASSERT_FALSE(non_global.has_value());
+  EXPECT_EQ(non_global.error().front().kind, CheckDiagnosticKind::RuleViolation);
 }
 
 }  // namespace

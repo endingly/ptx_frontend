@@ -1004,6 +1004,7 @@ $defs:
           - custom
           - memory_consistency
           - address_alignment
+          - memory_vector
 
       operands:
         type: array
@@ -1050,6 +1051,11 @@ $defs:
       vector_modifier:
         $ref: "#/$defs/schema_identifier"
 
+      vector_operand:
+        $ref: "#/$defs/schema_identifier"
+
+      availability:
+        $ref: "#/$defs/availability"
   example:
     description: "Positive or negative PTX example for an instruction or variant."
     type: object

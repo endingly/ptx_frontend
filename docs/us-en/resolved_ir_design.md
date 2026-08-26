@@ -20,14 +20,15 @@ type families accept register, immediate, and special-register sources; the
 legal formal-parameter-address sources. Bit-size forms also support two/four-
 element vector pack/unpack; `.b128` is vector-only. `mov.pred` reuses the declaration-aware
 `ResolvedPredicate` representation. Generic and basic explicit-space scalar
-plus legacy `.v2/.v4` vector `ld`/`st` exercise the dereferenced-address path
+plus braced-vector `ld`/`st` exercise the dereferenced-address path
 for 14 bit-size, integer, and floating-point types from 8 through 64 bits.
 Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
-types through 64 bits, `.v4` through 32 bits, and `.v4` 64-bit remains deferred.
-Other source forms, modern memory vectors, remaining qualifier extensions,
-`call` groups, CFG/SSA, and target lowering remain later work. Static natural
+types through 64 bits and `.v4` through 32 bits. PTX 8.8/SM 100 additionally
+accepts exactly 256-bit `.v8` × 32-bit and `.v4` × 64-bit forms. Static natural
 alignment checks bound data symbols with constant byte offsets and absolute
 immediate addresses; register and standalone unresolved addresses stay unknown.
+Other source forms, remaining qualifier extensions, `call` groups, CFG/SSA, and
+target lowering remain later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -171,19 +172,19 @@ A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
 add/subtract operator and a parsed signed 64-bit value.
 A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
 address value restricted to an addressable data-symbol or formal-parameter
-base. Scalar and legacy `.v2/.v4` `ld`/`st` require bracketed dereference and
+base. Scalar and braced-vector `ld`/`st` require bracketed dereference and
 cover register, immediate, and bound-symbol bases. Each opcode uses
 `GenericScalar`, `ExplicitScalar`, `GenericVector`, and `ExplicitVector`
 variants. Their runtime type field accepts `.b8/.b16/.b32/.b64`,
 `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; `.b128` is not a
 memory type in the current model. Vector variants add a required runtime
-`.v2/.v4` field, and the register-vector operand descriptor links its expected
+`.v2/.v4/.v8` field, and the register-vector operand descriptor links its expected
 element count to that field rather than duplicating variants per arity. Memory
 vectors use element type policy: each register element is checked against the
-instruction type, with `EqualOrWider` register width accepted and `_` sinks
-rejected. Their payload is capped at 128 bits: `.v2` accepts modeled types
-through 64 bits and `.v4` through 32 bits; `.v4` 64-bit remains deferred. The
-default register-width policy is `SameWidth`, preserving
+instruction type, with `EqualOrWider` register width accepted. Legacy payloads
+are capped at 128 bits; the generated cross constraint adds only exact 256-bit
+`.v8` × 32-bit and `.v4` × 64-bit forms at PTX 8.8/SM 100, global when known,
+with partial sinks. The default register-width policy is `SameWidth`, preserving
 `mov/add/sub`, immediate, and special-register behavior. Only `ld` destination
 and `st` source register descriptors select `EqualOrWider`, so the declared
 register may be at least as wide as the instruction type. After that size
@@ -228,9 +229,12 @@ distinct from explicit `.weak`; `.volatile`, `.relaxed`, `.acquire`, and
 for relaxed/acquire/release, rejects cache with volatile/ordered/mmio forms,
 uses known address-space identity without guessing unknown generic addresses,
 and applies the global/shared, `volatile.local` PTX 9.1, and scalar
-`.mmio.relaxed.sys` rules. Static natural alignment covers scalar and legacy
-`.v2/.v4` total access sizes when the address is known; modern vector forms
-remain deferred.
+`.mmio.relaxed.sys` rules. A generated `memory_vector` cross constraint detects
+arity > 4, payload > 128, or sinks; it requires a 256-bit payload, global space
+when known, and PTX 8.8/SM 100. Partial sinks are valid only for those modern
+load/store vectors; all-sink and legacy sinks remain invalid. Static natural
+alignment covers scalar, legacy `.v2/.v4`, and modern 256-bit total access sizes
+when the address is known.
 
 `ResolvedAddress` separately records the enclosing function kind. Generated
 address views derive an optional parameter direction only from a bound
@@ -410,7 +414,7 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 `resolved_ir.gen.hpp`.
 
 Function-local call-argument `.param` memory, qualified `::entry`/`::func`
-forms, call adjacency/predication constraints, modern memory vector forms,
-`.b128`, declaration-type availability for wider `.b128` registers, and modern
-memory vector forms remain outside this slice. Legacy scalar/vector `ld/st` cache operators, legacy `.v2/.v4`
-braced memory vectors, and memory-consistency qualifiers are covered here.
+forms, call adjacency/predication constraints, scalar `.b128`, and declaration-type
+availability for wider `.b128` registers remain outside this slice. Legacy scalar/vector
+`ld/st` cache operators, PTX 8.8 modern memory vectors, static memory-address alignment,
+and memory-consistency qualifiers are covered here.

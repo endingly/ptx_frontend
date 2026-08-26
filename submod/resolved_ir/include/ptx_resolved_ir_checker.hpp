@@ -36,6 +36,7 @@ enum class VectorArity : uint8_t {
   Invalid,
   V2,
   V4,
+  V8,
 };
 
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
@@ -44,6 +45,8 @@ constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
       return 2;
     case VectorArity::V4:
       return 4;
+    case VectorArity::V8:
+      return 8;
     case VectorArity::Invalid:
       return 0;
   }
@@ -181,9 +184,8 @@ enum class VectorTypePolicy : uint8_t {
   Element,
 };
 
-/** Current ResolvedRegisterVector/checker payload ceiling; modern memory-vector
- * support must raise or model it. */
-inline constexpr size_t kMaxRegisterVectorPayloadBits = 128;
+/** Maximum resolved register-vector payload width supported by this frontend. */
+inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
 
 /** Semantic constraints for one operand position in a resolved layout. */
 struct OperandDescriptor {
@@ -245,7 +247,7 @@ struct OperandView {
   EnclosingFunctionKind enclosing_function_kind = EnclosingFunctionKind::Unknown;
   /** None unless the base binds an input or return parameter declaration. */
   ParameterDirection parameter_direction = ParameterDirection::None;
-  std::array<ScalarType, 4> vector_element_types{};
+  std::array<ScalarType, 8> vector_element_types{};
   uint8_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
   std::optional<AvailabilityDescriptor> value_availability;
@@ -343,6 +345,14 @@ struct VariantDescriptor {
   } memory_consistency;
   /** Empty field IDs mean this variant has no static alignment rule. */
   AddressAlignmentConstraint address_alignment;
+  /** Empty field IDs mean this variant has no modern memory-vector rule. */
+  struct MemoryVectorDescriptor {
+    std::string_view type_field_id;
+    std::string_view vector_field_id;
+    std::string_view address_field_id;
+    std::string_view state_space_field_id;
+    AvailabilityDescriptor availability;
+  } memory_vector;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -471,6 +481,12 @@ CheckResult check_memory_consistency(
 /** Check a natural-alignment rule when an address is statically known. */
 CheckResult check_address_alignment(
     const AddressAlignmentConstraint& descriptor,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context);
+
+/** Check generated PTX 8.8 256-bit ld/st vector cross constraints. */
+CheckResult check_memory_vector(
+    const VariantDescriptor::MemoryVectorDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     const Context& context);
 

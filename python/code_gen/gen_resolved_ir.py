@@ -1064,6 +1064,9 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   }} else if (*symbol->declaration_kind ==
                              binding::SymbolKind::ReturnParameter) {{
                     parameter_direction = ParameterDirection::Return;
+                  }} else if (*symbol->declaration_kind ==
+                             binding::SymbolKind::CallParameter) {{
+                    parameter_direction = ParameterDirection::CallArgument;
                   }}
                 }}
                 std::optional<uint64_t> address_alignment;

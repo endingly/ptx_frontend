@@ -251,6 +251,44 @@ again:
   }
 }
 
+TEST(PtxSymbolTable, ClassifiesLocalCallParametersInTheirFunctionScope) {
+  constexpr std::string_view source = R"ptx(
+.func callee();
+.func first() {
+  .param .u32 staging;
+  call callee, (staging);
+}
+.func second() { call callee; }
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+  ASSERT_TRUE(binding_result.diagnostics.empty());
+  const auto first = binding_result.table.lookup(
+      binding_result.table.moduleScope(), "first");
+  const auto second = binding_result.table.lookup(
+      binding_result.table.moduleScope(), "second");
+  ASSERT_TRUE(first.has_value());
+  ASSERT_TRUE(second.has_value());
+  const auto first_scope =
+      *binding_result.table.symbol(first->symbol).owned_scope;
+  const auto second_scope =
+      *binding_result.table.symbol(second->symbol).owned_scope;
+  const auto staging = binding_result.table.lookup(first_scope, "staging");
+  ASSERT_TRUE(staging.has_value());
+  EXPECT_EQ(binding_result.table.symbol(staging->symbol).kind,
+            binding::SymbolKind::CallParameter);
+  EXPECT_EQ(binding_result.table.symbol(staging->symbol).scope, first_scope);
+  EXPECT_FALSE(binding_result.table.lookup(second_scope, "staging").has_value());
+  const auto* argument = findReference(binding_result.table, "staging",
+                                       binding::ReferenceKind::CallArgument);
+  ASSERT_NE(argument, nullptr);
+  ASSERT_TRUE(argument->target.has_value());
+  EXPECT_EQ(argument->target->symbol, staging->symbol);
+}
+
 TEST(PtxSymbolTable, DiagnosesInvalidCallAndBranchTargetKinds) {
   constexpr std::string_view source = R"ptx(
 .global .u32 global_value;

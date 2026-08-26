@@ -537,6 +537,11 @@ class Checker {
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration);
+        if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
+          diagnose(DeclarationDiagnosticKind::ModuleScopeParameter,
+                   declaration->range,
+                   "A .param variable declaration must be local to a function.");
+        }
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         checkFunctionAlignments(*function);

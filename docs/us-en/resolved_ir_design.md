@@ -158,8 +158,10 @@ a `.param` address, while taking a device-function formal parameter address
 with `mov` materializes it on the stack and produces a `.local` address. A
 device-function formal-parameter `mov` address carries a PTX 2.0 / SM 20
 baseline; a return-parameter address raises the PTX minimum to 6.0. A
-function-local `.param` call-argument
-variable remains non-addressable through `mov`. Standalone resolution cannot
+function-local `.param` call-argument variable is a distinct bound symbol:
+direct `ld.param`/`st.param` addresses retain `.param`, satisfy either parameter
+direction, and require PTX 2.0 / SM 20; it remains non-addressable through `mov`.
+Standalone resolution cannot
 perform lexical binding, so it leaves identity and state-space fields empty as
 it does for branch targets. `ResolvedMovSource` classifies registers,
 immediates, special registers, data symbols, and address expressions after
@@ -238,7 +240,8 @@ when the address is known.
 
 `ResolvedAddress` separately records the enclosing function kind. Generated
 address views derive an optional parameter direction only from a bound
-`InputParameter` or `ReturnParameter`; they do not infer it from spelling.
+`InputParameter`, `ReturnParameter`, or a function-local call argument; they do
+not infer it from spelling.
 For explicit `.param`, the generated operand constraint requires input
 parameters for `ld` and return parameters for `st`. A known wrong direction
 reports `ParameterDirectionMismatch` without stacking target diagnostics. A

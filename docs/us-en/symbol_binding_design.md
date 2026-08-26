@@ -128,8 +128,9 @@ addresses and kernel formal-parameter `mov` addresses remain in `.param`;
 device-function formal-parameter `mov` addresses are in `.local`, and the
 checker applies a PTX 2.0 / SM 20 baseline to all such addresses and raises
 the PTX minimum to 6.0 for a return-parameter address.
-Function-local `.param` variables remain non-addressable, while
-standalone resolution keeps spelling only. A bare function name binds to a
+Function-local `.param` call-argument variables are bound separately from
+formal parameters; direct `ld.param`/`st.param` addresses are valid, while
+`mov` remains non-addressable. Standalone resolution keeps spelling only. A bare function name binds to a
 `ResolvedFunctionRef` with the same stable `SymbolId` and its `.func`/`.entry`
 classification. The checker requires PTX 3.1 / SM 35 for a kernel-function
 address; a device-function address uses the base PTX 1.0 availability of

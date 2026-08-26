@@ -1998,6 +1998,65 @@ TEST(ResolvedModule, RejectsLocallyScopedParamVariableAddress) {
             "Symbol 'call_argument' is not an addressable data symbol.");
 }
 
+TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
+  const auto ast = parseModule(R"ptx(
+.func (.param .u32 result) callee(.param .u32 input);
+.entry caller() {
+  .reg .u32 %r0, %r1;
+  .param .u32 input_staging, return_staging;
+  st.param.u32 [input_staging], %r0;
+  call (return_staging), callee, (input_staging);
+  ld.param.u32 %r1, [return_staging];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions[1].body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& store = std::get<St>(body[0]);
+  const auto& load = std::get<Ld>(body[2]);
+  const auto& address =
+      std::get<St::ExplicitScalar>(store.variant).address.value;
+  const auto& staging = std::get<ResolvedSymbolRef>(address.base);
+  EXPECT_EQ(staging.declaration_kind, binding::SymbolKind::CallParameter);
+  EXPECT_EQ(staging.declaration_state_space,
+            syntax_ast::AstStateSpace::Parameter);
+  EXPECT_EQ(staging.address_state_space, syntax_ast::AstStateSpace::Parameter);
+  const auto& call = std::get<Call>(body[1]);
+  const auto& call_operands =
+      std::get<Call::Direct::ReturnTargetInputOperands>(
+          std::get<Call::Direct>(call.variant).operands);
+  const auto caller_scope =
+      *resolved->symbols.symbol(resolved->functions[1].symbol_id).owned_scope;
+  const auto return_staging =
+      resolved->symbols.lookup(caller_scope, "return_staging");
+  ASSERT_TRUE(return_staging.has_value());
+  EXPECT_EQ(call_operands.return_value.value.symbol_id,
+            return_staging->symbol);
+
+  const checker::Context old_context{
+      .target = {.ptx_version = {1, 5}, .sm_version = 10},
+      .instruction_range = ast.range,
+  };
+  const checker::Context supported_context{
+      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+      .instruction_range = ast.range,
+  };
+  const auto expect_availability = [&](const auto& instruction) {
+    const auto checked = checker::check(instruction, old_context);
+    ASSERT_FALSE(checked.has_value());
+    ASSERT_EQ(checked.error().size(), 2u);
+    EXPECT_EQ(checked.error()[0].kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_EQ(checked.error()[1].kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(checker::check(instruction, supported_context).has_value());
+  };
+  expect_availability(store);
+  expect_availability(load);
+}
+
 TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   PtxSyntaxParser mov_parser("mov.u64 %rd0, global_value;");
   const auto mov_ast = mov_parser.parseInstruction();

@@ -659,6 +659,46 @@ resolve_branch_target(const syntax_ast::AstOperand& operand,
   return WithLocs<ResolvedBranchTarget>{std::move(resolved), target->range};
 }
 
+std::expected<WithLocs<ResolvedBranchTargetSet>, ResolveDiagnostic>
+resolve_branch_target_set(const syntax_ast::AstOperand& operand,
+                          const ResolveContext* context) {
+  const auto* target_set =
+      std::get_if<syntax_ast::AstBranchTargetSet>(&operand);
+  if (target_set == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a brx.idx branch target list.",
+    });
+  }
+
+  ResolvedBranchTargetSet resolved{.spelling = target_set->name.syntax.text};
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, target_set->name.syntax.text);
+    if (!lookup) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target_set->range,
+          .message = fmt::format("Unresolved brx.idx branch target list '{}'.",
+                                 target_set->name.syntax.text),
+      });
+    }
+    const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+    if (symbol.kind != binding::SymbolKind::BranchTargetSet ||
+        symbol.scope != context->scope) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target_set->range,
+          .message = fmt::format(
+              "brx.idx branch target list '{}' must name a function-local "
+              ".branchtargets declaration.",
+              target_set->name.syntax.text),
+      });
+    }
+    resolved.symbol_id = symbol.id;
+  }
+  return WithLocs<ResolvedBranchTargetSet>{std::move(resolved),
+                                            target_set->range};
+}
+
 std::expected<ResolvedCallParameterRef, ResolveDiagnostic>
 resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
                        const ResolveContext* context) {
@@ -1902,6 +1942,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::BranchTargetSet: {
+      auto value = resolve_branch_target_set(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::SpecialRegister: {
       auto value = resolve_special_register(operand);
       if (!value)
@@ -2053,6 +2099,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::RegOrImm:
     case ResolvedValueKind::MovSource:
     case ResolvedValueKind::BranchTarget:
+    case ResolvedValueKind::BranchTargetSet:
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
@@ -2328,6 +2375,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::RegOrImm:
       case ResolvedValueKind::MovSource:
       case ResolvedValueKind::BranchTarget:
+      case ResolvedValueKind::BranchTargetSet:
       case ResolvedValueKind::SpecialRegister:
       case ResolvedValueKind::Symbol:
       case ResolvedValueKind::Address:
@@ -2399,6 +2447,9 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
           return check_end::OperandSyntaxShape::CallTarget;
         } else if constexpr (std::same_as<Item, syntax_ast::AstCallTargetSet>) {
           return check_end::OperandSyntaxShape::CallTargetSet;
+        } else if constexpr (std::same_as<Item,
+                                          syntax_ast::AstBranchTargetSet>) {
+          return check_end::OperandSyntaxShape::BranchTargetSet;
         } else {
           return check_end::OperandSyntaxShape::BranchTarget;
         }

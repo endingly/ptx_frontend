@@ -641,6 +641,7 @@ $defs:
       - direct_call_target
       - indirect_call_target
       - indirect_call_metadata
+      - branch_target_set
       - call_return_param
       - call_arguments
       - addr_or_symbol

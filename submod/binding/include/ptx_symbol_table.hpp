@@ -55,6 +55,7 @@ enum class ReferenceKind : uint8_t {
   CallArgument,
   CallTargetSet,
   BranchTarget,
+  BranchTargetSet,
 };
 
 enum class ReferenceClassification : uint8_t {

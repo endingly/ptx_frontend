@@ -292,6 +292,11 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstCallTargetSet{
               lowerIdentifier(cst, value.name),
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstBranchTargetSet>) {
+          return syntax_ast::AstBranchTargetSet{
+              lowerIdentifier(cst, value.name),
+              cst.sourceRange(value.token_range)};
         } else {
           return syntax_ast::AstBranchTarget{
               lowerIdentifier(cst, value.name),

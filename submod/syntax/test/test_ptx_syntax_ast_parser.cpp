@@ -12,6 +12,7 @@ namespace {
 using syntax_ast::AstAddress;
 using syntax_ast::AstAddressOffset;
 using syntax_ast::AstBranchTarget;
+using syntax_ast::AstBranchTargetSet;
 using syntax_ast::AstCallParameterList;
 using syntax_ast::AstCallTarget;
 using syntax_ast::AstCallTargetSet;
@@ -116,6 +117,17 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
   ASSERT_EQ(branch->operands.size(), 1u);
   EXPECT_EQ(std::get<AstBranchTarget>(branch->operands[0]).name.syntax.text,
             "done");
+
+  PtxSyntaxParser indexed_branch_parser("brx.idx %r0, targets;");
+  auto indexed_branch = indexed_branch_parser.parseInstruction();
+  ASSERT_TRUE(indexed_branch.has_value()) << indexed_branch.error().message;
+  ASSERT_EQ(indexed_branch->operands.size(), 2u);
+  EXPECT_EQ(std::get<AstIdentifierRef>(indexed_branch->operands[0]).syntax.text,
+            "%r0");
+  const auto& target_set =
+      std::get<AstBranchTargetSet>(indexed_branch->operands[1]);
+  EXPECT_EQ(target_set.name.syntax.text, "targets");
+  EXPECT_EQ(target_set.range, target_set.name.syntax.range);
 }
 
 TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {

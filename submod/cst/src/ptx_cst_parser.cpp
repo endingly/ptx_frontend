@@ -390,6 +390,28 @@ PtxCstParser::parseBranchOperands() {
   return operands;
 }
 
+std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+PtxCstParser::parseIndexedBranchOperands() {
+  auto index = expect(TokenKind::Ident, "brx.idx index register");
+  if (!index)
+    return std::unexpected(index.error());
+  auto comma = expect(TokenKind::Comma, "',' after brx.idx index register");
+  if (!comma)
+    return std::unexpected(comma.error());
+  auto target_set = expect(TokenKind::Ident, "brx.idx branch target list");
+  if (!target_set)
+    return std::unexpected(target_set.error());
+  if (token(peek()).kind == TokenKind::Comma) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "brx.idx accepts exactly an index and target list"});
+  }
+  return std::vector<syntax_cst::CstOperandElement>{
+      {syntax_cst::CstIdentifier{*index}, *comma},
+      {syntax_cst::CstBranchTargetSet{
+           syntax_cst::CstIdentifier{*target_set}, {*target_set, *target_set + 1}},
+       std::nullopt}};
+}
+
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseOperand() {
   if (token(peek()).kind == TokenKind::Exclamation) {
@@ -477,6 +499,11 @@ PtxCstParser::parseInstructionNode(std::optional<TokenId> supplied_opcode) {
     operands = std::move(*parsed_operands);
   } else if (token(*opcode).text == "bra") {
     auto parsed_operands = parseBranchOperands();
+    if (!parsed_operands)
+      return std::unexpected(parsed_operands.error());
+    operands = std::move(*parsed_operands);
+  } else if (token(*opcode).text == "brx") {
+    auto parsed_operands = parseIndexedBranchOperands();
     if (!parsed_operands)
       return std::unexpected(parsed_operands.error());
     operands = std::move(*parsed_operands);

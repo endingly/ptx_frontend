@@ -2280,6 +2280,68 @@ TEST(ResolvedModule, StandaloneBranchTargetRemainsUnbound) {
   EXPECT_FALSE(direct.target.value.symbol_id.has_value());
 }
 
+TEST(ResolvedModule, ResolvesIndexedBranchTargetSetInCurrentFunction) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %index;
+targets: .branchtargets done;
+  brx.idx.uni %index, targets;
+done:
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.front().body.size(), 1u);
+  const auto& brx = std::get<Brx>(resolved->functions.front().body.front());
+  const auto& indexed = std::get<Brx::Idx>(brx.variant);
+  EXPECT_TRUE(indexed.uni.value);
+  EXPECT_EQ(indexed.index.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(indexed.tlist.value.spelling, "targets");
+  ASSERT_TRUE(indexed.tlist.value.symbol_id.has_value());
+  const auto& target_set =
+      resolved->symbols.symbol(*indexed.tlist.value.symbol_id);
+  EXPECT_EQ(target_set.kind, binding::SymbolKind::BranchTargetSet);
+
+  const checker::Context too_old{
+      .target = {.ptx_version = checker::PtxVersion{5, 9}, .sm_version = 30},
+      .instruction_range = indexed.tlist.locs.front(),
+  };
+  EXPECT_FALSE(checker::check(brx, too_old).has_value());
+  const checker::Context too_old_sm{
+      .target = {.ptx_version = checker::PtxVersion{6, 0}, .sm_version = 29},
+      .instruction_range = indexed.tlist.locs.front(),
+  };
+  EXPECT_FALSE(checker::check(brx, too_old_sm).has_value());
+  const checker::Context supported{
+      .target = {.ptx_version = checker::PtxVersion{6, 0}, .sm_version = 30},
+      .instruction_range = indexed.tlist.locs.front(),
+  };
+  EXPECT_TRUE(checker::check(brx, supported).has_value());
+}
+
+TEST(ResolvedModule, IndexedBranchRequiresU32IndexRegister) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %index;
+targets: .branchtargets done;
+  brx.idx %index, targets;
+done:
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& brx = std::get<Brx>(resolved->functions.front().body.front());
+  const checker::Context context{
+      .target = {.ptx_version = checker::PtxVersion{6, 0}, .sm_version = 30},
+      .instruction_range = SourceRange{},
+  };
+  EXPECT_FALSE(checker::check(brx, context).has_value());
+}
+
 TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
   const auto ast = parseModule(R"ptx(
 .func callee();

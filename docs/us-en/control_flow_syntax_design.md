@@ -2,8 +2,9 @@
 
 ## Why this is not a flat operand list
 
-The operands of `bra` and `call` are not an ordinary comma-separated flat
-list. In the current PTX ISA, direct `bra` has one label target. A `call` is
+The operands of `bra`, `brx.idx`, and `call` are not an ordinary comma-separated flat
+list. In the current PTX ISA, direct `bra` has one label target, `brx.idx` has
+a register index plus target-list declaration, and a `call` is
 formed from an optional return-parameter group, a callee, an optional input
 parameter group, and an optional target-set or prototype symbol for an
 indirect call.
@@ -17,6 +18,7 @@ AST expose dedicated nodes:
 - `CstCallTarget` / `AstCallTarget`;
 - `CstCallTargetSet` / `AstCallTargetSet`;
 - `CstBranchTarget` / `AstBranchTarget`.
+- `CstBranchTargetSet` / `AstBranchTargetSet`.
 
 CST retains parentheses, commas within groups, and commas between operands.
 Syntax AST drops punctuation but retains group roles and source ranges. A
@@ -34,24 +36,31 @@ the symbol kinds it can already determine:
 - call return/input identifiers name `.reg` or `.param` variables or formal
   parameters;
 - a direct branch target names a label in the current function scope.
+- a `brx.idx` target list names a `.branchtargets` declaration in the current
+  function scope.
 
 An indirect-call target-set operand must name a function-local `.callprototype`
 or `.calltargets` declaration. Their labels, and `.branchtargets` labels, now
 have stable function-scope symbols. Declaration semantics validates metadata
 members and target-set signatures; generated instruction layout and normal
-module metadata use now resolve through the call descriptor, while branch
-integration remains C02.
+module metadata use now resolve through their descriptors.
 
 ## Descriptor and Resolved IR boundary
 
-`OperandSyntaxShape` now provides `Group`, `CallTarget`, `CallTargetSet`, and
-`BranchTarget`, with matching bits in the Python descriptor model and C++
+`OperandSyntaxShape` now provides `Group`, `CallTarget`, `CallTargetSet`,
+`BranchTarget`, and `BranchTargetSet`, with matching bits in the Python descriptor model and C++
 backend domain. Because `bra` has one direct label target, it legitimately uses
 the existing `Flat` layout and is now part of the YAML database, unified
 dispatch, and checking. During module resolution, `ResolvedBranchTarget` stores
 the current function label's stable `SymbolId`; standalone resolution retains
 only the source spelling. `.uni` and the execution predicate are preserved as
 a generated modifier field and an opcode-common field respectively.
+
+`brx.idx{.uni} index, tlist` is a separate PTX 6.0 / SM 30 opcode. Its index
+is a `.u32` register and its `tlist` resolves as `ResolvedBranchTargetSet`,
+which retains the current-function `.branchtargets` `SymbolId`; standalone
+resolution retains the spelling. It does not expand target entries or build a
+control-flow graph. `bra` remains direct-only.
 
 `call` now uses the non-`Flat` `Call` layout algorithm. One generated direct
 variant has exactly three fixed payload layouts: target only, target plus the
@@ -120,9 +129,9 @@ canonical signatures.
 ordered list preserves ordinary labels and compact entries such as `N<5>`;
 the latter retain name, count, angle punctuation, and one entry range without
 expanding into synthetic labels. Declaration semantics checks local-label
-membership, compact overlap, and count validity without adding symbols. It
-does not connect the declaration to an instruction: PTX 9.3 uses it with
-`brx.idx`, and that integration remains out of scope.
+membership, compact overlap, and count validity without adding symbols.
+`brx.idx` consumes the declaration by stable local identity without expanding
+its entries.
 
 ## PTX 9.3 call parameter context
 

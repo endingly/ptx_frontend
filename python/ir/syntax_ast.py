@@ -47,6 +47,7 @@ class OperandSyntaxShape(IntFlag):
     CALL_TARGET = 1 << 7
     CALL_TARGET_SET = 1 << 8
     BRANCH_TARGET = 1 << 9
+    BRANCH_TARGET_SET = 1 << 10
 
 
 class OperandLayoutKind(Enum):
@@ -143,6 +144,7 @@ _OPERAND_SYNTAX_SHAPES = {
     "direct_call_target": OperandSyntaxShape.CALL_TARGET,
     "indirect_call_target": OperandSyntaxShape.CALL_TARGET,
     "indirect_call_metadata": OperandSyntaxShape.CALL_TARGET_SET,
+    "branch_target_set": OperandSyntaxShape.BRANCH_TARGET_SET,
     "call_return_param": OperandSyntaxShape.CALL_PARAMETER_LIST,
     "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
 }

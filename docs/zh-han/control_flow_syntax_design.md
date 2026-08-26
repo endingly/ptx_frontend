@@ -2,8 +2,8 @@
 
 ## 为什么不是普通 operand list
 
-`bra` 与 `call` 的 operand 不是通用 comma-separated flat list。最新版 PTX 中，direct
-`bra` 只有一个 label target；`call` 则由可选 return parameter group、callee、可选 input
+`bra`、`brx.idx` 与 `call` 的 operand 不是通用 comma-separated flat list。最新版 PTX 中，direct
+`bra` 只有一个 label target；`brx.idx` 有 register index 和 target-list declaration；`call` 则由可选 return parameter group、callee、可选 input
 parameter group，以及 indirect call 可用的 target-set/prototype symbol 组成。
 
 因此 frontend 不再把 call 的括号组伪装成 vector pack，也不把 branch label 保留为无角色
@@ -13,6 +13,7 @@ parameter group，以及 indirect call 可用的 target-set/prototype symbol 组
 - `CstCallTarget` / `AstCallTarget`；
 - `CstCallTargetSet` / `AstCallTargetSet`；
 - `CstBranchTarget` / `AstBranchTarget`。
+- `CstBranchTargetSet` / `AstBranchTargetSet`。
 
 CST 保留括号、组内 comma 和 operand 间 comma；Syntax AST 删除 punctuation，但保留每个
 参数组的角色与 range。return group 必须恰有一个 identifier；input group 可以为空，成员
@@ -26,21 +27,26 @@ branch target。binding 会检查当前已可判定的 symbol kind：
 - direct callee 必须是 function，indirect callee 可以是 `.reg` function pointer；
 - call return/input identifier 必须是 `.reg` 或 `.param` variable/parameter；
 - direct branch target 必须是当前 function scope 的 label。
+- `brx.idx` target list 必须是当前 function scope 的 `.branchtargets` declaration。
 
 indirect-call 的 target-set operand 必须指向 function-local `.callprototype` 或
 `.calltargets` declaration。它们的 label，以及 `.branchtargets` label，现在都有稳定的
 function-scope symbol。declaration semantics 会检查 metadata member 与 target-set signature；
-generated instruction layout 与 normal module metadata use 现已通过 call descriptor resolve；
-branch integration 仍属于 C02。
+generated instruction layout 与 normal module metadata use 现已通过各自 descriptor resolve。
 
 ## Descriptor 与 Resolved IR 边界
 
-`OperandSyntaxShape` 已提供 `Group`、`CallTarget`、`CallTargetSet` 与 `BranchTarget`，Python
+`OperandSyntaxShape` 已提供 `Group`、`CallTarget`、`CallTargetSet`、`BranchTarget` 与 `BranchTargetSet`，Python
 descriptor model 和 C++ backend domain 使用相同 bit。`bra` 只有一个 direct label target，
 因此合法地使用现有 `Flat` layout，并已进入 YAML database、统一 dispatch 与 checker。
 `ResolvedBranchTarget` 在 module resolution 中保存当前 function label 的稳定 `SymbolId`；
 standalone resolution 只保存源码 spelling。`.uni` 和 execution predicate 也分别作为
 generated modifier field 与 opcode 公共字段保留。
+
+`brx.idx{.uni} index, tlist` 是独立的 PTX 6.0 / SM 30 opcode。其 index 是 `.u32`
+register，`tlist` resolve 为 `ResolvedBranchTargetSet`，保留当前 function `.branchtargets`
+的 `SymbolId`；standalone resolution 仅保留 spelling。它不会展开 target entry 或构建 CFG；
+`bra` 仍只支持 direct form。
 
 `call` 现在使用非 `Flat` 的 `Call` layout algorithm。一个 generated direct variant 固定有
 三种 payload layout：仅 target、target 加可变 input group、return group 加 target 加 input
@@ -88,8 +94,8 @@ canonical signature 相同。
 `.branchtargets` 现在有自己的 function-body CST/AST node。其非空且有序的 list 会保留
 普通 label 与 `N<5>` 这样的 compact entry；后者保留 name、count、angle punctuation 和单项
 range，不会展开为 synthetic label。declaration semantics 在不增加 symbol 的前提下检查 local label
-membership、compact overlap 与 count validity；仍不把 declaration 连接到 instruction：PTX 9.3 通过
-`brx.idx` 使用它，该 integration 仍在范围外。
+membership、compact overlap 与 count validity。`brx.idx` 以 stable local identity 使用该
+declaration，但不会展开其中 entry。
 
 对于 module 中的 direct named call，resolution 会查找 callee 的 canonical
 prototype/definition signature，按顺序比较 return/input 的数量；随后复用 call-argument

@@ -598,6 +598,42 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.rule, "control_flow.bra")
 
+    def test_brx_uses_a_u32_register_and_branch_target_set(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        brx = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "brx"
+        )
+        instruction = from_instruction_spec(brx)
+
+        self.assertEqual(instruction.cpp_name, "Brx")
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Idx")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("idx", "bool"),
+                ("uni", "WithLocs<bool>"),
+                ("index", "WithLocs<ResolvedRegisterRef>"),
+                ("tlist", "WithLocs<ResolvedBranchTargetSet>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                scalar_type="u32",
+            ),
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[1].allowed_shapes,
+            (ResolvedOperandShape.BRANCH_TARGET_SET,),
+        )
+        self.assertEqual(variant.rule, "control_flow.brx_idx")
+
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

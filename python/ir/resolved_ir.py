@@ -69,6 +69,7 @@ class ResolvedValueKind(Enum):
     REGISTER_VECTOR = "RegisterVector"
     DIRECT_CALL_TARGET = "DirectCallTarget"
     INDIRECT_CALLEE = "IndirectCallee"
+    BRANCH_TARGET_SET = "BranchTargetSet"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
 
@@ -114,6 +115,7 @@ class ResolvedOperandShape(Enum):
     SPECIAL_REGISTER = "SpecialRegister"
     DIRECT_CALL_TARGET = "DirectCallTarget"
     INDIRECT_CALLEE = "IndirectCallee"
+    BRANCH_TARGET_SET = "BranchTargetSet"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
 
@@ -401,6 +403,7 @@ _OPERAND_ALLOWED_SHAPES = {
     "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
     "indirect_call_target": (ResolvedOperandShape.INDIRECT_CALLEE,),
     "indirect_call_metadata": (ResolvedOperandShape.INDIRECT_CALLEE,),
+    "branch_target_set": (ResolvedOperandShape.BRANCH_TARGET_SET,),
     "call_return_param": (ResolvedOperandShape.CALL_RETURN_PARAMETER,),
     "call_arguments": (ResolvedOperandShape.CALL_ARGUMENTS,),
 }

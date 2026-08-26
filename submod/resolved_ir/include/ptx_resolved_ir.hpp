@@ -48,6 +48,7 @@ enum class OperandSyntaxShape : uint16_t {
   CallTarget = 1 << 7,
   CallTargetSet = 1 << 8,
   BranchTarget = 1 << 9,
+  BranchTargetSet = 1 << 10,
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
@@ -86,6 +87,7 @@ enum class ResolvedValueKind : uint8_t {
   RegisterVector,
   DirectCallTarget,
   IndirectCallee,
+  BranchTargetSet,
   CallReturnParameter,
   CallArguments,
 };
@@ -253,6 +255,13 @@ struct ResolvedBranchTarget {
   bool operator==(const ResolvedBranchTarget&) const = default;
 };
 
+/** A function-local .branchtargets declaration reference. */
+struct ResolvedBranchTargetSet {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  bool operator==(const ResolvedBranchTargetSet&) const = default;
+};
+
 /** A predefined read-only PTX special register with target-independent identity. */
 struct ResolvedSpecialRegisterRef {
   std::string spelling;
@@ -380,6 +389,7 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
+                 WithLocs<ResolvedBranchTargetSet>,
                  WithLocs<ResolvedSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
                  WithLocs<ResolvedRegisterVector>,

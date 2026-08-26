@@ -293,11 +293,13 @@ TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
   constexpr std::string_view source = R"ptx(
 .func callee();
 .func dispatch() {
+  .reg .u32 %r0;
   prototype: .callprototype _;
   targets: .calltargets callee;
   branches: .branchtargets L0, N<5>;
   call callee, prototype;
   call callee, targets;
+  brx.idx %r0, branches;
 }
 )ptx";
   PtxSyntaxParser parser(source);
@@ -344,6 +346,12 @@ TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
     EXPECT_EQ(reference->classification,
               binding::ReferenceClassification::DeclaredSymbol);
   }
+  const auto* branch_reference = findReference(
+      first.table, "branches", binding::ReferenceKind::BranchTargetSet);
+  ASSERT_NE(branch_reference, nullptr);
+  ASSERT_TRUE(branch_reference->target.has_value());
+  EXPECT_EQ(first.table.symbol(branch_reference->target->symbol).kind,
+            binding::SymbolKind::BranchTargetSet);
 }
 
 TEST(PtxSymbolTable, DiagnosesNonCallMetadataTargetSetReference) {
@@ -366,6 +374,28 @@ TEST(PtxSymbolTable, DiagnosesNonCallMetadataTargetSetReference) {
   EXPECT_EQ(binding_result.diagnostics.front().message,
             "Call target set 'branches' must name a .callprototype or "
             ".calltargets declaration.");
+}
+
+TEST(PtxSymbolTable, DiagnosesInvalidIndexedBranchTargetSetReference) {
+  constexpr std::string_view source = R"ptx(
+.global .u32 branches;
+.entry kernel() {
+  .reg .u32 %index;
+  brx.idx %index, branches;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::InvalidReferenceTarget);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Branch target set 'branches' must name a .branchtargets "
+            "declaration in the current function.");
 }
 
 TEST(PtxSymbolTable, DiagnosesInvalidCallAndBranchTargetKinds) {

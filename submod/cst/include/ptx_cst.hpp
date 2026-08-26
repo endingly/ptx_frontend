@@ -105,10 +105,16 @@ struct CstBranchTarget {
   CstTokenRange token_range;
 };
 
+struct CstBranchTargetSet {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstImmediate, CstAddress,
                  CstVectorMember, CstVectorPack, CstCallParameterList,
-                 CstCallTarget, CstCallTargetSet, CstBranchTarget>;
+                 CstCallTarget, CstCallTargetSet, CstBranchTarget,
+                 CstBranchTargetSet>;
 
 struct CstOperandElement {
   CstOperand operand;

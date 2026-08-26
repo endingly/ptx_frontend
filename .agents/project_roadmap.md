@@ -1338,7 +1338,8 @@ duplicate 与 signature contract。`ResolvedIndirectCallee` 可保留 `.reg` tar
 identity；`call_direct` 保持一个公开 modifier variant，并新增三种 PTX 2.1 / SM 20 的专用
 `IndirectCall` layout，正常 module resolution 可绑定 `.reg` target 与 function-local metadata，
 并以同一 canonical `FunctionSignature` / argument-compatibility contract 检查 indirect ABI。
-branch connection 与 temporary fallback 清理仍未完成。
+`brx.idx` 已以 `.u32` index 与 function-local branch-target-set identity 连接 `.branchtargets`，
+并要求 PTX 6.0 / SM 30；不会展开 metadata entry。仅 temporary fallback 清理仍未完成。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
@@ -1350,7 +1351,7 @@ branch connection 与 temporary fallback 清理仍未完成。
 | M7-I06 | ✅ | 独立 | 建立 indirect callee resolved value | register target、prototype ref 和 target-set ref 表示明确 |
 | M7-I07 | ✅ | 独立 | 建立 indirect-call descriptor layout | 专用 `IndirectCall` layout、target/metadata shape 与 module identity 贯通 |
 | M7-C01 | ✅ | 耦合 | 实现 indirect-call ABI checker | prototype/target-set 复用 canonical signature、arity、literal 与 argument compatibility |
-| M7-C02 | ⬜ | 耦合 | 连接 `.branchtargets` 与 `bra` | label identity、membership 和 current function 一致 |
+| M7-C02 | ✅ | 耦合 | 连接 `.branchtargets` 与 `brx.idx` | `.u32` index、target-list identity 与 current function scope 一致 |
 | M7-C03 | ⬜ | 耦合 | 删除 temporary call special case | 移除通用 resolver 中 opcode-string indirect rejection，全部走正式 descriptor |
 | M7-C04 | ⬜ | 耦合 | 完成 indirect-control-flow corpus | direct/indirect/prototype/target-set/branch metadata 全覆盖 |
 

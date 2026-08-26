@@ -67,6 +67,13 @@ TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
   ASSERT_EQ(branch->operands.size(), 1u);
   EXPECT_EQ(check_end::get_operand_syntax_shape(branch->operands[0]),
             check_end::OperandSyntaxShape::BranchTarget);
+
+  PtxSyntaxParser indexed_branch_parser("brx.idx %r0, targets;");
+  const auto indexed_branch = indexed_branch_parser.parseInstruction();
+  ASSERT_TRUE(indexed_branch.has_value()) << indexed_branch.error().message;
+  ASSERT_EQ(indexed_branch->operands.size(), 2u);
+  EXPECT_EQ(check_end::get_operand_syntax_shape(indexed_branch->operands[1]),
+            check_end::OperandSyntaxShape::BranchTargetSet);
 }
 
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {

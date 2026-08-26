@@ -10,6 +10,7 @@ namespace {
 
 using syntax_cst::CstAddress;
 using syntax_cst::CstBranchTarget;
+using syntax_cst::CstBranchTargetSet;
 using syntax_cst::CstCallParameterList;
 using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
@@ -139,6 +140,29 @@ TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
   EXPECT_EQ(result->token(target.name.token).text, "done");
 }
 
+TEST(PtxCstParser, RetainsIndexedBranchTargetList) {
+  constexpr std::string_view source = "brx.idx.uni %r0, targets;";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->modifiers.size(), 2u);
+  ASSERT_EQ(instruction->operands.size(), 2u);
+  EXPECT_EQ(result->token(std::get<syntax_cst::CstIdentifier>(
+                              instruction->operands[0].operand)
+                              .token)
+                .text,
+            "%r0");
+  const auto& target_set =
+      std::get<CstBranchTargetSet>(instruction->operands[1].operand);
+  EXPECT_EQ(result->token(target_set.name.token).text, "targets");
+  ASSERT_TRUE(instruction->operands[0].trailing_comma.has_value());
+}
+
 TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
   for (const auto [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
@@ -149,7 +173,9 @@ TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
            {"call helper, (%r0,);",
             "call argument list cannot end with a trailing comma"},
            {"bra first, second;",
-            "direct branch accepts exactly one label target"}}) {
+            "direct branch accepts exactly one label target"},
+           {"brx.idx %r0, targets, extra;",
+            "brx.idx accepts exactly an index and target list"}}) {
     PtxCstParser parser(source);
     const auto result = parser.parseInstruction();
     ASSERT_FALSE(result.has_value()) << source;

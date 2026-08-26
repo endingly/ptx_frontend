@@ -13,6 +13,16 @@ operand_patterns:
       kind: label
       role: label
       access: control
+  indexed_branch:
+    - name: index
+      kind: reg
+      role: src
+      access: read
+      type: u32
+    - name: tlist
+      kind: branch_target_set
+      role: label
+      access: control
 
 instructions:
   - opcode: call
@@ -143,4 +153,32 @@ instructions:
           - ptx: "bra done;"
             valid: true
           - ptx: "@%p0 bra.uni done;"
+            valid: true
+  - opcode: brx
+    section: "9.7.13.4"
+    doc: "Indexed branch through a function-local .branchtargets declaration."
+    syntax: "brx.idx{.uni} index, tlist"
+    operands: $indexed_branch
+
+    variants:
+      - name: brx_idx
+        description: "Indexed branch using a .u32 register and current-function target list."
+        availability:
+          ptx: "6.0"
+          sm: 30
+        modifiers:
+          - name: idx
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".idx"
+          - name: uni
+            kind: flag
+            presence: optional
+            default: false
+            token: ".uni"
+        rule: control_flow.brx_idx
+
+        examples:
+          - ptx: "brx.idx %r0, targets;"
             valid: true

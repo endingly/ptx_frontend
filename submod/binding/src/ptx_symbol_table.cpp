@@ -616,6 +616,21 @@ struct SymbolTableBuilder {
                                  kind == SymbolKind::CallTargetSet,
                   fmt::format("Call target set '{}' must name a "
                               ".callprototype or .calltargets declaration.",
+                                value.name.syntax.text));
+            }
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstBranchTargetSet>) {
+            const SymbolReference& reference =
+                addReference(scope, ReferenceKind::BranchTargetSet, value.name);
+            if (reference.target) {
+              const Symbol& symbol =
+                  result.table.symbol(reference.target->symbol);
+              diagnoseInvalidTarget(
+                  reference, symbol.kind == SymbolKind::BranchTargetSet &&
+                                 symbol.scope == scope,
+                  fmt::format("Branch target set '{}' must name a "
+                              ".branchtargets declaration in the current "
+                              "function.",
                               value.name.syntax.text));
             }
           } else {

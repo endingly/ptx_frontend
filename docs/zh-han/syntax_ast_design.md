@@ -35,7 +35,9 @@ entry header 还会结构化保留 `.maxnreg`、`.maxntid`、`.reqntid` 与
 
 CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
 token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此
-`CstFile::sourceText()` 可以逐字节还原已解析输入：
+`CstFile::sourceText()` 就是 token-buffer round-trip serializer：对未修改的 CST
+可逐字节还原已解析输入。它输出 token buffer 而不是 CST node，recovery marker 不会
+额外输出源码，改变 node 并不等于 pretty print；内部 EOF sentinel 的数量不是公开契约：
 
 ```cpp
 PtxCstParser parser(source);
@@ -67,8 +69,8 @@ function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`
 diagnostic 并返回 recovered CST：它在 `;`、`}`、EOF、下一 function（含 qualifier）或受支持的
 module-only directive 处同步，保留这些 anchor，只在 zero-width 处插入缺失的 `;`/`}` marker，其余被丢弃
 的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。C01 定义 recovered CST 的
-lowering contract 前，`PtxSyntaxParser` 有意不 lower recovered CST；I12 必须序列化原始 token buffer，
-不能序列化 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
+lowering contract 前，`PtxSyntaxParser` 有意不 lower recovered CST；round-trip serialization 使用
+原始 token buffer 而非 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
 但没有 `right_brace` token。当前仍不接受其他 kernel-tuning directive 或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。

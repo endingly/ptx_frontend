@@ -44,8 +44,11 @@ integer values, and commas, while AST retains kind, values, and ranges.
 
 The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
 selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the
-EOF token retains final trivia. Therefore `CstFile::sourceText()`
-can reproduce the parsed input byte-for-byte.
+EOF token retains final trivia. `CstFile::sourceText()` is the token-buffer
+round-trip serializer: for an unmodified CST it reproduces parsed input
+byte-for-byte. It emits the token buffer rather than CST nodes, so recovery
+markers do not add source text and node mutation is not pretty printing;
+internal EOF-sentinel multiplicity is not a public contract.
 
 ```cpp
 PtxCstParser parser(source);
@@ -88,8 +91,8 @@ the next function (including qualifiers), or a supported module-only directive.
 It preserves those anchors, inserts only missing `;`/`}` markers at zero width,
 and otherwise records real discarded spans. `parseInstruction()` remains
 fail-fast. Recovered CST is intentionally not lowered by `PtxSyntaxParser`
-until C01 defines that contract, and I12 must serialize the original token
-buffer rather than recovery markers. A nested block missing its required `}`
+until C01 defines that contract; round-trip serialization uses the original
+token buffer rather than recovery markers. A nested block missing its required `}`
 retains its parsed body and an inserted marker, with no `right_brace` token.
 The module grammar does not yet accept
 other kernel-tuning directives or a token-edit API. The parser validates initializer

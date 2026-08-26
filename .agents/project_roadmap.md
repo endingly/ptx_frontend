@@ -1373,7 +1373,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 | M8-I09 | ✅ | 独立 | 建立 `DiagnosticCollection` | public CST parser、lowering 与 Syntax facade 以 optional value + ordered diagnostics result 贯通；I10/I11 前仍 fail-fast 单 diagnostic |
 | M8-I10 | ✅ | 独立 | 增加 missing-token/recovery node | CST 的 tagged inserted/skipped/error node 已可作为 module/function-body item，并保留 source/token-span 不变量；parser 产生、synchronization 与 recovered CST→AST contract 仍分别留给 I11/C01 |
 | M8-I11 | ✅ | 独立 | 定义 synchronization point | `parseModule()` 在 `;`、`}`、EOF、function boundary（含 qualifier）和 supported module-item start 有界恢复；partial nested block 保留 body 与 inserted `}`、无 closing token，返回 recovered CST + 有序 diagnostic；fragment 仍 fail-fast，C01/I12 分别定义 lowering/serialization contract |
-| M8-I12 | ⬜ | 独立 | 建立 CST round-trip serializer | 未修改 CST 可重建等价 token stream |
+| M8-I12 | 🚧 | 独立 | 建立 CST round-trip serializer | docs/tests-only：复用 `CstFile::sourceText()` 从未修改 token buffer 逐字节重建；recovery marker 不输出，EOF sentinel 数非公开契约 |
 | M8-I13 | ⬜ | 独立 | 建立 lexer/CST fuzz harness | arbitrary bytes 和 malformed nesting 不崩溃、不死循环 |
 | M8-I14 | ⏸ | 独立 | 收集 optional fixed-address 证据 | 只有取得规范 grammar 或可复现 `ptxas` 行为后才开始实现 |
 | M8-C01 | ⬜ | 耦合 | 定义 recovered CST → AST contract | error node 不伪装成正常 AST，相邻合法结构仍可 lowering |

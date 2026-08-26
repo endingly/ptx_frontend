@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <string_view>
 #include <variant>
 
@@ -53,6 +54,62 @@ TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   EXPECT_EQ(eof.kind, TokenKind::Eof);
   ASSERT_EQ(eof.leading_trivia.size(), 2u);
   EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
+}
+
+TEST(PtxCstParser, RoundTripsUnmodifiedModuleTokenBufferByteForByte) {
+  constexpr std::string_view source = R"ptx(// leading comment
+.version 9.3
+.file 0 "round_trip.ptx"
+.section .debug_info { /* raw payload */ .b8 0; };
+.pragma "module";
+.entry kernel() .pragma "header"; .maxnreg 32 {
+  .pragma "body";
+  { add.u32 %r0, %r1, %r2; }
+}
+// trailing comment
+   )ptx";
+  PtxCstParser parser(source);
+
+  const auto first = parser.parseModule();
+
+  ASSERT_TRUE(first.has_value()) << first.diagnostics.front().message;
+  EXPECT_TRUE(first.diagnostics.empty());
+  EXPECT_EQ(first->sourceText(), source);
+
+  PtxCstParser reparsing(first->sourceText());
+  const auto second = reparsing.parseModule();
+
+  ASSERT_TRUE(second.has_value()) << second.diagnostics.front().message;
+  EXPECT_TRUE(second.diagnostics.empty());
+  EXPECT_EQ(second->sourceText(), source);
+
+  const auto first_eof = [](const auto& tokens) {
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+      if (tokens[index].kind == TokenKind::Eof)
+        return index;
+    }
+    return tokens.size();
+  };
+  const std::size_t first_end = first_eof(first->tokens);
+  const std::size_t second_end = first_eof(second->tokens);
+  ASSERT_TRUE(first_end < first->tokens.size());
+  ASSERT_EQ(first_end, second_end);
+
+  for (std::size_t index = 0; index < first_end; ++index) {
+    const auto& left = first->tokens[index];
+    const auto& right = second->tokens[index];
+    EXPECT_EQ(left.kind, right.kind);
+    EXPECT_EQ(left.text, right.text);
+    ASSERT_EQ(left.leading_trivia.size(), right.leading_trivia.size());
+    for (std::size_t trivia = 0; trivia < left.leading_trivia.size(); ++trivia) {
+      EXPECT_EQ(left.leading_trivia[trivia].kind, right.leading_trivia[trivia].kind);
+      EXPECT_EQ(left.leading_trivia[trivia].text, right.leading_trivia[trivia].text);
+    }
+  }
+  ASSERT_FALSE(first->tokens[first_end].leading_trivia.empty());
+  EXPECT_EQ(first->tokens[first_end].leading_trivia.back().kind,
+            TriviaKind::Whitespace);
+  EXPECT_EQ(first->tokens[first_end].leading_trivia.back().text, "   ");
 }
 
 TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {

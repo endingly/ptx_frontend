@@ -14,6 +14,7 @@ from code_gen.model import (
     ModifierSpec,
     ModifierValueSpec,
     OperandLayoutSpec,
+    OperandLayoutKind,
     OperandParameterConstraint,
     OperandRegisterWidthPolicy,
     OperandSpec,
@@ -482,10 +483,42 @@ def normalize_operand_layouts(
                 f"name {name!r}"
             )
         names.add(name)
+        try:
+            kind = OperandLayoutKind(raw_layout.get("kind", "flat"))
+        except ValueError as error:
+            raise ValueError(
+                f"operand layout {name!r}: unsupported kind "
+                f"{raw_layout.get('kind')!r}"
+            ) from error
+        operands = _resolve_operands(raw_layout["operands"], operand_patterns)
+        call_operand_kinds = {
+            "direct_call_target",
+            "call_return_param",
+            "call_arguments",
+        }
+        if kind is not OperandLayoutKind.CALL and any(
+            operand.kind in call_operand_kinds for operand in operands
+        ):
+            raise ValueError(
+                f"operand layout {name!r}: call operands require kind 'call'"
+            )
+        if kind is OperandLayoutKind.CALL:
+            call_shapes = {
+                ("direct_call_target",),
+                ("direct_call_target", "call_arguments"),
+                ("call_return_param", "direct_call_target", "call_arguments"),
+            }
+            if tuple(operand.kind for operand in operands) not in call_shapes:
+                raise ValueError(
+                    f"call operand layout {name!r} must be direct target, "
+                    "direct target plus input group, or return group plus "
+                    "direct target plus input group"
+                )
         layouts.append(
             OperandLayoutSpec(
                 name=name,
-                operands=_resolve_operands(raw_layout["operands"], operand_patterns),
+                operands=operands,
+                kind=kind,
                 availability=dict(raw_layout.get("availability", {})),
             )
         )

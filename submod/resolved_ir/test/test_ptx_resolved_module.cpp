@@ -2221,6 +2221,128 @@ TEST(ResolvedModule, StandaloneBranchTargetRemainsUnbound) {
   EXPECT_FALSE(direct.target.value.symbol_id.has_value());
 }
 
+TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
+  const auto ast = parseModule(R"ptx(
+.func callee(.param .u32 input);
+.entry caller() {
+  .reg .pred %p;
+  .reg .u32 %out, %arg;
+  .param .u32 parameter;
+  call callee;
+  call callee, ();
+  @%p call.uni (%out), callee, (%arg, parameter, -4);
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.back().body;
+  ASSERT_EQ(body.size(), 3u);
+
+  const auto& target_only = std::get<Call>(body[0]);
+  const auto& target_payload =
+      std::get<Call::Direct::TargetOperands>(std::get<Call::Direct>(target_only.variant).operands);
+  EXPECT_EQ(target_payload.target.value.spelling, "callee");
+  ASSERT_TRUE(target_payload.target.value.symbol_id.has_value());
+
+  const auto& empty_inputs = std::get<Call>(body[1]);
+  const auto& input_payload = std::get<Call::Direct::TargetInputOperands>(
+      std::get<Call::Direct>(empty_inputs.variant).operands);
+  EXPECT_TRUE(input_payload.arguments.value.values.empty());
+  ASSERT_EQ(input_payload.arguments.locs.size(), 1u);
+
+  Call call = std::get<Call>(body[2]);
+  auto& direct = std::get<Call::Direct>(call.variant);
+  ASSERT_TRUE(call.execution_predicate.has_value());
+  EXPECT_TRUE(direct.uni.value);
+  const auto& return_payload = std::get<Call::Direct::ReturnTargetInputOperands>(direct.operands);
+  EXPECT_EQ(return_payload.return_value.value.spelling, "%out");
+  ASSERT_TRUE(return_payload.return_value.value.symbol_id.has_value());
+  ASSERT_EQ(return_payload.arguments.value.values.size(), 3u);
+  const auto& parameter = std::get<ResolvedCallParameterRef>(
+      return_payload.arguments.value.values[1].value);
+  EXPECT_EQ(parameter.state_space, syntax_ast::AstStateSpace::Parameter);
+  const auto& literal = std::get<ResolvedCallLiteral>(
+      return_payload.arguments.value.values[2].value);
+  EXPECT_EQ(literal.spelling, "-4");
+  ASSERT_EQ(return_payload.arguments.value.values[2].locs.size(), 1u);
+
+  const checker::Context context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 0},
+      .instruction_range = return_payload.target.locs.front(),
+  };
+  EXPECT_TRUE(checker::check(call, context).has_value());
+
+  direct.operand_layout = ResolvedOperandLayoutTag{0};
+  const auto payload_mismatch = checker::check(call, context);
+  ASSERT_FALSE(payload_mismatch.has_value());
+  EXPECT_EQ(payload_mismatch.error().back().kind,
+            checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch);
+
+  direct.operand_layout = ResolvedOperandLayoutTag{99};
+  const auto invalid_tag = checker::check(call, context);
+  ASSERT_FALSE(invalid_tag.has_value());
+  EXPECT_EQ(invalid_tag.error().back().kind,
+            checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+}
+
+TEST(ResolvedModule, RejectsIndirectCallsUntilTargetMetadataExists) {
+  const auto indirect = parseModule(R"ptx(
+.entry caller() {
+  .reg .u64 %fptr;
+  call %fptr;
+}
+)ptx");
+  const auto indirect_resolved = resolveModule(indirect);
+  ASSERT_FALSE(indirect_resolved.has_value());
+  EXPECT_EQ(indirect_resolved.error().front().message,
+            "Indirect call targets require a target list or prototype, which is not supported yet.");
+
+  const auto target_set = parseModule(R"ptx(
+.entry caller() {
+  .reg .u64 %fptr;
+targets:
+  call %fptr, (), targets;
+}
+)ptx");
+  const auto target_set_resolved = resolveModule(target_set);
+  ASSERT_FALSE(target_set_resolved.has_value());
+  EXPECT_EQ(target_set_resolved.error().front().message,
+            "Indirect call target lists and prototypes are not supported yet.");
+}
+
+TEST(ResolvedModule, RejectsEntryAsDirectCallTarget) {
+  const auto ast = parseModule(R"ptx(
+.entry callee() {}
+.entry caller() {
+  call callee;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().front().message,
+            "Direct call target 'callee' must name a device .func, not an .entry.");
+}
+
+TEST(ResolvedModule, StandaloneDirectCallRemainsUnbound) {
+  PtxSyntaxParser parser("call callee, (argument, 4);");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+
+  const auto resolved = resolveInstruction(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto& call = std::get<Call>(*resolved);
+  const auto& payload = std::get<Call::Direct::TargetInputOperands>(
+      std::get<Call::Direct>(call.variant).operands);
+  EXPECT_FALSE(payload.target.value.symbol_id.has_value());
+  ASSERT_EQ(payload.arguments.value.values.size(), 2u);
+  EXPECT_FALSE(std::get<ResolvedCallParameterRef>(
+                   payload.arguments.value.values.front().value)
+                   .symbol_id.has_value());
+}
+
 TEST(ResolvedModule, StandaloneResolutionRemainsDeclarationFree) {
   PtxSyntaxParser parser("@!%p7 add.u32 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();

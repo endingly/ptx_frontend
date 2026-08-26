@@ -40,6 +40,13 @@ descriptor model 和 C++ backend domain 使用相同 bit。`bra` 只有一个 di
 standalone resolution 只保存源码 spelling。`.uni` 和 execution predicate 也分别作为
 generated modifier field 与 opcode 公共字段保留。
 
-`call` 仍不能伪装成 `Flat`。下一阶段需要引入能描述 call group/可变参数的 layout
-algorithm，并为 function target、call parameter 和 target-set/prototype 增加 binding-aware
-Resolved IR，之后才能把 `call` 接入统一 dispatch/checker。
+`call` 现在使用非 `Flat` 的 `Call` layout algorithm。一个 generated direct variant 固定有
+三种 payload layout：仅 target、target 加可变 input group、return group 加 target 加 input
+group。layout 选择时会检查 group role，因此 return group 不会匹配 input 位置。
+`ResolvedFunctionRef` 保存已绑定的 direct target，`ResolvedCallParameterRef` 保存每个
+`.reg/.param` 的 identity、type 与 state space，`ResolvedCallArguments` 保存逐项 range。
+literal 在后续 call-signature pass 给出类型之前保持 untyped。
+
+本切片只解析 direct named-function call。`.reg` target 或第四个 `CallTargetSet` operand 会给出
+明确拒绝：indirect call 需要尚未建模的 `.calltargets/.callprototype` metadata。direct function
+signature/ABI 对比也暂缓；现有 declaration pass 没有可复用的 call-contract 表示。

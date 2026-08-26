@@ -50,6 +50,41 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
         cls.descriptor = from_InstructionSpec(add)
         cls.sub_descriptor = from_InstructionSpec(sub)
+        call = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "call"
+        )
+        cls.call_descriptor = from_InstructionSpec(call)
+
+    def test_call_uses_fixed_non_flat_group_layouts(self) -> None:
+        variant = self.call_descriptor.variants[0]
+        self.assertEqual(variant.variant_id, "call_direct")
+        self.assertEqual(
+            [layout.layout_id for layout in variant.operand_layouts],
+            ["target", "target_input", "return_target_input"],
+        )
+        self.assertTrue(
+            all(layout.kind is OperandLayoutKind.CALL for layout in variant.operand_layouts)
+        )
+        self.assertEqual(
+            [
+                [slot.allowed_syntax_shapes for slot in layout.slots]
+                for layout in variant.operand_layouts
+            ],
+            [
+                [OperandSyntaxShape.CALL_TARGET],
+                [
+                    OperandSyntaxShape.CALL_TARGET,
+                    OperandSyntaxShape.CALL_PARAMETER_LIST,
+                ],
+                [
+                    OperandSyntaxShape.CALL_PARAMETER_LIST,
+                    OperandSyntaxShape.CALL_TARGET,
+                    OperandSyntaxShape.CALL_PARAMETER_LIST,
+                ],
+            ],
+        )
 
     def test_add_variants_and_modifier_constraints(self) -> None:
         self.assertEqual(self.descriptor.opcode, "add")
@@ -346,6 +381,77 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [[operand.name for operand in layout.operands] for layout in layouts],
             [["dst"], ["src"]],
         )
+
+    def test_normalize_call_layout_rejects_non_call_shape(self) -> None:
+        raw_spec = {
+            "category": "test",
+            "codegen_category": "test",
+            "instructions": [
+                {
+                    "opcode": "sample",
+                    "variants": [
+                        {
+                            "name": "sample_call",
+                            "availability": {"ptx": "1.0", "sm": 0},
+                            "operand_layouts": [
+                                {
+                                    "name": "bad",
+                                    "kind": "call",
+                                    "operands": [
+                                        {
+                                            "name": "target",
+                                            "kind": "direct_call_target",
+                                            "role": "label",
+                                            "access": "control",
+                                        },
+                                        {
+                                            "name": "return_value",
+                                            "kind": "call_return_param",
+                                            "role": "dst",
+                                            "access": "write",
+                                        },
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "call operand layout"):
+            normalize_instruction_spec(raw_spec)
+
+    def test_normalize_rejects_call_operands_in_flat_layout(self) -> None:
+        raw_spec = {
+            "category": "test",
+            "codegen_category": "test",
+            "instructions": [
+                {
+                    "opcode": "sample",
+                    "variants": [
+                        {
+                            "name": "sample_flat",
+                            "availability": {"ptx": "1.0", "sm": 0},
+                            "operand_layouts": [
+                                {
+                                    "name": "default",
+                                    "operands": [
+                                        {
+                                            "name": "target",
+                                            "kind": "direct_call_target",
+                                            "role": "label",
+                                            "access": "control",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "require kind 'call'"):
+            normalize_instruction_spec(raw_spec)
 
     def test_references_and_inline_data_normalize_identically(self) -> None:
         operands = [

@@ -163,6 +163,9 @@ domains:
       symbol: ResolvedSymbolRef
       addr: ResolvedAddress
       reg_vector: ResolvedRegisterVector
+      direct_call_target: ResolvedFunctionRef
+      call_return_param: ResolvedCallParameterRef
+      call_arguments: ResolvedCallArguments
 
   resolved_value_cpp_types:
     cpp_type: CppType
@@ -185,6 +188,9 @@ domains:
       Symbol: ResolvedSymbolRef
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
+      DirectCallTarget: ResolvedFunctionRef
+      CallReturnParameter: ResolvedCallParameterRef
+      CallArguments: ResolvedCallArguments
 
   modifier_field_names:
     cpp_type: CppIdentifier
@@ -208,6 +214,7 @@ domains:
     cpp_type: check_end::OperandLayoutKind
     values:
       Flat: check_end::OperandLayoutKind::Flat
+      Call: check_end::OperandLayoutKind::Call
 
   syntax_operand_shapes:
     cpp_type: check_end::OperandSyntaxShape
@@ -244,6 +251,9 @@ domains:
       Symbol: check_end::ResolvedValueKind::Symbol
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
+      DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
+      CallReturnParameter: check_end::ResolvedValueKind::CallReturnParameter
+      CallArguments: check_end::ResolvedValueKind::CallArguments
 
   resolved_operand_roles:
     cpp_type: check_end::OperandRole
@@ -275,6 +285,9 @@ domains:
       Vector: check_end::OperandShape::Vector
       BranchTarget: check_end::OperandShape::BranchTarget
       SpecialRegister: check_end::OperandShape::SpecialRegister
+      DirectCallTarget: check_end::OperandShape::DirectCallTarget
+      CallReturnParameter: check_end::OperandShape::CallReturnParameter
+      CallArguments: check_end::OperandShape::CallArguments
 
   resolved_operand_type_expression_kinds:
     cpp_type: check_end::OperandTypeExpressionKind

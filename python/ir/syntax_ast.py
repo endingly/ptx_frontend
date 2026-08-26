@@ -12,6 +12,7 @@ from enum import Enum, IntFlag
 from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
+    OperandLayoutKind as ModelOperandLayoutKind,
     OperandSpec,
     VariantSpec,
     modifier_spellings,
@@ -52,6 +53,7 @@ class OperandLayoutKind(Enum):
     """Generic algorithm used to match an operand layout."""
 
     FLAT = "Flat"
+    CALL = "Call"
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,9 @@ _OPERAND_SYNTAX_SHAPES = {
     "symbol": OperandSyntaxShape.IDENTIFIER_REF,
     "addr": OperandSyntaxShape.ADDRESS,
     "reg_vector": OperandSyntaxShape.VECTOR_PACK,
+    "direct_call_target": OperandSyntaxShape.CALL_TARGET,
+    "call_return_param": OperandSyntaxShape.CALL_PARAMETER_LIST,
+    "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
 }
 
 def _build_variant_descriptor_view(
@@ -150,7 +155,9 @@ def _build_variant_descriptor_view(
         operand_layouts=tuple(
             SyntaxOperandLayoutDescriptor(
                 layout_id=layout.name,
-                kind=OperandLayoutKind.FLAT,  # TODO: support other layout kinds
+                kind=OperandLayoutKind(
+                    "Call" if layout.kind is ModelOperandLayoutKind.CALL else "Flat"
+                ),
                 slots=tuple(
                     _build_operand_slot_descriptor_view(operand)
                     for operand in layout.operands

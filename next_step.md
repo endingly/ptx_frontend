@@ -433,9 +433,16 @@ auto result = ptx_frontend::resolved_ir::resolveModule(module);
    已完成；static address-alignment checking 已覆盖 bound data symbol 加常量 byte offset
    与 absolute immediate，register/standalone unknown address 不推断；
    function-local call-argument `.param` 及相关 call-context 规则留到 `call` 阶段；
-2. 为 `call` group/variadic operand 增加非 `Flat` descriptor layout algorithm，再将 `call`
-   接入统一 dispatch/checker；
-3. 表示 `.calltargets/.callprototype/.branchtargets` 及其余 module/function directive。
+2. `call` 的 direct named-function form 已完成：新增固定的非 `Flat` `Call` layout
+   algorithm（target；target+input group；return group+target+input group），input group
+   保留逐项 range 的 variadic binding-aware payload；`.uni`、execution predicate、layout
+   tag/payload checker 与 generated dispatch 均已闭环。direct target 保存 function `SymbolId`，
+   return/input `.reg/.param` 保存 identity/type/state space，immediate 在签名出现前保留
+   untyped。`.reg` indirect target 和第四个 target-set/prototype operand 会明确拒绝，避免把
+   indirect ABI 伪装成 direct call；
+3. 下一步为 direct function signature/ABI 对比，以及 `.calltargets/.callprototype` 的
+   directive、target-list/prototype identity 和 indirect-call contract；之后再表示
+   `.branchtargets` 及其余 module/function directive。
 
 ## 验证结果
 

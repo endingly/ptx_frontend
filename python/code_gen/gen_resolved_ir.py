@@ -920,6 +920,25 @@ def _emit_check_modifier_value_view(
 
 
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
+    if field.value_cpp_type == "ResolvedFunctionRef":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "DirectCallTarget")},
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedCallParameterRef":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "CallReturnParameter")},
+                  .register_type = {object_name}.{field.name}.value.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedCallArguments":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "CallArguments")},
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedRegisterVector":
         return f"""              [&]() -> OperandView {{
                 OperandView view{{

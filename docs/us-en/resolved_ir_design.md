@@ -27,8 +27,8 @@ types through 64 bits and `.v4` through 32 bits. PTX 8.8/SM 100 additionally
 accepts exactly 256-bit `.v8` × 32-bit and `.v4` × 64-bit forms. Static natural
 alignment checks bound data symbols with constant byte offsets and absolute
 immediate addresses; register and standalone unresolved addresses stay unknown.
-Other source forms, remaining qualifier extensions, `call` groups, CFG/SSA, and
-target lowering remain later work.
+Other source forms, remaining qualifier extensions, indirect-call metadata,
+CFG/SSA, and target lowering remain later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -317,10 +317,11 @@ The checker verifies tag validity, tag/payload-alternative agreement, and every
 operand binding. A disagreement is corrupted Resolved IR and produces
 `OperandLayoutPayloadMismatch`.
 
-The only implemented layout algorithm is `Flat`: comma-separated positional
-operand slots. Syntax AST can now represent groups and call parameter lists,
-but descriptors/resolution still need a new layout kind to consume them.
-Variadics and call groups must not be disguised as `Flat`.
+`Flat` handles comma-separated positional slots. `Call` is the only other
+implemented layout algorithm: it recognizes the three direct-call group
+arrangements and resolves the input group as one variadic field. It is a fixed
+algorithm, not a general repeat DSL; variadics and call groups still must not
+be disguised as `Flat`.
 
 ## Resolution protocol
 

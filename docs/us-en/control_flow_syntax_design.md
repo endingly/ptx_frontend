@@ -39,7 +39,8 @@ An indirect-call target-set operand must name a function-local `.callprototype`
 or `.calltargets` declaration. Their labels, and `.branchtargets` labels, now
 have stable function-scope symbols. Declaration semantics validates metadata
 members and target-set signatures; generated instruction layout and normal
-module metadata use remain I07/C03, while branch integration remains C02.
+module metadata use now resolve through the call descriptor, while branch
+integration remains C02.
 
 ## Descriptor and Resolved IR boundary
 
@@ -62,6 +63,14 @@ state space, and `ResolvedCallArguments` owns per-element ranges. Literals are
 retained untyped by standalone instruction resolution, which deliberately has
 no callee declaration context.
 
+Indirect forms use separate `IndirectCall` layouts rather than reusing either
+the direct `Call` layouts or `Flat`: target plus metadata, target plus input
+group plus metadata, and return group plus target plus input group plus
+metadata. Both the register target and the final metadata operand resolve as
+`ResolvedIndirectCallee`; layout slot shapes distinguish `CallTarget` from
+`CallTargetSet`. These layouts require PTX 2.1 and SM 20. The public modifier
+variant remains `call_direct` for compatibility.
+
 For a direct named call in a module, resolution looks up the callee's canonical
 prototype/definition signature. It compares return and input arity and order,
 then reuses the call-argument compatibility contract for `.reg/.param` type
@@ -74,9 +83,10 @@ belongs to module resolution, not the generated single-instruction checker.
 non-predicate `.reg` target or a function-local metadata label. In a module,
 the latter retains its `SymbolId` and whether it names `.callprototype` or
 `.calltargets`; standalone resolution retains only its spelling. It carries no
-signature, member list, or ABI fact. This value is currently exercised through
-manual field descriptors only: generated `call` layouts and normal module
-resolution still reject indirect calls until I07/C03.
+signature, member list, or ABI fact. Generated `call` layouts and normal module
+resolution use this value. It does not establish the indirect-call ABI; that
+remains C01. The temporary C03 fallback stays only for malformed
+metadata-bearing call syntax that matches no descriptor.
 
 ## Function-local `.callprototype` syntax
 

@@ -54,6 +54,7 @@ class OperandLayoutKind(Enum):
 
     FLAT = "Flat"
     CALL = "Call"
+    INDIRECT_CALL = "IndirectCall"
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,8 @@ _OPERAND_SYNTAX_SHAPES = {
     "addr": OperandSyntaxShape.ADDRESS,
     "reg_vector": OperandSyntaxShape.VECTOR_PACK,
     "direct_call_target": OperandSyntaxShape.CALL_TARGET,
+    "indirect_call_target": OperandSyntaxShape.CALL_TARGET,
+    "indirect_call_metadata": OperandSyntaxShape.CALL_TARGET_SET,
     "call_return_param": OperandSyntaxShape.CALL_PARAMETER_LIST,
     "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
 }
@@ -156,7 +159,11 @@ def _build_variant_descriptor_view(
             SyntaxOperandLayoutDescriptor(
                 layout_id=layout.name,
                 kind=OperandLayoutKind(
-                    "Call" if layout.kind is ModelOperandLayoutKind.CALL else "Flat"
+                    "Call"
+                    if layout.kind is ModelOperandLayoutKind.CALL
+                    else "IndirectCall"
+                    if layout.kind is ModelOperandLayoutKind.INDIRECT_CALL
+                    else "Flat"
                 ),
                 slots=tuple(
                     _build_operand_slot_descriptor_view(operand)

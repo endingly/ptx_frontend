@@ -33,6 +33,7 @@ class OperandLayoutKind(str, Enum):
 
     FLAT = "flat"
     CALL = "call"
+    INDIRECT_CALL = "indirect_call"
 
 
 @dataclass(frozen=True)

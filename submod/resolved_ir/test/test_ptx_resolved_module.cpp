@@ -2673,7 +2673,35 @@ TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
   EXPECT_FALSE(entry_store.has_value());
 }
 
-TEST(ResolvedModule, RejectsIndirectCallsUntilTargetMetadataExists) {
+TEST(ResolvedModule, ResolvesIndirectCallsWithFunctionLocalMetadata) {
+  const auto& syntax = Call::get_syntax_descriptor();
+  const auto& resolved_descriptor = Call::get_resolved_descriptor();
+  const auto& checker_descriptor = Call::get_checker_descriptor();
+  ASSERT_EQ(syntax.variants[0].operand_layouts.size(), 6u);
+  EXPECT_EQ(syntax.variants[0].operand_layouts[0].kind,
+            check_end::OperandLayoutKind::Call);
+  EXPECT_EQ(syntax.variants[0].operand_layouts[3].kind,
+            check_end::OperandLayoutKind::IndirectCall);
+  EXPECT_EQ(syntax.variants[0].operand_layouts[3].slots[0].allowed_shapes,
+            check_end::OperandSyntaxShape::CallTarget);
+  EXPECT_EQ(syntax.variants[0].operand_layouts[3].slots[1].allowed_shapes,
+            check_end::OperandSyntaxShape::CallTargetSet);
+  EXPECT_EQ(resolved_descriptor.variants[0].operand_layouts[3]
+                .bindings[0]
+                .allowed_shapes,
+            checker::OperandShape::IndirectCallee);
+  EXPECT_EQ(resolved_descriptor.variants[0].operand_layouts[3]
+                .fields[0]
+                .value_kind,
+            check_end::ResolvedValueKind::IndirectCallee);
+  for (size_t index = 3; index != 6; ++index) {
+    const auto& availability =
+        checker_descriptor.variants[0].operand_layouts[index].availability;
+    EXPECT_EQ(availability.minimum_ptx_version.major, 2u);
+    EXPECT_EQ(availability.minimum_ptx_version.minor, 1u);
+    EXPECT_EQ(availability.minimum_sm_version, 20u);
+  }
+
   const auto indirect = parseModule(R"ptx(
 .entry caller() {
   .reg .u64 %fptr;
@@ -2683,20 +2711,85 @@ TEST(ResolvedModule, RejectsIndirectCallsUntilTargetMetadataExists) {
   const auto indirect_resolved = resolveModule(indirect);
   ASSERT_FALSE(indirect_resolved.has_value());
   EXPECT_EQ(indirect_resolved.error().front().message,
-            "Indirect call targets require a target list or prototype, which is not supported yet.");
+            "Indirect call register targets require a function-local "
+            ".callprototype or .calltargets metadata operand.");
 
-  const auto target_set = parseModule(R"ptx(
-.func maybe_callee();
+  const auto indirect_forms = parseModule(R"ptx(
+.func maybe_callee(.reg .u32 input);
 .entry caller() {
   .reg .u64 %fptr;
+  .reg .u32 %result, %input;
+empty_prototype: .callprototype _;
 targets: .calltargets maybe_callee;
-  call %fptr, (), targets;
+returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
+  call %fptr, empty_prototype;
+  call %fptr, (%input), targets;
+  call (%result), %fptr, (%input), returning_prototype;
 }
 )ptx");
-  const auto target_set_resolved = resolveModule(target_set);
-  ASSERT_FALSE(target_set_resolved.has_value());
-  EXPECT_EQ(target_set_resolved.error().front().message,
-            "Indirect call target lists and prototypes are not supported yet.");
+  const auto resolved = resolveModule(indirect_forms);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto caller_scope =
+      *resolved->symbols.symbol(resolved->functions[1].symbol_id).owned_scope;
+  const auto fptr = resolved->symbols.lookup(caller_scope, "%fptr");
+  const auto empty_prototype =
+      resolved->symbols.lookup(caller_scope, "empty_prototype");
+  ASSERT_TRUE(fptr.has_value());
+  const auto targets = resolved->symbols.lookup(caller_scope, "targets");
+  const auto returning_prototype =
+      resolved->symbols.lookup(caller_scope, "returning_prototype");
+  ASSERT_TRUE(empty_prototype.has_value());
+  ASSERT_TRUE(targets.has_value());
+  ASSERT_TRUE(returning_prototype.has_value());
+  const auto& body = resolved->functions[1].body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& first = std::get<Call::Direct::TargetMetadataOperands>(
+      std::get<Call::Direct>(std::get<Call>(body[0]).variant).operands);
+  const auto& second = std::get<Call::Direct::TargetInputMetadataOperands>(
+      std::get<Call::Direct>(std::get<Call>(body[1]).variant).operands);
+  const auto& third =
+      std::get<Call::Direct::ReturnTargetInputMetadataOperands>(
+          std::get<Call::Direct>(std::get<Call>(body[2]).variant).operands);
+  const auto& first_target = std::get<ResolvedRegisterRef>(first.target.value);
+  ASSERT_TRUE(first_target.symbol_id.has_value());
+  EXPECT_EQ(first_target.symbol_id, fptr->symbol);
+  const auto& first_metadata =
+      std::get<ResolvedIndirectMetadataRef>(first.metadata.value);
+  EXPECT_EQ(first_metadata.symbol_id, empty_prototype->symbol);
+  EXPECT_EQ(first_metadata.declaration_kind, binding::SymbolKind::CallPrototype);
+  const auto& second_metadata =
+      std::get<ResolvedIndirectMetadataRef>(second.metadata.value);
+  EXPECT_EQ(second_metadata.symbol_id, targets->symbol);
+  EXPECT_EQ(second_metadata.declaration_kind, binding::SymbolKind::CallTargetSet);
+  const auto& second_target = std::get<ResolvedRegisterRef>(second.target.value);
+  ASSERT_TRUE(second_target.symbol_id.has_value());
+  EXPECT_EQ(second_target.symbol_id, fptr->symbol);
+  const auto& third_target = std::get<ResolvedRegisterRef>(third.target.value);
+  ASSERT_TRUE(third_target.symbol_id.has_value());
+  EXPECT_EQ(third_target.symbol_id, fptr->symbol);
+  const auto& third_metadata =
+      std::get<ResolvedIndirectMetadataRef>(third.metadata.value);
+  EXPECT_EQ(third_metadata.symbol_id, returning_prototype->symbol);
+  EXPECT_EQ(third_metadata.declaration_kind,
+            binding::SymbolKind::CallPrototype);
+
+  const checker::Context old_target{
+      .target = {.ptx_version = {2, 0}, .sm_version = 19},
+      .instruction_range = indirect_forms.range,
+  };
+  const checker::Context supported_target{
+      .target = {.ptx_version = {2, 1}, .sm_version = 20},
+      .instruction_range = indirect_forms.range,
+  };
+  const auto rejected = checker::check(std::get<Call>(body[0]), old_target);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2u);
+  EXPECT_EQ(rejected.error()[0].kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(
+      checker::check(std::get<Call>(body[0]), supported_target).has_value());
 }
 
 TEST(ResolvedModule, RejectsEntryAsDirectCallTarget) {

@@ -166,6 +166,8 @@ domains:
       addr: ResolvedAddress
       reg_vector: ResolvedRegisterVector
       direct_call_target: ResolvedFunctionRef
+      indirect_call_target: ResolvedIndirectCallee
+      indirect_call_metadata: ResolvedIndirectCallee
       call_return_param: ResolvedCallParameterRef
       call_arguments: ResolvedCallArguments
 
@@ -218,6 +220,7 @@ domains:
     values:
       Flat: check_end::OperandLayoutKind::Flat
       Call: check_end::OperandLayoutKind::Call
+      IndirectCall: check_end::OperandLayoutKind::IndirectCall
 
   syntax_operand_shapes:
     cpp_type: check_end::OperandSyntaxShape
@@ -290,6 +293,7 @@ domains:
       BranchTarget: check_end::OperandShape::BranchTarget
       SpecialRegister: check_end::OperandShape::SpecialRegister
       DirectCallTarget: check_end::OperandShape::DirectCallTarget
+      IndirectCallee: check_end::OperandShape::IndirectCallee
       CallReturnParameter: check_end::OperandShape::CallReturnParameter
       CallArguments: check_end::OperandShape::CallArguments
 

@@ -62,10 +62,25 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(variant.variant_id, "call_direct")
         self.assertEqual(
             [layout.layout_id for layout in variant.operand_layouts],
-            ["target", "target_input", "return_target_input"],
+            [
+                "target",
+                "target_input",
+                "return_target_input",
+                "target_metadata",
+                "target_input_metadata",
+                "return_target_input_metadata",
+            ],
         )
-        self.assertTrue(
-            all(layout.kind is OperandLayoutKind.CALL for layout in variant.operand_layouts)
+        self.assertEqual(
+            [layout.kind for layout in variant.operand_layouts],
+            [
+                OperandLayoutKind.CALL,
+                OperandLayoutKind.CALL,
+                OperandLayoutKind.CALL,
+                OperandLayoutKind.INDIRECT_CALL,
+                OperandLayoutKind.INDIRECT_CALL,
+                OperandLayoutKind.INDIRECT_CALL,
+            ],
         )
         self.assertEqual(
             [
@@ -82,6 +97,21 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     OperandSyntaxShape.CALL_PARAMETER_LIST,
                     OperandSyntaxShape.CALL_TARGET,
                     OperandSyntaxShape.CALL_PARAMETER_LIST,
+                ],
+                [
+                    OperandSyntaxShape.CALL_TARGET,
+                    OperandSyntaxShape.CALL_TARGET_SET,
+                ],
+                [
+                    OperandSyntaxShape.CALL_TARGET,
+                    OperandSyntaxShape.CALL_PARAMETER_LIST,
+                    OperandSyntaxShape.CALL_TARGET_SET,
+                ],
+                [
+                    OperandSyntaxShape.CALL_PARAMETER_LIST,
+                    OperandSyntaxShape.CALL_TARGET,
+                    OperandSyntaxShape.CALL_PARAMETER_LIST,
+                    OperandSyntaxShape.CALL_TARGET_SET,
                 ],
             ],
         )
@@ -419,6 +449,39 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ],
         }
         with self.assertRaisesRegex(ValueError, "call operand layout"):
+            normalize_instruction_spec(raw_spec)
+
+    def test_normalize_indirect_call_layout_rejects_missing_metadata(self) -> None:
+        raw_spec = {
+            "category": "test",
+            "codegen_category": "test",
+            "instructions": [
+                {
+                    "opcode": "sample",
+                    "variants": [
+                        {
+                            "name": "sample_indirect_call",
+                            "availability": {"ptx": "1.0", "sm": 0},
+                            "operand_layouts": [
+                                {
+                                    "name": "missing_metadata",
+                                    "kind": "indirect_call",
+                                    "operands": [
+                                        {
+                                            "name": "target",
+                                            "kind": "indirect_call_target",
+                                            "role": "label",
+                                            "access": "control",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "indirect call operand layout"):
             normalize_instruction_spec(raw_spec)
 
     def test_normalize_rejects_call_operands_in_flat_layout(self) -> None:

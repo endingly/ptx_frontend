@@ -81,7 +81,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "Direct")
         self.assertEqual(
             [layout.layout_id for layout in variant.operand_layouts],
-            ["target", "target_input", "return_target_input"],
+            [
+                "target",
+                "target_input",
+                "return_target_input",
+                "target_metadata",
+                "target_input_metadata",
+                "return_target_input_metadata",
+            ],
         )
         self.assertEqual(
             [
@@ -96,6 +103,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     "ResolvedFunctionRef",
                     "ResolvedCallArguments",
                 ],
+                ["ResolvedIndirectCallee", "ResolvedIndirectCallee"],
+                [
+                    "ResolvedIndirectCallee",
+                    "ResolvedCallArguments",
+                    "ResolvedIndirectCallee",
+                ],
+                [
+                    "ResolvedCallParameterRef",
+                    "ResolvedIndirectCallee",
+                    "ResolvedCallArguments",
+                    "ResolvedIndirectCallee",
+                ],
             ],
         )
         self.assertEqual(
@@ -105,6 +124,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ResolvedValueKind.DIRECT_CALL_TARGET,
                 ResolvedValueKind.CALL_ARGUMENTS,
             ],
+        )
+        self.assertEqual(
+            [dict(layout.availability) for layout in variant.operand_layouts[3:]],
+            [
+                {"ptx": "2.1", "sm": 20},
+                {"ptx": "2.1", "sm": 20},
+                {"ptx": "2.1", "sm": 20},
+            ],
+        )
+        self.assertEqual(
+            [field.value_kind for field in variant.operand_layouts[3].fields],
+            [ResolvedValueKind.INDIRECT_CALLEE, ResolvedValueKind.INDIRECT_CALLEE],
         )
 
     def test_normalizes_memory_vector_cross_constraint(self) -> None:

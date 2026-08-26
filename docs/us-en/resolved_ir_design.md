@@ -31,8 +31,11 @@ Other source forms, remaining qualifier extensions, CFG/SSA, and target
 lowering remain later work. `ResolvedIndirectCallee` now provides descriptor-
 independent identity for a non-predicate `.reg` indirect target or a bound
 function-local `.callprototype`/`.calltargets` label; it intentionally omits
-metadata payload and ABI. Generated call layouts and normal module indirect
-calls remain later work.
+metadata payload and ABI. Generated `Call::Direct` now has three additional
+`IndirectCall` layouts (target/metadata, target/input/metadata, and
+return/target/input/metadata), each available from PTX 2.1 / SM 20; normal
+module indirect calls preserve the bound target and metadata identities. ABI
+comparison remains later work.
 
 The generated public layer also provides an opcode-independent boundary:
 
@@ -430,7 +433,8 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 
 Direct-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
-by module resolution. Indirect-call metadata, scalar `.b128`, and
+by module resolution. Indirect-call descriptor resolution is covered, but its
+metadata-to-ABI comparison, scalar `.b128`, and
 declaration-type availability for wider `.b128` registers remain outside this
 slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are

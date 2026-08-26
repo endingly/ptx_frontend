@@ -98,6 +98,7 @@ struct SyntaxOperandSlotDescriptor {
 enum class OperandLayoutKind : uint8_t {
   Flat,  // normal layout
   Call,  // fixed direct-call group layouts
+  IndirectCall,  // fixed indirect-call group and metadata layouts
 };
 
 struct SyntaxOperandLayoutDescriptor {

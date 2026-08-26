@@ -26,7 +26,9 @@ register 与 standalone unresolved address 保持 unknown。其余 source form�
 qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
 `ResolvedIndirectCallee` 现在为 non-predicate `.reg` indirect target 或已绑定的 function-local
 `.callprototype`/`.calltargets` label 提供 descriptor-independent identity；它有意不携带 metadata
-payload 或 ABI。generated call layout 与 normal module indirect call 仍留给后续工作。
+payload 或 ABI。generated `Call::Direct` 现有三个额外的 `IndirectCall` layout
+（target/metadata、target/input/metadata、return/target/input/metadata），均要求 PTX 2.1 / SM 20；
+normal module indirect call 会保留已绑定的 target 与 metadata identity。ABI comparison 仍留给后续工作。
 
 生成的公共层还提供了一个与具体 opcode 无关的边界：
 

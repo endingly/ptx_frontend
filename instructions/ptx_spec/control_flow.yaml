@@ -2,7 +2,7 @@
 # yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
-ptx_isa: "9.2"
+ptx_isa: "9.3"
 category: control_flow
 codegen_category: control_flow
 section: "9.7.13"
@@ -17,11 +17,11 @@ operand_patterns:
 instructions:
   - opcode: call
     section: "9.7.13.1"
-    doc: "Direct call to a named function; indirect target lists and prototypes are deferred."
-    syntax: "call{.uni} [(return),] function [(arguments)]"
+    doc: "Direct call to a named function or indirect call through a register with function-local metadata."
+    syntax: "call{.uni} [(return),] target [(arguments)] [, metadata]"
     variants:
       - name: call_direct
-        description: "Direct call with optional return and input parameter groups."
+        description: "Direct and metadata-backed indirect call layouts with optional return and input groups."
         availability:
           ptx: "1.0"
           sm: 0
@@ -65,6 +65,60 @@ instructions:
                 kind: call_arguments
                 role: src
                 access: read
+          - name: target_metadata
+            kind: indirect_call
+            availability:
+              ptx: "2.1"
+              sm: 20
+            operands:
+              - name: target
+                kind: indirect_call_target
+                role: label
+                access: control
+              - name: metadata
+                kind: indirect_call_metadata
+                role: label
+                access: control
+          - name: target_input_metadata
+            kind: indirect_call
+            availability:
+              ptx: "2.1"
+              sm: 20
+            operands:
+              - name: target
+                kind: indirect_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+              - name: metadata
+                kind: indirect_call_metadata
+                role: label
+                access: control
+          - name: return_target_input_metadata
+            kind: indirect_call
+            availability:
+              ptx: "2.1"
+              sm: 20
+            operands:
+              - name: return_value
+                kind: call_return_param
+                role: dst
+                access: write
+              - name: target
+                kind: indirect_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+              - name: metadata
+                kind: indirect_call_metadata
+                role: label
+                access: control
   - opcode: bra
     section: "9.7.13.3"
     doc: "Branch to a direct function-local label, optionally marked uniform."

@@ -88,7 +88,8 @@ bool allows_shape(checker::OperandShape allowed, checker::OperandShape actual) {
  */
 bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
                             const syntax_ast::AstInstruction& ast) {
-  if (layout.kind == check_end::OperandLayoutKind::Call) {
+  if (layout.kind == check_end::OperandLayoutKind::Call ||
+      layout.kind == check_end::OperandLayoutKind::IndirectCall) {
     if (ast.operands.size() != layout.slots.size())
       return false;
     for (size_t index = 0; index < layout.slots.size(); ++index) {
@@ -98,13 +99,18 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
         return false;
       }
     }
-    if (ast.operands.size() == 2) {
+    const bool indirect =
+        layout.kind == check_end::OperandLayoutKind::IndirectCall;
+    const size_t minimum_operands = indirect ? 2 : 1;
+    if (ast.operands.size() == minimum_operands)
+      return true;
+    if (ast.operands.size() == minimum_operands + 1) {
       const auto* arguments =
           std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[1]);
       return arguments != nullptr &&
              arguments->kind == syntax_ast::AstCallParameterListKind::Input;
     }
-    if (ast.operands.size() == 3) {
+    if (ast.operands.size() == minimum_operands + 2) {
       const auto* returns =
           std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[0]);
       const auto* arguments =
@@ -113,7 +119,7 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
              returns->kind == syntax_ast::AstCallParameterListKind::Return &&
              arguments->kind == syntax_ast::AstCallParameterListKind::Input;
     }
-    return ast.operands.size() == 1;
+    return false;
   }
   if (ast.operands.size() > layout.slots.size())
     return false;
@@ -735,8 +741,8 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
       return std::unexpected(ResolveDiagnostic{
           .range = target->range,
           .message = is_register
-              ? "Indirect call targets require a target list or prototype, "
-                "which is not supported yet."
+              ? "Indirect call register targets require a function-local "
+                ".callprototype or .calltargets metadata operand."
               : fmt::format("Call target '{}' must name a function.",
                             target->name.syntax.text),
       });

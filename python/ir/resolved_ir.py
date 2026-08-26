@@ -113,6 +113,7 @@ class ResolvedOperandShape(Enum):
     BRANCH_TARGET = "BranchTarget"
     SPECIAL_REGISTER = "SpecialRegister"
     DIRECT_CALL_TARGET = "DirectCallTarget"
+    INDIRECT_CALLEE = "IndirectCallee"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
 
@@ -398,6 +399,8 @@ _OPERAND_ALLOWED_SHAPES = {
     "addr": (ResolvedOperandShape.ADDRESS,),
     "reg_vector": (ResolvedOperandShape.VECTOR,),
     "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
+    "indirect_call_target": (ResolvedOperandShape.INDIRECT_CALLEE,),
+    "indirect_call_metadata": (ResolvedOperandShape.INDIRECT_CALLEE,),
     "call_return_param": (ResolvedOperandShape.CALL_RETURN_PARAMETER,),
     "call_arguments": (ResolvedOperandShape.CALL_ARGUMENTS,),
 }

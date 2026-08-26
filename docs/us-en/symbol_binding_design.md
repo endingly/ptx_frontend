@@ -26,7 +26,8 @@ scope whose parent is the module scope. The initial pass collects:
 - module and function variable declarations;
 - function input and return parameters;
 - function symbols;
-- labels.
+- labels and function-local `.callprototype`, `.calltargets`, and
+  `.branchtargets` declarations.
 
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
@@ -98,8 +99,13 @@ its argument contributes references as well.
 
 Dedicated call/branch AST nodes produce distinct reference kinds. Binding now
 checks that a callee is a function or `.reg` function pointer, call parameters
-belong to `.reg`/`.param`, and a direct branch target is a label in the current
-function. See `control_flow_syntax_design.md`.
+belong to `.reg`/`.param`, a direct branch target is a label in the current
+function, and an indirect target-set operand is a `.callprototype` or
+`.calltargets` symbol. The three metadata declaration kinds have stable
+function-scope `SymbolId` values. Member validation, duplicate policy, and
+prototype/signature semantics are checked by declaration semantics; binding
+does not resolve metadata members or instruction use. See
+`control_flow_syntax_design.md`.
 
 ## Current diagnostics and boundary
 

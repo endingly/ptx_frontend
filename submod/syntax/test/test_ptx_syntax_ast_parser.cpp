@@ -12,9 +12,13 @@ namespace {
 using syntax_ast::AstAddress;
 using syntax_ast::AstAddressOffset;
 using syntax_ast::AstBranchTarget;
+using syntax_ast::AstBranchTargetSet;
 using syntax_ast::AstCallParameterList;
 using syntax_ast::AstCallTarget;
 using syntax_ast::AstCallTargetSet;
+using syntax_ast::AstCallPrototype;
+using syntax_ast::AstCallTargets;
+using syntax_ast::AstBranchTargets;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstPredicateOperand;
@@ -113,6 +117,103 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
   ASSERT_EQ(branch->operands.size(), 1u);
   EXPECT_EQ(std::get<AstBranchTarget>(branch->operands[0]).name.syntax.text,
             "done");
+
+  PtxSyntaxParser indexed_branch_parser("brx.idx %r0, targets;");
+  auto indexed_branch = indexed_branch_parser.parseInstruction();
+  ASSERT_TRUE(indexed_branch.has_value()) << indexed_branch.error().message;
+  ASSERT_EQ(indexed_branch->operands.size(), 2u);
+  EXPECT_EQ(std::get<AstIdentifierRef>(indexed_branch->operands[0]).syntax.text,
+            "%r0");
+  const auto& target_set =
+      std::get<AstBranchTargetSet>(indexed_branch->operands[1]);
+  EXPECT_EQ(target_set.name.syntax.text, "targets");
+  EXPECT_EQ(target_set.range, target_set.name.syntax.range);
+}
+
+TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  prototype: .callprototype (.param .u32 result) _ (.reg .u32 arg, .param .b8 bytes[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function = std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& prototype = std::get<AstCallPrototype>(function.body.front());
+  EXPECT_EQ(prototype.label.syntax.text, "prototype");
+  EXPECT_EQ(prototype.sink.syntax.text, "_");
+  ASSERT_EQ(prototype.return_parameters.size(), 1u);
+  EXPECT_EQ(prototype.return_parameters.front().name.syntax.text, "result");
+  ASSERT_EQ(prototype.parameters.size(), 2u);
+  EXPECT_EQ(prototype.parameters[0].name.syntax.text, "arg");
+  EXPECT_EQ(prototype.parameters[1].name.syntax.text, "bytes");
+  EXPECT_TRUE(prototype.parameters[1].is_array);
+  ASSERT_TRUE(prototype.noreturn_directive.has_value());
+  EXPECT_EQ(prototype.noreturn_directive->text, ".noreturn");
+  ASSERT_TRUE(prototype.abi_preserve.has_value());
+  EXPECT_EQ(prototype.abi_preserve->directive.text, ".abi_preserve");
+  EXPECT_EQ(prototype.abi_preserve->count.text, "10");
+  ASSERT_TRUE(prototype.abi_preserve_control.has_value());
+  EXPECT_EQ(prototype.abi_preserve_control->directive.text,
+            ".abi_preserve_control");
+  EXPECT_EQ(prototype.abi_preserve_control->count.text, "2");
+  EXPECT_EQ(prototype.range.start.line, 3u);
+  EXPECT_EQ(prototype.label.syntax.range.start.column, 3u);
+}
+
+TEST(PtxSyntaxParser, LowersFunctionLocalCallTargetsPayload) {
+  constexpr std::string_view source = R"ptx(
+.func caller() {
+  list: .calltargets first, second, second;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& targets = std::get<AstCallTargets>(function.body.front());
+  EXPECT_EQ(targets.label.syntax.text, "list");
+  ASSERT_EQ(targets.targets.size(), 3u);
+  EXPECT_EQ(targets.targets[0].syntax.text, "first");
+  EXPECT_EQ(targets.targets[1].syntax.text, "second");
+  EXPECT_EQ(targets.targets[2].syntax.text, "second");
+  EXPECT_EQ(targets.range.start.line, 3u);
+  EXPECT_EQ(targets.targets[1].syntax.range.start.column, 29u);
+}
+
+TEST(PtxSyntaxParser, LowersFunctionLocalBranchTargetsPayload) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  table: .branchtargets L1, N<5>, L1;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+
+  const auto module = parser.parseModule();
+
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& targets = std::get<AstBranchTargets>(function.body.front());
+  EXPECT_EQ(targets.label.syntax.text, "table");
+  ASSERT_EQ(targets.targets.size(), 3u);
+  EXPECT_EQ(targets.targets[0].name.syntax.text, "L1");
+  EXPECT_FALSE(targets.targets[0].count.has_value());
+  EXPECT_EQ(targets.targets[1].name.syntax.text, "N");
+  ASSERT_TRUE(targets.targets[1].count.has_value());
+  EXPECT_EQ(targets.targets[1].count->text, "5");
+  EXPECT_EQ(targets.targets[2].name.syntax.text, "L1");
+  EXPECT_EQ(targets.targets[1].range.start.line, 3u);
+  EXPECT_EQ(targets.targets[1].count->range.start.line, 3u);
 }
 
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {

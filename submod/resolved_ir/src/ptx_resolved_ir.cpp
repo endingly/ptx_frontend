@@ -88,7 +88,8 @@ bool allows_shape(checker::OperandShape allowed, checker::OperandShape actual) {
  */
 bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
                             const syntax_ast::AstInstruction& ast) {
-  if (layout.kind == check_end::OperandLayoutKind::Call) {
+  if (layout.kind == check_end::OperandLayoutKind::Call ||
+      layout.kind == check_end::OperandLayoutKind::IndirectCall) {
     if (ast.operands.size() != layout.slots.size())
       return false;
     for (size_t index = 0; index < layout.slots.size(); ++index) {
@@ -98,13 +99,18 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
         return false;
       }
     }
-    if (ast.operands.size() == 2) {
+    const bool indirect =
+        layout.kind == check_end::OperandLayoutKind::IndirectCall;
+    const size_t minimum_operands = indirect ? 2 : 1;
+    if (ast.operands.size() == minimum_operands)
+      return true;
+    if (ast.operands.size() == minimum_operands + 1) {
       const auto* arguments =
           std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[1]);
       return arguments != nullptr &&
              arguments->kind == syntax_ast::AstCallParameterListKind::Input;
     }
-    if (ast.operands.size() == 3) {
+    if (ast.operands.size() == minimum_operands + 2) {
       const auto* returns =
           std::get_if<syntax_ast::AstCallParameterList>(&ast.operands[0]);
       const auto* arguments =
@@ -113,7 +119,7 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
              returns->kind == syntax_ast::AstCallParameterListKind::Return &&
              arguments->kind == syntax_ast::AstCallParameterListKind::Input;
     }
-    return ast.operands.size() == 1;
+    return false;
   }
   if (ast.operands.size() > layout.slots.size())
     return false;
@@ -653,6 +659,46 @@ resolve_branch_target(const syntax_ast::AstOperand& operand,
   return WithLocs<ResolvedBranchTarget>{std::move(resolved), target->range};
 }
 
+std::expected<WithLocs<ResolvedBranchTargetSet>, ResolveDiagnostic>
+resolve_branch_target_set(const syntax_ast::AstOperand& operand,
+                          const ResolveContext* context) {
+  const auto* target_set =
+      std::get_if<syntax_ast::AstBranchTargetSet>(&operand);
+  if (target_set == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a brx.idx branch target list.",
+    });
+  }
+
+  ResolvedBranchTargetSet resolved{.spelling = target_set->name.syntax.text};
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, target_set->name.syntax.text);
+    if (!lookup) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target_set->range,
+          .message = fmt::format("Unresolved brx.idx branch target list '{}'.",
+                                 target_set->name.syntax.text),
+      });
+    }
+    const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+    if (symbol.kind != binding::SymbolKind::BranchTargetSet ||
+        symbol.scope != context->scope) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = target_set->range,
+          .message = fmt::format(
+              "brx.idx branch target list '{}' must name a function-local "
+              ".branchtargets declaration.",
+              target_set->name.syntax.text),
+      });
+    }
+    resolved.symbol_id = symbol.id;
+  }
+  return WithLocs<ResolvedBranchTargetSet>{std::move(resolved),
+                                            target_set->range};
+}
+
 std::expected<ResolvedCallParameterRef, ResolveDiagnostic>
 resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
                        const ResolveContext* context) {
@@ -735,8 +781,8 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
       return std::unexpected(ResolveDiagnostic{
           .range = target->range,
           .message = is_register
-              ? "Indirect call targets require a target list or prototype, "
-                "which is not supported yet."
+              ? "Indirect call register targets require a function-local "
+                ".callprototype or .calltargets metadata operand."
               : fmt::format("Call target '{}' must name a function.",
                             target->name.syntax.text),
       });
@@ -753,6 +799,64 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
     resolved.is_entry = symbol.function_is_entry;
   }
   return WithLocs<ResolvedFunctionRef>{std::move(resolved), target->range};
+}
+
+std::expected<WithLocs<ResolvedIndirectCallee>, ResolveDiagnostic>
+resolve_indirect_callee(const syntax_ast::AstOperand& operand,
+                        const ResolveContext* context) {
+  if (const auto* target = std::get_if<syntax_ast::AstCallTarget>(&operand)) {
+    auto register_ref = resolve_register(syntax_ast::AstOperand{target->name},
+                                         context);
+    if (!register_ref)
+      return std::unexpected(register_ref.error());
+    return WithLocs<ResolvedIndirectCallee>{
+        ResolvedIndirectCallee{std::move(register_ref->value)}, target->range};
+  }
+
+  const auto* metadata = std::get_if<syntax_ast::AstCallTargetSet>(&operand);
+  if (metadata == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected an indirect call register target or metadata label.",
+    });
+  }
+
+  ResolvedIndirectMetadataRef resolved{.spelling = metadata->name.syntax.text};
+  if (context != nullptr) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, metadata->name.syntax.text);
+    if (!lookup) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = metadata->range,
+          .message = fmt::format("Unresolved indirect call metadata '{}'.",
+                                 metadata->name.syntax.text),
+      });
+    }
+    const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+    if (lookup->parameterized_index ||
+        symbol.kind == binding::SymbolKind::Variable) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = metadata->range,
+          .message = "Indirect call metadata variables and call-table arrays "
+                     "are not supported.",
+      });
+    }
+    if (symbol.scope != context->scope ||
+        (symbol.kind != binding::SymbolKind::CallPrototype &&
+         symbol.kind != binding::SymbolKind::CallTargetSet)) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = metadata->range,
+          .message = fmt::format(
+              "Indirect call metadata '{}' must name a function-local "
+              ".callprototype or .calltargets declaration.",
+              metadata->name.syntax.text),
+      });
+    }
+    resolved.symbol_id = symbol.id;
+    resolved.declaration_kind = symbol.kind;
+  }
+  return WithLocs<ResolvedIndirectCallee>{
+      ResolvedIndirectCallee{std::move(resolved)}, metadata->range};
 }
 
 std::expected<WithLocs<ResolvedCallParameterRef>, ResolveDiagnostic>
@@ -1838,6 +1942,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::BranchTargetSet: {
+      auto value = resolve_branch_target_set(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::SpecialRegister: {
       auto value = resolve_special_register(operand);
       if (!value)
@@ -1878,6 +1988,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::DirectCallTarget: {
       auto value = resolve_direct_call_target(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::IndirectCallee: {
+      auto value = resolve_indirect_callee(operand, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -1983,11 +2099,13 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::RegOrImm:
     case ResolvedValueKind::MovSource:
     case ResolvedValueKind::BranchTarget:
+    case ResolvedValueKind::BranchTargetSet:
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
     case ResolvedValueKind::RegisterVector:
     case ResolvedValueKind::DirectCallTarget:
+    case ResolvedValueKind::IndirectCallee:
     case ResolvedValueKind::CallReturnParameter:
     case ResolvedValueKind::CallArguments:
     case ResolvedValueKind::VectorArity:
@@ -2120,19 +2238,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   const ResolvedVariantDescriptor& resolved_variant =
       find_resolved_variant_descriptor(resolved_instruction, variant_name);
   const auto selected_layout = select_operand_layout(syntax_variant, ast);
-  if (!selected_layout) {
-    if (ast.opcode.syntax.text == "call" &&
-        std::ranges::any_of(ast.operands, [](const auto& operand) {
-          return std::holds_alternative<syntax_ast::AstCallTargetSet>(operand);
-        })) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = ast.range,
-          .message = "Indirect call target lists and prototypes are not "
-                     "supported yet.",
-      });
-    }
+  if (!selected_layout)
     return std::unexpected(selected_layout.error());
-  }
 
   if (selected_layout->index >= resolved_variant.operand_layouts.size()) {
     throw ResolveException(fmt::format(
@@ -2257,11 +2364,13 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::RegOrImm:
       case ResolvedValueKind::MovSource:
       case ResolvedValueKind::BranchTarget:
+      case ResolvedValueKind::BranchTargetSet:
       case ResolvedValueKind::SpecialRegister:
       case ResolvedValueKind::Symbol:
       case ResolvedValueKind::Address:
       case ResolvedValueKind::RegisterVector:
       case ResolvedValueKind::DirectCallTarget:
+      case ResolvedValueKind::IndirectCallee:
       case ResolvedValueKind::CallReturnParameter:
       case ResolvedValueKind::CallArguments:
         throw ResolveException(
@@ -2327,6 +2436,9 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
           return check_end::OperandSyntaxShape::CallTarget;
         } else if constexpr (std::same_as<Item, syntax_ast::AstCallTargetSet>) {
           return check_end::OperandSyntaxShape::CallTargetSet;
+        } else if constexpr (std::same_as<Item,
+                                          syntax_ast::AstBranchTargetSet>) {
+          return check_end::OperandSyntaxShape::BranchTargetSet;
         } else {
           return check_end::OperandSyntaxShape::BranchTarget;
         }

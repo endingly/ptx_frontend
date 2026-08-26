@@ -493,14 +493,17 @@ def normalize_operand_layouts(
         operands = _resolve_operands(raw_layout["operands"], operand_patterns)
         call_operand_kinds = {
             "direct_call_target",
+            "indirect_call_target",
+            "indirect_call_metadata",
             "call_return_param",
             "call_arguments",
         }
-        if kind is not OperandLayoutKind.CALL and any(
+        if kind not in {OperandLayoutKind.CALL, OperandLayoutKind.INDIRECT_CALL} and any(
             operand.kind in call_operand_kinds for operand in operands
         ):
             raise ValueError(
-                f"operand layout {name!r}: call operands require kind 'call'"
+                f"operand layout {name!r}: call operands require kind 'call' "
+                "or 'indirect_call'"
             )
         if kind is OperandLayoutKind.CALL:
             call_shapes = {
@@ -513,6 +516,26 @@ def normalize_operand_layouts(
                     f"call operand layout {name!r} must be direct target, "
                     "direct target plus input group, or return group plus "
                     "direct target plus input group"
+                )
+        if kind is OperandLayoutKind.INDIRECT_CALL:
+            call_shapes = {
+                ("indirect_call_target", "indirect_call_metadata"),
+                (
+                    "indirect_call_target",
+                    "call_arguments",
+                    "indirect_call_metadata",
+                ),
+                (
+                    "call_return_param",
+                    "indirect_call_target",
+                    "call_arguments",
+                    "indirect_call_metadata",
+                ),
+            }
+            if tuple(operand.kind for operand in operands) not in call_shapes:
+                raise ValueError(
+                    f"indirect call operand layout {name!r} must be target plus "
+                    "metadata, optionally with input and return groups"
                 )
         layouts.append(
             OperandLayoutSpec(

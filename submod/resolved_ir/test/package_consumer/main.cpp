@@ -128,5 +128,48 @@ int main() {
           "shape mismatch.") {
     return 17;
   }
+
+  constexpr std::string_view control_flow_corpus = R"ptx(
+.version 9.3
+.target sm_30
+.address_size 64
+.func direct_callee(.reg .u32 input);
+.func listed_callee(.reg .u32 input);
+.entry caller() {
+  .reg .u64 %fptr;
+  .reg .u32 %direct_input, %indirect_input, %index;
+empty: .callprototype _;
+targets: .calltargets listed_callee;
+branches: .branchtargets done;
+  call direct_callee, (%direct_input);
+  call %fptr, empty;
+  call %fptr, (%indirect_input), targets;
+  brx.idx %index, branches;
+done:
+}
+)ptx";
+  ptx_frontend::PtxSyntaxParser control_flow_parser(control_flow_corpus);
+  const auto control_flow_ast = control_flow_parser.parseModule();
+  if (!control_flow_ast)
+    return 18;
+  const auto control_flow_resolved =
+      ptx_frontend::resolved_ir::resolveModule(*control_flow_ast);
+  if (!control_flow_resolved || control_flow_resolved->functions.size() != 3 ||
+      control_flow_resolved->functions[2].body.size() != 4)
+    return 19;
+  const ptx_frontend::resolved_ir::checker::Context control_flow_context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 30},
+      .instruction_range = {},
+  };
+  for (const auto& instruction : control_flow_resolved->functions[2].body) {
+    const auto checked = std::visit(
+        [&](const auto& value) {
+          return ptx_frontend::resolved_ir::checker::check(
+              value, control_flow_context);
+        },
+        instruction);
+    if (!checked)
+      return 20;
+  }
   return 0;
 }

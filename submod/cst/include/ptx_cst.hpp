@@ -105,10 +105,16 @@ struct CstBranchTarget {
   CstTokenRange token_range;
 };
 
+struct CstBranchTargetSet {
+  CstIdentifier name;
+  CstTokenRange token_range;
+};
+
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstImmediate, CstAddress,
                  CstVectorMember, CstVectorPack, CstCallParameterList,
-                 CstCallTarget, CstCallTargetSet, CstBranchTarget>;
+                 CstCallTarget, CstCallTargetSet, CstBranchTarget,
+                 CstBranchTargetSet>;
 
 struct CstOperandElement {
   CstOperand operand;
@@ -236,9 +242,6 @@ struct CstLabel {
   CstTokenRange token_range;
 };
 
-using CstFunctionBodyItem =
-    std::variant<CstVariableDeclaration, CstLabel, CstInstruction>;
-
 /** A module-level directive and its concrete token payload. */
 struct CstModuleDirective {
   TokenId keyword{};
@@ -272,6 +275,61 @@ struct CstFunctionParameterList {
   TokenId right_paren{};
   CstTokenRange token_range;
 };
+
+struct CstCallPrototypeAbiSuffix {
+  TokenId directive{};
+  TokenId count{};
+  CstTokenRange token_range;
+};
+
+/** A function-local label-associated indirect-call prototype. */
+struct CstCallPrototype {
+  TokenId label{};
+  TokenId colon{};
+  TokenId directive{};
+  std::optional<CstFunctionParameterList> return_parameters;
+  TokenId sink{};
+  std::optional<CstFunctionParameterList> parameters;
+  std::optional<TokenId> noreturn_directive;
+  std::optional<CstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<CstCallPrototypeAbiSuffix> abi_preserve_control;
+  TokenId semicolon{};
+  CstTokenRange token_range;
+};
+
+/** A function-local label-associated indirect-call target list. */
+struct CstCallTargets {
+  TokenId label{};
+  TokenId colon{};
+  TokenId directive{};
+  std::vector<TokenId> targets;
+  std::vector<TokenId> commas;
+  TokenId semicolon{};
+  CstTokenRange token_range;
+};
+
+struct CstBranchTargetEntry {
+  TokenId name{};
+  std::optional<TokenId> left_angle;
+  std::optional<TokenId> count;
+  std::optional<TokenId> right_angle;
+  CstTokenRange token_range;
+};
+
+/** A function-local label-associated indexed branch target list. */
+struct CstBranchTargets {
+  TokenId label{};
+  TokenId colon{};
+  TokenId directive{};
+  std::vector<CstBranchTargetEntry> targets;
+  std::vector<TokenId> commas;
+  TokenId semicolon{};
+  CstTokenRange token_range;
+};
+
+using CstFunctionBodyItem =
+    std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
+                 CstCallTargets, CstBranchTargets, CstInstruction>;
 
 struct CstFunction {
   std::vector<TokenId> qualifiers;

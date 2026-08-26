@@ -81,7 +81,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "Direct")
         self.assertEqual(
             [layout.layout_id for layout in variant.operand_layouts],
-            ["target", "target_input", "return_target_input"],
+            [
+                "target",
+                "target_input",
+                "return_target_input",
+                "target_metadata",
+                "target_input_metadata",
+                "return_target_input_metadata",
+            ],
         )
         self.assertEqual(
             [
@@ -96,6 +103,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     "ResolvedFunctionRef",
                     "ResolvedCallArguments",
                 ],
+                ["ResolvedIndirectCallee", "ResolvedIndirectCallee"],
+                [
+                    "ResolvedIndirectCallee",
+                    "ResolvedCallArguments",
+                    "ResolvedIndirectCallee",
+                ],
+                [
+                    "ResolvedCallParameterRef",
+                    "ResolvedIndirectCallee",
+                    "ResolvedCallArguments",
+                    "ResolvedIndirectCallee",
+                ],
             ],
         )
         self.assertEqual(
@@ -105,6 +124,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ResolvedValueKind.DIRECT_CALL_TARGET,
                 ResolvedValueKind.CALL_ARGUMENTS,
             ],
+        )
+        self.assertEqual(
+            [dict(layout.availability) for layout in variant.operand_layouts[3:]],
+            [
+                {"ptx": "2.1", "sm": 20},
+                {"ptx": "2.1", "sm": 20},
+                {"ptx": "2.1", "sm": 20},
+            ],
+        )
+        self.assertEqual(
+            [field.value_kind for field in variant.operand_layouts[3].fields],
+            [ResolvedValueKind.INDIRECT_CALLEE, ResolvedValueKind.INDIRECT_CALLEE],
         )
 
     def test_normalizes_memory_vector_cross_constraint(self) -> None:
@@ -566,6 +597,42 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedOperandTypeExpressionKind.NONE,
         )
         self.assertEqual(variant.rule, "control_flow.bra")
+
+    def test_brx_uses_a_u32_register_and_branch_target_set(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        brx = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "brx"
+        )
+        instruction = from_instruction_spec(brx)
+
+        self.assertEqual(instruction.cpp_name, "Brx")
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Idx")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("idx", "bool"),
+                ("uni", "WithLocs<bool>"),
+                ("index", "WithLocs<ResolvedRegisterRef>"),
+                ("tlist", "WithLocs<ResolvedBranchTargetSet>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                scalar_type="u32",
+            ),
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[1].allowed_shapes,
+            (ResolvedOperandShape.BRANCH_TARGET_SET,),
+        )
+        self.assertEqual(variant.rule, "control_flow.brx_idx")
 
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(

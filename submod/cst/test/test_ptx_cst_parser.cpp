@@ -10,9 +10,13 @@ namespace {
 
 using syntax_cst::CstAddress;
 using syntax_cst::CstBranchTarget;
+using syntax_cst::CstBranchTargetSet;
 using syntax_cst::CstCallParameterList;
 using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
+using syntax_cst::CstCallPrototype;
+using syntax_cst::CstCallTargets;
+using syntax_cst::CstBranchTargets;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -136,6 +140,29 @@ TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
   EXPECT_EQ(result->token(target.name.token).text, "done");
 }
 
+TEST(PtxCstParser, RetainsIndexedBranchTargetList) {
+  constexpr std::string_view source = "brx.idx.uni %r0, targets;";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseInstruction();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->modifiers.size(), 2u);
+  ASSERT_EQ(instruction->operands.size(), 2u);
+  EXPECT_EQ(result->token(std::get<syntax_cst::CstIdentifier>(
+                              instruction->operands[0].operand)
+                              .token)
+                .text,
+            "%r0");
+  const auto& target_set =
+      std::get<CstBranchTargetSet>(instruction->operands[1].operand);
+  EXPECT_EQ(result->token(target_set.name.token).text, "targets");
+  ASSERT_TRUE(instruction->operands[0].trailing_comma.has_value());
+}
+
 TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
   for (const auto [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
@@ -146,9 +173,176 @@ TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
            {"call helper, (%r0,);",
             "call argument list cannot end with a trailing comma"},
            {"bra first, second;",
-            "direct branch accepts exactly one label target"}}) {
+            "direct branch accepts exactly one label target"},
+           {"brx.idx %r0, targets, extra;",
+            "brx.idx accepts exactly an index and target list"}}) {
     PtxCstParser parser(source);
     const auto result = parser.parseInstruction();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  no_args: .callprototype _;
+  inputs: .callprototype _ (.param .u32 _);
+  returns: .callprototype (.reg .u32 result) _;
+  full: .callprototype (.param .u32 result) _ (.param .b8 arg[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 4u);
+  for (const auto& item : function.body)
+    EXPECT_TRUE(std::holds_alternative<CstCallPrototype>(item));
+
+  const auto& full = std::get<CstCallPrototype>(function.body.back());
+  EXPECT_EQ(result->token(full.label).text, "full");
+  EXPECT_EQ(result->token(full.colon).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(full.directive).kind, TokenKind::DotCallPrototype);
+  ASSERT_TRUE(full.return_parameters.has_value());
+  ASSERT_TRUE(full.parameters.has_value());
+  EXPECT_EQ(full.return_parameters->parameters.size(), 1u);
+  EXPECT_EQ(full.parameters->parameters.size(), 1u);
+  ASSERT_TRUE(full.noreturn_directive.has_value());
+  ASSERT_TRUE(full.abi_preserve.has_value());
+  ASSERT_TRUE(full.abi_preserve_control.has_value());
+  EXPECT_EQ(result->token(full.abi_preserve->directive).text,
+            ".abi_preserve");
+  EXPECT_EQ(result->token(full.abi_preserve->count).text, "10");
+  EXPECT_EQ(result->token(full.abi_preserve_control->count).text, "2");
+}
+
+TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".func f() { p: .callprototype (.reg .u32 a, .reg .u32 b) _; }",
+            ".callprototype return parameter list must contain exactly one parameter"},
+           {".func f() { p: .callprototype value; }",
+            "expected '_' in .callprototype"},
+           {".func f() { .callprototype _; }",
+            "'.callprototype' requires a preceding function-local label"},
+           {"outside: .callprototype _;",
+            "'.callprototype' is only valid inside a function body"},
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsFunctionLocalCallTargetsStructure) {
+  constexpr std::string_view source = R"ptx(
+.func caller() {
+  one: .calltargets first;
+  many: .calltargets first, second, third;
+  duplicate: .calltargets first, first;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 3u);
+  for (const auto& item : function.body)
+    EXPECT_TRUE(std::holds_alternative<CstCallTargets>(item));
+
+  const auto& many = std::get<CstCallTargets>(function.body[1]);
+  EXPECT_EQ(result->token(many.label).text, "many");
+  EXPECT_EQ(result->token(many.colon).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(many.directive).kind, TokenKind::DotCallTargets);
+  ASSERT_EQ(many.targets.size(), 3u);
+  ASSERT_EQ(many.commas.size(), 2u);
+  EXPECT_EQ(result->token(many.targets[0]).text, "first");
+  EXPECT_EQ(result->token(many.targets[2]).text, "third");
+
+  const auto& duplicate = std::get<CstCallTargets>(function.body[2]);
+  ASSERT_EQ(duplicate.targets.size(), 2u);
+  EXPECT_EQ(result->token(duplicate.targets[0]).text, "first");
+  EXPECT_EQ(result->token(duplicate.targets[1]).text, "first");
+}
+
+TEST(PtxCstParser, RejectsMalformedAndNonlocalCallTargetsGrammar) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".func f() { list: .calltargets; }",
+            ".calltargets requires at least one function target"},
+           {".func f() { list: .calltargets first,; }",
+            "call target list cannot end with a trailing comma"},
+           {".func f() { .calltargets first; }",
+            "'.calltargets' requires a preceding function-local label"},
+           {"outside: .calltargets first;",
+            "'.calltargets' is only valid inside a function body"},
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.has_value()) << source;
+    EXPECT_EQ(result.error().message, message) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsFunctionLocalBranchTargetsStructure) {
+  constexpr std::string_view source = R"ptx(
+.func dispatch() {
+  table: .branchtargets L1, N<5>, L1;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& targets = std::get<CstBranchTargets>(function.body.front());
+  EXPECT_EQ(result->token(targets.label).text, "table");
+  EXPECT_EQ(result->token(targets.colon).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(targets.directive).kind, TokenKind::DotBranchTargets);
+  ASSERT_EQ(targets.targets.size(), 3u);
+  ASSERT_EQ(targets.commas.size(), 2u);
+  EXPECT_EQ(result->token(targets.targets[0].name).text, "L1");
+  EXPECT_FALSE(targets.targets[0].count.has_value());
+  EXPECT_EQ(result->token(targets.targets[1].name).text, "N");
+  ASSERT_TRUE(targets.targets[1].left_angle.has_value());
+  ASSERT_TRUE(targets.targets[1].count.has_value());
+  ASSERT_TRUE(targets.targets[1].right_angle.has_value());
+  EXPECT_EQ(result->token(*targets.targets[1].count).text, "5");
+  EXPECT_EQ(result->token(targets.targets[2].name).text, "L1");
+}
+
+TEST(PtxCstParser, RejectsMalformedAndNonlocalBranchTargetsGrammar) {
+  for (const auto [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".func f() { table: .branchtargets; }",
+            ".branchtargets requires at least one label target"},
+           {".func f() { table: .branchtargets L1,; }",
+            "branch target list cannot end with a trailing comma"},
+           {".func f() { table: .branchtargets N<>; }",
+            "expected branch target count"},
+           {".func f() { table: .branchtargets N<5; }",
+            "expected '>' after branch target count"},
+           {".func f() { .branchtargets L1; }",
+            "'.branchtargets' requires a preceding function-local label"},
+           {"outside: .branchtargets L1;",
+            "'.branchtargets' is only valid inside a function body"},
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
     ASSERT_FALSE(result.has_value()) << source;
     EXPECT_EQ(result.error().message, message) << source;
   }

@@ -292,6 +292,11 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstCallTargetSet{
               lowerIdentifier(cst, value.name),
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstBranchTargetSet>) {
+          return syntax_ast::AstBranchTargetSet{
+              lowerIdentifier(cst, value.name),
+              cst.sourceRange(value.token_range)};
         } else {
           return syntax_ast::AstBranchTarget{
               lowerIdentifier(cst, value.name),
@@ -433,6 +438,83 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   };
 }
 
+syntax_ast::AstCallPrototype lowerCallPrototype(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstCallPrototype& prototype) {
+  const auto lower_parameters = [&cst](
+                                    const std::optional<syntax_cst::CstFunctionParameterList>&
+                                        parameters) {
+    std::vector<syntax_ast::AstFunctionParameter> lowered;
+    if (!parameters)
+      return lowered;
+    lowered.reserve(parameters->parameters.size());
+    for (const auto& parameter : parameters->parameters)
+      lowered.push_back(lowerFunctionParameter(cst, parameter));
+    return lowered;
+  };
+  const auto lower_suffix = [&cst](
+                                const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>&
+                                    suffix)
+      -> std::optional<syntax_ast::AstCallPrototypeAbiSuffix> {
+    if (!suffix)
+      return std::nullopt;
+    return syntax_ast::AstCallPrototypeAbiSuffix{
+        .directive = leafSyntax(cst, suffix->directive),
+        .count = leafSyntax(cst, suffix->count),
+        .range = cst.sourceRange(suffix->token_range),
+    };
+  };
+  std::optional<syntax_ast::AstSyntax> noreturn_directive;
+  if (prototype.noreturn_directive)
+    noreturn_directive = leafSyntax(cst, *prototype.noreturn_directive);
+  return syntax_ast::AstCallPrototype{
+      .label = lowerIdentifier(cst, {prototype.label}),
+      .return_parameters = lower_parameters(prototype.return_parameters),
+      .sink = lowerIdentifier(cst, {prototype.sink}),
+      .parameters = lower_parameters(prototype.parameters),
+      .noreturn_directive = std::move(noreturn_directive),
+      .abi_preserve = lower_suffix(prototype.abi_preserve),
+      .abi_preserve_control = lower_suffix(prototype.abi_preserve_control),
+      .range = cst.sourceRange(prototype.token_range),
+  };
+}
+
+syntax_ast::AstCallTargets lowerCallTargets(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstCallTargets& targets) {
+  std::vector<syntax_ast::AstIdentifierRef> lowered_targets;
+  lowered_targets.reserve(targets.targets.size());
+  for (const auto target : targets.targets)
+    lowered_targets.push_back(lowerIdentifier(cst, {target}));
+  return syntax_ast::AstCallTargets{
+      .label = lowerIdentifier(cst, {targets.label}),
+      .targets = std::move(lowered_targets),
+      .range = cst.sourceRange(targets.token_range),
+  };
+}
+
+syntax_ast::AstBranchTargets lowerBranchTargets(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstBranchTargets& targets) {
+  std::vector<syntax_ast::AstBranchTargetEntry> lowered_targets;
+  lowered_targets.reserve(targets.targets.size());
+  for (const auto& target : targets.targets) {
+    std::optional<syntax_ast::AstSyntax> count;
+    if (target.count)
+      count = leafSyntax(cst, *target.count);
+    lowered_targets.push_back(syntax_ast::AstBranchTargetEntry{
+        .name = lowerIdentifier(cst, {target.name}),
+        .count = std::move(count),
+        .range = cst.sourceRange(target.token_range),
+    });
+  }
+  return syntax_ast::AstBranchTargets{
+      .label = lowerIdentifier(cst, {targets.label}),
+      .targets = std::move(lowered_targets),
+      .range = cst.sourceRange(targets.token_range),
+  };
+}
+
 }  // namespace
 
 std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
@@ -537,6 +619,15 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         lowered.body.emplace_back(
             syntax_ast::AstLabel{lowerIdentifier(cst, {label->name}),
                                  cst.sourceRange(label->token_range)});
+      } else if (const auto* prototype =
+                     std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
+        lowered.body.emplace_back(lowerCallPrototype(cst, *prototype));
+      } else if (const auto* targets =
+                     std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
+        lowered.body.emplace_back(lowerCallTargets(cst, *targets));
+      } else if (const auto* targets =
+                     std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
+        lowered.body.emplace_back(lowerBranchTargets(cst, *targets));
       } else {
         lowered.body.emplace_back(lowerInstructionNode(
             cst, std::get<syntax_cst::CstInstruction>(body_item)));

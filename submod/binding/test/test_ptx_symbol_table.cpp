@@ -289,6 +289,115 @@ TEST(PtxSymbolTable, ClassifiesLocalCallParametersInTheirFunctionScope) {
   EXPECT_EQ(argument->target->symbol, staging->symbol);
 }
 
+TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
+  constexpr std::string_view source = R"ptx(
+.func callee();
+.func dispatch() {
+  .reg .u32 %r0;
+  prototype: .callprototype _;
+  targets: .calltargets callee;
+  branches: .branchtargets L0, N<5>;
+  call callee, prototype;
+  call callee, targets;
+  brx.idx %r0, branches;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto first = binding::bindSymbols(*module);
+  const auto second = binding::bindSymbols(*module);
+  ASSERT_TRUE(first.diagnostics.empty());
+  ASSERT_TRUE(second.diagnostics.empty());
+
+  const auto dispatch =
+      first.table.lookup(first.table.moduleScope(), "dispatch");
+  ASSERT_TRUE(dispatch.has_value());
+  const auto function_scope =
+      *first.table.symbol(dispatch->symbol).owned_scope;
+  for (const auto [name, kind] : std::initializer_list<
+           std::pair<std::string_view, binding::SymbolKind>>{
+           {"prototype", binding::SymbolKind::CallPrototype},
+           {"targets", binding::SymbolKind::CallTargetSet},
+           {"branches", binding::SymbolKind::BranchTargetSet}}) {
+    const auto symbol = first.table.lookup(function_scope, name);
+    const auto rebound = second.table.lookup(function_scope, name);
+    ASSERT_TRUE(symbol.has_value()) << name;
+    ASSERT_TRUE(rebound.has_value()) << name;
+    EXPECT_EQ(first.table.symbol(symbol->symbol).kind, kind);
+    EXPECT_EQ(first.table.symbol(symbol->symbol).scope, function_scope);
+    EXPECT_EQ(symbol->symbol, rebound->symbol);
+  }
+  EXPECT_NE(first.table.lookup(function_scope, "prototype")->symbol,
+            first.table.lookup(function_scope, "targets")->symbol);
+  EXPECT_NE(first.table.lookup(function_scope, "prototype")->symbol,
+            first.table.lookup(function_scope, "branches")->symbol);
+  EXPECT_NE(first.table.lookup(function_scope, "targets")->symbol,
+            first.table.lookup(function_scope, "branches")->symbol);
+  EXPECT_FALSE(first.table.lookup(first.table.moduleScope(), "prototype")
+                   .has_value());
+
+  for (const std::string_view name : {"prototype", "targets"}) {
+    const auto* reference =
+        findReference(first.table, name, binding::ReferenceKind::CallTargetSet);
+    ASSERT_NE(reference, nullptr);
+    ASSERT_TRUE(reference->target.has_value());
+    EXPECT_EQ(reference->classification,
+              binding::ReferenceClassification::DeclaredSymbol);
+  }
+  const auto* branch_reference = findReference(
+      first.table, "branches", binding::ReferenceKind::BranchTargetSet);
+  ASSERT_NE(branch_reference, nullptr);
+  ASSERT_TRUE(branch_reference->target.has_value());
+  EXPECT_EQ(first.table.symbol(branch_reference->target->symbol).kind,
+            binding::SymbolKind::BranchTargetSet);
+}
+
+TEST(PtxSymbolTable, DiagnosesNonCallMetadataTargetSetReference) {
+  constexpr std::string_view source = R"ptx(
+.func callee();
+.func dispatch() {
+  branches: .branchtargets L0;
+  call callee, branches;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::InvalidReferenceTarget);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Call target set 'branches' must name a .callprototype or "
+            ".calltargets declaration.");
+}
+
+TEST(PtxSymbolTable, DiagnosesInvalidIndexedBranchTargetSetReference) {
+  constexpr std::string_view source = R"ptx(
+.global .u32 branches;
+.entry kernel() {
+  .reg .u32 %index;
+  brx.idx %index, branches;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.error().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::InvalidReferenceTarget);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Branch target set 'branches' must name a .branchtargets "
+            "declaration in the current function.");
+}
+
 TEST(PtxSymbolTable, DiagnosesInvalidCallAndBranchTargetKinds) {
   constexpr std::string_view source = R"ptx(
 .global .u32 global_value;

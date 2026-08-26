@@ -166,6 +166,9 @@ domains:
       addr: ResolvedAddress
       reg_vector: ResolvedRegisterVector
       direct_call_target: ResolvedFunctionRef
+      indirect_call_target: ResolvedIndirectCallee
+      indirect_call_metadata: ResolvedIndirectCallee
+      branch_target_set: ResolvedBranchTargetSet
       call_return_param: ResolvedCallParameterRef
       call_arguments: ResolvedCallArguments
 
@@ -191,6 +194,8 @@ domains:
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
       DirectCallTarget: ResolvedFunctionRef
+      IndirectCallee: ResolvedIndirectCallee
+      BranchTargetSet: ResolvedBranchTargetSet
       CallReturnParameter: ResolvedCallParameterRef
       CallArguments: ResolvedCallArguments
 
@@ -217,6 +222,7 @@ domains:
     values:
       Flat: check_end::OperandLayoutKind::Flat
       Call: check_end::OperandLayoutKind::Call
+      IndirectCall: check_end::OperandLayoutKind::IndirectCall
 
   syntax_operand_shapes:
     cpp_type: check_end::OperandSyntaxShape
@@ -231,6 +237,7 @@ domains:
       CALL_TARGET: check_end::OperandSyntaxShape::CallTarget
       CALL_TARGET_SET: check_end::OperandSyntaxShape::CallTargetSet
       BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
+      BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
 
   resolved_value_kinds:
     cpp_type: check_end::ResolvedValueKind
@@ -254,6 +261,8 @@ domains:
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
+      IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
+      BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet
       CallReturnParameter: check_end::ResolvedValueKind::CallReturnParameter
       CallArguments: check_end::ResolvedValueKind::CallArguments
 
@@ -288,6 +297,8 @@ domains:
       BranchTarget: check_end::OperandShape::BranchTarget
       SpecialRegister: check_end::OperandShape::SpecialRegister
       DirectCallTarget: check_end::OperandShape::DirectCallTarget
+      IndirectCallee: check_end::OperandShape::IndirectCallee
+      BranchTargetSet: check_end::OperandShape::BranchTargetSet
       CallReturnParameter: check_end::OperandShape::CallReturnParameter
       CallArguments: check_end::OperandShape::CallArguments
 

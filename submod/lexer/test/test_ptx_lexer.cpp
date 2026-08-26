@@ -279,6 +279,39 @@ TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   expect_token(toks[5], TokenKind::DotWeak, ".weak");
 }
 
+TEST(PtxLexerNew, CallPrototypeIsAControlFlowMetadataToken) {
+  auto toks = lex_all(".callprototype _ .abi_preserve 10");
+
+  ASSERT_EQ(toks.size(), 4u);
+  expect_token(toks[0], TokenKind::DotCallPrototype, ".callprototype");
+  expect_token(toks[1], TokenKind::Ident, "_");
+  expect_token(toks[2], TokenKind::DotIdent, ".abi_preserve");
+  expect_token(toks[3], TokenKind::Decimal, "10");
+}
+
+TEST(PtxLexerNew, CallTargetsIsAControlFlowMetadataToken) {
+  auto toks = lex_all(".calltargets first, second");
+
+  ASSERT_EQ(toks.size(), 4u);
+  expect_token(toks[0], TokenKind::DotCallTargets, ".calltargets");
+  expect_token(toks[1], TokenKind::Ident, "first");
+  expect_token(toks[2], TokenKind::Comma, ",");
+  expect_token(toks[3], TokenKind::Ident, "second");
+}
+
+TEST(PtxLexerNew, BranchTargetsIsAControlFlowMetadataToken) {
+  auto toks = lex_all(".branchtargets L1, N<5>");
+
+  ASSERT_EQ(toks.size(), 7u);
+  expect_token(toks[0], TokenKind::DotBranchTargets, ".branchtargets");
+  expect_token(toks[1], TokenKind::Ident, "L1");
+  expect_token(toks[2], TokenKind::Comma, ",");
+  expect_token(toks[3], TokenKind::Ident, "N");
+  expect_token(toks[4], TokenKind::Lt, "<");
+  expect_token(toks[5], TokenKind::Decimal, "5");
+  expect_token(toks[6], TokenKind::Gt, ">");
+}
+
 TEST(PtxLexerNew, DeclarationDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".reg .align .ptr .global .const .shared .local .param");
 

@@ -111,6 +111,8 @@ enum class OperandShape : uint16_t {
   DirectCallTarget = 1 << 8,
   CallReturnParameter = 1 << 9,
   CallArguments = 1 << 10,
+  IndirectCallee = 1 << 11,
+  BranchTargetSet = 1 << 12,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {

@@ -25,7 +25,8 @@ function scope。当前收集：
 - module/function variable declaration；
 - function input 与 return parameter；
 - function symbol；
-- label。
+- label，以及 function-local `.callprototype`、`.calltargets` 与
+  `.branchtargets` declaration。
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
 parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
@@ -84,8 +85,11 @@ linkage 明确标记为 external。
 mask operator 的 callee 是 literal，同样只绑定其 argument。
 
 call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 callee 是 function 或
-`.reg` function pointer、call parameter 属于 `.reg/.param`，以及 direct branch target 是
-当前 function 的 label。详见 `control_flow_syntax_design.md`。
+`.reg` function pointer、call parameter 属于 `.reg/.param`、direct branch target 是当前
+function 的 label，且 indirect target-set operand 是 `.callprototype` 或 `.calltargets`
+symbol。三种 metadata declaration 都拥有稳定的 function-scope `SymbolId`。member validation、
+duplicate policy 与 prototype/signature semantics 由 declaration semantics 检查；binding 不
+resolve metadata member 或 instruction use。详见 `control_flow_syntax_design.md`。
 
 ## 当前诊断与边界
 

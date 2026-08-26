@@ -47,6 +47,8 @@ class PtxCstParser {
   parseCallOperands();
   std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
   parseBranchOperands();
+  std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+  parseIndexedBranchOperands();
   std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
   parseInstructionNode(std::optional<TokenId> opcode = std::nullopt);
   std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
@@ -64,6 +66,12 @@ class PtxCstParser {
   parseFunctionParameter();
   std::expected<syntax_cst::CstFunctionParameterList, CstParseDiagnostic>
   parseFunctionParameterList();
+  std::expected<syntax_cst::CstCallPrototype, CstParseDiagnostic>
+  parseCallPrototype(TokenId label, TokenId colon);
+  std::expected<syntax_cst::CstCallTargets, CstParseDiagnostic>
+  parseCallTargets(TokenId label, TokenId colon);
+  std::expected<syntax_cst::CstBranchTargets, CstParseDiagnostic>
+  parseBranchTargets(TokenId label, TokenId colon);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(

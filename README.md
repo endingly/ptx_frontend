@@ -18,8 +18,8 @@ The frontend currently provides:
   initializer, and instruction forms;
 - module/function symbol scopes, reference classification, and declaration
   semantics;
-- generated resolution and checking for YAML-modelled `bra`, `add`, `sub`,
-  `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
+- generated resolution and checking for YAML-modelled `bra`, `brx.idx`, `add`,
+  `sub`, `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
   the 14 `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`,
   `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` and the
   PTX 8.8/SM 100 256-bit modern forms (`.v8` × 32-bit or `.v4` × 64-bit);
@@ -41,7 +41,7 @@ The frontend currently provides:
   remain exact-width;
 - explicit PTX ISA version, SM version, and target-family availability checks
   for modelled variants, modifiers, layouts, and operands.
-- direct named-function `call` in the three currently modelled layouts:
+- direct `call` and metadata-backed indirect `call` forms, including:
   `call function;`, `call function, (arguments);`, and
   `call (return), function, (arguments);`. Module resolution uses the canonical
   prototype/definition signature to check return/input arity and order,
@@ -50,9 +50,12 @@ The frontend currently provides:
   including literal-kind and overflow diagnostics. Function-local `.param`
   staging also enforces PTX 9.3 `::entry`/`::func` qualification plus
   unpredicated contiguous store/call/load adjacency; the call itself may remain
-  predicated. Standalone instruction resolution has no callee context, so its
-  call literals remain untyped. Indirect target-list/prototype metadata is not
-  supported.
+  predicated. Metadata-backed indirect calls use a `.reg` target plus a
+  function-local `.callprototype` or `.calltargets` declaration, share the
+  same ABI checks, and require PTX 2.1 / SM 20. `brx.idx{.uni}` uses a `.u32`
+  index and current-function `.branchtargets` identity at PTX 6.0 / SM 30;
+  neither form expands metadata entries. Standalone instruction resolution has
+  no callee context, so its call literals remain untyped.
 
 These checks cover only the currently modelled instruction subset. They do not
 validate the full PTX ISA, every module directive, or link-time behaviour.

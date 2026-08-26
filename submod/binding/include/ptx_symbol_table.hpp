@@ -33,6 +33,9 @@ enum class SymbolKind : uint8_t {
   CallParameter,
   Function,
   Label,
+  CallPrototype,
+  CallTargetSet,
+  BranchTargetSet,
 };
 
 enum class SymbolLinkage : uint8_t {
@@ -52,6 +55,7 @@ enum class ReferenceKind : uint8_t {
   CallArgument,
   CallTargetSet,
   BranchTarget,
+  BranchTargetSet,
 };
 
 enum class ReferenceClassification : uint8_t {

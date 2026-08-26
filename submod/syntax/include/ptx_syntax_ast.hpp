@@ -112,12 +112,17 @@ struct AstBranchTarget {
   SourceRange range;
 };
 
+struct AstBranchTargetSet {
+  AstIdentifierRef name;
+  SourceRange range;
+};
+
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
                  AstAddress, AstVectorMember, AstVectorPack,
                  AstCallParameterList, AstCallTarget, AstCallTargetSet,
-                 AstBranchTarget>;
+                 AstBranchTarget, AstBranchTargetSet>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {
@@ -291,9 +296,6 @@ struct AstLabel {
   SourceRange range;
 };
 
-using AstFunctionBodyItem =
-    std::variant<AstVariableDeclaration, AstLabel, AstInstruction>;
-
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
@@ -306,6 +308,48 @@ struct AstFunctionParameter {
   std::optional<AstConstantExpression> array_size;
   SourceRange range;
 };
+
+struct AstCallPrototypeAbiSuffix {
+  AstSyntax directive;
+  AstSyntax count;
+  SourceRange range;
+};
+
+/** A function-local label-associated indirect-call prototype. */
+struct AstCallPrototype {
+  AstIdentifierRef label;
+  std::vector<AstFunctionParameter> return_parameters;
+  AstIdentifierRef sink;
+  std::vector<AstFunctionParameter> parameters;
+  std::optional<AstSyntax> noreturn_directive;
+  std::optional<AstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<AstCallPrototypeAbiSuffix> abi_preserve_control;
+  SourceRange range;
+};
+
+/** A function-local label-associated indirect-call target list. */
+struct AstCallTargets {
+  AstIdentifierRef label;
+  std::vector<AstIdentifierRef> targets;
+  SourceRange range;
+};
+
+struct AstBranchTargetEntry {
+  AstIdentifierRef name;
+  std::optional<AstSyntax> count;
+  SourceRange range;
+};
+
+/** A function-local label-associated indexed branch target list. */
+struct AstBranchTargets {
+  AstIdentifierRef label;
+  std::vector<AstBranchTargetEntry> targets;
+  SourceRange range;
+};
+
+using AstFunctionBodyItem =
+    std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
+                 AstCallTargets, AstBranchTargets, AstInstruction>;
 
 /** Initial function container; declarations and parameters refine this later. */
 struct AstFunction {

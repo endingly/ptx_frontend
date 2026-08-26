@@ -390,6 +390,28 @@ PtxCstParser::parseBranchOperands() {
   return operands;
 }
 
+std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
+PtxCstParser::parseIndexedBranchOperands() {
+  auto index = expect(TokenKind::Ident, "brx.idx index register");
+  if (!index)
+    return std::unexpected(index.error());
+  auto comma = expect(TokenKind::Comma, "',' after brx.idx index register");
+  if (!comma)
+    return std::unexpected(comma.error());
+  auto target_set = expect(TokenKind::Ident, "brx.idx branch target list");
+  if (!target_set)
+    return std::unexpected(target_set.error());
+  if (token(peek()).kind == TokenKind::Comma) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range, "brx.idx accepts exactly an index and target list"});
+  }
+  return std::vector<syntax_cst::CstOperandElement>{
+      {syntax_cst::CstIdentifier{*index}, *comma},
+      {syntax_cst::CstBranchTargetSet{
+           syntax_cst::CstIdentifier{*target_set}, {*target_set, *target_set + 1}},
+       std::nullopt}};
+}
+
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseOperand() {
   if (token(peek()).kind == TokenKind::Exclamation) {
@@ -477,6 +499,11 @@ PtxCstParser::parseInstructionNode(std::optional<TokenId> supplied_opcode) {
     operands = std::move(*parsed_operands);
   } else if (token(*opcode).text == "bra") {
     auto parsed_operands = parseBranchOperands();
+    if (!parsed_operands)
+      return std::unexpected(parsed_operands.error());
+    operands = std::move(*parsed_operands);
+  } else if (token(*opcode).text == "brx") {
+    auto parsed_operands = parseIndexedBranchOperands();
     if (!parsed_operands)
       return std::unexpected(parsed_operands.error());
     operands = std::move(*parsed_operands);
@@ -942,6 +969,199 @@ PtxCstParser::parseFunctionParameterList() {
                                               {*left, *right + 1}};
 }
 
+std::expected<syntax_cst::CstCallPrototype, CstParseDiagnostic>
+PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotCallPrototype) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected '.callprototype'"});
+  }
+
+  std::optional<syntax_cst::CstFunctionParameterList> return_parameters;
+  if (token(peek()).kind == TokenKind::LParen) {
+    auto parsed = parseFunctionParameterList();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    if (parsed->parameters.size() != 1) {
+      return std::unexpected(CstParseDiagnostic{
+          SourceRange{token(parsed->token_range.first).range.start,
+                      token(parsed->token_range.last - 1).range.end},
+          ".callprototype return parameter list must contain exactly one parameter"});
+    }
+    return_parameters = std::move(*parsed);
+  }
+
+  const auto sink = expect(TokenKind::Ident, "'_' in .callprototype");
+  if (!sink)
+    return std::unexpected(sink.error());
+  if (token(*sink).text != "_") {
+    return std::unexpected(CstParseDiagnostic{
+        token(*sink).range, "expected '_' in .callprototype"});
+  }
+
+  std::optional<syntax_cst::CstFunctionParameterList> parameters;
+  if (token(peek()).kind == TokenKind::LParen) {
+    auto parsed = parseFunctionParameterList();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    parameters = std::move(*parsed);
+  }
+
+  std::optional<TokenId> noreturn_directive;
+  if (token(peek()).kind == TokenKind::DotNoreturn)
+    noreturn_directive = consume();
+
+  const auto parse_abi_suffix = [this](std::string_view spelling)
+      -> std::expected<std::optional<syntax_cst::CstCallPrototypeAbiSuffix>,
+                       CstParseDiagnostic> {
+    if (token(peek()).kind != TokenKind::DotIdent ||
+        token(peek()).text != spelling) {
+      return std::optional<syntax_cst::CstCallPrototypeAbiSuffix>{};
+    }
+    const TokenId suffix = consume();
+    auto count = expect(TokenKind::Decimal, "ABI-preserve register count");
+    if (!count)
+      return std::unexpected(count.error());
+    return syntax_cst::CstCallPrototypeAbiSuffix{
+        suffix, *count, {suffix, *count + 1}};
+  };
+
+  auto abi_preserve = parse_abi_suffix(".abi_preserve");
+  if (!abi_preserve)
+    return std::unexpected(abi_preserve.error());
+  auto abi_preserve_control = parse_abi_suffix(".abi_preserve_control");
+  if (!abi_preserve_control)
+    return std::unexpected(abi_preserve_control.error());
+
+  const auto semicolon = expect(TokenKind::Semicolon, "';' after .callprototype");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstCallPrototype{
+      .label = label,
+      .colon = colon,
+      .directive = directive,
+      .return_parameters = std::move(return_parameters),
+      .sink = *sink,
+      .parameters = std::move(parameters),
+      .noreturn_directive = noreturn_directive,
+      .abi_preserve = std::move(*abi_preserve),
+      .abi_preserve_control = std::move(*abi_preserve_control),
+      .semicolon = *semicolon,
+      .token_range = {label, *semicolon + 1},
+  };
+}
+
+std::expected<syntax_cst::CstCallTargets, CstParseDiagnostic>
+PtxCstParser::parseCallTargets(TokenId label, TokenId colon) {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotCallTargets) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected '.calltargets'"});
+  }
+  if (token(peek()).kind == TokenKind::Semicolon) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        ".calltargets requires at least one function target"});
+  }
+
+  std::vector<TokenId> targets;
+  std::vector<TokenId> commas;
+  for (;;) {
+    auto target = expect(TokenKind::Ident, "call target function");
+    if (!target)
+      return std::unexpected(target.error());
+    targets.push_back(*target);
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+    if (token(peek()).kind == TokenKind::Semicolon) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "call target list cannot end with a trailing comma"});
+    }
+  }
+
+  const auto semicolon = expect(TokenKind::Semicolon, "';' after .calltargets");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstCallTargets{
+      .label = label,
+      .colon = colon,
+      .directive = directive,
+      .targets = std::move(targets),
+      .commas = std::move(commas),
+      .semicolon = *semicolon,
+      .token_range = {label, *semicolon + 1},
+  };
+}
+
+std::expected<syntax_cst::CstBranchTargets, CstParseDiagnostic>
+PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
+  const TokenId directive = consume();
+  if (token(directive).kind != TokenKind::DotBranchTargets) {
+    return std::unexpected(CstParseDiagnostic{
+        token(directive).range, "expected '.branchtargets'"});
+  }
+  if (token(peek()).kind == TokenKind::Semicolon) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        ".branchtargets requires at least one label target"});
+  }
+
+  std::vector<syntax_cst::CstBranchTargetEntry> targets;
+  std::vector<TokenId> commas;
+  for (;;) {
+    auto name = expect(TokenKind::Ident, "branch target label");
+    if (!name)
+      return std::unexpected(name.error());
+    std::optional<TokenId> left_angle;
+    std::optional<TokenId> count;
+    std::optional<TokenId> right_angle;
+    TokenId last = *name;
+    if (token(peek()).kind == TokenKind::Lt) {
+      left_angle = consume();
+      auto parsed_count = expect(TokenKind::Decimal, "branch target count");
+      if (!parsed_count)
+        return std::unexpected(parsed_count.error());
+      count = *parsed_count;
+      auto parsed_right_angle = expect(TokenKind::Gt, "'>' after branch target count");
+      if (!parsed_right_angle)
+        return std::unexpected(parsed_right_angle.error());
+      right_angle = *parsed_right_angle;
+      last = *right_angle;
+    }
+    targets.push_back(syntax_cst::CstBranchTargetEntry{
+        .name = *name,
+        .left_angle = left_angle,
+        .count = count,
+        .right_angle = right_angle,
+        .token_range = {*name, last + 1},
+    });
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+    if (token(peek()).kind == TokenKind::Semicolon) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "branch target list cannot end with a trailing comma"});
+    }
+  }
+
+  const auto semicolon =
+      expect(TokenKind::Semicolon, "';' after .branchtargets");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstBranchTargets{
+      .label = label,
+      .colon = colon,
+      .directive = directive,
+      .targets = std::move(targets),
+      .commas = std::move(commas),
+      .semicolon = *semicolon,
+      .token_range = {label, *semicolon + 1},
+  };
+}
+
 std::expected<syntax_cst::CstFile, CstParseDiagnostic>
 PtxCstParser::parseInstruction() {
   auto root = parseInstructionNode();
@@ -1109,6 +1329,27 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       const TokenId first_token = consume();
       if (token(peek()).kind == TokenKind::Colon) {
         const TokenId colon = consume();
+        if (token(peek()).kind == TokenKind::DotCallPrototype) {
+          auto prototype = parseCallPrototype(first_token, colon);
+          if (!prototype)
+            return std::unexpected(prototype.error());
+          body.emplace_back(std::move(*prototype));
+          continue;
+        }
+        if (token(peek()).kind == TokenKind::DotCallTargets) {
+          auto targets = parseCallTargets(first_token, colon);
+          if (!targets)
+            return std::unexpected(targets.error());
+          body.emplace_back(std::move(*targets));
+          continue;
+        }
+        if (token(peek()).kind == TokenKind::DotBranchTargets) {
+          auto targets = parseBranchTargets(first_token, colon);
+          if (!targets)
+            return std::unexpected(targets.error());
+          body.emplace_back(std::move(*targets));
+          continue;
+        }
         body.emplace_back(
             syntax_cst::CstLabel{first_token, colon, {first_token, colon + 1}});
         continue;
@@ -1118,6 +1359,22 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
         return std::unexpected(instruction.error());
       body.emplace_back(std::move(*instruction));
       continue;
+    }
+
+    if (token(peek()).kind == TokenKind::DotCallPrototype) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.callprototype' requires a preceding function-local label"});
+    }
+    if (token(peek()).kind == TokenKind::DotCallTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.calltargets' requires a preceding function-local label"});
+    }
+    if (token(peek()).kind == TokenKind::DotBranchTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.branchtargets' requires a preceding function-local label"});
     }
 
     auto instruction = parseInstructionNode();
@@ -1182,6 +1439,44 @@ PtxCstParser::parseModule() {
       last = declaration->token_range.last - 1;
       items.emplace_back(std::move(*declaration));
       continue;
+    }
+
+    if (token(peek()).kind == TokenKind::DotCallPrototype) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.callprototype' is only valid inside a function body"});
+    }
+    if (token(peek()).kind == TokenKind::DotCallTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.calltargets' is only valid inside a function body"});
+    }
+    if (token(peek()).kind == TokenKind::DotBranchTargets) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range,
+          "'.branchtargets' is only valid inside a function body"});
+    }
+
+    if (token(peek()).kind == TokenKind::Ident) {
+      consume();
+      if (token(peek()).kind == TokenKind::Colon) {
+        consume();
+        if (token(peek()).kind == TokenKind::DotCallPrototype) {
+          return std::unexpected(CstParseDiagnostic{
+              token(peek()).range,
+              "'.callprototype' is only valid inside a function body"});
+        }
+        if (token(peek()).kind == TokenKind::DotCallTargets) {
+          return std::unexpected(CstParseDiagnostic{
+              token(peek()).range,
+              "'.calltargets' is only valid inside a function body"});
+        }
+        if (token(peek()).kind == TokenKind::DotBranchTargets) {
+          return std::unexpected(CstParseDiagnostic{
+              token(peek()).range,
+              "'.branchtargets' is only valid inside a function body"});
+        }
+      }
     }
 
     return std::unexpected(CstParseDiagnostic{

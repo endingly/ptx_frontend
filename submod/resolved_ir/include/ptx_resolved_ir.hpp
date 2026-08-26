@@ -48,6 +48,7 @@ enum class OperandSyntaxShape : uint16_t {
   CallTarget = 1 << 7,
   CallTargetSet = 1 << 8,
   BranchTarget = 1 << 9,
+  BranchTargetSet = 1 << 10,
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
@@ -85,6 +86,8 @@ enum class ResolvedValueKind : uint8_t {
   Address,
   RegisterVector,
   DirectCallTarget,
+  IndirectCallee,
+  BranchTargetSet,
   CallReturnParameter,
   CallArguments,
 };
@@ -97,6 +100,7 @@ struct SyntaxOperandSlotDescriptor {
 enum class OperandLayoutKind : uint8_t {
   Flat,  // normal layout
   Call,  // fixed direct-call group layouts
+  IndirectCall,  // fixed indirect-call group and metadata layouts
 };
 
 struct SyntaxOperandLayoutDescriptor {
@@ -251,6 +255,13 @@ struct ResolvedBranchTarget {
   bool operator==(const ResolvedBranchTarget&) const = default;
 };
 
+/** A function-local .branchtargets declaration reference. */
+struct ResolvedBranchTargetSet {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  bool operator==(const ResolvedBranchTargetSet&) const = default;
+};
+
 /** A predefined read-only PTX special register with target-independent identity. */
 struct ResolvedSpecialRegisterRef {
   std::string spelling;
@@ -267,6 +278,18 @@ struct ResolvedFunctionRef {
   std::optional<checker::AvailabilityDescriptor> address_availability;
   bool operator==(const ResolvedFunctionRef&) const = default;
 };
+
+/** A function-local .callprototype or .calltargets declaration reference. */
+struct ResolvedIndirectMetadataRef {
+  std::string spelling;
+  std::optional<binding::SymbolId> symbol_id;
+  std::optional<binding::SymbolKind> declaration_kind;
+  bool operator==(const ResolvedIndirectMetadataRef&) const = default;
+};
+
+/** One component of an indirect call: its .reg target or metadata label. */
+using ResolvedIndirectCallee =
+    std::variant<ResolvedRegisterRef, ResolvedIndirectMetadataRef>;
 
 /** A .reg or .param symbol passed through a direct call boundary. */
 struct ResolvedCallParameterRef {
@@ -366,10 +389,12 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
+                 WithLocs<ResolvedBranchTargetSet>,
                  WithLocs<ResolvedSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
                  WithLocs<ResolvedRegisterVector>,
                  WithLocs<ResolvedFunctionRef>,
+                 WithLocs<ResolvedIndirectCallee>,
                  WithLocs<ResolvedCallParameterRef>,
                  WithLocs<ResolvedCallArguments>>;
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;

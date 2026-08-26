@@ -22,7 +22,7 @@ PtxSyntaxParser::PtxSyntaxParser(std::string_view source) : source_(source) {}
 SyntaxInstructionParseResult PtxSyntaxParser::parseInstruction() {
   PtxCstParser parser(source_);
   auto cst = parser.parseInstruction();
-  if (!cst) {
+  if (!cst || !cst.diagnostics.empty()) {
     return {.value = std::nullopt,
             .diagnostics = mapDiagnostics(cst.diagnostics)};
   }
@@ -41,7 +41,7 @@ SyntaxInstructionParseResult PtxSyntaxParser::parseInstruction() {
 SyntaxModuleParseResult PtxSyntaxParser::parseModule() {
   PtxCstParser parser(source_);
   auto cst = parser.parseModule();
-  if (!cst) {
+  if (!cst || !cst.diagnostics.empty()) {
     return {.value = std::nullopt,
             .diagnostics = mapDiagnostics(cst.diagnostics)};
   }

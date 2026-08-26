@@ -268,7 +268,8 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
     EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
@@ -322,7 +323,8 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallTargetsGrammar) {
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
     EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
@@ -376,7 +378,8 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalBranchTargetsGrammar) {
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
     EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
@@ -490,7 +493,9 @@ TEST(PtxCstParser, RejectsMalformedOrNonlocalFileDirectives) {
            ".entry kernel() { .file 0 \"source.ptx\" }",
        }) {
     PtxCstParser parser(source);
-    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
   }
 }
 
@@ -541,7 +546,9 @@ TEST(PtxCstParser, RejectsMalformedOrNonlocalSectionDirectives) {
            ".entry kernel() { { .section .debug_info { .b8 0 } } }",
        }) {
     PtxCstParser parser(source);
-    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
   }
 }
 
@@ -596,7 +603,9 @@ TEST(PtxCstParser, RejectsMalformedOrInvalidHeaderPragmas) {
            ".func device() .pragma \"one\"; {}",
        }) {
     PtxCstParser parser(source);
-    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
   }
 }
 
@@ -658,7 +667,9 @@ TEST(PtxCstParser, RejectsMalformedOrMisplacedKernelResourceDirectives) {
            ".entry kernel() .minnctapersm 2; { }",
        }) {
     PtxCstParser parser(source);
-    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
   }
 }
 
@@ -719,7 +730,9 @@ TEST(PtxCstParser, RejectsMalformedOrModuleScopeLocDirectives) {
            ".loc 1 2 3",
        }) {
     PtxCstParser parser(source);
-    EXPECT_FALSE(parser.parseModule().has_value()) << source;
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
   }
 }
 
@@ -791,7 +804,8 @@ TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
 
     const auto result = parser.parseModule();
 
-    ASSERT_FALSE(result.has_value()) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
     EXPECT_TRUE(
         result.diagnostics.front().message.starts_with(
             "unsupported function header token"))
@@ -850,7 +864,8 @@ TEST(PtxCstParser, RetainsNestedFunctionBlocks) {
   ASSERT_EQ(function.body.size(), 1u);
   const auto& outer = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
   EXPECT_EQ(result->token(outer.left_brace).kind, TokenKind::LBrace);
-  EXPECT_EQ(result->token(outer.right_brace).kind, TokenKind::RBrace);
+  ASSERT_TRUE(outer.right_brace.has_value());
+  EXPECT_EQ(result->token(*outer.right_brace).kind, TokenKind::RBrace);
   EXPECT_EQ(result->sourceRange(outer.token_range).start.line, 2u);
   ASSERT_EQ(outer.body.size(), 2u);
   const auto& inner = *std::get<std::unique_ptr<CstBlock>>(outer.body[1]);
@@ -943,14 +958,147 @@ TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
   EXPECT_EQ(file.sourceText(), original_source);
 }
 
+TEST(PtxCstParser, RecoversMissingBodySemicolonBeforeNextInstruction) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  add.u32 %r0, %r1, %r2
+  sub.u32 %r3, %r4, %r5;
+})ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 3u);
+  const auto& skipped = std::get<CstRecoveryNode>(function.body[0]);
+  EXPECT_EQ(skipped.kind, CstRecoveryKind::Skipped);
+  ASSERT_TRUE(skipped.token_range.has_value());
+  const auto& inserted = std::get<CstRecoveryNode>(function.body[1]);
+  EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
+  EXPECT_EQ(inserted.expected_kind, TokenKind::Semicolon);
+  EXPECT_FALSE(inserted.token_range.has_value());
+  EXPECT_EQ(inserted.range.start, inserted.range.end);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(function.body[2]));
+}
+
+TEST(PtxCstParser, RecoversNestedBlockAndModuleItemsInSourceOrder) {
+  constexpr std::string_view source = R"ptx(.version nope;
+.target;
+.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 3u);
+  EXPECT_EQ(result.diagnostics[0].message, "expected PTX version");
+  EXPECT_EQ(result.diagnostics[1].message, "expected target architecture");
+  EXPECT_EQ(result.diagnostics[2].message, "expected ';'");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& module = *result->module();
+  ASSERT_EQ(module.items.size(), 6u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[0]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[1]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[2]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[3]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[4]));
+  const auto& function = std::get<syntax_cst::CstFunction>(module.items[5]);
+  const auto& block = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
+  ASSERT_EQ(block.body.size(), 3u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(block.body[0]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(block.body[1]));
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(block.body[2]));
+  EXPECT_EQ(std::get<CstRecoveryNode>(module.items[1]).kind,
+            CstRecoveryKind::Error);
+}
+
+TEST(PtxCstParser, RecoversMissingFunctionBraceBeforeNextFunctionAndAtEof) {
+  constexpr std::string_view next_function_source = R"ptx(.entry first() {
+  add.u32 %r0, %r1, %r2;
+.version 9.3
+.entry second() { sub.u32 %r3, %r4, %r5; }
+)ptx";
+  PtxCstParser next_function_parser(next_function_source);
+  const auto next_function = next_function_parser.parseModule();
+
+  ASSERT_TRUE(next_function.has_value());
+  ASSERT_EQ(next_function.diagnostics.size(), 1u);
+  EXPECT_EQ(next_function.diagnostics.front().message,
+            "expected '}' at end of function body");
+  ASSERT_EQ(next_function->module()->items.size(), 3u);
+  const auto& first = std::get<syntax_cst::CstFunction>(
+      next_function->module()->items.front());
+  EXPECT_FALSE(first.right_brace.has_value());
+  EXPECT_EQ(std::get<CstRecoveryNode>(first.body.back()).expected_kind,
+            TokenKind::RBrace);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstModuleDirective>(
+      next_function->module()->items[1]));
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+      next_function->module()->items[2]));
+  EXPECT_EQ(next_function->sourceText(), next_function_source);
+
+  constexpr std::string_view eof_source = ".entry lone() {";
+  PtxCstParser eof_parser(eof_source);
+  const auto eof = eof_parser.parseModule();
+
+  ASSERT_TRUE(eof.has_value());
+  ASSERT_EQ(eof.diagnostics.size(), 1u);
+  EXPECT_EQ(eof.diagnostics.front().message,
+            "expected '}' at end of function body");
+  EXPECT_EQ(eof->sourceText(), eof_source);
+}
+
+TEST(PtxCstParser, RecoversStrayModuleTokenAndEofWithoutSyntheticTokens) {
+  constexpr std::string_view source = "} .version";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].message,
+            "expected module directive, variable declaration, or function");
+  EXPECT_EQ(result.diagnostics[1].message, "expected PTX version");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& module = *result->module();
+  ASSERT_EQ(module.items.size(), 3u);
+  EXPECT_EQ(std::get<CstRecoveryNode>(module.items.back()).kind,
+            CstRecoveryKind::Error);
+  EXPECT_FALSE(std::get<CstRecoveryNode>(module.items.back())
+                   .token_range.has_value());
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
 TEST(PtxCstParser, RejectsNestedBlockMissingRightBrace) {
   PtxCstParser parser(".entry kernel() { { add.u32 %r0, %r1, %r2;");
 
   const auto result = parser.parseModule();
 
-  ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.diagnostics.front().message,
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].message,
             "expected '}' at end of nested block");
+  EXPECT_EQ(result.diagnostics[1].message,
+            "expected '}' at end of function body");
+  EXPECT_EQ(result->sourceText(), ".entry kernel() { { add.u32 %r0, %r1, %r2;");
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& block = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
+  EXPECT_FALSE(block.right_brace.has_value());
+  ASSERT_EQ(block.body.size(), 2u);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(block.body[0]));
+  const auto& inserted = std::get<CstRecoveryNode>(block.body[1]);
+  EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
+  EXPECT_EQ(inserted.expected_kind, TokenKind::RBrace);
 }
 
 TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
@@ -1113,7 +1261,8 @@ TEST(PtxCstParser, RejectsInitializersInUnsupportedDeclarations) {
        }) {
     PtxCstParser parser(source_and_message.first);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source_and_message.first;
+    ASSERT_TRUE(result.has_value()) << source_and_message.first;
+    ASSERT_FALSE(result.diagnostics.empty()) << source_and_message.first;
     EXPECT_EQ(result.diagnostics.front().message, source_and_message.second);
   }
 }

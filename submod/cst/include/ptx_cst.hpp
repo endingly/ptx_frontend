@@ -410,7 +410,7 @@ using CstFunctionBodyItem =
 struct CstBlock {
   TokenId left_brace{};
   std::vector<CstFunctionBodyItem> body;
-  TokenId right_brace{};
+  std::optional<TokenId> right_brace;
   CstTokenRange token_range;
 };
 

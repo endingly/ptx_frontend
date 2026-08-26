@@ -82,19 +82,26 @@ holds an expected `TokenKind` and a zero-width range without a token-buffer
 span; `Skipped` holds a nonempty span of real source tokens; and `Error` holds
 either such a span or an EOF zero-width range. It can occur as a module or
 function-body item, does not carry a diagnostic ID, and never creates a
-synthetic `PtxToken`. The parser does not produce recovery nodes yet; their AST
-lowering contract and parser synchronization remain later work. The module
-grammar does not yet accept other kernel-tuning directives, missing-token
-insertion, or a token-edit API. The parser validates initializer
+synthetic `PtxToken`. `parseModule()` appends ordered diagnostics and returns a
+recovered CST: it synchronizes malformed module/body items at `;`, `}`, EOF,
+the next function (including qualifiers), or a supported module-only directive.
+It preserves those anchors, inserts only missing `;`/`}` markers at zero width,
+and otherwise records real discarded spans. `parseInstruction()` remains
+fail-fast. Recovered CST is intentionally not lowered by `PtxSyntaxParser`
+until C01 defines that contract, and I12 must serialize the original token
+buffer rather than recovery markers. A nested block missing its required `}`
+retains its parsed body and an inserted marker, with no `right_brace` token.
+The module grammar does not yet accept
+other kernel-tuning directives or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
 
 Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
 optional value plus an ordered `DiagnosticCollection<D>`. This permits later
-recovery to return a CST with diagnostics without another API change. Until
-I11 adds parser recovery and synchronization, parsing remains fail-fast: success
-has an empty collection, and failure has one diagnostic with no value.
+recovery to return a CST with diagnostics without another API change. Module
+recovery may return both a value and diagnostics; standalone instruction
+fragments remain fail-fast with no value on error.
 
 ## CST to Syntax AST lowering
 

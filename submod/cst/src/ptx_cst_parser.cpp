@@ -73,10 +73,38 @@ bool isModuleDirective(TokenKind kind) {
          kind == TokenKind::DotAddressSize || kind == TokenKind::DotFile;
 }
 
+bool isFunctionQualifier(TokenKind kind);
+bool isVariableStateSpace(TokenKind kind);
+
 bool isKernelResourceDirective(TokenKind kind) {
   return kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMaxntid ||
          kind == TokenKind::DotReqntid ||
          kind == TokenKind::DotMinnctapersm;
+}
+
+bool isFunctionBoundary(TokenKind kind) {
+  return kind == TokenKind::DotEntry || kind == TokenKind::DotFunc ||
+         isFunctionQualifier(kind);
+}
+
+bool isFunctionOrModuleBoundary(TokenKind kind) {
+  return isFunctionBoundary(kind) || isModuleDirective(kind) ||
+         kind == TokenKind::DotSection;
+}
+
+bool isSupportedModuleItemStart(TokenKind kind) {
+  return isModuleDirective(kind) || kind == TokenKind::DotPragma ||
+         kind == TokenKind::DotSection || kind == TokenKind::DotEntry ||
+         kind == TokenKind::DotFunc || isFunctionQualifier(kind) ||
+         isVariableStateSpace(kind);
+}
+
+bool isFunctionBodyItemStart(TokenKind kind) {
+  return kind == TokenKind::LBrace || kind == TokenKind::At ||
+         kind == TokenKind::Ident ||
+         isVariableStateSpace(kind) || kind == TokenKind::DotLoc ||
+         kind == TokenKind::DotPragma || kind == TokenKind::DotCallPrototype ||
+         kind == TokenKind::DotCallTargets || kind == TokenKind::DotBranchTargets;
 }
 
 CstParseResult parseFailure(CstParseDiagnostic diagnostic) {
@@ -168,11 +196,111 @@ bool PtxCstParser::atImmediateStart() {
 
 std::expected<PtxCstParser::TokenId, CstParseDiagnostic> PtxCstParser::expect(
     TokenKind kind, std::string_view name) {
-  const TokenId id = consume();
+  const TokenId id = peek();
   if (token(id).kind == kind)
-    return id;
-  return std::unexpected(
-      CstParseDiagnostic{token(id).range, "expected " + std::string(name)});
+    return consume();
+  return std::unexpected(CstParseDiagnostic{
+      token(id).range, "expected " + std::string(name), kind});
+}
+
+PtxCstParser::RecoveryResult PtxCstParser::recover(
+    TokenId first,
+    const CstParseDiagnostic& diagnostic,
+    RecoveryContext context) {
+  using syntax_cst::CstRecoveryKind;
+  using syntax_cst::CstRecoveryNode;
+  using syntax_cst::CstTokenRange;
+
+  RecoveryResult result;
+  TokenId current = peek();
+  const auto append_span = [this, &result](CstRecoveryKind kind,
+                                           TokenId begin,
+                                           TokenId end) {
+    if (begin >= end)
+      return;
+    result.nodes.push_back(CstRecoveryNode{
+        .kind = kind,
+        .expected_kind = std::nullopt,
+        .token_range = CstTokenRange{begin, end},
+        .range = SourceRange{token(begin).range.start,
+                             token(end - 1).range.end},
+    });
+    result.last = end - 1;
+  };
+  const auto append_inserted = [this, &result](TokenKind expected,
+                                                TokenId position) {
+    result.nodes.push_back(CstRecoveryNode{
+        .kind = CstRecoveryKind::Inserted,
+        .expected_kind = expected,
+        .token_range = std::nullopt,
+        .range = SourceRange{token(position).range.start,
+                             token(position).range.start},
+    });
+  };
+
+  const auto is_anchor = [context](TokenKind kind) {
+    if (context == RecoveryContext::FunctionBody)
+      return kind == TokenKind::RBrace || isFunctionOrModuleBoundary(kind);
+    return isSupportedModuleItemStart(kind);
+  };
+  const auto stop_at_anchor = [context](TokenKind kind) {
+    if (context == RecoveryContext::FunctionBody) {
+      if (kind == TokenKind::RBrace)
+        return RecoveryStop::RightBrace;
+      return RecoveryStop::FunctionBoundary;
+    }
+    return RecoveryStop::ModuleItem;
+  };
+  const auto append_missing_semicolon = [&] {
+    if (diagnostic.expected_kind != TokenKind::Semicolon)
+      return;
+    append_inserted(TokenKind::Semicolon, current);
+  };
+
+  append_span(CstRecoveryKind::Skipped, first, current);
+  if (token(current).kind == TokenKind::Eof) {
+    result.nodes.push_back(CstRecoveryNode{
+        .kind = CstRecoveryKind::Error,
+        .expected_kind = std::nullopt,
+        .token_range = std::nullopt,
+        .range = token(current).range,
+    });
+    append_missing_semicolon();
+    result.stop = RecoveryStop::Eof;
+    return result;
+  }
+
+  if ((context == RecoveryContext::FunctionBody || current != first) &&
+      is_anchor(token(current).kind)) {
+    append_missing_semicolon();
+    result.stop = stop_at_anchor(token(current).kind);
+    return result;
+  }
+  if (context == RecoveryContext::FunctionBody &&
+      diagnostic.expected_kind == TokenKind::Semicolon &&
+      isFunctionBodyItemStart(token(current).kind)) {
+    append_inserted(TokenKind::Semicolon, current);
+    result.stop = RecoveryStop::Semicolon;
+    return result;
+  }
+
+  const TokenId error = consume();
+  append_span(CstRecoveryKind::Error, error, error + 1);
+  const TokenId skipped_first = peek();
+  while (token(peek()).kind != TokenKind::Eof &&
+         !is_anchor(token(peek()).kind)) {
+    const TokenId skipped = consume();
+    if (token(skipped).kind == TokenKind::Semicolon) {
+      append_span(CstRecoveryKind::Skipped, skipped_first, skipped + 1);
+      result.stop = RecoveryStop::Semicolon;
+      return result;
+    }
+  }
+  append_span(CstRecoveryKind::Skipped, skipped_first, peek());
+  result.stop = token(peek()).kind == TokenKind::Eof
+                    ? RecoveryStop::Eof
+                    : stop_at_anchor(token(peek()).kind);
+  return result;
 }
 
 std::expected<syntax_cst::CstImmediate, CstParseDiagnostic>
@@ -1346,9 +1474,9 @@ PtxCstParser::parseKernelResourceDirective() {
 }
 
 std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
-PtxCstParser::parseFunctionBodyItem() {
+PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics) {
   if (token(peek()).kind == TokenKind::LBrace) {
-    auto block = parseBlock();
+    auto block = parseBlock(diagnostics);
     if (!block)
       return std::unexpected(block.error());
     return std::make_unique<syntax_cst::CstBlock>(std::move(*block));
@@ -1434,17 +1562,45 @@ PtxCstParser::parseFunctionBodyItem() {
 }
 
 std::expected<syntax_cst::CstBlock, CstParseDiagnostic>
-PtxCstParser::parseBlock() {
+PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics) {
   const TokenId left_brace = consume();
   std::vector<syntax_cst::CstFunctionBodyItem> body;
+  const auto finish_missing_right_brace = [&]() {
+    diagnostics.push_back(CstParseDiagnostic{
+        token(peek()).range, "expected '}' at end of nested block",
+        TokenKind::RBrace});
+    body.emplace_back(syntax_cst::CstRecoveryNode{
+        .kind = syntax_cst::CstRecoveryKind::Inserted,
+        .expected_kind = TokenKind::RBrace,
+        .token_range = std::nullopt,
+        .range = SourceRange{token(peek()).range.start,
+                             token(peek()).range.start},
+    });
+    return syntax_cst::CstBlock{
+        .left_brace = left_brace,
+        .body = std::move(body),
+        .right_brace = std::nullopt,
+        .token_range = {left_brace, peek()},
+    };
+  };
   while (token(peek()).kind != TokenKind::RBrace) {
-    if (token(peek()).kind == TokenKind::Eof) {
-      return std::unexpected(CstParseDiagnostic{
-          token(peek()).range, "expected '}' at end of nested block"});
+    if (token(peek()).kind == TokenKind::Eof ||
+        isFunctionOrModuleBoundary(token(peek()).kind))
+      return finish_missing_right_brace();
+    const TokenId item_first = peek();
+    auto item = parseFunctionBodyItem(diagnostics);
+    if (!item) {
+      diagnostics.push_back(item.error());
+      auto recovery =
+          recover(item_first, item.error(), RecoveryContext::FunctionBody);
+      for (auto& node : recovery.nodes)
+        body.emplace_back(std::move(node));
+      if (recovery.stop == RecoveryStop::Semicolon)
+        continue;
+      if (recovery.stop == RecoveryStop::RightBrace)
+        continue;
+      return finish_missing_right_brace();
     }
-    auto item = parseFunctionBodyItem();
-    if (!item)
-      return std::unexpected(item.error());
     body.push_back(std::move(*item));
   }
   const TokenId right_brace = consume();
@@ -1600,7 +1756,8 @@ PtxCstParser::parseSectionDirective() {
 
 std::expected<syntax_cst::CstFunction, CstParseDiagnostic>
 PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
-                            TokenId first_token) {
+                            TokenId first_token,
+                            CstParseDiagnostics& diagnostics) {
   const TokenId first = first_token;
   std::vector<TokenId> header_tokens = qualifiers;
 
@@ -1712,14 +1869,63 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
   const TokenId left_brace = consume();
 
   std::vector<syntax_cst::CstFunctionBodyItem> body;
+  const auto finish_missing_body_brace = [&]() {
+    return syntax_cst::CstFunction{
+        .qualifiers = std::move(qualifiers),
+        .directive = directive,
+        .return_parameters = std::move(return_parameters),
+        .name = *name,
+        .parameters = std::move(parameters),
+        .noreturn_directive = noreturn_directive,
+        .pragmas = std::move(pragmas),
+        .resources = std::move(resources),
+        .header_tokens = std::move(header_tokens),
+        .left_brace = left_brace,
+        .body = std::move(body),
+        .right_brace = std::nullopt,
+        .terminator = std::nullopt,
+        .token_range = {first, peek()},
+    };
+  };
   while (token(peek()).kind != TokenKind::RBrace) {
-    if (token(peek()).kind == TokenKind::Eof) {
-      return std::unexpected(CstParseDiagnostic{
-          token(peek()).range, "expected '}' at end of function body"});
+    if (token(peek()).kind == TokenKind::Eof ||
+        isFunctionOrModuleBoundary(token(peek()).kind)) {
+      diagnostics.push_back(CstParseDiagnostic{
+          token(peek()).range, "expected '}' at end of function body",
+          TokenKind::RBrace});
+      body.emplace_back(syntax_cst::CstRecoveryNode{
+          .kind = syntax_cst::CstRecoveryKind::Inserted,
+          .expected_kind = TokenKind::RBrace,
+          .token_range = std::nullopt,
+          .range = SourceRange{token(peek()).range.start,
+                               token(peek()).range.start},
+      });
+      return finish_missing_body_brace();
     }
-    auto item = parseFunctionBodyItem();
-    if (!item)
-      return std::unexpected(item.error());
+    const TokenId item_first = peek();
+    auto item = parseFunctionBodyItem(diagnostics);
+    if (!item) {
+      diagnostics.push_back(item.error());
+      auto recovery =
+          recover(item_first, item.error(), RecoveryContext::FunctionBody);
+      for (auto& node : recovery.nodes)
+        body.emplace_back(std::move(node));
+      if (recovery.stop == RecoveryStop::Semicolon ||
+          recovery.stop == RecoveryStop::RightBrace) {
+        continue;
+      }
+      diagnostics.push_back(CstParseDiagnostic{
+          token(peek()).range, "expected '}' at end of function body",
+          TokenKind::RBrace});
+      body.emplace_back(syntax_cst::CstRecoveryNode{
+          .kind = syntax_cst::CstRecoveryKind::Inserted,
+          .expected_kind = TokenKind::RBrace,
+          .token_range = std::nullopt,
+          .range = SourceRange{token(peek()).range.start,
+                               token(peek()).range.start},
+      });
+      return finish_missing_body_brace();
+    }
     body.push_back(std::move(*item));
   }
   const TokenId right_brace = consume();
@@ -1744,8 +1950,20 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
 
 CstParseResult PtxCstParser::parseModule() {
   std::vector<syntax_cst::CstModuleItem> items;
+  CstParseDiagnostics diagnostics;
   const TokenId first = peek();
   TokenId last = first;
+
+  const auto recover_item = [this, &diagnostics, &items, &last](
+                                TokenId item_first,
+                                CstParseDiagnostic diagnostic) {
+    diagnostics.push_back(diagnostic);
+    auto recovery = recover(item_first, diagnostic, RecoveryContext::Module);
+    for (auto& node : recovery.nodes)
+      items.emplace_back(std::move(node));
+    if (recovery.last)
+      last = *recovery.last;
+  };
 
   while (token(peek()).kind != TokenKind::Eof) {
     const TokenId item_first = peek();
@@ -1755,8 +1973,10 @@ CstParseResult PtxCstParser::parseModule() {
 
     if (qualifiers.empty() && token(peek()).kind == TokenKind::DotPragma) {
       auto pragma = parsePragma();
-      if (!pragma)
-        return parseFailure(std::move(pragma.error()));
+      if (!pragma) {
+        recover_item(item_first, std::move(pragma.error()));
+        continue;
+      }
       last = pragma->token_range.last - 1;
       items.emplace_back(std::move(*pragma));
       continue;
@@ -1764,8 +1984,10 @@ CstParseResult PtxCstParser::parseModule() {
 
     if (qualifiers.empty() && token(peek()).kind == TokenKind::DotSection) {
       auto section = parseSectionDirective();
-      if (!section)
-        return parseFailure(std::move(section.error()));
+      if (!section) {
+        recover_item(item_first, std::move(section.error()));
+        continue;
+      }
       last = section->token_range.last - 1;
       items.emplace_back(std::move(*section));
       continue;
@@ -1773,8 +1995,10 @@ CstParseResult PtxCstParser::parseModule() {
 
     if (qualifiers.empty() && isModuleDirective(token(peek()).kind)) {
       auto directive = parseModuleDirective();
-      if (!directive)
-        return parseFailure(std::move(directive.error()));
+      if (!directive) {
+        recover_item(item_first, std::move(directive.error()));
+        continue;
+      }
       last = directive->token_range.last - 1;
       items.emplace_back(std::move(*directive));
       continue;
@@ -1782,9 +2006,12 @@ CstParseResult PtxCstParser::parseModule() {
 
     if (token(peek()).kind == TokenKind::DotEntry ||
         token(peek()).kind == TokenKind::DotFunc) {
-      auto function = parseFunction(std::move(qualifiers), item_first);
-      if (!function)
-        return parseFailure(std::move(function.error()));
+      auto function =
+          parseFunction(std::move(qualifiers), item_first, diagnostics);
+      if (!function) {
+        recover_item(item_first, std::move(function.error()));
+        continue;
+      }
       last = function->token_range.last - 1;
       items.emplace_back(std::move(*function));
       continue;
@@ -1793,57 +2020,68 @@ CstParseResult PtxCstParser::parseModule() {
     if (isVariableStateSpace(token(peek()).kind)) {
       auto declaration =
           parseVariableDeclaration(std::move(qualifiers), item_first);
-      if (!declaration)
-        return parseFailure(std::move(declaration.error()));
+      if (!declaration) {
+        recover_item(item_first, std::move(declaration.error()));
+        continue;
+      }
       last = declaration->token_range.last - 1;
       items.emplace_back(std::move(*declaration));
       continue;
     }
 
     if (token(peek()).kind == TokenKind::DotCallPrototype) {
-      return parseFailure(CstParseDiagnostic{
+      recover_item(item_first, CstParseDiagnostic{
           token(peek()).range,
           "'.callprototype' is only valid inside a function body"});
+      continue;
     }
     if (token(peek()).kind == TokenKind::DotCallTargets) {
-      return parseFailure(CstParseDiagnostic{
+      recover_item(item_first, CstParseDiagnostic{
           token(peek()).range,
           "'.calltargets' is only valid inside a function body"});
+      continue;
     }
     if (token(peek()).kind == TokenKind::DotBranchTargets) {
-      return parseFailure(CstParseDiagnostic{
+      recover_item(item_first, CstParseDiagnostic{
           token(peek()).range,
           "'.branchtargets' is only valid inside a function body"});
+      continue;
     }
     if (isKernelResourceDirective(token(peek()).kind)) {
-      return parseFailure(CstParseDiagnostic{
+      recover_item(item_first, CstParseDiagnostic{
           token(peek()).range,
           "kernel resource directives are only valid in an entry function header"});
+      continue;
     }
 
     if (token(peek()).kind == TokenKind::Ident) {
       consume();
       if (token(peek()).kind == TokenKind::Colon) {
         consume();
-        if (token(peek()).kind == TokenKind::DotCallPrototype) {
-          return parseFailure(CstParseDiagnostic{
-              token(peek()).range,
-              "'.callprototype' is only valid inside a function body"});
+        std::string_view message;
+        switch (token(peek()).kind) {
+          case TokenKind::DotCallPrototype:
+            message = "'.callprototype' is only valid inside a function body";
+            break;
+          case TokenKind::DotCallTargets:
+            message = "'.calltargets' is only valid inside a function body";
+            break;
+          case TokenKind::DotBranchTargets:
+            message = "'.branchtargets' is only valid inside a function body";
+            break;
+          default:
+            break;
         }
-        if (token(peek()).kind == TokenKind::DotCallTargets) {
-          return parseFailure(CstParseDiagnostic{
-              token(peek()).range,
-              "'.calltargets' is only valid inside a function body"});
-        }
-        if (token(peek()).kind == TokenKind::DotBranchTargets) {
-          return parseFailure(CstParseDiagnostic{
-              token(peek()).range,
-              "'.branchtargets' is only valid inside a function body"});
+        if (!message.empty()) {
+          recover_item(item_first,
+                       CstParseDiagnostic{token(peek()).range,
+                                          std::string(message)});
+          continue;
         }
       }
     }
 
-    return parseFailure(CstParseDiagnostic{
+    recover_item(item_first, CstParseDiagnostic{
         token(peek()).range,
         "expected module directive, variable declaration, or function"});
   }
@@ -1854,7 +2092,7 @@ CstParseResult PtxCstParser::parseModule() {
   }
   syntax_cst::CstModule module{std::move(items), {first, last + 1}};
   return {.value = syntax_cst::CstFile{std::move(tokens_), std::move(module)},
-          .diagnostics = {}};
+          .diagnostics = std::move(diagnostics)};
 }
 
 }  // namespace ptx_frontend

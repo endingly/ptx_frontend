@@ -14,6 +14,7 @@ namespace ptx_frontend {
 struct CstParseDiagnostic {
   SourceRange range;
   std::string message;
+  std::optional<TokenKind> expected_kind;
 };
 
 using CstParseDiagnostics = DiagnosticCollection<CstParseDiagnostic>;
@@ -31,10 +32,33 @@ class PtxCstParser {
  private:
   using TokenId = syntax_cst::TokenId;
 
+  enum class RecoveryStop {
+    Semicolon,
+    RightBrace,
+    FunctionBoundary,
+    ModuleItem,
+    Eof,
+  };
+
+  enum class RecoveryContext {
+    FunctionBody,
+    Module,
+  };
+
+  struct RecoveryResult {
+    std::vector<syntax_cst::CstRecoveryNode> nodes;
+    std::optional<TokenId> last;
+    RecoveryStop stop{};
+  };
+
   [[nodiscard]] TokenId peek();
   TokenId consume();
   [[nodiscard]] const PtxToken& token(TokenId id) const;
   [[nodiscard]] bool atImmediateStart();
+  [[nodiscard]] RecoveryResult recover(
+      TokenId first,
+      const CstParseDiagnostic& diagnostic,
+      RecoveryContext context);
 
   std::expected<TokenId, CstParseDiagnostic> expect(TokenKind kind,
                                                     std::string_view name);
@@ -82,14 +106,17 @@ class PtxCstParser {
   std::expected<syntax_cst::CstKernelResourceDirective, CstParseDiagnostic>
   parseKernelResourceDirective();
   std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
-  parseFunctionBodyItem();
-  std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock();
+  parseFunctionBodyItem(CstParseDiagnostics& diagnostics);
+  std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock(
+      CstParseDiagnostics& diagnostics);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
   parseSectionDirective();
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(
-      std::vector<TokenId> qualifiers, TokenId first_token);
+      std::vector<TokenId> qualifiers,
+      TokenId first_token,
+      CstParseDiagnostics& diagnostics);
 
   PtxLexer lexer_;
   std::vector<PtxToken> tokens_;

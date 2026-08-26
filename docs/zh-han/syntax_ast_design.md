@@ -63,16 +63,20 @@ comma-separated string list；它不进入 binding 或 Resolved IR。entry heade
 `CstRecoveryNode` 是供后续恢复使用的带 tag 的纯 CST 模型：`Inserted` 持有 expected
 `TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token
 span；`Error` 则持有这种 span 或 EOF 的 zero-width range。它可作为 module 或
-function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`。parser 目前仍不产生
-recovery node；其 AST lowering contract 和 parser synchronization 留待后续工作。当前仍不接受其他
-kernel-tuning directive、missing-token 插入或 token edit API。initializer
+function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`。`parseModule()` 会附加有序
+diagnostic 并返回 recovered CST：它在 `;`、`}`、EOF、下一 function（含 qualifier）或受支持的
+module-only directive 处同步，保留这些 anchor，只在 zero-width 处插入缺失的 `;`/`}` marker，其余被丢弃
+的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。C01 定义 recovered CST 的
+lowering contract 前，`PtxSyntaxParser` 有意不 lower recovered CST；I12 必须序列化原始 token buffer，
+不能序列化 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
+但没有 `right_brace` token。当前仍不接受其他 kernel-tuning directive 或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 
 公开 parser/lowering root 返回 `ResultWithDiagnostics<T, D>`：optional value 加有序
 `DiagnosticCollection<D>`。这样后续 recovery 可在不再改变 API 的情况下，同时返回 CST 与
-diagnostic。parser recovery 与 synchronization 留待 I11，因此当前仍 fail-fast：成功结果
-有空 collection，失败结果没有 value 且只有一条 diagnostic。
+diagnostic。module recovery 可同时返回 value 与 diagnostic；standalone instruction fragment
+仍为 fail-fast，错误时没有 value。
 
 ## CST 到 Syntax AST lowering
 

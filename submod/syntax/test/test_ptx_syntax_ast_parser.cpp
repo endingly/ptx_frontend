@@ -301,6 +301,24 @@ TEST(PtxSyntaxParser, MapsCstDiagnosticsToSyntaxDiagnostics) {
   EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
 }
 
+TEST(PtxSyntaxParser, DoesNotLowerRecoveredModuleCstBeforeC01) {
+  constexpr std::string_view source =
+      ".version nope; .target sm_30";
+  PtxCstParser cst_parser(source);
+  PtxSyntaxParser syntax_parser(source);
+
+  const auto cst = cst_parser.parseModule();
+  const auto syntax = syntax_parser.parseModule();
+
+  ASSERT_TRUE(cst.has_value());
+  ASSERT_FALSE(cst.diagnostics.empty());
+  ASSERT_FALSE(syntax.has_value());
+  ASSERT_EQ(syntax.diagnostics.size(), cst.diagnostics.size());
+  EXPECT_EQ(syntax.diagnostics.front().message,
+            cst.diagnostics.front().message);
+  EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
+}
+
 TEST(PtxSyntaxParser, RejectsEmptyVectorPack) {
   PtxSyntaxParser parser("mov.b32 {}, %r1;");
 

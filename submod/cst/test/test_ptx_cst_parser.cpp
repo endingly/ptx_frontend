@@ -93,23 +93,25 @@ TEST(PtxCstParser, RoundTripsUnmodifiedModuleTokenBufferByteForByte) {
   const std::size_t first_end = first_eof(first->tokens);
   const std::size_t second_end = first_eof(second->tokens);
   ASSERT_TRUE(first_end < first->tokens.size());
+  ASSERT_TRUE(second_end < second->tokens.size());
   ASSERT_EQ(first_end, second_end);
 
-  for (std::size_t index = 0; index < first_end; ++index) {
+  for (std::size_t index = 0; index <= first_end; ++index) {
     const auto& left = first->tokens[index];
     const auto& right = second->tokens[index];
     EXPECT_EQ(left.kind, right.kind);
     EXPECT_EQ(left.text, right.text);
     ASSERT_EQ(left.leading_trivia.size(), right.leading_trivia.size());
     for (std::size_t trivia = 0; trivia < left.leading_trivia.size(); ++trivia) {
-      EXPECT_EQ(left.leading_trivia[trivia].kind, right.leading_trivia[trivia].kind);
+      EXPECT_EQ(left.leading_trivia[trivia].kind,
+                right.leading_trivia[trivia].kind);
       EXPECT_EQ(left.leading_trivia[trivia].text, right.leading_trivia[trivia].text);
     }
   }
-  ASSERT_FALSE(first->tokens[first_end].leading_trivia.empty());
-  EXPECT_EQ(first->tokens[first_end].leading_trivia.back().kind,
-            TriviaKind::Whitespace);
-  EXPECT_EQ(first->tokens[first_end].leading_trivia.back().text, "   ");
+  const auto& final_trivia = first->tokens[first_end].leading_trivia;
+  ASSERT_EQ(final_trivia.size(), 3u);
+  EXPECT_EQ(final_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(final_trivia.back().text, "\n   ");
 }
 
 TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {

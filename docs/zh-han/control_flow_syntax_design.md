@@ -68,8 +68,8 @@ function-local metadata label。module 中后者保留 `SymbolId`，并区分 `.
 resolution 将每个 function-local metadata `SymbolId` 索引到 canonical signature：`.callprototype`
 转换自身的 return/input contract（包括 `.noreturn`），`.calltargets` 则复用 declaration semantics
 已经验证的首个 member signature。direct 与 indirect call 随后共享同一 arity、literal typing 与
-argument-compatibility 检查；后者的 diagnostic 会指出 metadata label。C03 的临时 fallback 只保留给
-未匹配任何 descriptor 的 malformed metadata-bearing call syntax。
+argument-compatibility 检查；后者的 diagnostic 会指出 metadata label。未匹配任何 descriptor
+的 malformed metadata-bearing call syntax 现由通用 descriptor layout diagnostic 处理。
 
 ## function-local `.callprototype` 语法
 

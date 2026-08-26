@@ -56,17 +56,10 @@ signature/ABI comparison 和 indirect metadata。这是文档同步，不改变�
 5. 本文负责 roadmap、依赖顺序和状态；
 6. [`docs/deprecated/next_step.md`](../docs/deprecated/next_step.md) 退化为历史实现日志，不再单独决定长期优先级。
 
-#### D-03：临时的 opcode-specific indirect-call 诊断
+#### D-03：已清理的 opcode-specific indirect-call 诊断
 
-通用 `resolve_fields()` 当前存在：
-
-```cpp
-if (ast.opcode.syntax.text == "call" && hasCallTargetSet(...)) {
-    // indirect call metadata 尚未支持
-}
-```
-
-这一分支用于 metadata-bearing call 未匹配任何 descriptor 时提供更清楚的诊断；I07 的正式 indirect-call layout 会在有效 form 上绕过它。它仍是 C03 的清理项，而不是 ABI 或 metadata contract 的替代品。
+M7-C03 已删除 `resolve_fields()` 中的 opcode-string metadata fallback。合法 indirect
+call 走正式 descriptor；malformed metadata-bearing call 走通用 layout diagnostic。
 
 ### 0.3 原 roadmap 本身的偏离
 
@@ -1330,7 +1323,7 @@ ABI checker
 
 ### 当前状态
 
-M7-I01/I02/I03/I04/I05/I06/I07/M7-C01 已完成：function-local `.callprototype`、`.calltargets` 与
+M7-I01/I02/I03/I04/I05/I06/I07/M7-C01/C02/C03 已完成：function-local `.callprototype`、`.calltargets` 与
 `.branchtargets` 以专用 lexer token 和 CST/AST node 保留 label、signature payload/ordered
 target（包括未展开 compact branch entry）、PTX 9.3 suffix（prototype）与 SourceRange。三者
 现在以稳定的 function-scope SymbolId 进入 binding，并检查 declaration order、member、scope、
@@ -1339,7 +1332,8 @@ identity；`call_direct` 保持一个公开 modifier variant，并新增三种 P
 `IndirectCall` layout，正常 module resolution 可绑定 `.reg` target 与 function-local metadata，
 并以同一 canonical `FunctionSignature` / argument-compatibility contract 检查 indirect ABI。
 `brx.idx` 已以 `.u32` index 与 function-local branch-target-set identity 连接 `.branchtargets`，
-并要求 PTX 6.0 / SM 30；不会展开 metadata entry。仅 temporary fallback 清理仍未完成。
+并要求 PTX 6.0 / SM 30；不会展开 metadata entry。合法 indirect call 全部走正式 descriptor，
+malformed metadata-bearing call 使用通用 layout diagnostic。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
@@ -1352,7 +1346,7 @@ identity；`call_direct` 保持一个公开 modifier variant，并新增三种 P
 | M7-I07 | ✅ | 独立 | 建立 indirect-call descriptor layout | 专用 `IndirectCall` layout、target/metadata shape 与 module identity 贯通 |
 | M7-C01 | ✅ | 耦合 | 实现 indirect-call ABI checker | prototype/target-set 复用 canonical signature、arity、literal 与 argument compatibility |
 | M7-C02 | ✅ | 耦合 | 连接 `.branchtargets` 与 `brx.idx` | `.u32` index、target-list identity 与 current function scope 一致 |
-| M7-C03 | ⬜ | 耦合 | 删除 temporary call special case | 移除通用 resolver 中 opcode-string indirect rejection，全部走正式 descriptor |
+| M7-C03 | ✅ | 耦合 | 删除 temporary call special case | 移除通用 resolver 中 opcode-string indirect rejection，malformed syntax 走通用 layout diagnostic |
 | M7-C04 | ⬜ | 耦合 | 完成 indirect-control-flow corpus | direct/indirect/prototype/target-set/branch metadata 全覆盖 |
 
 ---

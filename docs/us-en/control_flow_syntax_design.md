@@ -98,8 +98,8 @@ own return/input contract (including `.noreturn`), while `.calltargets` reuses
 the first member signature already validated by declaration semantics. Direct
 and indirect calls then share the same arity, literal typing, and
 argument-compatibility check; the latter reports the metadata label. The
-temporary C03 fallback stays only for malformed metadata-bearing call syntax
-that matches no descriptor.
+generic descriptor layout diagnostic handles malformed metadata-bearing call
+syntax that matches no descriptor.
 
 ## Function-local `.callprototype` syntax
 

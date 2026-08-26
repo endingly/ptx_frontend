@@ -489,6 +489,15 @@ TEST(ResolveInstruction, RejectsUnknownOpcode) {
   EXPECT_EQ(resolved.error().message, "Unknown PTX opcode 'unknown'.");
 }
 
+TEST(ResolveInstruction, RejectsMalformedMetadataCallWithGenericLayoutError) {
+  const auto resolved = resolveInstruction(indirect_metadata_instruction("metadata"));
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().message,
+            "Operands do not match any layout of instruction variant "
+            "'call_direct'.");
+}
+
 TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {
   const auto cached_load_ast = parse_instruction("ld.cg.u32 %r0, [%rd0];");
   const auto cached_load = resolve<Ld>(cached_load_ast);

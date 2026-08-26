@@ -2238,19 +2238,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   const ResolvedVariantDescriptor& resolved_variant =
       find_resolved_variant_descriptor(resolved_instruction, variant_name);
   const auto selected_layout = select_operand_layout(syntax_variant, ast);
-  if (!selected_layout) {
-    if (ast.opcode.syntax.text == "call" &&
-        std::ranges::any_of(ast.operands, [](const auto& operand) {
-          return std::holds_alternative<syntax_ast::AstCallTargetSet>(operand);
-        })) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = ast.range,
-          .message = "Indirect call target lists and prototypes are not "
-                     "supported yet.",
-      });
-    }
+  if (!selected_layout)
     return std::unexpected(selected_layout.error());
-  }
 
   if (selected_layout->index >= resolved_variant.operand_layouts.size()) {
     throw ResolveException(fmt::format(

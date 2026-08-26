@@ -33,6 +33,67 @@ The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be
 lowered to Resolved IR.
 
+## PTX 9.3 directive registry
+
+This is the per-spelling registry for the 35 directives in PTX ISA Table 1,
+plus five directives omitted by that table: `.attribute` from 5.4.8,
+`.abi_preserve` and `.abi_preserve_control` from 11.4, and
+`.blocksareclusters` and `.language` from 11.8. It answers the coverage
+matrix's six pipeline questions. Legacy non-dot `@@dwarf` and attributes such
+as `.ptr` are intentionally outside this dot-directive registry.
+
+Legend: `D` = dedicated lexer token; `G` = generic `DotIdent` (still tokenized,
+but not CST support). `T` = typed directive CST/AST; `E` = represented by an
+existing declaration/function node; `R` = explicitly rejected by the parser.
+`Y` = retained or used directly at the binding/Resolved IR stage; `I` = only a
+consuming instruction indirectly retains/checks the identity; `C` = direct
+binding/declaration semantic check; `S` = supplies source `.version` to a
+current semantic check, not `checker::TargetInfo`; `—` = no support at that
+stage.
+
+| Directive | Token | CST | AST | Binding | Resolved IR | Target / semantic | Explicit boundary |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `.address_size` | D | T | T | — | — | — | Module syntax only |
+| `.alias` | G | R | — | — | — | — | Unmodeled module directive |
+| `.abi_preserve` | G | T | T | — | — | — | Only `.callprototype` suffix; `.func` header form and PTX 9.0 / SM 80 availability remain unsupported |
+| `.abi_preserve_control` | G | T | T | — | — | — | Only `.callprototype` suffix; `.func` header form and PTX 9.0 / SM 80 availability remain unsupported |
+| `.align` | D | E | E | Y | Y | C | Declaration/parameter alignment |
+| `.attribute` | G | R | — | — | — | — | Unmodeled variable/function directive |
+| `.branchtargets` | D | T | T | Y | I | C / I | Declaration rules are direct; `brx.idx` consumer is PTX 6.0 / SM 30 |
+| `.callprototype` | D | T | T | Y | I | C / I | Declaration rules are direct; indirect-call availability is consumer-driven |
+| `.calltargets` | D | T | T | Y | I | C / I | Declaration rules are direct; indirect-call availability is consumer-driven |
+| `.common` | G | R | — | — | — | — | Unmodeled declaration directive |
+| `.const` | D | E | E | Y | Y | C | Existing variable declaration |
+| `.entry` | D | E | E | Y | Y | C | Existing function node |
+| `.explicitcluster` | G | R | — | — | — | — | Unmodeled entry-header directive |
+| `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
+| `.file` | D | T | T | — | — | — | File table semantics deferred to C02 |
+| `.func` | D | E | E | Y | Y | C | Existing function node |
+| `.global` | D | E | E | Y | Y | C | Existing variable declaration |
+| `.local` | D | E | E | Y | Y | C | Existing variable declaration |
+| `.loc` | D | T | T | — | — | — | Attachment/file validation deferred to C02 |
+| `.maxclusterrank` | G | R | — | — | — | — | Unmodeled entry-header directive |
+| `.maxnctapersm` | G | R | — | — | — | — | Unmodeled deprecated resource directive |
+| `.maxnreg` | D | T | T | — | — | C | Entry-only source-version minimum |
+| `.maxntid` | D | T | T | — | — | C | Entry-only; conflicts with `.reqntid` |
+| `.minnctapersm` | D | T | T | — | — | C | Warning/device feasibility deferred |
+| `.noreturn` | D | E | E | — | — | C | `.func`/`.callprototype` supported; return-parameter conflict checked; PTX 6.4 / SM 30 availability unchecked |
+| `.param` | D | E | E | Y | Y | C | Existing variable/formal/call-parameter declaration |
+| `.pragma` | D | T | T | — | — | — | Backend string interpretation intentionally absent |
+| `.reg` | D | E | E | Y | Y | C | Existing variable/formal declaration |
+| `.reqnctapercluster` | G | R | — | — | — | — | Unmodeled entry-header directive |
+| `.reqntid` | D | T | T | — | — | C | Entry-only; conflicts with `.maxntid` |
+| `.section` | D | T | T | — | — | — | Raw DWARF payload only; C02 owns semantics |
+| `.shared` | D | E | E | Y | Y | C | Existing variable declaration |
+| `.sreg` | G | R | — | — | — | — | Unmodeled special-register declaration |
+| `.target` | D | T | T | — | — | — | Module syntax retained; not checker context |
+| `.tex` | G | R | — | — | — | — | Unmodeled declaration directive |
+| `.version` | D | T | T | — | — | S | Supplies supported resource source-version checks |
+| `.visible` | D | E | E | Y | Y | C | Existing linkage qualifier |
+| `.weak` | D | E | E | Y | Y | C | Existing linkage qualifier |
+| `.blocksareclusters` | G | R | — | — | — | — | Table-external PTX 9.0 entry / SM 90 directive |
+| `.language` | G | R | — | — | — | — | Table-external PTX 9.3 entry/function directive |
+
 ## Implementation priority
 
 The [project roadmap](../../.agents/project_roadmap.md) is the sole authority

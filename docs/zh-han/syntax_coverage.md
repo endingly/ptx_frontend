@@ -31,6 +31,63 @@
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。
 
+## PTX 9.3 directive registry
+
+此表逐 spelling 覆盖 PTX ISA Table 1 的 35 个 directive，以及该表遗漏的五项：5.4.8 的
+`.attribute`、11.4 的 `.abi_preserve`、`.abi_preserve_control` 和 11.8 的
+`.blocksareclusters`、`.language`。它回答 coverage matrix 的六个 pipeline 问题。legacy
+非 dot spelling `@@dwarf` 与 `.ptr` 等 attribute 刻意不属于这份 dot-directive registry。
+
+图例：`D` = 专用 lexer token；`G` = 通用 `DotIdent`（仍可 tokenize，但不表示 CST
+支持）。`T` = typed directive CST/AST；`E` = 进入既有 declaration/function node；`R` =
+parser 明确拒绝。`Y` = 在 binding/Resolved IR 阶段直接保留或使用；`I` = 仅 consumer
+instruction 间接保留/check 该 identity；`C` = 直接 binding/declaration semantic check；
+`S` = 向当前 semantic check 提供 source `.version`，而非 `checker::TargetInfo`；`—` =
+该阶段无支持。
+
+| Directive | Token | CST | Syntax AST | Binding | Resolved IR | Target / semantic | 明确边界 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `.address_size` | D | T | T | — | — | — | 仅保留 module syntax |
+| `.alias` | G | R | — | — | — | — | 未建模 module directive |
+| `.abi_preserve` | G | T | T | — | — | — | 仅 `.callprototype` suffix；`.func` header form 与 PTX 9.0 / SM 80 availability 尚未支持 |
+| `.abi_preserve_control` | G | T | T | — | — | — | 仅 `.callprototype` suffix；`.func` header form 与 PTX 9.0 / SM 80 availability 尚未支持 |
+| `.align` | D | E | E | Y | Y | C | declaration/parameter alignment |
+| `.attribute` | G | R | — | — | — | — | 未建模 variable/function directive |
+| `.branchtargets` | D | T | T | Y | I | C / I | declaration rule 直接检查；`brx.idx` consumer 要求 PTX 6.0 / SM 30 |
+| `.callprototype` | D | T | T | Y | I | C / I | declaration rule 直接检查；indirect-call availability 由 consumer 驱动 |
+| `.calltargets` | D | T | T | Y | I | C / I | declaration rule 直接检查；indirect-call availability 由 consumer 驱动 |
+| `.common` | G | R | — | — | — | — | 未建模 declaration directive |
+| `.const` | D | E | E | Y | Y | C | 既有 variable declaration |
+| `.entry` | D | E | E | Y | Y | C | 既有 function node |
+| `.explicitcluster` | G | R | — | — | — | — | 未建模 entry-header directive |
+| `.extern` | D | E | E | Y | Y | C | 既有 linkage qualifier |
+| `.file` | D | T | T | — | — | — | file table semantics 留给 C02 |
+| `.func` | D | E | E | Y | Y | C | 既有 function node |
+| `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
+| `.local` | D | E | E | Y | Y | C | 既有 variable declaration |
+| `.loc` | D | T | T | — | — | — | attachment/file validation 留给 C02 |
+| `.maxclusterrank` | G | R | — | — | — | — | 未建模 entry-header directive |
+| `.maxnctapersm` | G | R | — | — | — | — | 未建模 deprecated resource directive |
+| `.maxnreg` | D | T | T | — | — | C | 仅 entry；检查 source-version minimum |
+| `.maxntid` | D | T | T | — | — | C | 仅 entry；与 `.reqntid` 冲突 |
+| `.minnctapersm` | D | T | T | — | — | C | warning/device feasibility 留后续 |
+| `.noreturn` | D | E | E | — | — | C | 支持 `.func`/`.callprototype`；检查 return-parameter conflict；PTX 6.4 / SM 30 availability 未查 |
+| `.param` | D | E | E | Y | Y | C | 既有 variable/formal/call-parameter declaration |
+| `.pragma` | D | T | T | — | — | — | backend string interpretation 刻意未实现 |
+| `.reg` | D | E | E | Y | Y | C | 既有 variable/formal declaration |
+| `.reqnctapercluster` | G | R | — | — | — | — | 未建模 entry-header directive |
+| `.reqntid` | D | T | T | — | — | C | 仅 entry；与 `.maxntid` 冲突 |
+| `.section` | D | T | T | — | — | — | 仅 raw DWARF payload；C02 负责 semantics |
+| `.shared` | D | E | E | Y | Y | C | 既有 variable declaration |
+| `.sreg` | G | R | — | — | — | — | 未建模 special-register declaration |
+| `.target` | D | T | T | — | — | — | 保留 module syntax；不是 checker context |
+| `.tex` | G | R | — | — | — | — | 未建模 declaration directive |
+| `.version` | D | T | T | — | — | S | 为已支持 resource 提供 source-version check |
+| `.visible` | D | E | E | Y | Y | C | 既有 linkage qualifier |
+| `.weak` | D | E | E | Y | Y | C | 既有 linkage qualifier |
+| `.blocksareclusters` | G | R | — | — | — | — | 表外 PTX 9.0 entry / SM 90 directive |
+| `.language` | G | R | — | — | — | — | 表外 PTX 9.3 entry/function directive |
+
 ## 实现优先级
 
 [项目 roadmap](../../.agents/project_roadmap.md) 是实现状态、依赖和优先级的唯一权威来源。

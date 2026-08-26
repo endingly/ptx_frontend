@@ -1369,7 +1369,7 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 | M8-I05 | ✅ | 独立 | 支持 `.section` directive | outermost `.section` 的 name、matched brace 和有序 raw DWARF payload 进入 CST/AST；payload/label/offset semantics 留给 C02 |
 | M8-I06 | ✅ | 独立 | 支持 `.pragma` directive | module、entry header 与 function/nested statement 的非空 string list 进入 CST/AST，不误入 binding/semantic/Resolved IR |
 | M8-I07 | ✅ | 独立 | 支持第一组 kernel-resource directive | entry header 的 `.maxnreg/.maxntid/.reqntid/.minnctapersm` 进入 typed CST/AST；`.version` minimum 与同 entry req/max conflict 有 declaration-semantic diagnostics，backend warning/feasibility 留后续 |
-| M8-I08 | ⬜ | 独立 | 建立 directive coverage registry | 每个 directive 标记 tokenize/CST/AST/semantic/rejected |
+| M8-I08 | ✅ | 独立 | 建立 directive coverage registry | docs-only：PTX 9.3 Table 1 的 35 项与该表遗漏的 `.attribute/.abi_preserve/.abi_preserve_control/.blocksareclusters/.language` 共 40 项，逐 spelling 标记 tokenize/CST/AST/binding/Resolved IR/target-semantic/rejection boundary |
 | M8-I09 | ⬜ | 独立 | 建立 `DiagnosticCollection` | parser 可返回多个有序 diagnostic |
 | M8-I10 | ⬜ | 独立 | 增加 missing-token/recovery node | inserted/skipped/error node 类型明确 |
 | M8-I11 | ⬜ | 独立 | 定义 synchronization point | `;`、`}`、function boundary 和 module directive 可有限恢复 |

@@ -19,6 +19,10 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
+namespace ptx_frontend::declaration_semantics {
+struct FunctionParameterContract;
+}
+
 namespace ptx_frontend::resolved_ir {
 using base::ScalarType;
 using base::RoundingMode;
@@ -448,6 +452,12 @@ std::expected<T, ResolveDiagnostic> resolve(
 /** Resolve one lexer-classified immediate literal for a selected scalar type. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type);
+
+/** Type a retained call literal by one formal parameter contract. */
+std::expected<WithLocs<ResolvedImmediate>, ResolveDiagnostic>
+resolve_call_literal(const ResolvedCallLiteral& literal, SourceRange range,
+                     const declaration_semantics::FunctionParameterContract&
+                         formal);
 
 std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,

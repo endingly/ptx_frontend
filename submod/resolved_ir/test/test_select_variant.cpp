@@ -495,7 +495,7 @@ TEST(ResolveInstruction, RejectsMalformedMetadataCallWithGenericLayoutError) {
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().message,
             "Operands do not match any layout of instruction variant "
-            "'call_direct'.");
+            "'Direct'.");
 }
 
 TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {

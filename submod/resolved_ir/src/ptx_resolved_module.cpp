@@ -1,11 +1,325 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 
+#include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include <algorithm>
+#include <charconv>
+#include <limits>
+#include <ranges>
+#include <unordered_map>
 #include <utility>
+
+#include <fmt/format.h>
 
 namespace ptx_frontend::resolved_ir {
 namespace {
+
+using call_argument_compatibility::CallArgumentCompatibility;
+using call_argument_compatibility::CallArgumentProperties;
+using call_argument_compatibility::CallArgumentStateSpace;
+using call_argument_compatibility::PointedStateSpace;
+
+using CallArgumentPropertyIndex =
+    std::unordered_map<uint32_t, CallArgumentProperties>;
+using FunctionSignatureIndex =
+    std::unordered_map<uint32_t, declaration_semantics::FunctionSignature>;
+
+std::optional<CallArgumentStateSpace> call_state_space(
+    syntax_ast::AstStateSpace state_space) {
+  switch (state_space) {
+    case syntax_ast::AstStateSpace::Register:
+      return CallArgumentStateSpace::Register;
+    case syntax_ast::AstStateSpace::Parameter:
+      return CallArgumentStateSpace::Parameter;
+    case syntax_ast::AstStateSpace::Local:
+      return CallArgumentStateSpace::Local;
+    case syntax_ast::AstStateSpace::Shared:
+      return CallArgumentStateSpace::Shared;
+    case syntax_ast::AstStateSpace::Global:
+      return CallArgumentStateSpace::Global;
+    case syntax_ast::AstStateSpace::Constant:
+      return CallArgumentStateSpace::Constant;
+  }
+  return std::nullopt;
+}
+
+std::optional<PointedStateSpace> pointed_state_space(
+    const std::optional<std::string>& spelling) {
+  if (!spelling)
+    return std::nullopt;
+  if (*spelling == ".local")
+    return PointedStateSpace::Local;
+  if (*spelling == ".shared")
+    return PointedStateSpace::Shared;
+  if (*spelling == ".global")
+    return PointedStateSpace::Global;
+  if (*spelling == ".const")
+    return PointedStateSpace::Constant;
+  return std::nullopt;
+}
+
+std::optional<uint64_t> unsigned_value(std::string_view spelling) {
+  if (!spelling.empty() && (spelling.back() == 'u' || spelling.back() == 'U'))
+    spelling.remove_suffix(1);
+  uint64_t value = 0;
+  const auto [end, error] = std::from_chars(
+      spelling.data(), spelling.data() + spelling.size(), value);
+  if (spelling.empty() || error != std::errc{} ||
+      end != spelling.data() + spelling.size()) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+std::optional<uint64_t> contract_array_size(
+    const declaration_semantics::FunctionParameterContract& contract) {
+  if (!contract.array_extent || contract.array_extent->empty() ||
+      contract.array_extent->front() != '#') {
+    return std::nullopt;
+  }
+  return unsigned_value(std::string_view{*contract.array_extent}.substr(1));
+}
+
+CallArgumentProperties call_argument_properties(
+    const declaration_semantics::FunctionParameterContract& contract) {
+  CallArgumentProperties properties{
+      .state_space = *call_state_space(contract.state_space),
+      .type_spelling = contract.type,
+      .array_alignment = contract.alignment
+                             ? unsigned_value(*contract.alignment).value_or(1)
+                             : 1,
+      .is_array = contract.is_array,
+      .array_size = contract_array_size(contract),
+  };
+  if (contract.is_pointer) {
+    const uint64_t pointer_alignment =
+        contract.pointer_alignment
+            ? unsigned_value(*contract.pointer_alignment).value_or(4)
+            : 4;
+    properties.pointer = {
+        .pointed_state_space = pointed_state_space(contract.pointer_space),
+        .pointed_alignment = pointer_alignment,
+    };
+  }
+  return properties;
+}
+
+std::optional<uint64_t> array_size(
+    const syntax_ast::AstVariableDeclarator& declarator) {
+  if (declarator.array_dimensions.empty())
+    return std::nullopt;
+  uint64_t size = 1;
+  for (const auto& dimension : declarator.array_dimensions) {
+    if (!dimension.size)
+      return std::nullopt;
+    const auto extent =
+        declaration_semantics::constantArrayExtent(*dimension.size);
+    if (!extent || (*extent != 0 &&
+                    size > std::numeric_limits<uint64_t>::max() / *extent)) {
+      return std::nullopt;
+    }
+    size *= *extent;
+  }
+  return size;
+}
+
+CallArgumentProperties call_argument_properties(
+    const syntax_ast::AstVariableDeclaration& declaration,
+    const syntax_ast::AstVariableDeclarator& declarator,
+    const binding::Symbol& symbol) {
+  return {
+      .state_space = *call_state_space(declaration.state_space),
+      .type_spelling = declaration.vector_type ? declaration.vector_type->text +
+                                                     " " + declaration.type.text
+                                               : declaration.type.text,
+      .array_alignment = symbol.address_alignment.value_or(1),
+      .is_array = !declarator.array_dimensions.empty(),
+      .array_size = array_size(declarator),
+  };
+}
+
+std::optional<binding::SymbolId> declared_symbol(
+    const binding::SymbolTable& symbols, binding::ScopeId scope,
+    const syntax_ast::AstVariableDeclarator& declarator) {
+  const bool parameterized = declarator.parameterized_count.has_value();
+  const auto found = std::ranges::find_if(symbols.symbols(),
+                                          [&](const binding::Symbol& symbol) {
+    return symbol.scope == scope &&
+           symbol.name == declarator.name.syntax.text &&
+           symbol.parameterized_count.has_value() == parameterized;
+  });
+  if (found == symbols.symbols().end())
+    return std::nullopt;
+  return found->id;
+}
+
+void index_function_call_arguments(const syntax_ast::AstFunction& function,
+                                   const binding::SymbolTable& symbols,
+                                   binding::ScopeId scope,
+                                   CallArgumentPropertyIndex& properties) {
+  const auto signature = declaration_semantics::functionSignature(function);
+  const auto index_parameters = [&](const auto& parameters,
+                                    const auto& contracts) {
+    for (size_t index = 0; index < parameters.size(); ++index) {
+      const auto lookup =
+          symbols.lookup(scope, parameters[index].name.syntax.text);
+      if (lookup) {
+        properties.emplace(lookup->symbol.value,
+                           call_argument_properties(contracts[index]));
+      }
+    }
+  };
+  index_parameters(function.return_parameters, signature.return_parameters);
+  index_parameters(function.parameters, signature.parameters);
+  for (const auto& item : function.body) {
+    const auto* declaration =
+        std::get_if<syntax_ast::AstVariableDeclaration>(&item);
+    if (declaration == nullptr)
+      continue;
+    for (const auto& declarator : declaration->declarators) {
+      const auto symbol_id = declared_symbol(symbols, scope, declarator);
+      if (symbol_id) {
+        properties.emplace(
+            symbol_id->value,
+            call_argument_properties(*declaration, declarator,
+                                     symbols.symbol(*symbol_id)));
+      }
+    }
+  }
+}
+
+std::string_view compatibility_message(
+    CallArgumentCompatibility compatibility) {
+  switch (compatibility) {
+    case CallArgumentCompatibility::Compatible:
+      return "compatible";
+    case CallArgumentCompatibility::FormalStateSpaceMismatch:
+      return "callee formal has an invalid call state space";
+    case CallArgumentCompatibility::ActualStateSpaceMismatch:
+      return "call argument state-space mismatch";
+    case CallArgumentCompatibility::TypeMismatch:
+      return "type or vector shape mismatch";
+    case CallArgumentCompatibility::ArrayMismatch:
+      return "array shape mismatch";
+    case CallArgumentCompatibility::ArraySizeMismatch:
+      return "array size mismatch";
+    case CallArgumentCompatibility::AlignmentMismatch:
+      return "array alignment mismatch";
+    case CallArgumentCompatibility::PointerMismatch:
+      return "pointer qualification mismatch";
+    case CallArgumentCompatibility::PointedStateSpaceMismatch:
+      return "pointed state-space mismatch";
+    case CallArgumentCompatibility::PointedAlignmentMismatch:
+      return "pointed alignment mismatch";
+  }
+  return "incompatible";
+}
+
+void check_direct_call_abi(const syntax_ast::AstInstruction& call,
+                           const binding::SymbolTable& symbols,
+                           binding::ScopeId scope,
+                           const FunctionSignatureIndex& signatures,
+                           const CallArgumentPropertyIndex& properties,
+                           ModuleResolveDiagnostics& diagnostics) {
+  if (call.opcode.syntax.text != "call")
+    return;
+
+  const syntax_ast::AstCallTarget* target = nullptr;
+  const syntax_ast::AstCallParameterList* returns = nullptr;
+  const syntax_ast::AstCallParameterList* inputs = nullptr;
+  for (const auto& operand : call.operands) {
+    if (const auto* value = std::get_if<syntax_ast::AstCallTarget>(&operand))
+      target = value;
+    else if (const auto* value =
+                 std::get_if<syntax_ast::AstCallParameterList>(&operand)) {
+      if (value->kind == syntax_ast::AstCallParameterListKind::Return)
+        returns = value;
+      else
+        inputs = value;
+    }
+  }
+  if (target == nullptr)
+    return;  // indirect calls remain outside M6-C01.
+
+  const auto target_lookup = symbols.lookup(scope, target->name.syntax.text);
+  if (!target_lookup || symbols.symbol(target_lookup->symbol).kind !=
+                            binding::SymbolKind::Function)
+    return;
+  const auto signature = signatures.find(target_lookup->symbol.value);
+  if (signature == signatures.end())
+    return;
+
+  const auto check_group = [&](std::string_view kind, const auto* actuals,
+                               const auto& formals) {
+    const size_t actual_count =
+        actuals == nullptr ? 0 : actuals->parameters.size();
+    if (actual_count != formals.size()) {
+      diagnostics.push_back(ResolveDiagnostic{
+          .range = actuals == nullptr ? target->range : actuals->range,
+          .message = fmt::format("Direct call to '{}' has {} {} argument{} but "
+                                 "callee requires {}.",
+                                 target->name.syntax.text, actual_count, kind,
+                                 actual_count == 1 ? "" : "s", formals.size()),
+      });
+    }
+    if (actuals == nullptr)
+      return;
+    const size_t count = std::min(actuals->parameters.size(), formals.size());
+    for (size_t index = 0; index < count; ++index) {
+      const auto& actual = actuals->parameters[index];
+      const SourceRange range = std::visit(
+          [](const auto& value) { return value.syntax.range; }, actual);
+      const auto formal_properties = call_argument_properties(formals[index]);
+      CallArgumentProperties actual_properties;
+      if (const auto* immediate =
+              std::get_if<syntax_ast::AstImmediate>(&actual)) {
+        const auto literal = resolve_call_literal(
+            ResolvedCallLiteral{.spelling = immediate->syntax.text,
+                                .kind = immediate->kind},
+            range, formals[index]);
+        if (!literal) {
+          diagnostics.push_back(std::move(literal.error()));
+          continue;
+        }
+        actual_properties = {
+            .state_space = CallArgumentStateSpace::Register,
+            .type_spelling = formals[index].type,
+        };
+      } else {
+        const auto& identifier =
+            std::get<syntax_ast::AstIdentifierRef>(actual);
+        const auto actual_lookup =
+            symbols.lookup(scope, identifier.syntax.text);
+        if (!actual_lookup) {
+          throw ResolveException(fmt::format(
+              "Bound call argument '{}' has no symbol.", identifier.syntax.text));
+        }
+        const auto properties_it = properties.find(actual_lookup->symbol.value);
+        if (properties_it == properties.end()) {
+          throw ResolveException(fmt::format(
+              "Bound call argument '{}' has no ABI properties.",
+              identifier.syntax.text));
+        }
+        actual_properties = properties_it->second;
+      }
+      const auto compatibility =
+          call_argument_compatibility::checkCallArgumentCompatibility(
+              formal_properties, actual_properties);
+      if (compatibility != CallArgumentCompatibility::Compatible) {
+        diagnostics.push_back(ResolveDiagnostic{
+            .range = range,
+            .message = fmt::format(
+                "Direct call {} argument {} for '{}' has {}.", kind, index + 1,
+                target->name.syntax.text, compatibility_message(compatibility)),
+        });
+      }
+    }
+  };
+
+  check_group("return", returns, signature->second.return_parameters);
+  check_group("input", inputs, signature->second.parameters);
+}
 
 struct CallParameterIdentity {
   binding::SymbolId symbol;
@@ -246,6 +560,26 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
 
+  FunctionSignatureIndex signatures;
+  CallArgumentPropertyIndex call_argument_properties;
+  for (const syntax_ast::AstModuleItem& item : ast.items) {
+    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+    if (function == nullptr)
+      continue;
+    const auto lookup = binding_result.table.lookup(
+        binding_result.table.moduleScope(), function->name.syntax.text);
+    if (!lookup)
+      continue;
+    signatures.try_emplace(lookup->symbol.value,
+                           declaration_semantics::functionSignature(*function));
+    const binding::Symbol& symbol = binding_result.table.symbol(lookup->symbol);
+    if (symbol.owned_scope) {
+      index_function_call_arguments(*function, binding_result.table,
+                                    *symbol.owned_scope,
+                                    call_argument_properties);
+    }
+  }
+
   std::vector<ResolvedFunction> functions;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
@@ -287,6 +621,9 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
         diagnostics.push_back(std::move(resolved.error()));
         continue;
       }
+      check_direct_call_abi(*instruction, binding_result.table,
+                            *symbol.owned_scope, signatures,
+                            call_argument_properties, diagnostics);
       resolved_function.body.push_back(std::move(*resolved));
     }
     check_call_staging(*function, binding_result.table, *symbol.owned_scope,

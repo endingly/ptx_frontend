@@ -40,6 +40,10 @@ struct FunctionSignature {
 [[nodiscard]] FunctionSignature functionSignature(
     const syntax_ast::AstFunction& function);
 
+/** Return a nonnegative constant array extent when the expression has one. */
+[[nodiscard]] std::optional<uint64_t> constantArrayExtent(
+    const syntax_ast::AstConstantExpression& expression);
+
 enum class DeclarationDiagnosticKind : uint8_t {
   InvalidArrayDimension,
   UnsizedArrayDimension,

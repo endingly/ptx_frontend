@@ -871,6 +871,11 @@ FunctionSignature functionSignature(const syntax_ast::AstFunction& function) {
   return signature;
 }
 
+std::optional<uint64_t> constantArrayExtent(
+    const syntax_ast::AstConstantExpression& expression) {
+  return nonnegativeIntegerValue(classifyExpression(expression));
+}
+
 std::vector<DeclarationDiagnostic> checkDeclarations(
     const syntax_ast::AstModule& module, const binding::SymbolTable& symbols) {
   return Checker{symbols}.run(module);

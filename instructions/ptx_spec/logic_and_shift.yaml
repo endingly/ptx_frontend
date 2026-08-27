@@ -170,3 +170,24 @@ instructions:
             valid: true
           - ptx: "shl.b32 %r0, %r1, 1;"
             valid: true
+  - opcode: shr
+    section: "9.7.8.9"
+    doc: "Shift a 32-bit operand right logically by a 32-bit count."
+    syntax: "shr.u32 dst, src, amount"
+    operands: $shift_b32
+    variants:
+      - name: shr_u32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "shr.u32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "shr.u32 %r0, %r1, 1;"
+            valid: true

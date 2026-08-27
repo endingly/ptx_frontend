@@ -37,7 +37,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9-I01～I10 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I11 `shr`。
+M9-I01～I11 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I12 comparison operator domain。
 M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
@@ -1398,7 +1398,7 @@ operand/type/modifier matrix
 | M9-I08 | ✅ | 独立 | 支持 `xor` | fixed `xor.b32` 的单 opcode 全链条闭环 |
 | M9-I09 | ✅ | 独立 | 支持 `not` | fixed `not.b32` 的单 opcode 全链条闭环 |
 | M9-I10 | ✅ | 独立 | 支持 `shl` | fixed b32 width、u32 shift count 和 PTX/SM availability 闭环 |
-| M9-I11 | ⬜ | 独立 | 支持 `shr` | signedness、width 和 shift operand 闭环 |
+| M9-I11 | ✅ | 独立 | 支持 `shr` | fixed `shr.u32`、32-bit shift count 和 PTX/SM availability 闭环 |
 | M9-I12 | ⬜ | 独立 | 建立 comparison operator domain | comparison spelling、backend enum 和 availability 集中生成 |
 | M9-I13 | ⬜ | 独立 | 建立 boolean operator domain | `and/or/xor` predicate-combine domain 集中生成 |
 | M9-I14 | ⬜ | 独立 | 支持 `setp` | comparison、optional boolean combine 和 predicate output 闭环 |
@@ -1532,7 +1532,7 @@ M11 diagnostic and CI infrastructure
 基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
 
 1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
-2. `M9-I11`：实现 `shr` 的冻结 MVP slice；
+2. `M9-I12`：建立 comparison operator domain；
 3. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
 
 ---

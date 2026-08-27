@@ -767,6 +767,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["b32", "b32", "u32"],
         )
 
+    def test_shr_uses_fixed_u32_data_and_count(self) -> None:
+        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        shr = next(item for item in database.instructions if item.opcode == "shr")
+        instruction = from_instruction_spec(shr)
+        self.assertEqual(instruction.cpp_name, "Shr")
+        self.assertEqual(instruction.variants[0].cpp_name, "U32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in instruction.variants[0].operand_layouts[0].bindings],
+            ["b32", "b32", "u32"],
+        )
+
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1350,6 +1362,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Xor {", source)
         self.assertIn("struct Not {", source)
         self.assertIn("struct Shl {", source)
+        self.assertIn("struct Shr {", source)
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
@@ -1448,6 +1461,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Not>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "shl"', source)
         self.assertIn("resolve<Shl>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "shr"', source)
+        self.assertIn("resolve<Shr>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "mov"', source)
         self.assertIn("resolve<Mov>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ld"', source)
@@ -1606,6 +1621,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Not>(", source)
         self.assertIn("std::expected<Shl, ResolveDiagnostic>", source)
         self.assertIn("CheckResult check<Shl>(", source)
+        self.assertIn("std::expected<Shr, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Shr>(", source)
         self.assertNotIn("struct Bar {", source)
 
     def test_generate_private_resolved_descriptor_source(self) -> None:

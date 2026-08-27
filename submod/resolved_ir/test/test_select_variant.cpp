@@ -325,8 +325,6 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
   expect_variant("add.f32.f16 %f0, %h1, %f2;", Add::VariantType::MixedF32);
   expect_variant("add.rz.f32.bf16.sat %f0, %h1, %f2;",
                  Add::VariantType::MixedF32);
-  expect_variant("add.sat.bf16.f32.rz %f0, %h1, %f2;",
-                 Add::VariantType::MixedF32);
 }
 
 TEST(SelectVariantSub, SelectsEveryGeneratedVariant) {
@@ -626,6 +624,27 @@ TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   EXPECT_EQ(Cvt::S32U32::src_type, ScalarType::U32);
 }
 
+TEST(ResolveCvt, SelectsFrozenRnF32F64Variant) {
+  const auto ast = parse_instruction("cvt.rn.f32.f64 %f0, %fd0;");
+  const auto resolved = resolve<Cvt>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* cvt = std::get_if<Cvt::RnF32F64>(&resolved->variant);
+  ASSERT_NE(cvt, nullptr);
+  EXPECT_EQ(Cvt::RnF32F64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Cvt::RnF32F64::dst_type, ScalarType::F32);
+  EXPECT_EQ(Cvt::RnF32F64::src_type, ScalarType::F64);
+}
+
+TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
+  for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
+                            "cvt.rz.f32.f64 %f0, %fd0;",
+                            "cvt.rn.f64.f32 %fd0, %f0;"}) {
+    const auto selected = selectVariant<Cvt>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -819,7 +838,7 @@ TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
   const auto conflicting_cache = resolve<Ld>(
-      parse_instruction("ld.ca.volatile.u32 %r0, [%rd0];"));
+      parse_instruction("ld.volatile.ca.u32 %r0, [%rd0];"));
   ASSERT_TRUE(conflicting_cache.has_value()) << conflicting_cache.error().message;
   const auto cache_check = checker::check(*conflicting_cache, context);
   ASSERT_FALSE(cache_check.has_value());
@@ -856,6 +875,21 @@ TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {
   EXPECT_EQ(actual->at("result_type"), &ast.modifiers[1]);
   EXPECT_EQ(actual->at("input_type"), &ast.modifiers[2]);
   EXPECT_EQ(actual->at("sat"), &ast.modifiers[3]);
+}
+
+TEST(CollectActualModifiersAdd, RejectsOutOfOrderMixedSlots) {
+  const auto ast = parse_instruction("add.rz.f32.sat.bf16 %f0, %h1, %f2;");
+  const auto& instruction = Add::get_syntax_descriptor();
+  const auto mixed = std::ranges::find_if(
+      instruction.variants,
+      [](auto variant) { return variant.variant_name == "MixedF32"; });
+  ASSERT_NE(mixed, instruction.variants.end());
+
+  const auto actual = collect_actual_modifiers(ast, *mixed);
+
+  ASSERT_FALSE(actual.has_value());
+  EXPECT_EQ(actual.error().message,
+            "Modifier combination does not match instruction variant 'MixedF32'.");
 }
 
 TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {

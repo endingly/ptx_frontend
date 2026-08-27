@@ -279,8 +279,8 @@ operand_patterns:
 instructions:
   - opcode: cvt
     section: "9.7.9.22"
-    doc: "Convert one .u32 register to a .s32 register."
-    syntax: "cvt.s32.u32 dst, src"
+    doc: "Convert one .u32 register to .s32 or one .f64 register to .f32."
+    syntax: "cvt.s32.u32 dst, src | cvt.rn.f32.f64 dst, src"
     operands: $cvt_scalar
     variants:
       - name: cvt_s32_u32
@@ -301,6 +301,30 @@ instructions:
             value: u32
         examples:
           - ptx: "cvt.s32.u32 %s0, %r0;"
+            valid: true
+      - name: cvt_rn_f32_f64
+        description: "Register-only round-to-nearest f64 to f32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 13
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f64
+        examples:
+          - ptx: "cvt.rn.f32.f64 %f0, %fd0;"
             valid: true
 
   - opcode: mov

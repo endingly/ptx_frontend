@@ -1743,8 +1743,9 @@ struct ModifierBindingAttempt {
  *
  * Slot IDs are variant-local. The same spelling may therefore denote `type`
  * in one variant and `result_type` in another. Within one variant, however,
- * every spelling must have exactly one active owner; the Python database
- * validator enforces this invariant and a violation here is a compiler bug.
+ * every spelling must have exactly one active owner and source spellings must
+ * follow slot order, with optional slots permitted to be omitted. The Python
+ * database validator enforces the unique-owner invariant.
  */
 ModifierBindingAttempt bind_variant_modifiers(
     const syntax_ast::AstInstruction& ast,
@@ -1759,9 +1760,12 @@ ModifierBindingAttempt bind_variant_modifiers(
   }
 
   ActualModifierTable result;
+  std::optional<size_t> previous_owner_index;
   for (const auto& actual : ast.modifiers) {
     const SyntaxModifierDescriptor* owner = nullptr;
-    for (const auto& descriptor : variant.modifiers) {
+    size_t owner_index = 0;
+    for (size_t index = 0; index < variant.modifiers.size(); ++index) {
+      const auto& descriptor = variant.modifiers[index];
       if (descriptor.presence == check_end::PresenceRequirement::Absent ||
           !std::ranges::contains(descriptor.allowed_values,
                                  actual.syntax.text)) {
@@ -1774,19 +1778,23 @@ ModifierBindingAttempt bind_variant_modifiers(
             descriptor.kind_id));
       }
       owner = &descriptor;
+      owner_index = index;
     }
 
     if (owner == nullptr)
       return {};
 
-    const auto [_, inserted] =
-        result.emplace(std::string(owner->kind_id), &actual);
-    if (!inserted) {
+    if (result.contains(std::string(owner->kind_id))) {
       return ModifierBindingAttempt{
           .duplicate = &actual,
           .duplicate_slot = owner->kind_id,
       };
     }
+    if (previous_owner_index && owner_index < *previous_owner_index)
+      return {};
+
+    result.emplace(std::string(owner->kind_id), &actual);
+    previous_owner_index = owner_index;
   }
 
   for (const auto& descriptor : variant.modifiers) {

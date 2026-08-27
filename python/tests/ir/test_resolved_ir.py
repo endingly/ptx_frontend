@@ -1366,6 +1366,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Setp {", source)
         self.assertIn("struct Selp {", source)
         self.assertIn("struct Cvt {", source)
+        self.assertIn("struct RnF32F64 {", source)
+        self.assertIn(
+            "inline static constexpr RoundingMode rounding = RoundingMode::Rn;",
+            source,
+        )
+        self.assertIn(
+            "inline static constexpr ScalarType dst_type = ScalarType::F32;",
+            source,
+        )
+        self.assertIn(
+            "inline static constexpr ScalarType src_type = ScalarType::F64;",
+            source,
+        )
         self.assertIn("struct LtU32 {", source)
         self.assertIn("struct LtAndU32 {", source)
         self.assertIn("WithLocs<ComparisonOperator> comparison;", source)

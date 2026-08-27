@@ -137,9 +137,9 @@ opcodes:
     simulator: unsupported
     m9_issues: [M9-I20, M9-I21]
   - opcode: mad
-    syntax: unsupported
-    resolved: unsupported
-    checker: unsupported
+    syntax: partial
+    resolved: partial
+    checker: partial
     simulator: unsupported
     m9_issues: [M9-I22]
   - opcode: fma

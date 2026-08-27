@@ -423,6 +423,7 @@ _OPERAND_ROLES = {
     "src": ResolvedOperandRole.SOURCE,
     "src1": ResolvedOperandRole.SOURCE,
     "src2": ResolvedOperandRole.SOURCE,
+    "src3": ResolvedOperandRole.SOURCE,
     "addr": ResolvedOperandRole.ADDRESS,
     "address": ResolvedOperandRole.ADDRESS,
     "predicate": ResolvedOperandRole.PREDICATE,

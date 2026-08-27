@@ -33,6 +33,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Frozen `cvta` | Supported | Register-only `cvta.global.u64` and `cvta.to.global.u64` (PTX 2.0 / SM 20); no variable-address or provenance inference |
 | Frozen integer `mul` | Supported | `mul.lo.u32` with register-or-immediate sources (PTX 1.0 / SM 0) |
 | Frozen floating `mul` | Supported | Register-only `mul.rn.f32` (PTX 1.0 / SM 0) |
+| Frozen integer `mad` | Supported | `mad.lo.u32` with register-or-immediate sources (PTX 1.0 / SM 0) |
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be

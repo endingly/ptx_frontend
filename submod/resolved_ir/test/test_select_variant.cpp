@@ -682,6 +682,25 @@ TEST(ResolveMul, RejectsImmediateFloatingOperand) {
   ASSERT_FALSE(resolved.has_value());
 }
 
+TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
+  const auto resolved = resolve<Mad>(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* mad = std::get_if<Mad::LoU32>(&resolved->variant);
+  ASSERT_NE(mad, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
+}
+
+TEST(ResolveMad, RejectsUnfrozenVariants) {
+  for (const auto source : {"mad.u32 %r0, %r1, %r2, %r3;",
+                            "mad.hi.u32 %r0, %r1, %r2, %r3;",
+                            "mad.lo.s32 %r0, %r1, %r2, %r3;",
+                            "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
+    const auto selected = selectVariant<Mad>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

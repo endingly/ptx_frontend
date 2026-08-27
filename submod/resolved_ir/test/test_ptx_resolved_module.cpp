@@ -511,6 +511,37 @@ TEST(ResolvedModule, ChecksMulRnF32OperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksMadLoU32OperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst, %src1, %src3; mad.lo.u32 %dst, %src1, 7, %src3; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  EXPECT_TRUE(checker::check(std::get<Mad>(valid->functions.front().body.front()), context).has_value());
+
+  const auto wrong_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u16 %dst, %src1, %src3; mad.lo.u32 %dst, %src1, 7, %src3; }
+)ptx"));
+  ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
+  const auto& width_instruction = std::get<Mad>(wrong_width->functions.front().body.front());
+  const auto& width_variant = std::get<Mad::LoU32>(width_instruction.variant);
+  const auto width_checked = checker::check(width_instruction, context);
+  ASSERT_FALSE(width_checked.has_value());
+  EXPECT_EQ(width_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(width_checked.error().front().range, width_variant.dst.locs.front());
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst, %src2, %src3; .reg .f32 %wrong_src; mad.lo.u32 %dst, %wrong_src, %src2, %src3; }
+)ptx"));
+  ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
+  const auto& type_instruction = std::get<Mad>(wrong_type->functions.front().body.front());
+  const auto& type_variant = std::get<Mad::LoU32>(type_instruction.variant);
+  const auto type_checked = checker::check(type_instruction, context);
+  ASSERT_FALSE(type_checked.has_value());
+  EXPECT_EQ(type_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

@@ -64,6 +64,35 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  ternary_arith:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type:
+        expr: modifier(type)
+
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type:
+        expr: modifier(type)
+
+    - name: src3
+      kind: reg_or_imm
+      role: src3
+      access: read
+      type:
+        expr: modifier(type)
+
 instructions:
   - opcode: add
     section: "9.7.1.1"
@@ -265,4 +294,30 @@ instructions:
             value: u32
         examples:
           - ptx: "mul.lo.u32 %r0, %r1, 7;"
+            valid: true
+
+  - opcode: mad
+    section: "9.7.1.4"
+    doc: "Frozen low 32-bit unsigned integer multiply-add."
+    syntax: "mad.lo.u32 dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: mad_lo_u32
+        description: "Low 32 bits of unsigned 32-bit multiply-add."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: lo
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".lo"
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "mad.lo.u32 %r0, %r1, 7, %r2;"
             valid: true

@@ -460,6 +460,37 @@ TEST(ResolvedModule, ChecksCvtaU64OperandWidths) {
   EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
 }
 
+TEST(ResolvedModule, ChecksMulLoU32OperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst, %src; mul.lo.u32 %dst, %src, 7; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  EXPECT_TRUE(checker::check(std::get<Mul>(valid->functions.front().body.front()), context).has_value());
+
+  const auto wrong_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u16 %dst, %src; mul.lo.u32 %dst, %src, 7; }
+)ptx"));
+  ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
+  const auto& width_instruction = std::get<Mul>(wrong_width->functions.front().body.front());
+  const auto& width_variant = std::get<Mul::LoU32>(width_instruction.variant);
+  const auto width_checked = checker::check(width_instruction, context);
+  ASSERT_FALSE(width_checked.has_value());
+  EXPECT_EQ(width_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(width_checked.error().front().range, width_variant.dst.locs.front());
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst; .reg .f32 %src; mul.lo.u32 %dst, %src, 7; }
+)ptx"));
+  ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
+  const auto& type_instruction = std::get<Mul>(wrong_type->functions.front().body.front());
+  const auto& type_variant = std::get<Mul::LoU32>(type_instruction.variant);
+  const auto type_checked = checker::check(type_instruction, context);
+  ASSERT_FALSE(type_checked.has_value());
+  EXPECT_EQ(type_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

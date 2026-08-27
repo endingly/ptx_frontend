@@ -18,7 +18,7 @@ The frontend currently provides:
   initializer, and instruction forms;
 - module/function symbol scopes, reference classification, and declaration
   semantics;
-- generated resolution and checking for YAML-modelled bare `ret`/`exit`/`trap` (with ordinary predicate guards accepted), fixed `and.b32`/`or.b32`/`xor.b32`/`not.b32`/`shl.b32`/`shr.u32`, frozen `setp.lt{.and}.u32` single-predicate forms, `selp.u32`, register-only `cvta{.to}.global.u64`, `cvt.s32.u32`/`cvt.rn.f32.f64`/`cvt.rn.f32.u32`/`cvt.rzi.u32.f32`, `bra`, `brx.idx`, `add`,
+- generated resolution and checking for YAML-modelled bare `ret`/`exit`/`trap` (with ordinary predicate guards accepted), fixed `and.b32`/`or.b32`/`xor.b32`/`not.b32`/`shl.b32`/`shr.u32`/`mul.lo.u32`, frozen `setp.lt{.and}.u32` single-predicate forms, `selp.u32`, register-only `cvta{.to}.global.u64`, `cvt.s32.u32`/`cvt.rn.f32.f64`/`cvt.rn.f32.u32`/`cvt.rzi.u32.f32`, `bra`, `brx.idx`, `add`,
   `sub`, `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
   the 14 `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`,
   `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` and the

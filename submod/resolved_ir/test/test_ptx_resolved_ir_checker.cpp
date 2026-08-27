@@ -312,6 +312,24 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtaGlobalU64Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedMulLoU32Availability) {
+  PtxSyntaxParser parser("mul.lo.u32 %r0, %r1, %r2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto mul = resolve<Mul>(*ast);
+  ASSERT_TRUE(mul.has_value()) << mul.error().message;
+  const auto rejected = check(
+      *mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*mul,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedCvtS32U32Availability) {
   PtxSyntaxParser parser("cvt.s32.u32 %s0, %r0;");
   const auto ast = parser.parseInstruction();

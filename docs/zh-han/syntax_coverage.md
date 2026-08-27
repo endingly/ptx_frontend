@@ -30,6 +30,7 @@
 
 | 冻结的 mixed `cvt` | 支持 | register-only `cvt.rn.f32.u32` 与 `cvt.rzi.u32.f32`（两端接受 equal-or-wider register declaration；PTX 1.0 / SM 0） |
 | 冻结的 `cvta` | 支持 | register-only `cvta.global.u64` 与 `cvta.to.global.u64`（PTX 2.0 / SM 20）；不支持 variable address 或 provenance inference |
+| 冻结的 integer `mul` | 支持 | register-or-immediate source `mul.lo.u32`（PTX 1.0 / SM 0） |
 
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。

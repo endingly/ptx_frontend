@@ -641,6 +641,24 @@ TEST(ResolveCvta, RejectsWrongModifierOrderOrU32) {
   }
 }
 
+TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
+  const auto resolved = resolve<Mul>(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* mul = std::get_if<Mul::LoU32>(&resolved->variant);
+  ASSERT_NE(mul, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src2.value));
+}
+
+TEST(ResolveMul, RejectsUnfrozenVariants) {
+  for (const auto source : {"mul.u32 %r0, %r1, %r2;",
+                            "mul.hi.u32 %r0, %r1, %r2;",
+                            "mul.lo.s32 %r0, %r1, %r2;"}) {
+    const auto selected = selectVariant<Mul>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

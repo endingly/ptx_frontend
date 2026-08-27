@@ -37,7 +37,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9-I01～I24 与 M9-C01 已按 simulator MVP corpus 完成并验证；下一项为 M9-C02 MVP kernel parse/check。
+M9-I01～I24、M9-C01 与 M9-C02 已按 simulator MVP corpus 完成并验证；下一项为 M9-C03 MVP functional execution。
 M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
@@ -1413,7 +1413,7 @@ operand/type/modifier matrix
 | M9-I23 | ✅ | 独立 | 支持 `fma` slice | frozen register-only `fma.rn.f32`，PTX 2.0 / SM 20 availability 和 operand type 闭环 |
 | M9-I24 | ✅ | 独立 | 支持 `div` 的首个 MVP slice | frozen `div.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环；zero divisor 保持 PTX unspecified behavior |
 | M9-C01 | ✅ | 耦合 | 统一新增 domain 和 diagnostics | comparison/boolean/rounding/type 复用 backend YAML 的 canonical C++ domain，生成 checker 统一走 `ModifierValueKind` / `CheckDiagnostic` 路径 |
-| M9-C02 | ⬜ | 耦合 | 打通 MVP kernel parse/check | corpus 中所有 kernel 可生成完整 ResolvedModule |
+| M9-C02 | ✅ | 耦合 | 打通 MVP kernel parse/check | `corpus/m9/*.ptx` 均可 parse、生成完整 ResolvedModule，并在 PTX 9.3 / SM 80 下通过 checker；simulator 仍未执行 |
 | M9-C03 | ⬜ | 耦合 | 打通 MVP functional execution | adapter 能驱动 simulator 并比对 register/memory 结果 |
 
 ---

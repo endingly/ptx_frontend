@@ -25,7 +25,14 @@ class M9ManifestTests(unittest.TestCase):
             manifest["target"],
             {"ptx_version": "9.3", "sm": "sm_80", "address_size": 64},
         )
+        self.assertEqual(manifest["status"]["frontend"], "resolved/checked")
         self.assertIn("not executed", manifest["status"]["simulator"])
+
+        case_files = {case["file"] for case in manifest["cases"]}
+        self.assertEqual(
+            case_files,
+            {path.name for path in CORPUS.glob("*.ptx")},
+        )
 
         for case in manifest["cases"]:
             self.assertTrue((CORPUS / case["file"]).is_file())

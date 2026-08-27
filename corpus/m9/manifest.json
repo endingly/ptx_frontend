@@ -1,7 +1,7 @@
 {
   "schema": "ptx_frontend.m9_mvp/v1",
   "status": {
-    "frontend": "corpus-only",
+    "frontend": "resolved/checked",
     "simulator": "external ptxsim skeleton; not executed by this corpus"
   },
   "target": {

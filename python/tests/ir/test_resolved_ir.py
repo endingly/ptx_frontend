@@ -634,6 +634,25 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.rule, "control_flow.brx_idx")
 
+    def test_ret_uses_a_bare_zero_operand_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ret = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ret"
+        )
+        instruction = from_instruction_spec(ret)
+
+        self.assertEqual(instruction.cpp_name, "Ret")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Bare")
+        self.assertEqual(variant.fields, ())
+        self.assertEqual(variant.operand_layouts[0].fields, ())
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1209,6 +1228,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Add {", source)
         self.assertIn("struct Bar {", source)
         self.assertIn("struct Bra {", source)
+        self.assertIn("struct Ret {", source)
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
@@ -1291,6 +1311,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('ast.opcode.syntax.text == "bar"', source)
         self.assertIn('ast.opcode.syntax.text == "bra"', source)
         self.assertIn("resolve<Bra>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "ret"', source)
+        self.assertIn("resolve<Ret>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "mov"', source)
         self.assertIn("resolve<Mov>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ld"', source)
@@ -1317,6 +1339,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".target = resolved_operand<ResolvedBranchTarget>", source)
         self.assertIn("CheckResult check<Bra>(", source)
+        self.assertIn("std::expected<Ret, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Ret>(", source)
 
     def test_generate_data_movement_resolved_ir_source(self) -> None:
         database = load_codegen_database(

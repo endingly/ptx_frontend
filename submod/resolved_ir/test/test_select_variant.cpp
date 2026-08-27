@@ -445,6 +445,27 @@ TEST(SelectVariantAdd, ReportsUnknownModifier) {
   EXPECT_EQ(selected.error().message, "Unknown modifier '.invalid'.");
 }
 
+TEST(ResolveRet, SelectsBareVariantAndRejectsModifiersAndOperands) {
+  const auto bare_ast = parse_instruction("ret;");
+  const auto bare = resolve<Ret>(bare_ast);
+  ASSERT_TRUE(bare.has_value()) << bare.error().message;
+  EXPECT_TRUE(std::holds_alternative<Ret::Bare>(bare->variant));
+
+  const auto modifier_ast = parse_instruction("ret.uni;");
+  const auto modifier = resolve<Ret>(modifier_ast);
+  ASSERT_FALSE(modifier.has_value());
+  EXPECT_EQ(modifier.error().range,
+            modifier_ast.modifiers.front().syntax.range);
+  EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
+
+  const auto operand_ast = parse_instruction("ret %r0;");
+  const auto operand = resolve<Ret>(operand_ast);
+  ASSERT_FALSE(operand.has_value());
+  EXPECT_EQ(operand.error().range, operand_ast.range);
+  EXPECT_EQ(operand.error().message,
+            "Operands do not match any layout of instruction variant 'Bare'.");
+}
+
 TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   const auto ast = parse_instruction("add.u32.u32 %r0, %r1, %r2;");
 
@@ -478,6 +499,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto sub = resolveInstruction(sub_ast);
   ASSERT_TRUE(sub.has_value()) << sub.error().message;
   EXPECT_TRUE(std::holds_alternative<Sub>(*sub));
+
+  const auto ret_ast = parse_instruction("ret;");
+  const auto ret = resolveInstruction(ret_ast);
+  ASSERT_TRUE(ret.has_value()) << ret.error().message;
+  EXPECT_TRUE(std::holds_alternative<Ret>(*ret));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

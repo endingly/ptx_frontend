@@ -89,6 +89,35 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_EQ(src1.declared_type, ScalarType::U32);
 }
 
+TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
+  const auto ast = parseModule(R"ptx(
+.func device() {
+  ret;
+}
+.entry kernel() {
+  ret;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.size(), 2u);
+  EXPECT_FALSE(resolved->functions[0].is_entry);
+  EXPECT_TRUE(resolved->functions[1].is_entry);
+  for (const auto& function : resolved->functions) {
+    ASSERT_EQ(function.body.size(), 1u);
+    const auto& ret = std::get<Ret>(function.body.front());
+    EXPECT_TRUE(checker::check(
+                    ret,
+                    checker::Context{
+                        .target = {.ptx_version = {1, 0}, .sm_version = 0},
+                        .instruction_range = ast.range,
+                    })
+                    .has_value());
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

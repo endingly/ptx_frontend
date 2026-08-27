@@ -37,8 +37,8 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9 的 machine-readable opcode manifest 与 simulator MVP corpus 已完成，下一步按 corpus
-逐项实现核心 opcode slice；M8-I14 继续暂停。
+M9 的 machine-readable opcode manifest、simulator MVP corpus 和 bare `ret` MVP slice 已完成；
+下一项为 M9-I04 `exit`。M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
 
@@ -1390,7 +1390,7 @@ operand/type/modifier matrix
 | --- | --- | --- | --- | --- |
 | M9-I01 | ✅ | 独立 | 建立 machine-readable opcode coverage manifest | 每个 opcode 标记 syntax/resolved/checker/simulator 状态 |
 | M9-I02 | ✅ | 独立 | 建立 simulator MVP kernel corpus | 固定一组最小 kernel 和所需 opcode 清单 |
-| M9-I03 | ⬜ | 独立 | 支持 `ret` | `ret` 的完整冻结 variant slice 进入 YAML/resolver/checker |
+| M9-I03 | ✅ | 独立 | 支持 `ret` | `ret` 的完整冻结 variant slice 进入 YAML/resolver/checker |
 | M9-I04 | ⬜ | 独立 | 支持 `exit` | `exit` 的 syntax、availability 和 function-context 闭环 |
 | M9-I05 | ⬜ | 独立 | 支持 `trap` | `trap` 的 target rule 和 diagnostics 闭环 |
 | M9-I06 | ⬜ | 独立 | 支持 `and` | 单 opcode 全链条闭环 |
@@ -1532,7 +1532,7 @@ M11 diagnostic and CI infrastructure
 基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
 
 1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
-2. 按 simulator MVP corpus 逐个实现 M9 opcode slice；
+2. `M9-I04`：实现 `exit` 的冻结 MVP slice；
 3. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
 
 ---

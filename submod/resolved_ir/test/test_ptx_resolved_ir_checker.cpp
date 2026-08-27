@@ -58,6 +58,31 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedBareRetAvailability) {
+  PtxSyntaxParser parser("ret;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto ret = resolve<Ret>(*ast);
+  ASSERT_TRUE(ret.has_value()) << ret.error().message;
+
+  const Context old_target{
+      .target = {.ptx_version = {0, 9}, .sm_version = 0},
+      .instruction_range = ast->range,
+  };
+  const auto unavailable = check(*ret, old_target);
+  ASSERT_FALSE(unavailable.has_value());
+  ASSERT_EQ(unavailable.error().size(), 1u);
+  EXPECT_EQ(unavailable.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unavailable.error().front().range, ast->range);
+
+  const Context supported_target{
+      .target = {.ptx_version = {1, 0}, .sm_version = 0},
+      .instruction_range = ast->range,
+  };
+  EXPECT_TRUE(check(*ret, supported_target).has_value());
+}
+
 TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   constexpr std::array<std::string_view, 1> families{"sm_100"};
   const Context context{

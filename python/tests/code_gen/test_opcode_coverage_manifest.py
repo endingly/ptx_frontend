@@ -60,14 +60,22 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 {"syntax": "partial", "resolved": "partial", "checker": "partial"},
             )
             self.assertEqual(by_opcode[opcode]["simulator"], "unsupported")
-            self.assertNotIn("m9_issues", by_opcode[opcode])
+            if opcode not in M9_OPCODE_ISSUES:
+                self.assertNotIn("m9_issues", by_opcode[opcode])
 
         for opcode, issues in M9_OPCODE_ISSUES.items():
+            expected_frontend_status = (
+                "partial" if opcode in database_opcodes else "unsupported"
+            )
             self.assertEqual(
                 {field: by_opcode[opcode][field]
                  for field in ("syntax", "resolved", "checker", "simulator")},
-                {field: "unsupported"
-                 for field in ("syntax", "resolved", "checker", "simulator")},
+                {
+                    "syntax": expected_frontend_status,
+                    "resolved": expected_frontend_status,
+                    "checker": expected_frontend_status,
+                    "simulator": "unsupported",
+                },
             )
             self.assertEqual(tuple(by_opcode[opcode]["m9_issues"]), issues)
 

@@ -56,6 +56,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
+        cls.database = database
         add = next(
             instruction
             for instruction in database.instructions
@@ -2044,6 +2045,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(".boolean_operator = BooleanOperator::Xor,", source)
+
+    def test_semantic_modifier_domains_share_generated_availability_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "resolved_ir_test.gen.cpp"
+            generate_resolved_ir_source(
+                self.database,
+                category="arithmetic",
+                output_path=source_path,
+            )
+            source = source_path.read_text(encoding="utf-8")
+
+        self.assertIn("check_modifier_value_availability(", source)
 
     def test_rejects_token_override_for_value_set_reference(self) -> None:
         with self.assertRaisesRegex(ValueError, "value-set reference"):

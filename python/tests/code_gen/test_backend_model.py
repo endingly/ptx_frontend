@@ -122,6 +122,21 @@ class BackendModelTests(unittest.TestCase):
             unit.domains[CppDomain.BOOLEAN_OPERATORS.value].values["xor"],
             "BooleanOperator::Xor",
         )
+        modifier_types = unit.domains[
+            CppDomain.MODIFIER_VALUE_CPP_TYPES.value
+        ].values
+        self.assertEqual(
+            {
+                kind: modifier_types[kind]
+                for kind in ("type", "rounding", "comparison", "boolean_op")
+            },
+            {
+                "type": "ScalarType",
+                "rounding": "RoundingMode",
+                "comparison": "ComparisonOperator",
+                "boolean_op": "BooleanOperator",
+            },
+        )
         self.assertEqual(
             unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
             "MemoryConsistency::Weak",

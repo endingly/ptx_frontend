@@ -288,6 +288,30 @@ TEST(ResolvedIrChecker, ChecksGeneratedSelpU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedCvtaGlobalU64Availability) {
+  PtxSyntaxParser parser("cvta.to.global.u64 %rd0, %rd1;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto cvta = resolve<Cvta>(*ast);
+  ASSERT_TRUE(cvta.has_value()) << cvta.error().message;
+  const auto old_ptx = check(
+      *cvta, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *cvta, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*cvta,
+                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedCvtS32U32Availability) {
   PtxSyntaxParser parser("cvt.s32.u32 %s0, %r0;");
   const auto ast = parser.parseInstruction();

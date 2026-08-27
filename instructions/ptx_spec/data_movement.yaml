@@ -70,6 +70,20 @@ operand_patterns:
         expr: modifier(src_type)
       register_width: equal_or_wider
 
+  cvta_register:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+
   mov_pack:
     - name: dst
       kind: reg
@@ -277,6 +291,60 @@ operand_patterns:
       register_width: equal_or_wider
 
 instructions:
+  - opcode: cvta
+    section: "9.7.9.21"
+    doc: "Convert register-only global and generic u64 addresses."
+    syntax: "cvta.global.u64 dst, src | cvta.to.global.u64 dst, src"
+    operands: $cvta_register
+    variants:
+      - name: cvta_global_u64
+        description: "Register-only global-to-generic u64 address conversion."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: to
+            kind: flag
+            presence: absent
+            token: ".to"
+          - name: state_space
+            kind: state_space
+            domain: memory_state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        examples:
+          - ptx: "cvta.global.u64 %rd0, %rd1;"
+            valid: true
+      - name: cvta_to_global_u64
+        description: "Register-only generic-to-global u64 address conversion."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: to
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".to"
+          - name: state_space
+            kind: state_space
+            domain: memory_state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        examples:
+          - ptx: "cvta.to.global.u64 %rd0, %rd1;"
+            valid: true
+
   - opcode: cvt
     section: "9.7.9.22"
     doc: "Convert frozen register-only .u32→.s32/.f32, .f64→.f32, or .f32→.u32 pairs."

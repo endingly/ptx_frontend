@@ -614,6 +614,33 @@ TEST(ResolveSelp, SelectsFrozenU32Variant) {
   EXPECT_FALSE(selp->predicate.value.negated);
 }
 
+TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
+  const auto to_generic = resolve<Cvta>(parse_instruction("cvta.global.u64 %rd0, %rd1;"));
+  ASSERT_TRUE(to_generic.has_value()) << to_generic.error().message;
+  const auto* global = std::get_if<Cvta::GlobalU64>(&to_generic->variant);
+  ASSERT_NE(global, nullptr);
+  EXPECT_EQ(Cvta::GlobalU64::state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(Cvta::GlobalU64::type, ScalarType::U64);
+
+  const auto to_global =
+      resolve<Cvta>(parse_instruction("cvta.to.global.u64 %rd0, %rd1;"));
+  ASSERT_TRUE(to_global.has_value()) << to_global.error().message;
+  const auto* to = std::get_if<Cvta::ToGlobalU64>(&to_global->variant);
+  ASSERT_NE(to, nullptr);
+  EXPECT_TRUE(Cvta::ToGlobalU64::to);
+}
+
+TEST(ResolveCvta, RejectsWrongModifierOrderOrU32) {
+  for (const auto source : {"cvta.global.to.u64 %rd0, %rd1;",
+                            "cvta.u64.global %rd0, %rd1;",
+                            "cvta.global.u32 %r0, %r1;",
+                            "cvta.to.global.u32 %r0, %r1;"}) {
+    const auto selected = selectVariant<Cvta>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

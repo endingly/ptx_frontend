@@ -439,6 +439,27 @@ TEST(ResolvedModule, ChecksMixedCvtOperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
 }
 
+TEST(ResolvedModule, ChecksCvtaU64OperandWidths) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u64 %dst, %src; cvta.global.u64 %dst, %src; cvta.to.global.u64 %dst, %src; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const checker::Context context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  EXPECT_TRUE(checker::check(std::get<Cvta>(valid->functions.front().body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Cvta>(valid->functions.front().body[1]), context).has_value());
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst, %src; cvta.global.u64 %dst, %src; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Cvta>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Cvta::GlobalU64>(instruction.variant);
+  const auto checked = checker::check(instruction, context);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

@@ -37,6 +37,23 @@ operand_patterns:
       access: read
       type: b32
 
+  shift_b32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: b32
+    - name: amount
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
 instructions:
   - opcode: and
     section: "9.7.8.1"
@@ -131,4 +148,25 @@ instructions:
           - ptx: "not.b32 %r0, %r1;"
             valid: true
           - ptx: "not.b32 %r0, 1;"
+            valid: true
+  - opcode: shl
+    section: "9.7.8.8"
+    doc: "Shift a 32-bit operand left by a 32-bit count."
+    syntax: "shl.b32 dst, src, amount"
+    operands: $shift_b32
+    variants:
+      - name: shl_b32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        examples:
+          - ptx: "shl.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "shl.b32 %r0, %r1, 1;"
             valid: true

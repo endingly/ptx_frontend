@@ -306,6 +306,24 @@ TEST(ResolvedModule, ChecksNotB32RegisterCompatibilityAndWidth) {
   EXPECT_EQ(checked.error().front().range, variant.src.locs.front());
 }
 
+TEST(ResolvedModule, ChecksShlB32DataAndAmountWidths) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %u, %amount; .reg .b32 %b; shl.b32 %b, %u, %amount; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Shl>(valid->functions.front().body.front()), checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}}).has_value());
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b; .reg .u64 %amount; shl.b32 %b, %b, %amount; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Shl>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Shl::B32>(instruction.variant);
+  const auto checked = checker::check(instruction, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.amount.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

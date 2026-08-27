@@ -568,6 +568,15 @@ TEST(ResolveNot, SelectsB32VariantAndAcceptsImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
 }
 
+TEST(ResolveShl, SelectsB32VariantAndAcceptsImmediateAmount) {
+  const auto ast = parse_instruction("shl.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<Shl>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* shl_b32 = std::get_if<Shl::B32>(&resolved->variant);
+  ASSERT_NE(shl_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shl_b32->amount.value));
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -626,6 +635,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto not_instruction = resolveInstruction(not_ast);
   ASSERT_TRUE(not_instruction.has_value()) << not_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Not>(*not_instruction));
+
+  const auto shl_ast = parse_instruction("shl.b32 %r0, %r1, %r2;");
+  const auto shl_instruction = resolveInstruction(shl_ast);
+  ASSERT_TRUE(shl_instruction.has_value()) << shl_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Shl>(*shl_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

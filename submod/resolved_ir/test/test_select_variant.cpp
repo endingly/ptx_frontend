@@ -466,6 +466,34 @@ TEST(ResolveRet, SelectsBareVariantAndRejectsModifiersAndOperands) {
             "Operands do not match any layout of instruction variant 'Bare'.");
 }
 
+TEST(ResolveExit, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
+  const auto bare_ast = parse_instruction("exit;");
+  const auto bare = resolve<Exit>(bare_ast);
+  ASSERT_TRUE(bare.has_value()) << bare.error().message;
+  EXPECT_TRUE(std::holds_alternative<Exit::Bare>(bare->variant));
+  EXPECT_FALSE(bare->execution_predicate.has_value());
+
+  const auto predicated_ast = parse_instruction("@%p0 exit;");
+  const auto predicated = resolve<Exit>(predicated_ast);
+  ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
+  EXPECT_TRUE(std::holds_alternative<Exit::Bare>(predicated->variant));
+  EXPECT_TRUE(predicated->execution_predicate.has_value());
+
+  const auto modifier_ast = parse_instruction("exit.uni;");
+  const auto modifier = resolve<Exit>(modifier_ast);
+  ASSERT_FALSE(modifier.has_value());
+  EXPECT_EQ(modifier.error().range,
+            modifier_ast.modifiers.front().syntax.range);
+  EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
+
+  const auto operand_ast = parse_instruction("exit %r0;");
+  const auto operand = resolve<Exit>(operand_ast);
+  ASSERT_FALSE(operand.has_value());
+  EXPECT_EQ(operand.error().range, operand_ast.range);
+  EXPECT_EQ(operand.error().message,
+            "Operands do not match any layout of instruction variant 'Bare'.");
+}
+
 TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   const auto ast = parse_instruction("add.u32.u32 %r0, %r1, %r2;");
 
@@ -504,6 +532,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto ret = resolveInstruction(ret_ast);
   ASSERT_TRUE(ret.has_value()) << ret.error().message;
   EXPECT_TRUE(std::holds_alternative<Ret>(*ret));
+
+  const auto exit_ast = parse_instruction("exit;");
+  const auto exit_instruction = resolveInstruction(exit_ast);
+  ASSERT_TRUE(exit_instruction.has_value()) << exit_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Exit>(*exit_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

@@ -83,6 +83,31 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareRetAvailability) {
   EXPECT_TRUE(check(*ret, supported_target).has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedBareExitAvailability) {
+  PtxSyntaxParser parser("exit;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto exit_instruction = resolve<Exit>(*ast);
+  ASSERT_TRUE(exit_instruction.has_value()) << exit_instruction.error().message;
+
+  const Context old_target{
+      .target = {.ptx_version = {0, 9}, .sm_version = 0},
+      .instruction_range = ast->range,
+  };
+  const auto unavailable = check(*exit_instruction, old_target);
+  ASSERT_FALSE(unavailable.has_value());
+  ASSERT_EQ(unavailable.error().size(), 1u);
+  EXPECT_EQ(unavailable.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(unavailable.error().front().range, ast->range);
+
+  const Context supported_target{
+      .target = {.ptx_version = {1, 0}, .sm_version = 0},
+      .instruction_range = ast->range,
+  };
+  EXPECT_TRUE(check(*exit_instruction, supported_target).has_value());
+}
+
 TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   constexpr std::array<std::string_view, 1> families{"sm_100"};
   const Context context{

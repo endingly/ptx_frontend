@@ -118,6 +118,31 @@ TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
   }
 }
 
+TEST(ResolvedModule, ResolvesBareAndPredicatedExitInDeviceFunctionAndEntry) {
+  const auto ast = parseModule(R"ptx(
+.func device() {
+  .reg .pred %p0;
+  @%p0 exit;
+}
+.entry kernel() {
+  exit;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.size(), 2u);
+  EXPECT_FALSE(resolved->functions[0].is_entry);
+  EXPECT_TRUE(resolved->functions[1].is_entry);
+  const auto& device_exit =
+      std::get<Exit>(resolved->functions[0].body.front());
+  EXPECT_TRUE(device_exit.execution_predicate.has_value());
+  const auto& entry_exit =
+      std::get<Exit>(resolved->functions[1].body.front());
+  EXPECT_FALSE(entry_exit.execution_predicate.has_value());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

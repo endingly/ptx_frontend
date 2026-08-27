@@ -199,3 +199,22 @@ instructions:
         examples:
           - ptx: "ret;"
             valid: true
+  - opcode: exit
+    section: "9.7.13.7"
+    doc: "Terminate the current thread."
+    syntax: "exit"
+
+    variants:
+      - name: exit_bare
+        description: "Thread exit with no modifiers or operands."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers: []
+        operands: []
+
+        examples:
+          - ptx: "exit;"
+            valid: true
+          - ptx: "@%p0 exit;"
+            valid: true

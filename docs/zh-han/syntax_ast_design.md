@@ -55,7 +55,8 @@ scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序�
 `ResolvedBlock`。function body（含 nested block）也接受 `.loc`：basic
 `file line column` triple，或成对的 PTX 7.2 `function_name label {+ integer}` /
 `inlined_at file line column` payload；CST 保留标点，AST 保留 field 与 range。`.file`
-index、DWARF label 以及向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
+index 与 `.debug_str` section/raw-label identity 会在独立的 debug-metadata binding namespace
+中建立，`.loc` 也会验证这些 reference；向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
 也在 outermost scope 接受 `.section name { ... }`，CST/AST 保留匹配 brace 和 raw DWARF
 payload token spelling；section name 只是 syntax，不是普通可绑定 identifier。DWARF payload type、
 private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar

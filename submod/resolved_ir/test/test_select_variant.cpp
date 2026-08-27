@@ -541,6 +541,15 @@ TEST(ResolveAnd, SelectsB32VariantAndAcceptsImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(and_b32->src2.value));
 }
 
+TEST(ResolveOr, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("or.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<Or>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* or_b32 = std::get_if<Or::B32>(&resolved->variant);
+  ASSERT_NE(or_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(or_b32->src2.value));
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -584,6 +593,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto and_instruction = resolveInstruction(and_ast);
   ASSERT_TRUE(and_instruction.has_value()) << and_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<And>(*and_instruction));
+
+  const auto or_ast = parse_instruction("or.b32 %r0, %r1, %r2;");
+  const auto or_instruction = resolveInstruction(or_ast);
+  ASSERT_TRUE(or_instruction.has_value()) << or_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Or>(*or_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

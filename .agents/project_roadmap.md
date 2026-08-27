@@ -38,7 +38,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
 M9 的 machine-readable opcode manifest、simulator MVP corpus、bare `ret`、bare `exit`、bare
-`trap` 和 fixed `and.b32` MVP slice 已完成；下一项为 M9-I07 `or`。M8-I14 继续暂停。
+`trap`、fixed `and.b32` 和 fixed `or.b32` MVP slice 已完成；下一项为 M9-I08 `xor`。M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
 
@@ -1394,7 +1394,7 @@ operand/type/modifier matrix
 | M9-I04 | ✅ | 独立 | 支持 `exit` | `exit` 的 syntax、availability 和 function-context 闭环 |
 | M9-I05 | ✅ | 独立 | 支持 `trap` | `trap` 的 PTX 1.0 / SM 0 无 family 限制和 diagnostics 闭环 |
 | M9-I06 | ✅ | 独立 | 支持 `and` | fixed `and.b32` 的单 opcode 全链条闭环 |
-| M9-I07 | ⬜ | 独立 | 支持 `or` | 单 opcode 全链条闭环 |
+| M9-I07 | ✅ | 独立 | 支持 `or` | fixed `or.b32` 的单 opcode 全链条闭环 |
 | M9-I08 | ⬜ | 独立 | 支持 `xor` | 单 opcode 全链条闭环 |
 | M9-I09 | ⬜ | 独立 | 支持 `not` | 单 opcode 全链条闭环 |
 | M9-I10 | ⬜ | 独立 | 支持 `shl` | width、shift operand 和 target rule 闭环 |
@@ -1532,7 +1532,7 @@ M11 diagnostic and CI infrastructure
 基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
 
 1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
-2. `M9-I07`：实现 `or` 的冻结 MVP slice；
+2. `M9-I08`：实现 `xor` 的冻结 MVP slice；
 3. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
 
 ---

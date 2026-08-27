@@ -50,3 +50,27 @@ instructions:
             valid: true
           - ptx: "and.b32 %r0, %r1, 1;"
             valid: true
+  - opcode: or
+    section: "9.7.8.2"
+    doc: "Bitwise OR of two 32-bit operands."
+    syntax: "or.b32 dst, src1, src2"
+    operands: $binary_bitwise
+
+    variants:
+      - name: or_b32
+        description: "32-bit bitwise OR with register or immediate sources."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+
+        examples:
+          - ptx: "or.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "or.b32 %r0, %r1, 1;"
+            valid: true

@@ -1810,6 +1810,62 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".scalar_type = ScalarType::U64,", source)
         self.assertIn(".minimum_ptx_version = {2, 0},", source)
 
+    def test_comparison_modifier_domain_emits_typed_availability(self) -> None:
+        specs = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_comparison",
+                                "availability": {"ptx": "1.0"},
+                                "modifiers": [
+                                    {
+                                        "name": "comparison",
+                                        "kind": "comparison",
+                                        "presence": "required",
+                                        "values": [
+                                            {
+                                                "value": "lt",
+                                                "availability": {"sm": 20},
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        resolved = from_instruction_spec(specs[0])
+        field = resolved.variants[0].modifier_fields[0]
+        self.assertEqual(field.value_kind, ResolvedValueKind.COMPARISON_OPERATOR)
+        self.assertEqual(field.cpp_type, "WithLocs<ComparisonOperator>")
+        self.assertEqual(
+            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            "ComparisonOperator",
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::ComparisonOperator,",
+            source,
+        )
+        self.assertIn(".comparison_operator = ComparisonOperator::Lt,", source)
+
     def test_rejects_token_override_for_value_set_reference(self) -> None:
         with self.assertRaisesRegex(ValueError, "value-set reference"):
             normalize_instruction_spec(

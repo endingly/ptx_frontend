@@ -210,6 +210,15 @@ def _emit_modifier_value_descriptor(
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "ComparisonOperator":
+        comparison_operator = cpp_value(
+            CppDomain.COMPARISON_OPERATORS, str(entry.value)
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif entry.value_cpp_type == "CacheOperator":
         cache_operator = cpp_value(CppDomain.CACHE_OPERATORS, str(entry.value))
         bool_value = "false"
@@ -257,6 +266,7 @@ def _emit_modifier_value_descriptor(
               .bool_value = {bool_value},
               .scalar_type = {scalar_type},
               .rounding_mode = {rounding_mode},
+              .comparison_operator = {comparison_operator if entry.value_cpp_type == "ComparisonOperator" else cpp_default(CppDomain.COMPARISON_OPERATORS)},
               .cache_operator = {cache_operator},
               .vector_arity = {vector_arity},
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},

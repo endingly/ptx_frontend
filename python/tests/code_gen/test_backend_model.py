@@ -111,6 +111,14 @@ class BackendModelTests(unittest.TestCase):
             "CacheOperator::Unspecified",
         )
         self.assertEqual(
+            unit.domains[CppDomain.COMPARISON_OPERATORS.value].values["lt"],
+            "ComparisonOperator::Lt",
+        )
+        self.assertIs(
+            unit.domains[CppDomain.COMPARISON_OPERATORS.value].runtime_lookup,
+            RuntimeLookupKind.PTX_SUFFIX,
+        )
+        self.assertEqual(
             unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
             "MemoryConsistency::Weak",
         )

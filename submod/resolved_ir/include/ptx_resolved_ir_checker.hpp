@@ -78,6 +78,7 @@ enum class ParameterAddressQualifier : uint8_t {
 namespace checker {
 using base::ScalarType;
 using base::RoundingMode;
+using base::ComparisonOperator;
 using base::CacheOperator;
 using base::MemoryConsistency;
 using base::MemoryScope;
@@ -227,6 +228,7 @@ struct FieldView {
   std::optional<bool> bool_value;
   std::optional<CacheOperator> cache_operator;
   std::optional<ScalarType> scalar_type;
+  std::optional<ComparisonOperator> comparison_operator;
   std::optional<VectorArity> vector_arity;
   std::optional<MemoryStateSpace> memory_state_space;
   std::optional<MemoryConsistency> memory_consistency;
@@ -294,6 +296,7 @@ enum class ModifierValueKind : uint8_t {
   Bool,
   ScalarType,
   RoundingMode,
+  ComparisonOperator,
   CacheOperator,
   VectorArity,
   MemoryStateSpace,
@@ -308,6 +311,7 @@ struct ModifierValueAvailabilityDescriptor {
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
+  ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
@@ -323,6 +327,7 @@ struct ModifierValueView {
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
+  ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;

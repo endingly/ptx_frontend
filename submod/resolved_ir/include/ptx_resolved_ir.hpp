@@ -26,6 +26,7 @@ struct FunctionParameterContract;
 namespace ptx_frontend::resolved_ir {
 using base::ScalarType;
 using base::RoundingMode;
+using base::ComparisonOperator;
 using base::CacheOperator;
 using base::MemoryConsistency;
 using base::MemoryScope;
@@ -70,6 +71,7 @@ enum class ResolvedValueKind : uint8_t {
   Bool,
   ScalarType,
   RoundingMode,
+  ComparisonOperator,
   CacheOperator,
   MemoryConsistency,
   MemoryScope,
@@ -383,6 +385,7 @@ using ResolvedMovSource =
 
 using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
+                 WithLocs<ComparisonOperator>,
                  WithLocs<CacheOperator>, WithLocs<MemoryConsistency>,
                  WithLocs<MemoryScope>, WithLocs<VectorArity>,
                  WithLocs<MemoryStateSpace>,

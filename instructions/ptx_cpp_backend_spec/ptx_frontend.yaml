@@ -65,6 +65,13 @@ domains:
       rm: RoundingMode::Rm
       rp: RoundingMode::Rp
 
+  comparison_operators:
+    cpp_type: ComparisonOperator
+    default: ComparisonOperator::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      lt: ComparisonOperator::Lt
+
   cache_operators:
     cpp_type: CacheOperator
     default: CacheOperator::Unspecified
@@ -145,6 +152,7 @@ domains:
       flag: bool
       type: ScalarType
       rounding: RoundingMode
+      comparison: ComparisonOperator
       cache: CacheOperator
       semantics: MemoryConsistency
       scope: MemoryScope
@@ -178,6 +186,7 @@ domains:
       Bool: bool
       ScalarType: ScalarType
       RoundingMode: RoundingMode
+      ComparisonOperator: ComparisonOperator
       CacheOperator: CacheOperator
       MemoryConsistency: MemoryConsistency
       MemoryScope: MemoryScope
@@ -245,6 +254,7 @@ domains:
       Bool: check_end::ResolvedValueKind::Bool
       ScalarType: check_end::ResolvedValueKind::ScalarType
       RoundingMode: check_end::ResolvedValueKind::RoundingMode
+      ComparisonOperator: check_end::ResolvedValueKind::ComparisonOperator
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
       MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
       MemoryScope: check_end::ResolvedValueKind::MemoryScope
@@ -326,6 +336,7 @@ domains:
       bool: checker::ModifierValueKind::Bool
       ScalarType: checker::ModifierValueKind::ScalarType
       RoundingMode: checker::ModifierValueKind::RoundingMode
+      ComparisonOperator: checker::ModifierValueKind::ComparisonOperator
       CacheOperator: checker::ModifierValueKind::CacheOperator
       MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
       MemoryScope: checker::ModifierValueKind::MemoryScope

@@ -294,6 +294,24 @@ std::expected<WithLocs<RoundingMode>, ResolveDiagnostic> resolve_rounding_mode(
   return WithLocs<RoundingMode>{*mode, modifier.syntax.range};
 }
 
+std::optional<ComparisonOperator> comparison_operator_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kComparisonOperators, spelling);
+}
+
+std::expected<WithLocs<ComparisonOperator>, ResolveDiagnostic>
+resolve_comparison_operator(const syntax_ast::AstModifier& modifier) {
+  const auto value = comparison_operator_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown comparison operator '{}'.",
+                               modifier.syntax.text),
+    });
+  }
+  return WithLocs<ComparisonOperator>{*value, modifier.syntax.range};
+}
+
 std::optional<CacheOperator> cache_operator_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kCacheOperators, spelling);
@@ -2019,6 +2037,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
+    case ResolvedValueKind::ComparisonOperator:
     case ResolvedValueKind::CacheOperator:
     case ResolvedValueKind::MemoryConsistency:
     case ResolvedValueKind::MemoryScope:
@@ -2064,6 +2083,11 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{
           WithLocs<RoundingMode>{default_value.rounding_mode}};
+    case ResolvedValueKind::ComparisonOperator:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' cannot use a comparison-operator default "
+          "for resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
     case ResolvedValueKind::CacheOperator:
       if (default_value.kind != ResolvedModifierDefaultKind::CacheOperator) {
         throw ResolveException(fmt::format(
@@ -2330,6 +2354,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::RoundingMode: {
         auto value = resolve_rounding_mode(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::ComparisonOperator: {
+        auto value = resolve_comparison_operator(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));

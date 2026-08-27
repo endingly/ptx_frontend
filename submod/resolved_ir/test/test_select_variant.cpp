@@ -1312,6 +1312,73 @@ TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
             explicit_ast.modifiers.front().syntax.range);
 }
 
+TEST(ResolveFields, ResolvesComparisonOperatorModifier) {
+  const std::array<std::string_view, 1> allowed_comparisons = {".lt"};
+  const std::array<check_end::SyntaxModifierDescriptor, 1> syntax_modifiers = {
+      {{
+          .allowed_values = allowed_comparisons,
+          .presence = check_end::PresenceRequirement::Required,
+          .kind_id = "comparison",
+      }}};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 0> syntax_slots{};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{{
+          .layout_id = "default",
+          .kind = check_end::OperandLayoutKind::Flat,
+          .slots = syntax_slots,
+      }}};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{{
+      .variant_name = "Comparison",
+      .modifiers = syntax_modifiers,
+      .operand_layouts = syntax_layouts,
+  }}};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+
+  const std::array<check_end::ResolvedFieldDescriptor, 1> resolved_fields = {{{
+      .field_id = "comparison",
+      .value_kind = check_end::ResolvedValueKind::ComparisonOperator,
+  }}};
+  const std::array<check_end::ResolvedModifierBindingDescriptor, 1>
+      modifier_bindings = {{{
+          .source_kind_id = "comparison",
+          .target_field_id = "comparison",
+      }}};
+  const std::array<check_end::ResolvedFieldDescriptor, 0> operand_fields{};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 0>
+      operand_bindings{};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1>
+      resolved_layouts = {{{
+          .layout_id = "default",
+          .fields = operand_fields,
+          .bindings = operand_bindings,
+      }}};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{{
+          .variant_name = "Comparison",
+          .fields = resolved_fields,
+          .modifier_bindings = modifier_bindings,
+          .operand_layouts = resolved_layouts,
+      }}};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = resolved_variants,
+  };
+
+  const auto ast = parse_instruction("sample.lt;");
+  const auto fields = resolve_fields(ast, syntax_descriptor, resolved_descriptor,
+                                     "Comparison");
+  ASSERT_TRUE(fields.has_value()) << fields.error().message;
+  const auto* comparison = std::get_if<WithLocs<ComparisonOperator>>(
+      &fields->modifiers.at("comparison"));
+  ASSERT_NE(comparison, nullptr);
+  EXPECT_EQ(comparison->value, ComparisonOperator::Lt);
+  ASSERT_EQ(comparison->locs.size(), 1U);
+  EXPECT_EQ(comparison->locs.front(), ast.modifiers.front().syntax.range);
+}
+
 TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
   const auto ast = parse_instruction("bar.cta.red.and.pred %p0, 1, 64, !%p1;");
 

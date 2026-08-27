@@ -308,6 +308,36 @@ TEST(ResolvedIrChecker, ChecksSelectedModifierValueAvailability) {
   EXPECT_EQ(result.error()[0].range, kInstructionRange);
 }
 
+TEST(ResolvedIrChecker, ChecksComparisonOperatorValueAvailability) {
+  constexpr ModifierValueAvailabilityDescriptor descriptors[] = {{
+      .kind_id = "comparison",
+      .value_kind = ModifierValueKind::ComparisonOperator,
+      .comparison_operator = ComparisonOperator::Lt,
+      .availability = {.minimum_sm_version = 20},
+  }};
+  constexpr std::array<ModifierValueView, 1> values{{
+      {
+          .kind_id = "comparison",
+          .value_kind = ModifierValueKind::ComparisonOperator,
+          .comparison_operator = ComparisonOperator::Lt,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  const Context context{
+      .target = {.ptx_version = {1, 0}, .sm_version = 10},
+      .instruction_range = kInstructionRange,
+  };
+
+  const auto result =
+      check_modifier_value_availability(descriptors, values, context);
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 1U);
+  EXPECT_EQ(result.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
 TEST(ResolvedIrChecker, IgnoresOmittedCacheSentinelAndChecksExplicitCache) {
   constexpr ModifierValueAvailabilityDescriptor descriptors[] = {{
       .kind_id = "cache",

@@ -532,6 +532,15 @@ TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   EXPECT_EQ(selected.error().message, "Duplicate 'type' modifier.");
 }
 
+TEST(ResolveAnd, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("and.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<And>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* and_b32 = std::get_if<And::B32>(&resolved->variant);
+  ASSERT_NE(and_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(and_b32->src2.value));
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -570,6 +579,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto trap = resolveInstruction(trap_ast);
   ASSERT_TRUE(trap.has_value()) << trap.error().message;
   EXPECT_TRUE(std::holds_alternative<Trap>(*trap));
+
+  const auto and_ast = parse_instruction("and.b32 %r0, %r1, %r2;");
+  const auto and_instruction = resolveInstruction(and_ast);
+  ASSERT_TRUE(and_instruction.has_value()) << and_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<And>(*and_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

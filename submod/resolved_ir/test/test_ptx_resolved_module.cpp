@@ -168,6 +168,51 @@ TEST(ResolvedModule, ResolvesBareAndPredicatedTrapInDeviceFunctionAndEntry) {
   EXPECT_FALSE(entry_trap.execution_predicate.has_value());
 }
 
+TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
+  const auto valid_ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u;
+  .reg .s32 %s;
+  .reg .b32 %b;
+  and.b32 %b, %u, %s;
+}
+)ptx");
+  const auto valid = resolveModule(valid_ast);
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto valid_check = checker::check(
+      std::get<And>(valid->functions.front().body.front()),
+      checker::Context{
+          .target = {.ptx_version = {1, 0}, .sm_version = 0},
+          .instruction_range = valid_ast.range,
+      });
+  EXPECT_TRUE(valid_check.has_value());
+
+  const auto invalid_ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b;
+  .reg .u16 %h;
+  and.b32 %b, %h, %b;
+}
+)ptx");
+  const auto invalid = resolveModule(invalid_ast);
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& invalid_and =
+      std::get<And>(invalid->functions.front().body.front());
+  const auto& invalid_variant = std::get<And::B32>(invalid_and.variant);
+  const auto invalid_check = checker::check(
+      invalid_and,
+      checker::Context{
+          .target = {.ptx_version = {1, 0}, .sm_version = 0},
+          .instruction_range = invalid_ast.range,
+      });
+  ASSERT_FALSE(invalid_check.has_value());
+  ASSERT_EQ(invalid_check.error().size(), 1u);
+  EXPECT_EQ(invalid_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(invalid_check.error().front().range,
+            invalid_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

@@ -1,0 +1,52 @@
+# PTX logic and shift instructions.
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: logic_and_shift
+codegen_category: arithmetic
+section: "9.7.8"
+
+operand_patterns:
+  binary_bitwise:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: b32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: b32
+
+instructions:
+  - opcode: and
+    section: "9.7.8.1"
+    doc: "Bitwise AND of two 32-bit operands."
+    syntax: "and.b32 dst, src1, src2"
+    operands: $binary_bitwise
+
+    variants:
+      - name: and_b32
+        description: "32-bit bitwise AND with register or immediate sources."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+
+        examples:
+          - ptx: "and.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "and.b32 %r0, %r1, 1;"
+            valid: true

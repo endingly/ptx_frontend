@@ -606,6 +606,16 @@ TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
   EXPECT_TRUE(lt_and->combine.value.negated);
 }
 
+TEST(ResolveSelp, SelectsFrozenU32Variant) {
+  const auto ast = parse_instruction("selp.u32 %r0, %r1, 0, %p0;");
+  const auto resolved = resolve<Selp>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* selp = std::get_if<Selp::U32>(&resolved->variant);
+  ASSERT_NE(selp, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(selp->src_false.value));
+  EXPECT_FALSE(selp->predicate.value.negated);
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -679,6 +689,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto setp_instruction = resolveInstruction(setp_ast);
   ASSERT_TRUE(setp_instruction.has_value()) << setp_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Setp>(*setp_instruction));
+
+  const auto selp_ast = parse_instruction("selp.u32 %r0, %r1, %r2, %p0;");
+  const auto selp_instruction = resolveInstruction(selp_ast);
+  ASSERT_TRUE(selp_instruction.has_value()) << selp_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Selp>(*selp_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

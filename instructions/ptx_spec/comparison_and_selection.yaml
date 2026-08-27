@@ -47,6 +47,28 @@ operand_patterns:
       access: read
       type: pred
 
+  selp_u32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+    - name: src_true
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src_false
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+    - name: predicate
+      kind: pred
+      role: predicate
+      access: read
+      type: pred
+
 instructions:
   - opcode: setp
     section: "9.7.6.2"
@@ -101,4 +123,24 @@ instructions:
         operands: $setp_lt_and_u32
         examples:
           - ptx: "setp.lt.and.u32 %p0, %r0, 16, !%p1;"
+            valid: true
+  - opcode: selp
+    section: "9.7.6.3"
+    doc: "Select between two .u32 values using one predicate."
+    syntax: "selp.u32 dst, src_true, src_false, predicate"
+    operands: $selp_u32
+    variants:
+      - name: selp_u32
+        description: "32-bit unsigned predicate selection."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "selp.u32 %r0, %r1, 0, %p0;"
             valid: true

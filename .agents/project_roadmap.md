@@ -37,7 +37,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9-I01～I14 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I15 `selp`。
+M9-I01～I15 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I16 integer→integer `cvt` slice。
 M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
@@ -1402,7 +1402,7 @@ operand/type/modifier matrix
 | M9-I12 | ✅ | 独立 | 建立 comparison operator domain | `lt` spelling、backend enum、resolution 和 availability 集中生成 |
 | M9-I13 | ✅ | 独立 | 建立 boolean operator domain | `and/or/xor` predicate-combine spelling、backend enum、resolution 和 availability 集中生成 |
 | M9-I14 | ✅ | 独立 | 支持 `setp` | frozen `lt.u32` 与 `lt.and.u32` single-predicate output 闭环 |
-| M9-I15 | ⬜ | 独立 | 支持 `selp` | predicate select、source/result type 和 operand role 闭环 |
+| M9-I15 | ✅ | 独立 | 支持 `selp` | frozen `selp.u32` predicate select、source/result type 和 operand role 闭环 |
 | M9-I16 | ⬜ | 独立 | 支持 integer→integer `cvt` slice | width、signedness、round/sat rule 精确冻结 |
 | M9-I17 | ⬜ | 独立 | 支持 float→float `cvt` slice | rounding、flush/saturation 和 availability 精确冻结 |
 | M9-I18 | ⬜ | 独立 | 支持 integer↔float `cvt` slice | mixed-domain conversion 精确冻结 |

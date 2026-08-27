@@ -33,6 +33,7 @@
 | 冻结的 integer `mul` | 支持 | register-or-immediate source `mul.lo.u32`（PTX 1.0 / SM 0） |
 | 冻结的 floating `mul` | 支持 | register-only `mul.rn.f32`（PTX 1.0 / SM 0） |
 | 冻结的 integer `mad` | 支持 | register-or-immediate source `mad.lo.u32`（PTX 1.0 / SM 0） |
+| 冻结的 `fma` | 支持 | register-only `fma.rn.f32`（PTX 2.0 / SM 20） |
 
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。

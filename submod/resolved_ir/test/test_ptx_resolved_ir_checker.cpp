@@ -366,6 +366,30 @@ TEST(ResolvedIrChecker, ChecksGeneratedMadLoU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF32Availability) {
+  PtxSyntaxParser parser("fma.rn.f32 %f0, %f1, %f2, %f3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto fma = resolve<Fma>(*ast);
+  ASSERT_TRUE(fma.has_value()) << fma.error().message;
+  const auto old_ptx = check(
+      *fma, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *fma, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*fma,
+                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedCvtS32U32Availability) {
   PtxSyntaxParser parser("cvt.s32.u32 %s0, %r0;");
   const auto ast = parser.parseInstruction();

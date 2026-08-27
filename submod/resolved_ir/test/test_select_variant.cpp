@@ -701,6 +701,31 @@ TEST(ResolveMad, RejectsUnfrozenVariants) {
   }
 }
 
+TEST(ResolveFma, SelectsFrozenRnF32Variant) {
+  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Fma::RnF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Fma::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Fma::RnF32::type, ScalarType::F32);
+}
+
+TEST(ResolveFma, RejectsUnfrozenVariants) {
+  for (const auto source : {"fma.f32 %f0, %f1, %f2, %f3;",
+                            "fma.rz.f32 %f0, %f1, %f2, %f3;",
+                            "fma.rn.f64 %fd0, %fd1, %fd2, %fd3;",
+                            "fma.rn.ftz.f32 %f0, %f1, %f2, %f3;",
+                            "fma.rn.sat.f32 %f0, %f1, %f2, %f3;"}) {
+    const auto selected = selectVariant<Fma>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveFma, RejectsImmediateOperand) {
+  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, 1.0, %f2, %f3;"));
+  ASSERT_FALSE(resolved.has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

@@ -542,6 +542,26 @@ TEST(ResolvedModule, ChecksMadLoU32OperandTypes) {
   EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksFmaRnF32OperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst, %src1, %src2, %src3; fma.rn.f32 %dst, %src1, %src2, %src3; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const checker::Context context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  EXPECT_TRUE(checker::check(std::get<Fma>(valid->functions.front().body.front()), context).has_value());
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst, %src2, %src3; .reg .f64 %wrong_src; fma.rn.f32 %dst, %wrong_src, %src2, %src3; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Fma>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Fma::RnF32>(instruction.variant);
+  const auto checked = checker::check(instruction, context);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

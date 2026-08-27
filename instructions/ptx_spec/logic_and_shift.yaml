@@ -25,6 +25,18 @@ operand_patterns:
       access: read
       type: b32
 
+  unary_bitwise:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: b32
+
 instructions:
   - opcode: and
     section: "9.7.8.1"
@@ -97,4 +109,26 @@ instructions:
           - ptx: "xor.b32 %r0, %r1, %r2;"
             valid: true
           - ptx: "xor.b32 %r0, %r1, 1;"
+            valid: true
+  - opcode: not
+    section: "9.7.8.4"
+    doc: "Bitwise NOT of one 32-bit operand."
+    syntax: "not.b32 dst, src"
+    operands: $unary_bitwise
+    variants:
+      - name: not_b32
+        description: "32-bit bitwise NOT with a register or immediate source."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        examples:
+          - ptx: "not.b32 %r0, %r1;"
+            valid: true
+          - ptx: "not.b32 %r0, 1;"
             valid: true

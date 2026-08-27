@@ -559,6 +559,15 @@ TEST(ResolveXor, SelectsB32VariantAndAcceptsImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(xor_b32->src2.value));
 }
 
+TEST(ResolveNot, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("not.b32 %r0, 1;");
+  const auto resolved = resolve<Not>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* not_b32 = std::get_if<Not::B32>(&resolved->variant);
+  ASSERT_NE(not_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -612,6 +621,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto xor_instruction = resolveInstruction(xor_ast);
   ASSERT_TRUE(xor_instruction.has_value()) << xor_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Xor>(*xor_instruction));
+
+  const auto not_ast = parse_instruction("not.b32 %r0, %r1;");
+  const auto not_instruction = resolveInstruction(not_ast);
+  ASSERT_TRUE(not_instruction.has_value()) << not_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Not>(*not_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

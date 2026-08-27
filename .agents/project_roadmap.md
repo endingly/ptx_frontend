@@ -37,7 +37,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9-I01～I20 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I21 floating `mul` slice。
+M9-I01～I21 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I22 integer `mad` slice。
 M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
@@ -1408,7 +1408,7 @@ operand/type/modifier matrix
 | M9-I18 | ✅ | 独立 | 支持 integer↔float `cvt` slice | frozen register-only `cvt.rn.f32.u32` / `cvt.rzi.u32.f32`，PTX 1.0 / SM 0 availability 闭环 |
 | M9-I19 | ✅ | 独立 | 支持 `cvta` | frozen register-only `cvta.global.u64` / `cvta.to.global.u64`，PTX 2.0 / SM 20 availability 和 address width 闭环 |
 | M9-I20 | ✅ | 独立 | 支持 integer `mul` slice | frozen `mul.lo.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环 |
-| M9-I21 | ⬜ | 独立 | 支持 floating `mul` slice | type、rounding 和 target availability 闭环 |
+| M9-I21 | ✅ | 独立 | 支持 floating `mul` slice | frozen register-only `mul.rn.f32`，PTX 1.0 / SM 0 availability 和 operand type 闭环 |
 | M9-I22 | ⬜ | 独立 | 支持 integer `mad` slice | source/result width 和 carry/hi policy 精确冻结 |
 | M9-I23 | ⬜ | 独立 | 支持 `fma` slice | type、rounding、saturation 和 target availability 闭环 |
 | M9-I24 | ⬜ | 独立 | 支持 `div` 的首个 MVP slice | integer或floating slice必须在 issue 中固定，不混合实现 |

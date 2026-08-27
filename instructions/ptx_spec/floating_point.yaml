@@ -611,3 +611,29 @@ instructions:
             valid: true
           - ptx: "sub.rz.f32.bf16.sat d, a, c;"
             valid: true
+
+  - opcode: mul
+    section: "9.7.3.5"
+    doc: "Frozen round-to-nearest single-precision multiply."
+    syntax: "mul.rn.f32 dst, src1, src2"
+    operands: $binary_float_register
+    variants:
+      - name: mul_rn_f32
+        description: "Register-only round-to-nearest single-precision multiply."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        examples:
+          - ptx: "mul.rn.f32 %f0, %f1, %f2;"
+            valid: true

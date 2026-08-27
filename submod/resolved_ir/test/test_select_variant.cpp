@@ -659,6 +659,29 @@ TEST(ResolveMul, RejectsUnfrozenVariants) {
   }
 }
 
+TEST(ResolveMul, SelectsFrozenRnF32Variant) {
+  const auto resolved = resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Mul::RnF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Mul::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Mul::RnF32::type, ScalarType::F32);
+}
+
+TEST(ResolveMul, RejectsUnfrozenFloatingVariants) {
+  for (const auto source : {"mul.f32 %f0, %f1, %f2;",
+                            "mul.rz.f32 %f0, %f1, %f2;",
+                            "mul.rn.f64 %fd0, %fd1, %fd2;"}) {
+    const auto selected = selectVariant<Mul>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveMul, RejectsImmediateFloatingOperand) {
+  const auto resolved = resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
+  ASSERT_FALSE(resolved.has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

@@ -66,8 +66,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "sub"
         )
+        mul = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mul"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
+        cls.mul_instruction = from_instruction_spec(mul)
         call = next(
             instruction
             for instruction in database.instructions
@@ -308,6 +314,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [binding.type_expression.modifier_field_id for binding in mixed.operand_layouts[0].bindings],
             ["result_type", "input_type", "result_type"],
+        )
+
+    def test_mul_merges_frozen_integer_and_floating_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.mul_instruction.variants],
+            ["RnF32", "LoU32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.mul_instruction.variants[0].fields],
+            ["rounding", "type", "dst", "src1", "src2"],
         )
 
     def test_add_resolved_variant_fields(self) -> None:
@@ -1371,6 +1387,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Cvt {", source)
         self.assertIn("struct Mul {", source)
         self.assertIn("struct LoU32 {", source)
+        self.assertIn("struct RnF32 {", source)
         self.assertIn("struct RnF32F64 {", source)
         self.assertIn("struct RnF32U32 {", source)
         self.assertIn("struct RziU32F32 {", source)

@@ -288,6 +288,24 @@ TEST(ResolvedIrChecker, ChecksGeneratedSelpU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedCvtS32U32Availability) {
+  PtxSyntaxParser parser("cvt.s32.u32 %s0, %r0;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto cvt = resolve<Cvt>(*ast);
+  ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
+  const auto rejected = check(
+      *cvt, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*cvt,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   constexpr std::array<std::string_view, 1> families{"sm_100"};
   const Context context{

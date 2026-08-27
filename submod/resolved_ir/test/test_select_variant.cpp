@@ -616,6 +616,16 @@ TEST(ResolveSelp, SelectsFrozenU32Variant) {
   EXPECT_FALSE(selp->predicate.value.negated);
 }
 
+TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
+  const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
+  const auto resolved = resolve<Cvt>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* cvt = std::get_if<Cvt::S32U32>(&resolved->variant);
+  ASSERT_NE(cvt, nullptr);
+  EXPECT_EQ(Cvt::S32U32::dst_type, ScalarType::S32);
+  EXPECT_EQ(Cvt::S32U32::src_type, ScalarType::U32);
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -694,6 +704,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto selp_instruction = resolveInstruction(selp_ast);
   ASSERT_TRUE(selp_instruction.has_value()) << selp_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Selp>(*selp_instruction));
+
+  const auto cvt_ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
+  const auto cvt_instruction = resolveInstruction(cvt_ast);
+  ASSERT_TRUE(cvt_instruction.has_value()) << cvt_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Cvt>(*cvt_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

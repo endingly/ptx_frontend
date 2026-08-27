@@ -54,6 +54,22 @@ operand_patterns:
       access: read
       type: pred
 
+  cvt_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(dst_type)
+      register_width: equal_or_wider
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(src_type)
+      register_width: equal_or_wider
+
   mov_pack:
     - name: dst
       kind: reg
@@ -261,6 +277,32 @@ operand_patterns:
       register_width: equal_or_wider
 
 instructions:
+  - opcode: cvt
+    section: "9.7.9.22"
+    doc: "Convert one .u32 register to a .s32 register."
+    syntax: "cvt.s32.u32 dst, src"
+    operands: $cvt_scalar
+    variants:
+      - name: cvt_s32_u32
+        description: "Register-only unsigned 32-bit to signed 32-bit conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "cvt.s32.u32 %s0, %r0;"
+            valid: true
+
   - opcode: mov
     section: "9.7.9.3"
     doc: >

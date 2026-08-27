@@ -40,6 +40,8 @@ const CstModule* CstFile::module() const noexcept {
 namespace ptx_frontend {
 namespace {
 
+constexpr size_t kMaxNestedBlockDepth = 256;
+
 bool isImmediate(TokenKind kind) {
   switch (kind) {
     case TokenKind::Decimal:
@@ -1484,9 +1486,14 @@ PtxCstParser::parseKernelResourceDirective() {
 }
 
 std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
-PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics) {
+PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
+                                    size_t block_depth) {
   if (token(peek()).kind == TokenKind::LBrace) {
-    auto block = parseBlock(diagnostics);
+    if (block_depth >= kMaxNestedBlockDepth) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range, "nested block depth exceeds parser limit"});
+    }
+    auto block = parseBlock(diagnostics, block_depth + 1);
     if (!block)
       return std::unexpected(block.error());
     return std::make_unique<syntax_cst::CstBlock>(std::move(*block));
@@ -1572,7 +1579,8 @@ PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics) {
 }
 
 std::expected<syntax_cst::CstBlock, CstParseDiagnostic>
-PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics) {
+PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics,
+                         size_t block_depth) {
   const TokenId left_brace = consume();
   std::vector<syntax_cst::CstFunctionBodyItem> body;
   const auto finish_missing_right_brace = [&]() {
@@ -1598,7 +1606,7 @@ PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics) {
         isFunctionOrModuleBoundary(token(peek()).kind))
       return finish_missing_right_brace();
     const TokenId item_first = peek();
-    auto item = parseFunctionBodyItem(diagnostics);
+    auto item = parseFunctionBodyItem(diagnostics, block_depth);
     if (!item) {
       diagnostics.push_back(item.error());
       auto recovery =

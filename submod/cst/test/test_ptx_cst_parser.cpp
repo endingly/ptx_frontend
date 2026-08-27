@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -1162,6 +1163,26 @@ TEST(PtxCstParser, RejectsNestedBlockMissingRightBrace) {
   const auto& inserted = std::get<CstRecoveryNode>(block.body[1]);
   EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
   EXPECT_EQ(inserted.expected_kind, TokenKind::RBrace);
+}
+
+TEST(PtxCstParser, DiagnosesExcessiveNestedBlockDepthWithoutCrashing) {
+  constexpr size_t nested_blocks = 257;
+  std::string source = ".entry kernel() {";
+  source.append(nested_blocks, '{');
+  source.append(nested_blocks, '}');
+  source.push_back('}');
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->sourceText(), source);
+  bool diagnosed_depth = false;
+  for (const auto& diagnostic : result.diagnostics) {
+    diagnosed_depth |=
+        diagnostic.message == "nested block depth exceeds parser limit";
+  }
+  EXPECT_TRUE(diagnosed_depth);
 }
 
 TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {

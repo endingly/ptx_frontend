@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <expected>
 #include <optional>
 #include <string>
@@ -108,9 +109,10 @@ class PtxCstParser {
   std::expected<syntax_cst::CstKernelResourceDirective, CstParseDiagnostic>
   parseKernelResourceDirective();
   std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
-  parseFunctionBodyItem(CstParseDiagnostics& diagnostics);
+  parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
+                        std::size_t block_depth = 0);
   std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock(
-      CstParseDiagnostics& diagnostics);
+      CstParseDiagnostics& diagnostics, std::size_t block_depth);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>

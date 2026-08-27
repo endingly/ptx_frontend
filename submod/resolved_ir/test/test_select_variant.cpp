@@ -586,6 +586,26 @@ TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
 }
 
+TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
+  const auto simple_ast = parse_instruction("setp.lt.u32 %p0, %r0, 16;");
+  const auto simple = resolve<Setp>(simple_ast);
+  ASSERT_TRUE(simple.has_value()) << simple.error().message;
+  const auto* lt = std::get_if<Setp::LtU32>(&simple->variant);
+  ASSERT_NE(lt, nullptr);
+  EXPECT_EQ(lt->comparison.value, ComparisonOperator::Lt);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(lt->src2.value));
+
+  const auto combined_ast =
+      parse_instruction("setp.lt.and.u32 %p0, %r0, 16, !%p1;");
+  const auto combined = resolve<Setp>(combined_ast);
+  ASSERT_TRUE(combined.has_value()) << combined.error().message;
+  const auto* lt_and = std::get_if<Setp::LtAndU32>(&combined->variant);
+  ASSERT_NE(lt_and, nullptr);
+  EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
+  EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
+  EXPECT_TRUE(lt_and->combine.value.negated);
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -654,6 +674,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto shr_instruction = resolveInstruction(shr_ast);
   ASSERT_TRUE(shr_instruction.has_value()) << shr_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Shr>(*shr_instruction));
+
+  const auto setp_ast = parse_instruction("setp.lt.u32 %p0, %r0, %r1;");
+  const auto setp_instruction = resolveInstruction(setp_ast);
+  ASSERT_TRUE(setp_instruction.has_value()) << setp_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Setp>(*setp_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

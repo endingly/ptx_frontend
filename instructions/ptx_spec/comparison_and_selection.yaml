@@ -1,0 +1,104 @@
+# PTX comparison and selection instructions.
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: comparison_and_selection
+codegen_category: arithmetic
+section: "9.7.6"
+
+operand_patterns:
+  setp_lt_u32:
+    - name: dst
+      kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+  setp_lt_and_u32:
+    - name: dst
+      kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+    - name: combine
+      kind: pred_or_not
+      role: predicate
+      access: read
+      type: pred
+
+instructions:
+  - opcode: setp
+    section: "9.7.6.2"
+    doc: "Compare two .u32 values and optionally combine the result with one predicate."
+    syntax: "setp.lt.u32 dst, src1, src2 | setp.lt.and.u32 dst, src1, src2, combine"
+    variants:
+      - name: setp_lt_u32
+        description: "Single-destination unsigned less-than predicate comparison."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $setp_lt_u32
+        examples:
+          - ptx: "setp.lt.u32 %p0, %r0, 16;"
+            valid: true
+      - name: setp_lt_and_u32
+        description: "Single-destination unsigned less-than comparison combined with a predicate."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: required
+            values: [and]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $setp_lt_and_u32
+        examples:
+          - ptx: "setp.lt.and.u32 %p0, %r0, 16, !%p1;"
+            valid: true

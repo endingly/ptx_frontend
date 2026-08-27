@@ -251,6 +251,25 @@ TEST(ResolvedIrChecker, ChecksGeneratedShrU32Availability) {
   EXPECT_TRUE(check(*shr, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}, .instruction_range = ast->range}).has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedSetpLtU32Availability) {
+  PtxSyntaxParser parser("setp.lt.u32 %p0, %r0, %r1;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto setp = resolve<Setp>(*ast);
+  ASSERT_TRUE(setp.has_value()) << setp.error().message;
+  const auto rejected = check(
+      *setp, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error().front().range, ast->range);
+  EXPECT_TRUE(check(*setp,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   constexpr std::array<std::string_view, 1> families{"sm_100"};
   const Context context{

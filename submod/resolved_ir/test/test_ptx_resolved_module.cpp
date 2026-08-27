@@ -342,6 +342,25 @@ TEST(ResolvedModule, ChecksShrU32DataAndAmountWidths) {
   EXPECT_EQ(checked.error().front().range, variant.amount.locs.front());
 }
 
+TEST(ResolvedModule, ChecksSetpLtU32OperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .pred %p0, %p1; .reg .u32 %u; setp.lt.and.u32 %p0, %u, 16, !%p1; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Setp>(valid->functions.front().body.front()), checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}}).has_value());
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .pred %p0; .reg .u64 %wide; setp.lt.u32 %p0, %wide, 16; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Setp>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Setp::LtU32>(instruction.variant);
+  const auto checked = checker::check(instruction, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

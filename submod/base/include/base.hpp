@@ -55,6 +55,7 @@ enum class RoundingMode : uint8_t {
   Rz,
   Rm,
   Rp,
+  Rzi,
 };
 
 /** Semantic value of a PTX comparison operator modifier. */

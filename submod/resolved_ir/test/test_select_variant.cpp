@@ -635,10 +635,35 @@ TEST(ResolveCvt, SelectsFrozenRnF32F64Variant) {
   EXPECT_EQ(Cvt::RnF32F64::src_type, ScalarType::F64);
 }
 
+TEST(ResolveCvt, SelectsFrozenMixedVariants) {
+  const auto to_float = resolve<Cvt>(parse_instruction("cvt.rn.f32.u32 %f0, %r0;"));
+  ASSERT_TRUE(to_float.has_value()) << to_float.error().message;
+  EXPECT_NE(std::get_if<Cvt::RnF32U32>(&to_float->variant), nullptr);
+
+  const auto to_integer =
+      resolve<Cvt>(parse_instruction("cvt.rzi.u32.f32 %r0, %f0;"));
+  ASSERT_TRUE(to_integer.has_value()) << to_integer.error().message;
+  const auto* cvt = std::get_if<Cvt::RziU32F32>(&to_integer->variant);
+  ASSERT_NE(cvt, nullptr);
+  EXPECT_EQ(Cvt::RziU32F32::rounding, RoundingMode::Rzi);
+  EXPECT_EQ(Cvt::RziU32F32::dst_type, ScalarType::U32);
+  EXPECT_EQ(Cvt::RziU32F32::src_type, ScalarType::F32);
+}
+
 TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
   for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
                             "cvt.rz.f32.f64 %f0, %fd0;",
                             "cvt.rn.f64.f32 %fd0, %f0;"}) {
+    const auto selected = selectVariant<Cvt>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveCvt, RejectsUnfrozenMixedVariants) {
+  for (const auto source : {"cvt.rz.f32.u32 %f0, %r0;",
+                            "cvt.rn.u32.f32 %r0, %f0;",
+                            "cvt.rzi.f32.u32 %f0, %r0;"}) {
     const auto selected = selectVariant<Cvt>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());

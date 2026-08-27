@@ -418,6 +418,27 @@ TEST(ResolvedModule, ChecksCvtRnF32F64OperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.src.locs.front());
 }
 
+TEST(ResolvedModule, ChecksMixedCvtOperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %f; .reg .u32 %u; cvt.rn.f32.u32 %f, %u; cvt.rzi.u32.f32 %u, %f; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  EXPECT_TRUE(checker::check(std::get<Cvt>(valid->functions.front().body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Cvt>(valid->functions.front().body[1]), context).has_value());
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %wrong_dst, %src; cvt.rzi.u32.f32 %wrong_dst, %src; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Cvt>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Cvt::RziU32F32>(instruction.variant);
+  const auto checked = checker::check(instruction, context);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

@@ -64,6 +64,7 @@ domains:
       rz: RoundingMode::Rz
       rm: RoundingMode::Rm
       rp: RoundingMode::Rp
+      rzi: RoundingMode::Rzi
 
   comparison_operators:
     cpp_type: ComparisonOperator

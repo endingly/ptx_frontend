@@ -494,6 +494,34 @@ TEST(ResolveExit, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
             "Operands do not match any layout of instruction variant 'Bare'.");
 }
 
+TEST(ResolveTrap, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
+  const auto bare_ast = parse_instruction("trap;");
+  const auto bare = resolve<Trap>(bare_ast);
+  ASSERT_TRUE(bare.has_value()) << bare.error().message;
+  EXPECT_TRUE(std::holds_alternative<Trap::Bare>(bare->variant));
+  EXPECT_FALSE(bare->execution_predicate.has_value());
+
+  const auto predicated_ast = parse_instruction("@%p0 trap;");
+  const auto predicated = resolve<Trap>(predicated_ast);
+  ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
+  EXPECT_TRUE(std::holds_alternative<Trap::Bare>(predicated->variant));
+  EXPECT_TRUE(predicated->execution_predicate.has_value());
+
+  const auto modifier_ast = parse_instruction("trap.uni;");
+  const auto modifier = resolve<Trap>(modifier_ast);
+  ASSERT_FALSE(modifier.has_value());
+  EXPECT_EQ(modifier.error().range,
+            modifier_ast.modifiers.front().syntax.range);
+  EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
+
+  const auto operand_ast = parse_instruction("trap %r0;");
+  const auto operand = resolve<Trap>(operand_ast);
+  ASSERT_FALSE(operand.has_value());
+  EXPECT_EQ(operand.error().range, operand_ast.range);
+  EXPECT_EQ(operand.error().message,
+            "Operands do not match any layout of instruction variant 'Bare'.");
+}
+
 TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   const auto ast = parse_instruction("add.u32.u32 %r0, %r1, %r2;");
 
@@ -537,6 +565,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto exit_instruction = resolveInstruction(exit_ast);
   ASSERT_TRUE(exit_instruction.has_value()) << exit_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Exit>(*exit_instruction));
+
+  const auto trap_ast = parse_instruction("trap;");
+  const auto trap = resolveInstruction(trap_ast);
+  ASSERT_TRUE(trap.has_value()) << trap.error().message;
+  EXPECT_TRUE(std::holds_alternative<Trap>(*trap));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

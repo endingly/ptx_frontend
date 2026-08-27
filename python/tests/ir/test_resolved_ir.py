@@ -672,6 +672,25 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].fields, ())
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
+    def test_trap_uses_a_bare_zero_operand_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        trap = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "trap"
+        )
+        instruction = from_instruction_spec(trap)
+
+        self.assertEqual(instruction.cpp_name, "Trap")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Bare")
+        self.assertEqual(variant.fields, ())
+        self.assertEqual(variant.operand_layouts[0].fields, ())
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1249,6 +1268,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Bra {", source)
         self.assertIn("struct Ret {", source)
         self.assertIn("struct Exit {", source)
+        self.assertIn("struct Trap {", source)
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
@@ -1335,6 +1355,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Ret>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "exit"', source)
         self.assertIn("resolve<Exit>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "trap"', source)
+        self.assertIn("resolve<Trap>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "mov"', source)
         self.assertIn("resolve<Mov>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ld"', source)
@@ -1365,6 +1387,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Ret>(", source)
         self.assertIn("std::expected<Exit, ResolveDiagnostic>", source)
         self.assertIn("CheckResult check<Exit>(", source)
+        self.assertIn("std::expected<Trap, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Trap>(", source)
 
     def test_generate_data_movement_resolved_ir_source(self) -> None:
         database = load_codegen_database(

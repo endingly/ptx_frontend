@@ -63,6 +63,14 @@ enum class ComparisonOperator : uint8_t {
   Lt,
 };
 
+/** Semantic value of a PTX predicate-combine operator modifier. */
+enum class BooleanOperator : uint8_t {
+  Invalid = 0,
+  And,
+  Or,
+  Xor,
+};
+
 /** Semantic value of a PTX ld/st cache operator modifier. */
 enum class CacheOperator : uint8_t {
   Unspecified = 0,

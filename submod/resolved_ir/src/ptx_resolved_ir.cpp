@@ -312,6 +312,24 @@ resolve_comparison_operator(const syntax_ast::AstModifier& modifier) {
   return WithLocs<ComparisonOperator>{*value, modifier.syntax.range};
 }
 
+std::optional<BooleanOperator> boolean_operator_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kBooleanOperators, spelling);
+}
+
+std::expected<WithLocs<BooleanOperator>, ResolveDiagnostic>
+resolve_boolean_operator(const syntax_ast::AstModifier& modifier) {
+  const auto value = boolean_operator_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown boolean operator '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<BooleanOperator>{*value, modifier.syntax.range};
+}
+
 std::optional<CacheOperator> cache_operator_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kCacheOperators, spelling);
@@ -2038,6 +2056,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
     case ResolvedValueKind::ComparisonOperator:
+    case ResolvedValueKind::BooleanOperator:
     case ResolvedValueKind::CacheOperator:
     case ResolvedValueKind::MemoryConsistency:
     case ResolvedValueKind::MemoryScope:
@@ -2087,6 +2106,11 @@ ResolvedFieldValue resolve_default_modifier_value(
       throw ResolveException(fmt::format(
           "Optional modifier '{}' cannot use a comparison-operator default "
           "for resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
+    case ResolvedValueKind::BooleanOperator:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' cannot use a boolean-operator default for "
+          "resolved field '{}'.",
           binding.source_kind_id, field.field_id));
     case ResolvedValueKind::CacheOperator:
       if (default_value.kind != ResolvedModifierDefaultKind::CacheOperator) {
@@ -2360,6 +2384,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::ComparisonOperator: {
         auto value = resolve_comparison_operator(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::BooleanOperator: {
+        auto value = resolve_boolean_operator(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));

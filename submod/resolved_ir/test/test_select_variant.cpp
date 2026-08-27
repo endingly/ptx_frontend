@@ -1379,6 +1379,74 @@ TEST(ResolveFields, ResolvesComparisonOperatorModifier) {
   EXPECT_EQ(comparison->locs.front(), ast.modifiers.front().syntax.range);
 }
 
+TEST(ResolveFields, ResolvesBooleanOperatorModifier) {
+  const std::array<std::string_view, 3> allowed_boolean_operators = {
+      ".and", ".or", ".xor"};
+  const std::array<check_end::SyntaxModifierDescriptor, 1> syntax_modifiers = {
+      {{
+          .allowed_values = allowed_boolean_operators,
+          .presence = check_end::PresenceRequirement::Required,
+          .kind_id = "boolean",
+      }}};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 0> syntax_slots{};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{{
+          .layout_id = "default",
+          .kind = check_end::OperandLayoutKind::Flat,
+          .slots = syntax_slots,
+      }}};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{{
+      .variant_name = "Boolean",
+      .modifiers = syntax_modifiers,
+      .operand_layouts = syntax_layouts,
+  }}};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+
+  const std::array<check_end::ResolvedFieldDescriptor, 1> resolved_fields = {{{
+      .field_id = "boolean",
+      .value_kind = check_end::ResolvedValueKind::BooleanOperator,
+  }}};
+  const std::array<check_end::ResolvedModifierBindingDescriptor, 1>
+      modifier_bindings = {{{
+          .source_kind_id = "boolean",
+          .target_field_id = "boolean",
+      }}};
+  const std::array<check_end::ResolvedFieldDescriptor, 0> operand_fields{};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 0>
+      operand_bindings{};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1>
+      resolved_layouts = {{{
+          .layout_id = "default",
+          .fields = operand_fields,
+          .bindings = operand_bindings,
+      }}};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{{
+          .variant_name = "Boolean",
+          .fields = resolved_fields,
+          .modifier_bindings = modifier_bindings,
+          .operand_layouts = resolved_layouts,
+      }}};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = resolved_variants,
+  };
+
+  const auto ast = parse_instruction("sample.xor;");
+  const auto fields =
+      resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Boolean");
+  ASSERT_TRUE(fields.has_value()) << fields.error().message;
+  const auto* boolean =
+      std::get_if<WithLocs<BooleanOperator>>(&fields->modifiers.at("boolean"));
+  ASSERT_NE(boolean, nullptr);
+  EXPECT_EQ(boolean->value, BooleanOperator::Xor);
+  ASSERT_EQ(boolean->locs.size(), 1U);
+  EXPECT_EQ(boolean->locs.front(), ast.modifiers.front().syntax.range);
+}
+
 TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
   const auto ast = parse_instruction("bar.cta.red.and.pred %p0, 1, 64, !%p1;");
 

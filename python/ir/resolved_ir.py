@@ -53,6 +53,7 @@ class ResolvedValueKind(Enum):
     SCALAR_TYPE = "ScalarType"
     ROUNDING_MODE = "RoundingMode"
     COMPARISON_OPERATOR = "ComparisonOperator"
+    BOOLEAN_OPERATOR = "BooleanOperator"
     CACHE_OPERATOR = "CacheOperator"
     MEMORY_CONSISTENCY = "MemoryConsistency"
     MEMORY_SCOPE = "MemoryScope"
@@ -255,6 +256,10 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.COMPARISON_OPERATORS, self.constant_value)
+        if self.value_cpp_type == "BooleanOperator" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.BOOLEAN_OPERATORS, self.constant_value)
         if self.value_cpp_type == "CacheOperator" and isinstance(
             self.constant_value, str
         ):
@@ -615,6 +620,10 @@ def _build_modifier_default(
         raise ValueError(
             f"optional comparison modifier {modifier.name!r} is unsupported"
         )
+    if value_cpp_type == "BooleanOperator":
+        raise ValueError(
+            f"optional boolean modifier {modifier.name!r} is unsupported"
+        )
     if value_cpp_type == "CacheOperator":
         if not isinstance(modifier.default, str):
             raise ValueError(
@@ -697,6 +706,16 @@ def _build_modifier_value_availability(
         if value.value not in cpp_domain(CppDomain.COMPARISON_OPERATORS).values:
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported comparison value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "BooleanOperator":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: boolean value must be a string"
+            )
+        if value.value not in cpp_domain(CppDomain.BOOLEAN_OPERATORS).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported boolean value "
                 f"{value.value!r}"
             )
     if value_cpp_type == "CacheOperator":

@@ -37,7 +37,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9-I01～I12 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I13 boolean operator domain。
+M9-I01～I13 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I14 `setp`。
 M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
@@ -1400,7 +1400,7 @@ operand/type/modifier matrix
 | M9-I10 | ✅ | 独立 | 支持 `shl` | fixed b32 width、u32 shift count 和 PTX/SM availability 闭环 |
 | M9-I11 | ✅ | 独立 | 支持 `shr` | fixed `shr.u32`、32-bit shift count 和 PTX/SM availability 闭环 |
 | M9-I12 | ✅ | 独立 | 建立 comparison operator domain | `lt` spelling、backend enum、resolution 和 availability 集中生成 |
-| M9-I13 | ⬜ | 独立 | 建立 boolean operator domain | `and/or/xor` predicate-combine domain 集中生成 |
+| M9-I13 | ✅ | 独立 | 建立 boolean operator domain | `and/or/xor` predicate-combine spelling、backend enum、resolution 和 availability 集中生成 |
 | M9-I14 | ⬜ | 独立 | 支持 `setp` | comparison、optional boolean combine 和 predicate output 闭环 |
 | M9-I15 | ⬜ | 独立 | 支持 `selp` | predicate select、source/result type 和 operand role 闭环 |
 | M9-I16 | ⬜ | 独立 | 支持 integer→integer `cvt` slice | width、signedness、round/sat rule 精确冻结 |
@@ -1532,7 +1532,7 @@ M11 diagnostic and CI infrastructure
 基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
 
 1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
-2. `M9-I13`：建立 boolean operator domain；
+2. `M9-I14`：实现 `setp` 的冻结 MVP slice；
 3. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
 
 ---

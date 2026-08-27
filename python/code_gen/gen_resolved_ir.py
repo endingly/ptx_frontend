@@ -692,6 +692,10 @@ def _emit_check_modifier_view(
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "ComparisonOperator" else "std::nullopt"
         )
+        boolean_operator = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "BooleanOperator" else "std::nullopt"
+        )
         vector_arity = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "VectorArity"
@@ -729,6 +733,10 @@ def _emit_check_modifier_view(
             f"selected.{field.name}.value"
             if field.value_cpp_type == "ComparisonOperator" else "std::nullopt"
         )
+        boolean_operator = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "BooleanOperator" else "std::nullopt"
+        )
         vector_arity = (
             f"selected.{field.name}.value"
             if field.value_cpp_type == "VectorArity"
@@ -758,6 +766,7 @@ def _emit_check_modifier_view(
                   .cache_operator = {cache_operator},
                   .scalar_type = {scalar_type},
                   .comparison_operator = {comparison_operator},
+                  .boolean_operator = {boolean_operator},
                   .vector_arity = {vector_arity},
                   .memory_state_space = {memory_state_space},
                   .memory_consistency = {memory_consistency},
@@ -818,6 +827,22 @@ def _emit_check_modifier_value_view(
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         comparison_operator = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    elif field.value_cpp_type == "BooleanOperator":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "BooleanOperator"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
+        boolean_operator = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
@@ -919,6 +944,8 @@ def _emit_check_modifier_value_view(
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
     if field.value_cpp_type != "ComparisonOperator":
         comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
+    if field.value_cpp_type != "BooleanOperator":
+        boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
     if field.value_cpp_type != "CacheOperator":
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
     if field.value_cpp_type != "VectorArity":
@@ -936,6 +963,7 @@ def _emit_check_modifier_value_view(
                   .scalar_type = {scalar_type},
                   .rounding_mode = {rounding_mode},
                   .comparison_operator = {comparison_operator},
+                  .boolean_operator = {boolean_operator},
                   .cache_operator = {cache_operator},
                   .vector_arity = {vector_arity},
                   .memory_state_space = {memory_state_space},

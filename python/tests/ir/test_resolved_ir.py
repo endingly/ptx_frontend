@@ -1866,6 +1866,62 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".comparison_operator = ComparisonOperator::Lt,", source)
 
+    def test_boolean_modifier_domain_emits_typed_availability(self) -> None:
+        specs = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_boolean",
+                                "availability": {"ptx": "1.0"},
+                                "modifiers": [
+                                    {
+                                        "name": "boolean",
+                                        "kind": "boolean_op",
+                                        "presence": "required",
+                                        "values": [
+                                            {
+                                                "value": "xor",
+                                                "availability": {"sm": 20},
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        resolved = from_instruction_spec(specs[0])
+        field = resolved.variants[0].modifier_fields[0]
+        self.assertEqual(field.value_kind, ResolvedValueKind.BOOLEAN_OPERATOR)
+        self.assertEqual(field.cpp_type, "WithLocs<BooleanOperator>")
+        self.assertEqual(
+            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            "BooleanOperator",
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::BooleanOperator,",
+            source,
+        )
+        self.assertIn(".boolean_operator = BooleanOperator::Xor,", source)
+
     def test_rejects_token_override_for_value_set_reference(self) -> None:
         with self.assertRaisesRegex(ValueError, "value-set reference"):
             normalize_instruction_spec(

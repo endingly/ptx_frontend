@@ -43,6 +43,9 @@ class ResolvedValueDomainGenerationTests(unittest.TestCase):
         self.assertIn("std::array<PtxSuffixEntry<ComparisonOperator>, 1>", source)
         self.assertIn("kComparisonOperators", source)
         self.assertIn('{"lt", ComparisonOperator::Lt}', source)
+        self.assertIn("std::array<PtxSuffixEntry<BooleanOperator>, 3>", source)
+        self.assertIn("kBooleanOperators", source)
+        self.assertIn('{"xor", BooleanOperator::Xor}', source)
         self.assertIn('{"v8", VectorArity::V8}', source)
         self.assertNotIn("resolved_value_kinds =", source)
 

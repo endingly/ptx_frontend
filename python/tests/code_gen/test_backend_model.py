@@ -119,6 +119,10 @@ class BackendModelTests(unittest.TestCase):
             RuntimeLookupKind.PTX_SUFFIX,
         )
         self.assertEqual(
+            unit.domains[CppDomain.BOOLEAN_OPERATORS.value].values["xor"],
+            "BooleanOperator::Xor",
+        )
+        self.assertEqual(
             unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
             "MemoryConsistency::Weak",
         )

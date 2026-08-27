@@ -1,0 +1,22 @@
+.version 9.3
+.target sm_80
+.address_size 64
+
+.visible .global .align 4 .f32 m9_float_out;
+
+.visible .entry m9_scalar_float() {
+  .reg .u32 %r<2>;
+  .reg .f32 %f<5>;
+  .reg .f64 %fd<1>;
+
+  mov.f64 %fd0, 0d3ff8000000000000;
+  cvt.rn.f32.f64 %f0, %fd0;
+  mov.u32 %r0, 2;
+  cvt.rn.f32.u32 %f1, %r0;
+  mul.rn.f32 %f2, %f0, %f1;
+  mov.f32 %f3, 0f3f000000;
+  fma.rn.f32 %f4, %f2, %f1, %f3;
+  cvt.rzi.u32.f32 %r1, %f4;
+  st.global.f32 [m9_float_out], %f4;
+  exit;
+}

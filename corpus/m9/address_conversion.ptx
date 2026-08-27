@@ -1,0 +1,17 @@
+.version 9.3
+.target sm_80
+.address_size 64
+
+.visible .global .align 4 .u32 m9_address_source;
+
+.visible .entry m9_address_conversion() {
+  .reg .u32 %r<1>;
+  .reg .u64 %rd<3>;
+
+  mov.u64 %rd0, m9_address_source;
+  cvta.global.u64 %rd1, %rd0;
+  cvta.to.global.u64 %rd2, %rd1;
+  mov.u32 %r0, 270544960;
+  st.global.u32 [%rd2], %r0;
+  exit;
+}

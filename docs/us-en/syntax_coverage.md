@@ -35,6 +35,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Frozen floating `mul` | Supported | Register-only `mul.rn.f32` (PTX 1.0 / SM 0) |
 | Frozen integer `mad` | Supported | `mad.lo.u32` with register-or-immediate sources (PTX 1.0 / SM 0) |
 | Frozen `fma` | Supported | Register-only `fma.rn.f32` (PTX 2.0 / SM 20) |
+| Frozen integer `div` | Supported | `div.u32` with register-or-immediate sources (PTX 1.0 / SM 0); a zero divisor remains accepted with PTX-specified unspecified behavior |
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be

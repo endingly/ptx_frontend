@@ -37,7 +37,7 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-M9-I01～I23 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-I24 `div` slice。
+M9-I01～I24 已按 simulator MVP corpus 完成并独立验证；下一项为 M9-C01 domain/diagnostic coupling。
 M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
@@ -1411,7 +1411,7 @@ operand/type/modifier matrix
 | M9-I21 | ✅ | 独立 | 支持 floating `mul` slice | frozen register-only `mul.rn.f32`，PTX 1.0 / SM 0 availability 和 operand type 闭环 |
 | M9-I22 | ✅ | 独立 | 支持 integer `mad` slice | frozen `mad.lo.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环 |
 | M9-I23 | ✅ | 独立 | 支持 `fma` slice | frozen register-only `fma.rn.f32`，PTX 2.0 / SM 20 availability 和 operand type 闭环 |
-| M9-I24 | ⬜ | 独立 | 支持 `div` 的首个 MVP slice | integer或floating slice必须在 issue 中固定，不混合实现 |
+| M9-I24 | ✅ | 独立 | 支持 `div` 的首个 MVP slice | frozen `div.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环；zero divisor 保持 PTX unspecified behavior |
 | M9-C01 | ⬜ | 耦合 | 统一新增 domain 和 diagnostics | comparison/boolean/rounding/type domain 无重复定义 |
 | M9-C02 | ⬜ | 耦合 | 打通 MVP kernel parse/check | corpus 中所有 kernel 可生成完整 ResolvedModule |
 | M9-C03 | ⬜ | 耦合 | 打通 MVP functional execution | adapter 能驱动 simulator 并比对 register/memory 结果 |

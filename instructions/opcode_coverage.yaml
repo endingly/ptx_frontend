@@ -149,8 +149,8 @@ opcodes:
     simulator: unsupported
     m9_issues: [M9-I23]
   - opcode: div
-    syntax: unsupported
-    resolved: unsupported
-    checker: unsupported
+    syntax: partial
+    resolved: partial
+    checker: partial
     simulator: unsupported
     m9_issues: [M9-I24]

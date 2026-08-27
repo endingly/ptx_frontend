@@ -81,11 +81,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "fma"
         )
+        div = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "div"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
         cls.mad_instruction = from_instruction_spec(mad)
         cls.fma_instruction = from_instruction_spec(fma)
+        cls.div_instruction = from_instruction_spec(div)
         call = next(
             instruction
             for instruction in database.instructions
@@ -364,6 +370,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             self.fma_instruction.variants[0].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
+        )
+
+    def test_div_has_frozen_u32_binary_layout(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.div_instruction.variants],
+            ["U32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.div_instruction.variants[0].fields],
+            ["type", "dst", "src1", "src2"],
         )
 
     def test_add_resolved_variant_fields(self) -> None:
@@ -1430,6 +1446,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct RnF32 {", source)
         self.assertIn("struct Mad {", source)
         self.assertIn("struct Fma {", source)
+        self.assertIn("struct Div {", source)
         self.assertIn("struct RnF32F64 {", source)
         self.assertIn("struct RnF32U32 {", source)
         self.assertIn("struct RziU32F32 {", source)
@@ -1538,6 +1555,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Mad>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "fma"', source)
         self.assertIn("resolve<Fma>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "div"', source)
+        self.assertIn("resolve<Div>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "bar"', source)
         self.assertIn('ast.opcode.syntax.text == "bra"', source)
         self.assertIn("resolve<Bra>(ast, context)", source)

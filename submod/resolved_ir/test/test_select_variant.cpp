@@ -726,6 +726,24 @@ TEST(ResolveFma, RejectsImmediateOperand) {
   ASSERT_FALSE(resolved.has_value());
 }
 
+TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
+  const auto resolved = resolve<Div>(parse_instruction("div.u32 %r0, %r1, 0;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* div = std::get_if<Div::U32>(&resolved->variant);
+  ASSERT_NE(div, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(div->src2.value));
+}
+
+TEST(ResolveDiv, RejectsUnfrozenVariants) {
+  for (const auto source : {"div.s32 %r0, %r1, %r2;",
+                            "div.f32 %f0, %f1, %f2;",
+                            "div.sat.u32 %r0, %r1, %r2;"}) {
+    const auto selected = selectVariant<Div>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

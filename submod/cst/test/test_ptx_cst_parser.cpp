@@ -614,6 +614,28 @@ TEST(PtxCstParser, RejectsMalformedOrNonlocalSectionDirectives) {
   }
 }
 
+TEST(PtxCstParser, RecoversMissingSectionBraceBeforeFollowingFunction) {
+  constexpr std::string_view source = R"ptx(.section .debug_info {
+  .b8 0
+.entry kernel() { add.u32 %r0, %r1, %r2; }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message,
+            "expected section closing brace");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& items = result->module()->items;
+  ASSERT_EQ(items.size(), 2u);
+  EXPECT_EQ(std::get<CstRecoveryNode>(items.front()).kind,
+            CstRecoveryKind::Skipped);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstFunction>(items.back()));
+}
+
 TEST(PtxCstParser, RetainsPragmasAtAllSupportedScopes) {
   constexpr std::string_view source = R"ptx(.pragma "module", "opaque";
 .entry kernel() .pragma "nounroll"; {

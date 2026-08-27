@@ -1737,11 +1737,15 @@ PtxCstParser::parseSectionDirective() {
   size_t brace_depth = 1;
   TokenId right_brace{};
   while (brace_depth != 0) {
-    const TokenId next = consume();
-    if (token(next).kind == TokenKind::Eof) {
-      return std::unexpected(CstParseDiagnostic{token(next).range,
-                                                "expected section closing brace"});
+    const TokenId next = peek();
+    if (token(next).kind == TokenKind::Eof ||
+        (brace_depth == 1 &&
+         isSupportedModuleItemStart(token(next).kind))) {
+      return std::unexpected(CstParseDiagnostic{
+          token(next).range, "expected section closing brace",
+          TokenKind::RBrace});
     }
+    consume();
     if (token(next).kind == TokenKind::LBrace) {
       ++brace_depth;
       payload.push_back(next);

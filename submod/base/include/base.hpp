@@ -55,6 +55,21 @@ enum class RoundingMode : uint8_t {
   Rz,
   Rm,
   Rp,
+  Rzi,
+};
+
+/** Semantic value of a PTX comparison operator modifier. */
+enum class ComparisonOperator : uint8_t {
+  Invalid = 0,
+  Lt,
+};
+
+/** Semantic value of a PTX predicate-combine operator modifier. */
+enum class BooleanOperator : uint8_t {
+  Invalid = 0,
+  And,
+  Or,
+  Xor,
 };
 
 /** Semantic value of a PTX ld/st cache operator modifier. */

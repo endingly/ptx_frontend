@@ -1,0 +1,7 @@
+.version 9.3
+.target sm_80
+.address_size 64
+
+.visible .entry m9_trap() {
+  trap;
+}

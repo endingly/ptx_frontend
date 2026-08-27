@@ -69,6 +69,35 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  ternary_float_register:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+
+    - name: src1
+      kind: reg
+      role: src1
+      access: read
+      type:
+        expr: modifier(type)
+
+    - name: src2
+      kind: reg
+      role: src2
+      access: read
+      type:
+        expr: modifier(type)
+
+    - name: src3
+      kind: reg
+      role: src3
+      access: read
+      type:
+        expr: modifier(type)
+
   binary_mixed_float_register:
     - name: dst
       kind: reg
@@ -610,4 +639,56 @@ instructions:
           - ptx: "sub.f32.f16 d, a, c;"
             valid: true
           - ptx: "sub.rz.f32.bf16.sat d, a, c;"
+            valid: true
+
+  - opcode: mul
+    section: "9.7.3.5"
+    doc: "Frozen round-to-nearest single-precision multiply."
+    syntax: "mul.rn.f32 dst, src1, src2"
+    operands: $binary_float_register
+    variants:
+      - name: mul_rn_f32
+        description: "Register-only round-to-nearest single-precision multiply."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        examples:
+          - ptx: "mul.rn.f32 %f0, %f1, %f2;"
+            valid: true
+
+  - opcode: fma
+    section: "9.7.3.6"
+    doc: "Frozen round-to-nearest single-precision fused multiply-add."
+    syntax: "fma.rn.f32 dst, src1, src2, src3"
+    operands: $ternary_float_register
+    variants:
+      - name: fma_rn_f32
+        description: "Register-only round-to-nearest single-precision fused multiply-add."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        examples:
+          - ptx: "fma.rn.f32 %f0, %f1, %f2, %f3;"
             valid: true

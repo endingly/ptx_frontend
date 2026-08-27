@@ -1,0 +1,156 @@
+# yaml-language-server: $schema=schemas/opcode-coverage-v1.schema.yaml
+
+# `partial` means the frontend has a deliberately limited YAML variant slice,
+# not full PTX ISA coverage for that opcode.  There is no executor in ptxsim
+# yet, so every simulator status remains `unsupported`.
+schema: ptx-opcode-coverage/v1
+version: 1
+opcodes:
+  - opcode: add
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: bar
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: bra
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: brx
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: call
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: ld
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: mov
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: st
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: sub
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+
+  - opcode: ret
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I03]
+  - opcode: exit
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I04]
+  - opcode: trap
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I05]
+  - opcode: and
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I06]
+  - opcode: or
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I07]
+  - opcode: xor
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I08]
+  - opcode: not
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I09]
+  - opcode: shl
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I10]
+  - opcode: shr
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I11]
+  - opcode: setp
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I14]
+  - opcode: selp
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I15]
+  - opcode: cvt
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I16, M9-I17, M9-I18]
+  - opcode: cvta
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I19]
+  - opcode: mul
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I20, M9-I21]
+  - opcode: mad
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I22]
+  - opcode: fma
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I23]
+  - opcode: div
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+    m9_issues: [M9-I24]

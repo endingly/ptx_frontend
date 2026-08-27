@@ -64,6 +64,23 @@ domains:
       rz: RoundingMode::Rz
       rm: RoundingMode::Rm
       rp: RoundingMode::Rp
+      rzi: RoundingMode::Rzi
+
+  comparison_operators:
+    cpp_type: ComparisonOperator
+    default: ComparisonOperator::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      lt: ComparisonOperator::Lt
+
+  boolean_operators:
+    cpp_type: BooleanOperator
+    default: BooleanOperator::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      and: BooleanOperator::And
+      or: BooleanOperator::Or
+      xor: BooleanOperator::Xor
 
   cache_operators:
     cpp_type: CacheOperator
@@ -145,6 +162,8 @@ domains:
       flag: bool
       type: ScalarType
       rounding: RoundingMode
+      comparison: ComparisonOperator
+      boolean_op: BooleanOperator
       cache: CacheOperator
       semantics: MemoryConsistency
       scope: MemoryScope
@@ -178,6 +197,8 @@ domains:
       Bool: bool
       ScalarType: ScalarType
       RoundingMode: RoundingMode
+      ComparisonOperator: ComparisonOperator
+      BooleanOperator: BooleanOperator
       CacheOperator: CacheOperator
       MemoryConsistency: MemoryConsistency
       MemoryScope: MemoryScope
@@ -245,6 +266,8 @@ domains:
       Bool: check_end::ResolvedValueKind::Bool
       ScalarType: check_end::ResolvedValueKind::ScalarType
       RoundingMode: check_end::ResolvedValueKind::RoundingMode
+      ComparisonOperator: check_end::ResolvedValueKind::ComparisonOperator
+      BooleanOperator: check_end::ResolvedValueKind::BooleanOperator
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
       MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
       MemoryScope: check_end::ResolvedValueKind::MemoryScope
@@ -326,6 +349,8 @@ domains:
       bool: checker::ModifierValueKind::Bool
       ScalarType: checker::ModifierValueKind::ScalarType
       RoundingMode: checker::ModifierValueKind::RoundingMode
+      ComparisonOperator: checker::ModifierValueKind::ComparisonOperator
+      BooleanOperator: checker::ModifierValueKind::BooleanOperator
       CacheOperator: checker::ModifierValueKind::CacheOperator
       MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
       MemoryScope: checker::ModifierValueKind::MemoryScope

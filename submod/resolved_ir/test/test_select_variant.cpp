@@ -325,8 +325,6 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
   expect_variant("add.f32.f16 %f0, %h1, %f2;", Add::VariantType::MixedF32);
   expect_variant("add.rz.f32.bf16.sat %f0, %h1, %f2;",
                  Add::VariantType::MixedF32);
-  expect_variant("add.sat.bf16.f32.rz %f0, %h1, %f2;",
-                 Add::VariantType::MixedF32);
 }
 
 TEST(SelectVariantSub, SelectsEveryGeneratedVariant) {
@@ -445,6 +443,83 @@ TEST(SelectVariantAdd, ReportsUnknownModifier) {
   EXPECT_EQ(selected.error().message, "Unknown modifier '.invalid'.");
 }
 
+TEST(ResolveRet, SelectsBareVariantAndRejectsModifiersAndOperands) {
+  const auto bare_ast = parse_instruction("ret;");
+  const auto bare = resolve<Ret>(bare_ast);
+  ASSERT_TRUE(bare.has_value()) << bare.error().message;
+  EXPECT_TRUE(std::holds_alternative<Ret::Bare>(bare->variant));
+
+  const auto modifier_ast = parse_instruction("ret.uni;");
+  const auto modifier = resolve<Ret>(modifier_ast);
+  ASSERT_FALSE(modifier.has_value());
+  EXPECT_EQ(modifier.error().range,
+            modifier_ast.modifiers.front().syntax.range);
+  EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
+
+  const auto operand_ast = parse_instruction("ret %r0;");
+  const auto operand = resolve<Ret>(operand_ast);
+  ASSERT_FALSE(operand.has_value());
+  EXPECT_EQ(operand.error().range, operand_ast.range);
+  EXPECT_EQ(operand.error().message,
+            "Operands do not match any layout of instruction variant 'Bare'.");
+}
+
+TEST(ResolveExit, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
+  const auto bare_ast = parse_instruction("exit;");
+  const auto bare = resolve<Exit>(bare_ast);
+  ASSERT_TRUE(bare.has_value()) << bare.error().message;
+  EXPECT_TRUE(std::holds_alternative<Exit::Bare>(bare->variant));
+  EXPECT_FALSE(bare->execution_predicate.has_value());
+
+  const auto predicated_ast = parse_instruction("@%p0 exit;");
+  const auto predicated = resolve<Exit>(predicated_ast);
+  ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
+  EXPECT_TRUE(std::holds_alternative<Exit::Bare>(predicated->variant));
+  EXPECT_TRUE(predicated->execution_predicate.has_value());
+
+  const auto modifier_ast = parse_instruction("exit.uni;");
+  const auto modifier = resolve<Exit>(modifier_ast);
+  ASSERT_FALSE(modifier.has_value());
+  EXPECT_EQ(modifier.error().range,
+            modifier_ast.modifiers.front().syntax.range);
+  EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
+
+  const auto operand_ast = parse_instruction("exit %r0;");
+  const auto operand = resolve<Exit>(operand_ast);
+  ASSERT_FALSE(operand.has_value());
+  EXPECT_EQ(operand.error().range, operand_ast.range);
+  EXPECT_EQ(operand.error().message,
+            "Operands do not match any layout of instruction variant 'Bare'.");
+}
+
+TEST(ResolveTrap, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
+  const auto bare_ast = parse_instruction("trap;");
+  const auto bare = resolve<Trap>(bare_ast);
+  ASSERT_TRUE(bare.has_value()) << bare.error().message;
+  EXPECT_TRUE(std::holds_alternative<Trap::Bare>(bare->variant));
+  EXPECT_FALSE(bare->execution_predicate.has_value());
+
+  const auto predicated_ast = parse_instruction("@%p0 trap;");
+  const auto predicated = resolve<Trap>(predicated_ast);
+  ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
+  EXPECT_TRUE(std::holds_alternative<Trap::Bare>(predicated->variant));
+  EXPECT_TRUE(predicated->execution_predicate.has_value());
+
+  const auto modifier_ast = parse_instruction("trap.uni;");
+  const auto modifier = resolve<Trap>(modifier_ast);
+  ASSERT_FALSE(modifier.has_value());
+  EXPECT_EQ(modifier.error().range,
+            modifier_ast.modifiers.front().syntax.range);
+  EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
+
+  const auto operand_ast = parse_instruction("trap %r0;");
+  const auto operand = resolve<Trap>(operand_ast);
+  ASSERT_FALSE(operand.has_value());
+  EXPECT_EQ(operand.error().range, operand_ast.range);
+  EXPECT_EQ(operand.error().message,
+            "Operands do not match any layout of instruction variant 'Bare'.");
+}
+
 TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   const auto ast = parse_instruction("add.u32.u32 %r0, %r1, %r2;");
 
@@ -453,6 +528,276 @@ TEST(SelectVariantAdd, ReportsDuplicateModifierKind) {
   ASSERT_FALSE(selected.has_value());
   EXPECT_EQ(selected.error().range, ast.modifiers.back().syntax.range);
   EXPECT_EQ(selected.error().message, "Duplicate 'type' modifier.");
+}
+
+TEST(ResolveAnd, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("and.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<And>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* and_b32 = std::get_if<And::B32>(&resolved->variant);
+  ASSERT_NE(and_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(and_b32->src2.value));
+}
+
+TEST(ResolveOr, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("or.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<Or>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* or_b32 = std::get_if<Or::B32>(&resolved->variant);
+  ASSERT_NE(or_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(or_b32->src2.value));
+}
+
+TEST(ResolveXor, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("xor.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<Xor>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* xor_b32 = std::get_if<Xor::B32>(&resolved->variant);
+  ASSERT_NE(xor_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(xor_b32->src2.value));
+}
+
+TEST(ResolveNot, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("not.b32 %r0, 1;");
+  const auto resolved = resolve<Not>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* not_b32 = std::get_if<Not::B32>(&resolved->variant);
+  ASSERT_NE(not_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
+}
+
+TEST(ResolveShl, SelectsB32VariantAndAcceptsImmediateAmount) {
+  const auto ast = parse_instruction("shl.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<Shl>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* shl_b32 = std::get_if<Shl::B32>(&resolved->variant);
+  ASSERT_NE(shl_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shl_b32->amount.value));
+}
+
+TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
+  const auto ast = parse_instruction("shr.u32 %r0, %r1, 1;");
+  const auto resolved = resolve<Shr>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* shr_u32 = std::get_if<Shr::U32>(&resolved->variant);
+  ASSERT_NE(shr_u32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
+}
+
+TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
+  const auto simple_ast = parse_instruction("setp.lt.u32 %p0, %r0, 16;");
+  const auto simple = resolve<Setp>(simple_ast);
+  ASSERT_TRUE(simple.has_value()) << simple.error().message;
+  const auto* lt = std::get_if<Setp::LtU32>(&simple->variant);
+  ASSERT_NE(lt, nullptr);
+  EXPECT_EQ(lt->comparison.value, ComparisonOperator::Lt);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(lt->src2.value));
+
+  const auto combined_ast =
+      parse_instruction("setp.lt.and.u32 %p0, %r0, 16, !%p1;");
+  const auto combined = resolve<Setp>(combined_ast);
+  ASSERT_TRUE(combined.has_value()) << combined.error().message;
+  const auto* lt_and = std::get_if<Setp::LtAndU32>(&combined->variant);
+  ASSERT_NE(lt_and, nullptr);
+  EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
+  EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
+  EXPECT_TRUE(lt_and->combine.value.negated);
+}
+
+TEST(ResolveSelp, SelectsFrozenU32Variant) {
+  const auto ast = parse_instruction("selp.u32 %r0, %r1, 0, %p0;");
+  const auto resolved = resolve<Selp>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* selp = std::get_if<Selp::U32>(&resolved->variant);
+  ASSERT_NE(selp, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(selp->src_false.value));
+  EXPECT_FALSE(selp->predicate.value.negated);
+}
+
+TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
+  const auto to_generic = resolve<Cvta>(parse_instruction("cvta.global.u64 %rd0, %rd1;"));
+  ASSERT_TRUE(to_generic.has_value()) << to_generic.error().message;
+  const auto* global = std::get_if<Cvta::GlobalU64>(&to_generic->variant);
+  ASSERT_NE(global, nullptr);
+  EXPECT_EQ(Cvta::GlobalU64::state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(Cvta::GlobalU64::type, ScalarType::U64);
+
+  const auto to_global =
+      resolve<Cvta>(parse_instruction("cvta.to.global.u64 %rd0, %rd1;"));
+  ASSERT_TRUE(to_global.has_value()) << to_global.error().message;
+  const auto* to = std::get_if<Cvta::ToGlobalU64>(&to_global->variant);
+  ASSERT_NE(to, nullptr);
+  EXPECT_TRUE(Cvta::ToGlobalU64::to);
+}
+
+TEST(ResolveCvta, RejectsWrongModifierOrderOrU32) {
+  for (const auto source : {"cvta.global.to.u64 %rd0, %rd1;",
+                            "cvta.u64.global %rd0, %rd1;",
+                            "cvta.global.u32 %r0, %r1;",
+                            "cvta.to.global.u32 %r0, %r1;"}) {
+    const auto selected = selectVariant<Cvta>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
+  const auto resolved = resolve<Mul>(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* mul = std::get_if<Mul::LoU32>(&resolved->variant);
+  ASSERT_NE(mul, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src2.value));
+}
+
+TEST(ResolveMul, RejectsUnfrozenVariants) {
+  for (const auto source : {"mul.u32 %r0, %r1, %r2;",
+                            "mul.hi.u32 %r0, %r1, %r2;",
+                            "mul.lo.s32 %r0, %r1, %r2;"}) {
+    const auto selected = selectVariant<Mul>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveMul, SelectsFrozenRnF32Variant) {
+  const auto resolved = resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Mul::RnF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Mul::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Mul::RnF32::type, ScalarType::F32);
+}
+
+TEST(ResolveMul, RejectsUnfrozenFloatingVariants) {
+  for (const auto source : {"mul.f32 %f0, %f1, %f2;",
+                            "mul.rz.f32 %f0, %f1, %f2;",
+                            "mul.rn.f64 %fd0, %fd1, %fd2;"}) {
+    const auto selected = selectVariant<Mul>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveMul, RejectsImmediateFloatingOperand) {
+  const auto resolved = resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
+  ASSERT_FALSE(resolved.has_value());
+}
+
+TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
+  const auto resolved = resolve<Mad>(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* mad = std::get_if<Mad::LoU32>(&resolved->variant);
+  ASSERT_NE(mad, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
+}
+
+TEST(ResolveMad, RejectsUnfrozenVariants) {
+  for (const auto source : {"mad.u32 %r0, %r1, %r2, %r3;",
+                            "mad.hi.u32 %r0, %r1, %r2, %r3;",
+                            "mad.lo.s32 %r0, %r1, %r2, %r3;",
+                            "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
+    const auto selected = selectVariant<Mad>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveFma, SelectsFrozenRnF32Variant) {
+  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Fma::RnF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Fma::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Fma::RnF32::type, ScalarType::F32);
+}
+
+TEST(ResolveFma, RejectsUnfrozenVariants) {
+  for (const auto source : {"fma.f32 %f0, %f1, %f2, %f3;",
+                            "fma.rz.f32 %f0, %f1, %f2, %f3;",
+                            "fma.rn.f64 %fd0, %fd1, %fd2, %fd3;",
+                            "fma.rn.ftz.f32 %f0, %f1, %f2, %f3;",
+                            "fma.rn.sat.f32 %f0, %f1, %f2, %f3;"}) {
+    const auto selected = selectVariant<Fma>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveFma, RejectsImmediateOperand) {
+  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, 1.0, %f2, %f3;"));
+  ASSERT_FALSE(resolved.has_value());
+}
+
+TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
+  const auto resolved = resolve<Div>(parse_instruction("div.u32 %r0, %r1, 0;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* div = std::get_if<Div::U32>(&resolved->variant);
+  ASSERT_NE(div, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(div->src2.value));
+}
+
+TEST(ResolveDiv, RejectsUnfrozenVariants) {
+  for (const auto source : {"div.s32 %r0, %r1, %r2;",
+                            "div.f32 %f0, %f1, %f2;",
+                            "div.sat.u32 %r0, %r1, %r2;"}) {
+    const auto selected = selectVariant<Div>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
+  const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
+  const auto resolved = resolve<Cvt>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* cvt = std::get_if<Cvt::S32U32>(&resolved->variant);
+  ASSERT_NE(cvt, nullptr);
+  EXPECT_EQ(Cvt::S32U32::dst_type, ScalarType::S32);
+  EXPECT_EQ(Cvt::S32U32::src_type, ScalarType::U32);
+}
+
+TEST(ResolveCvt, SelectsFrozenRnF32F64Variant) {
+  const auto ast = parse_instruction("cvt.rn.f32.f64 %f0, %fd0;");
+  const auto resolved = resolve<Cvt>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* cvt = std::get_if<Cvt::RnF32F64>(&resolved->variant);
+  ASSERT_NE(cvt, nullptr);
+  EXPECT_EQ(Cvt::RnF32F64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Cvt::RnF32F64::dst_type, ScalarType::F32);
+  EXPECT_EQ(Cvt::RnF32F64::src_type, ScalarType::F64);
+}
+
+TEST(ResolveCvt, SelectsFrozenMixedVariants) {
+  const auto to_float = resolve<Cvt>(parse_instruction("cvt.rn.f32.u32 %f0, %r0;"));
+  ASSERT_TRUE(to_float.has_value()) << to_float.error().message;
+  EXPECT_NE(std::get_if<Cvt::RnF32U32>(&to_float->variant), nullptr);
+
+  const auto to_integer =
+      resolve<Cvt>(parse_instruction("cvt.rzi.u32.f32 %r0, %f0;"));
+  ASSERT_TRUE(to_integer.has_value()) << to_integer.error().message;
+  const auto* cvt = std::get_if<Cvt::RziU32F32>(&to_integer->variant);
+  ASSERT_NE(cvt, nullptr);
+  EXPECT_EQ(Cvt::RziU32F32::rounding, RoundingMode::Rzi);
+  EXPECT_EQ(Cvt::RziU32F32::dst_type, ScalarType::U32);
+  EXPECT_EQ(Cvt::RziU32F32::src_type, ScalarType::F32);
+}
+
+TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
+  for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
+                            "cvt.rz.f32.f64 %f0, %fd0;",
+                            "cvt.rn.f64.f32 %fd0, %f0;"}) {
+    const auto selected = selectVariant<Cvt>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveCvt, RejectsUnfrozenMixedVariants) {
+  for (const auto source : {"cvt.rz.f32.u32 %f0, %r0;",
+                            "cvt.rn.u32.f32 %r0, %f0;",
+                            "cvt.rzi.f32.u32 %f0, %r0;"}) {
+    const auto selected = selectVariant<Cvt>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
 }
 
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
@@ -478,6 +823,66 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto sub = resolveInstruction(sub_ast);
   ASSERT_TRUE(sub.has_value()) << sub.error().message;
   EXPECT_TRUE(std::holds_alternative<Sub>(*sub));
+
+  const auto ret_ast = parse_instruction("ret;");
+  const auto ret = resolveInstruction(ret_ast);
+  ASSERT_TRUE(ret.has_value()) << ret.error().message;
+  EXPECT_TRUE(std::holds_alternative<Ret>(*ret));
+
+  const auto exit_ast = parse_instruction("exit;");
+  const auto exit_instruction = resolveInstruction(exit_ast);
+  ASSERT_TRUE(exit_instruction.has_value()) << exit_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Exit>(*exit_instruction));
+
+  const auto trap_ast = parse_instruction("trap;");
+  const auto trap = resolveInstruction(trap_ast);
+  ASSERT_TRUE(trap.has_value()) << trap.error().message;
+  EXPECT_TRUE(std::holds_alternative<Trap>(*trap));
+
+  const auto and_ast = parse_instruction("and.b32 %r0, %r1, %r2;");
+  const auto and_instruction = resolveInstruction(and_ast);
+  ASSERT_TRUE(and_instruction.has_value()) << and_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<And>(*and_instruction));
+
+  const auto or_ast = parse_instruction("or.b32 %r0, %r1, %r2;");
+  const auto or_instruction = resolveInstruction(or_ast);
+  ASSERT_TRUE(or_instruction.has_value()) << or_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Or>(*or_instruction));
+
+  const auto xor_ast = parse_instruction("xor.b32 %r0, %r1, %r2;");
+  const auto xor_instruction = resolveInstruction(xor_ast);
+  ASSERT_TRUE(xor_instruction.has_value()) << xor_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Xor>(*xor_instruction));
+
+  const auto not_ast = parse_instruction("not.b32 %r0, %r1;");
+  const auto not_instruction = resolveInstruction(not_ast);
+  ASSERT_TRUE(not_instruction.has_value()) << not_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Not>(*not_instruction));
+
+  const auto shl_ast = parse_instruction("shl.b32 %r0, %r1, %r2;");
+  const auto shl_instruction = resolveInstruction(shl_ast);
+  ASSERT_TRUE(shl_instruction.has_value()) << shl_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Shl>(*shl_instruction));
+
+  const auto shr_ast = parse_instruction("shr.u32 %r0, %r1, %r2;");
+  const auto shr_instruction = resolveInstruction(shr_ast);
+  ASSERT_TRUE(shr_instruction.has_value()) << shr_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Shr>(*shr_instruction));
+
+  const auto setp_ast = parse_instruction("setp.lt.u32 %p0, %r0, %r1;");
+  const auto setp_instruction = resolveInstruction(setp_ast);
+  ASSERT_TRUE(setp_instruction.has_value()) << setp_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Setp>(*setp_instruction));
+
+  const auto selp_ast = parse_instruction("selp.u32 %r0, %r1, %r2, %p0;");
+  const auto selp_instruction = resolveInstruction(selp_ast);
+  ASSERT_TRUE(selp_instruction.has_value()) << selp_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Selp>(*selp_instruction));
+
+  const auto cvt_ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
+  const auto cvt_instruction = resolveInstruction(cvt_ast);
+  ASSERT_TRUE(cvt_instruction.has_value()) << cvt_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Cvt>(*cvt_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {
@@ -588,7 +993,7 @@ TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
   const auto conflicting_cache = resolve<Ld>(
-      parse_instruction("ld.ca.volatile.u32 %r0, [%rd0];"));
+      parse_instruction("ld.volatile.ca.u32 %r0, [%rd0];"));
   ASSERT_TRUE(conflicting_cache.has_value()) << conflicting_cache.error().message;
   const auto cache_check = checker::check(*conflicting_cache, context);
   ASSERT_FALSE(cache_check.has_value());
@@ -625,6 +1030,21 @@ TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {
   EXPECT_EQ(actual->at("result_type"), &ast.modifiers[1]);
   EXPECT_EQ(actual->at("input_type"), &ast.modifiers[2]);
   EXPECT_EQ(actual->at("sat"), &ast.modifiers[3]);
+}
+
+TEST(CollectActualModifiersAdd, RejectsOutOfOrderMixedSlots) {
+  const auto ast = parse_instruction("add.rz.f32.sat.bf16 %f0, %h1, %f2;");
+  const auto& instruction = Add::get_syntax_descriptor();
+  const auto mixed = std::ranges::find_if(
+      instruction.variants,
+      [](auto variant) { return variant.variant_name == "MixedF32"; });
+  ASSERT_NE(mixed, instruction.variants.end());
+
+  const auto actual = collect_actual_modifiers(ast, *mixed);
+
+  ASSERT_FALSE(actual.has_value());
+  EXPECT_EQ(actual.error().message,
+            "Modifier combination does not match instruction variant 'MixedF32'.");
 }
 
 TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
@@ -1134,6 +1554,141 @@ TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
   ASSERT_EQ(explicit_type->locs.size(), 1U);
   EXPECT_EQ(explicit_type->locs.front(),
             explicit_ast.modifiers.front().syntax.range);
+}
+
+TEST(ResolveFields, ResolvesComparisonOperatorModifier) {
+  const std::array<std::string_view, 1> allowed_comparisons = {".lt"};
+  const std::array<check_end::SyntaxModifierDescriptor, 1> syntax_modifiers = {
+      {{
+          .allowed_values = allowed_comparisons,
+          .presence = check_end::PresenceRequirement::Required,
+          .kind_id = "comparison",
+      }}};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 0> syntax_slots{};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{{
+          .layout_id = "default",
+          .kind = check_end::OperandLayoutKind::Flat,
+          .slots = syntax_slots,
+      }}};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{{
+      .variant_name = "Comparison",
+      .modifiers = syntax_modifiers,
+      .operand_layouts = syntax_layouts,
+  }}};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+
+  const std::array<check_end::ResolvedFieldDescriptor, 1> resolved_fields = {{{
+      .field_id = "comparison",
+      .value_kind = check_end::ResolvedValueKind::ComparisonOperator,
+  }}};
+  const std::array<check_end::ResolvedModifierBindingDescriptor, 1>
+      modifier_bindings = {{{
+          .source_kind_id = "comparison",
+          .target_field_id = "comparison",
+      }}};
+  const std::array<check_end::ResolvedFieldDescriptor, 0> operand_fields{};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 0>
+      operand_bindings{};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1>
+      resolved_layouts = {{{
+          .layout_id = "default",
+          .fields = operand_fields,
+          .bindings = operand_bindings,
+      }}};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{{
+          .variant_name = "Comparison",
+          .fields = resolved_fields,
+          .modifier_bindings = modifier_bindings,
+          .operand_layouts = resolved_layouts,
+      }}};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = resolved_variants,
+  };
+
+  const auto ast = parse_instruction("sample.lt;");
+  const auto fields = resolve_fields(ast, syntax_descriptor, resolved_descriptor,
+                                     "Comparison");
+  ASSERT_TRUE(fields.has_value()) << fields.error().message;
+  const auto* comparison = std::get_if<WithLocs<ComparisonOperator>>(
+      &fields->modifiers.at("comparison"));
+  ASSERT_NE(comparison, nullptr);
+  EXPECT_EQ(comparison->value, ComparisonOperator::Lt);
+  ASSERT_EQ(comparison->locs.size(), 1U);
+  EXPECT_EQ(comparison->locs.front(), ast.modifiers.front().syntax.range);
+}
+
+TEST(ResolveFields, ResolvesBooleanOperatorModifier) {
+  const std::array<std::string_view, 3> allowed_boolean_operators = {
+      ".and", ".or", ".xor"};
+  const std::array<check_end::SyntaxModifierDescriptor, 1> syntax_modifiers = {
+      {{
+          .allowed_values = allowed_boolean_operators,
+          .presence = check_end::PresenceRequirement::Required,
+          .kind_id = "boolean",
+      }}};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 0> syntax_slots{};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{{
+          .layout_id = "default",
+          .kind = check_end::OperandLayoutKind::Flat,
+          .slots = syntax_slots,
+      }}};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{{
+      .variant_name = "Boolean",
+      .modifiers = syntax_modifiers,
+      .operand_layouts = syntax_layouts,
+  }}};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+
+  const std::array<check_end::ResolvedFieldDescriptor, 1> resolved_fields = {{{
+      .field_id = "boolean",
+      .value_kind = check_end::ResolvedValueKind::BooleanOperator,
+  }}};
+  const std::array<check_end::ResolvedModifierBindingDescriptor, 1>
+      modifier_bindings = {{{
+          .source_kind_id = "boolean",
+          .target_field_id = "boolean",
+      }}};
+  const std::array<check_end::ResolvedFieldDescriptor, 0> operand_fields{};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 0>
+      operand_bindings{};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1>
+      resolved_layouts = {{{
+          .layout_id = "default",
+          .fields = operand_fields,
+          .bindings = operand_bindings,
+      }}};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{{
+          .variant_name = "Boolean",
+          .fields = resolved_fields,
+          .modifier_bindings = modifier_bindings,
+          .operand_layouts = resolved_layouts,
+      }}};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = resolved_variants,
+  };
+
+  const auto ast = parse_instruction("sample.xor;");
+  const auto fields =
+      resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Boolean");
+  ASSERT_TRUE(fields.has_value()) << fields.error().message;
+  const auto* boolean =
+      std::get_if<WithLocs<BooleanOperator>>(&fields->modifiers.at("boolean"));
+  ASSERT_NE(boolean, nullptr);
+  EXPECT_EQ(boolean->value, BooleanOperator::Xor);
+  ASSERT_EQ(boolean->locs.size(), 1U);
+  EXPECT_EQ(boolean->locs.front(), ast.modifiers.front().syntax.range);
 }
 
 TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {

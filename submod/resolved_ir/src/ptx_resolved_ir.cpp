@@ -294,6 +294,42 @@ std::expected<WithLocs<RoundingMode>, ResolveDiagnostic> resolve_rounding_mode(
   return WithLocs<RoundingMode>{*mode, modifier.syntax.range};
 }
 
+std::optional<ComparisonOperator> comparison_operator_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kComparisonOperators, spelling);
+}
+
+std::expected<WithLocs<ComparisonOperator>, ResolveDiagnostic>
+resolve_comparison_operator(const syntax_ast::AstModifier& modifier) {
+  const auto value = comparison_operator_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown comparison operator '{}'.",
+                               modifier.syntax.text),
+    });
+  }
+  return WithLocs<ComparisonOperator>{*value, modifier.syntax.range};
+}
+
+std::optional<BooleanOperator> boolean_operator_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kBooleanOperators, spelling);
+}
+
+std::expected<WithLocs<BooleanOperator>, ResolveDiagnostic>
+resolve_boolean_operator(const syntax_ast::AstModifier& modifier) {
+  const auto value = boolean_operator_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown boolean operator '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<BooleanOperator>{*value, modifier.syntax.range};
+}
+
 std::optional<CacheOperator> cache_operator_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kCacheOperators, spelling);
@@ -1707,8 +1743,9 @@ struct ModifierBindingAttempt {
  *
  * Slot IDs are variant-local. The same spelling may therefore denote `type`
  * in one variant and `result_type` in another. Within one variant, however,
- * every spelling must have exactly one active owner; the Python database
- * validator enforces this invariant and a violation here is a compiler bug.
+ * every spelling must have exactly one active owner and source spellings must
+ * follow slot order, with optional slots permitted to be omitted. The Python
+ * database validator enforces the unique-owner invariant.
  */
 ModifierBindingAttempt bind_variant_modifiers(
     const syntax_ast::AstInstruction& ast,
@@ -1723,9 +1760,12 @@ ModifierBindingAttempt bind_variant_modifiers(
   }
 
   ActualModifierTable result;
+  std::optional<size_t> previous_owner_index;
   for (const auto& actual : ast.modifiers) {
     const SyntaxModifierDescriptor* owner = nullptr;
-    for (const auto& descriptor : variant.modifiers) {
+    size_t owner_index = 0;
+    for (size_t index = 0; index < variant.modifiers.size(); ++index) {
+      const auto& descriptor = variant.modifiers[index];
       if (descriptor.presence == check_end::PresenceRequirement::Absent ||
           !std::ranges::contains(descriptor.allowed_values,
                                  actual.syntax.text)) {
@@ -1738,19 +1778,23 @@ ModifierBindingAttempt bind_variant_modifiers(
             descriptor.kind_id));
       }
       owner = &descriptor;
+      owner_index = index;
     }
 
     if (owner == nullptr)
       return {};
 
-    const auto [_, inserted] =
-        result.emplace(std::string(owner->kind_id), &actual);
-    if (!inserted) {
+    if (result.contains(std::string(owner->kind_id))) {
       return ModifierBindingAttempt{
           .duplicate = &actual,
           .duplicate_slot = owner->kind_id,
       };
     }
+    if (previous_owner_index && owner_index < *previous_owner_index)
+      return {};
+
+    result.emplace(std::string(owner->kind_id), &actual);
+    previous_owner_index = owner_index;
   }
 
   for (const auto& descriptor : variant.modifiers) {
@@ -2019,6 +2063,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::Bool:
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
+    case ResolvedValueKind::ComparisonOperator:
+    case ResolvedValueKind::BooleanOperator:
     case ResolvedValueKind::CacheOperator:
     case ResolvedValueKind::MemoryConsistency:
     case ResolvedValueKind::MemoryScope:
@@ -2064,6 +2110,16 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{
           WithLocs<RoundingMode>{default_value.rounding_mode}};
+    case ResolvedValueKind::ComparisonOperator:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' cannot use a comparison-operator default "
+          "for resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
+    case ResolvedValueKind::BooleanOperator:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' cannot use a boolean-operator default for "
+          "resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
     case ResolvedValueKind::CacheOperator:
       if (default_value.kind != ResolvedModifierDefaultKind::CacheOperator) {
         throw ResolveException(fmt::format(
@@ -2330,6 +2386,18 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::RoundingMode: {
         auto value = resolve_rounding_mode(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::ComparisonOperator: {
+        auto value = resolve_comparison_operator(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::BooleanOperator: {
+        auto value = resolve_boolean_operator(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));

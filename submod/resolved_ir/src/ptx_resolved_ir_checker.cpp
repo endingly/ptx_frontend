@@ -102,6 +102,10 @@ bool matches_modifier_value(
       return descriptor.scalar_type == actual.scalar_type;
     case ModifierValueKind::RoundingMode:
       return descriptor.rounding_mode == actual.rounding_mode;
+    case ModifierValueKind::ComparisonOperator:
+      return descriptor.comparison_operator == actual.comparison_operator;
+    case ModifierValueKind::BooleanOperator:
+      return descriptor.boolean_operator == actual.boolean_operator;
     case ModifierValueKind::CacheOperator:
       return descriptor.cache_operator == actual.cache_operator;
     case ModifierValueKind::VectorArity:

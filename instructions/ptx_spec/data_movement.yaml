@@ -54,6 +54,36 @@ operand_patterns:
       access: read
       type: pred
 
+  cvt_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(dst_type)
+      register_width: equal_or_wider
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(src_type)
+      register_width: equal_or_wider
+
+  cvta_register:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+
   mov_pack:
     - name: dst
       kind: reg
@@ -261,6 +291,158 @@ operand_patterns:
       register_width: equal_or_wider
 
 instructions:
+  - opcode: cvta
+    section: "9.7.9.21"
+    doc: "Convert register-only global and generic u64 addresses."
+    syntax: "cvta.global.u64 dst, src | cvta.to.global.u64 dst, src"
+    operands: $cvta_register
+    variants:
+      - name: cvta_global_u64
+        description: "Register-only global-to-generic u64 address conversion."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: to
+            kind: flag
+            presence: absent
+            token: ".to"
+          - name: state_space
+            kind: state_space
+            domain: memory_state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        examples:
+          - ptx: "cvta.global.u64 %rd0, %rd1;"
+            valid: true
+      - name: cvta_to_global_u64
+        description: "Register-only generic-to-global u64 address conversion."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: to
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".to"
+          - name: state_space
+            kind: state_space
+            domain: memory_state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        examples:
+          - ptx: "cvta.to.global.u64 %rd0, %rd1;"
+            valid: true
+
+  - opcode: cvt
+    section: "9.7.9.22"
+    doc: "Convert frozen register-only .u32→.s32/.f32, .f64→.f32, or .f32→.u32 pairs."
+    syntax: "cvt.s32.u32 dst, src | cvt.rn.f32.f64 dst, src | cvt.rn.f32.u32 dst, src | cvt.rzi.u32.f32 dst, src"
+    operands: $cvt_scalar
+    variants:
+      - name: cvt_s32_u32
+        description: "Register-only unsigned 32-bit to signed 32-bit conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "cvt.s32.u32 %s0, %r0;"
+            valid: true
+      - name: cvt_rn_f32_f64
+        description: "Register-only round-to-nearest f64 to f32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 13
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f64
+        examples:
+          - ptx: "cvt.rn.f32.f64 %f0, %fd0;"
+            valid: true
+      - name: cvt_rn_f32_u32
+        description: "Register-only round-to-nearest u32 to f32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "cvt.rn.f32.u32 %f0, %r0;"
+            valid: true
+      - name: cvt_rzi_u32_f32
+        description: "Register-only round-toward-zero f32 to u32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rzi
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        examples:
+          - ptx: "cvt.rzi.u32.f32 %r0, %f0;"
+            valid: true
+
   - opcode: mov
     section: "9.7.9.3"
     doc: >

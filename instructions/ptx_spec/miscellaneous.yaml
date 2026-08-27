@@ -1,0 +1,29 @@
+# PTX miscellaneous instructions.
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: miscellaneous
+codegen_category: control_flow
+section: "9.7.20"
+
+instructions:
+  - opcode: trap
+    section: "9.7.20.4"
+    doc: "Trap the current thread."
+    syntax: "trap"
+
+    variants:
+      - name: trap_bare
+        description: "Thread trap with no modifiers or operands."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers: []
+        operands: []
+
+        examples:
+          - ptx: "trap;"
+            valid: true
+          - ptx: "@%p0 trap;"
+            valid: true

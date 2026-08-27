@@ -1,0 +1,193 @@
+# PTX logic and shift instructions.
+# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: logic_and_shift
+codegen_category: arithmetic
+section: "9.7.8"
+
+operand_patterns:
+  binary_bitwise:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: b32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: b32
+
+  unary_bitwise:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: b32
+
+  shift_b32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: b32
+    - name: amount
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+instructions:
+  - opcode: and
+    section: "9.7.8.1"
+    doc: "Bitwise AND of two 32-bit operands."
+    syntax: "and.b32 dst, src1, src2"
+    operands: $binary_bitwise
+
+    variants:
+      - name: and_b32
+        description: "32-bit bitwise AND with register or immediate sources."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+
+        examples:
+          - ptx: "and.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "and.b32 %r0, %r1, 1;"
+            valid: true
+  - opcode: or
+    section: "9.7.8.2"
+    doc: "Bitwise OR of two 32-bit operands."
+    syntax: "or.b32 dst, src1, src2"
+    operands: $binary_bitwise
+
+    variants:
+      - name: or_b32
+        description: "32-bit bitwise OR with register or immediate sources."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+
+        examples:
+          - ptx: "or.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "or.b32 %r0, %r1, 1;"
+            valid: true
+  - opcode: xor
+    section: "9.7.8.3"
+    doc: "Bitwise XOR of two 32-bit operands."
+    syntax: "xor.b32 dst, src1, src2"
+    operands: $binary_bitwise
+
+    variants:
+      - name: xor_b32
+        description: "32-bit bitwise XOR with register or immediate sources."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+
+        examples:
+          - ptx: "xor.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "xor.b32 %r0, %r1, 1;"
+            valid: true
+  - opcode: not
+    section: "9.7.8.4"
+    doc: "Bitwise NOT of one 32-bit operand."
+    syntax: "not.b32 dst, src"
+    operands: $unary_bitwise
+    variants:
+      - name: not_b32
+        description: "32-bit bitwise NOT with a register or immediate source."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        examples:
+          - ptx: "not.b32 %r0, %r1;"
+            valid: true
+          - ptx: "not.b32 %r0, 1;"
+            valid: true
+  - opcode: shl
+    section: "9.7.8.8"
+    doc: "Shift a 32-bit operand left by a 32-bit count."
+    syntax: "shl.b32 dst, src, amount"
+    operands: $shift_b32
+    variants:
+      - name: shl_b32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        examples:
+          - ptx: "shl.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "shl.b32 %r0, %r1, 1;"
+            valid: true
+  - opcode: shr
+    section: "9.7.8.9"
+    doc: "Shift a 32-bit operand right logically by a 32-bit count."
+    syntax: "shr.u32 dst, src, amount"
+    operands: $shift_b32
+    variants:
+      - name: shr_u32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "shr.u32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "shr.u32 %r0, %r1, 1;"
+            valid: true

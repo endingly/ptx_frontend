@@ -1,0 +1,251 @@
+{
+  "schema": "ptx_frontend.m9_mvp/v1",
+  "status": {
+    "frontend": "resolved/checked",
+    "simulator": "external ptxsim skeleton; not executed by this corpus"
+  },
+  "target": {
+    "ptx_version": "9.3",
+    "sm": "sm_80",
+    "address_size": 64
+  },
+  "cases": [
+    {
+      "file": "ret.ptx",
+      "entry": { "kind": "function", "name": "m9_ret" },
+      "required_opcodes": ["ret"],
+      "expected": {
+        "registers": {},
+        "memory": {},
+        "terminal": "returned"
+      },
+      "simulator_status": "not-run"
+    },
+    {
+      "file": "exit.ptx",
+      "entry": { "kind": "entry", "name": "m9_exit" },
+      "required_opcodes": ["exit"],
+      "expected": {
+        "registers": {},
+        "memory": {},
+        "terminal": "exited"
+      },
+      "simulator_status": "not-run"
+    },
+    {
+      "file": "trap.ptx",
+      "entry": { "kind": "entry", "name": "m9_trap" },
+      "required_opcodes": ["trap"],
+      "expected": {
+        "registers": {},
+        "memory": {},
+        "terminal": "trapped"
+      },
+      "simulator_status": "not-run"
+    },
+    {
+      "file": "scalar_integer.ptx",
+      "entry": { "kind": "entry", "name": "m9_scalar_integer" },
+      "required_opcodes": [
+        "mov",
+        "and.b32",
+        "or.b32",
+        "xor.b32",
+        "not.b32",
+        "shl.b32",
+        "shr.u32",
+        "setp.lt.u32",
+        "setp.lt.and.u32",
+        "selp.u32",
+        "cvt.s32.u32",
+        "mul.lo.u32",
+        "mad.lo.u32",
+        "div.u32",
+        "st.global.u32",
+        "exit"
+      ],
+      "expected": {
+        "registers": {
+          "%r2": { "u32": 0 },
+          "%r3": { "u32": 255 },
+          "%r4": { "u32": 255 },
+          "%r5": { "bits": "0xffffff0f", "type": "b32" },
+          "%r6": { "u32": 3840 },
+          "%r7": { "u32": 15 },
+          "%r8": { "u32": 255 },
+          "%s0": { "s32": 255 },
+          "%r10": { "u32": 1020 },
+          "%r11": { "u32": 1022 },
+          "%r12": { "u32": 511 },
+          "%p0": { "pred": true },
+          "%p1": { "pred": true }
+        },
+        "memory": { "m9_integer_out": { "u32": 511 } },
+        "terminal": "exited"
+      },
+      "simulator_status": "not-run"
+    },
+    {
+      "file": "scalar_float.ptx",
+      "entry": { "kind": "entry", "name": "m9_scalar_float" },
+      "required_opcodes": [
+        "mov",
+        "cvt.rn.f32.f64",
+        "cvt.rn.f32.u32",
+        "cvt.rzi.u32.f32",
+        "mul.rn.f32",
+        "fma.rn.f32",
+        "st.global.f32",
+        "exit"
+      ],
+      "expected": {
+        "registers": {
+          "%f0": { "f32_bits": "0x3fc00000" },
+          "%f1": { "f32_bits": "0x40000000" },
+          "%f2": { "f32_bits": "0x40400000" },
+          "%f4": { "f32_bits": "0x40d00000" },
+          "%r1": { "u32": 6 }
+        },
+        "memory": { "m9_float_out": { "f32_bits": "0x40d00000" } },
+        "terminal": "exited"
+      },
+      "simulator_status": "not-run"
+    },
+    {
+      "file": "address_conversion.ptx",
+      "entry": { "kind": "entry", "name": "m9_address_conversion" },
+      "required_opcodes": [
+        "mov.u64",
+        "cvta.global.u64",
+        "cvta.to.global.u64",
+        "mov.u32",
+        "st.global.u32",
+        "exit"
+      ],
+      "expected": {
+        "registers": {
+          "%rd0": { "address_of": "m9_address_source" },
+          "%rd1": { "equals": "%rd0" },
+          "%rd2": { "equals": "%rd0" }
+        },
+        "memory": { "m9_address_source": { "u32": 270544960 } },
+        "terminal": "exited"
+      },
+      "simulator_status": "not-run"
+    }
+  ],
+  "required_slices": {
+    "M9-I03": {
+      "opcode": "ret",
+      "forms": ["ret"],
+      "excludes": ["predicated ret", "modifier forms"]
+    },
+    "M9-I04": {
+      "opcode": "exit",
+      "forms": ["exit"],
+      "excludes": ["predicated exit", "modifier forms"]
+    },
+    "M9-I05": {
+      "opcode": "trap",
+      "forms": ["trap"],
+      "excludes": ["predicated trap", "modifier forms"]
+    },
+    "M9-I06": {
+      "opcode": "and",
+      "forms": ["and.b32"],
+      "excludes": ["predicate and", "wide/vector forms"]
+    },
+    "M9-I07": {
+      "opcode": "or",
+      "forms": ["or.b32"],
+      "excludes": ["predicate or", "wide/vector forms"]
+    },
+    "M9-I08": {
+      "opcode": "xor",
+      "forms": ["xor.b32"],
+      "excludes": ["predicate xor", "wide/vector forms"]
+    },
+    "M9-I09": {
+      "opcode": "not",
+      "forms": ["not.b32"],
+      "excludes": ["wide/vector forms"]
+    },
+    "M9-I10": {
+      "opcode": "shl",
+      "forms": ["shl.b32"],
+      "excludes": ["wide/vector forms"]
+    },
+    "M9-I11": {
+      "opcode": "shr",
+      "forms": ["shr.u32"],
+      "excludes": ["signed, wide, and vector forms"]
+    },
+    "M9-I12": {
+      "opcode": "comparison domain",
+      "forms": ["lt"],
+      "corpus_opcodes": ["setp.lt.u32"],
+      "excludes": ["other comparison operators"]
+    },
+    "M9-I13": {
+      "opcode": "boolean domain",
+      "forms": ["and", "or", "xor"],
+      "corpus_opcodes": ["setp.lt.and.u32"],
+      "excludes": ["non-setp boolean consumers"]
+    },
+    "M9-I14": {
+      "opcode": "setp",
+      "forms": ["setp.lt.u32", "setp.lt.and.u32"],
+      "excludes": ["other boolean combine, comparison, and type forms"]
+    },
+    "M9-I15": {
+      "opcode": "selp",
+      "forms": ["selp.u32"],
+      "excludes": ["other scalar and vector types"]
+    },
+    "M9-I16": {
+      "opcode": "cvt integer-to-integer",
+      "forms": ["cvt.s32.u32"],
+      "excludes": ["saturation, other widths"]
+    },
+    "M9-I17": {
+      "opcode": "cvt float-to-float",
+      "forms": ["cvt.rn.f32.f64"],
+      "excludes": ["ftz, sat, other rounding/type forms"]
+    },
+    "M9-I18": {
+      "opcode": "cvt integer-float",
+      "forms": ["cvt.rn.f32.u32", "cvt.rzi.u32.f32"],
+      "excludes": ["other rounding, saturation, and type forms"]
+    },
+    "M9-I19": {
+      "opcode": "cvta",
+      "forms": ["cvta.global.u64", "cvta.to.global.u64"],
+      "excludes": ["other state spaces and address widths"]
+    },
+    "M9-I20": {
+      "opcode": "mul integer",
+      "forms": ["mul.lo.u32"],
+      "excludes": ["hi, wide, signed, and vector forms"]
+    },
+    "M9-I21": {
+      "opcode": "mul floating",
+      "forms": ["mul.rn.f32"],
+      "excludes": ["ftz, sat, and other type/rounding forms"]
+    },
+    "M9-I22": {
+      "opcode": "mad integer",
+      "forms": ["mad.lo.u32"],
+      "excludes": ["hi, wide, carry, signed, and vector forms"]
+    },
+    "M9-I23": {
+      "opcode": "fma",
+      "forms": ["fma.rn.f32"],
+      "excludes": ["ftz, sat, and other type/rounding forms"]
+    },
+    "M9-I24": {
+      "opcode": "div",
+      "forms": ["div.u32"],
+      "excludes": ["signed, floating, and remainder forms"]
+    }
+  }
+}

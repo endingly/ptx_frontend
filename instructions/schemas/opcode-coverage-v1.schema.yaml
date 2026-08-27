@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PTX opcode coverage manifest
+type: object
+additionalProperties: false
+required:
+  - schema
+  - version
+  - opcodes
+properties:
+  schema:
+    const: ptx-opcode-coverage/v1
+  version:
+    const: 1
+  opcodes:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - opcode
+        - syntax
+        - resolved
+        - checker
+        - simulator
+      properties:
+        opcode:
+          type: string
+          pattern: "^[a-z][a-z0-9_]*$"
+        syntax:
+          $ref: "#/$defs/coverage_status"
+        resolved:
+          $ref: "#/$defs/coverage_status"
+        checker:
+          $ref: "#/$defs/coverage_status"
+        simulator:
+          $ref: "#/$defs/coverage_status"
+        m9_issues:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^M9-I(0[3-9]|1[0-9]|2[0-4])$"
+$defs:
+  coverage_status:
+    type: string
+    enum:
+      - unsupported
+      - partial
+      - supported

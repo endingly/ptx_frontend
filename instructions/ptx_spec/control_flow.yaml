@@ -182,3 +182,39 @@ instructions:
         examples:
           - ptx: "brx.idx %r0, targets;"
             valid: true
+  - opcode: ret
+    section: "9.7.13.6"
+    doc: "Return from a device function or terminate a top-level entry thread."
+    syntax: "ret"
+
+    variants:
+      - name: ret_bare
+        description: "Bare return with no modifiers or operands."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers: []
+        operands: []
+
+        examples:
+          - ptx: "ret;"
+            valid: true
+  - opcode: exit
+    section: "9.7.13.7"
+    doc: "Terminate the current thread."
+    syntax: "exit"
+
+    variants:
+      - name: exit_bare
+        description: "Thread exit with no modifiers or operands."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers: []
+        operands: []
+
+        examples:
+          - ptx: "exit;"
+            valid: true
+          - ptx: "@%p0 exit;"
+            valid: true

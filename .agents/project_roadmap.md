@@ -8,8 +8,8 @@
 > 基准日期：2026-08-27
 > 项目阶段：pre-1.0
 >
-> 当前工作分支已完成除暂停的 M8-I14 外的 M8 实现与验证；本文状态以该分支的仓库事实
-> 为准，不等待 PR 合入后再同步。
+> 当前工作分支已完成除暂停的 M8-I14 外的 M8 实现与验证，并以 machine-readable
+> opcode coverage manifest 与 simulator MVP corpus 启动 M9；本文状态以该分支的仓库事实为准。
 
 ---
 
@@ -37,8 +37,8 @@ M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停�
 #### D-02：M8 状态与近期优先级（本轮已修正）
 
 M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
-下一主线是 M9 的 machine-readable opcode manifest 与 simulator MVP corpus；M8-I14
-继续暂停。
+M9-I01～I24、M9-C01 与 M9-C02 已按 simulator MVP corpus 完成并验证；下一项为 M9-C03 MVP functional execution。
+M8-I14 继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
 
@@ -1086,7 +1086,7 @@ recovery 与 debug metadata binding 的实际边界。
 | M6 | ✅ | 完成 direct-call signature、ABI 和 call-context |
 | M7 | ✅ | 完成 indirect call 和 control-flow metadata |
 | M8 | ✅ | 完成除暂停 I14 外的 module grammar、nested scope 和 parser recovery |
-| M9 | ⬜ | 完成 simulator MVP 的核心 opcode 集 |
+| M9 | 🚧 | 完成 simulator MVP 的核心 opcode 集 |
 | M10 | ⬜ | 扩展 memory、atomic、warp、async-copy 和 matrix instruction |
 | M11 | ⬜ | 稳定公共 API、接入下游 simulator 并形成 1.0 gate |
 
@@ -1388,32 +1388,32 @@ operand/type/modifier matrix
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M9-I01 | ⬜ | 独立 | 建立 machine-readable opcode coverage manifest | 每个 opcode 标记 syntax/resolved/checker/simulator 状态 |
-| M9-I02 | ⬜ | 独立 | 建立 simulator MVP kernel corpus | 固定一组最小 kernel 和所需 opcode 清单 |
-| M9-I03 | ⬜ | 独立 | 支持 `ret` | `ret` 的完整冻结 variant slice 进入 YAML/resolver/checker |
-| M9-I04 | ⬜ | 独立 | 支持 `exit` | `exit` 的 syntax、availability 和 function-context 闭环 |
-| M9-I05 | ⬜ | 独立 | 支持 `trap` | `trap` 的 target rule 和 diagnostics 闭环 |
-| M9-I06 | ⬜ | 独立 | 支持 `and` | 单 opcode 全链条闭环 |
-| M9-I07 | ⬜ | 独立 | 支持 `or` | 单 opcode 全链条闭环 |
-| M9-I08 | ⬜ | 独立 | 支持 `xor` | 单 opcode 全链条闭环 |
-| M9-I09 | ⬜ | 独立 | 支持 `not` | 单 opcode 全链条闭环 |
-| M9-I10 | ⬜ | 独立 | 支持 `shl` | width、shift operand 和 target rule 闭环 |
-| M9-I11 | ⬜ | 独立 | 支持 `shr` | signedness、width 和 shift operand 闭环 |
-| M9-I12 | ⬜ | 独立 | 建立 comparison operator domain | comparison spelling、backend enum 和 availability 集中生成 |
-| M9-I13 | ⬜ | 独立 | 建立 boolean operator domain | `and/or/xor` predicate-combine domain 集中生成 |
-| M9-I14 | ⬜ | 独立 | 支持 `setp` | comparison、optional boolean combine 和 predicate output 闭环 |
-| M9-I15 | ⬜ | 独立 | 支持 `selp` | predicate select、source/result type 和 operand role 闭环 |
-| M9-I16 | ⬜ | 独立 | 支持 integer→integer `cvt` slice | width、signedness、round/sat rule 精确冻结 |
-| M9-I17 | ⬜ | 独立 | 支持 float→float `cvt` slice | rounding、flush/saturation 和 availability 精确冻结 |
-| M9-I18 | ⬜ | 独立 | 支持 integer↔float `cvt` slice | mixed-domain conversion 精确冻结 |
-| M9-I19 | ⬜ | 独立 | 支持 `cvta` | source/destination state space 和 address width 闭环 |
-| M9-I20 | ⬜ | 独立 | 支持 integer `mul` slice | low/wide/hi 等本 issue 冻结的 variant 闭环 |
-| M9-I21 | ⬜ | 独立 | 支持 floating `mul` slice | type、rounding 和 target availability 闭环 |
-| M9-I22 | ⬜ | 独立 | 支持 integer `mad` slice | source/result width 和 carry/hi policy 精确冻结 |
-| M9-I23 | ⬜ | 独立 | 支持 `fma` slice | type、rounding、saturation 和 target availability 闭环 |
-| M9-I24 | ⬜ | 独立 | 支持 `div` 的首个 MVP slice | integer或floating slice必须在 issue 中固定，不混合实现 |
-| M9-C01 | ⬜ | 耦合 | 统一新增 domain 和 diagnostics | comparison/boolean/rounding/type domain 无重复定义 |
-| M9-C02 | ⬜ | 耦合 | 打通 MVP kernel parse/check | corpus 中所有 kernel 可生成完整 ResolvedModule |
+| M9-I01 | ✅ | 独立 | 建立 machine-readable opcode coverage manifest | 每个 opcode 标记 syntax/resolved/checker/simulator 状态 |
+| M9-I02 | ✅ | 独立 | 建立 simulator MVP kernel corpus | 固定一组最小 kernel 和所需 opcode 清单 |
+| M9-I03 | ✅ | 独立 | 支持 `ret` | `ret` 的完整冻结 variant slice 进入 YAML/resolver/checker |
+| M9-I04 | ✅ | 独立 | 支持 `exit` | `exit` 的 syntax、availability 和 function-context 闭环 |
+| M9-I05 | ✅ | 独立 | 支持 `trap` | `trap` 的 PTX 1.0 / SM 0 无 family 限制和 diagnostics 闭环 |
+| M9-I06 | ✅ | 独立 | 支持 `and` | fixed `and.b32` 的单 opcode 全链条闭环 |
+| M9-I07 | ✅ | 独立 | 支持 `or` | fixed `or.b32` 的单 opcode 全链条闭环 |
+| M9-I08 | ✅ | 独立 | 支持 `xor` | fixed `xor.b32` 的单 opcode 全链条闭环 |
+| M9-I09 | ✅ | 独立 | 支持 `not` | fixed `not.b32` 的单 opcode 全链条闭环 |
+| M9-I10 | ✅ | 独立 | 支持 `shl` | fixed b32 width、u32 shift count 和 PTX/SM availability 闭环 |
+| M9-I11 | ✅ | 独立 | 支持 `shr` | fixed `shr.u32`、32-bit shift count 和 PTX/SM availability 闭环 |
+| M9-I12 | ✅ | 独立 | 建立 comparison operator domain | `lt` spelling、backend enum、resolution 和 availability 集中生成 |
+| M9-I13 | ✅ | 独立 | 建立 boolean operator domain | `and/or/xor` predicate-combine spelling、backend enum、resolution 和 availability 集中生成 |
+| M9-I14 | ✅ | 独立 | 支持 `setp` | frozen `lt.u32` 与 `lt.and.u32` single-predicate output 闭环 |
+| M9-I15 | ✅ | 独立 | 支持 `selp` | frozen `selp.u32` predicate select、source/result type 和 operand role 闭环 |
+| M9-I16 | ✅ | 独立 | 支持 integer→integer `cvt` slice | frozen register-only `cvt.s32.u32`，两端 equal-or-wider width rule 闭环 |
+| M9-I17 | ✅ | 独立 | 支持 float→float `cvt` slice | frozen register-only `cvt.rn.f32.f64`，PTX 1.0 / SM 13 availability 闭环 |
+| M9-I18 | ✅ | 独立 | 支持 integer↔float `cvt` slice | frozen register-only `cvt.rn.f32.u32` / `cvt.rzi.u32.f32`，PTX 1.0 / SM 0 availability 闭环 |
+| M9-I19 | ✅ | 独立 | 支持 `cvta` | frozen register-only `cvta.global.u64` / `cvta.to.global.u64`，PTX 2.0 / SM 20 availability 和 address width 闭环 |
+| M9-I20 | ✅ | 独立 | 支持 integer `mul` slice | frozen `mul.lo.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环 |
+| M9-I21 | ✅ | 独立 | 支持 floating `mul` slice | frozen register-only `mul.rn.f32`，PTX 1.0 / SM 0 availability 和 operand type 闭环 |
+| M9-I22 | ✅ | 独立 | 支持 integer `mad` slice | frozen `mad.lo.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环 |
+| M9-I23 | ✅ | 独立 | 支持 `fma` slice | frozen register-only `fma.rn.f32`，PTX 2.0 / SM 20 availability 和 operand type 闭环 |
+| M9-I24 | ✅ | 独立 | 支持 `div` 的首个 MVP slice | frozen `div.u32` register-or-immediate source、PTX 1.0 / SM 0 availability 和 operand type 闭环；zero divisor 保持 PTX unspecified behavior |
+| M9-C01 | ✅ | 耦合 | 统一新增 domain 和 diagnostics | comparison/boolean/rounding/type 复用 backend YAML 的 canonical C++ domain，生成 checker 统一走 `ModifierValueKind` / `CheckDiagnostic` 路径 |
+| M9-C02 | ✅ | 耦合 | 打通 MVP kernel parse/check | `corpus/m9/*.ptx` 均可 parse、生成完整 ResolvedModule，并在 PTX 9.3 / SM 80 下通过 checker；simulator 仍未执行 |
 | M9-C03 | ⬜ | 耦合 | 打通 MVP functional execution | adapter 能驱动 simulator 并比对 register/memory 结果 |
 
 ---
@@ -1532,10 +1532,8 @@ M11 diagnostic and CI infrastructure
 基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
 
 1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
-2. `M9-I01`：建立 machine-readable opcode coverage manifest；
-3. `M9-I02`：以 simulator MVP kernel corpus 冻结实际 opcode 需求；
-4. 再按 corpus 需求逐个实现 M9 opcode slice；
-5. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
+2. `M9-I14`：实现 `setp` 的冻结 MVP slice；
+3. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
 
 ---
 

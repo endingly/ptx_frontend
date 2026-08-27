@@ -56,6 +56,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
+        cls.database = database
         add = next(
             instruction
             for instruction in database.instructions
@@ -66,8 +67,32 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "sub"
         )
+        mul = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mul"
+        )
+        mad = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mad"
+        )
+        fma = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "fma"
+        )
+        div = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "div"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
+        cls.mul_instruction = from_instruction_spec(mul)
+        cls.mad_instruction = from_instruction_spec(mad)
+        cls.fma_instruction = from_instruction_spec(fma)
+        cls.div_instruction = from_instruction_spec(div)
         call = next(
             instruction
             for instruction in database.instructions
@@ -308,6 +333,54 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [binding.type_expression.modifier_field_id for binding in mixed.operand_layouts[0].bindings],
             ["result_type", "input_type", "result_type"],
+        )
+
+    def test_mul_merges_frozen_integer_and_floating_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.mul_instruction.variants],
+            ["RnF32", "LoU32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.mul_instruction.variants[0].fields],
+            ["rounding", "type", "dst", "src1", "src2"],
+        )
+
+    def test_mad_has_frozen_lo_u32_ternary_layout(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.mad_instruction.variants],
+            ["LoU32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.mad_instruction.variants[0].fields],
+            ["lo", "type", "dst", "src1", "src2", "src3"],
+        )
+        self.assertEqual(
+            self.mad_instruction.variants[0].operand_layouts[0].bindings[3].role,
+            ResolvedOperandRole.SOURCE,
+        )
+
+    def test_fma_has_frozen_rn_f32_ternary_layout(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.fma_instruction.variants],
+            ["RnF32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.fma_instruction.variants[0].fields],
+            ["rounding", "type", "dst", "src1", "src2", "src3"],
+        )
+        self.assertEqual(
+            self.fma_instruction.variants[0].operand_layouts[0].bindings[3].role,
+            ResolvedOperandRole.SOURCE,
+        )
+
+    def test_div_has_frozen_u32_binary_layout(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.div_instruction.variants],
+            ["U32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.div_instruction.variants[0].fields],
+            ["type", "dst", "src1", "src2"],
         )
 
     def test_add_resolved_variant_fields(self) -> None:
@@ -633,6 +706,151 @@ class ResolvedIrBuildTest(unittest.TestCase):
             (ResolvedOperandShape.BRANCH_TARGET_SET,),
         )
         self.assertEqual(variant.rule, "control_flow.brx_idx")
+
+    def test_ret_uses_a_bare_zero_operand_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ret = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ret"
+        )
+        instruction = from_instruction_spec(ret)
+
+        self.assertEqual(instruction.cpp_name, "Ret")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Bare")
+        self.assertEqual(variant.fields, ())
+        self.assertEqual(variant.operand_layouts[0].fields, ())
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_exit_uses_a_bare_zero_operand_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        exit_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "exit"
+        )
+        instruction = from_instruction_spec(exit_instruction)
+
+        self.assertEqual(instruction.cpp_name, "Exit")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Bare")
+        self.assertEqual(variant.fields, ())
+        self.assertEqual(variant.operand_layouts[0].fields, ())
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_trap_uses_a_bare_zero_operand_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        trap = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "trap"
+        )
+        instruction = from_instruction_spec(trap)
+
+        self.assertEqual(instruction.cpp_name, "Trap")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "Bare")
+        self.assertEqual(variant.fields, ())
+        self.assertEqual(variant.operand_layouts[0].fields, ())
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_and_uses_a_fixed_b32_binary_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        and_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "and"
+        )
+        instruction = from_instruction_spec(and_instruction)
+
+        self.assertEqual(instruction.cpp_name, "And")
+        self.assertEqual(len(instruction.variants), 1)
+        variant = instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "B32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in variant.operand_layouts[0].bindings],
+            ["b32", "b32", "b32"],
+        )
+
+    def test_or_uses_a_fixed_b32_binary_variant(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        or_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "or"
+        )
+        instruction = from_instruction_spec(or_instruction)
+
+        self.assertEqual(instruction.cpp_name, "Or")
+        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in instruction.variants[0].operand_layouts[0].bindings],
+            ["b32", "b32", "b32"],
+        )
+
+    def test_xor_uses_a_fixed_b32_binary_variant(self) -> None:
+        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        xor = next(item for item in database.instructions if item.opcode == "xor")
+        instruction = from_instruction_spec(xor)
+        self.assertEqual(instruction.cpp_name, "Xor")
+        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in instruction.variants[0].operand_layouts[0].bindings],
+            ["b32", "b32", "b32"],
+        )
+
+    def test_not_uses_a_fixed_b32_unary_variant(self) -> None:
+        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        not_instruction = next(item for item in database.instructions if item.opcode == "not")
+        instruction = from_instruction_spec(not_instruction)
+        self.assertEqual(instruction.cpp_name, "Not")
+        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in instruction.variants[0].operand_layouts[0].bindings],
+            ["b32", "b32"],
+        )
+
+    def test_shl_uses_fixed_b32_data_and_u32_amount(self) -> None:
+        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        shl = next(item for item in database.instructions if item.opcode == "shl")
+        instruction = from_instruction_spec(shl)
+        self.assertEqual(instruction.cpp_name, "Shl")
+        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in instruction.variants[0].operand_layouts[0].bindings],
+            ["b32", "b32", "u32"],
+        )
+
+    def test_shr_uses_fixed_u32_data_and_count(self) -> None:
+        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        shr = next(item for item in database.instructions if item.opcode == "shr")
+        instruction = from_instruction_spec(shr)
+        self.assertEqual(instruction.cpp_name, "Shr")
+        self.assertEqual(instruction.variants[0].cpp_name, "U32")
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in instruction.variants[0].operand_layouts[0].bindings],
+            ["b32", "b32", "u32"],
+        )
 
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
         database = load_codegen_database(
@@ -1209,6 +1427,50 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Add {", source)
         self.assertIn("struct Bar {", source)
         self.assertIn("struct Bra {", source)
+        self.assertIn("struct Ret {", source)
+        self.assertIn("struct Exit {", source)
+        self.assertIn("struct Trap {", source)
+        self.assertIn("struct And {", source)
+        self.assertIn("struct Or {", source)
+        self.assertIn("struct Xor {", source)
+        self.assertIn("struct Not {", source)
+        self.assertIn("struct Shl {", source)
+        self.assertIn("struct Shr {", source)
+        self.assertIn("struct Setp {", source)
+        self.assertIn("struct Selp {", source)
+        self.assertIn("struct Cvta {", source)
+        self.assertIn("struct GlobalU64 {", source)
+        self.assertIn("struct ToGlobalU64 {", source)
+        self.assertIn("struct Cvt {", source)
+        self.assertIn("struct Mul {", source)
+        self.assertIn("struct LoU32 {", source)
+        self.assertIn("struct RnF32 {", source)
+        self.assertIn("struct Mad {", source)
+        self.assertIn("struct Fma {", source)
+        self.assertIn("struct Div {", source)
+        self.assertIn("struct RnF32F64 {", source)
+        self.assertIn("struct RnF32U32 {", source)
+        self.assertIn("struct RziU32F32 {", source)
+        self.assertIn(
+            "inline static constexpr RoundingMode rounding = RoundingMode::Rn;",
+            source,
+        )
+        self.assertIn(
+            "inline static constexpr ScalarType dst_type = ScalarType::F32;",
+            source,
+        )
+        self.assertIn(
+            "inline static constexpr ScalarType src_type = ScalarType::F64;",
+            source,
+        )
+        self.assertIn(
+            "inline static constexpr RoundingMode rounding = RoundingMode::Rzi;",
+            source,
+        )
+        self.assertIn("struct LtU32 {", source)
+        self.assertIn("struct LtAndU32 {", source)
+        self.assertIn("WithLocs<ComparisonOperator> comparison;", source)
+        self.assertIn("WithLocs<BooleanOperator> boolean;", source)
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
@@ -1288,9 +1550,43 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("namespace {", source)
         self.assertIn('ast.opcode.syntax.text == "sub"', source)
         self.assertIn("resolve<Sub>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "mul"', source)
+        self.assertIn("resolve<Mul>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "mad"', source)
+        self.assertIn("resolve<Mad>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "fma"', source)
+        self.assertIn("resolve<Fma>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "div"', source)
+        self.assertIn("resolve<Div>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "bar"', source)
         self.assertIn('ast.opcode.syntax.text == "bra"', source)
         self.assertIn("resolve<Bra>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "ret"', source)
+        self.assertIn("resolve<Ret>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "exit"', source)
+        self.assertIn("resolve<Exit>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "trap"', source)
+        self.assertIn("resolve<Trap>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "and"', source)
+        self.assertIn("resolve<And>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "or"', source)
+        self.assertIn("resolve<Or>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "xor"', source)
+        self.assertIn("resolve<Xor>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "not"', source)
+        self.assertIn("resolve<Not>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "shl"', source)
+        self.assertIn("resolve<Shl>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "shr"', source)
+        self.assertIn("resolve<Shr>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "setp"', source)
+        self.assertIn("resolve<Setp>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "selp"', source)
+        self.assertIn("resolve<Selp>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "cvta"', source)
+        self.assertIn("resolve<Cvta>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "cvt"', source)
+        self.assertIn("resolve<Cvt>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "mov"', source)
         self.assertIn("resolve<Mov>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ld"', source)
@@ -1317,6 +1613,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".target = resolved_operand<ResolvedBranchTarget>", source)
         self.assertIn("CheckResult check<Bra>(", source)
+        self.assertIn("std::expected<Ret, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Ret>(", source)
+        self.assertIn("std::expected<Exit, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Exit>(", source)
+        self.assertIn("std::expected<Trap, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Trap>(", source)
 
     def test_generate_data_movement_resolved_ir_source(self) -> None:
         database = load_codegen_database(
@@ -1433,6 +1735,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_modifier_value_availability(", source)
         self.assertNotIn("check_memory_consistency(", source)
         self.assertIn("Add::get_checker_descriptor(), \"IntegerNoSat\"", source)
+        self.assertIn("std::expected<And, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<And>(", source)
+        self.assertIn("std::expected<Or, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Or>(", source)
+        self.assertIn("std::expected<Xor, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Xor>(", source)
+        self.assertIn("std::expected<Not, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Not>(", source)
+        self.assertIn("std::expected<Shl, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Shl>(", source)
+        self.assertIn("std::expected<Shr, ResolveDiagnostic>", source)
+        self.assertIn("CheckResult check<Shr>(", source)
         self.assertNotIn("struct Bar {", source)
 
     def test_generate_private_resolved_descriptor_source(self) -> None:
@@ -1619,6 +1933,132 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".scalar_type = ScalarType::U32,", source)
         self.assertIn(".scalar_type = ScalarType::U64,", source)
         self.assertIn(".minimum_ptx_version = {2, 0},", source)
+
+    def test_comparison_modifier_domain_emits_typed_availability(self) -> None:
+        specs = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_comparison",
+                                "availability": {"ptx": "1.0"},
+                                "modifiers": [
+                                    {
+                                        "name": "comparison",
+                                        "kind": "comparison",
+                                        "presence": "required",
+                                        "values": [
+                                            {
+                                                "value": "lt",
+                                                "availability": {"sm": 20},
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        resolved = from_instruction_spec(specs[0])
+        field = resolved.variants[0].modifier_fields[0]
+        self.assertEqual(field.value_kind, ResolvedValueKind.COMPARISON_OPERATOR)
+        self.assertEqual(field.cpp_type, "WithLocs<ComparisonOperator>")
+        self.assertEqual(
+            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            "ComparisonOperator",
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::ComparisonOperator,",
+            source,
+        )
+        self.assertIn(".comparison_operator = ComparisonOperator::Lt,", source)
+
+    def test_boolean_modifier_domain_emits_typed_availability(self) -> None:
+        specs = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_boolean",
+                                "availability": {"ptx": "1.0"},
+                                "modifiers": [
+                                    {
+                                        "name": "boolean",
+                                        "kind": "boolean_op",
+                                        "presence": "required",
+                                        "values": [
+                                            {
+                                                "value": "xor",
+                                                "availability": {"sm": 20},
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        resolved = from_instruction_spec(specs[0])
+        field = resolved.variants[0].modifier_fields[0]
+        self.assertEqual(field.value_kind, ResolvedValueKind.BOOLEAN_OPERATOR)
+        self.assertEqual(field.cpp_type, "WithLocs<BooleanOperator>")
+        self.assertEqual(
+            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            "BooleanOperator",
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::BooleanOperator,",
+            source,
+        )
+        self.assertIn(".boolean_operator = BooleanOperator::Xor,", source)
+
+    def test_semantic_modifier_domains_share_generated_availability_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "resolved_ir_test.gen.cpp"
+            generate_resolved_ir_source(
+                self.database,
+                category="arithmetic",
+                output_path=source_path,
+            )
+            source = source_path.read_text(encoding="utf-8")
+
+        self.assertIn("check_modifier_value_availability(", source)
 
     def test_rejects_token_override_for_value_set_reference(self) -> None:
         with self.assertRaisesRegex(ValueError, "value-set reference"):

@@ -257,6 +257,31 @@ TEST(ResolvedModule, ChecksOrB32RegisterCompatibilityAndWidth) {
             invalid_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksXorB32RegisterCompatibilityAndWidth) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %u; .reg .s32 %s; .reg .b32 %b; xor.b32 %b, %u, %s; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(
+                  std::get<Xor>(valid->functions.front().body.front()),
+                  checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b; .reg .u16 %h; xor.b32 %b, %h, %b; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Xor>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Xor::B32>(instruction.variant);
+  const auto checked = checker::check(
+      instruction, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(checked.has_value());
+  ASSERT_EQ(checked.error().size(), 1u);
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

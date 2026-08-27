@@ -550,6 +550,15 @@ TEST(ResolveOr, SelectsB32VariantAndAcceptsImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(or_b32->src2.value));
 }
 
+TEST(ResolveXor, SelectsB32VariantAndAcceptsImmediateSource) {
+  const auto ast = parse_instruction("xor.b32 %r0, %r1, 1;");
+  const auto resolved = resolve<Xor>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* xor_b32 = std::get_if<Xor::B32>(&resolved->variant);
+  ASSERT_NE(xor_b32, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(xor_b32->src2.value));
+}
+
 TEST(ResolveAdd, RejectsMismatchedOpcode) {
   const auto ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
 
@@ -598,6 +607,11 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto or_instruction = resolveInstruction(or_ast);
   ASSERT_TRUE(or_instruction.has_value()) << or_instruction.error().message;
   EXPECT_TRUE(std::holds_alternative<Or>(*or_instruction));
+
+  const auto xor_ast = parse_instruction("xor.b32 %r0, %r1, %r2;");
+  const auto xor_instruction = resolveInstruction(xor_ast);
+  ASSERT_TRUE(xor_instruction.has_value()) << xor_instruction.error().message;
+  EXPECT_TRUE(std::holds_alternative<Xor>(*xor_instruction));
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {

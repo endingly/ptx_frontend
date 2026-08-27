@@ -83,9 +83,9 @@ opcodes:
     simulator: unsupported
     m9_issues: [M9-I07]
   - opcode: xor
-    syntax: unsupported
-    resolved: unsupported
-    checker: unsupported
+    syntax: partial
+    resolved: partial
+    checker: partial
     simulator: unsupported
     m9_issues: [M9-I08]
   - opcode: not

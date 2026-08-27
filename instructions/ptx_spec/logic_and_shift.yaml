@@ -74,3 +74,27 @@ instructions:
             valid: true
           - ptx: "or.b32 %r0, %r1, 1;"
             valid: true
+  - opcode: xor
+    section: "9.7.8.3"
+    doc: "Bitwise XOR of two 32-bit operands."
+    syntax: "xor.b32 dst, src1, src2"
+    operands: $binary_bitwise
+
+    variants:
+      - name: xor_b32
+        description: "32-bit bitwise XOR with register or immediate sources."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+
+        examples:
+          - ptx: "xor.b32 %r0, %r1, %r2;"
+            valid: true
+          - ptx: "xor.b32 %r0, %r1, 1;"
+            valid: true

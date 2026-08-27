@@ -61,6 +61,21 @@ binding 负责。module resolution 会把有效 prototype 转为与 function 相
 并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
 availability 仍留给后续工作。
 
+## Entry resource constraint
+
+对已支持的 entry-header `.maxnreg`、`.maxntid`、`.reqntid` 与 `.minnctapersm`，本 pass
+以已声明的 module `.version` 检查最低 PTX 版本（依次为 1.3、1.3、2.1 与 2.0）。四者均支持所有 SM，
+故此处不额外检查 `.target`。同一 entry 中 `.reqntid` 与 `.maxntid` 互斥；诊断指向后出现的
+directive，并以先出现的 range 为上下文。单独的 `.minnctapersm` 在 PTX 中是 warning 而非 error；
+warning severity、backend resource feasibility 与数值上限仍不属于本 pass。
+
+## Debug metadata 边界
+
+`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复 file index 幂等，
+`.loc` file reference 必须解析，`function_name` 只能标识 `.debug_str` 自身或其中 raw label。
+本 declaration pass 不增加 DWARF payload expression、source attachment 或 resource
+feasibility semantic。
+
 ## 当前边界
 
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module

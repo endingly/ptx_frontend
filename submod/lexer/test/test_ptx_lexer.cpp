@@ -266,6 +266,62 @@ TEST(PtxLexerNew, ModuleDirectivesRemainDedicatedTokens) {
   expect_token(toks[5], TokenKind::Decimal, "64");
 }
 
+TEST(PtxLexerNew, KernelResourceDirectivesRemainDedicatedTokens) {
+  const auto toks = lex_all(
+      ".maxnreg 32 .maxntid 16, 8 .reqntid 64 .minnctapersm 2");
+
+  ASSERT_EQ(toks.size(), 10u);
+  expect_token(toks[0], TokenKind::DotMaxnreg, ".maxnreg");
+  expect_token(toks[2], TokenKind::DotMaxntid, ".maxntid");
+  expect_token(toks[6], TokenKind::DotReqntid, ".reqntid");
+  expect_token(toks[8], TokenKind::DotMinnctapersm, ".minnctapersm");
+}
+
+TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
+  const auto toks = lex_all(
+      ".file 0 \"source.ptx\", 0, 18446744073709551615U");
+
+  ASSERT_EQ(toks.size(), 7u);
+  expect_token(toks[0], TokenKind::DotFile, ".file");
+  expect_token(toks[1], TokenKind::Decimal, "0");
+  expect_token(toks[2], TokenKind::String, "\"source.ptx\"");
+  expect_token(toks[3], TokenKind::Comma, ",");
+  expect_token(toks[4], TokenKind::Decimal, "0");
+  expect_token(toks[5], TokenKind::Comma, ",");
+  expect_token(toks[6], TokenKind::Decimal, "18446744073709551615U");
+}
+
+TEST(PtxLexerNew, SectionDirectiveRemainsDedicated) {
+  const auto toks = lex_all(".section .debug_str { .b8 0 }");
+
+  ASSERT_EQ(toks.size(), 6u);
+  expect_token(toks[0], TokenKind::DotSection, ".section");
+  expect_token(toks[1], TokenKind::DotIdent, ".debug_str");
+}
+
+TEST(PtxLexerNew, PragmaDirectiveRemainsDedicated) {
+  const auto toks = lex_all(".pragma \"nounroll\", \"frequency 32\";");
+
+  ASSERT_EQ(toks.size(), 5u);
+  expect_token(toks[0], TokenKind::DotPragma, ".pragma");
+  expect_token(toks[1], TokenKind::String, "\"nounroll\"");
+  expect_token(toks[2], TokenKind::Comma, ",");
+  expect_token(toks[3], TokenKind::String, "\"frequency 32\"");
+  expect_token(toks[4], TokenKind::Semicolon, ";");
+}
+
+TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
+  const auto toks = lex_all(
+      ".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");
+
+  ASSERT_EQ(toks.size(), 14u);
+  expect_token(toks[0], TokenKind::DotLoc, ".loc");
+  expect_token(toks[5], TokenKind::Ident, "function_name");
+  expect_token(toks[6], TokenKind::DotIdent, ".debug_str");
+  expect_token(toks[7], TokenKind::Plus, "+");
+  expect_token(toks[10], TokenKind::Ident, "inlined_at");
+}
+
 TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak");
 

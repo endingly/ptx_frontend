@@ -171,5 +171,98 @@ done:
     if (!checked)
       return 20;
   }
+
+  constexpr std::string_view directive_corpus = R"ptx(
+.version 9.3
+.target sm_30
+.address_size 64
+.file 0x1U "directive-corpus.ptx"
+.section .debug_str { debug_name: .b8 0; };
+.pragma "module";
+.entry directives() .pragma "entry"; .maxnreg 32 .maxntid 32, 1, 1
+    .minnctapersm 1 {
+  .reg .u32 %r0, %r1;
+  .loc 0x1U 1 0
+  {
+    .pragma "nested";
+    .loc 1 2 0, function_name debug_name, inlined_at 1 1 0;
+    add.u32 %r0, %r1, 1;
+  }
+}
+)ptx";
+  ptx_frontend::PtxCstParser directive_cst_parser(directive_corpus);
+  const auto directive_cst = directive_cst_parser.parseModule();
+  if (!directive_cst || !directive_cst.diagnostics.empty() ||
+      directive_cst->sourceText() != directive_corpus) {
+    return 21;
+  }
+  ptx_frontend::PtxSyntaxParser directive_parser(directive_corpus);
+  const auto directive_ast = directive_parser.parseModule();
+  if (!directive_ast || !directive_ast.diagnostics.empty())
+    return 22;
+  const auto directive_symbols =
+      ptx_frontend::binding::bindSymbols(*directive_ast);
+  if (!directive_symbols.diagnostics.empty() ||
+      !ptx_frontend::declaration_semantics::checkDeclarations(
+          *directive_ast, directive_symbols.table)
+           .empty()) {
+    return 23;
+  }
+  const auto directive_resolved =
+      ptx_frontend::resolved_ir::resolveModule(*directive_ast);
+  if (!directive_resolved || directive_resolved->functions.size() != 1 ||
+      directive_resolved->functions.front().body.size() != 1 ||
+      !std::holds_alternative<ptx_frontend::resolved_ir::Add>(
+          directive_resolved->functions.front().body.front())) {
+    return 24;
+  }
+  const ptx_frontend::resolved_ir::checker::Context directive_context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 30},
+      .instruction_range = {},
+  };
+  if (!ptx_frontend::resolved_ir::checker::check(
+          std::get<ptx_frontend::resolved_ir::Add>(
+              directive_resolved->functions.front().body.front()),
+          directive_context)) {
+    return 25;
+  }
+
+  ptx_frontend::PtxSyntaxParser overflow_parser(
+      ".file 18446744073709551616U \"overflow.ptx\"\n"
+      ".entry overflow() { }");
+  const auto overflow_ast = overflow_parser.parseModule();
+  if (!overflow_ast || !overflow_ast.diagnostics.empty())
+    return 26;
+  const auto overflow_resolved =
+      ptx_frontend::resolved_ir::resolveModule(*overflow_ast);
+  if (overflow_resolved || overflow_resolved.error().size() != 1 ||
+      overflow_resolved.error().front().message !=
+          "Debug file index must be an unsigned 64-bit integer.") {
+    return 27;
+  }
+
+  constexpr std::string_view unknown_directive_corpus = R"ptx(
+.version 9.3
+.language "C++";
+.entry after_unknown() { .reg .u32 %r0, %r1; add.u32 %r0, %r1, 1; }
+)ptx";
+  ptx_frontend::PtxCstParser unknown_cst_parser(unknown_directive_corpus);
+  const auto unknown_cst = unknown_cst_parser.parseModule();
+  if (!unknown_cst || unknown_cst.diagnostics.size() != 1 ||
+      unknown_cst->sourceText() != unknown_directive_corpus ||
+      unknown_cst.diagnostics.front().message !=
+          "expected module directive, variable declaration, or function") {
+    return 28;
+  }
+  ptx_frontend::PtxSyntaxParser unknown_parser(unknown_directive_corpus);
+  const auto unknown_ast = unknown_parser.parseModule();
+  if (!unknown_ast || unknown_ast.diagnostics.size() != 1 ||
+      unknown_ast.diagnostics.front().message !=
+          unknown_cst.diagnostics.front().message ||
+      unknown_ast->items.size() != 2 ||
+      !std::holds_alternative<ptx_frontend::syntax_ast::AstFunction>(
+          unknown_ast->items.back())) {
+    return 29;
+  }
   return 0;
 }

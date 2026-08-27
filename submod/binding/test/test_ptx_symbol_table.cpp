@@ -37,7 +37,7 @@ start:
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -119,12 +119,117 @@ start:
             binding::SymbolKind::Label);
 }
 
+TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
+  constexpr std::string_view source = R"ptx(
+.func callee();
+.entry kernel() {
+  .reg .u32 %value;
+  {
+    .reg .u32 %value;
+    .reg .u64 %function_pointer;
+    inner_label:
+    prototype: .callprototype _;
+    targets: .calltargets callee;
+    branches: .branchtargets inner_label;
+    add.u32 %value, %value, %value;
+    call %function_pointer, prototype;
+    brx.idx %value, branches;
+    bra inner_label;
+  }
+  { .reg .u32 %sibling; }
+  add.u32 %value, %value, %value;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  const auto binding_result = binding::bindSymbols(*module);
+  ASSERT_TRUE(binding_result.diagnostics.empty());
+
+  const auto kernel =
+      binding_result.table.lookup(binding_result.table.moduleScope(), "kernel");
+  ASSERT_TRUE(kernel.has_value());
+  const auto function_scope =
+      *binding_result.table.symbol(kernel->symbol).owned_scope;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items[1]);
+  const auto& first_block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
+      function.body[1]);
+  const auto& second_block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
+      function.body[2]);
+  const auto inner_scope =
+      binding_result.table.blockScope(function_scope, first_block.range);
+  const auto sibling_scope =
+      binding_result.table.blockScope(function_scope, second_block.range);
+  ASSERT_TRUE(inner_scope.has_value());
+  ASSERT_TRUE(sibling_scope.has_value());
+  EXPECT_EQ(binding_result.table.scope(*inner_scope).kind,
+            binding::ScopeKind::Block);
+  EXPECT_EQ(binding_result.table.scope(*inner_scope).parent, function_scope);
+
+  const auto outer_value = binding_result.table.lookup(function_scope, "%value");
+  const auto inner_value = binding_result.table.lookup(*inner_scope, "%value");
+  ASSERT_TRUE(outer_value.has_value());
+  ASSERT_TRUE(inner_value.has_value());
+  EXPECT_NE(outer_value->symbol, inner_value->symbol);
+  EXPECT_FALSE(binding_result.table.lookup(function_scope, "%sibling"));
+  EXPECT_FALSE(binding_result.table.lookup(*inner_scope, "%sibling"));
+  EXPECT_TRUE(binding_result.table.lookup(*sibling_scope, "%sibling"));
+  EXPECT_EQ(binding_result.table.lookup(*sibling_scope, "%value")->symbol,
+            outer_value->symbol);
+  const auto expect_add_references = [&](const syntax_ast::AstInstruction& add,
+                                         binding::SymbolId expected) {
+    for (const auto& operand : add.operands) {
+      const auto* identifier =
+          std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+      ASSERT_NE(identifier, nullptr);
+      const auto reference = std::ranges::find_if(
+          binding_result.table.references(), [&](const auto& candidate) {
+            return candidate.kind == binding::ReferenceKind::InstructionOperand &&
+                   candidate.range == identifier->syntax.range;
+          });
+      ASSERT_NE(reference, binding_result.table.references().end());
+      ASSERT_TRUE(reference->target.has_value());
+      EXPECT_EQ(reference->target->symbol, expected);
+    }
+  };
+  expect_add_references(
+      std::get<syntax_ast::AstInstruction>(first_block.body[6]),
+      inner_value->symbol);
+  expect_add_references(
+      std::get<syntax_ast::AstInstruction>(function.body[3]),
+      outer_value->symbol);
+
+  for (const auto [name, kind] : std::initializer_list<
+           std::pair<std::string_view, binding::SymbolKind>>{
+           {"inner_label", binding::SymbolKind::Label},
+           {"prototype", binding::SymbolKind::CallPrototype},
+           {"targets", binding::SymbolKind::CallTargetSet},
+           {"branches", binding::SymbolKind::BranchTargetSet}}) {
+    const auto symbol = binding_result.table.lookup(function_scope, name);
+    ASSERT_TRUE(symbol.has_value()) << name;
+    EXPECT_EQ(binding_result.table.symbol(symbol->symbol).kind, kind);
+    EXPECT_EQ(binding_result.table.symbol(symbol->symbol).scope, function_scope);
+  }
+  for (const auto [name, kind] : std::initializer_list<
+           std::pair<std::string_view, binding::ReferenceKind>>{
+           {"prototype", binding::ReferenceKind::CallTargetSet},
+           {"branches", binding::ReferenceKind::BranchTargetSet},
+           {"inner_label", binding::ReferenceKind::BranchTarget}}) {
+    const auto* reference = findReference(binding_result.table, name, kind);
+    ASSERT_NE(reference, nullptr) << name;
+    ASSERT_TRUE(reference->target.has_value()) << name;
+    EXPECT_EQ(binding_result.table.symbol(reference->target->symbol).scope,
+              function_scope);
+  }
+}
+
 TEST(PtxSymbolTable, SupportsParameterizedNamesOutsideRegisterSpace) {
   PtxSyntaxParser parser(
       ".global .u32 item<2>; .entry kernel() { .reg .u32 %r0; "
       "ld.u32 %r0, item1; }");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -145,7 +250,7 @@ TEST(PtxSymbolTable, DiagnosesTrulyUnresolvedReferences) {
   PtxSyntaxParser parser(
       ".entry kernel() { .reg .u32 %r<1>; add.u32 %r0, %missing, 1; }");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -177,7 +282,7 @@ TEST(PtxSymbolTable, ClassifiesSpecialRegistersAndExternalSymbols) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -233,7 +338,7 @@ again:
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -262,7 +367,7 @@ TEST(PtxSymbolTable, ClassifiesLocalCallParametersInTheirFunctionScope) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
   ASSERT_TRUE(binding_result.diagnostics.empty());
@@ -304,7 +409,7 @@ TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto first = binding::bindSymbols(*module);
   const auto second = binding::bindSymbols(*module);
@@ -364,7 +469,7 @@ TEST(PtxSymbolTable, DiagnosesNonCallMetadataTargetSetReference) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -386,7 +491,7 @@ TEST(PtxSymbolTable, DiagnosesInvalidIndexedBranchTargetSetReference) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -412,7 +517,7 @@ TEST(PtxSymbolTable, DiagnosesInvalidCallAndBranchTargetKinds) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -502,7 +607,7 @@ loop:
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -550,7 +655,7 @@ TEST(PtxSymbolTable, DiagnosesOverlappingParameterizedNameSets) {
 )ptx";
   PtxSyntaxParser parser(source);
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
 
   const auto binding_result = binding::bindSymbols(*module);
 
@@ -565,6 +670,129 @@ TEST(PtxSymbolTable, DiagnosesOverlappingParameterizedNameSets) {
     EXPECT_NE(diagnostic.message.find("overlapping symbol names"),
               std::string::npos);
   }
+}
+
+TEST(PtxSymbolTable, BindsDebugMetadataInItsOwnNamespace) {
+  constexpr std::string_view source = R"ptx(
+.file 1 "first.ptx"
+.file 0x1U "same-id.ptx"
+.section .debug_str {
+debug_name:
+  .b8 0;
+};
+.section .debug_str { };
+.global .u32 debug_name;
+.entry kernel() {
+  .loc 0x1U 7 0
+  {
+    .loc 1 8 0, function_name .debug_str+0, inlined_at 0x1U 1 0;
+    .loc 1 9 0, function_name debug_name, inlined_at 1 2 0;
+  }
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_TRUE(binding_result.diagnostics.empty());
+  const auto& table = binding_result.table;
+  const auto debug_files = std::ranges::count_if(
+      table.symbols(), [](const auto& symbol) {
+        return symbol.kind == binding::SymbolKind::DebugFile;
+      });
+  EXPECT_EQ(debug_files, 1u);
+  const auto debug_file = std::ranges::find_if(
+      table.symbols(), [](const auto& symbol) {
+        return symbol.kind == binding::SymbolKind::DebugFile;
+      });
+  ASSERT_NE(debug_file, table.symbols().end());
+  EXPECT_EQ(debug_file->name, "1");
+
+  const auto* first_file = findReference(
+      table, "0x1U", binding::ReferenceKind::DebugFile);
+  const auto* inline_file = findReference(
+      table, "1", binding::ReferenceKind::DebugFile);
+  ASSERT_NE(first_file, nullptr);
+  ASSERT_NE(inline_file, nullptr);
+  ASSERT_TRUE(first_file->target.has_value());
+  ASSERT_TRUE(inline_file->target.has_value());
+  EXPECT_EQ(first_file->target->symbol, debug_file->id);
+  EXPECT_EQ(inline_file->target->symbol, debug_file->id);
+
+  const auto* section_name = findReference(
+      table, ".debug_str", binding::ReferenceKind::DebugFunctionName);
+  const auto* label_name = findReference(
+      table, "debug_name", binding::ReferenceKind::DebugFunctionName);
+  ASSERT_NE(section_name, nullptr);
+  ASSERT_NE(label_name, nullptr);
+  ASSERT_TRUE(section_name->target.has_value());
+  ASSERT_TRUE(label_name->target.has_value());
+  EXPECT_EQ(table.symbol(section_name->target->symbol).kind,
+            binding::SymbolKind::DebugStringLabel);
+  EXPECT_EQ(table.symbol(label_name->target->symbol).kind,
+            binding::SymbolKind::DebugStringLabel);
+
+  const auto ordinary = table.lookup(table.moduleScope(), "debug_name");
+  ASSERT_TRUE(ordinary.has_value());
+  EXPECT_EQ(table.symbol(ordinary->symbol).kind,
+            binding::SymbolKind::Variable);
+  EXPECT_FALSE(table.lookup(table.moduleScope(), ".debug_str").has_value());
+}
+
+TEST(PtxSymbolTable, DiagnosesUnresolvedDebugMetadataAndDuplicateDebugLabel) {
+  constexpr std::string_view source = R"ptx(
+.file 1 "known.ptx"
+.section .debug_info { other_name: };
+.section .debug_str { duplicate: duplicate: };
+.entry kernel() {
+  .loc 2 1 0
+  .loc 1 2 0, function_name other_name, inlined_at 1 1 0;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  EXPECT_EQ(std::ranges::count_if(
+                binding_result.diagnostics, [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         binding::BindDiagnosticKind::UnresolvedReference;
+                }),
+            2);
+  EXPECT_EQ(std::ranges::count_if(
+                binding_result.diagnostics, [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         binding::BindDiagnosticKind::DuplicateSymbol;
+                }),
+            1);
+  const auto* file = findReference(binding_result.table, "2",
+                                   binding::ReferenceKind::DebugFile);
+  const auto* name = findReference(binding_result.table, "other_name",
+                                   binding::ReferenceKind::DebugFunctionName);
+  ASSERT_NE(file, nullptr);
+  ASSERT_NE(name, nullptr);
+  EXPECT_FALSE(file->target.has_value());
+  EXPECT_FALSE(name->target.has_value());
+}
+
+TEST(PtxSymbolTable, DiagnosesDebugFileIndexOutsideUint64) {
+  PtxSyntaxParser parser(
+      ".file 18446744073709551616U \"too-large.ptx\"\n"
+      ".entry kernel() { }");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::InvalidDebugFileId);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Debug file index must be an unsigned 64-bit integer.");
 }
 
 }  // namespace

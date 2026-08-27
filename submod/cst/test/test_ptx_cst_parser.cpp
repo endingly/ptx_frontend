@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -11,12 +13,16 @@ namespace {
 using syntax_cst::CstAddress;
 using syntax_cst::CstBranchTarget;
 using syntax_cst::CstBranchTargetSet;
+using syntax_cst::CstBlock;
 using syntax_cst::CstCallParameterList;
 using syntax_cst::CstCallTarget;
 using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstCallPrototype;
 using syntax_cst::CstCallTargets;
 using syntax_cst::CstBranchTargets;
+using syntax_cst::CstRecoveryKind;
+using syntax_cst::CstRecoveryNode;
+using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
@@ -27,7 +33,8 @@ TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   PtxCstParser parser(source);
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_TRUE(result.diagnostics.empty());
 
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
@@ -50,12 +57,70 @@ TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
 }
 
+TEST(PtxCstParser, RoundTripsUnmodifiedModuleTokenBufferByteForByte) {
+  constexpr std::string_view source = R"ptx(// leading comment
+.version 9.3
+.file 0 "round_trip.ptx"
+.section .debug_info { /* raw payload */ .b8 0; };
+.pragma "module";
+.entry kernel() .pragma "header"; .maxnreg 32 {
+  .pragma "body";
+  { add.u32 %r0, %r1, %r2; }
+}
+// trailing comment
+   )ptx";
+  PtxCstParser parser(source);
+
+  const auto first = parser.parseModule();
+
+  ASSERT_TRUE(first.has_value()) << first.diagnostics.front().message;
+  EXPECT_TRUE(first.diagnostics.empty());
+  EXPECT_EQ(first->sourceText(), source);
+
+  PtxCstParser reparsing(first->sourceText());
+  const auto second = reparsing.parseModule();
+
+  ASSERT_TRUE(second.has_value()) << second.diagnostics.front().message;
+  EXPECT_TRUE(second.diagnostics.empty());
+  EXPECT_EQ(second->sourceText(), source);
+
+  const auto first_eof = [](const auto& tokens) {
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+      if (tokens[index].kind == TokenKind::Eof)
+        return index;
+    }
+    return tokens.size();
+  };
+  const std::size_t first_end = first_eof(first->tokens);
+  const std::size_t second_end = first_eof(second->tokens);
+  ASSERT_TRUE(first_end < first->tokens.size());
+  ASSERT_TRUE(second_end < second->tokens.size());
+  ASSERT_EQ(first_end, second_end);
+
+  for (std::size_t index = 0; index <= first_end; ++index) {
+    const auto& left = first->tokens[index];
+    const auto& right = second->tokens[index];
+    EXPECT_EQ(left.kind, right.kind);
+    EXPECT_EQ(left.text, right.text);
+    ASSERT_EQ(left.leading_trivia.size(), right.leading_trivia.size());
+    for (std::size_t trivia = 0; trivia < left.leading_trivia.size(); ++trivia) {
+      EXPECT_EQ(left.leading_trivia[trivia].kind,
+                right.leading_trivia[trivia].kind);
+      EXPECT_EQ(left.leading_trivia[trivia].text, right.leading_trivia[trivia].text);
+    }
+  }
+  const auto& final_trivia = first->tokens[first_end].leading_trivia;
+  ASSERT_EQ(final_trivia.size(), 3u);
+  EXPECT_EQ(final_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(final_trivia.back().text, "\n   ");
+}
+
 TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {
   PtxCstParser parser("ld.weak.u32 %r0, [%rd0];");
 
   const auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->modifiers.size(), 2u);
@@ -67,7 +132,7 @@ TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
   PtxCstParser parser("mov.b32 [%rd1-4], %r2.x, {%r3, 1};");
 
   auto result = parser.parseInstruction();
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->operands.size(), 3u);
@@ -98,7 +163,7 @@ TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
 
   auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
@@ -131,7 +196,7 @@ TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
 
   auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->operands.size(), 1u);
@@ -146,7 +211,7 @@ TEST(PtxCstParser, RetainsIndexedBranchTargetList) {
 
   const auto result = parser.parseInstruction();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto* instruction = result->instruction();
   ASSERT_NE(instruction, nullptr);
@@ -179,8 +244,36 @@ TEST(PtxCstParser, RejectsMalformedCallAndBranchLayouts) {
     PtxCstParser parser(source);
     const auto result = parser.parseInstruction();
     ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
+}
+
+TEST(PtxCstParser, ReportsSingleDiagnosticWithoutAValue) {
+  PtxCstParser parser("add.u32 %r1, %r2, %r3");
+
+  const auto result = parser.parseInstruction();
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{1, 22}, SourcePos{1, 22}}));
+}
+
+TEST(ParseResult, RetainsAValueAndOrderedDiagnostics) {
+  const ResultWithDiagnostics<int, CstParseDiagnostic> result{
+      .value = 7,
+      .diagnostics = {
+          {{{1, 1}, {1, 2}}, "first"},
+          {{{2, 1}, {2, 2}}, "second"},
+      },
+  };
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 7);
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].message, "first");
+  EXPECT_EQ(result.diagnostics[1].message, "second");
 }
 
 TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
@@ -196,7 +289,7 @@ TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function = std::get<syntax_cst::CstFunction>(
       result->module()->items.front());
@@ -235,8 +328,9 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
 
@@ -252,7 +346,7 @@ TEST(PtxCstParser, RetainsFunctionLocalCallTargetsStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function = std::get<syntax_cst::CstFunction>(
       result->module()->items.front());
@@ -289,8 +383,9 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallTargetsGrammar) {
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
 
@@ -304,7 +399,7 @@ TEST(PtxCstParser, RetainsFunctionLocalBranchTargetsStructure) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   const auto& function = std::get<syntax_cst::CstFunction>(
       result->module()->items.front());
@@ -343,8 +438,9 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalBranchTargetsGrammar) {
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source;
-    EXPECT_EQ(result.error().message, message) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
   }
 }
 
@@ -353,7 +449,7 @@ TEST(PtxCstParser, RejectsTrailingSignificantInput) {
 
   auto result = parser.parseInstruction();
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().message, "expected end of input");
+  EXPECT_EQ(result.diagnostics.front().message, "expected end of input");
 }
 
 TEST(CstFile, DistinguishesInstructionFragmentAndModuleRoots) {
@@ -381,7 +477,7 @@ TEST(PtxCstParser, ParsesAndRoundTripsMinimalModule) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
   ASSERT_NE(result->module(), nullptr);
   EXPECT_EQ(result->instruction(), nullptr);
@@ -418,6 +514,314 @@ TEST(PtxCstParser, ParsesAndRoundTripsMinimalModule) {
       "ret");
 }
 
+TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
+  constexpr std::string_view source = R"ptx(.file 0x1U "source.ptx"
+.file 1 "large.ptx", 0, 18446744073709551615U;
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& items = result->module()->items;
+  ASSERT_EQ(items.size(), 2u);
+  const auto& short_form =
+      std::get<syntax_cst::CstModuleDirective>(items[0]);
+  EXPECT_EQ(result->token(short_form.keyword).kind, TokenKind::DotFile);
+  ASSERT_EQ(short_form.arguments.size(), 2u);
+  EXPECT_EQ(result->token(short_form.arguments[0]).kind, TokenKind::Hex);
+  EXPECT_EQ(result->token(short_form.arguments[0]).text, "0x1U");
+  EXPECT_TRUE(short_form.separators.empty());
+  EXPECT_FALSE(short_form.terminator.has_value());
+  EXPECT_EQ(result->token(short_form.arguments[1]).text, "\"source.ptx\"");
+
+  const auto& full_form =
+      std::get<syntax_cst::CstModuleDirective>(items[1]);
+  ASSERT_EQ(full_form.arguments.size(), 4u);
+  ASSERT_EQ(full_form.separators.size(), 2u);
+  ASSERT_TRUE(full_form.terminator.has_value());
+  EXPECT_EQ(result->token(full_form.arguments[2]).text, "0");
+  EXPECT_EQ(result->token(full_form.arguments[3]).text,
+            "18446744073709551615U");
+  EXPECT_EQ(result->sourceRange(full_form.token_range).start.line, 2u);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrNonlocalFileDirectives) {
+  for (const std::string_view source : {
+           ".file 0 \"source.ptx\", 0",
+           ".file 0 \"source.ptx\", , 0",
+           ".file 0 source.ptx",
+           ".entry kernel() { .file 0 \"source.ptx\" }",
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsOutermostSectionPayload) {
+  constexpr std::string_view source = R"ptx(.section .debug_info {
+Lbegin:
+  .b8 -128, 0, 255
+  .b16 -32768, 65535
+  .b32 -2147483648, 4294967295U
+  .b64 -9223372036854775808, 18446744073709551615U
+  .b32 .debug_abbrev
+  .b64 Lbegin
+  .b32 .debug_str+0x4
+  .b64 Lbegin+12
+  .b32 Lend-Lbegin
+  .b64 Lbegin-Lend
+Lend:
+};
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& section = std::get<syntax_cst::CstSectionDirective>(
+      result->module()->items.front());
+  EXPECT_EQ(result->token(section.directive).kind, TokenKind::DotSection);
+  EXPECT_EQ(result->token(section.name).text, ".debug_info");
+  EXPECT_EQ(result->token(section.left_brace).kind, TokenKind::LBrace);
+  EXPECT_EQ(result->token(section.right_brace).kind, TokenKind::RBrace);
+  ASSERT_TRUE(section.terminator.has_value());
+  ASSERT_EQ(section.payload.size(), 46u);
+  EXPECT_EQ(result->token(section.payload.front()).text, "Lbegin");
+  EXPECT_EQ(result->token(section.payload.at(1)).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(section.payload.at(29)).text, ".debug_str");
+  EXPECT_EQ(result->token(section.payload.at(30)).kind, TokenKind::Plus);
+  EXPECT_EQ(result->token(section.payload.at(40)).text, ".b64");
+  EXPECT_EQ(result->sourceRange(section.token_range).start.line, 1u);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrNonlocalSectionDirectives) {
+  for (const std::string_view source : {
+           ".section",
+           ".section .debug_info",
+           ".section .debug_info { .b8 0",
+           ".entry kernel() { .section .debug_info { .b8 0 } }",
+           ".entry kernel() { { .section .debug_info { .b8 0 } } }",
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
+TEST(PtxCstParser, RecoversMissingSectionBraceBeforeFollowingFunction) {
+  constexpr std::string_view source = R"ptx(.section .debug_info {
+  .b8 0
+.entry kernel() { add.u32 %r0, %r1, %r2; }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message,
+            "expected section closing brace");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& items = result->module()->items;
+  ASSERT_EQ(items.size(), 2u);
+  EXPECT_EQ(std::get<CstRecoveryNode>(items.front()).kind,
+            CstRecoveryKind::Skipped);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstFunction>(items.back()));
+}
+
+TEST(PtxCstParser, RetainsPragmasAtAllSupportedScopes) {
+  constexpr std::string_view source = R"ptx(.pragma "module", "opaque";
+.entry kernel() .pragma "nounroll"; {
+  .pragma "frequency 32";
+  {
+    .pragma "nested", "opaque";
+  }
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& module_pragma = std::get<syntax_cst::CstPragma>(
+      result->module()->items.front());
+  EXPECT_EQ(result->token(module_pragma.directive).kind, TokenKind::DotPragma);
+  ASSERT_EQ(module_pragma.strings.size(), 2u);
+  ASSERT_EQ(module_pragma.commas.size(), 1u);
+  EXPECT_EQ(result->token(module_pragma.strings[1]).text, "\"opaque\"");
+
+  const auto& function = std::get<syntax_cst::CstFunction>(
+      result->module()->items[1]);
+  ASSERT_EQ(function.pragmas.size(), 1u);
+  EXPECT_EQ(result->token(function.pragmas[0].strings[0]).text,
+            "\"nounroll\"");
+  EXPECT_EQ(result->sourceRange(function.pragmas[0].token_range).start.line,
+            2u);
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& body_pragma =
+      std::get<syntax_cst::CstPragma>(function.body.front());
+  EXPECT_EQ(result->sourceRange(body_pragma.token_range).start.line, 3u);
+  const auto& block = *std::get<std::unique_ptr<syntax_cst::CstBlock>>(
+      function.body[1]);
+  const auto& nested_pragma =
+      std::get<syntax_cst::CstPragma>(block.body.front());
+  ASSERT_EQ(nested_pragma.strings.size(), 2u);
+  EXPECT_EQ(result->token(nested_pragma.terminator).kind, TokenKind::Semicolon);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrInvalidHeaderPragmas) {
+  for (const std::string_view source : {
+           ".pragma ;",
+           ".pragma \"one\",;",
+           ".pragma one;",
+           ".pragma \"one\"",
+           ".entry kernel() .pragma \"one\" {}",
+           ".func device() .pragma \"one\"; {}",
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsEntryKernelResourceDirectives) {
+  constexpr std::string_view source = R"ptx(.entry kernel() .pragma "before";
+    .maxnreg 32 .maxntid 16, 8, 4 .pragma "after";
+    .minnctapersm 2 { }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.pragmas.size(), 2u);
+  ASSERT_EQ(function.resources.size(), 3u);
+  const auto& maxnreg = function.resources[0];
+  EXPECT_EQ(result->token(maxnreg.directive).kind, TokenKind::DotMaxnreg);
+  ASSERT_EQ(maxnreg.values.size(), 1u);
+  EXPECT_EQ(result->token(maxnreg.values[0]).text, "32");
+  EXPECT_TRUE(maxnreg.commas.empty());
+  const auto& maxntid = function.resources[1];
+  EXPECT_EQ(result->token(maxntid.directive).kind, TokenKind::DotMaxntid);
+  ASSERT_EQ(maxntid.values.size(), 3u);
+  EXPECT_EQ(result->token(maxntid.values[2]).text, "4");
+  ASSERT_EQ(maxntid.commas.size(), 2u);
+  EXPECT_EQ(result->sourceRange(maxntid.token_range).start.line, 2u);
+  EXPECT_EQ(result->token(function.resources[2].directive).kind,
+            TokenKind::DotMinnctapersm);
+}
+
+TEST(PtxCstParser, ParsesRequiredThreadCountDimensions) {
+  PtxCstParser parser(".entry kernel() .reqntid 16, 8 { }");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.resources.size(), 1u);
+  EXPECT_EQ(result->token(function.resources[0].directive).kind,
+            TokenKind::DotReqntid);
+  EXPECT_EQ(function.resources[0].values.size(), 2u);
+}
+
+TEST(PtxCstParser, RejectsMalformedOrMisplacedKernelResourceDirectives) {
+  for (const std::string_view source : {
+           ".maxnreg 32",
+           ".func device() .maxnreg 32 { }",
+           ".entry kernel() { .maxnreg 32 }",
+           ".entry kernel() { { .reqntid 32 } }",
+           ".entry kernel() .maxnreg { }",
+           ".entry kernel() .maxnreg 1, 2 { }",
+           ".entry kernel() .maxntid 1, { }",
+           ".entry kernel() .maxntid 1, 2, 3, 4 { }",
+           ".entry kernel() .reqntid 1.0 { }",
+           ".entry kernel() .minnctapersm 2; { }",
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
+TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  .loc 0x2U 4237 0
+  {
+    .loc 1 9 3, function_name info_string0, inlined_at 1 21 3
+    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;
+    add.u32 %r0, %r1, %r2;
+  }
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& basic = std::get<syntax_cst::CstLocDirective>(function.body[0]);
+  EXPECT_EQ(result->token(basic.directive).kind, TokenKind::DotLoc);
+  EXPECT_EQ(result->token(basic.file_index).text, "0x2U");
+  EXPECT_FALSE(basic.inline_context.has_value());
+  EXPECT_FALSE(basic.terminator.has_value());
+  EXPECT_EQ(result->sourceRange(basic.token_range).start.line, 2u);
+
+  const auto& block = *std::get<std::unique_ptr<syntax_cst::CstBlock>>(
+      function.body[1]);
+  ASSERT_EQ(block.body.size(), 3u);
+  const auto& named = std::get<syntax_cst::CstLocDirective>(block.body[0]);
+  ASSERT_TRUE(named.inline_context.has_value());
+  EXPECT_EQ(result->token(named.inline_context->function_name_label).text,
+            "info_string0");
+
+  const auto& dotted =
+      std::get<syntax_cst::CstLocDirective>(block.body[1]);
+  ASSERT_TRUE(dotted.inline_context.has_value());
+  const auto& context = *dotted.inline_context;
+  EXPECT_EQ(result->token(context.function_name_keyword).text,
+            "function_name");
+  EXPECT_EQ(result->token(context.function_name_label).text, ".debug_str");
+  ASSERT_TRUE(context.plus.has_value());
+  ASSERT_TRUE(context.function_name_offset.has_value());
+  EXPECT_EQ(result->token(*context.function_name_offset).text, "16");
+  EXPECT_EQ(result->token(context.inlined_at_keyword).text, "inlined_at");
+  EXPECT_EQ(result->token(context.file_index).text, "0x1U");
+  EXPECT_EQ(result->token(context.line_number).text, "10");
+  EXPECT_TRUE(dotted.terminator.has_value());
+}
+
+TEST(PtxCstParser, RejectsMalformedOrModuleScopeLocDirectives) {
+  for (const std::string_view source : {
+           ".entry f() { .loc 1 2 }",
+           ".entry f() { .loc 1 2 3, function_name name }",
+           ".entry f() { .loc 1 2 3, inlined_at 1 2 3 }",
+           ".entry f() { .loc 1 2 3, function_name name + 1.5, inlined_at 1 2 3 }",
+           ".loc 1 2 3",
+       }) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(result.has_value()) << source;
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
 TEST(PtxCstParser, FindsFuncNameAfterReturnParameterList) {
   constexpr std::string_view source =
       ".func (.param .b32 result) helper(.param .b32 input) { ret; }";
@@ -425,7 +829,7 @@ TEST(PtxCstParser, FindsFuncNameAfterReturnParameterList) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_NE(result->module(), nullptr);
   ASSERT_EQ(result->module()->items.size(), 1u);
   const auto& function =
@@ -451,7 +855,7 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items[0]);
   EXPECT_FALSE(function.left_brace.has_value());
@@ -480,16 +884,17 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
 
 TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
   for (const std::string_view source : {
-           ".entry kernel() .maxntid 128, 1, 1 {}",
            ".func helper() unexpected;",
        }) {
     PtxCstParser parser(source);
 
     const auto result = parser.parseModule();
 
-    ASSERT_FALSE(result.has_value()) << source;
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
     EXPECT_TRUE(
-        result.error().message.starts_with("unsupported function header token"))
+        result.diagnostics.front().message.starts_with(
+            "unsupported function header token"))
         << source;
   }
 }
@@ -501,7 +906,7 @@ TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& function =
       std::get<syntax_cst::CstFunction>(result->module()->items[0]);
   ASSERT_EQ(function.body.size(), 3u);
@@ -527,6 +932,281 @@ TEST(PtxCstParser, ParsesRegisterDeclarationsAndLabels) {
   EXPECT_EQ(result->sourceText(), source);
 }
 
+TEST(PtxCstParser, RetainsNestedFunctionBlocks) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  {
+    outer:
+    { add.u32 %r0, %r1, %r2; }
+  }
+})ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 1u);
+  const auto& outer = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
+  EXPECT_EQ(result->token(outer.left_brace).kind, TokenKind::LBrace);
+  ASSERT_TRUE(outer.right_brace.has_value());
+  EXPECT_EQ(result->token(*outer.right_brace).kind, TokenKind::RBrace);
+  EXPECT_EQ(result->sourceRange(outer.token_range).start.line, 2u);
+  ASSERT_EQ(outer.body.size(), 2u);
+  const auto& inner = *std::get<std::unique_ptr<CstBlock>>(outer.body[1]);
+  EXPECT_EQ(result->token(inner.left_brace).range.start.line, 4u);
+  ASSERT_EQ(inner.body.size(), 1u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstInstruction>(inner.body[0]));
+}
+
+TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
+  constexpr std::string_view source =
+      ".entry kernel() { add.u32 %r0, %r1, %r2; }";
+  PtxCstParser parser(source);
+
+  auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  auto file = std::move(*result);
+  const auto original_source = file.sourceText();
+  const auto token_count = file.tokens.size();
+  auto& module = std::get<syntax_cst::CstModule>(file.root);
+  auto& function = std::get<syntax_cst::CstFunction>(module.items.front());
+  const auto& instruction =
+      std::get<syntax_cst::CstInstruction>(function.body.front());
+  const CstTokenRange first_token{instruction.token_range.first,
+                                  instruction.token_range.first + 1};
+  const auto first_range = file.sourceRange(first_token);
+  const CstTokenRange second_token{instruction.token_range.first + 1,
+                                   instruction.token_range.first + 2};
+  const auto second_range = file.sourceRange(second_token);
+  const auto eof_range = file.tokens.back().range;
+
+  function.body.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Skipped,
+      .expected_kind = std::nullopt,
+      .token_range = first_token,
+      .range = first_range,
+  });
+  function.body.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Error,
+      .expected_kind = std::nullopt,
+      .token_range = second_token,
+      .range = second_range,
+  });
+
+  const auto& skipped =
+      std::get<CstRecoveryNode>(function.body[function.body.size() - 2]);
+  EXPECT_EQ(skipped.kind, CstRecoveryKind::Skipped);
+  EXPECT_FALSE(skipped.expected_kind.has_value());
+  ASSERT_TRUE(skipped.token_range.has_value());
+  EXPECT_TRUE(skipped.token_range->first < skipped.token_range->last);
+  EXPECT_EQ(file.sourceRange(*skipped.token_range), skipped.range);
+
+  const auto& spanned_error =
+      std::get<CstRecoveryNode>(function.body.back());
+  EXPECT_EQ(spanned_error.kind, CstRecoveryKind::Error);
+  EXPECT_FALSE(spanned_error.expected_kind.has_value());
+  ASSERT_TRUE(spanned_error.token_range.has_value());
+  EXPECT_TRUE(spanned_error.token_range->first <
+              spanned_error.token_range->last);
+  EXPECT_EQ(file.sourceRange(*spanned_error.token_range), spanned_error.range);
+
+  module.items.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Inserted,
+      .expected_kind = TokenKind::Semicolon,
+      .token_range = std::nullopt,
+      .range = SourceRange{first_range.start, first_range.start},
+  });
+  module.items.emplace_back(CstRecoveryNode{
+      .kind = CstRecoveryKind::Error,
+      .expected_kind = std::nullopt,
+      .token_range = std::nullopt,
+      .range = eof_range,
+  });
+
+  const auto& inserted =
+      std::get<CstRecoveryNode>(module.items[module.items.size() - 2]);
+  EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
+  ASSERT_TRUE(inserted.expected_kind.has_value());
+  EXPECT_EQ(*inserted.expected_kind, TokenKind::Semicolon);
+  EXPECT_FALSE(inserted.token_range.has_value());
+  EXPECT_EQ(inserted.range.start, inserted.range.end);
+
+  const auto& eof_error = std::get<CstRecoveryNode>(module.items.back());
+  EXPECT_EQ(eof_error.kind, CstRecoveryKind::Error);
+  EXPECT_FALSE(eof_error.expected_kind.has_value());
+  EXPECT_FALSE(eof_error.token_range.has_value());
+  EXPECT_EQ(eof_error.range, eof_range);
+  EXPECT_EQ(eof_error.range.start, eof_error.range.end);
+  EXPECT_EQ(file.tokens.size(), token_count);
+  EXPECT_EQ(file.sourceText(), original_source);
+}
+
+TEST(PtxCstParser, RecoversMissingBodySemicolonBeforeNextInstruction) {
+  constexpr std::string_view source = R"ptx(.entry kernel() {
+  add.u32 %r0, %r1, %r2
+  sub.u32 %r3, %r4, %r5;
+})ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 3u);
+  const auto& skipped = std::get<CstRecoveryNode>(function.body[0]);
+  EXPECT_EQ(skipped.kind, CstRecoveryKind::Skipped);
+  ASSERT_TRUE(skipped.token_range.has_value());
+  const auto& inserted = std::get<CstRecoveryNode>(function.body[1]);
+  EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
+  EXPECT_EQ(inserted.expected_kind, TokenKind::Semicolon);
+  EXPECT_FALSE(inserted.token_range.has_value());
+  EXPECT_EQ(inserted.range.start, inserted.range.end);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(function.body[2]));
+}
+
+TEST(PtxCstParser, RecoversNestedBlockAndModuleItemsInSourceOrder) {
+  constexpr std::string_view source = R"ptx(.version nope;
+.target;
+.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 3u);
+  EXPECT_EQ(result.diagnostics[0].message, "expected PTX version");
+  EXPECT_EQ(result.diagnostics[1].message, "expected target architecture");
+  EXPECT_EQ(result.diagnostics[2].message, "expected ';'");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& module = *result->module();
+  ASSERT_EQ(module.items.size(), 6u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[0]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[1]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[2]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[3]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(module.items[4]));
+  const auto& function = std::get<syntax_cst::CstFunction>(module.items[5]);
+  const auto& block = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
+  ASSERT_EQ(block.body.size(), 3u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(block.body[0]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(block.body[1]));
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(block.body[2]));
+  EXPECT_EQ(std::get<CstRecoveryNode>(module.items[1]).kind,
+            CstRecoveryKind::Error);
+}
+
+TEST(PtxCstParser, RecoversMissingFunctionBraceBeforeNextFunctionAndAtEof) {
+  constexpr std::string_view next_function_source = R"ptx(.entry first() {
+  add.u32 %r0, %r1, %r2;
+.version 9.3
+.entry second() { sub.u32 %r3, %r4, %r5; }
+)ptx";
+  PtxCstParser next_function_parser(next_function_source);
+  const auto next_function = next_function_parser.parseModule();
+
+  ASSERT_TRUE(next_function.has_value());
+  ASSERT_EQ(next_function.diagnostics.size(), 1u);
+  EXPECT_EQ(next_function.diagnostics.front().message,
+            "expected '}' at end of function body");
+  ASSERT_EQ(next_function->module()->items.size(), 3u);
+  const auto& first = std::get<syntax_cst::CstFunction>(
+      next_function->module()->items.front());
+  EXPECT_FALSE(first.right_brace.has_value());
+  EXPECT_EQ(std::get<CstRecoveryNode>(first.body.back()).expected_kind,
+            TokenKind::RBrace);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstModuleDirective>(
+      next_function->module()->items[1]));
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+      next_function->module()->items[2]));
+  EXPECT_EQ(next_function->sourceText(), next_function_source);
+
+  constexpr std::string_view eof_source = ".entry lone() {";
+  PtxCstParser eof_parser(eof_source);
+  const auto eof = eof_parser.parseModule();
+
+  ASSERT_TRUE(eof.has_value());
+  ASSERT_EQ(eof.diagnostics.size(), 1u);
+  EXPECT_EQ(eof.diagnostics.front().message,
+            "expected '}' at end of function body");
+  EXPECT_EQ(eof->sourceText(), eof_source);
+}
+
+TEST(PtxCstParser, RecoversStrayModuleTokenAndEofWithoutSyntheticTokens) {
+  constexpr std::string_view source = "} .version";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].message,
+            "expected module directive, variable declaration, or function");
+  EXPECT_EQ(result.diagnostics[1].message, "expected PTX version");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& module = *result->module();
+  ASSERT_EQ(module.items.size(), 3u);
+  EXPECT_EQ(std::get<CstRecoveryNode>(module.items.back()).kind,
+            CstRecoveryKind::Error);
+  EXPECT_FALSE(std::get<CstRecoveryNode>(module.items.back())
+                   .token_range.has_value());
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+TEST(PtxCstParser, RejectsNestedBlockMissingRightBrace) {
+  PtxCstParser parser(".entry kernel() { { add.u32 %r0, %r1, %r2;");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].message,
+            "expected '}' at end of nested block");
+  EXPECT_EQ(result.diagnostics[1].message,
+            "expected '}' at end of function body");
+  EXPECT_EQ(result->sourceText(), ".entry kernel() { { add.u32 %r0, %r1, %r2;");
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.body.size(), 2u);
+  const auto& block = *std::get<std::unique_ptr<CstBlock>>(function.body[0]);
+  EXPECT_FALSE(block.right_brace.has_value());
+  ASSERT_EQ(block.body.size(), 2u);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(block.body[0]));
+  const auto& inserted = std::get<CstRecoveryNode>(block.body[1]);
+  EXPECT_EQ(inserted.kind, CstRecoveryKind::Inserted);
+  EXPECT_EQ(inserted.expected_kind, TokenKind::RBrace);
+}
+
+TEST(PtxCstParser, DiagnosesExcessiveNestedBlockDepthWithoutCrashing) {
+  constexpr size_t nested_blocks = 257;
+  std::string source = ".entry kernel() {";
+  source.append(nested_blocks, '{');
+  source.append(nested_blocks, '}');
+  source.push_back('}');
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->sourceText(), source);
+  bool diagnosed_depth = false;
+  for (const auto& diagnostic : result.diagnostics) {
+    diagnosed_depth |=
+        diagnostic.message == "nested block depth exceeds parser limit";
+  }
+  EXPECT_TRUE(diagnosed_depth);
+}
+
 TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
   constexpr std::string_view source =
       ".visible .global .align 16 .v4 .f32 values[2][3];\n"
@@ -540,7 +1220,7 @@ TEST(PtxCstParser, ParsesModuleAndFunctionVariableDeclarations) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->module()->items.size(), 2u);
   const auto& global =
       std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
@@ -581,7 +1261,7 @@ TEST(PtxCstParser, RetainsStructuredConstantExpressionsAndInitializers) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   ASSERT_EQ(result->module()->items.size(), 4u);
   const auto& table =
       std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
@@ -643,7 +1323,7 @@ TEST(PtxCstParser, RetainsNestedAndUnsizedArrayInitializer) {
 
   const auto result = parser.parseModule();
 
-  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   const auto& declaration =
       std::get<syntax_cst::CstVariableDeclaration>(result->module()->items[0]);
   const auto& declarator = declaration.declarators[0];
@@ -687,8 +1367,9 @@ TEST(PtxCstParser, RejectsInitializersInUnsupportedDeclarations) {
        }) {
     PtxCstParser parser(source_and_message.first);
     const auto result = parser.parseModule();
-    ASSERT_FALSE(result.has_value()) << source_and_message.first;
-    EXPECT_EQ(result.error().message, source_and_message.second);
+    ASSERT_TRUE(result.has_value()) << source_and_message.first;
+    ASSERT_FALSE(result.diagnostics.empty()) << source_and_message.first;
+    EXPECT_EQ(result.diagnostics.front().message, source_and_message.second);
   }
 }
 

@@ -242,11 +242,64 @@ struct CstLabel {
   CstTokenRange token_range;
 };
 
+struct CstLocInlineContext {
+  TokenId function_name_comma{};
+  TokenId function_name_keyword{};
+  TokenId function_name_label{};
+  std::optional<TokenId> plus;
+  std::optional<TokenId> function_name_offset;
+  TokenId inlined_at_comma{};
+  TokenId inlined_at_keyword{};
+  TokenId file_index{};
+  TokenId line_number{};
+  TokenId column_position{};
+  CstTokenRange token_range;
+};
+
+/** A function-body source location directive. */
+struct CstLocDirective {
+  TokenId directive{};
+  TokenId file_index{};
+  TokenId line_number{};
+  TokenId column_position{};
+  std::optional<CstLocInlineContext> inline_context;
+  std::optional<TokenId> terminator;
+  CstTokenRange token_range;
+};
+
+/** An opaque backend pragma at module, entry, or statement scope. */
+struct CstPragma {
+  TokenId directive{};
+  std::vector<TokenId> strings;
+  std::vector<TokenId> commas;
+  TokenId terminator{};
+  CstTokenRange token_range;
+};
+
+/** A per-entry kernel resource constraint in a function header. */
+struct CstKernelResourceDirective {
+  TokenId directive{};
+  std::vector<TokenId> values;
+  std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+
 /** A module-level directive and its concrete token payload. */
 struct CstModuleDirective {
   TokenId keyword{};
   std::vector<TokenId> arguments;
   std::vector<TokenId> separators;
+  std::optional<TokenId> terminator;
+  CstTokenRange token_range;
+};
+
+/** An outermost DWARF section with a lossless, uninterpreted payload. */
+struct CstSectionDirective {
+  TokenId directive{};
+  TokenId name{};
+  TokenId left_brace{};
+  std::vector<TokenId> payload;
+  TokenId right_brace{};
   std::optional<TokenId> terminator;
   CstTokenRange token_range;
 };
@@ -327,9 +380,40 @@ struct CstBranchTargets {
   CstTokenRange token_range;
 };
 
+enum class CstRecoveryKind : uint8_t {
+  Inserted,
+  Skipped,
+  Error,
+};
+
+/**
+ * CST-only recovery marker. Inserted nodes have an expected token kind and a
+ * zero-width range, without a token-buffer span. Skipped nodes have a
+ * nonempty span of real tokens. Error nodes have either such a span or an EOF
+ * zero-width range. parseModule() produces these nodes; AST lowering filters
+ * them rather than representing recovery in the AST.
+ */
+struct CstRecoveryNode {
+  CstRecoveryKind kind{};
+  std::optional<TokenKind> expected_kind;
+  std::optional<CstTokenRange> token_range;
+  SourceRange range;
+};
+
+struct CstBlock;
+
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
-                 CstCallTargets, CstBranchTargets, CstInstruction>;
+                 CstCallTargets, CstBranchTargets, CstLocDirective, CstPragma,
+                 std::unique_ptr<CstBlock>, CstInstruction, CstRecoveryNode>;
+
+/** A lexically nested function-body block. */
+struct CstBlock {
+  TokenId left_brace{};
+  std::vector<CstFunctionBodyItem> body;
+  std::optional<TokenId> right_brace;
+  CstTokenRange token_range;
+};
 
 struct CstFunction {
   std::vector<TokenId> qualifiers;
@@ -338,6 +422,8 @@ struct CstFunction {
   TokenId name{};
   std::optional<CstFunctionParameterList> parameters;
   std::optional<TokenId> noreturn_directive;
+  std::vector<CstPragma> pragmas;
+  std::vector<CstKernelResourceDirective> resources;
   std::vector<TokenId> header_tokens;
   std::optional<TokenId> left_brace;
   std::vector<CstFunctionBodyItem> body;
@@ -347,7 +433,8 @@ struct CstFunction {
 };
 
 using CstModuleItem =
-    std::variant<CstModuleDirective, CstVariableDeclaration, CstFunction>;
+    std::variant<CstModuleDirective, CstSectionDirective, CstPragma,
+                 CstVariableDeclaration, CstFunction, CstRecoveryNode>;
 
 struct CstModule {
   std::vector<CstModuleItem> items;

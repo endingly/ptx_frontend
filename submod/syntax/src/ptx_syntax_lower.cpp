@@ -515,28 +515,154 @@ syntax_ast::AstBranchTargets lowerBranchTargets(
   };
 }
 
-}  // namespace
-
-std::expected<syntax_ast::AstInstruction, AstLowerDiagnostic>
-lowerSyntaxInstruction(const syntax_cst::CstFile& cst) {
-  const auto* root = cst.instruction();
-  if (root == nullptr) {
-    return std::unexpected(AstLowerDiagnostic{
-        .range = {},
-        .message = "expected an instruction-fragment CST root",
-    });
+syntax_ast::AstLocDirective lowerLocDirective(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstLocDirective& location) {
+  std::optional<syntax_ast::AstLocInlineContext> inline_context;
+  if (location.inline_context) {
+    const auto& context = *location.inline_context;
+    inline_context = syntax_ast::AstLocInlineContext{
+        .function_name_label = lowerIdentifier(cst, {context.function_name_label}),
+        .function_name_offset =
+            context.function_name_offset
+                ? std::optional{leafSyntax(cst, *context.function_name_offset)}
+                : std::nullopt,
+        .file_index = leafSyntax(cst, context.file_index),
+        .line_number = leafSyntax(cst, context.line_number),
+        .column_position = leafSyntax(cst, context.column_position),
+        .range = cst.sourceRange(context.token_range),
+    };
   }
-  return lowerInstructionNode(cst, *root);
+  return syntax_ast::AstLocDirective{
+      .file_index = leafSyntax(cst, location.file_index),
+      .line_number = leafSyntax(cst, location.line_number),
+      .column_position = leafSyntax(cst, location.column_position),
+      .inline_context = std::move(inline_context),
+      .range = cst.sourceRange(location.token_range),
+  };
 }
 
-std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
+syntax_ast::AstPragma lowerPragma(const syntax_cst::CstFile& cst,
+                                  const syntax_cst::CstPragma& pragma) {
+  std::vector<syntax_ast::AstSyntax> strings;
+  strings.reserve(pragma.strings.size());
+  for (const auto string : pragma.strings)
+    strings.push_back(leafSyntax(cst, string));
+  return syntax_ast::AstPragma{
+      .strings = std::move(strings),
+      .range = cst.sourceRange(pragma.token_range),
+  };
+}
+
+syntax_ast::AstKernelResourceDirective lowerKernelResourceDirective(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstKernelResourceDirective& resource) {
+  syntax_ast::AstKernelResourceKind kind;
+  switch (cst.token(resource.directive).kind) {
+    case TokenKind::DotMaxnreg:
+      kind = syntax_ast::AstKernelResourceKind::MaxNreg;
+      break;
+    case TokenKind::DotMaxntid:
+      kind = syntax_ast::AstKernelResourceKind::MaxNtid;
+      break;
+    case TokenKind::DotReqntid:
+      kind = syntax_ast::AstKernelResourceKind::ReqNtid;
+      break;
+    case TokenKind::DotMinnctapersm:
+      kind = syntax_ast::AstKernelResourceKind::MinNctaPerSm;
+      break;
+    default:
+      throw std::logic_error("invalid kernel resource directive in CST");
+  }
+  std::vector<syntax_ast::AstSyntax> values;
+  values.reserve(resource.values.size());
+  for (const auto value : resource.values)
+    values.push_back(leafSyntax(cst, value));
+  return syntax_ast::AstKernelResourceDirective{
+      .kind = kind,
+      .values = std::move(values),
+      .range = cst.sourceRange(resource.token_range),
+  };
+}
+
+syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
+                                const syntax_cst::CstBlock& block);
+
+syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstFunctionBodyItem& body_item) {
+  if (const auto* declaration =
+          std::get_if<syntax_cst::CstVariableDeclaration>(&body_item)) {
+    return lowerVariableDeclaration(cst, *declaration);
+  }
+  if (const auto* label = std::get_if<syntax_cst::CstLabel>(&body_item)) {
+    return syntax_ast::AstLabel{lowerIdentifier(cst, {label->name}),
+                                cst.sourceRange(label->token_range)};
+  }
+  if (const auto* prototype =
+          std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
+    return lowerCallPrototype(cst, *prototype);
+  }
+  if (const auto* targets =
+          std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
+    return lowerCallTargets(cst, *targets);
+  }
+  if (const auto* targets =
+          std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
+    return lowerBranchTargets(cst, *targets);
+  }
+  if (const auto* location =
+          std::get_if<syntax_cst::CstLocDirective>(&body_item)) {
+    return lowerLocDirective(cst, *location);
+  }
+  if (const auto* pragma = std::get_if<syntax_cst::CstPragma>(&body_item))
+    return lowerPragma(cst, *pragma);
+  if (const auto* block =
+          std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body_item)) {
+    return std::make_unique<syntax_ast::AstBlock>(lowerBlock(cst, **block));
+  }
+  return lowerInstructionNode(
+      cst, std::get<syntax_cst::CstInstruction>(body_item));
+}
+
+syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
+                                const syntax_cst::CstBlock& block) {
+  std::vector<syntax_ast::AstFunctionBodyItem> body;
+  body.reserve(block.body.size());
+  for (const auto& item : block.body) {
+    if (std::holds_alternative<syntax_cst::CstRecoveryNode>(item))
+      continue;
+    body.push_back(lowerFunctionBodyItem(cst, item));
+  }
+  return syntax_ast::AstBlock{
+      .body = std::move(body),
+      .range = cst.sourceRange(block.token_range),
+  };
+}
+
+}  // namespace
+
+AstInstructionLowerResult lowerSyntaxInstruction(
     const syntax_cst::CstFile& cst) {
+  const auto* root = cst.instruction();
+  if (root == nullptr) {
+    return {.value = std::nullopt,
+            .diagnostics = {AstLowerDiagnostic{
+                .range = {},
+                .message = "expected an instruction-fragment CST root",
+            }}};
+  }
+  return {.value = lowerInstructionNode(cst, *root), .diagnostics = {}};
+}
+
+AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
   const auto* root = cst.module();
   if (root == nullptr) {
-    return std::unexpected(AstLowerDiagnostic{
-        .range = {},
-        .message = "expected a module CST root",
-    });
+    return {.value = std::nullopt,
+            .diagnostics = {AstLowerDiagnostic{
+                .range = {},
+                .message = "expected a module CST root",
+            }}};
   }
 
   syntax_ast::AstModule ast{
@@ -546,6 +672,8 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
   ast.items.reserve(root->items.size());
 
   for (const auto& item : root->items) {
+    if (std::holds_alternative<syntax_cst::CstRecoveryNode>(item))
+      continue;
     if (const auto* directive =
             std::get_if<syntax_cst::CstModuleDirective>(&item)) {
       const SourceRange range = cst.sourceRange(directive->token_range);
@@ -567,12 +695,55 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
           ast.items.emplace_back(syntax_ast::AstAddressSizeDirective{
               leafSyntax(cst, directive->arguments.at(0)), range});
           break;
-        default:
-          return std::unexpected(AstLowerDiagnostic{
-              .range = cst.token(directive->keyword).range,
-              .message = "unsupported module directive in CST",
+        case TokenKind::DotFile:
+          if (directive->arguments.size() != 2 &&
+              directive->arguments.size() != 4) {
+            return {.value = std::nullopt,
+                    .diagnostics = {AstLowerDiagnostic{
+                        .range = range,
+                        .message = "invalid .file directive payload in CST",
+                    }}};
+          }
+          ast.items.emplace_back(syntax_ast::AstFileDirective{
+              .file_index = leafSyntax(cst, directive->arguments.at(0)),
+              .filename = leafSyntax(cst, directive->arguments.at(1)),
+              .timestamp = directive->arguments.size() == 4
+                               ? std::optional{leafSyntax(
+                                     cst, directive->arguments.at(2))}
+                               : std::nullopt,
+              .file_size = directive->arguments.size() == 4
+                               ? std::optional{leafSyntax(
+                                     cst, directive->arguments.at(3))}
+                               : std::nullopt,
+              .range = range,
           });
+          break;
+        default:
+          return {.value = std::nullopt,
+                  .diagnostics = {AstLowerDiagnostic{
+                      .range = cst.token(directive->keyword).range,
+                      .message = "unsupported module directive in CST",
+                  }}};
       }
+      continue;
+    }
+
+    if (const auto* section =
+            std::get_if<syntax_cst::CstSectionDirective>(&item)) {
+      std::vector<syntax_ast::AstSyntax> payload;
+      payload.reserve(section->payload.size());
+      for (const auto token : section->payload)
+        payload.push_back(leafSyntax(cst, token));
+      ast.items.emplace_back(syntax_ast::AstSectionDirective{
+          .name = leafSyntax(cst, section->name),
+          .payload = std::move(payload),
+          .range = cst.sourceRange(section->token_range),
+      });
+      continue;
+    }
+
+    if (const auto* pragma = std::get_if<syntax_cst::CstPragma>(&item)) {
+      ast.items.emplace_back(lowerPragma(cst, *pragma));
       continue;
     }
 
@@ -591,6 +762,8 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
         .name = lowerIdentifier(cst, {function.name}),
         .return_parameters = {},
         .parameters = {},
+        .pragmas = {},
+        .resources = {},
         .body = {},
         .range = cst.sourceRange(function.token_range),
     };
@@ -609,33 +782,21 @@ std::expected<syntax_ast::AstModule, AstLowerDiagnostic> lowerSyntaxModule(
       for (const auto& parameter : function.parameters->parameters)
         lowered.parameters.push_back(lowerFunctionParameter(cst, parameter));
     }
+    lowered.pragmas.reserve(function.pragmas.size());
+    for (const auto& pragma : function.pragmas)
+      lowered.pragmas.push_back(lowerPragma(cst, pragma));
+    lowered.resources.reserve(function.resources.size());
+    for (const auto& resource : function.resources)
+      lowered.resources.push_back(lowerKernelResourceDirective(cst, resource));
     lowered.body.reserve(function.body.size());
     for (const auto& body_item : function.body) {
-      if (const auto* declaration =
-              std::get_if<syntax_cst::CstVariableDeclaration>(&body_item)) {
-        lowered.body.emplace_back(lowerVariableDeclaration(cst, *declaration));
-      } else if (const auto* label =
-                     std::get_if<syntax_cst::CstLabel>(&body_item)) {
-        lowered.body.emplace_back(
-            syntax_ast::AstLabel{lowerIdentifier(cst, {label->name}),
-                                 cst.sourceRange(label->token_range)});
-      } else if (const auto* prototype =
-                     std::get_if<syntax_cst::CstCallPrototype>(&body_item)) {
-        lowered.body.emplace_back(lowerCallPrototype(cst, *prototype));
-      } else if (const auto* targets =
-                     std::get_if<syntax_cst::CstCallTargets>(&body_item)) {
-        lowered.body.emplace_back(lowerCallTargets(cst, *targets));
-      } else if (const auto* targets =
-                     std::get_if<syntax_cst::CstBranchTargets>(&body_item)) {
-        lowered.body.emplace_back(lowerBranchTargets(cst, *targets));
-      } else {
-        lowered.body.emplace_back(lowerInstructionNode(
-            cst, std::get<syntax_cst::CstInstruction>(body_item)));
-      }
+      if (std::holds_alternative<syntax_cst::CstRecoveryNode>(body_item))
+        continue;
+      lowered.body.push_back(lowerFunctionBodyItem(cst, body_item));
     }
     ast.items.emplace_back(std::move(lowered));
   }
-  return ast;
+  return {.value = std::move(ast), .diagnostics = {}};
 }
 
 }  // namespace ptx_frontend

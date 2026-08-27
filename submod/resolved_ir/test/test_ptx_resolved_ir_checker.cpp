@@ -584,7 +584,7 @@ TEST(ResolvedIrChecker, ChecksReturnParameterAvailabilityWithoutFunctionKind) {
 TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
   PtxSyntaxParser parser("add.sat.u8x4 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -617,7 +617,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
 TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
   PtxSyntaxParser parser("sub.sat.u8x4 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   const auto resolved = resolve<Sub>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -646,7 +646,7 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
 TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   PtxSyntaxParser simd_parser("add.u16x2 %r0, %r1, %r2;");
   const auto simd_ast = simd_parser.parseInstruction();
-  ASSERT_TRUE(simd_ast.has_value()) << simd_ast.error().message;
+  ASSERT_TRUE(simd_ast.has_value()) << simd_ast.diagnostics.front().message;
 
   const auto simd = resolve<Add>(*simd_ast);
   ASSERT_TRUE(simd.has_value()) << simd.error().message;
@@ -672,7 +672,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
 
   PtxSyntaxParser sat_parser("add.sat.u32 %r0, %r1, %r2;");
   const auto sat_ast = sat_parser.parseInstruction();
-  ASSERT_TRUE(sat_ast.has_value()) << sat_ast.error().message;
+  ASSERT_TRUE(sat_ast.has_value()) << sat_ast.diagnostics.front().message;
 
   const auto sat = resolve<Add>(*sat_ast);
   ASSERT_TRUE(sat.has_value()) << sat.error().message;
@@ -705,7 +705,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
 TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
   PtxSyntaxParser parser("add.rm.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* add = std::get_if<Add::FloatF32>(&resolved->variant);
@@ -734,7 +734,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
 TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
   PtxSyntaxParser f64_parser("add.f64 %fd0, %fd1, %fd2;");
   const auto f64_ast = f64_parser.parseInstruction();
-  ASSERT_TRUE(f64_ast.has_value()) << f64_ast.error().message;
+  ASSERT_TRUE(f64_ast.has_value()) << f64_ast.diagnostics.front().message;
   const auto f64 = resolve<Add>(*f64_ast);
   ASSERT_TRUE(f64.has_value()) << f64.error().message;
 
@@ -750,7 +750,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
 
   PtxSyntaxParser half_parser("add.f16 %h0, %h1, %h2;");
   const auto half_ast = half_parser.parseInstruction();
-  ASSERT_TRUE(half_ast.has_value()) << half_ast.error().message;
+  ASSERT_TRUE(half_ast.has_value()) << half_ast.diagnostics.front().message;
   const auto half = resolve<Add>(*half_ast);
   ASSERT_TRUE(half.has_value()) << half.error().message;
 
@@ -776,7 +776,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
 TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
   PtxSyntaxParser parser("add.rz.f32.bf16.sat %f0, %h1, %f2;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   ASSERT_NE(std::get_if<Add::MixedF32>(&resolved->variant), nullptr);
@@ -803,7 +803,7 @@ TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
   PtxSyntaxParser parser("add.s32 %r0, %r1, 7;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -830,7 +830,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
   PtxSyntaxParser parser("add.s32 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -854,7 +854,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
 TEST(ResolvedIrChecker, GeneratedBarWrapperRejectsMismatchedLayoutPayload) {
   PtxSyntaxParser parser("bar.sync 1, 128;");
   const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.error().message;
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
 
   auto resolved = resolve<Bar>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -883,7 +883,8 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperRejectsMismatchedLayoutPayload) {
 TEST(ResolvedIrChecker, GeneratedBarWrapperChecksLayoutAvailability) {
   PtxSyntaxParser immediate_parser("bar.sync 1;");
   const auto immediate_ast = immediate_parser.parseInstruction();
-  ASSERT_TRUE(immediate_ast.has_value()) << immediate_ast.error().message;
+  ASSERT_TRUE(immediate_ast.has_value())
+      << immediate_ast.diagnostics.front().message;
   auto immediate = resolve<Bar>(*immediate_ast);
   ASSERT_TRUE(immediate.has_value()) << immediate.error().message;
 
@@ -895,7 +896,8 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperChecksLayoutAvailability) {
 
   PtxSyntaxParser register_parser("bar.sync %r1;");
   const auto register_ast = register_parser.parseInstruction();
-  ASSERT_TRUE(register_ast.has_value()) << register_ast.error().message;
+  ASSERT_TRUE(register_ast.has_value())
+      << register_ast.diagnostics.front().message;
   auto register_barrier = resolve<Bar>(*register_ast);
   ASSERT_TRUE(register_barrier.has_value()) << register_barrier.error().message;
 

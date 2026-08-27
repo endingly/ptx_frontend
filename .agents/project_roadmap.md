@@ -2,13 +2,14 @@
 
 > 文档名称：[`.agents/project_roadmap.md`](project_roadmap.md)
 > 仓库：`endingly/ptx_frontend`
-> 基准分支：`main`
-> 功能事实基线：`main@4b5cf95072ac9bad62785ec642a7abbdab7f1c43`
-> 基准提交内容：`feat: resolve direct call operands (#19)`
-> 基准日期：2026-08-26
+> 状态视角：当前文档所在分支
+> 功能事实基线：`dd9274812e7ce839bb15f902ed68771bf9178011`
+> 基准提交内容：`fix: recover after unterminated debug sections`
+> 基准日期：2026-08-27
 > 项目阶段：pre-1.0
 >
-> 当前 `main` 已经包含 direct named-function `call` 的 operand resolution，但尚未包含 direct-call signature/ABI comparison，也不支持 indirect-call metadata。
+> 当前工作分支已完成除暂停的 M8-I14 外的 M8 实现与验证；本文状态以该分支的仓库事实
+> 为准，不等待 PR 合入后再同步。
 
 ---
 
@@ -16,45 +17,28 @@
 
 ### 0.1 结论
 
-PR #19 没有偏离此前确立的前端分层。
+当前工作分支没有偏离此前确立的前端分层，并已完成：
 
-当前 direct `call` 实现：
+- nested block CST/AST、词法作用域与 function-local control-flow identity；
+- `.file`、`.loc`、`.section`、`.pragma` 与第一组 kernel-resource directive；
+- ordered diagnostics、recovery node、synchronization 与 recovered CST → AST contract；
+- CST round-trip、fuzz harness、debug metadata binding 与真实 PTX module corpus。
 
-- 使用独立的非 `Flat` `Call` layout algorithm；
-- 由 YAML 描述一个 direct-call variant 和三个固定 layout；
-- 保存 direct function 的稳定 symbol identity；
-- 保存 `.reg/.param` return/input operand 的 identity、类型和 state space；
-- 保存 input group 中每一项的 SourceRange；
-- 在缺少 callee signature 时保留未定型 immediate 的源码 spelling 和 literal kind；
-- 明确拒绝 `.entry` 作为 direct call target；
-- 明确拒绝尚无 `.calltargets/.callprototype` metadata 支撑的 indirect call；
-- 把 signature/ABI comparison 留到后续阶段。
-
-
-
-因此，PR #19 应计入已完成 roadmap，而不能继续标记为 open PR 或进行中实现。
+M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停；其余 M8 功能项已在
+当前工作分支实现并验证，因此统一标记为 ✅。
 
 ### 0.2 当前存在的文档偏离
 
-#### D-01：README 的能力列表（本轮已修正）
+#### D-01：README recovery 使用示例（本轮已修正）
 
-本轮已在根 `README.md` 的 current scope 中加入 direct named-function `call`，包括三个
-当前 layout、可选 return/input group、未定型 literal 的保留，以及尚未支持的
-signature/ABI comparison 和 indirect metadata。这是文档同步，不改变上述功能事实基线。
+根 `README.md` 的使用示例同时检查 AST value 与 diagnostics，避免把 recovered module
+误当作无错误输入继续 resolve。
 
-#### D-02：近期优先级表述（本轮已修正）
+#### D-02：M8 状态与近期优先级（本轮已修正）
 
-本轮已删除双语 `syntax_coverage.md` 中重复的近期优先级列表，并改为链接本文；
-[`docs/deprecated/next_step.md`](../docs/deprecated/next_step.md) 仅保留为冻结的历史日志。
-
-本文作出如下裁定：
-
-1. 已建模的 basic `ld/st` scalar/vector 子集视为 M4 已完成；
-2. 尚未建模的 cache hint、eviction、prefetch、unified-memory extension 等进入后续扩展 milestone；
-3. 当前主线下一步是 direct-call signature/ABI；
-4. `syntax_coverage.md` 负责描述能力边界；
-5. 本文负责 roadmap、依赖顺序和状态；
-6. [`docs/deprecated/next_step.md`](../docs/deprecated/next_step.md) 退化为历史实现日志，不再单独决定长期优先级。
+M8 功能项按当前工作分支的实现与验证事实标记为 ✅，不再因 PR 尚未合入而降级为 🚧。
+下一主线是 M9 的 machine-readable opcode manifest 与 simulator MVP corpus；M8-I14
+继续暂停。
 
 #### D-03：已清理的 opcode-specific indirect-call 诊断
 
@@ -81,7 +65,7 @@ call 走正式 descriptor；malformed metadata-bearing call 走通用 layout dia
 2. 当前仓库的组织方式和编译条件；
 3. 各模块的职责和禁止承担的职责；
 4. 项目实现所依据的规范、schema、设计文档和测试；
-5. 已经进入 `main` 的实现；
+5. 当前文档所在分支已经实现并验证的能力；
 6. 尚未实现的能力；
 7. 后续 milestone 和精确闭环 issue；
 8. milestone 内独立工作与耦合工作的顺序；
@@ -95,14 +79,14 @@ call 走正式 descriptor；malformed metadata-bearing call 走通用 layout dia
 
 | 标记 | 含义 |
 | --- | --- |
-| ✅ | 已完成：功能已进入功能事实基线指定的 `main`，或文档 issue 已完成其同步 |
-| 🚧 | milestone 已经开始，但仍包含未完成 issue |
+| ✅ | 已完成：功能已在当前工作分支实现并验证，或文档 issue 已完成其同步 |
+| 🚧 | 当前工作分支已经开始，但仍包含未完成 issue |
 | ⬜ | 尚未实现 |
 | ⏸ | 暂缓，必须先取得规范、实验或 consumer 证据 |
 | ⚠️ | 已实现但存在待清理的技术债或文档偏离 |
 
-功能实现只有进入功能事实基线指定的 `main` 后才能标记为 ✅。纯文档 issue 在其列出的
-同步完成后可标记为 ✅；通过 CI 但尚未合入的功能 PR 仍然只能标记为 🚧。
+功能在当前工作分支实现并完成相应验证后即可标记为 ✅；纯文档 issue 在其列出的同步完成
+后也可标记为 ✅。PR 是否合入只表示交付状态，不改变当前分支已经成立的实现事实。
 
 ---
 
@@ -1042,7 +1026,8 @@ Coverage matrix 负责回答：
 
 它不负责决定长期实现顺序。
 
-当前 matrix 已列入 direct named-function `call`，并明确说明 signature ABI 和 indirect form 尚未支持。
+当前 matrix 已覆盖 direct/metadata-backed indirect `call`、`brx.idx`、M8 module directive、
+recovery 与 debug metadata binding 的实际边界。
 
 ---
 
@@ -1100,7 +1085,7 @@ Coverage matrix 负责回答：
 | M5 | ✅ | 完成模块化构建、安装 package、consumer test 和 PR CI |
 | M6 | ✅ | 完成 direct-call signature、ABI 和 call-context |
 | M7 | ✅ | 完成 indirect call 和 control-flow metadata |
-| M8 | ⬜ | 扩展 module grammar、nested scope 和 parser recovery |
+| M8 | ✅ | 完成除暂停 I14 外的 module grammar、nested scope 和 parser recovery |
 | M9 | ⬜ | 完成 simulator MVP 的核心 opcode 集 |
 | M10 | ⬜ | 扩展 memory、atomic、warp、async-copy 和 matrix instruction |
 | M11 | ⬜ | 稳定公共 API、接入下游 simulator 并形成 1.0 gate |
@@ -1358,27 +1343,30 @@ malformed metadata-bearing call 使用通用 layout diagnostic。installed packa
 
 使前端能够处理更接近真实编译器输出的 PTX module，并在多个错误之间恢复。
 
-当前 lexer 已经为 `.file`、`.loc`、`.pragma`、`.section`、`.maxnreg`、`.maxntid`、`.reqntid` 和 `.minnctapersm` 等稳定 directive 提供 token，但相应结构尚未全部进入 CST/AST。
+当前工作分支已把 `.file`、`.loc`、`.pragma`、`.section`、`.maxnreg`、
+`.maxntid`、`.reqntid` 和 `.minnctapersm` 等稳定 directive 接入 CST/AST，并完成 nested
+scope、parser recovery、debug metadata binding、round-trip、fuzz harness 与真实 module corpus。
+除继续暂停的 M8-I14 外，以下功能项均已实现并验证。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M8-I01 | ⬜ | 独立 | 支持 nested block CST/AST | `{...}` nested scope 有独立 node 和 source range |
-| M8-I02 | ⬜ | 独立 | 支持 nested lexical binding scope | shadowing 和 label/function-local visibility 有测试 |
-| M8-I03 | ⬜ | 独立 | 支持 `.file` directive | 文件编号、路径和合法参数结构化保存 |
-| M8-I04 | ⬜ | 独立 | 支持 `.loc` directive | file/line/column 和可选属性结构化保存 |
-| M8-I05 | ⬜ | 独立 | 支持 `.section` directive | section name、payload 和 preservation 明确 |
-| M8-I06 | ⬜ | 独立 | 支持 `.pragma` directive | pragma payload lossless 保存，不误入 semantic |
-| M8-I07 | ⬜ | 独立 | 支持第一组 kernel-resource directive | `.maxnreg/.maxntid/.reqntid/.minnctapersm` 分别有 grammar 和 availability |
-| M8-I08 | ⬜ | 独立 | 建立 directive coverage registry | 每个 directive 标记 tokenize/CST/AST/semantic/rejected |
-| M8-I09 | ⬜ | 独立 | 建立 `DiagnosticCollection` | parser 可返回多个有序 diagnostic |
-| M8-I10 | ⬜ | 独立 | 增加 missing-token/recovery node | inserted/skipped/error node 类型明确 |
-| M8-I11 | ⬜ | 独立 | 定义 synchronization point | `;`、`}`、function boundary 和 module directive 可有限恢复 |
-| M8-I12 | ⬜ | 独立 | 建立 CST round-trip serializer | 未修改 CST 可重建等价 token stream |
-| M8-I13 | ⬜ | 独立 | 建立 lexer/CST fuzz harness | arbitrary bytes 和 malformed nesting 不崩溃、不死循环 |
+| M8-I01 | ✅ | 独立 | 支持 nested block CST/AST | `{...}` nested scope 有独立 node 和 source range |
+| M8-I02 | ✅ | 独立 | 支持 nested lexical binding scope | shadowing、sibling/outer visibility、function-local label/metadata、recursive semantic/resolution 与 block-local call staging 有测试 |
+| M8-I03 | ✅ | 独立 | 支持 `.file` directive | outermost `.file` 的编号、路径和 2/4 参数 payload 有无损 CST 与带 range 的 AST；duplicate index/.loc table 留给 C02 |
+| M8-I04 | ✅ | 独立 | 支持 `.loc` directive | function/nested-block `.loc` basic triple 与完整成对的 `function_name`/`inlined_at` payload 进入带 range 的 CST/AST；`.file`/DWARF 解析和 source-location attachment 留给 C02 |
+| M8-I05 | ✅ | 独立 | 支持 `.section` directive | outermost `.section` 的 name、matched brace 和有序 raw DWARF payload 进入 CST/AST；payload/label/offset semantics 留给 C02 |
+| M8-I06 | ✅ | 独立 | 支持 `.pragma` directive | module、entry header 与 function/nested statement 的非空 string list 进入 CST/AST，不误入 binding/semantic/Resolved IR |
+| M8-I07 | ✅ | 独立 | 支持第一组 kernel-resource directive | entry header 的 `.maxnreg/.maxntid/.reqntid/.minnctapersm` 进入 typed CST/AST；`.version` minimum 与同 entry req/max conflict 有 declaration-semantic diagnostics，backend warning/feasibility 留后续 |
+| M8-I08 | ✅ | 独立 | 建立 directive coverage registry | docs-only：PTX 9.3 Table 1 的 35 项与该表遗漏的 `.attribute/.abi_preserve/.abi_preserve_control/.blocksareclusters/.language` 共 40 项，逐 spelling 标记 tokenize/CST/AST/binding/Resolved IR/target-semantic/rejection boundary |
+| M8-I09 | ✅ | 独立 | 建立 `DiagnosticCollection` | public CST parser、lowering 与 Syntax facade 以 optional value + ordered diagnostics result 贯通；I10/I11 前仍 fail-fast 单 diagnostic |
+| M8-I10 | ✅ | 独立 | 增加 missing-token/recovery node | CST 的 tagged inserted/skipped/error node 已可作为 module/function-body item，并保留 source/token-span 不变量；parser 产生、synchronization 与 recovered CST→AST contract 仍分别留给 I11/C01 |
+| M8-I11 | ✅ | 独立 | 定义 synchronization point | `parseModule()` 在 `;`、`}`、EOF、function boundary（含 qualifier）和 supported module-item start 有界恢复；partial nested block 保留 body 与 inserted `}`、无 closing token，返回 recovered CST + 有序 diagnostic；fragment 仍 fail-fast，C01/I12 分别定义 lowering/serialization contract |
+| M8-I12 | ✅ | 独立 | 建立 CST round-trip serializer | docs/tests-only：复用 `CstFile::sourceText()` 从未修改 token buffer 逐字节重建；recovery marker 不输出，EOF sentinel 数非公开契约 |
+| M8-I13 | ✅ | 独立 | 建立 lexer/CST fuzz harness | opt-in Clang libFuzzer target 与同 entry point 的 GTest seed smoke 覆盖 arbitrary bytes 和 malformed nesting；M11 再接入 sanitizer/CI matrix |
 | M8-I14 | ⏸ | 独立 | 收集 optional fixed-address 证据 | 只有取得规范 grammar 或可复现 `ptxas` 行为后才开始实现 |
-| M8-C01 | ⬜ | 耦合 | 定义 recovered CST → AST contract | error node 不伪装成正常 AST，相邻合法结构仍可 lowering |
-| M8-C02 | ⬜ | 耦合 | 连接 directive 与 binding/semantic | 需要 identity 的进入 binding，纯 metadata 不污染 Resolved IR |
-| M8-C03 | ⬜ | 耦合 | 建立真实 PTX module corpus | 合法/错误/未知 directive module 无 silent drop |
+| M8-C01 | ✅ | 耦合 | 定义 recovered CST → AST contract | recovery node 保持 CST-only；module lowering 过滤它们、保留相邻合法 AST node，并只一次透传 parser diagnostic |
+| M8-C02 | ✅ | 耦合 | 连接 directive 与 binding/semantic | `.file`/`.debug_str` identity 在独立 metadata namespace 进入 binding，`.loc` 递归解析 file/function-name reference；纯 metadata 不污染 Resolved IR |
+| M8-C03 | ✅ | 耦合 | 建立真实 PTX module corpus | installed consumer 覆盖合法 PTX 9.3 directive module、semantic directive error 与 unknown directive recovery，均无 silent drop |
 
 ---
 
@@ -1528,10 +1516,10 @@ M11 diagnostic and CI infrastructure
 
 ## 13.3 不应提前的工作
 
-以下工作暂不应抢在 M6 前面：
+以下工作暂不应抢在 M9 的 manifest 与 MVP corpus 前面：
 
-- indirect-call ABI；
-- call-target prototype checker；
+- 为尚无 corpus 需求的 opcode 批量扩张 descriptor；
+- 未冻结 variant slice 的 arithmetic 或 conversion 大包实现；
 - CFG/SSA；
 - Resolved IR serialization freezing；
 - simulator adapter 的稳定 ABI；
@@ -1541,26 +1529,19 @@ M11 diagnostic and CI infrastructure
 
 # 14. 当前推荐实施顺序
 
-基于功能事实基线 `main@4b5cf950`，下一步应当是：
+基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
 
-1. `M6-I04`：建立 canonical `FunctionSignature`；
-2. `M6-I05`：实现 formal-driven call literal typing；
-3. `M6-I06`：实现 actual/formal argument compatibility helper；
-4. `M6-I07`：建模 function-local call-argument `.param`；
-5. `M6-I08`：补齐 call-context rules；
-6. `M6-C01`：接入 direct-call ABI checker；
-7. `M6-C02`：完成 direct-call end-to-end tests；
-8. `M6-C03`：完成文档和 package regression；
-9. 进入 M7 indirect metadata；
-10. M8 和 M9 可以在 M6 contract 稳定后并行。
-
-不再需要“review 并合入 PR #19”这一步，因为它已经进入 `main`。
+1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
+2. `M9-I01`：建立 machine-readable opcode coverage manifest；
+3. `M9-I02`：以 simulator MVP kernel corpus 冻结实际 opcode 需求；
+4. 再按 corpus 需求逐个实现 M9 opcode slice；
+5. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
 
 ---
 
 # 15. Roadmap 维护规则
 
-1. 功能实现只有进入功能事实基线指定的 `main` 后标记为 ✅；纯文档 issue 在完成其同步后可标记为 ✅。
+1. 功能在当前工作分支实现并完成相应验证后标记为 ✅；PR/合入状态不作为实现状态。
 2. 只有功能事实变化时才更新功能事实基线；文档同步不得以自身提交作为功能基线。
 3. 一个 issue 只能属于一个 milestone。
 4. 独立 issue 必须位于耦合 issue 之前。
@@ -1577,7 +1558,7 @@ M11 diagnostic and CI infrastructure
 15. 未取得 consumer 需求或规范证据的抽象不得提前泛化。
 16. [`docs/deprecated/next_step.md`](../docs/deprecated/next_step.md) 是冻结历史文件，不再作为 roadmap。
 17. `syntax_coverage.md` 不再单独决定实现优先级。
-18. 本文状态与仓库事实冲突时，应以当前 `main` 为准并立即修本文。
+18. 本文状态与仓库事实冲突时，应以当前工作分支为准并立即修本文。
 
 ---
 

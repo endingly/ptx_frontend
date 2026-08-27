@@ -20,13 +20,13 @@ auto binding = binding::bindSymbols(module);
 ## Scope 与 symbol
 
 每个 module 有一个根 scope，每个 `.entry/.func` item 有一个以 module scope 为 parent 的
-function scope。当前收集：
+function scope，每个 nested `AstBlock` 则有按 source range 识别的 child block scope。当前收集：
 
 - module/function variable declaration；
 - function input 与 return parameter；
 - function symbol；
 - label，以及 function-local `.callprototype`、`.calltargets` 与
-  `.branchtargets` declaration。
+  `.branchtargets` declaration；即使写在 nested block 内，也放入所属的 function scope。
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
 parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
@@ -35,7 +35,17 @@ function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 
 同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
-因此 function-local declaration 可以遮蔽 module symbol。
+因此 block declaration 可以遮蔽 outer/module symbol，sibling block 彼此不可见；label 和
+control-flow metadata 则有意保持 function-local，而非 block-local。
+
+debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
+`uint64_t`（decimal/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
+有意复用第一个 `SymbolId`。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
+`DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
+program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
+`DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为
+`.debug_str` section 自身或其中 label。这些 metadata identity 会诊断 unresolved reference，
+但绝不作为 PTX operand。
 
 ## Parameterized variable name
 

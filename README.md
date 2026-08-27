@@ -184,8 +184,9 @@ int main() {
 
   ptx_frontend::PtxSyntaxParser parser(source);
   auto ast = parser.parseModule();
-  if (!ast) {
-    std::cerr << ast.error().message << '\n';
+  if (!ast || !ast.diagnostics.empty()) {
+    for (const auto& diagnostic : ast.diagnostics)
+      std::cerr << diagnostic.message << '\n';
     return 1;
   }
 

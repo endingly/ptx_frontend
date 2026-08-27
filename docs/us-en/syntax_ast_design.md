@@ -38,14 +38,17 @@ Array dimensions and scalar initializers use structured constant-expression
 trees; brace initializers recursively retain every brace level, element, and
 comma. Function qualifiers and the complete token sequence for the supported
 header grammar remain in the CST; the entry/function kind and name are also
-identified explicitly. An unmodeled function-header token such as `.maxntid`
-is rejected at the CST boundary instead of being accepted as an opaque token
-and silently discarded during AST lowering.
+identified explicitly. Entry headers additionally retain typed `.maxnreg`,
+`.maxntid`, `.reqntid`, and `.minnctapersm` constraints: CST retains directive,
+integer values, and commas, while AST retains kind, values, and ranges.
 
 The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
 selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the
-EOF token retains final trivia. Therefore `CstFile::sourceText()`
-can reproduce the parsed input byte-for-byte.
+EOF token retains final trivia. `CstFile::sourceText()` is the token-buffer
+round-trip serializer: for an unmodified CST it reproduces parsed input
+byte-for-byte. It emits the token buffer rather than CST nodes, so recovery
+markers do not add source text and node mutation is not pretty printing;
+internal EOF-sentinel multiplicity is not a public contract.
 
 ```cpp
 PtxCstParser parser(source);
@@ -55,12 +58,63 @@ if (cst)
 ```
 
 `parseInstruction()` accepts exactly one complete instruction fragment, while
-`parseModule()` requires a module root. The module grammar does not yet accept
-debug or kernel-tuning directives, nested statement scopes, recovery nodes,
-missing-token insertion, or a token-edit API. The parser validates initializer
+`parseModule()` requires a module root. At outermost module scope, `.file`
+accepts exactly `file_index "filename"` or
+`file_index "filename", timestamp, file_size`; the optional numeric fields
+are a required pair and their absence retains PTX's default zero without
+inventing source locations. Function bodies may contain nested
+blocks; CST retains their braces, ordered body items, and source ranges, while
+Syntax AST retains their body items and whole source ranges. Module resolution
+binds lexical block scopes and recursively resolves their instructions
+into the enclosing function's source-ordered flat body; it does not introduce a
+`ResolvedBlock`. Function bodies (including nested blocks) also accept `.loc`
+with its basic `file line column` triple or its paired PTX 7.2
+`function_name label {+ integer}` / `inlined_at file line column` payload;
+CST preserves its punctuation and AST retains fields and ranges. Resolving
+`.file` indices and `.debug_str` section/raw-label identities is performed in a
+separate debug-metadata binding namespace, and `.loc` validates those
+references. Attaching source locations to instructions or labels remains
+deferred. At outermost scope, `.section name { ... }` preserves its matched
+braces and raw DWARF payload token spelling in CST and AST; section names are
+syntax, not ordinary bound identifiers. DWARF payload typing, private labels,
+and `.loc` offset validation remain deferred. `.pragma` preserves a nonempty
+comma-separated string list at module, entry-header, and function/nested-block
+statement scope; it does not enter binding or Resolved IR. Entry-header
+pragmas may be interleaved with the four supported kernel-resource directives;
+their concrete order remains lossless in the CST header token sequence.
+`CstRecoveryNode` is the tagged CST-only recovery model: `Inserted`
+holds an expected `TokenKind` and a zero-width range without a token-buffer
+span; `Skipped` holds a nonempty span of real source tokens; and `Error` holds
+either such a span or an EOF zero-width range. It can occur as a module or
+function-body item, does not carry a diagnostic ID, and never creates a
+synthetic `PtxToken`. `parseModule()` appends ordered diagnostics and returns a
+recovered CST: it synchronizes malformed module/body items at `;`, `}`, EOF,
+the next function (including qualifiers), or a supported module-only directive.
+It preserves those anchors, inserts only missing `;`/`}` markers at zero width,
+and otherwise records real discarded spans. `parseInstruction()` remains
+fail-fast. Recovered CST lowers only its valid neighboring nodes: recovery
+markers remain CST-only, while `PtxSyntaxParser` returns the filtered AST with
+the original parser diagnostics once and in source order. Round-trip
+serialization uses the original token buffer rather than recovery markers. A
+nested block missing its required `}`
+retains its parsed body and an inserted marker, with no `right_brace` token.
+The opt-in Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzzes raw lexer and CST
+input; its entry point is also exercised by a small GTest seed smoke. It has no
+ASan/UBSan or CI matrix yet. From the source root, run
+`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`,
+`cmake --build out/fuzz --target fuzz_lexer_cst`, then
+`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`.
+The module grammar does not yet accept
+other kernel-tuning directives or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
+
+Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
+optional value plus an ordered `DiagnosticCollection<D>`. This lets module
+recovery return a CST with diagnostics without another API change. Module
+recovery may return both a value and diagnostics; standalone instruction
+fragments remain fail-fast with no value on error.
 
 ## CST to Syntax AST lowering
 
@@ -78,13 +132,15 @@ with their `SourceRange`.
 
 `PtxSyntaxParser` remains as a convenience facade. Its `parseInstruction()`
 and `parseModule()` perform source -> CST -> AST for fragment and module
-clients respectively.
+clients respectively, mapping CST/lowering diagnostics in order.
 
 `AstFile` mirrors the same root distinction and `AstModule` provides typed
 containers for the supported module directives and functions. `AstFunction`
 contains the function kind, qualifiers, name, and an ordered body variant of
 `AstVariableDeclaration`, `AstLabel`, `AstCallPrototype`, `AstCallTargets`,
-`AstBranchTargets`, and `AstInstruction`.
+`AstBranchTargets`, `AstLocDirective`, `AstPragma`, `AstBlock`, and
+`AstInstruction`. `AstBlock` keeps ordered body items and its whole source
+range.
 `AstCallPrototype` retains its label, sink, formal return/input payloads, and
 the PTX 9.3 `.noreturn` / ABI-preservation suffixes with ranges. Return and input
 parameters retain state space, alignment, type, pointer attributes, array form,

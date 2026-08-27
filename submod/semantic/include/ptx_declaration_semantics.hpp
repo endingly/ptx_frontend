@@ -65,6 +65,8 @@ enum class DeclarationDiagnosticKind : uint8_t {
   InvalidMetadataTarget,
   IncompatibleCallTargetSignature,
   InvalidCallPrototype,
+  UnsupportedKernelResourcePtxVersion,
+  IncompatibleKernelResourceDirective,
 };
 
 struct DeclarationDiagnostic {

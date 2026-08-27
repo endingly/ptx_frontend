@@ -19,7 +19,7 @@ struct CheckedModule {
 CheckedModule check(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value()) << module.error().message;
+  EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
   auto binding = binding::bindSymbols(*module);
   auto diagnostics = checkDeclarations(*module, binding.table);
   return {std::move(binding), std::move(diagnostics)};
@@ -69,6 +69,26 @@ TEST(PtxDeclarationSemantics, ValidatesArrayDimensionsAndInitializerShape) {
   EXPECT_EQ(
       diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
       2u);
+}
+
+TEST(PtxDeclarationSemantics, ChecksDeclarationsAndMetadataInsideNestedBlocks) {
+  const CheckedModule result = check(R"ptx(
+.func callee();
+.func dispatch() {
+  {
+    .local .u32 invalid_extent[0];
+    target: .calltargets missing;
+  }
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
+      1u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+      1u);
 }
 
 TEST(PtxDeclarationSemantics,
@@ -148,7 +168,7 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
 }
 )ptx");
   const auto module = parser.parseModule();
-  ASSERT_TRUE(module.has_value()) << module.error().message;
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
   const auto& prototype = std::get<syntax_ast::AstFunction>(module->items[0]);
   const auto& definition = std::get<syntax_ast::AstFunction>(module->items[1]);
 
@@ -360,6 +380,94 @@ TEST(PtxDeclarationSemantics, RequiresPositivePowerOfTwoAlignment) {
 
   EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::InvalidAlignment),
             4u);
+}
+
+TEST(PtxDeclarationSemantics, ChecksKernelResourcePtxAvailability) {
+  const CheckedModule old_max = check(R"ptx(
+.version 1.2
+.entry kernel() .maxnreg 32 .maxntid 32 { }
+)ptx");
+  EXPECT_EQ(diagnosticCount(
+                old_max,
+                DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion),
+            2u);
+
+  const CheckedModule valid_max = check(R"ptx(
+.version 1.3
+.entry kernel() .maxnreg 32 .maxntid 32, 2 { }
+)ptx");
+  EXPECT_TRUE(valid_max.diagnostics.empty());
+
+  const CheckedModule old_min = check(R"ptx(
+.version 1.9
+.entry kernel() .minnctapersm 2 { }
+)ptx");
+  EXPECT_EQ(diagnosticCount(
+                old_min,
+                DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion),
+            1u);
+
+  const CheckedModule valid_min = check(R"ptx(
+.version 2.0
+.entry kernel() .minnctapersm 2 { }
+)ptx");
+  EXPECT_TRUE(valid_min.diagnostics.empty());
+
+  const CheckedModule old_req = check(R"ptx(
+.version 2.0
+.entry kernel() .reqntid 32 { }
+)ptx");
+  EXPECT_EQ(diagnosticCount(
+                old_req,
+                DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion),
+            1u);
+
+  const CheckedModule valid_req = check(R"ptx(
+.version 2.1
+.entry kernel() .reqntid 32 .minnctapersm 2 { }
+)ptx");
+  EXPECT_TRUE(valid_req.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics, RejectsConflictingKernelThreadCountsInOrder) {
+  const CheckedModule max_then_req = check(R"ptx(
+.version 2.1
+.entry first() .maxntid 32 .reqntid 32 { }
+)ptx");
+  const auto max_then_req_diagnostic = std::ranges::find_if(
+      max_then_req.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind ==
+               DeclarationDiagnosticKind::IncompatibleKernelResourceDirective;
+      });
+  ASSERT_NE(max_then_req_diagnostic, max_then_req.diagnostics.end());
+  ASSERT_TRUE(max_then_req_diagnostic->previous_range.has_value());
+  EXPECT_EQ(max_then_req_diagnostic->range.start.line, 3u);
+  EXPECT_TRUE(max_then_req_diagnostic->previous_range->start.column <
+              max_then_req_diagnostic->range.start.column);
+
+  const CheckedModule req_then_max = check(R"ptx(
+.version 2.1
+.entry second() .reqntid 32 .maxntid 32 { }
+)ptx");
+  const auto req_then_max_diagnostic = std::ranges::find_if(
+      req_then_max.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind ==
+               DeclarationDiagnosticKind::IncompatibleKernelResourceDirective;
+      });
+  ASSERT_NE(req_then_max_diagnostic, req_then_max.diagnostics.end());
+  ASSERT_TRUE(req_then_max_diagnostic->previous_range.has_value());
+  EXPECT_TRUE(req_then_max_diagnostic->previous_range->start.column <
+              req_then_max_diagnostic->range.start.column);
+
+  const CheckedModule separate_entries = check(R"ptx(
+.version 2.1
+.entry maximum() .maxntid 32 { }
+.entry required() .reqntid 32 { }
+)ptx");
+  EXPECT_EQ(diagnosticCount(
+                separate_entries,
+                DeclarationDiagnosticKind::IncompatibleKernelResourceDirective),
+            0u);
 }
 
 TEST(PtxDeclarationSemantics, RejectsModuleScopeParameterVariables) {

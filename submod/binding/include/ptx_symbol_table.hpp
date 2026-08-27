@@ -24,6 +24,7 @@ struct ScopeId {
 enum class ScopeKind : uint8_t {
   Module,
   Function,
+  Block,
 };
 
 enum class SymbolKind : uint8_t {
@@ -36,6 +37,10 @@ enum class SymbolKind : uint8_t {
   CallPrototype,
   CallTargetSet,
   BranchTargetSet,
+  /** Debug-only module metadata; excluded from ordinary lexical lookup. */
+  DebugFile,
+  /** `.debug_str` and its raw payload labels; metadata-only. */
+  DebugStringLabel,
 };
 
 enum class SymbolLinkage : uint8_t {
@@ -56,6 +61,8 @@ enum class ReferenceKind : uint8_t {
   CallTargetSet,
   BranchTarget,
   BranchTargetSet,
+  DebugFile,
+  DebugFunctionName,
 };
 
 enum class ReferenceClassification : uint8_t {
@@ -70,6 +77,7 @@ struct Scope {
   ScopeKind kind{};
   std::optional<ScopeId> parent;
   std::optional<SymbolId> owner;
+  std::optional<SourceRange> range;
 };
 
 struct Symbol {
@@ -106,6 +114,7 @@ struct SymbolReference {
 enum class BindDiagnosticKind : uint8_t {
   DuplicateSymbol,
   InvalidParameterizedCount,
+  InvalidDebugFileId,
   ConflictingLinkageQualifiers,
   UnresolvedReference,
   InvalidReferenceTarget,
@@ -136,6 +145,10 @@ class SymbolTable {
 
   [[nodiscard]] const Scope& scope(ScopeId id) const;
   [[nodiscard]] const Symbol& symbol(SymbolId id) const;
+
+  /** Return the lexical child block identified by its parent and AST range. */
+  [[nodiscard]] std::optional<ScopeId> blockScope(
+      ScopeId parent, SourceRange range) const;
 
   /** Look up an exact or parameterized name, walking parent scopes. */
   [[nodiscard]] std::optional<SymbolLookup> lookup(ScopeId scope,

@@ -2,6 +2,7 @@
 
 #include <bit>
 #include <charconv>
+#include <compare>
 #include <limits>
 #include <string_view>
 #include <type_traits>
@@ -575,6 +576,7 @@ class Checker {
   std::vector<DeclarationDiagnostic> run(const syntax_ast::AstModule& module) {
     checkRedeclarations(module);
     checkControlFlowMetadata(module);
+    checkKernelResources(module);
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
@@ -589,13 +591,7 @@ class Checker {
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         checkFunctionAlignments(*function);
         checkFunctionArrays(*function);
-        for (const auto& body_item : function->body) {
-          if (const auto* declaration =
-                  std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
-            checkAlignment(declaration->alignment);
-            checkVariableDeclaration(*declaration);
-          }
-        }
+        checkFunctionBodyDeclarations(function->body);
       }
     }
     return std::move(diagnostics_);
@@ -617,6 +613,12 @@ class Checker {
     std::string name;
     FunctionSignature signature;
     SourceRange range;
+  };
+
+  struct PtxVersion {
+    uint16_t major{};
+    uint16_t minor{};
+    constexpr auto operator<=>(const PtxVersion&) const = default;
   };
 
   const binding::SymbolTable& symbols_;
@@ -703,6 +705,96 @@ class Checker {
                           function->name.syntax.text,
                           functionSignature(*function), linkage,
                           !function->is_prototype, function->name.syntax.range);
+    }
+  }
+
+  static std::optional<PtxVersion> parsePtxVersion(std::string_view text) {
+    const auto dot = text.find('.');
+    if (dot == std::string_view::npos)
+      return std::nullopt;
+    PtxVersion version;
+    const auto parse = [](std::string_view value, uint16_t& output) {
+      const auto [end, error] = std::from_chars(
+          value.data(), value.data() + value.size(), output);
+      return !value.empty() && error == std::errc{} &&
+             end == value.data() + value.size();
+    };
+    if (!parse(text.substr(0, dot), version.major) ||
+        !parse(text.substr(dot + 1), version.minor))
+      return std::nullopt;
+    return version;
+  }
+
+  static PtxVersion minimumPtxVersion(
+      syntax_ast::AstKernelResourceKind kind) {
+    switch (kind) {
+      case syntax_ast::AstKernelResourceKind::MaxNreg:
+      case syntax_ast::AstKernelResourceKind::MaxNtid:
+        return {1, 3};
+      case syntax_ast::AstKernelResourceKind::ReqNtid:
+        return {2, 1};
+      case syntax_ast::AstKernelResourceKind::MinNctaPerSm:
+        return {2, 0};
+    }
+    return {};
+  }
+
+  static std::string_view kernelResourceName(
+      syntax_ast::AstKernelResourceKind kind) {
+    switch (kind) {
+      case syntax_ast::AstKernelResourceKind::MaxNreg:
+        return ".maxnreg";
+      case syntax_ast::AstKernelResourceKind::MaxNtid:
+        return ".maxntid";
+      case syntax_ast::AstKernelResourceKind::ReqNtid:
+        return ".reqntid";
+      case syntax_ast::AstKernelResourceKind::MinNctaPerSm:
+        return ".minnctapersm";
+    }
+    return "kernel resource directive";
+  }
+
+  void checkKernelResources(const syntax_ast::AstModule& module) {
+    std::optional<PtxVersion> module_version;
+    for (const auto& item : module.items) {
+      const auto* version = std::get_if<syntax_ast::AstVersionDirective>(&item);
+      if (version != nullptr) {
+        module_version = parsePtxVersion(version->version.text);
+        break;
+      }
+    }
+
+    for (const auto& item : module.items) {
+      const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+      if (function == nullptr || !function->is_entry)
+        continue;
+      const syntax_ast::AstKernelResourceDirective* first_thread_count =
+          nullptr;
+      for (const auto& resource : function->resources) {
+        if (module_version &&
+            *module_version < minimumPtxVersion(resource.kind)) {
+          const PtxVersion required = minimumPtxVersion(resource.kind);
+          diagnose(DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion,
+                   resource.range,
+                   fmt::format("{} requires PTX ISA >= {}.{}, but module PTX "
+                               "ISA is {}.{}.",
+                               kernelResourceName(resource.kind), required.major,
+                               required.minor, module_version->major,
+                               module_version->minor));
+        }
+        if (resource.kind != syntax_ast::AstKernelResourceKind::MaxNtid &&
+            resource.kind != syntax_ast::AstKernelResourceKind::ReqNtid)
+          continue;
+        if (first_thread_count == nullptr) {
+          first_thread_count = &resource;
+        } else if (first_thread_count->kind != resource.kind) {
+          diagnose(
+              DeclarationDiagnosticKind::IncompatibleKernelResourceDirective,
+              resource.range,
+              ".reqntid cannot be used together with .maxntid.",
+              first_thread_count->range);
+        }
+      }
     }
   }
 
@@ -930,18 +1022,47 @@ class Checker {
                              ? std::optional{function_scopes[function_index]}
                              : std::nullopt;
       ++function_index;
-      for (const auto& body_item : function->body) {
-        if (const auto* prototype =
-                std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
-          checkCallPrototype(*prototype);
-        } else if (const auto* targets =
-                       std::get_if<syntax_ast::AstCallTargets>(&body_item)) {
-          checkCallTargets(*targets, seen_functions);
-        } else if (const auto* targets =
-                       std::get_if<syntax_ast::AstBranchTargets>(&body_item)) {
-          if (scope)
-            checkBranchTargets(*scope, *targets);
-        }
+      if (scope)
+        checkControlFlowMetadataBody(function->body, *scope, seen_functions);
+    }
+  }
+
+  void checkControlFlowMetadataBody(
+      const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+      binding::ScopeId function_scope,
+      const std::unordered_map<std::string, SeenFunction>& seen_functions) {
+    for (const auto& body_item : body) {
+      if (const auto* prototype =
+              std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
+        checkCallPrototype(*prototype);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstCallTargets>(&body_item)) {
+        checkCallTargets(*targets, seen_functions);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstBranchTargets>(&body_item)) {
+        checkBranchTargets(function_scope, *targets);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &body_item);
+                 block != nullptr && *block) {
+        checkControlFlowMetadataBody((*block)->body, function_scope,
+                                     seen_functions);
+      }
+    }
+  }
+
+  void checkFunctionBodyDeclarations(
+      const std::vector<syntax_ast::AstFunctionBodyItem>& body) {
+    for (const auto& body_item : body) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
+        checkAlignment(declaration->alignment);
+        checkVariableDeclaration(*declaration);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &body_item);
+                 block != nullptr && *block) {
+        checkFunctionBodyDeclarations((*block)->body);
       }
     }
   }

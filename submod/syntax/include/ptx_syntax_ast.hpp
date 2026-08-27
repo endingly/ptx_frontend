@@ -167,6 +167,21 @@ struct AstAddressSizeDirective {
   SourceRange range;
 };
 
+struct AstFileDirective {
+  AstSyntax file_index;
+  AstSyntax filename;
+  std::optional<AstSyntax> timestamp;
+  std::optional<AstSyntax> file_size;
+  SourceRange range;
+};
+
+/** An outermost DWARF section whose payload remains raw syntax. */
+struct AstSectionDirective {
+  AstSyntax name;
+  std::vector<AstSyntax> payload;
+  SourceRange range;
+};
+
 struct AstConstantExpression;
 using AstConstantExpressionPtr = std::unique_ptr<AstConstantExpression>;
 
@@ -296,6 +311,44 @@ struct AstLabel {
   SourceRange range;
 };
 
+struct AstLocInlineContext {
+  AstIdentifierRef function_name_label;
+  std::optional<AstSyntax> function_name_offset;
+  AstSyntax file_index;
+  AstSyntax line_number;
+  AstSyntax column_position;
+  SourceRange range;
+};
+
+/** A function-body source location directive. */
+struct AstLocDirective {
+  AstSyntax file_index;
+  AstSyntax line_number;
+  AstSyntax column_position;
+  std::optional<AstLocInlineContext> inline_context;
+  SourceRange range;
+};
+
+/** An opaque backend pragma at module, entry, or statement scope. */
+struct AstPragma {
+  std::vector<AstSyntax> strings;
+  SourceRange range;
+};
+
+enum class AstKernelResourceKind : uint8_t {
+  MaxNreg,
+  MaxNtid,
+  ReqNtid,
+  MinNctaPerSm,
+};
+
+/** A per-entry kernel resource constraint retained from the function header. */
+struct AstKernelResourceDirective {
+  AstKernelResourceKind kind{};
+  std::vector<AstSyntax> values;
+  SourceRange range;
+};
+
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
@@ -347,9 +400,18 @@ struct AstBranchTargets {
   SourceRange range;
 };
 
+struct AstBlock;
+
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
-                 AstCallTargets, AstBranchTargets, AstInstruction>;
+                 AstCallTargets, AstBranchTargets, AstLocDirective, AstPragma,
+                 std::unique_ptr<AstBlock>, AstInstruction>;
+
+/** A lexically nested function-body block. */
+struct AstBlock {
+  std::vector<AstFunctionBodyItem> body;
+  SourceRange range;
+};
 
 /** Initial function container; declarations and parameters refine this later. */
 struct AstFunction {
@@ -360,13 +422,16 @@ struct AstFunction {
   AstIdentifierRef name;
   std::vector<AstFunctionParameter> return_parameters;
   std::vector<AstFunctionParameter> parameters;
+  std::vector<AstPragma> pragmas;
+  std::vector<AstKernelResourceDirective> resources;
   std::vector<AstFunctionBodyItem> body;
   SourceRange range;
 };
 
 using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
-                 AstAddressSizeDirective, AstVariableDeclaration, AstFunction>;
+                 AstAddressSizeDirective, AstFileDirective, AstSectionDirective,
+                 AstPragma, AstVariableDeclaration, AstFunction>;
 
 struct AstModule {
   std::vector<AstModuleItem> items;

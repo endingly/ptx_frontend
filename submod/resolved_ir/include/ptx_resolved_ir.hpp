@@ -425,7 +425,10 @@ using ActualModifierTable =
 /** Declaration context used while resolving an instruction inside a module. */
 struct ResolveContext {
   const binding::SymbolTable& symbols;
+  /** Lexical scope for ordinary variables and parameters. */
   binding::ScopeId scope;
+  /** Owning function scope for labels and control-flow metadata. */
+  std::optional<binding::ScopeId> function_scope;
   /** Whether ``scope`` belongs to a kernel entry rather than a device func. */
   bool function_is_entry{};
 };

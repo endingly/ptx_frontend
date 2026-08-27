@@ -154,6 +154,41 @@ std::optional<binding::SymbolId> declared_symbol(
   return found->id;
 }
 
+binding::ScopeId block_scope(const binding::SymbolTable& symbols,
+                             binding::ScopeId parent,
+                             const syntax_ast::AstBlock& block) {
+  const auto scope = symbols.blockScope(parent, block.range);
+  if (!scope)
+    throw ResolveException("Bound syntax block has no lexical scope.");
+  return *scope;
+}
+
+void index_body_call_arguments(
+    const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+    const binding::SymbolTable& symbols, binding::ScopeId scope,
+    CallArgumentPropertyIndex& properties) {
+  for (const auto& item : body) {
+    if (const auto* declaration =
+            std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+      for (const auto& declarator : declaration->declarators) {
+        const auto symbol_id = declared_symbol(symbols, scope, declarator);
+        if (symbol_id) {
+          properties.emplace(
+              symbol_id->value,
+              call_argument_properties(*declaration, declarator,
+                                       symbols.symbol(*symbol_id)));
+        }
+      }
+    } else if (const auto* block =
+                   std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
+               block != nullptr && *block) {
+      index_body_call_arguments((*block)->body, symbols,
+                                block_scope(symbols, scope, **block),
+                                properties);
+    }
+  }
+}
+
 void index_function_call_arguments(const syntax_ast::AstFunction& function,
                                    const binding::SymbolTable& symbols,
                                    binding::ScopeId scope,
@@ -172,30 +207,18 @@ void index_function_call_arguments(const syntax_ast::AstFunction& function,
   };
   index_parameters(function.return_parameters, signature.return_parameters);
   index_parameters(function.parameters, signature.parameters);
-  for (const auto& item : function.body) {
-    const auto* declaration =
-        std::get_if<syntax_ast::AstVariableDeclaration>(&item);
-    if (declaration == nullptr)
-      continue;
-    for (const auto& declarator : declaration->declarators) {
-      const auto symbol_id = declared_symbol(symbols, scope, declarator);
-      if (symbol_id) {
-        properties.emplace(
-            symbol_id->value,
-            call_argument_properties(*declaration, declarator,
-                                     symbols.symbol(*symbol_id)));
-      }
-    }
-  }
+  index_body_call_arguments(function.body, symbols, scope, properties);
 }
 
-void index_function_metadata_signatures(
-    const syntax_ast::AstFunction& function, const binding::SymbolTable& symbols,
-    binding::ScopeId scope, FunctionSignatureIndex& signatures) {
-  for (const auto& item : function.body) {
+void index_body_metadata_signatures(
+    const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+    const binding::SymbolTable& symbols, binding::ScopeId function_scope,
+    FunctionSignatureIndex& signatures) {
+  for (const auto& item : body) {
     if (const auto* prototype =
             std::get_if<syntax_ast::AstCallPrototype>(&item)) {
-      const auto lookup = symbols.lookup(scope, prototype->label.syntax.text);
+      const auto lookup =
+          symbols.lookup(function_scope, prototype->label.syntax.text);
       if (!lookup)
         throw ResolveException("Bound .callprototype has no local symbol.");
       signatures.try_emplace(lookup->symbol.value,
@@ -203,21 +226,35 @@ void index_function_metadata_signatures(
                                  *prototype));
       continue;
     }
-    const auto* targets = std::get_if<syntax_ast::AstCallTargets>(&item);
-    if (targets == nullptr)
+    if (const auto* targets = std::get_if<syntax_ast::AstCallTargets>(&item)) {
+      if (targets->targets.empty())
+        throw ResolveException("Validated .calltargets has no member.");
+      const auto metadata =
+          symbols.lookup(function_scope, targets->label.syntax.text);
+      const auto target = symbols.lookup(symbols.moduleScope(),
+                                         targets->targets.front().syntax.text);
+      if (!metadata || !target)
+        throw ResolveException("Validated .calltargets has no bound symbol.");
+      const auto signature = signatures.find(target->symbol.value);
+      if (signature == signatures.end())
+        throw ResolveException(
+            "Validated .calltargets member has no signature.");
+      signatures.try_emplace(metadata->symbol.value, signature->second);
       continue;
-    if (targets->targets.empty())
-      throw ResolveException("Validated .calltargets has no member.");
-    const auto metadata = symbols.lookup(scope, targets->label.syntax.text);
-    const auto target = symbols.lookup(symbols.moduleScope(),
-                                       targets->targets.front().syntax.text);
-    if (!metadata || !target)
-      throw ResolveException("Validated .calltargets has no bound symbol.");
-    const auto signature = signatures.find(target->symbol.value);
-    if (signature == signatures.end())
-      throw ResolveException("Validated .calltargets member has no signature.");
-    signatures.try_emplace(metadata->symbol.value, signature->second);
+    }
+    if (const auto* block =
+            std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
+        block != nullptr && *block) {
+      index_body_metadata_signatures((*block)->body, symbols, function_scope,
+                                     signatures);
+    }
   }
+}
+
+void index_function_metadata_signatures(
+    const syntax_ast::AstFunction& function, const binding::SymbolTable& symbols,
+    binding::ScopeId scope, FunctionSignatureIndex& signatures) {
+  index_body_metadata_signatures(function.body, symbols, scope, signatures);
 }
 
 std::string_view compatibility_message(
@@ -452,6 +489,11 @@ bool is_staging_load(const syntax_ast::AstFunctionBodyItem& item,
          staging_parameter(*instruction, symbols, scope).has_value();
 }
 
+bool is_staging_transparent(const syntax_ast::AstFunctionBodyItem& item) {
+  return std::holds_alternative<syntax_ast::AstLocDirective>(item) ||
+         std::holds_alternative<syntax_ast::AstPragma>(item);
+}
+
 bool call_uses_parameter(const syntax_ast::AstInstruction& call,
                          syntax_ast::AstCallParameterListKind group_kind,
                          const CallParameterIdentity& parameter,
@@ -525,15 +567,24 @@ void check_parameter_qualifier(const syntax_ast::AstFunction& function,
   }
 }
 
-void check_call_staging(const syntax_ast::AstFunction& function,
-                        const binding::SymbolTable& symbols,
-                        binding::ScopeId scope,
-                        ModuleResolveDiagnostics& diagnostics) {
-  for (size_t index = 0; index < function.body.size(); ++index) {
+void check_call_staging_body(
+    const syntax_ast::AstFunction& function,
+    const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+    const binding::SymbolTable& symbols, binding::ScopeId scope,
+    ModuleResolveDiagnostics& diagnostics) {
+  for (size_t index = 0; index < body.size(); ++index) {
     const auto* instruction =
-        std::get_if<syntax_ast::AstInstruction>(&function.body[index]);
-    if (instruction == nullptr)
+        std::get_if<syntax_ast::AstInstruction>(&body[index]);
+    if (instruction == nullptr) {
+      if (const auto* block =
+              std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&body[index]);
+          block != nullptr && *block) {
+        check_call_staging_body(function, (*block)->body, symbols,
+                                block_scope(symbols, scope, **block),
+                                diagnostics);
+      }
       continue;
+    }
 
     check_parameter_qualifier(function, *instruction, symbols, scope,
                               diagnostics);
@@ -555,13 +606,14 @@ void check_call_staging(const syntax_ast::AstFunction& function,
 
     if (is_store) {
       size_t call_index = index + 1;
-      while (call_index < function.body.size() &&
-             is_staging_store(function.body[call_index], symbols, scope)) {
+      while (call_index < body.size() &&
+             (is_staging_store(body[call_index], symbols, scope) ||
+              is_staging_transparent(body[call_index]))) {
         ++call_index;
       }
-      const auto* call = call_index < function.body.size()
+      const auto* call = call_index < body.size()
                              ? std::get_if<syntax_ast::AstInstruction>(
-                                   &function.body[call_index])
+                                   &body[call_index])
                              : nullptr;
       if (call == nullptr ||
           !call_uses_parameter(*call,
@@ -579,12 +631,14 @@ void check_call_staging(const syntax_ast::AstFunction& function,
 
     size_t call_index = index;
     while (call_index > 0 &&
-           is_staging_load(function.body[call_index - 1], symbols, scope)) {
+           (is_staging_load(body[call_index - 1], symbols, scope) ||
+            is_staging_transparent(body[call_index - 1]))) {
       --call_index;
     }
-    const auto* call = call_index > 0 ? std::get_if<syntax_ast::AstInstruction>(
-                                            &function.body[call_index - 1])
-                                      : nullptr;
+    const auto* call =
+        call_index > 0
+            ? std::get_if<syntax_ast::AstInstruction>(&body[call_index - 1])
+            : nullptr;
     if (call == nullptr ||
         !call_uses_parameter(*call,
                              syntax_ast::AstCallParameterListKind::Return,
@@ -595,6 +649,35 @@ void check_call_staging(const syntax_ast::AstFunction& function,
               "A function-local .param return load must be in the contiguous "
               "block immediately after a call that returns it.",
       });
+    }
+  }
+}
+
+void resolve_body(
+    const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+    const ResolveContext& context, const binding::SymbolTable& symbols,
+    const FunctionSignatureIndex& signatures,
+    const CallArgumentPropertyIndex& call_argument_properties,
+    ResolvedFunction& resolved_function, ModuleResolveDiagnostics& diagnostics) {
+  for (const auto& body_item : body) {
+    if (const auto* instruction =
+            std::get_if<syntax_ast::AstInstruction>(&body_item)) {
+      auto resolved = resolveInstruction(*instruction, context);
+      if (!resolved) {
+        diagnostics.push_back(std::move(resolved.error()));
+        continue;
+      }
+      check_call_abi(*instruction, symbols, context.scope, signatures,
+                     call_argument_properties, diagnostics);
+      resolved_function.body.push_back(std::move(*resolved));
+    } else if (const auto* block =
+                   std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                       &body_item);
+               block != nullptr && *block) {
+      ResolveContext nested = context;
+      nested.scope = block_scope(symbols, context.scope, **block);
+      resolve_body((*block)->body, nested, symbols, signatures,
+                   call_argument_properties, resolved_function, diagnostics);
     }
   }
 }
@@ -687,6 +770,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     ResolveContext context{
         .symbols = binding_result.table,
         .scope = scope,
+        .function_scope = scope,
         .function_is_entry = function->is_entry,
     };
     ResolvedFunction resolved_function{
@@ -696,22 +780,10 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
         .is_prototype = function->is_prototype,
         .range = function->range,
     };
-    for (const syntax_ast::AstFunctionBodyItem& body_item : function->body) {
-      const auto* instruction =
-          std::get_if<syntax_ast::AstInstruction>(&body_item);
-      if (instruction == nullptr)
-        continue;
-
-      auto resolved = resolveInstruction(*instruction, context);
-      if (!resolved) {
-        diagnostics.push_back(std::move(resolved.error()));
-        continue;
-      }
-      check_call_abi(*instruction, binding_result.table, scope, signatures,
-                     call_argument_properties, diagnostics);
-      resolved_function.body.push_back(std::move(*resolved));
-    }
-    check_call_staging(*function, binding_result.table, scope, diagnostics);
+    resolve_body(function->body, context, binding_result.table, signatures,
+                 call_argument_properties, resolved_function, diagnostics);
+    check_call_staging_body(*function, function->body, binding_result.table,
+                            scope, diagnostics);
     functions.push_back(std::move(resolved_function));
   }
 

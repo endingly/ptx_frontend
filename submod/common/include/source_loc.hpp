@@ -2,6 +2,7 @@
 #include <concepts>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -26,6 +27,25 @@ struct SourceRange {
   SourceRange(SourcePos s, SourcePos e) : start(s), end(e) {}
 
   bool operator==(const SourceRange& other) const = default;
+};
+
+/** Ordered diagnostics that may accompany a partial parser result. */
+template <typename D>
+using DiagnosticCollection = std::vector<D>;
+
+/** A parser/lowering result can carry both a value and diagnostics. */
+template <typename T, typename D>
+struct ResultWithDiagnostics {
+  std::optional<T> value;
+  DiagnosticCollection<D> diagnostics;
+
+  [[nodiscard]] bool has_value() const noexcept { return value.has_value(); }
+  explicit operator bool() const noexcept { return has_value(); }
+
+  T& operator*() & noexcept { return *value; }
+  const T& operator*() const& noexcept { return *value; }
+  T* operator->() noexcept { return std::addressof(*value); }
+  const T* operator->() const noexcept { return std::addressof(*value); }
 };
 
 template <typename T>

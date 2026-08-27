@@ -63,6 +63,27 @@ bool symbolNameSetsOverlap(const Symbol& existing, std::string_view name,
          parameterizedNameContains(name, *parameterized_count, existing_first);
 }
 
+bool isMetadataSymbol(SymbolKind kind) {
+  return kind == SymbolKind::DebugFile ||
+         kind == SymbolKind::DebugStringLabel;
+}
+
+std::optional<uint64_t> parseDebugFileId(std::string_view text) {
+  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
+    text.remove_suffix(1);
+  int base = 10;
+  if (text.starts_with("0x") || text.starts_with("0X")) {
+    text.remove_prefix(2);
+    base = 16;
+  }
+  uint64_t value = 0;
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value, base);
+  if (text.empty() || error != std::errc{} || end != text.data() + text.size())
+    return std::nullopt;
+  return value;
+}
+
 bool isInitializerOperator(std::string_view spelling) {
   return spelling == "generic";
 }
@@ -141,6 +162,12 @@ std::string_view referenceDescription(ReferenceKind kind) {
       return "call target set or prototype";
     case ReferenceKind::BranchTarget:
       return "branch target";
+    case ReferenceKind::BranchTargetSet:
+      return "branch target set";
+    case ReferenceKind::DebugFile:
+      return "debug file";
+    case ReferenceKind::DebugFunctionName:
+      return "debug function name";
   }
   return "symbol";
 }
@@ -159,17 +186,28 @@ const Symbol& SymbolTable::symbol(SymbolId id) const {
   return symbols_.at(id.value);
 }
 
+std::optional<ScopeId> SymbolTable::blockScope(ScopeId parent,
+                                               SourceRange range) const {
+  const auto found = std::ranges::find_if(
+      scopes_, [parent, range](const Scope& scope) {
+        return scope.kind == ScopeKind::Block && scope.parent == parent &&
+               scope.range == range;
+      });
+  return found == scopes_.end() ? std::nullopt : std::optional{found->id};
+}
+
 std::optional<SymbolLookup> SymbolTable::lookup(ScopeId scope_id,
                                                 std::string_view name) const {
   for (;;) {
     for (const Symbol& candidate : symbols_) {
-      if (candidate.scope != scope_id)
+      if (candidate.scope != scope_id || isMetadataSymbol(candidate.kind))
         continue;
       if (!candidate.parameterized_count && candidate.name == name)
         return SymbolLookup{candidate.id, std::nullopt};
     }
     for (const Symbol& candidate : symbols_) {
-      if (candidate.scope != scope_id || !candidate.parameterized_count)
+      if (candidate.scope != scope_id || isMetadataSymbol(candidate.kind) ||
+          !candidate.parameterized_count)
         continue;
       const auto index = parseParameterizedIndex(candidate.name, name);
       if (index && *index < *candidate.parameterized_count)
@@ -197,6 +235,7 @@ struct SymbolTableBuilder {
         .kind = ScopeKind::Module,
         .parent = std::nullopt,
         .owner = std::nullopt,
+        .range = std::nullopt,
     });
   }
 
@@ -207,6 +246,7 @@ struct SymbolTableBuilder {
         .kind = ScopeKind::Function,
         .parent = result.table.moduleScope(),
         .owner = owner,
+        .range = std::nullopt,
     });
     Symbol& symbol = result.table.symbols_[owner.value];
     if (!symbol.owned_scope || prefer_as_owned_scope)
@@ -214,11 +254,24 @@ struct SymbolTableBuilder {
     return id;
   }
 
+  ScopeId addBlockScope(ScopeId parent, SourceRange range) {
+    const ScopeId id{static_cast<uint32_t>(result.table.scopes_.size())};
+    result.table.scopes_.push_back(Scope{
+        .id = id,
+        .kind = ScopeKind::Block,
+        .parent = parent,
+        .owner = std::nullopt,
+        .range = range,
+    });
+    return id;
+  }
+
   std::optional<SymbolId> exactSymbol(
       ScopeId scope, std::string_view name,
       std::optional<uint32_t> parameterized_count) const {
     for (const Symbol& symbol : result.table.symbols_) {
-      if (symbol.scope == scope && symbol.name == name &&
+      if (!isMetadataSymbol(symbol.kind) && symbol.scope == scope &&
+          symbol.name == name &&
           symbol.parameterized_count.has_value() ==
               parameterized_count.has_value()) {
         return symbol.id;
@@ -251,7 +304,7 @@ struct SymbolTableBuilder {
     }
 
     for (const Symbol& existing : result.table.symbols_) {
-      if (existing.scope != scope ||
+      if (isMetadataSymbol(existing.kind) || existing.scope != scope ||
           !symbolNameSetsOverlap(existing, name, parameterized_count)) {
         continue;
       }
@@ -282,6 +335,44 @@ struct SymbolTableBuilder {
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
         .function_is_entry = function_is_entry,
+    });
+    return id;
+  }
+
+  std::optional<SymbolId> findMetadataSymbol(SymbolKind kind,
+                                              std::string_view name) const {
+    for (const Symbol& symbol : result.table.symbols_) {
+      if (symbol.scope == result.table.moduleScope() && symbol.kind == kind &&
+          symbol.name == name) {
+        return symbol.id;
+      }
+    }
+    return std::nullopt;
+  }
+
+  SymbolId addMetadataSymbol(SymbolKind kind, std::string_view name,
+                             SourceRange declaration_range,
+                             bool idempotent) {
+    if (const auto previous = findMetadataSymbol(kind, name)) {
+      if (!idempotent) {
+        result.diagnostics.push_back(BindDiagnostic{
+            .kind = BindDiagnosticKind::DuplicateSymbol,
+            .range = declaration_range,
+            .previous_range =
+                result.table.symbol(*previous).declaration_range,
+            .message = fmt::format("Duplicate symbol '{}' in debug metadata.",
+                                   name),
+        });
+      }
+      return *previous;
+    }
+    const SymbolId id{static_cast<uint32_t>(result.table.symbols_.size())};
+    result.table.symbols_.push_back(Symbol{
+        .id = id,
+        .scope = result.table.moduleScope(),
+        .kind = kind,
+        .name = std::string{name},
+        .declaration_range = declaration_range,
     });
     return id;
   }
@@ -354,6 +445,36 @@ struct SymbolTableBuilder {
     }
   }
 
+  void collectDebugFile(const syntax_ast::AstFileDirective& directive) {
+    const auto id = parseDebugFileId(directive.file_index.text);
+    if (!id) {
+      result.diagnostics.push_back(BindDiagnostic{
+          .kind = BindDiagnosticKind::InvalidDebugFileId,
+          .range = directive.file_index.range,
+          .previous_range = std::nullopt,
+          .message = "Debug file index must be an unsigned 64-bit integer.",
+      });
+      return;
+    }
+    addMetadataSymbol(SymbolKind::DebugFile, std::to_string(*id),
+                      directive.file_index.range, true);
+  }
+
+  void collectDebugStringSection(
+      const syntax_ast::AstSectionDirective& directive) {
+    if (directive.name.text != ".debug_str")
+      return;
+    addMetadataSymbol(SymbolKind::DebugStringLabel, directive.name.text,
+                      directive.name.range, true);
+    for (size_t index = 0; index + 1 < directive.payload.size(); ++index) {
+      if (directive.payload[index + 1].text == ":") {
+        addMetadataSymbol(SymbolKind::DebugStringLabel,
+                          directive.payload[index].text,
+                          directive.payload[index].range, false);
+      }
+    }
+  }
+
   void collectFunction(const syntax_ast::AstFunction& function) {
     const SymbolId function_symbol =
         addSymbol(result.table.moduleScope(), SymbolKind::Function,
@@ -381,10 +502,15 @@ struct SymbolTableBuilder {
                 declarationAlignment(parameter.alignment, std::nullopt,
                                      parameter.type.text));
     }
-    for (const auto& item : function.body) {
+    collectBody(function.body, function_scope, function_scope);
+  }
+
+  void collectBody(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+                   ScopeId function_scope, ScopeId lexical_scope) {
+    for (const auto& item : body) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-        collectVariableDeclaration(function_scope, *declaration);
+        collectVariableDeclaration(lexical_scope, *declaration);
       } else if (const auto* label = std::get_if<syntax_ast::AstLabel>(&item)) {
         addSymbol(function_scope, SymbolKind::Label, label->name.syntax.text,
                   label->name.syntax.range);
@@ -401,6 +527,12 @@ struct SymbolTableBuilder {
                      std::get_if<syntax_ast::AstBranchTargets>(&item)) {
         addSymbol(function_scope, SymbolKind::BranchTargetSet,
                   targets->label.syntax.text, targets->label.syntax.range);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &item);
+                 block != nullptr && *block) {
+        collectBody((*block)->body, function_scope,
+                    addBlockScope(lexical_scope, (*block)->range));
       }
     }
   }
@@ -438,6 +570,50 @@ struct SymbolTableBuilder {
       });
     }
     return result.table.references_.back();
+  }
+
+  const SymbolReference& addMetadataReference(
+      ScopeId scope, ReferenceKind kind, const syntax_ast::AstSyntax& syntax) {
+    std::optional<SymbolId> target;
+    if (kind == ReferenceKind::DebugFile) {
+      if (const auto id = parseDebugFileId(syntax.text)) {
+        target = findMetadataSymbol(SymbolKind::DebugFile,
+                                    std::to_string(*id));
+      }
+    } else {
+      target = findMetadataSymbol(SymbolKind::DebugStringLabel, syntax.text);
+    }
+    result.table.references_.push_back(SymbolReference{
+        .scope = scope,
+        .kind = kind,
+        .spelling = syntax.text,
+        .range = syntax.range,
+        .classification = target ? ReferenceClassification::DeclaredSymbol
+                                 : ReferenceClassification::Unresolved,
+        .target = target ? std::optional{SymbolLookup{*target, std::nullopt}}
+                         : std::nullopt,
+    });
+    if (!target) {
+      result.diagnostics.push_back(BindDiagnostic{
+          .kind = BindDiagnosticKind::UnresolvedReference,
+          .range = syntax.range,
+          .previous_range = std::nullopt,
+          .message = fmt::format("Unresolved {} '{}'.",
+                                 referenceDescription(kind), syntax.text),
+      });
+    }
+    return result.table.references_.back();
+  }
+
+  void bindLoc(ScopeId scope, const syntax_ast::AstLocDirective& directive) {
+    addMetadataReference(scope, ReferenceKind::DebugFile,
+                         directive.file_index);
+    if (!directive.inline_context)
+      return;
+    addMetadataReference(scope, ReferenceKind::DebugFunctionName,
+                         directive.inline_context->function_name_label.syntax);
+    addMetadataReference(scope, ReferenceKind::DebugFile,
+                         directive.inline_context->file_index);
   }
 
   bool isRegisterOrParameter(const Symbol& symbol) const {
@@ -532,9 +708,10 @@ struct SymbolTableBuilder {
     }
   }
 
-  void bindOperand(ScopeId scope, const syntax_ast::AstOperand& operand) {
+  void bindOperand(ScopeId scope, ScopeId function_scope,
+                   const syntax_ast::AstOperand& operand) {
     std::visit(
-        [this, scope](const auto& value) {
+        [this, scope, function_scope](const auto& value) {
           using Value = std::remove_cvref_t<decltype(value)>;
           if constexpr (std::same_as<Value, syntax_ast::AstIdentifierRef>) {
             addReference(scope, ReferenceKind::InstructionOperand, value);
@@ -627,7 +804,7 @@ struct SymbolTableBuilder {
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
                   reference, symbol.kind == SymbolKind::BranchTargetSet &&
-                                 symbol.scope == scope,
+                                 symbol.scope == function_scope,
                   fmt::format("Branch target set '{}' must name a "
                               ".branchtargets declaration in the current "
                               "function.",
@@ -640,7 +817,8 @@ struct SymbolTableBuilder {
               const Symbol& symbol =
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
-                  reference, symbol.kind == SymbolKind::Label,
+                  reference, symbol.kind == SymbolKind::Label &&
+                                 symbol.scope == function_scope,
                   fmt::format("Branch target '{}' must name a label in the "
                               "current function.",
                               value.name.syntax.text));
@@ -650,13 +828,13 @@ struct SymbolTableBuilder {
         operand);
   }
 
-  void bindInstruction(ScopeId scope,
+  void bindInstruction(ScopeId scope, ScopeId function_scope,
                        const syntax_ast::AstInstruction& instruction) {
     if (instruction.predicate)
       addReference(scope, ReferenceKind::Predicate,
                    instruction.predicate->name);
     for (const auto& operand : instruction.operands)
-      bindOperand(scope, operand);
+      bindOperand(scope, function_scope, operand);
   }
 
   void bindFunction(const FunctionContext& context) {
@@ -673,13 +851,30 @@ struct SymbolTableBuilder {
                                *parameter.array_size);
       }
     }
-    for (const auto& item : function.body) {
+    bindBody(function.body, context.scope, context.scope);
+  }
+
+  void bindBody(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+                ScopeId function_scope, ScopeId lexical_scope) {
+    for (const auto& item : body) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-        bindVariableDeclaration(context.scope, *declaration);
+        bindVariableDeclaration(lexical_scope, *declaration);
       } else if (const auto* instruction =
                      std::get_if<syntax_ast::AstInstruction>(&item)) {
-        bindInstruction(context.scope, *instruction);
+        bindInstruction(lexical_scope, function_scope, *instruction);
+      } else if (const auto* loc =
+                     std::get_if<syntax_ast::AstLocDirective>(&item)) {
+        bindLoc(lexical_scope, *loc);
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                         &item);
+                 block != nullptr && *block) {
+        const auto block_scope =
+            result.table.blockScope(lexical_scope, (*block)->range);
+        if (!block_scope)
+          throw std::logic_error("Collected syntax block has no scope.");
+        bindBody((*block)->body, function_scope, *block_scope);
       }
     }
   }
@@ -689,6 +884,12 @@ struct SymbolTableBuilder {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
         collectVariableDeclaration(result.table.moduleScope(), *declaration);
+      } else if (const auto* file =
+                     std::get_if<syntax_ast::AstFileDirective>(&item)) {
+        collectDebugFile(*file);
+      } else if (const auto* section =
+                     std::get_if<syntax_ast::AstSectionDirective>(&item)) {
+        collectDebugStringSection(*section);
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         collectFunction(*function);

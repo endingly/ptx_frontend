@@ -1561,6 +1561,43 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(bindings[1].state_space_modifier_field_id, "state_space")
 
+    def test_red_global_relaxed_cta_add_u32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        red = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "red"
+        )
+        resolved = from_instruction_spec(red)
+
+        self.assertEqual(resolved.cpp_name, "Red")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalRelaxedCtaAddU32"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("semantics", "MemoryConsistency"),
+                ("scope", "MemoryScope"),
+                ("add", "bool"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
+        bindings = variant.operand_layouts[0].bindings
+        self.assertEqual(len(bindings), 2)
+        self.assertEqual(
+            bindings[1].register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
+        )
+        self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1614,6 +1651,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
         self.assertIn("struct Atom {", source)
+        self.assertIn("struct Red {", source)
         self.assertIn("struct Bar {", source)
         self.assertIn("struct Membar {", source)
         self.assertIn("struct Fence {", source)
@@ -1742,6 +1780,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Add>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "atom"', source)
         self.assertIn("resolve<Atom>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "red"', source)
+        self.assertIn("resolve<Red>(ast, context)", source)
         self.assertIn("namespace {", source)
         self.assertIn('ast.opcode.syntax.text == "sub"', source)
         self.assertIn("resolve<Sub>(ast, context)", source)

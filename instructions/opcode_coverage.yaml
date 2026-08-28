@@ -66,6 +66,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: red
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: st
     syntax: partial
     resolved: partial

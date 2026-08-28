@@ -63,5 +63,44 @@ TEST(TargetIdentity, RejectsMalformedSpellings) {
     EXPECT_FALSE(parse_target_identity(spelling).has_value()) << spelling;
 }
 
+TEST(TargetProfile, CatalogsOnlyExplicitM11ValidationTargets) {
+  constexpr std::array<std::string_view, 6> supported{
+      "sm_80", "sm_90", "sm_90a", "sm_100", "sm_100a", "sm_100f",
+  };
+  for (const std::string_view spelling : supported) {
+    const auto profile = find_target_profile(spelling);
+    ASSERT_TRUE(profile.has_value()) << spelling;
+    EXPECT_EQ(profile->identity.source_spelling, spelling);
+  }
+
+  const auto sm100 = find_target_profile("sm_100");
+  const auto sm100a = find_target_profile("sm_100a");
+  const auto sm100f = find_target_profile("sm_100f");
+  ASSERT_TRUE(sm100.has_value());
+  ASSERT_TRUE(sm100a.has_value());
+  ASSERT_TRUE(sm100f.has_value());
+  EXPECT_NE(sm100->identity, sm100a->identity);
+  EXPECT_NE(sm100a->identity, sm100f->identity);
+
+  EXPECT_FALSE(find_target_profile("sm_90f").has_value());
+  EXPECT_FALSE(find_target_profile("sm_123a").has_value());
+}
+
+TEST(TargetProfile, ExposesOnlyExplicitCapabilityBoundaries) {
+  const auto sm80 = find_target_profile("sm_80");
+  const auto sm90 = find_target_profile("sm_90");
+  ASSERT_TRUE(sm80.has_value());
+  ASSERT_TRUE(sm90.has_value());
+
+  EXPECT_TRUE(target_has_capability(*sm80, "reserved_smem"));
+  EXPECT_TRUE(target_has_capability(*sm80, "graph_exec"));
+  EXPECT_FALSE(target_has_capability(*sm80, "cluster"));
+  EXPECT_FALSE(target_has_capability(*sm80, "aggregate_smem"));
+  EXPECT_TRUE(target_has_capability(*sm90, "cluster"));
+  EXPECT_TRUE(target_has_capability(*sm90, "aggregate_smem"));
+  EXPECT_TRUE(target_has_capability(*sm90, "reserved_smem"));
+  EXPECT_TRUE(target_has_capability(*sm90, "graph_exec"));
+}
+
 }  // namespace
 }  // namespace ptx_frontend::base

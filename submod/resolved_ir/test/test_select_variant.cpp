@@ -1364,6 +1364,10 @@ TEST(ResolveImmediateLiteral, SupportsIntegerSuffixesAndTargetWidth) {
   ASSERT_TRUE(negative_value.has_value()) << negative_value.error().message;
   EXPECT_EQ(negative_value->bits, 0xffffU);
 
+  const auto negative_unsigned =
+      resolve_immediate_literal(negative, ScalarType::U16);
+  ASSERT_FALSE(negative_unsigned.has_value());
+
   const auto out_of_range = parse_immediate("65536");
   const auto rejected =
       resolve_immediate_literal(out_of_range, ScalarType::U16);

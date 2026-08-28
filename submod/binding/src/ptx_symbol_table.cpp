@@ -715,6 +715,11 @@ struct SymbolTableBuilder {
           using Value = std::remove_cvref_t<decltype(value)>;
           if constexpr (std::same_as<Value, syntax_ast::AstIdentifierRef>) {
             addReference(scope, ReferenceKind::InstructionOperand, value);
+          } else if constexpr (std::same_as<
+                                   Value,
+                                   syntax_ast::AstRegisterPredicatePair>) {
+            addReference(scope, ReferenceKind::InstructionOperand, value.dst);
+            addReference(scope, ReferenceKind::Predicate, value.predicate);
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstPredicateOperand>) {
             addReference(scope, ReferenceKind::Predicate, value.name);

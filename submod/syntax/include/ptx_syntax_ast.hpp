@@ -117,12 +117,18 @@ struct AstBranchTargetSet {
   SourceRange range;
 };
 
+struct AstRegisterPredicatePair {
+  AstIdentifierRef dst;
+  AstIdentifierRef predicate;
+  SourceRange range;
+};
+
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
                  AstAddress, AstVectorMember, AstVectorPack,
                  AstCallParameterList, AstCallTarget, AstCallTargetSet,
-                 AstBranchTarget, AstBranchTargetSet>;
+                 AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {

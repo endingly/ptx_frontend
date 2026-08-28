@@ -75,6 +75,7 @@ class ResolvedValueKind(Enum):
     BRANCH_TARGET_SET = "BranchTargetSet"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
+    SHFL_DESTINATION = "ShflDestination"
 
 
 class ResolvedFieldStorage(Enum):
@@ -121,6 +122,7 @@ class ResolvedOperandShape(Enum):
     BRANCH_TARGET_SET = "BranchTargetSet"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
+    SHFL_DESTINATION = "ShflDestination"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -398,6 +400,7 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
+    "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
     "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,

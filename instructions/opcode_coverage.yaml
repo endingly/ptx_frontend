@@ -91,6 +91,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: shfl
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
 
   - opcode: ret
     syntax: partial

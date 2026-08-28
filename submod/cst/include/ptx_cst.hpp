@@ -110,11 +110,18 @@ struct CstBranchTargetSet {
   CstTokenRange token_range;
 };
 
+struct CstRegisterPredicatePair {
+  CstIdentifier dst;
+  TokenId pipe_token;
+  CstIdentifier predicate;
+  CstTokenRange token_range;
+};
+
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstImmediate, CstAddress,
                  CstVectorMember, CstVectorPack, CstCallParameterList,
                  CstCallTarget, CstCallTargetSet, CstBranchTarget,
-                 CstBranchTargetSet>;
+                 CstBranchTargetSet, CstRegisterPredicatePair>;
 
 struct CstOperandElement {
   CstOperand operand;

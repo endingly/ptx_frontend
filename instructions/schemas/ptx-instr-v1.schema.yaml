@@ -636,6 +636,7 @@ $defs:
       - symbol
       - func
       - reg_or_imm
+      - shfl_dest
       - mov_scalar_src
       - reg_vector
       - direct_call_target

@@ -187,6 +187,7 @@ domains:
       reg: ResolvedRegisterRef
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
+      shfl_dest: ResolvedShflSyncDestination
       mov_scalar_src: ResolvedMovSource
       pred: ResolvedPredicate
       pred_or_not: ResolvedPredicate
@@ -220,6 +221,7 @@ domains:
       Predicate: ResolvedPredicate
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
+      ShflDestination: ResolvedShflSyncDestination
       MovSource: ResolvedMovSource
       BranchTarget: ResolvedBranchTarget
       SpecialRegister: ResolvedSpecialRegisterRef
@@ -271,6 +273,7 @@ domains:
       CALL_TARGET_SET: check_end::OperandSyntaxShape::CallTargetSet
       BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
       BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
+      SHFL_DESTINATION: check_end::OperandSyntaxShape::ShflDestination
 
   resolved_value_kinds:
     cpp_type: check_end::ResolvedValueKind
@@ -290,6 +293,7 @@ domains:
       Predicate: check_end::ResolvedValueKind::Predicate
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      ShflDestination: check_end::ResolvedValueKind::ShflDestination
       MovSource: check_end::ResolvedValueKind::MovSource
       BranchTarget: check_end::ResolvedValueKind::BranchTarget
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
@@ -335,6 +339,7 @@ domains:
       DirectCallTarget: check_end::OperandShape::DirectCallTarget
       IndirectCallee: check_end::OperandShape::IndirectCallee
       BranchTargetSet: check_end::OperandShape::BranchTargetSet
+      ShflDestination: check_end::OperandShape::ShflDestination
       CallReturnParameter: check_end::OperandShape::CallReturnParameter
       CallArguments: check_end::OperandShape::CallArguments
 

@@ -26,6 +26,7 @@ using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstInstruction;
 using syntax_ast::AstPredicateOperand;
+using syntax_ast::AstRegisterPredicatePair;
 using syntax_ast::AstVectorMember;
 using syntax_ast::AstVectorPack;
 
@@ -90,6 +91,18 @@ TEST(PtxSyntaxParser, ParsesVectorPack) {
   EXPECT_TRUE(std::holds_alternative<AstIdentifierRef>(pack.elements[0]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[1]));
   EXPECT_TRUE(std::holds_alternative<AstImmediate>(pack.elements[2]));
+}
+
+TEST(PtxSyntaxParser, LowersRegisterPredicatePairAsOneOperand) {
+  PtxSyntaxParser parser("shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;");
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  ASSERT_EQ(result->operands.size(), 5u);
+  const auto& pair =
+      std::get<AstRegisterPredicatePair>(result->operands.front());
+  EXPECT_EQ(pair.dst.syntax.text, "%b0");
+  EXPECT_EQ(pair.predicate.syntax.text, "%p0");
+  EXPECT_NE(pair.range.start, pair.range.end);
 }
 
 TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {

@@ -155,6 +155,32 @@ operand_patterns:
       role: src
       access: read
       type: u32
+  shfl_sync_idx:
+    - name: dst
+      kind: shfl_dest
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type: b32
+    - name: lane
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+    - name: clamp
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
 
 instructions:
   - opcode: bar
@@ -708,4 +734,34 @@ instructions:
 
         examples:
           - ptx: "vote.sync.ballot.b32 %b0, %p0, 0xffffffff;"
+            valid: true
+
+  - opcode: shfl
+    doc: "Shuffle operation, limited to synchronized idx.b32 with d|p output."
+    syntax: "shfl.sync.idx.b32 dst|predicate, src, lane, clamp, membermask"
+
+    variants:
+      - name: shfl_sync_idx_b32
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: idx
+            kind: flag
+            presence: fixed
+            value: true
+            token: .idx
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        operands: $shfl_sync_idx
+        rule: parallel_sync_and_communication.shfl
+
+        examples:
+          - ptx: "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
             valid: true

@@ -1059,6 +1059,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedShflSyncDestination":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "ShflDestination")},
+                  .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.data.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedImmediate":
         return f"""              OperandView{{
                   .field_id = "{field.name}",

@@ -1657,6 +1657,62 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedRegisterWidthPolicy.EXACT,
         )
 
+    def test_shfl_sync_idx_b32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        shfl = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "shfl"
+        )
+        resolved = from_instruction_spec(shfl)
+
+        self.assertEqual(resolved.cpp_name, "Shfl")
+        variant = resolved.variants[0]
+        self.assertEqual(variant.cpp_name, "SyncIdxB32")
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("idx", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedShflSyncDestination>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
+                ("lane", "WithLocs<RegOrImm>"),
+                ("clamp", "WithLocs<RegOrImm>"),
+                ("membermask", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].allowed_shapes,
+            (ResolvedOperandShape.SHFL_DESTINATION,),
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+
+    def test_shfl_generator_emits_pair_operand_view(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_parallel.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="parallel_synchronization_and_communication",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("ResolvedShflSyncDestination", source)
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::ShflDestination,", source
+        )
+        self.assertIn("selected.dst.value.data.declared_type", source)
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

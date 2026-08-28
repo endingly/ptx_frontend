@@ -595,6 +595,16 @@ PtxCstParser::parseOperand() {
     return std::unexpected(identifier.error());
   const syntax_cst::CstIdentifier base{*identifier};
 
+  if (token(peek()).kind == TokenKind::Pipe) {
+    const TokenId pipe = consume();
+    auto predicate = expect(TokenKind::Ident, "predicate after '|'");
+    if (!predicate)
+      return std::unexpected(predicate.error());
+    return syntax_cst::CstOperand{syntax_cst::CstRegisterPredicatePair{
+        base, pipe, syntax_cst::CstIdentifier{*predicate},
+        {*identifier, *predicate + 1}}};
+  }
+
   if (token(peek()).kind == TokenKind::DotIdent) {
     const TokenId selector = consume();
     return syntax_cst::CstOperand{syntax_cst::CstVectorMember{

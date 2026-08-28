@@ -886,6 +886,106 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   ASSERT_FALSE(missing_mask.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<3>;
+  .reg .pred %p<2>;
+  .reg .u32 %u<4>;
+  shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;
+  shfl.sync.idx.b32 %b1|%p1, %b2, %u0, %u1, %u2;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& immediate =
+      std::get<Shfl::SyncIdxB32>(std::get<Shfl>(body[0]).variant);
+  const auto& register_operands =
+      std::get<Shfl::SyncIdxB32>(std::get<Shfl>(body[1]).variant);
+  EXPECT_TRUE(immediate.sync);
+  EXPECT_TRUE(immediate.idx);
+  EXPECT_EQ(immediate.type, ScalarType::B32);
+  EXPECT_EQ(immediate.dst.value.data.declared_type, ScalarType::B32);
+  EXPECT_EQ(immediate.dst.value.predicate.register_ref.declared_type,
+            ScalarType::Pred);
+  EXPECT_FALSE(immediate.dst.locs.empty());
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.lane.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(register_operands.lane.value));
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Shfl>(body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Shfl>(body[1]), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Shfl>(body[0]),
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Shfl>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto bad_data_and_lane = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  .reg .b64 %wide0;
+  shfl.sync.idx.b32 %b0|%p0, %wide0, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_TRUE(bad_data_and_lane.has_value())
+      << bad_data_and_lane.error().front().message;
+  const auto bad_check = checker::check(
+      std::get<Shfl>(bad_data_and_lane->functions.front().body.front()), context);
+  ASSERT_FALSE(bad_check.has_value());
+  EXPECT_EQ(bad_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto bad_pair = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  .reg .u32 %u0;
+  shfl.sync.idx.b32 %b0|%u0, %b0, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_FALSE(bad_pair.has_value());
+  const auto wrong_mode = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  shfl.sync.up.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_mode.has_value());
+  const auto legacy = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  shfl.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_FALSE(legacy.has_value());
+  const auto missing_membermask = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31;
+}
+)ptx"));
+  ASSERT_FALSE(missing_membermask.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

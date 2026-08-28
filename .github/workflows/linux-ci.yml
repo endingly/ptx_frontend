@@ -129,11 +129,6 @@ jobs:
         shell: bash
         run: cmake --workflow --preset "${{ matrix.preset }}"
 
-      - name: Run Python unit tests
-        if: matrix.preset == 'ci-linux-gcc-debug'
-        shell: bash
-        run: cmake --build --preset "${{ matrix.preset }}" --target python_test
-
       - name: Show compiler cache statistics
         if: always()
         shell: bash

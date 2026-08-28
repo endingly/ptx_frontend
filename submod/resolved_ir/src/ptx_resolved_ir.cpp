@@ -350,6 +350,8 @@ std::expected<WithLocs<CacheOperator>, ResolveDiagnostic> resolve_cache_operator
 
 std::optional<EvictionPriority> eviction_priority_from_ptx_name(
     std::string_view spelling) {
+  if (spelling.starts_with(".L1::"))
+    spelling.remove_prefix(std::string_view{".L1::"}.size());
   return lookup_ptx_suffix(generated_detail::kEvictionPriorities, spelling);
 }
 

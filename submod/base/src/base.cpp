@@ -92,6 +92,8 @@ bool scalar_types_compatible(ScalarType actual, ScalarType instruction,
                              ScalarTypeSizePolicy size_policy) {
   if (actual == instruction)
     return true;
+  if (size_policy == ScalarTypeSizePolicy::Exact)
+    return false;
   // ponytail: reject wider .b128 until declaration-type availability is
   // checked centrally; remove this guard when that registry/checker exists.
   if (size_policy == ScalarTypeSizePolicy::EqualOrWider &&

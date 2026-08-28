@@ -162,6 +162,7 @@ domains:
     cpp_type: base::ScalarTypeSizePolicy
     default: base::ScalarTypeSizePolicy::SameWidth
     values:
+      exact: base::ScalarTypeSizePolicy::Exact
       same_width: base::ScalarTypeSizePolicy::SameWidth
       equal_or_wider: base::ScalarTypeSizePolicy::EqualOrWider
 

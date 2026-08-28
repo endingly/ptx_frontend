@@ -17,6 +17,7 @@ class OperandTypeExpressionKind(Enum):
 class OperandRegisterWidthPolicy(str, Enum):
     """Register-width relation accepted by an operand type constraint."""
 
+    EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
 

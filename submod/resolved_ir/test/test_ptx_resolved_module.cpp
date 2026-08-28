@@ -727,6 +727,72 @@ TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
   ASSERT_FALSE(missing_source.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksActivemaskB32Slice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  activemask.b32 %b0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Activemask>(resolved->functions.front().body.front());
+  const auto& activemask = std::get<Activemask::B32>(instruction.variant);
+  EXPECT_EQ(activemask.type, ScalarType::B32);
+  EXPECT_EQ(activemask.dst.value.declared_type, ScalarType::B32);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 2}, .sm_version = 30},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 1}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 2}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto mismatched_dsts = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u0;
+  .reg .b64 %wide0;
+  activemask.b32 %u0;
+  activemask.b32 %wide0;
+}
+)ptx"));
+  ASSERT_TRUE(mismatched_dsts.has_value())
+      << mismatched_dsts.error().front().message;
+  for (const auto& candidate : mismatched_dsts->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Activemask>(candidate),
+        checker::Context{.target = {.ptx_version = {6, 2}, .sm_version = 30}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; activemask.u32 %b0; }
+)ptx"));
+  ASSERT_FALSE(wrong_type.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b<2>; activemask.b32 %b0, %b1; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

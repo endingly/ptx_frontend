@@ -44,6 +44,7 @@ enum class ScalarKind { Invalid, Bit, Unsigned, Signed, Float, Pred };
 
 /** Width relation accepted when checking a register against an instruction. */
 enum class ScalarTypeSizePolicy : uint8_t {
+  Exact,
   SameWidth,
   EqualOrWider,
 };

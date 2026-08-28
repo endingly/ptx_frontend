@@ -134,6 +134,7 @@ class ResolvedOperandTypeExpressionKind(Enum):
 class ResolvedRegisterWidthPolicy(Enum):
     """Descriptor-facing register-size relation for a typed operand."""
 
+    EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
 

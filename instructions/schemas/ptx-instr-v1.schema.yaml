@@ -738,6 +738,7 @@ $defs:
           resolved instruction type. The default requires equal width.
         type: string
         enum:
+          - exact
           - same_width
           - equal_or_wider
         default: same_width

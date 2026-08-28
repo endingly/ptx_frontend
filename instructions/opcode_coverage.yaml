@@ -11,6 +11,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: activemask
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: atom
     syntax: partial
     resolved: partial

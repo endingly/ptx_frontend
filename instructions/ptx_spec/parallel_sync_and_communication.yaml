@@ -636,3 +636,29 @@ instructions:
         examples:
           - ptx: "red.global.relaxed.cta.add.u32 [global_value], %r0;"
             valid: true
+
+  - opcode: activemask
+    doc: "Active-lane mask, limited to the b32 destination form."
+    syntax: "activemask.b32 dst"
+
+    variants:
+      - name: activemask_b32
+        availability: {ptx: "6.2", sm: 30}
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        operands:
+          - name: dst
+            kind: reg
+            role: dst
+            access: write
+            type: b32
+            register_width: exact
+        rule: parallel_sync_and_communication.activemask
+
+        examples:
+          - ptx: "activemask.b32 %b0;"
+            valid: true

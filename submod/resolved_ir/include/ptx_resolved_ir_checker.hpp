@@ -256,6 +256,7 @@ struct OperandView {
   std::string_view field_id;
   OperandShape actual_shape;
   std::optional<ScalarType> immediate_type;
+  std::optional<uint64_t> immediate_bits;
   std::optional<ScalarType> register_type;
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
@@ -384,6 +385,11 @@ struct VariantDescriptor {
     std::string_view state_space_field_id;
     AvailabilityDescriptor availability;
   } memory_vector;
+  /** Empty field ID means this variant has no immediate allowlist. */
+  struct ImmediateValueDescriptor {
+    std::string_view operand_field_id;
+    std::span<const uint64_t> allowed_values;
+  } immediate_value;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -412,6 +418,7 @@ enum class CheckDiagnosticKind : uint8_t {
   ParameterQualifierMismatch,
   InvalidVectorOperand,
   MemoryConsistencyViolation,
+  ImmediateValueMismatch,
   RuleViolation,
 };
 
@@ -521,6 +528,11 @@ CheckResult check_memory_vector(
     const VariantDescriptor::MemoryVectorDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     const Context& context);
+
+/** Check an immediate operand against an exact generated integer allowlist. */
+CheckResult check_immediate_value(
+    const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context);
 
 /**
  * Check one generated resolved instruction.

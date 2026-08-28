@@ -1074,4 +1074,34 @@ CheckResult check_memory_vector(
   return std::unexpected(std::move(diagnostics));
 }
 
+CheckResult check_immediate_value(
+    const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context) {
+  if (descriptor.operand_field_id.empty())
+    return {};
+  const OperandView* operand =
+      find_operand(operands, descriptor.operand_field_id);
+  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+      !operand->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format(
+            "Immediate-value constraint references missing immediate operand '{}'.",
+            descriptor.operand_field_id),
+    }});
+  }
+  if (std::ranges::find(descriptor.allowed_values, *operand->immediate_bits) !=
+      descriptor.allowed_values.end()) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand->locations, context),
+      .message = fmt::format("Immediate operand '{}' has unsupported value {}.",
+                             descriptor.operand_field_id,
+                             *operand->immediate_bits),
+  }});
+}
+
 }  // namespace ptx_frontend::resolved_ir::checker

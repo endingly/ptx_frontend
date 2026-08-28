@@ -423,6 +423,110 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
   ASSERT_FALSE(extra_address.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() {
+  cp.async.ca.shared.global [shared_value], [global_value], 4;
+  cp.async.ca.shared.global [shared_value], [global_value], 8;
+  cp.async.ca.shared.global [shared_value], [global_value], 16;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& copy =
+      std::get<Cp::AsyncCaSharedGlobal>(std::get<Cp>(body.front()).variant);
+  EXPECT_TRUE(copy.async);
+  EXPECT_TRUE(copy.ca);
+  EXPECT_TRUE(copy.shared);
+  EXPECT_TRUE(copy.global);
+  EXPECT_EQ(copy.cp_size.value.type, ScalarType::U32);
+  EXPECT_EQ(copy.cp_size.value.bits, 4u);
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_spaces = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() {
+  cp.async.ca.shared.global [global_value], [global_value], 4;
+  cp.async.ca.shared.global [shared_value], [shared_value], 4;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_spaces.has_value())
+      << wrong_spaces.error().front().message;
+  for (const auto& instruction : wrong_spaces->functions.front().body) {
+    const auto checked = checker::check(std::get<Cp>(instruction), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  }
+
+  const auto invalid_sizes = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() {
+  cp.async.ca.shared.global [shared_value], [global_value], 3;
+  cp.async.ca.shared.global [shared_value], [global_value], 32;
+}
+)ptx"));
+  ASSERT_TRUE(invalid_sizes.has_value())
+      << invalid_sizes.error().front().message;
+  for (const auto& instruction : invalid_sizes->functions.front().body) {
+    const auto checked = checker::check(std::get<Cp>(instruction), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+
+  const auto register_size = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { .reg .u32 %r0; cp.async.ca.shared.global [shared_value], [global_value], %r0; }
+)ptx"));
+  ASSERT_FALSE(register_size.has_value());
+  const auto non_integer_size = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { cp.async.ca.shared.global [shared_value], [global_value], 4.0; }
+)ptx"));
+  ASSERT_FALSE(non_integer_size.has_value());
+  const auto wrong_modifier = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { cp.async.cg.shared.global [shared_value], [global_value], 4; }
+)ptx"));
+  ASSERT_FALSE(wrong_modifier.has_value());
+  const auto missing_size = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { cp.async.ca.shared.global [shared_value], [global_value]; }
+)ptx"));
+  ASSERT_FALSE(missing_size.has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() { membar.cta; }

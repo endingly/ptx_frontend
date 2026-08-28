@@ -70,6 +70,11 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         _emit_variant_type_compatibility_descriptors(variant)
         for variant in instruction.variants
     )
+    immediate_value_definitions = "\n\n".join(
+        _emit_variant_immediate_value_descriptors(variant)
+        for variant in instruction.variants
+        if variant.immediate_value is not None
+    )
     variants = ",\n".join(
         _emit_variant_descriptor(variant) for variant in instruction.variants
     )
@@ -79,6 +84,8 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 {layout_definitions}
 
 {type_compatibility_definitions}
+
+{immediate_value_definitions}
 
   static constexpr std::array<checker::VariantDescriptor, {len(instruction.variants)}>
       variants = {{
@@ -145,6 +152,13 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                       .required_family = "{vector_family}",
                   }},
               }},'''
+    immediate_value = ""
+    if variant.immediate_value is not None:
+        immediate_value = f'''
+              .immediate_value = {{
+                  .operand_field_id = "{variant.immediate_value.operand_field_id}",
+                  .allowed_values = {variant.cpp_name}_immediate_value_values,
+              }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {{
@@ -161,7 +175,16 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
 {memory_consistency}
 {_emit_address_alignment_descriptor(alignment)}
 {memory_vector}
+{immediate_value}
           }}"""
+
+
+def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
+    constraint = variant.immediate_value
+    assert constraint is not None
+    values = ", ".join(str(value) for value in constraint.values)
+    return f"""  static constexpr std::array<uint64_t, {len(constraint.values)}>
+      {variant.cpp_name}_immediate_value_values = {{{{{values}}}}};"""
 
 
 def _emit_address_alignment_descriptor(alignment) -> str:

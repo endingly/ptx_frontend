@@ -1474,6 +1474,61 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "state_space",
         )
 
+    def test_cp_async_ca_shared_global_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        resolved = from_instruction_spec(cp)
+        variant = resolved.variants[0]
+
+        self.assertEqual(resolved.cpp_name, "Cp")
+        self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
+        self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("async", "bool"),
+                ("ca", "bool"),
+                ("shared", "bool"),
+                ("global", "bool"),
+                ("dst", "WithLocs<ResolvedAddress>"),
+                ("src", "WithLocs<ResolvedAddress>"),
+                ("cp_size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.operand_field_id, "cp_size")
+        self.assertEqual(variant.immediate_value.values, (4, 8, 16))
+        self.assertEqual(
+            [value.value for value in variant.operand_layouts[0].bindings[0].allowed_address_state_spaces],
+            ["shared"],
+        )
+        self.assertEqual(
+            [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
+            ["global"],
+        )
+
+    def test_cp_generator_emits_immediate_value_checker(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
+            descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_ir_source(
+                database, category="data_movement", output_path=output_path
+            )
+            generate_resolved_checker_descriptor_source(
+                database, output_path=descriptor_path
+            )
+            source = output_path.read_text(encoding="utf-8")
+            descriptor = descriptor_path.read_text(encoding="utf-8")
+
+        self.assertIn("check_immediate_value(", source)
+        self.assertIn("selected.cp_size.value.bits", source)
+        self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
+        self.assertIn('.operand_field_id = "cp_size",', descriptor)
+
     def test_membar_cta_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

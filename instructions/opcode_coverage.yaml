@@ -71,6 +71,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: cp
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: red
     syntax: partial
     resolved: partial

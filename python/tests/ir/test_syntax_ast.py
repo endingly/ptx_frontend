@@ -1061,6 +1061,49 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         operand_kind="reg" if message == "kind 'addr'" else "addr",
                     )
 
+    def test_immediate_value_constraint_normalization(self) -> None:
+        def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_immediate",
+                                    "availability": {"ptx": "1.0"},
+                                    "operands": [
+                                        {
+                                            "name": "size",
+                                            "kind": operand_kind,
+                                            "role": "src",
+                                            "access": "read",
+                                            "type": "u32",
+                                        }
+                                    ],
+                                    "constraints": [constraint],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        normalize_constraint(
+            {"kind": "immediate_value", "operand": "size", "values": [4, 8, 16]}
+        )
+        for constraint, message, kind in (
+            ({"kind": "immediate_value", "operand": "missing", "values": [4]}, "kind 'imm'", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4, 4]}, "unique", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4.0]}, "integers", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4]}, "kind 'imm'", "reg"),
+        ):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    normalize_constraint(constraint, operand_kind=kind)
+
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(
             {

@@ -8,6 +8,7 @@ from typing import Any
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateValueConstraint,
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
@@ -914,6 +915,49 @@ def _normalize_memory_vector_constraint(
     )
 
 
+def _normalize_immediate_value_constraint(
+    raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
+) -> ImmediateValueConstraint | None:
+    """Lower one exact integer allowlist for an immediate operand."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "immediate_value"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: at most one immediate_value "
+            "constraint is supported"
+        )
+    raw = matches[0]
+    if set(raw) != {"kind", "operand", "values"}:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_value constraint "
+            "requires only operand and values"
+        )
+    operand_name = raw["operand"]
+    values = raw["values"]
+    matching = [
+        operand for layout in layouts for operand in layout.operands
+        if operand.name == operand_name
+    ]
+    if not matching or any(operand.kind != "imm" for operand in matching):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_value operand must "
+            "name an active kind 'imm' operand"
+        )
+    if (not isinstance(values, list) or not values or
+            any(type(value) is not int or value < 0 for value in values) or
+            len(set(values)) != len(values)):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_value values must "
+            "be unique non-negative integers"
+        )
+    return ImmediateValueConstraint(operand=operand_name, values=tuple(values))
+
+
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
@@ -972,6 +1016,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     ),
                     memory_vector=_normalize_memory_vector_constraint(
                         raw_variant, modifiers, operand_layouts
+                    ),
+                    immediate_value=_normalize_immediate_value_constraint(
+                        raw_variant, operand_layouts
                     ),
                 )
             )

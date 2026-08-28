@@ -20,6 +20,7 @@ from code_gen.cpp_backend import (
 )
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateValueConstraint,
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
@@ -206,6 +207,14 @@ class ResolvedMemoryVectorConstraint:
 
 
 @dataclass(frozen=True)
+class ResolvedImmediateValueConstraint:
+    """Generated field identity and integer allowlist for one immediate."""
+
+    operand_field_id: str
+    values: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
 
@@ -298,6 +307,7 @@ class ResolvedVariant:
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
     address_alignment: ResolvedAddressAlignmentConstraint | None
     memory_vector: ResolvedMemoryVectorConstraint | None
+    immediate_value: ResolvedImmediateValueConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -513,6 +523,9 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_vector,
             {field.source_name: field.name for field in modifier_fields},
         ),
+        immediate_value=_build_immediate_value_constraint(
+            variant.immediate_value,
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )
@@ -572,6 +585,17 @@ def _build_memory_vector_constraint(
             modifier_field_ids[constraint.state_space_modifier]
             if constraint.state_space_modifier is not None else None
         ),
+    )
+
+
+def _build_immediate_value_constraint(
+    constraint: ImmediateValueConstraint | None,
+) -> ResolvedImmediateValueConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedImmediateValueConstraint(
+        operand_field_id=constraint.operand,
+        values=constraint.values,
     )
 
 

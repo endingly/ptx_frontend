@@ -201,6 +201,23 @@ operand_patterns:
       state_space:
         expr: modifier(state_space)
 
+  cp_async_shared_global:
+    - name: dst
+      kind: addr
+      role: addr
+      access: write
+      state_space: [shared]
+    - name: src
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global]
+    - name: cp_size
+      kind: imm
+      role: src
+      access: read
+      type: u32
+
   ld_vector:
     - name: dst
       kind: reg_vector
@@ -1034,6 +1051,46 @@ instructions:
 
         examples:
           - ptx: "prefetch.global.L1 [global_value];"
+            valid: true
+
+  - opcode: cp
+    section: "9.7.9.22"
+    doc: "Asynchronous copy, limited to cached shared-from-global fixed sizes."
+    syntax: "cp.async.ca.shared.global [dst], [src], cp_size"
+
+    variants:
+      - name: cp_async_ca_shared_global
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: ca
+            kind: flag
+            presence: fixed
+            value: true
+            token: .ca
+          - name: shared
+            kind: flag
+            presence: fixed
+            value: true
+            token: .shared
+          - name: global
+            kind: flag
+            presence: fixed
+            value: true
+            token: .global
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - kind: immediate_value
+            operand: cp_size
+            values: [4, 8, 16]
+
+        examples:
+          - ptx: "cp.async.ca.shared.global [shared_value], [global_value], 16;"
             valid: true
 
   - opcode: st

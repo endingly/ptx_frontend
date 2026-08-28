@@ -492,6 +492,15 @@ def _emit_check_operand_dispatch(
                                  memory_vector_check.error().end());
             }}
 """
+    immediate_value_check = ""
+    if variant.immediate_value is not None:
+        immediate_value_check = f"""            const auto immediate_value_check = check_immediate_value(
+                {checker_variant_expr}.immediate_value, operands, context);
+            if (!immediate_value_check) {{
+              diagnostics.insert(diagnostics.end(), immediate_value_check.error().begin(),
+                                 immediate_value_check.error().end());
+            }}
+"""
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -521,7 +530,7 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-{consistency_check}{memory_vector_check}{alignment_check}          }}"""
+{consistency_check}{memory_vector_check}{alignment_check}{immediate_value_check}          }}"""
 
     layout_lambdas = "\n\n".join(
         _emit_check_multi_layout_lambda(
@@ -580,7 +589,8 @@ def _emit_check_multi_layout_lambda(
                 context);"""
     if (variant.memory_consistency is not None or
             variant.address_alignment is not None or
-            variant.memory_vector is not None):
+            variant.memory_vector is not None or
+            variant.immediate_value is not None):
         consistency_return = f"""
             const auto operand_check = check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
@@ -655,6 +665,16 @@ def _emit_multi_layout_cross_rule_checks(
             if (!alignment_check) {{
               diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
                                  alignment_check.error().end());
+            }}
+"""
+    if variant.immediate_value is not None:
+        checks += f"""            const auto immediate_value_check = check_immediate_value(
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .immediate_value,
+                operands, context);
+            if (!immediate_value_check) {{
+              diagnostics.insert(diagnostics.end(), immediate_value_check.error().begin(),
+                                 immediate_value_check.error().end());
             }}
 """
     return checks
@@ -1072,6 +1092,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
                   .immediate_type = {object_name}.{field.name}.value.type,
+                  .immediate_bits = {object_name}.{field.name}.value.bits,
                   .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""

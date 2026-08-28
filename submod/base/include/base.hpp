@@ -101,6 +101,7 @@ enum class MemoryConsistency : uint8_t {
   Relaxed,
   Acquire,
   Release,
+  AcqRel,
 };
 
 /** Scope carried by memory-consistency operations; None represents omission. */

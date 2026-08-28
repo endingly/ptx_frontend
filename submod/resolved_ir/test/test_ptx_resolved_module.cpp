@@ -463,6 +463,54 @@ TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
   ASSERT_FALSE(extra_operand.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { fence.acq_rel.cta; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Fence>(resolved->functions.front().body.front());
+  const auto& fence = std::get<Fence::AcqRelCta>(instruction.variant);
+  EXPECT_EQ(fence.semantics, MemoryConsistency::AcqRel);
+  EXPECT_EQ(fence.scope, MemoryScope::Cta);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_semantics = resolveModule(parseModule(R"ptx(
+.entry kernel() { fence.acquire.cta; }
+)ptx"));
+  ASSERT_FALSE(wrong_semantics.has_value());
+  const auto wrong_scope = resolveModule(parseModule(R"ptx(
+.entry kernel() { fence.acq_rel.sys; }
+)ptx"));
+  ASSERT_FALSE(wrong_scope.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { fence.acq_rel.cta 0; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

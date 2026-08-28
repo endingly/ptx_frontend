@@ -142,6 +142,10 @@ class BackendModelTests(unittest.TestCase):
             "MemoryConsistency::Weak",
         )
         self.assertEqual(
+            unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["acq_rel"],
+            "MemoryConsistency::AcqRel",
+        )
+        self.assertEqual(
             unit.domains[CppDomain.MEMORY_SCOPES.value].default,
             "MemoryScope::None",
         )

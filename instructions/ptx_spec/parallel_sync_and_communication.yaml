@@ -491,3 +491,28 @@ instructions:
         examples:
           - ptx: "membar.cta;"
             valid: true
+
+  - opcode: fence
+    doc: "Memory fence, limited to acquire-release CTA scope."
+    syntax: "fence.acq_rel.cta"
+
+    variants:
+      - name: fence_acq_rel_cta
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: fixed
+            value: acq_rel
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cta
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.acq_rel.cta;"
+            valid: true

@@ -115,6 +115,7 @@ domains:
       relaxed: MemoryConsistency::Relaxed
       acquire: MemoryConsistency::Acquire
       release: MemoryConsistency::Release
+      acq_rel: MemoryConsistency::AcqRel
 
   memory_scopes:
     cpp_type: MemoryScope

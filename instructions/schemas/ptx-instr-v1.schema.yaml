@@ -939,37 +939,59 @@ $defs:
     description: >
       PTX/SM availability constraints for a variant, layout, modifier value,
       or operand state-space entry.
-    type: object
-    additionalProperties: false
-
-    properties:
-      ptx:
-        $ref: "#/$defs/ptx_version"
-
-      sm:
-        $ref: "#/$defs/sm_version"
-
-      family:
-        $ref: "#/$defs/arch_family"
-
-      deprecated:
-        type: boolean
-        default: false
-
-      removed:
-        type: boolean
-        default: false
-
-      notes:
-        type: string
-
-    anyOf:
-      - required:
-          - ptx
-      - required:
-          - sm
-      - required:
-          - family
+    oneOf:
+      - type: object
+        additionalProperties: false
+        properties:
+          ptx:
+            $ref: "#/$defs/ptx_version"
+          sm:
+            $ref: "#/$defs/sm_version"
+          family:
+            $ref: "#/$defs/arch_family"
+          deprecated:
+            type: boolean
+            default: false
+          removed:
+            type: boolean
+            default: false
+          notes:
+            type: string
+        anyOf:
+          - required: [ptx]
+          - required: [sm]
+          - required: [family]
+      - type: object
+        additionalProperties: false
+        required: [any_of]
+        properties:
+          any_of:
+            type: array
+            minItems: 1
+            maxItems: 4
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                ptx:
+                  $ref: "#/$defs/ptx_version"
+                sm:
+                  $ref: "#/$defs/sm_version"
+                target:
+                  type: string
+                  pattern: "^sm_[1-9][0-9]*(a|f)?$"
+                capabilities:
+                  type: array
+                  minItems: 1
+                  maxItems: 4
+                  uniqueItems: true
+                  items:
+                    $ref: "#/$defs/schema_identifier"
+              anyOf:
+                - required: [ptx]
+                - required: [sm]
+                - required: [target]
+                - required: [capabilities]
 
   semantic_rule:
     description: >

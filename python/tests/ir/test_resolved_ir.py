@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import sys
 import tempfile
@@ -15,7 +16,11 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from code_gen.database import load_codegen_database
 from code_gen.database import CodegenDatabase
-from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
+from code_gen.gen_resolved_descriptor import (
+    _emit_address_state_spaces,
+    _emit_operand_binding_descriptor,
+    generate_resolved_descriptor_source,
+)
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
@@ -2420,6 +2425,49 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertNotIn("resolve<Add>", source)
         self.assertNotIn("resolve_fields(", source)
+
+    def test_state_space_and_parameter_availability_emit_dnf(self) -> None:
+        dnf = (("any_of", [{"target": "sm_100a", "capabilities": ["tensor"]}]),)
+        ld = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "ld"
+        )
+        resolved = from_instruction_spec(ld)
+        static_binding = next(
+            binding
+            for variant in resolved.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.allowed_address_state_spaces
+        )
+        state_space = replace(
+            static_binding.allowed_address_state_spaces[0], availability=dnf
+        )
+        state_source = _emit_address_state_spaces((state_space,))
+        self.assertIn(".any_of_count = 1", state_source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", state_source)
+
+        parameter_binding = next(
+            binding
+            for variant in resolved.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.parameter_constraint is not None
+        )
+        parameter_binding = replace(
+            parameter_binding,
+            parameter_constraint=replace(
+                parameter_binding.parameter_constraint,
+                function_availability=dnf,
+            ),
+        )
+        parameter_source = _emit_operand_binding_descriptor(
+            parameter_binding, "vector_arities", "address_state_spaces"
+        )
+        self.assertIn(".function_availability = {", parameter_source)
+        self.assertIn(".any_of_count = 1", parameter_source)
+        self.assertIn('.capabilities = {{"tensor"}}', parameter_source)
 
     def test_generate_private_checker_descriptor_source(self) -> None:
         database = load_codegen_database(

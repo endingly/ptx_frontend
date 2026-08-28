@@ -49,6 +49,44 @@ _STATE_SPACES = frozenset(
         "generic",
     }
 )
+_AVAILABILITY_TARGET = re.compile(r"sm_[1-9][0-9]*(?:a|f)?$")
+
+
+def normalize_availability(raw: object) -> dict[str, Any]:
+    """Validate the legacy availability form or its bounded DNF replacement."""
+
+    if not isinstance(raw, dict):
+        raise TypeError("availability must be an object")
+    if not raw:
+        return {}
+    if "any_of" not in raw:
+        allowed = {"ptx", "sm", "family", "deprecated", "removed", "notes"}
+        if set(raw) - allowed or not set(raw) & {"ptx", "sm", "family"}:
+            raise ValueError("availability must contain a legacy requirement or any_of")
+        return dict(raw)
+    if set(raw) != {"any_of"}:
+        raise ValueError("any_of availability cannot mix with legacy fields")
+    clauses = raw["any_of"]
+    if not isinstance(clauses, list) or not 1 <= len(clauses) <= 4:
+        raise ValueError("availability any_of must contain one to four clauses")
+    normalized: list[dict[str, Any]] = []
+    for clause in clauses:
+        if not isinstance(clause, dict):
+            raise TypeError("availability any_of clauses must be objects")
+        if set(clause) - {"ptx", "sm", "target", "capabilities"} or not clause:
+            raise ValueError("availability any_of clause has invalid fields")
+        target = clause.get("target")
+        if target is not None and (not isinstance(target, str) or
+                                   _AVAILABILITY_TARGET.fullmatch(target) is None):
+            raise ValueError("availability target must be an sm_<number>[a|f] spelling")
+        capabilities = clause.get("capabilities")
+        if capabilities is not None:
+            if (not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 4
+                    or len(capabilities) != len(set(capabilities))
+                    or not all(isinstance(item, str) and item for item in capabilities)):
+                raise ValueError("availability capabilities must be one to four unique names")
+        normalized.append(dict(clause))
+    return {"any_of": normalized}
 
 
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
@@ -262,7 +300,7 @@ def _normalize_operand_state_space_values(
             raw_availability = raw_value["availability"]
             if not isinstance(raw_availability, dict):
                 raise TypeError("operand state_space availability must be an object")
-            availability = dict(raw_availability)
+            availability = normalize_availability(raw_availability)
         else:
             raise TypeError(
                 "operand state_space list entries must be strings or value objects"
@@ -300,7 +338,7 @@ def _normalize_operand_parameter_constraint(
         raise TypeError("parameter function_availability must be an object")
     return OperandParameterConstraint(
         direction=direction,
-        function_availability=dict(availability),
+        function_availability=normalize_availability(availability),
     )
 
 
@@ -424,7 +462,7 @@ def _normalize_modifier_values(
         if isinstance(raw_value, dict):
             raw_semantic_value = raw_value["value"]
             token = raw_value.get("token")
-            availability = dict(raw_value.get("availability", {}))
+            availability = normalize_availability(raw_value.get("availability", {}))
         else:
             raw_semantic_value = raw_value
             token = None
@@ -544,7 +582,7 @@ def normalize_operand_layouts(
                 name=name,
                 operands=operands,
                 kind=kind,
-                availability=dict(raw_layout.get("availability", {})),
+                availability=normalize_availability(raw_layout.get("availability", {})),
             )
         )
     if not layouts:
@@ -674,7 +712,7 @@ def _normalize_operand_type_compatibilities(
                 values=tuple(raw["values"]),
                 instruction_width=raw["instruction_width"],
                 effective_type=raw["effective_type"],
-                availability=dict(raw["availability"]),
+                availability=normalize_availability(raw["availability"]),
             )
         )
     return tuple(result)
@@ -946,7 +984,7 @@ def _normalize_memory_vector_constraint(
         type_modifier=raw["type_modifier"],
         vector_operand=raw["vector_operand"],
         address_operand=raw["address_operand"],
-        availability=dict(availability),
+        availability=normalize_availability(availability),
         state_space_modifier=state_space_modifier,
     )
 
@@ -1080,7 +1118,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             variants.append(
                 VariantSpec(
                     name=raw_variant["name"],
-                    availability=raw_variant["availability"],
+                    availability=normalize_availability(raw_variant["availability"]),
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
                     rule=raw_variant.get("rule"),

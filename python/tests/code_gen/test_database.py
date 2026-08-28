@@ -4,8 +4,16 @@ from typing import Any, cast
 import unittest
 
 import yaml
+from jsonschema import Draft202012Validator
 
 from code_gen.database import load_codegen_database
+from code_gen.load_yaml import load_yaml
+from code_gen.gen_resolved_checker_descriptor import _emit_availability
+from code_gen.normalize import normalize_availability
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCHEMA = REPO_ROOT / "instructions/schemas/ptx-instr-v1.schema.yaml"
 
 
 def _variant(name: str, type_value: str) -> dict[str, object]:
@@ -347,6 +355,51 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             [variant.name for variant in database.instructions[0].variants],
             ["add_first", "add_second"],
         )
+
+
+class AvailabilityNormalizationTests(unittest.TestCase):
+    def test_legacy_and_dnf_availability(self) -> None:
+        legacy = {"ptx": "9.0", "sm": 90, "family": "sm_120f"}
+        self.assertEqual(normalize_availability(legacy), legacy)
+        dnf = {"any_of": [
+            {"ptx": "9.0", "sm": 100, "target": "sm_100a",
+             "capabilities": ["tensor", "cluster"]},
+            {"ptx": "9.2", "sm": 120},
+        ]}
+        self.assertEqual(normalize_availability(dnf), dnf)
+
+    def test_rejects_invalid_dnf_availability(self) -> None:
+        for availability in (
+            {"any_of": []},
+            {"any_of": [{}]},
+            {"any_of": [{"target": "sm_90b"}]},
+            {"any_of": [{"capabilities": []}]},
+            {"any_of": [{"sm": 90}] * 5},
+        ):
+            with self.assertRaises((TypeError, ValueError)):
+                normalize_availability(availability)
+
+    def test_availability_schema_dnf_boundaries(self) -> None:
+        schema = load_yaml(SCHEMA)
+        validator = Draft202012Validator({
+            "$schema": schema["$schema"],
+            "$defs": schema["$defs"],
+            "$ref": "#/$defs/availability",
+        })
+        self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
+        for availability in ({"any_of": []}, {"any_of": [{}]},
+                             {"any_of": [{"sm": 100}] * 5}):
+            self.assertTrue(list(validator.iter_errors(availability)))
+
+    def test_dnf_generator_keeps_or_clauses_and_and_terms(self) -> None:
+        source = _emit_availability({"any_of": [
+            {"ptx": "9.0", "sm": 100, "target": "sm_100a",
+             "capabilities": ["tensor", "cluster"]},
+            {"sm": 120},
+        ]})
+        self.assertIn(".any_of_count = 2", source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
 
 
 if __name__ == "__main__":

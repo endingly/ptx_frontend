@@ -16,6 +16,7 @@
 
 #include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
+#include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -157,11 +158,28 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 
+inline constexpr size_t kMaxAvailabilityClauses = 4;
+inline constexpr size_t kMaxAvailabilityCapabilities = 4;
+
+/** One AND-clause in a bounded generated availability expression. */
+struct AvailabilityClause {
+  PtxVersion minimum_ptx_version{};
+  uint32_t minimum_sm_version = 0;
+  bool has_exact_target = false;
+  base::TargetArchitecture exact_target_architecture{};
+  base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
+  // ponytail: fixed DNF capacity; raise schema and this bound together if needed.
+  std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
+  uint8_t capability_count = 0;
+};
+
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
   std::string_view required_family{};
+  std::array<AvailabilityClause, kMaxAvailabilityClauses> any_of{};
+  uint8_t any_of_count = 0;
 };
 
 /**
@@ -292,6 +310,8 @@ struct TargetInfo {
   PtxVersion ptx_version{};
   uint32_t sm_version = 0;
   std::span<const std::string_view> families{};
+  std::optional<base::TargetIdentity> identity;
+  std::span<const std::string_view> capabilities{};
 };
 
 /** Additional target requirements for one selected operand layout. */
@@ -412,6 +432,7 @@ enum class CheckDiagnosticKind : uint8_t {
   UnsupportedPtxVersion,
   UnsupportedSmVersion,
   UnsupportedTargetFamily,
+  UnsupportedAvailability,
   MissingVariantDescriptor,
   MissingOperand,
   UnexpectedOperand,

@@ -3,8 +3,9 @@
 .address_size 64
 
 .global .align 4 .u32 global_value;
-.shared .align 4 .u32 shared_value;
-.shared .align 2 .b16 shared_matrix;
+.global .align 16 .b8 global_copy_src[16];
+.shared .align 16 .b8 shared_copy_dst[16];
+.shared .align 16 .b16 shared_matrix[8];
 
 .visible .entry m10_advanced_kernel() {
   .reg .u64 %rd<2>;
@@ -34,7 +35,7 @@
   activemask.b32 %b0;
   vote.sync.ballot.b32 %b1, %p0, 0xffffffff;
   shfl.sync.idx.b32 %b2|%p1, %b1, 0, 31, 0xffffffff;
-  cp.async.ca.shared.global [shared_value], [global_value], 16;
+  cp.async.ca.shared.global [shared_copy_dst], [global_copy_src], 16;
   cp.async.commit_group;
   cp.async.wait_group 0;
   cp.async.wait_all;

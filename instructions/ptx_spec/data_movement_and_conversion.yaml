@@ -1144,6 +1144,9 @@ instructions:
           - kind: immediate_value
             operand: cp_size
             values: [4, 8, 16]
+          - kind: address_alignment
+            address_operands: [dst, src]
+            immediate_operand: cp_size
 
         examples:
           - ptx: "cp.async.ca.shared.global [shared_value], [global_value], 16;"
@@ -1199,6 +1202,10 @@ instructions:
             access: read
             type: u32
         rule: data_movement.cp_async_wait_group
+        constraints:
+          - kind: immediate_range
+            operand: n
+            minimum: 0
 
         examples:
           - ptx: "cp.async.wait_group 0;"

@@ -188,11 +188,13 @@ struct ParameterAddressConstraint {
   AvailabilityDescriptor function_availability;
 };
 
-/** Fields needed to derive one natural total-access alignment requirement. */
+/** Fields needed to derive one generated address-alignment requirement. */
 struct AddressAlignmentConstraint {
-  std::string_view address_field_id;
+  std::span<const std::string_view> address_field_ids;
   std::string_view type_field_id;
   std::string_view vector_field_id;
+  std::string_view immediate_operand_field_id;
+  uint64_t alignment = 0;
 };
 
 /** How a vector operand derives each element type from the instruction type. */
@@ -257,6 +259,7 @@ struct OperandView {
   OperandShape actual_shape;
   std::optional<ScalarType> immediate_type;
   std::optional<uint64_t> immediate_bits;
+  std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
@@ -375,7 +378,7 @@ struct VariantDescriptor {
     std::string_view address_field_id;
     std::string_view state_space_field_id;
   } memory_consistency;
-  /** Empty field IDs mean this variant has no static alignment rule. */
+  /** Empty address fields mean this variant has no static alignment rule. */
   AddressAlignmentConstraint address_alignment;
   /** Empty field IDs mean this variant has no modern memory-vector rule. */
   struct MemoryVectorDescriptor {
@@ -390,6 +393,13 @@ struct VariantDescriptor {
     std::string_view operand_field_id;
     std::span<const uint64_t> allowed_values;
   } immediate_value;
+  /** Empty field ID means this variant has no immediate range constraint. */
+  struct ImmediateRangeDescriptor {
+    std::string_view operand_field_id;
+    uint64_t minimum = 0;
+    bool has_maximum = false;
+    uint64_t maximum = ~uint64_t{0};
+  } immediate_range;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -532,6 +542,11 @@ CheckResult check_memory_vector(
 /** Check an immediate operand against an exact generated integer allowlist. */
 CheckResult check_immediate_value(
     const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context);
+
+/** Check an immediate operand against inclusive generated integer bounds. */
+CheckResult check_immediate_range(
+    const VariantDescriptor::ImmediateRangeDescriptor& descriptor,
     std::span<const OperandView> operands, const Context& context);
 
 /**

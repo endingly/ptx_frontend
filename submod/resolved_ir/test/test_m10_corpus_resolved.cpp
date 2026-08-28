@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -14,7 +15,11 @@ namespace {
 syntax_ast::AstModule parseModule(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  if (!module.has_value()) {
+    throw std::runtime_error(module.diagnostics.empty()
+                                 ? "parser failed without diagnostics"
+                                 : module.diagnostics.front().message);
+  }
   return std::move(*module);
 }
 

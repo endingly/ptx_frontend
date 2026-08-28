@@ -241,6 +241,7 @@ struct ResolvedRegisterRef {
 struct ResolvedImmediate {
   uint64_t bits;
   ScalarType type;
+  bool is_negative = false;
   bool operator==(const ResolvedImmediate&) const = default;
 };
 

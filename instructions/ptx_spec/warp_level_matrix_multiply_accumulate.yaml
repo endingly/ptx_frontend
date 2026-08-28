@@ -91,6 +91,10 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}
         operands: $ldmatrix_m8n8_x2_shared_b16
         rule: data_movement.ldmatrix
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            alignment: 16
         examples:
           - ptx: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];"
             valid: true

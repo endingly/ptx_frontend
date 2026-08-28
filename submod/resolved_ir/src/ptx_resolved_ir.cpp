@@ -1293,14 +1293,6 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
             "Integer literal '{}' is incompatible with scalar type '{}'.",
             immediate.syntax.text, to_string(type))));
   }
-  if (negative && kind == ScalarKind::Unsigned) {
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format("Negative integer literal '{}' is incompatible with "
-                    "unsigned scalar type '{}'.",
-                    immediate.syntax.text, to_string(type))));
-  }
-
   const uint8_t byte_size = scalar_size_of(type);
   if (byte_size == 0 || byte_size > sizeof(uint64_t)) {
     return std::unexpected(invalid_immediate(
@@ -1334,7 +1326,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
 
   const uint64_t bits =
       negative ? (uint64_t{0} - *magnitude) & bit_mask : *magnitude;
-  return ResolvedImmediate{.bits = bits, .type = type};
+  return ResolvedImmediate{.bits = bits, .type = type, .is_negative = negative};
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(

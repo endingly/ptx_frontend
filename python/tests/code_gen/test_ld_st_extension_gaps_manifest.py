@@ -60,6 +60,97 @@ class LdStExtensionGapsManifestTests(unittest.TestCase):
             m10_i02_ids,
         )
 
+        implemented = {
+            gap["id"]: gap["implemented_contexts"]
+            for gap in gaps
+            if gap["disposition"] == "implemented"
+        }
+        self.assertEqual(
+            implemented,
+            {
+                "ld-l1-evict-priority-m10-i02": [
+                    {"state_space": "global", "vector": "scalar"}
+                ],
+                "st-l1-evict-priority-m10-i02": [
+                    {"state_space": "global", "vector": "scalar"}
+                ],
+                "ld-l2-cache-hint-policy-m10-i02": [
+                    {
+                        "state_space": "global",
+                        "vector": "scalar",
+                        "cache_policy_operand": {
+                            "required": True,
+                            "width_bits": 64,
+                        },
+                    }
+                ],
+                "st-l2-cache-hint-policy-m10-i02": [
+                    {
+                        "state_space": "global",
+                        "vector": "scalar",
+                        "cache_policy_operand": {
+                            "required": True,
+                            "width_bits": 64,
+                        },
+                    }
+                ],
+            },
+        )
+        self.assertEqual(
+            {
+                gap["id"]: gap["deferred_contexts"]
+                for gap in gaps
+                if gap["disposition"] == "implemented"
+            },
+            {
+                "ld-l1-evict-priority-m10-i02": [
+                    "generic",
+                    "vector",
+                    "global_nc",
+                ],
+                "st-l1-evict-priority-m10-i02": [
+                    "generic",
+                    "vector",
+                    "async",
+                ],
+                "ld-l2-cache-hint-policy-m10-i02": [
+                    "generic",
+                    "vector",
+                    "global_nc",
+                ],
+                "st-l2-cache-hint-policy-m10-i02": [
+                    "generic",
+                    "vector",
+                    "async",
+                ],
+            },
+        )
+
+    def test_implemented_gap_requires_structured_context(self) -> None:
+        manifest = load_yaml(MANIFEST)
+        del manifest["gaps"][0]["implemented_contexts"]
+        errors = list(
+            Draft202012Validator(load_yaml(SCHEMA)).iter_errors(manifest)
+        )
+        self.assertTrue(errors)
+
+    def test_implemented_gap_requires_deferred_context(self) -> None:
+        manifest = load_yaml(MANIFEST)
+        del manifest["gaps"][0]["deferred_contexts"]
+        errors = list(
+            Draft202012Validator(load_yaml(SCHEMA)).iter_errors(manifest)
+        )
+        self.assertTrue(errors)
+
+    def test_cache_policy_context_requires_64_bit_operand(self) -> None:
+        manifest = load_yaml(MANIFEST)
+        context = manifest["gaps"][2]["implemented_contexts"][0]
+        context["cache_policy_operand"]["width_bits"] = 32
+        errors = list(
+            Draft202012Validator(load_yaml(SCHEMA)).iter_errors(manifest)
+        )
+        self.assertTrue(errors)
+
 
 if __name__ == "__main__":
     unittest.main()

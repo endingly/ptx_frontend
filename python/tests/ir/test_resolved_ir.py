@@ -1122,7 +1122,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
         self.assertEqual(variant.memory_consistency.address_field_id, "address")
-        self.assertEqual(variant.address_alignment.address_field_id, "address")
+        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
         self.assertEqual(variant.address_alignment.type_field_id, "type")
         self.assertIsNone(variant.address_alignment.vector_field_id)
         self.assertEqual(
@@ -1503,6 +1503,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.immediate_value.operand_field_id, "cp_size")
         self.assertEqual(variant.immediate_value.values, (4, 8, 16))
+        self.assertEqual(variant.address_alignment.address_field_ids, ("dst", "src"))
+        self.assertEqual(variant.address_alignment.immediate_operand_field_id, "cp_size")
         self.assertEqual(
             [value.value for value in variant.operand_layouts[0].bindings[0].allowed_address_state_spaces],
             ["shared"],
@@ -1545,6 +1547,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertIsNone(variant.immediate_value)
+        self.assertEqual(variant.immediate_range.operand_field_id, "n")
+        self.assertEqual((variant.immediate_range.minimum, variant.immediate_range.maximum), (0, None))
 
     def test_cp_async_wait_all_model(self) -> None:
         database = load_codegen_database(
@@ -1600,6 +1604,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
             ["shared"],
         )
+        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
+        self.assertEqual(variant.address_alignment.alignment, 16)
 
     def test_mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32_model(self) -> None:
         database = load_codegen_database(
@@ -1680,6 +1686,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor = descriptor_path.read_text(encoding="utf-8")
 
         self.assertIn("check_immediate_value(", source)
+        self.assertIn("check_immediate_range(", source)
+        self.assertIn("check_address_alignment(", source)
         self.assertIn("selected.cp_size.value.bits", source)
         self.assertIn("std::expected<Cp, ResolveDiagnostic>", source)
         self.assertIn("AsyncCommitGroup", source)
@@ -1687,6 +1695,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("AsyncWaitAll", source)
         self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
+        self.assertIn('AsyncCaSharedGlobal_address_alignment_address_fields = {{"dst", "src"}};', descriptor)
+        self.assertIn('.immediate_operand_field_id = "cp_size",', descriptor)
+        self.assertIn('.operand_field_id = "n",', descriptor)
+        self.assertIn('.minimum = 0,', descriptor)
+        self.assertIn('.has_maximum = false,', descriptor)
 
     def test_membar_cta_model(self) -> None:
         database = load_codegen_database(

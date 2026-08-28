@@ -81,11 +81,13 @@ class MemoryConsistencyConstraint:
 
 @dataclass(frozen=True)
 class AddressAlignmentConstraint:
-    """Typed static alignment rule for an ld/st address operand."""
+    """Typed static alignment rule for one or more address operands."""
 
-    address_operand: str
-    type_modifier: str
+    address_operands: tuple[str, ...]
+    type_modifier: str | None = None
     vector_modifier: str | None = None
+    immediate_operand: str | None = None
+    alignment: int | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,15 @@ class ImmediateValueConstraint:
 
     operand: str
     values: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class ImmediateRangeConstraint:
+    """Restrict one immediate operand to an inclusive integer range."""
+
+    operand: str
+    minimum: int
+    maximum: int | None = None
 
 
 class RuntimeLookupKind(str, Enum):
@@ -221,6 +232,7 @@ class VariantSpec:
     address_alignment: AddressAlignmentConstraint | None = None
     memory_vector: MemoryVectorConstraint | None = None
     immediate_value: ImmediateValueConstraint | None = None
+    immediate_range: ImmediateRangeConstraint | None = None
 
 
 @dataclass(frozen=True)

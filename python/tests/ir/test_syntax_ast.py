@@ -1047,7 +1047,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         }
         cases = (
             ({"kind": "address_alignment", "address_operand": "address"},
-             "is missing"),
+             "requires exactly one"),
             ({**valid, "type_modifier": "missing"}, "inactive modifier"),
             ({**valid, "type_modifier": "vector"}, "must name a 'type'"),
             (valid, "kind 'addr'"),

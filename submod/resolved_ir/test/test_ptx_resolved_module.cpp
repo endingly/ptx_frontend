@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -87,6 +88,27 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_EQ(src1.parameterized_index, 1u);
   EXPECT_EQ(src2.parameterized_index, 2u);
   EXPECT_EQ(src1.declared_type, ScalarType::U32);
+}
+
+TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r<2>;
+  add.u32 %r0, %r1, -1;
+  mov.u32 %r0, -1;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& add = resolvedIntegerAdd(body[0]);
+  const auto& add_immediate = std::get<ResolvedImmediate>(add.src2.value);
+  EXPECT_EQ(add_immediate.type, ScalarType::U32);
+  EXPECT_EQ(add_immediate.bits, 0xffffffffU);
+  const auto& mov_immediate = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
+  EXPECT_EQ(mov_immediate.type, ScalarType::U32);
+  EXPECT_EQ(mov_immediate.bits, 0xffffffffU);
 }
 
 TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
@@ -425,14 +447,15 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
   const auto ast = parseModule(R"ptx(
-.global .u32 global_value;
-.shared .u32 shared_value;
+.global .align 16 .b8 global_value[16];
+.shared .align 16 .b8 shared_value[16];
 .entry kernel() {
   cp.async.ca.shared.global [shared_value], [global_value], 4;
   cp.async.ca.shared.global [shared_value], [global_value], 8;
   cp.async.ca.shared.global [shared_value], [global_value], 16;
 }
 )ptx");
+
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
@@ -497,8 +520,11 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
   for (const auto& instruction : invalid_sizes->functions.front().body) {
     const auto checked = checker::check(std::get<Cp>(instruction), context);
     ASSERT_FALSE(checked.has_value());
-    EXPECT_EQ(checked.error().front().kind,
-              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+    EXPECT_TRUE(std::ranges::any_of(
+        checked.error(), [](const checker::CheckDiagnostic& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ImmediateValueMismatch;
+        }));
   }
 
   const auto register_size = resolveModule(parseModule(R"ptx(
@@ -525,6 +551,35 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
 .entry kernel() { cp.async.ca.shared.global [shared_value], [global_value]; }
 )ptx"));
   ASSERT_FALSE(missing_size.has_value());
+}
+
+TEST(ResolvedModule, ChecksCpAsyncDynamicAddressAlignment) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.global .align 16 .b8 global_copy_src[32];
+.shared .align 16 .b8 shared_copy_dst[32];
+.entry kernel() {
+  cp.async.ca.shared.global [shared_copy_dst+4], [global_copy_src+12], 4;
+  cp.async.ca.shared.global [shared_copy_dst+8], [global_copy_src+8], 8;
+  cp.async.ca.shared.global [shared_copy_dst+16], [global_copy_src+16], 16;
+  cp.async.ca.shared.global [shared_copy_dst+2], [global_copy_src+4], 4;
+  cp.async.ca.shared.global [shared_copy_dst+4], [global_copy_src+8], 8;
+  cp.async.ca.shared.global [shared_copy_dst+16], [global_copy_src+4], 16;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+  };
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  for (size_t index = 0; index < 3; ++index)
+    EXPECT_TRUE(checker::check(std::get<Cp>(body[index]), context).has_value());
+  for (size_t index = 3; index < body.size(); ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCommitGroupSlice) {
@@ -629,7 +684,13 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitGroupSlice) {
   const auto negative_operand = resolveModule(parseModule(R"ptx(
 .entry kernel() { cp.async.wait_group -1; }
 )ptx"));
-  ASSERT_FALSE(negative_operand.has_value());
+  ASSERT_TRUE(negative_operand.has_value())
+      << negative_operand.error().front().message;
+  const auto negative_checked = checker::check(
+      std::get<Cp>(negative_operand->functions.front().body.front()), context);
+  ASSERT_FALSE(negative_checked.has_value());
+  EXPECT_EQ(negative_checked.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
   const auto missing_operand = resolveModule(parseModule(R"ptx(
 .entry kernel() { cp.async.wait_group; }
 )ptx"));
@@ -698,7 +759,7 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitAllSlice) {
 
 TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   const auto ast = parseModule(R"ptx(
-.shared .b16 shared_value;
+.shared .align 16 .b16 shared_value[16];
 .entry kernel() {
   .reg .b32 %r<2>;
   ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];
@@ -751,6 +812,25 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   ASSERT_FALSE(address_check.has_value());
   EXPECT_EQ(address_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto unaligned_address = resolveModule(parseModule(R"ptx(
+.shared .align 16 .b16 shared_value[16];
+.entry kernel() {
+  .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value+16];
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value+8];
+}
+)ptx"));
+  ASSERT_TRUE(unaligned_address.has_value())
+      << unaligned_address.error().front().message;
+  const auto& alignment_body = unaligned_address->functions.front().body;
+  EXPECT_TRUE(checker::check(std::get<Ldmatrix>(alignment_body[0]), context)
+                  .has_value());
+  const auto unaligned_check =
+      checker::check(std::get<Ldmatrix>(alignment_body[1]), context);
+  ASSERT_FALSE(unaligned_check.has_value());
+  EXPECT_EQ(unaligned_check.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
 
   const auto wrong_register = resolveModule(parseModule(R"ptx(
 .shared .b16 shared_value;

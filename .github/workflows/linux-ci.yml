@@ -95,6 +95,11 @@ jobs:
           .venv/bin/python -m pip install -r requirements.txt
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
+      - name: Run Python unit tests
+        if: matrix.preset == 'ci-linux-gcc-debug'
+        shell: bash
+        run: PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -v
+
       - name: Restore vcpkg binary cache
         uses: actions/cache@v6
         with:

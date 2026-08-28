@@ -8,6 +8,7 @@ from typing import Any
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateRangeConstraint,
     ImmediateValueConstraint,
     InstructionSpec,
     MemoryConsistencyConstraint,
@@ -795,12 +796,28 @@ def _normalize_address_alignment_constraint(
             "constraint is supported"
         )
     raw = matches[0]
-    required = {"address_operand", "type_modifier"}
-    missing = required - raw.keys()
-    if missing:
+    has_singular = "address_operand" in raw
+    has_plural = "address_operands" in raw
+    if has_singular == has_plural:
         raise ValueError(
             f"variant {raw_variant['name']!r}: address_alignment constraint "
-            f"is missing {sorted(missing)}"
+            "requires exactly one of address_operand or address_operands"
+        )
+    address_operands = ((raw["address_operand"],) if has_singular
+                        else tuple(raw["address_operands"]))
+    if (not address_operands or any(not isinstance(operand, str)
+                                   for operand in address_operands) or
+            len(set(address_operands)) != len(address_operands)):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: address_alignment address "
+            "operands must be unique non-empty identifiers"
+        )
+    source_count = sum(key in raw for key in
+                       ("type_modifier", "immediate_operand", "alignment"))
+    if source_count != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: address_alignment requires "
+            "exactly one of type_modifier, immediate_operand, or alignment"
         )
     modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
     for key, expected_kind in (("type_modifier", "type"),
@@ -818,21 +835,40 @@ def _normalize_address_alignment_constraint(
                 f"variant {raw_variant['name']!r}: address_alignment {key} "
                 f"must name a {expected_kind!r} modifier"
             )
-    address_operand = raw["address_operand"]
     matching_operands = [
         operand for layout in layouts for operand in layout.operands
-        if operand.name == address_operand
+        if operand.name in address_operands
     ]
-    if not matching_operands or any(operand.kind != "addr"
-                                    for operand in matching_operands):
+    if (len(matching_operands) != len(address_operands) or
+            any(operand.kind != "addr" for operand in matching_operands)):
         raise ValueError(
             f"variant {raw_variant['name']!r}: address_alignment address "
             "operand must name an active kind 'addr' operand"
         )
+    immediate_operand = raw.get("immediate_operand")
+    if immediate_operand is not None:
+        matching_immediates = [
+            operand for layout in layouts for operand in layout.operands
+            if operand.name == immediate_operand
+        ]
+        if (not matching_immediates or
+                any(operand.kind != "imm" for operand in matching_immediates)):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: address_alignment "
+                "immediate_operand must name an active kind 'imm' operand"
+            )
+    alignment = raw.get("alignment")
+    if alignment is not None and (type(alignment) is not int or alignment <= 0):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: address_alignment alignment "
+            "must be a positive integer"
+        )
     return AddressAlignmentConstraint(
-        address_operand=address_operand,
-        type_modifier=raw["type_modifier"],
+        address_operands=address_operands,
+        type_modifier=raw.get("type_modifier"),
         vector_modifier=raw.get("vector_modifier"),
+        immediate_operand=immediate_operand,
+        alignment=alignment,
     )
 
 
@@ -958,6 +994,51 @@ def _normalize_immediate_value_constraint(
     return ImmediateValueConstraint(operand=operand_name, values=tuple(values))
 
 
+def _normalize_immediate_range_constraint(
+    raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
+) -> ImmediateRangeConstraint | None:
+    """Lower one inclusive non-negative integer range for an immediate."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "immediate_range"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: at most one immediate_range "
+            "constraint is supported"
+        )
+    raw = matches[0]
+    if set(raw) not in ({"kind", "operand", "minimum"},
+                        {"kind", "operand", "minimum", "maximum"}):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_range constraint "
+            "requires operand, minimum, and optional maximum"
+        )
+    operand_name, minimum, maximum = raw["operand"], raw["minimum"], raw.get("maximum")
+    matching = [
+        operand for layout in layouts for operand in layout.operands
+        if operand.name == operand_name
+    ]
+    if not matching or any(operand.kind != "imm" for operand in matching):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_range operand must "
+            "name an active kind 'imm' operand"
+        )
+    if (type(minimum) is not int or minimum < 0 or
+            (maximum is not None and
+             (type(maximum) is not int or maximum < minimum))):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_range bounds must "
+            "be non-negative integers with optional maximum >= minimum"
+        )
+    return ImmediateRangeConstraint(
+        operand=operand_name, minimum=minimum, maximum=maximum
+    )
+
+
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
@@ -1018,6 +1099,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                         raw_variant, modifiers, operand_layouts
                     ),
                     immediate_value=_normalize_immediate_value_constraint(
+                        raw_variant, operand_layouts
+                    ),
+                    immediate_range=_normalize_immediate_range_constraint(
                         raw_variant, operand_layouts
                     ),
                 )

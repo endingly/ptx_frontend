@@ -13,6 +13,9 @@ gaps:
     kind: cache_eviction
     forms: [".L1::evict_first", ".L1::evict_last"]
     disposition: implemented
+    implemented_contexts:
+      - {state_space: global, vector: scalar}
+    deferred_contexts: [generic, vector, global_nc]
     reason: Accepted cache-hint/eviction slice.
     boundary: Scalar explicit-global ld only; excludes generic, vector, and ld.global.nc forms.
 
@@ -21,6 +24,9 @@ gaps:
     kind: cache_eviction
     forms: [".L1::evict_first", ".L1::evict_last"]
     disposition: implemented
+    implemented_contexts:
+      - {state_space: global, vector: scalar}
+    deferred_contexts: [generic, vector, async]
     reason: Accepted cache-hint/eviction slice.
     boundary: Scalar explicit-global st only; excludes generic, vector, and st.async forms.
 
@@ -29,6 +35,11 @@ gaps:
     kind: cache_policy
     forms: ["ld.global.L2::cache_hint.type d, [a], cache_policy"]
     disposition: implemented
+    implemented_contexts:
+      - state_space: global
+        vector: scalar
+        cache_policy_operand: {required: true, width_bits: 64}
+    deferred_contexts: [generic, vector, global_nc]
     reason: Accepted cache-policy operand slice.
     boundary: Scalar explicit-global ld only; cache_policy is the required 64-bit operand.
 
@@ -37,6 +48,11 @@ gaps:
     kind: cache_policy
     forms: ["st.global.L2::cache_hint.type [a], b, cache_policy"]
     disposition: implemented
+    implemented_contexts:
+      - state_space: global
+        vector: scalar
+        cache_policy_operand: {required: true, width_bits: 64}
+    deferred_contexts: [generic, vector, async]
     reason: Accepted cache-policy operand slice.
     boundary: Scalar explicit-global st only; cache_policy is the required 64-bit operand.
 

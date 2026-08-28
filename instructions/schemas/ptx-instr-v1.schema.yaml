@@ -1016,6 +1016,7 @@ $defs:
           - address_alignment
           - memory_vector
           - immediate_value
+          - immediate_range
 
       operands:
         type: array
@@ -1056,6 +1057,12 @@ $defs:
       address_operand:
         $ref: "#/$defs/schema_identifier"
 
+      address_operands:
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/schema_identifier"
+
       state_space_modifier:
         $ref: "#/$defs/schema_identifier"
 
@@ -1067,6 +1074,21 @@ $defs:
 
       vector_operand:
         $ref: "#/$defs/schema_identifier"
+
+      immediate_operand:
+        $ref: "#/$defs/schema_identifier"
+
+      alignment:
+        type: integer
+        minimum: 1
+
+      minimum:
+        type: integer
+        minimum: 0
+
+      maximum:
+        type: integer
+        minimum: 0
 
       availability:
         $ref: "#/$defs/availability"

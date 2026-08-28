@@ -15,15 +15,15 @@
 | Debug section directive | 支持子集 | outermost `.section name { ... }` 的匹配 brace 与有序 raw DWARF payload token 会保留；`.debug_str` 与 raw `name:` label 会绑定为 debug identity，payload width、relocation 和 offset semantic 仍未支持 |
 | Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；pragma 不进入 binding 或 Resolved IR |
 | Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST；declaration semantics 检查 source `.version` 最低版本，并拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；target/launch-time rule 尚未检查 |
-| Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回与输入参数列表、`.noreturn` |
+| Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回/输入参数列表、`.noreturn`、`.func` ABI suffix、`.language` 与 entry `.blocksareclusters` |
 | Formal parameter | 支持子集 | `.reg/.param`、alignment、scalar type、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
-| Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、alignment、vector/base type、parameterized name、多维 array，以及 `.global/.const` initializer |
+| Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、窄 `.attribute(.managed/.unified)`、alignment、vector/base type、parameterized name、多维 array，以及 `.global/.const` initializer |
 | Function body | 支持子集 | variable declaration、label、当前 instruction grammar，以及递归绑定的 nested block；resolution 会按源码顺序递归平铺 instruction，call staging 限于各 lexical block |
 | Constant expression | 支持子集 | literal/symbol、括号、`.s64/.u64` cast、一元/二元/三元运算、`generic(symbol)` 与 mask initializer operator |
 | Initializer | 支持子集 | scalar expression、递归 brace list、未定长首维；拒绝 `.extern`、parameterized name 及非 `.global/.const` initializer |
 | Symbol binding | 支持子集 | module/function/nested-block scope、变量/参数/函数/label、lexical shadowing、parameterized member、instruction/initializer/dimension/control-flow reference，以及隔离的 debug file/string metadata identity；label 与 control-flow metadata 保持 function-local |
 | Declaration 语义 | 支持子集 | 正整数 array extent、未定长首维推导、initializer type/brace shape/元素上限、symbol address、module linkage-compatible redeclaration，以及已支持 entry resource 的 version/conflict 规则 |
-| 其他 directive | 尚未支持（直接拒绝） | module variable 与其他结构化 kernel-tuning directive，包括官方但未建模的 `.language`，会产生 recovery diagnostic，而不会静默进入 AST |
+| 其他 directive | 部分支持 | 同 module `.alias` 会 canonicalize direct-call ABI lookup；仅建模 typed `.managed/.unified` attribute 与列出的 header directive。linker/backend、UUID class、ld/st attribute effect 仍不支持 |
 | 结构化控制语法 | 支持子集 | `.callprototype`、`.calltargets` 与 `.branchtargets` 均有专用 function-local CST/AST grammar；binding 与 declaration semantics 检查其 label/member/contract。generated `IndirectCall` layout 可在 PTX 2.1 / SM 20 解析 `.reg` target 加已绑定 prototype/target-set metadata，module resolution 会应用共享的 call ABI contract。`brx.idx` 可在 PTX 6.0 / SM 30 解析 `.u32` index 加当前 function `.branchtargets` identity；不会展开 target entry 或构建 CFG |
 | 恢复与编辑 | 支持子集 | `parseModule()` 产生有序 diagnostic 和 inserted/skipped/error CST recovery node，并在有界结构/module anchor 处继续；partial nested block 会保留其合法 body，但没有 closing-brace token。standalone instruction parsing 保持 fail-fast。recovered module 只 lower 合法相邻 node；recovery marker 保持 CST-only，parser diagnostic 只一次、按 source order 返回。installed consumer 覆盖合法 PTX 9.3 directive text、semantic directive failure 与 recovered unknown directive。round-trip serialization 使用原始 token buffer 而非 recovery marker。可选 Clang lexer/CST libFuzzer target 有 GTest seed smoke，但尚未加入 ASan/UBSan 或 CI matrix |
 | Resolved opcode | 部分支持 | 仅支持 YAML database 中存在的 opcode；当前为 bare `ret`、`exit` 与 `trap`（PTX 1.0 / all SM，无 modifier 或 operand；接受普通 predicate guard）、固定 `and.b32`/`or.b32`/`xor.b32` 和 `not.b32`（register 或 immediate source）、fixed `shl.b32` / `shr.u32`（32-bit count，接受同宽 bit/integer register 声明），以及冻结的单 predicate destination `setp.lt.u32` / `setp.lt.and.u32`（u32 register-or-immediate source，combine 可为 predicate 或 negated predicate）与 fixed `selp.u32`（u32 register-or-immediate data source 和一个不可 negated 的 predicate），以及 register-only `cvt.s32.u32`（两端接受 equal-or-wider register declaration）/ `cvt.rn.f32.f64`（PTX 1.0 / SM 13）、`add`、`sub`、`bar`、direct `bra`、indexed `brx.idx`、direct 与 descriptor-backed indirect `call`、部分 scalar/vector `mov`，以及 `.b8/.b16/.b32/.b64`、`.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64`、`.f32/.f64` 的 generic/basic-explicit scalar 与 braced-vector `ld`/`st`；module-resolved direct 与 indirect `call` 共享 canonical return/input ABI 检查，包括数量/顺序、`.reg/.param` type/shape、`.param .b8` array、pointer 和按 formal 定型的 literal。indirect signature 来自 local prototype 或已验证的 target set，且仍不支持 call-table。`brx.idx` 保留 target-list identity，不展开 metadata entry。PTX 8.8/SM 100 modern vector 只接受 `.v8` × 32-bit 或 `.v4` × 64-bit 的 256-bit payload，地址已知时要求 global，并可部分使用 `_` sink；legacy vector 仍最多 128 bit 且拒绝 sink。静态 natural alignment 会检查 bound data symbol 的常量 byte offset 和 absolute immediate，register/standalone unresolved address 保持 unknown。`ld/st` 支持 omission/显式 `.weak`、`.volatile`、带 scope 的 relaxed/acquire/release，以及 PTX 8.2 scalar `.mmio.relaxed.sys`，并由生成的 cross-modifier checker 约束；generic load 接受已知 `.const/.global/.local/.shared` space（`.const` 要求 PTX 3.1），generic store 接受 `.global/.local/.shared`，explicit form 要求精确匹配 runtime modifier；绑定的 `.param` load 要求 input parameter，store 要求 return parameter，并按 function context 检查 PTX/SM；load destination/store source register 以及 vector element 可在 bit/integer/float kind rule 下使用更宽声明，其余 typed operand 仍 same-width，未知 address identity 不推断 |
@@ -58,11 +58,11 @@ instruction 间接保留/check 该 identity；`C` = 直接 binding/declaration s
 | Directive | Token | CST | Syntax AST | Binding | Resolved IR | Target / semantic | 明确边界 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `.address_size` | D | T | T | — | — | — | 仅保留 module syntax |
-| `.alias` | G | R | — | — | — | — | 未建模 module directive |
-| `.abi_preserve` | G | T | T | — | — | — | 仅 `.callprototype` suffix；`.func` header form 与 PTX 9.0 / SM 80 availability 尚未支持 |
-| `.abi_preserve_control` | G | T | T | — | — | — | 仅 `.callprototype` suffix；`.func` header form 与 PTX 9.0 / SM 80 availability 尚未支持 |
+| `.alias` | G | T | T | Y | I | C | 仅同 module device-function alias；不做 linker/backend alias |
+| `.abi_preserve` | G | T | T | — | — | C | `.callprototype` 与 `.func` suffix；检查 PTX 9.0 source version，不查 target |
+| `.abi_preserve_control` | G | T | T | — | — | C | `.callprototype` 与 `.func` suffix；检查 PTX 9.0 source version，不查 target |
 | `.align` | D | E | E | Y | Y | C | declaration/parameter alignment |
-| `.attribute` | G | R | — | — | — | — | 未建模 variable/function directive |
+| `.attribute` | G | T | T | — | — | C | 仅 `.managed` 与 `.unified(id,id)` 的 placement/version 子集 |
 | `.branchtargets` | D | T | T | Y | I | C / I | declaration rule 直接检查；`brx.idx` consumer 要求 PTX 6.0 / SM 30 |
 | `.callprototype` | D | T | T | Y | I | C / I | declaration rule 直接检查；indirect-call availability 由 consumer 驱动 |
 | `.calltargets` | D | T | T | Y | I | C / I | declaration rule 直接检查；indirect-call availability 由 consumer 驱动 |
@@ -81,7 +81,7 @@ instruction 间接保留/check 该 identity；`C` = 直接 binding/declaration s
 | `.maxnreg` | D | T | T | — | — | C | 仅 entry；检查 source-version minimum |
 | `.maxntid` | D | T | T | — | — | C | 仅 entry；与 `.reqntid` 冲突 |
 | `.minnctapersm` | D | T | T | — | — | C | warning/device feasibility 留后续 |
-| `.noreturn` | D | E | E | — | — | C | 支持 `.func`/`.callprototype`；检查 return-parameter conflict；PTX 6.4 / SM 30 availability 未查 |
+| `.noreturn` | D | E | E | — | — | C | device `.func`/`.callprototype`；检查 return-parameter conflict 与 PTX 6.4 source version；target rule 留后续 |
 | `.param` | D | E | E | Y | Y | C | 既有 variable/formal/call-parameter declaration |
 | `.pragma` | D | T | T | — | — | — | backend string interpretation 刻意未实现 |
 | `.reg` | D | E | E | Y | Y | C | 既有 variable/formal declaration |
@@ -95,8 +95,8 @@ instruction 间接保留/check 该 identity；`C` = 直接 binding/declaration s
 | `.version` | D | T | T | — | — | S | 为已支持 resource 提供 source-version check |
 | `.visible` | D | E | E | Y | Y | C | 既有 linkage qualifier |
 | `.weak` | D | E | E | Y | Y | C | 既有 linkage qualifier |
-| `.blocksareclusters` | G | R | — | — | — | — | 表外 PTX 9.0 entry / SM 90 directive |
-| `.language` | G | R | — | — | — | — | 表外 PTX 9.3 entry/function directive |
+| `.blocksareclusters` | G | T | T | — | — | C | 零参数 entry marker、PTX 9.0；需要 `.reqntid` + `.reqnctapercluster`；target/launch rule 留后续 |
+| `.language` | G | T | T | — | — | C | 非空 official string/integer list、PTX 9.3；只保留 syntax |
 
 ## 实现优先级
 

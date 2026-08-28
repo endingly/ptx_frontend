@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -892,6 +893,58 @@ TEST(PtxSyntaxParser, LowersNestedInitializerAndSymbolAddressOperator) {
   EXPECT_EQ(std::get<syntax_ast::AstConstantBinary>(address_expression.node)
                 .operation,
             syntax_ast::AstConstantBinaryOperator::Add);
+}
+
+TEST(PtxSyntaxParser, LowersM11DeclarationHeaderDirectivesLosslessly) {
+  PtxSyntaxParser parser(R"ptx(
+.version 9.3
+.global .attribute(.managed, .unified(1, 2)) .u32 managed;
+.alias alias_fn, target;
+.func .attribute(.unified(3, 4)) target() .noreturn .abi_preserve 2
+    .abi_preserve_control 1 .language "PTX", 10;
+.entry kernel() .reqntid 1 .reqnctapercluster 1 .blocksareclusters
+    .language "cuda c++" {}
+)ptx");
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& variable =
+      std::get<syntax_ast::AstVariableDeclaration>(result->items[1]);
+  ASSERT_EQ(variable.attributes.size(), 2u);
+  EXPECT_EQ(variable.attributes[1].values.size(), 2u);
+  const auto& alias = std::get<syntax_ast::AstAliasDirective>(result->items[2]);
+  EXPECT_EQ(alias.alias.syntax.text, "alias_fn");
+  const auto& function = std::get<syntax_ast::AstFunction>(result->items[3]);
+  EXPECT_TRUE(function.noreturn_directive.has_value());
+  EXPECT_TRUE(function.abi_preserve.has_value());
+  ASSERT_TRUE(function.language.has_value());
+  EXPECT_EQ(function.language->values.size(), 2u);
+  EXPECT_EQ(function.language->range.end.line, function.range.end.line);
+  EXPECT_LT(function.language->range.end.column, function.range.end.column);
+  const auto& entry = std::get<syntax_ast::AstFunction>(result->items[4]);
+  EXPECT_TRUE(entry.blocks_are_clusters.has_value());
+}
+
+TEST(PtxSyntaxParser, RejectsMalformedM11DeclarationSyntax) {
+  constexpr std::array<std::string_view, 4> sources = {
+      ".global .attribute(.managed(1, 2)) .u32 x;",
+      ".global .attribute(.unified(1)) .u32 x;",
+      ".entry kernel() .noreturn {}",
+      ".func f() .abi_preserve;",
+  };
+  for (const auto source : sources) {
+    PtxSyntaxParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
+TEST(PtxSyntaxParser, RetainsMmaThroughputAsGenericPragma) {
+  PtxSyntaxParser parser(".pragma \"mma_throughput\";");
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& pragma = std::get<syntax_ast::AstPragma>(result->items.front());
+  ASSERT_EQ(pragma.strings.size(), 1u);
+  EXPECT_EQ(pragma.strings.front().text, "\"mma_throughput\"");
 }
 
 }  // namespace

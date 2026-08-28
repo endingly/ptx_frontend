@@ -230,9 +230,27 @@ struct CstVariableDeclarator {
   CstTokenRange token_range;
 };
 
+/** A typed `.attribute(...)` member retained at its declaration site. */
+struct CstAttribute {
+  TokenId name{};
+  std::vector<TokenId> values;
+  std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+
+struct CstAttributeList {
+  TokenId directive{};
+  TokenId left_paren{};
+  std::vector<CstAttribute> attributes;
+  std::vector<TokenId> commas;
+  TokenId right_paren{};
+  CstTokenRange token_range;
+};
+
 struct CstVariableDeclaration {
   std::vector<TokenId> qualifiers;
   TokenId state_space{};
+  std::optional<CstAttributeList> attributes;
   std::optional<TokenId> align_directive;
   std::optional<TokenId> alignment;
   std::optional<TokenId> vector_type;
@@ -288,6 +306,22 @@ struct CstKernelResourceDirective {
   TokenId directive{};
   std::vector<TokenId> values;
   std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+
+struct CstLanguageDirective {
+  TokenId directive{};
+  std::vector<TokenId> values;
+  std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+
+struct CstAliasDirective {
+  TokenId directive{};
+  TokenId alias{};
+  TokenId comma{};
+  TokenId aliasee{};
+  TokenId semicolon{};
   CstTokenRange token_range;
 };
 
@@ -425,10 +459,15 @@ struct CstBlock {
 struct CstFunction {
   std::vector<TokenId> qualifiers;
   TokenId directive{};
+  std::optional<CstAttributeList> attributes;
   std::optional<CstFunctionParameterList> return_parameters;
   TokenId name{};
   std::optional<CstFunctionParameterList> parameters;
   std::optional<TokenId> noreturn_directive;
+  std::optional<CstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<CstCallPrototypeAbiSuffix> abi_preserve_control;
+  std::optional<TokenId> blocks_are_clusters;
+  std::optional<CstLanguageDirective> language;
   std::vector<CstPragma> pragmas;
   std::vector<CstKernelResourceDirective> resources;
   std::vector<TokenId> header_tokens;
@@ -441,7 +480,8 @@ struct CstFunction {
 
 using CstModuleItem =
     std::variant<CstModuleDirective, CstSectionDirective, CstPragma,
-                 CstVariableDeclaration, CstFunction, CstRecoveryNode>;
+                 CstVariableDeclaration, CstAliasDirective, CstFunction,
+                 CstRecoveryNode>;
 
 struct CstModule {
   std::vector<CstModuleItem> items;

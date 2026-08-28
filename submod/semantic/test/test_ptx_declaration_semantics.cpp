@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <string_view>
 
@@ -45,6 +46,72 @@ TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_TRUE(result.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics, ValidatesM11DirectiveBoundaries) {
+  const CheckedModule result = check(R"ptx(
+.version 8.0
+.global .attribute(.unified(1, 2), .unified(3, 4)) .u32 global;
+.func f() .noreturn { ret; }
+.entry kernel() .blocksareclusters .language "", 11 {}
+)ptx");
+  EXPECT_GE(diagnosticCount(result,
+                            DeclarationDiagnosticKind::UnsupportedDirectivePtxVersion),
+            2u);
+  EXPECT_GE(diagnosticCount(result,
+                            DeclarationDiagnosticKind::InvalidDeclarationDirective),
+            3u);
+}
+
+TEST(PtxDeclarationSemantics, RejectsM11AliasAndHeaderSemanticBoundaries) {
+  struct Case {
+    std::string_view source;
+    DeclarationDiagnosticKind kind;
+  };
+  constexpr std::array cases = {
+      Case{".version 9.3\n.alias alias_fn, missing;",
+           DeclarationDiagnosticKind::InvalidFunctionAlias},
+      Case{".version 9.3\n.func target() {}\n.alias alias_fn, target;",
+           DeclarationDiagnosticKind::InvalidFunctionAlias},
+      Case{".version 9.3\n.entry target() {}\n.alias alias_fn, target;",
+           DeclarationDiagnosticKind::InvalidFunctionAlias},
+      Case{".version 9.3\n.weak .func target() {}\n.alias alias_fn, target;",
+           DeclarationDiagnosticKind::InvalidFunctionAlias},
+      Case{".version 9.3\n.func alias_fn(.param .u32 x);\n.func target(.param .u64 x) {}\n.alias alias_fn, target;",
+           DeclarationDiagnosticKind::InvalidFunctionAlias},
+      Case{".version 9.3\n.func alias_fn;\n.func target() {}\n.alias alias_fn, target;\n.alias alias_fn, target;",
+           DeclarationDiagnosticKind::InvalidFunctionAlias},
+      Case{".version 9.3\n.shared .attribute(.managed) .u32 x;",
+           DeclarationDiagnosticKind::InvalidDeclarationDirective},
+      Case{".version 9.3\n.func (.param .u32 result) f() .noreturn {}",
+           DeclarationDiagnosticKind::InvalidDeclarationDirective},
+      Case{".version 8.9\n.func f() .abi_preserve 1 {}",
+           DeclarationDiagnosticKind::UnsupportedDirectivePtxVersion},
+      Case{".version 9.3\n.entry kernel() .blocksareclusters {}",
+           DeclarationDiagnosticKind::InvalidDeclarationDirective},
+      Case{".version 9.3\n.entry kernel() .language \"bad\", 11 {}",
+           DeclarationDiagnosticKind::InvalidDeclarationDirective},
+      Case{".version 9.3\n.func f() .abi_preserve 1;\n.func f() .abi_preserve 2 {}",
+           DeclarationDiagnosticKind::IncompatibleRedeclaration},
+      Case{".version 9.3\n.func f();\n.func f() .abi_preserve 1 {}",
+           DeclarationDiagnosticKind::IncompatibleRedeclaration},
+      Case{".version 9.3\n.func f() { { .shared .attribute(.managed, .managed) .u32 x; } }",
+           DeclarationDiagnosticKind::InvalidDeclarationDirective},
+  };
+  for (const auto& test : cases) {
+    const CheckedModule result = check(test.source);
+    EXPECT_GT(diagnosticCount(result, test.kind), 0u) << test.source;
+  }
+}
+
+TEST(PtxDeclarationSemantics, CanonicalizesEquivalentM11HeaderValues) {
+  const CheckedModule result = check(R"ptx(
+.version 9.3
+.func .attribute(.unified(1, 2)) f() .language "PTX";
+.func .attribute(.unified(0x1, 0x2)) f() .language 3 {}
+)ptx");
+  EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
+            0u);
 }
 
 TEST(PtxDeclarationSemantics, ValidatesArrayDimensionsAndInitializerShape) {
@@ -160,7 +227,8 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
 .func (.param .align 16 .u32 output) helper(
     .param .u64 .ptr .global .align 16 address,
     .param .u32 data[4]) { ret; }
-.entry kernel() .noreturn { }
+.entry kernel() { }
+.func noreturn_function() .noreturn { }
 .func indirect() {
   prototype: .callprototype (.param .align 16 .u32 output) _
       (.param .u64 .ptr .global .align 16 address, .param .u32 data[4]);
@@ -190,8 +258,12 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   const FunctionSignature kernel_signature =
       functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
   EXPECT_TRUE(kernel_signature.is_entry);
-  EXPECT_TRUE(kernel_signature.is_noreturn);
-  const auto& indirect = std::get<syntax_ast::AstFunction>(module->items[3]);
+  EXPECT_FALSE(kernel_signature.is_noreturn);
+  const FunctionSignature noreturn_signature =
+      functionSignature(std::get<syntax_ast::AstFunction>(module->items[3]));
+  EXPECT_FALSE(noreturn_signature.is_entry);
+  EXPECT_TRUE(noreturn_signature.is_noreturn);
+  const auto& indirect = std::get<syntax_ast::AstFunction>(module->items[4]);
   const auto& indirect_prototype =
       std::get<syntax_ast::AstCallPrototype>(indirect.body[0]);
   EXPECT_EQ(prototype_signature, functionSignature(indirect_prototype));

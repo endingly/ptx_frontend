@@ -293,6 +293,18 @@ struct AstVariableDeclarator {
   SourceRange range;
 };
 
+enum class AstAttributeKind : uint8_t {
+  Managed,
+  Unified,
+};
+
+/** The narrow PTX 9.3 `.managed` / `.unified(id, id)` attribute subset. */
+struct AstAttribute {
+  AstAttributeKind kind{};
+  std::vector<AstSyntax> values;
+  SourceRange range;
+};
+
 enum class AstStateSpace : uint8_t {
   Register,
   Parameter,
@@ -305,6 +317,7 @@ enum class AstStateSpace : uint8_t {
 struct AstVariableDeclaration {
   std::vector<AstSyntax> qualifiers;
   AstStateSpace state_space{};
+  std::vector<AstAttribute> attributes;
   std::optional<AstSyntax> alignment;
   std::optional<AstSyntax> vector_type;
   AstSyntax type;
@@ -355,6 +368,17 @@ enum class AstKernelResourceKind : uint8_t {
 struct AstKernelResourceDirective {
   AstKernelResourceKind kind{};
   std::vector<AstSyntax> values;
+  SourceRange range;
+};
+
+struct AstLanguageDirective {
+  std::vector<AstSyntax> values;
+  SourceRange range;
+};
+
+struct AstAliasDirective {
+  AstIdentifierRef alias;
+  AstIdentifierRef aliasee;
   SourceRange range;
 };
 
@@ -428,9 +452,15 @@ struct AstFunction {
   bool is_prototype{};
   bool is_noreturn{};
   std::vector<AstSyntax> qualifiers;
+  std::vector<AstAttribute> attributes;
   AstIdentifierRef name;
   std::vector<AstFunctionParameter> return_parameters;
   std::vector<AstFunctionParameter> parameters;
+  std::optional<AstSyntax> noreturn_directive;
+  std::optional<AstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<AstCallPrototypeAbiSuffix> abi_preserve_control;
+  std::optional<AstSyntax> blocks_are_clusters;
+  std::optional<AstLanguageDirective> language;
   std::vector<AstPragma> pragmas;
   std::vector<AstKernelResourceDirective> resources;
   std::vector<AstFunctionBodyItem> body;
@@ -440,7 +470,8 @@ struct AstFunction {
 using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
                  AstAddressSizeDirective, AstFileDirective, AstSectionDirective,
-                 AstPragma, AstVariableDeclaration, AstFunction>;
+                 AstPragma, AstVariableDeclaration, AstAliasDirective,
+                 AstFunction>;
 
 struct AstModule {
   std::vector<AstModuleItem> items;

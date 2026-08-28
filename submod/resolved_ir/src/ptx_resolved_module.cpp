@@ -235,7 +235,10 @@ void index_body_metadata_signatures(
                                          targets->targets.front().syntax.text);
       if (!metadata || !target)
         throw ResolveException("Validated .calltargets has no bound symbol.");
-      const auto signature = signatures.find(target->symbol.value);
+      const binding::Symbol& target_symbol = symbols.symbol(target->symbol);
+      const binding::SymbolId canonical =
+          target_symbol.canonical_function.value_or(target_symbol.id);
+      const auto signature = signatures.find(canonical.value);
       if (signature == signatures.end())
         throw ResolveException(
             "Validated .calltargets member has no signature.");
@@ -319,7 +322,10 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     if (!lookup)
       throw ResolveException(
           "Validated indirect call metadata has no local symbol.");
-    const auto found = signatures.find(lookup->symbol.value);
+    const binding::Symbol& target_symbol = symbols.symbol(lookup->symbol);
+    const binding::SymbolId canonical =
+        target_symbol.canonical_function.value_or(target_symbol.id);
+    const auto found = signatures.find(canonical.value);
     if (found == signatures.end())
       throw ResolveException(
           "Validated indirect call metadata has no canonical signature.");
@@ -334,7 +340,10 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     if (!lookup || symbols.symbol(lookup->symbol).kind !=
                        binding::SymbolKind::Function)
       return;
-    const auto found = signatures.find(lookup->symbol.value);
+    const binding::Symbol& target_symbol = symbols.symbol(lookup->symbol);
+    const binding::SymbolId canonical =
+        target_symbol.canonical_function.value_or(target_symbol.id);
+    const auto found = signatures.find(canonical.value);
     if (found == signatures.end())
       return;
     signature = &found->second;

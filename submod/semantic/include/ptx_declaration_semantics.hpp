@@ -67,6 +67,9 @@ enum class DeclarationDiagnosticKind : uint8_t {
   InvalidCallPrototype,
   UnsupportedKernelResourcePtxVersion,
   IncompatibleKernelResourceDirective,
+  UnsupportedDirectivePtxVersion,
+  InvalidDeclarationDirective,
+  InvalidFunctionAlias,
 };
 
 struct DeclarationDiagnostic {

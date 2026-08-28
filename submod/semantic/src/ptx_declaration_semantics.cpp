@@ -1,6 +1,9 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include <algorithm>
+#include <array>
 #include <bit>
+#include <cctype>
 #include <charconv>
 #include <compare>
 #include <limits>
@@ -64,6 +67,34 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
                   ? ExpressionInfo::IntegerType::Unsigned
                   : ExpressionInfo::IntegerType::Signed,
   };
+}
+
+std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
+  const int base = spelling.starts_with("0x") || spelling.starts_with("0X")
+                       ? 16
+                       : 10;
+  const auto value = parseIntegerLiteral(spelling, base);
+  return value ? std::optional{value->bits} : std::nullopt;
+}
+
+std::optional<uint64_t> languageCode(std::string_view spelling) {
+  if (spelling.size() >= 2 && spelling.front() == '"' &&
+      spelling.back() == '"') {
+    std::string name{spelling.substr(1, spelling.size() - 2)};
+    std::ranges::transform(name, name.begin(), [](unsigned char character) {
+      return static_cast<char>(std::tolower(character));
+    });
+    static constexpr std::array<std::pair<std::string_view, uint64_t>, 9>
+        names = {{{"unknown", 0}, {"ptx", 3}, {"nvvm", 4},
+                  {"cuda c++", 5}, {"cuda c++ tile", 6}, {"tile ir", 7},
+                  {"python-cutile", 8}, {"fortran", 9}, {"optix", 10}}};
+    const auto found = std::ranges::find_if(
+        names, [&name](const auto& entry) { return entry.first == name; });
+    return found == names.end() ? std::nullopt
+                                : std::optional{found->second};
+  }
+  const auto code = unsignedIntegerLiteral(spelling);
+  return code && *code <= 10 ? code : std::nullopt;
 }
 
 int64_t asSigned(ExpressionInfo::IntegerValue value) {
@@ -577,6 +608,7 @@ class Checker {
     checkRedeclarations(module);
     checkControlFlowMetadata(module);
     checkKernelResources(module);
+    checkM11Directives(module);
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
@@ -674,6 +706,8 @@ class Checker {
   }
 
   void checkRedeclarations(const syntax_ast::AstModule& module) {
+    std::unordered_map<std::string, const syntax_ast::AstFunction*>
+        first_functions;
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
@@ -705,7 +739,61 @@ class Checker {
                           function->name.syntax.text,
                           functionSignature(*function), linkage,
                           !function->is_prototype, function->name.syntax.range);
+      const auto [first, inserted] =
+          first_functions.emplace(function->name.syntax.text, function);
+      if (!inserted && !sameFunctionHeader(*first->second, *function)) {
+        diagnose(DeclarationDiagnosticKind::IncompatibleRedeclaration,
+                 function->range,
+                 fmt::format("Function '{}' has incompatible header "
+                             "directives.",
+                             function->name.syntax.text),
+                 first->second->range);
+      }
     }
+  }
+
+  static bool sameFunctionHeader(const syntax_ast::AstFunction& left,
+                                 const syntax_ast::AstFunction& right) {
+    const auto same_attributes = [](const auto& lhs, const auto& rhs) {
+      if (lhs.size() != rhs.size())
+        return false;
+      for (size_t index = 0; index < lhs.size(); ++index) {
+        if (lhs[index].kind != rhs[index].kind ||
+            lhs[index].values.size() != rhs[index].values.size()) {
+          return false;
+        }
+        for (size_t value = 0; value < lhs[index].values.size(); ++value) {
+          if (unsignedIntegerLiteral(lhs[index].values[value].text) !=
+              unsignedIntegerLiteral(rhs[index].values[value].text)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+    const auto same_suffix = [](const auto& lhs, const auto& rhs) {
+      return lhs.has_value() == rhs.has_value() &&
+             (!lhs || lhs->count.text == rhs->count.text);
+    };
+    const auto same_language = [](const auto& lhs, const auto& rhs) {
+      if (lhs.has_value() != rhs.has_value())
+        return false;
+      if (!lhs)
+        return true;
+      if (lhs->values.size() != rhs->values.size())
+        return false;
+      for (size_t index = 0; index < lhs->values.size(); ++index) {
+        if (languageCode(lhs->values[index].text) !=
+            languageCode(rhs->values[index].text)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    return same_attributes(left.attributes, right.attributes) &&
+           same_suffix(left.abi_preserve, right.abi_preserve) &&
+           same_suffix(left.abi_preserve_control, right.abi_preserve_control) &&
+           same_language(left.language, right.language);
   }
 
   static std::optional<PtxVersion> parsePtxVersion(std::string_view text) {
@@ -832,6 +920,201 @@ class Checker {
             max_cluster = &resource;
           }
         }
+      }
+    }
+  }
+
+  std::optional<PtxVersion> modulePtxVersion(
+      const syntax_ast::AstModule& module) const {
+    for (const auto& item : module.items) {
+      if (const auto* version =
+              std::get_if<syntax_ast::AstVersionDirective>(&item))
+        return parsePtxVersion(version->version.text);
+    }
+    return std::nullopt;
+  }
+
+  void requirePtx(std::optional<PtxVersion> module_version,
+                  PtxVersion required, SourceRange range,
+                  std::string_view spelling) {
+    if (!module_version || *module_version >= required)
+      return;
+    diagnose(DeclarationDiagnosticKind::UnsupportedDirectivePtxVersion, range,
+             fmt::format("{} requires PTX ISA >= {}.{}, but module PTX ISA is "
+                         "{}.{}.",
+                         spelling, required.major, required.minor,
+                         module_version->major, module_version->minor));
+  }
+
+  static bool hasResource(const syntax_ast::AstFunction& function,
+                          syntax_ast::AstKernelResourceKind kind) {
+    return std::ranges::any_of(function.resources,
+                               [kind](const auto& resource) {
+                                 return resource.kind == kind;
+                               });
+  }
+
+  void checkM11Directives(const syntax_ast::AstModule& module) {
+    const auto module_version = modulePtxVersion(module);
+    std::unordered_map<std::string, SourceRange> seen_aliases;
+    const auto functions_named = [&module](std::string_view name) {
+      std::vector<const syntax_ast::AstFunction*> found;
+      for (const auto& candidate : module.items) {
+        const auto* function = std::get_if<syntax_ast::AstFunction>(&candidate);
+        if (function != nullptr && function->name.syntax.text == name)
+          found.push_back(function);
+      }
+      return found;
+    };
+    const auto check_attributes = [this, module_version](
+                                      const auto& attributes,
+                                      syntax_ast::AstStateSpace state_space,
+                                      bool function) {
+      bool managed = false;
+      bool unified = false;
+      for (const auto& attribute : attributes) {
+        const bool is_managed =
+            attribute.kind == syntax_ast::AstAttributeKind::Managed;
+        bool& repeated = is_managed ? managed : unified;
+        if (repeated) {
+          diagnose(DeclarationDiagnosticKind::InvalidDeclarationDirective,
+                   attribute.range, "Duplicate .attribute member.");
+        }
+        repeated = true;
+        requirePtx(module_version, is_managed ? PtxVersion{4, 0}
+                                               : PtxVersion{8, 0},
+                   attribute.range, is_managed ? ".managed" : ".unified");
+        if (function ? !is_managed
+                     : state_space == syntax_ast::AstStateSpace::Global) {
+          continue;
+        }
+        diagnose(DeclarationDiagnosticKind::InvalidDeclarationDirective,
+                 attribute.range,
+                 is_managed ? ".managed is only valid on a .global variable."
+                            : ".unified is only valid on a .global variable "
+                              "or device function.");
+      }
+    };
+
+    for (const auto& item : module.items) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+        check_attributes(declaration->attributes, declaration->state_space,
+                         false);
+      } else if (const auto* alias =
+                     std::get_if<syntax_ast::AstAliasDirective>(&item)) {
+        requirePtx(module_version, {6, 3}, alias->range, ".alias");
+        const auto [previous, inserted] =
+            seen_aliases.emplace(alias->alias.syntax.text, alias->range);
+        if (!inserted) {
+          diagnose(DeclarationDiagnosticKind::InvalidFunctionAlias,
+                   alias->alias.syntax.range,
+                   "A function may have only one .alias directive.",
+                   previous->second);
+        }
+        const auto targets = functions_named(alias->aliasee.syntax.text);
+        const auto target = std::ranges::find_if(
+            targets, [](const auto* function) { return !function->is_prototype; });
+        if (target == targets.end() || (*target)->is_entry ||
+            declarationLinkage((*target)->qualifiers) ==
+                binding::SymbolLinkage::Weak) {
+          diagnose(DeclarationDiagnosticKind::InvalidFunctionAlias,
+                   alias->aliasee.syntax.range,
+                   ".alias requires a defined, non-weak device function in "
+                   "the same module.");
+          continue;
+        }
+        const auto declarations = functions_named(alias->alias.syntax.text);
+        const auto declared = std::ranges::find_if(
+            declarations,
+            [](const auto* function) { return function->is_prototype; });
+        if (declared == declarations.end()) {
+          diagnose(DeclarationDiagnosticKind::InvalidFunctionAlias,
+                   alias->alias.syntax.range,
+                   ".alias requires a matching device-function prototype.");
+          continue;
+        }
+        for (const auto* candidate : declarations) {
+          if (candidate->is_entry || !candidate->is_prototype ||
+              functionSignature(*candidate) != functionSignature(**target)) {
+            diagnose(DeclarationDiagnosticKind::InvalidFunctionAlias,
+                     alias->alias.syntax.range,
+                     ".alias requires a matching device-function declaration "
+                     "without a body.");
+            break;
+          }
+        }
+      } else if (const auto* function =
+                     std::get_if<syntax_ast::AstFunction>(&item)) {
+        check_attributes(function->attributes, syntax_ast::AstStateSpace::Global,
+                         true);
+        if (function->noreturn_directive) {
+          requirePtx(module_version, {6, 4},
+                     function->noreturn_directive->range, ".noreturn");
+          if (!function->return_parameters.empty()) {
+            diagnose(DeclarationDiagnosticKind::InvalidDeclarationDirective,
+                     function->noreturn_directive->range,
+                     "A .noreturn function cannot have return parameters.");
+          }
+        }
+        if (function->abi_preserve)
+          requirePtx(module_version, {9, 0}, function->abi_preserve->range,
+                     ".abi_preserve");
+        if (function->abi_preserve_control)
+          requirePtx(module_version, {9, 0},
+                     function->abi_preserve_control->range,
+                     ".abi_preserve_control");
+        if (function->blocks_are_clusters) {
+          requirePtx(module_version, {9, 0},
+                     function->blocks_are_clusters->range,
+                     ".blocksareclusters");
+          if (!hasResource(*function,
+                           syntax_ast::AstKernelResourceKind::ReqNtid) ||
+              !hasResource(*function, syntax_ast::AstKernelResourceKind::
+                                         ReqNctaPerCluster)) {
+            diagnose(DeclarationDiagnosticKind::InvalidDeclarationDirective,
+                     function->blocks_are_clusters->range,
+                     ".blocksareclusters requires .reqntid and "
+                     ".reqnctapercluster.");
+          }
+        }
+        if (function->language) {
+          requirePtx(module_version, {9, 3}, function->language->range,
+                     ".language");
+          for (const auto& value : function->language->values) {
+            if (!languageCode(value.text)) {
+              diagnose(DeclarationDiagnosticKind::InvalidDeclarationDirective,
+                       value.range, "Invalid .language value.");
+            }
+          }
+        }
+        const auto check_body = [&](const auto& self, const auto& body) -> void {
+          for (const auto& body_item : body) {
+            if (const auto* declaration =
+                    std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
+              check_attributes(declaration->attributes, declaration->state_space,
+                               false);
+            } else if (const auto* prototype =
+                    std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
+              if (prototype->noreturn_directive)
+                requirePtx(module_version, {6, 4},
+                           prototype->noreturn_directive->range, ".noreturn");
+              if (prototype->abi_preserve)
+                requirePtx(module_version, {9, 0}, prototype->abi_preserve->range,
+                           ".abi_preserve");
+              if (prototype->abi_preserve_control)
+                requirePtx(module_version, {9, 0},
+                           prototype->abi_preserve_control->range,
+                           ".abi_preserve_control");
+            } else if (const auto* block =
+                           std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
+                               &body_item);
+                       block != nullptr && *block) {
+              self(self, (*block)->body);
+            }
+          }
+        };
+        check_body(check_body, function->body);
       }
     }
   }

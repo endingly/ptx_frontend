@@ -4967,5 +4967,19 @@ TEST(ResolvedModule, ResolvesACompatibleFunctionDefinitionScope) {
       std::get<ResolvedRegisterRef>(integer.src1.value).symbol_id.has_value());
 }
 
+TEST(ResolvedModule, ResolvesSameModuleAliasCallsToCanonicalSignature) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 9.3
+.func alias_fn(.param .u32 input);
+.func target(.param .u32 input) {}
+.alias alias_fn, target;
+.entry kernel() {
+  .reg .u32 %r;
+  call alias_fn, (%r);
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

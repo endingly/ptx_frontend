@@ -335,6 +335,7 @@ struct SymbolTableBuilder {
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
         .function_is_entry = function_is_entry,
+        .canonical_function = std::nullopt,
     });
     return id;
   }
@@ -503,6 +504,21 @@ struct SymbolTableBuilder {
                                      parameter.type.text));
     }
     collectBody(function.body, function_scope, function_scope);
+  }
+
+  void collectAlias(const syntax_ast::AstAliasDirective& alias) {
+    const auto target = exactSymbol(result.table.moduleScope(),
+                                    alias.aliasee.syntax.text, std::nullopt);
+    if (!target || result.table.symbol(*target).kind != SymbolKind::Function)
+      return;
+    const SymbolId alias_symbol =
+        addSymbol(result.table.moduleScope(), SymbolKind::Function,
+                  alias.alias.syntax.text, alias.alias.syntax.range,
+                  SymbolLinkage::None, std::nullopt, std::nullopt,
+                  std::nullopt, std::nullopt, true, false);
+    Symbol& symbol = result.table.symbols_[alias_symbol.value];
+    if (symbol.kind == SymbolKind::Function)
+      symbol.canonical_function = *target;
   }
 
   void collectBody(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
@@ -899,6 +915,10 @@ struct SymbolTableBuilder {
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         collectFunction(*function);
       }
+    }
+    for (const auto& item : module.items) {
+      if (const auto* alias = std::get_if<syntax_ast::AstAliasDirective>(&item))
+        collectAlias(*alias);
     }
 
     for (const auto& item : module.items) {

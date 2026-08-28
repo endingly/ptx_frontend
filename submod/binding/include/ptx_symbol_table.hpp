@@ -95,6 +95,8 @@ struct Symbol {
   std::optional<ScopeId> owned_scope;
   /** Meaningful only for ``Function`` symbols. */
   bool function_is_entry{};
+  /** A same-module `.alias` target; absent for ordinary functions. */
+  std::optional<SymbolId> canonical_function;
 };
 
 struct SymbolLookup {

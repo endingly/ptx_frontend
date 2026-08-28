@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PTX inventory accounting snapshot
+type: object
+additionalProperties: false
+required: [schema, version, ptx_isa, sources, items]
+properties:
+  schema:
+    const: ptx-inventory-accounting/v1
+  version:
+    const: 1
+  ptx_isa:
+    const: "9.3"
+  sources:
+    type: object
+    additionalProperties: false
+    required: [instruction, directive, special_register]
+    properties:
+      instruction:
+        const: ptx_instruction_registry.yaml
+      directive:
+        const: ptx_directive_registry.yaml
+      special_register:
+        const: ptx_special_register_registry.yaml
+  items:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [kind, source_record_id, spelling]
+      properties:
+        kind:
+          enum: [instruction, directive, special_register]
+        source_record_id:
+          type: string
+          minLength: 1
+        spelling:
+          type: string
+          minLength: 1

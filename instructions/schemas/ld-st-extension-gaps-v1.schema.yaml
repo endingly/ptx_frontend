@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PTX ld/st extension-gap manifest
+type: object
+additionalProperties: false
+required: [schema, version, basis, gaps]
+properties:
+  schema:
+    const: ptx-ld-st-extension-gaps/v1
+  version:
+    const: 1
+  basis:
+    type: object
+    additionalProperties: false
+    required: [ptx_isa, sections]
+    properties:
+      ptx_isa:
+        const: "9.3"
+      sections:
+        const: ["9.7.9.8", "9.7.9.9", "9.7.9.11", "9.7.9.12"]
+  gaps:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, opcode, kind, forms, disposition, reason, boundary]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z][a-z0-9-]*$"
+        opcode:
+          type: string
+          enum: [ld, st]
+        kind:
+          type: string
+          enum:
+            - cache_eviction
+            - cache_policy
+            - prefetch
+            - address_qualifier
+            - state_space_subqualifier
+            - scalar_type
+            - opcode_form
+        forms:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        disposition:
+          type: string
+          enum: [M10-I02, deferred]
+        reason:
+          type: string
+          minLength: 1
+        boundary:
+          type: string
+          minLength: 1

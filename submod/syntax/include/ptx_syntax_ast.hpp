@@ -346,6 +346,9 @@ enum class AstKernelResourceKind : uint8_t {
   MaxNtid,
   ReqNtid,
   MinNctaPerSm,
+  ReqNctaPerCluster,
+  ExplicitCluster,
+  MaxClusterRank,
 };
 
 /** A per-entry kernel resource constraint retained from the function header. */

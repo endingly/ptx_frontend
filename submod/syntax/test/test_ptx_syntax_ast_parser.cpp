@@ -565,6 +565,29 @@ TEST(PtxSyntaxParser, LowersRequiredThreadCountDirective) {
   EXPECT_EQ(function.resources[0].values.size(), 2u);
 }
 
+TEST(PtxSyntaxParser, LowersClusterDimensionDirectives) {
+  PtxSyntaxParser parser(R"ptx(
+.entry kernel() .reqnctapercluster 2, 3 .explicitcluster .maxclusterrank 8 { }
+)ptx");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(result->items.front());
+  ASSERT_EQ(function.resources.size(), 3u);
+  const auto& req = function.resources[0];
+  EXPECT_EQ(req.kind, syntax_ast::AstKernelResourceKind::ReqNctaPerCluster);
+  ASSERT_EQ(req.values.size(), 2u);
+  EXPECT_EQ(req.values[1].text, "3");
+  const auto& explicit_cluster = function.resources[1];
+  EXPECT_EQ(explicit_cluster.kind,
+            syntax_ast::AstKernelResourceKind::ExplicitCluster);
+  EXPECT_TRUE(explicit_cluster.values.empty());
+  EXPECT_EQ(function.resources[2].kind,
+            syntax_ast::AstKernelResourceKind::MaxClusterRank);
+}
+
 TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 0x2U 4237 0

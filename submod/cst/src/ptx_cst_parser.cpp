@@ -80,8 +80,10 @@ bool isVariableStateSpace(TokenKind kind);
 
 bool isKernelResourceDirective(TokenKind kind) {
   return kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMaxntid ||
-         kind == TokenKind::DotReqntid ||
-         kind == TokenKind::DotMinnctapersm;
+         kind == TokenKind::DotReqntid || kind == TokenKind::DotMinnctapersm ||
+         kind == TokenKind::DotReqnctapercluster ||
+         kind == TokenKind::DotExplicitcluster ||
+         kind == TokenKind::DotMaxclusterrank;
 }
 
 bool isFunctionBoundary(TokenKind kind) {
@@ -1461,13 +1463,26 @@ PtxCstParser::parseKernelResourceDirective() {
         token(directive).range, "expected kernel resource directive"});
   }
 
+  if (kind == TokenKind::DotExplicitcluster) {
+    if (token(peek()).kind == TokenKind::Decimal ||
+        token(peek()).kind == TokenKind::Comma) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range, ".explicitcluster does not accept a value"});
+    }
+    return syntax_cst::CstKernelResourceDirective{
+        .directive = directive,
+        .token_range = {directive, directive + 1},
+    };
+  }
+
   auto first = expect(TokenKind::Decimal, "kernel resource value");
   if (!first)
     return std::unexpected(first.error());
   std::vector<TokenId> values{*first};
   std::vector<TokenId> commas;
 
-  if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMinnctapersm) {
+  if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMinnctapersm ||
+      kind == TokenKind::DotMaxclusterrank) {
     if (token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range, "this kernel resource directive accepts one value"});

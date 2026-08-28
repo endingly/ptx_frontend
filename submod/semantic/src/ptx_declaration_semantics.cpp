@@ -735,6 +735,10 @@ class Checker {
         return {2, 1};
       case syntax_ast::AstKernelResourceKind::MinNctaPerSm:
         return {2, 0};
+      case syntax_ast::AstKernelResourceKind::ReqNctaPerCluster:
+      case syntax_ast::AstKernelResourceKind::ExplicitCluster:
+      case syntax_ast::AstKernelResourceKind::MaxClusterRank:
+        return {7, 8};
     }
     return {};
   }
@@ -750,6 +754,12 @@ class Checker {
         return ".reqntid";
       case syntax_ast::AstKernelResourceKind::MinNctaPerSm:
         return ".minnctapersm";
+      case syntax_ast::AstKernelResourceKind::ReqNctaPerCluster:
+        return ".reqnctapercluster";
+      case syntax_ast::AstKernelResourceKind::ExplicitCluster:
+        return ".explicitcluster";
+      case syntax_ast::AstKernelResourceKind::MaxClusterRank:
+        return ".maxclusterrank";
     }
     return "kernel resource directive";
   }
@@ -770,6 +780,8 @@ class Checker {
         continue;
       const syntax_ast::AstKernelResourceDirective* first_thread_count =
           nullptr;
+      const syntax_ast::AstKernelResourceDirective* req_cluster = nullptr;
+      const syntax_ast::AstKernelResourceDirective* max_cluster = nullptr;
       for (const auto& resource : function->resources) {
         if (module_version &&
             *module_version < minimumPtxVersion(resource.kind)) {
@@ -782,17 +794,43 @@ class Checker {
                                required.minor, module_version->major,
                                module_version->minor));
         }
-        if (resource.kind != syntax_ast::AstKernelResourceKind::MaxNtid &&
-            resource.kind != syntax_ast::AstKernelResourceKind::ReqNtid)
-          continue;
-        if (first_thread_count == nullptr) {
-          first_thread_count = &resource;
-        } else if (first_thread_count->kind != resource.kind) {
-          diagnose(
-              DeclarationDiagnosticKind::IncompatibleKernelResourceDirective,
-              resource.range,
-              ".reqntid cannot be used together with .maxntid.",
-              first_thread_count->range);
+        if (resource.kind == syntax_ast::AstKernelResourceKind::MaxNtid ||
+            resource.kind == syntax_ast::AstKernelResourceKind::ReqNtid) {
+          if (first_thread_count == nullptr) {
+            first_thread_count = &resource;
+          } else if (first_thread_count->kind != resource.kind) {
+            diagnose(
+                DeclarationDiagnosticKind::IncompatibleKernelResourceDirective,
+                resource.range,
+                ".reqntid cannot be used together with .maxntid.",
+                first_thread_count->range);
+          }
+        }
+
+        if (resource.kind ==
+            syntax_ast::AstKernelResourceKind::ReqNctaPerCluster) {
+          if (max_cluster != nullptr) {
+            diagnose(
+                DeclarationDiagnosticKind::IncompatibleKernelResourceDirective,
+                resource.range,
+                ".reqnctapercluster cannot be used together with "
+                ".maxclusterrank.",
+                max_cluster->range);
+          } else {
+            req_cluster = &resource;
+          }
+        } else if (resource.kind ==
+                   syntax_ast::AstKernelResourceKind::MaxClusterRank) {
+          if (req_cluster != nullptr) {
+            diagnose(
+                DeclarationDiagnosticKind::IncompatibleKernelResourceDirective,
+                resource.range,
+                ".maxclusterrank cannot be used together with "
+                ".reqnctapercluster.",
+                req_cluster->range);
+          } else {
+            max_cluster = &resource;
+          }
         }
       }
     }

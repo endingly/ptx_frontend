@@ -429,6 +429,75 @@ TEST(PtxDeclarationSemantics, ChecksKernelResourcePtxAvailability) {
   EXPECT_TRUE(valid_req.diagnostics.empty());
 }
 
+TEST(PtxDeclarationSemantics, ChecksClusterDimensionDirectivePtxAvailability) {
+  const CheckedModule old_req = check(R"ptx(
+.version 7.7
+.entry required() .reqnctapercluster 2, 1 { }
+)ptx");
+  const CheckedModule old_explicit = check(R"ptx(
+.version 7.7
+.entry explicit_cluster() .explicitcluster { }
+)ptx");
+  const CheckedModule old_maximum = check(R"ptx(
+.version 7.7
+.entry maximum() .maxclusterrank 8 { }
+)ptx");
+  EXPECT_EQ(diagnosticCount(
+                old_req,
+                DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion),
+            1u);
+  EXPECT_EQ(diagnosticCount(
+                old_explicit,
+                DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion),
+            1u);
+  EXPECT_EQ(diagnosticCount(
+                old_maximum,
+                DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion),
+            1u);
+
+  const CheckedModule supported = check(R"ptx(
+.version 7.8
+.entry required() .reqnctapercluster 2, 1 { }
+.entry explicit_cluster() .explicitcluster { }
+.entry maximum() .maxclusterrank 8 { }
+)ptx");
+  EXPECT_TRUE(supported.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics,
+     RejectsConflictingClusterDimensionDirectivesInOrder) {
+  const CheckedModule req_then_max = check(R"ptx(
+.version 7.8
+.entry required() .reqnctapercluster 2 .maxclusterrank 8 { }
+)ptx");
+  const CheckedModule max_then_req = check(R"ptx(
+.version 7.8
+.entry maximum() .maxclusterrank 8 .reqnctapercluster 2 { }
+)ptx");
+  for (const CheckedModule* result : {&req_then_max, &max_then_req}) {
+    const auto diagnostic =
+        std::ranges::find_if(result->diagnostics, [](const auto& entry) {
+          return entry.kind ==
+                 DeclarationDiagnosticKind::IncompatibleKernelResourceDirective;
+        });
+    ASSERT_NE(diagnostic, result->diagnostics.end());
+    ASSERT_TRUE(diagnostic->previous_range.has_value());
+    EXPECT_TRUE(diagnostic->previous_range->start.column <
+                diagnostic->range.start.column);
+  }
+
+  const CheckedModule explicit_with_req = check(R"ptx(
+.version 7.8
+.entry required() .explicitcluster .reqnctapercluster 2 { }
+)ptx");
+  const CheckedModule explicit_with_max = check(R"ptx(
+.version 7.8
+.entry maximum() .explicitcluster .maxclusterrank 8 { }
+)ptx");
+  EXPECT_TRUE(explicit_with_req.diagnostics.empty());
+  EXPECT_TRUE(explicit_with_max.diagnostics.empty());
+}
+
 TEST(PtxDeclarationSemantics, RejectsConflictingKernelThreadCountsInOrder) {
   const CheckedModule max_then_req = check(R"ptx(
 .version 2.1

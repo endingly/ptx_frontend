@@ -15,7 +15,7 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it does not attach to instructions or enter Resolved IR |
 | Debug section directive | Supported subset | Outermost `.section name { ... }` retains matched braces and ordered raw DWARF payload tokens; `.debug_str` and raw `name:` labels bind as debug identity, while payload widths, relocations, and offset semantics remain unsupported |
 | Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; pragmas neither bind nor enter Resolved IR |
-| Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, and `.minnctapersm ncta` with dedicated CST/AST; declaration semantics checks their source `.version` minima and rejects same-entry `.maxntid` plus `.reqntid` |
+| Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, `.minnctapersm ncta`, `.reqnctapercluster nx[,ny[,nz]]`, zero-argument `.explicitcluster`, and `.maxclusterrank n` with dedicated CST/AST; declaration semantics checks source `.version` minima and rejects same-entry `.maxntid` plus `.reqntid` and `.reqnctapercluster` plus `.maxclusterrank`; target/launch-time rules remain unchecked |
 | Functions | Supported subset | `.entry`/`.func` definitions, `.func` prototypes, visibility/linkage qualifiers, return and input parameter lists, `.noreturn` |
 | Formal parameters | Supported subset | `.reg`/`.param`, alignment, scalar type, pointer space/alignment, and arrays sized by structured constant expressions |
 | Variable declarations | Supported subset | Module/function scope, linkage qualifiers, `.reg`/`.param`/`.local`/`.shared`/`.global`/`.const`, alignment, vector/base type, parameterized names, multidimensional arrays, and `.global`/`.const` initializers |
@@ -75,14 +75,14 @@ stage.
 | `.common` | G | R | — | — | — | — | Unmodeled declaration directive |
 | `.const` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
-| `.explicitcluster` | G | R | — | — | — | — | Unmodeled entry-header directive |
+| `.explicitcluster` | D | T | T | — | — | C | Entry-only, zero arguments, PTX 7.8 source-version minimum; target/launch rules deferred |
 | `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
 | `.file` | D | T | T | Y | — | C | Decimal/hex uint64 identity; repeated ID idempotent, overflow diagnoses |
 | `.func` | D | E | E | Y | Y | C | Existing function node |
 | `.global` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.local` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.loc` | D | T | T | Y | — | C | Decimal/hex file ID plus `.debug_str` function-name identity; no attachment |
-| `.maxclusterrank` | G | R | — | — | — | — | Unmodeled entry-header directive |
+| `.maxclusterrank` | D | T | T | — | — | C | Entry-only, one argument, PTX 7.8 source-version minimum; conflicts with `.reqnctapercluster` |
 | `.maxnctapersm` | G | R | — | — | — | — | Unmodeled deprecated resource directive |
 | `.maxnreg` | D | T | T | — | — | C | Entry-only source-version minimum |
 | `.maxntid` | D | T | T | — | — | C | Entry-only; conflicts with `.reqntid` |
@@ -91,7 +91,7 @@ stage.
 | `.param` | D | E | E | Y | Y | C | Existing variable/formal/call-parameter declaration |
 | `.pragma` | D | T | T | — | — | — | Backend string interpretation intentionally absent |
 | `.reg` | D | E | E | Y | Y | C | Existing variable/formal declaration |
-| `.reqnctapercluster` | G | R | — | — | — | — | Unmodeled entry-header directive |
+| `.reqnctapercluster` | D | T | T | — | — | C | Entry-only, one to three arguments, PTX 7.8 source-version minimum; conflicts with `.maxclusterrank` |
 | `.reqntid` | D | T | T | — | — | C | Entry-only; conflicts with `.maxntid` |
 | `.section` | D | T | T | Y | — | C | Only `.debug_str` plus raw `name:` labels bind; payload stays raw |
 | `.shared` | D | E | E | Y | Y | C | Existing variable declaration |

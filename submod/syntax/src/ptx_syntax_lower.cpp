@@ -576,6 +576,15 @@ syntax_ast::AstKernelResourceDirective lowerKernelResourceDirective(
     case TokenKind::DotMinnctapersm:
       kind = syntax_ast::AstKernelResourceKind::MinNctaPerSm;
       break;
+    case TokenKind::DotReqnctapercluster:
+      kind = syntax_ast::AstKernelResourceKind::ReqNctaPerCluster;
+      break;
+    case TokenKind::DotExplicitcluster:
+      kind = syntax_ast::AstKernelResourceKind::ExplicitCluster;
+      break;
+    case TokenKind::DotMaxclusterrank:
+      kind = syntax_ast::AstKernelResourceKind::MaxClusterRank;
+      break;
     default:
       throw std::logic_error("invalid kernel resource directive in CST");
   }

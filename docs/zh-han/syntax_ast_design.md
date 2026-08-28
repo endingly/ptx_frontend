@@ -30,8 +30,10 @@ body 中的 instruction 由现有 instruction parser 处理。variable declarati
 array dimension 与 scalar initializer 使用结构化 constant-expression tree；brace
 initializer 则递归保留每一层花括号、元素和逗号。CST 同时保留受支持 function grammar
 的 qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
-entry header 还会结构化保留 `.maxnreg`、`.maxntid`、`.reqntid` 与
-`.minnctapersm`：CST 保留 directive、整数 value 与 comma，AST 保留 kind、value 与 range。
+entry header 还会结构化保留 `.maxnreg`、`.maxntid`、`.reqntid`、
+`.minnctapersm`、`.reqnctapercluster`、`.explicitcluster` 与
+`.maxclusterrank`：CST 保留 directive、整数 value 与 comma，AST 保留 kind、value 与
+range；`.explicitcluster` 没有 value。
 
 CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
 token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此

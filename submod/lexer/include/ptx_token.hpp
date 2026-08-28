@@ -104,6 +104,9 @@ enum class TokenKind : uint16_t {
   DotMaxntid,
   DotReqntid,
   DotMinnctapersm,
+  DotReqnctapercluster,
+  DotExplicitcluster,
+  DotMaxclusterrank,
   DotNoreturn,
 
   // Declaration directives / declaration qualifiers

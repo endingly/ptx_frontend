@@ -193,6 +193,14 @@ operand_patterns:
       state_space:
         expr: modifier(state_space)
 
+  prefetch_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+
   ld_vector:
     - name: dst
       kind: reg_vector
@@ -1000,6 +1008,32 @@ instructions:
 
         examples:
           - ptx: "ldu.global.u32 %r0, [global_value];"
+            valid: true
+
+  - opcode: prefetch
+    section: "9.7.9.13"
+    doc: "Prefetch, limited to the explicit-global .L1 form."
+    syntax: "prefetch.global.L1 [address]"
+
+    variants:
+      - name: prefetch_global_l1
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: l1
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L1
+        operands: $prefetch_global
+        rule: data_movement.prefetch
+
+        examples:
+          - ptx: "prefetch.global.L1 [global_value];"
             valid: true
 
   - opcode: st

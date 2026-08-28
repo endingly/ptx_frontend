@@ -350,6 +350,79 @@ TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
   ASSERT_FALSE(missing_address.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  prefetch.global.L1 [global_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Prefetch>(resolved->functions.front().body.front());
+  const auto& prefetch = std::get<Prefetch::GlobalL1>(instruction.variant);
+  EXPECT_EQ(prefetch.state_space, MemoryStateSpace::Global);
+  EXPECT_TRUE(prefetch.l1);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  prefetch.global.L1 [local_value];
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_address = checker::check(
+      std::get<Prefetch>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
+  ASSERT_FALSE(wrong_address.has_value());
+  EXPECT_EQ(wrong_address.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto wrong_level = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() { prefetch.global.L2 [global_value]; }
+)ptx"));
+  ASSERT_FALSE(wrong_level.has_value());
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.local .u32 local_value;
+.entry kernel() { prefetch.local.L1 [local_value]; }
+)ptx"));
+  ASSERT_FALSE(wrong_space.has_value());
+  const auto missing_address = resolveModule(parseModule(R"ptx(
+.entry kernel() { prefetch.global.L1; }
+)ptx"));
+  ASSERT_FALSE(missing_address.has_value());
+  const auto extra_address = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() { prefetch.global.L1 [global_value], [global_value]; }
+)ptx"));
+  ASSERT_FALSE(extra_address.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

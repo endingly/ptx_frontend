@@ -1444,6 +1444,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "state_space",
         )
 
+    def test_prefetch_global_l1_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        prefetch = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "prefetch"
+        )
+        resolved = from_instruction_spec(prefetch)
+
+        self.assertEqual(resolved.cpp_name, "Prefetch")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["GlobalL1"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("l1", "bool"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].state_space_modifier_field_id,
+            "state_space",
+        )
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1545,6 +1575,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("struct Ldu {", source)
+        self.assertIn("struct Prefetch {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
         self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 1)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
@@ -1665,6 +1696,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Ld>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ldu"', source)
         self.assertIn("resolve<Ldu>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "prefetch"', source)
+        self.assertIn("resolve<Prefetch>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:
@@ -1736,6 +1769,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Mov>(", source)
         self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
         self.assertIn("std::expected<Ldu, ResolveDiagnostic>", source)
+        self.assertIn("std::expected<Prefetch, ResolveDiagnostic>", source)
         self.assertIn(
             ".address = resolved_operand<ResolvedAddress>", source
         )
@@ -1762,6 +1796,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".parameter_direction = parameter_direction", source)
         self.assertIn("CheckResult check<Ld>(", source)
         self.assertIn("CheckResult check<Ldu>(", source)
+        self.assertIn("CheckResult check<Prefetch>(", source)
         self.assertIn("check_memory_consistency(", source)
         self.assertIn("check_address_alignment(", source)
         self.assertIn(".address_alignment = address_alignment", source)

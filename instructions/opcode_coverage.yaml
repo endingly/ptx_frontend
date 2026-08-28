@@ -46,6 +46,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: prefetch
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: st
     syntax: partial
     resolved: partial

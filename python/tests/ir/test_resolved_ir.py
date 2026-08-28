@@ -1624,6 +1624,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedRegisterWidthPolicy.EXACT,
         )
 
+    def test_vote_sync_ballot_b32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        vote = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "vote"
+        )
+        resolved = from_instruction_spec(vote)
+
+        self.assertEqual(resolved.cpp_name, "Vote")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["SyncBallotB32"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("ballot", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("predicate", "WithLocs<ResolvedPredicate>"),
+                ("membermask", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.EXACT,
+        )
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1678,6 +1711,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Add {", source)
         self.assertIn("struct Atom {", source)
         self.assertIn("struct Activemask {", source)
+        self.assertIn("struct Vote {", source)
         self.assertIn("struct Red {", source)
         self.assertIn("struct Bar {", source)
         self.assertIn("struct Membar {", source)
@@ -1809,6 +1843,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Atom>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "activemask"', source)
         self.assertIn("resolve<Activemask>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "vote"', source)
+        self.assertIn("resolve<Vote>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "red"', source)
         self.assertIn("resolve<Red>(ast, context)", source)
         self.assertIn("namespace {", source)

@@ -138,6 +138,23 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
+  vote_sync_ballot:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+    - name: predicate
+      kind: pred
+      role: predicate
+      access: read
+      type: pred
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
 
 instructions:
   - opcode: bar
@@ -661,4 +678,34 @@ instructions:
 
         examples:
           - ptx: "activemask.b32 %b0;"
+            valid: true
+
+  - opcode: vote
+    doc: "Vote operation, limited to synchronized ballot.b32."
+    syntax: "vote.sync.ballot.b32 dst, predicate, membermask"
+
+    variants:
+      - name: vote_sync_ballot_b32
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: ballot
+            kind: flag
+            presence: fixed
+            value: true
+            token: .ballot
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        operands: $vote_sync_ballot
+        rule: parallel_sync_and_communication.vote
+
+        examples:
+          - ptx: "vote.sync.ballot.b32 %b0, %p0, 0xffffffff;"
             valid: true

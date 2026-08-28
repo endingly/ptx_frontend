@@ -793,6 +793,99 @@ TEST(ResolvedModule, ResolvesAndChecksActivemaskB32Slice) {
   ASSERT_FALSE(extra_operand.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  .reg .u32 %mask;
+  vote.sync.ballot.b32 %b0, %p0, 0xffffffff;
+  vote.sync.ballot.b32 %b1, %p0, %mask;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& immediate =
+      std::get<Vote::SyncBallotB32>(std::get<Vote>(body[0]).variant);
+  const auto& register_mask =
+      std::get<Vote::SyncBallotB32>(std::get<Vote>(body[1]).variant);
+  EXPECT_TRUE(immediate.sync);
+  EXPECT_TRUE(immediate.ballot);
+  EXPECT_EQ(immediate.type, ScalarType::B32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.membermask.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(register_mask.membermask.value));
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Vote>(body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Vote>(body[1]), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Vote>(body[0]),
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Vote>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto bad_dst_and_mask = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u0;
+  .reg .b64 %wide0;
+  .reg .pred %p0;
+  .reg .b64 %bad_mask;
+  vote.sync.ballot.b32 %u0, %p0, 0;
+  vote.sync.ballot.b32 %wide0, %p0, 0;
+  vote.sync.ballot.b32 %u0, %p0, %bad_mask;
+}
+)ptx"));
+  ASSERT_TRUE(bad_dst_and_mask.has_value())
+      << bad_dst_and_mask.error().front().message;
+  for (const auto& candidate : bad_dst_and_mask->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Vote>(candidate), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto bad_predicate = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  .reg .u32 %r0;
+  vote.sync.ballot.b32 %b0, %r0, 0;
+}
+)ptx"));
+  ASSERT_FALSE(bad_predicate.has_value());
+  const auto wrong_all = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.sync.all.pred %b0, %p0, 0; }
+)ptx"));
+  ASSERT_FALSE(wrong_all.has_value());
+  const auto wrong_any = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.sync.any.pred %b0, %p0, 0; }
+)ptx"));
+  ASSERT_FALSE(wrong_any.has_value());
+  const auto legacy = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.ballot.b32 %b0, %p0; }
+)ptx"));
+  ASSERT_FALSE(legacy.has_value());
+  const auto missing_mask = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.sync.ballot.b32 %b0, %p0; }
+)ptx"));
+  ASSERT_FALSE(missing_mask.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

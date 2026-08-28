@@ -86,6 +86,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: vote
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
 
   - opcode: ret
     syntax: partial

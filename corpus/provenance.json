@@ -20,6 +20,51 @@
       "license": "MIT"
     },
     {
+      "path": "corpus/m11/sm100_supported.ptx",
+      "sha256": "5c1b5bc95fb56e74d0b7ce38c0acbc128de29169b54d04da9977d8b1dd1dae4c",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "target": "sm_100",
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m11/sm80_cluster_unsupported.ptx",
+      "sha256": "d8178be54b1127ebedb101498bb2238e4ac0a06f3e6c6acb2edd2fb0396175df",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "target": "sm_80",
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m11/sm80_supported.ptx",
+      "sha256": "dcbb1d47d9acb83d22055a5da9db8653204ca47c81a9b2269f08e2a71ab85f30",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "target": "sm_80",
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m11/sm90a_supported.ptx",
+      "sha256": "f3e9a262266a4a951057200968ae26624b386707c4af27b41249db93ca109a6b",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "target": "sm_90a",
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m11/unknown_target_unsupported.ptx",
+      "sha256": "054833477d5e074e00266f9a4d320fb45aa480b8ab13e4457974af58865ca832",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "target": "sm_123a",
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
       "path": "corpus/m9/address_conversion.ptx",
       "sha256": "82519eb1a4fa228fecc0331a53bee3cdda192b40326946526db9fb1c0b619799",
       "generator": "project-authored",

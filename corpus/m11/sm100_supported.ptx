@@ -1,0 +1,12 @@
+.version 9.3
+.target sm_100
+.address_size 64
+
+.global .attribute(.unified(1, 2)) .u32 m11_unified;
+
+.visible .entry m11_sm100_supported() {
+  .reg .u32 %r;
+  .reg .u64 %rd;
+  mov.u32 %r, %aggr_smem_size;
+  mov.u64 %rd, %current_graph_exec;
+}

@@ -236,7 +236,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         self.assertEqual(len(database.instructions), 1)
         self.assertEqual(len(database.instructions[0].variants), 2)
 
-    def test_rejects_one_spelling_owned_by_two_slots_in_one_variant(self) -> None:
+    def test_allows_one_spelling_to_bind_ordered_slots_in_one_variant(self) -> None:
         spec = _spec(
             category="floating_point",
             codegen_category="arithmetic",
@@ -257,8 +257,96 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             }
         )
 
-        with self.assertRaisesRegex(ValueError, "both active slots"):
+        database = self._load(spec)
+
+        self.assertEqual(len(database.instructions), 1)
+        self.assertEqual(len(database.instructions[0].variants), 1)
+
+    def test_rejects_optional_slot_with_repeated_spelling(self) -> None:
+        spec = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_mixed",
+            type_value="f16",
+        )
+        instructions = cast(list[dict[str, Any]], spec["instructions"])
+        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+        variants[0]["modifiers"] = [
+            {
+                "name": "optional_type",
+                "kind": "type",
+                "presence": "optional",
+                "domain": "scalar_types",
+                "default": "f16",
+                "values": ["f16"],
+            },
+            {
+                "name": "required_type",
+                "kind": "type",
+                "presence": "fixed",
+                "domain": "scalar_types",
+                "value": "f16",
+            },
+        ]
+
+        with self.assertRaisesRegex(ValueError, "optional slot"):
             self._load(spec)
+
+    def test_does_not_treat_different_modifier_orders_as_overlap(self) -> None:
+        spec = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_first",
+            type_value="f32",
+        )
+        instructions = cast(list[dict[str, Any]], spec["instructions"])
+        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+        variants[0]["modifiers"] = [
+            {
+                "name": "first_type",
+                "kind": "type",
+                "presence": "fixed",
+                "domain": "scalar_types",
+                "value": "f32",
+            },
+            {
+                "name": "second_type",
+                "kind": "type",
+                "presence": "fixed",
+                "domain": "scalar_types",
+                "value": "f16",
+            },
+        ]
+        variants.append(
+            {
+                "name": "add_second",
+                "availability": {"ptx": "1.0", "sm": 0},
+                "modifiers": [
+                    {
+                        "name": "first_type",
+                        "kind": "type",
+                        "presence": "fixed",
+                        "domain": "scalar_types",
+                        "value": "f16",
+                    },
+                    {
+                        "name": "second_type",
+                        "kind": "type",
+                        "presence": "fixed",
+                        "domain": "scalar_types",
+                        "value": "f32",
+                    },
+                ],
+                "operands": [],
+            }
+        )
+
+        database = self._load(spec)
+
+        self.assertEqual(
+            [variant.name for variant in database.instructions[0].variants],
+            ["add_first", "add_second"],
+        )
 
 
 if __name__ == "__main__":

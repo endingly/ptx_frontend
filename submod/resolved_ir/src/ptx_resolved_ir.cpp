@@ -1791,10 +1791,11 @@ struct ModifierBindingAttempt {
  * Bind source modifier spellings to the slots of one candidate variant.
  *
  * Slot IDs are variant-local. The same spelling may therefore denote `type`
- * in one variant and `result_type` in another. Within one variant, however,
- * every spelling must have exactly one active owner and source spellings must
- * follow slot order, with optional slots permitted to be omitted. The Python
- * database validator enforces the unique-owner invariant.
+ * in one variant and `result_type` in another, or occupy multiple ordered
+ * required/fixed slots in the same variant. The database rejects repeated
+ * spellings involving optional slots, so source modifiers greedily consume
+ * descriptors in order; optional and absent slots may be skipped, but required
+ * slots may not.
  */
 ModifierBindingAttempt bind_variant_modifiers(
     const syntax_ast::AstInstruction& ast,
@@ -1809,51 +1810,37 @@ ModifierBindingAttempt bind_variant_modifiers(
   }
 
   ActualModifierTable result;
-  std::optional<size_t> previous_owner_index;
-  for (const auto& actual : ast.modifiers) {
-    const SyntaxModifierDescriptor* owner = nullptr;
-    size_t owner_index = 0;
-    for (size_t index = 0; index < variant.modifiers.size(); ++index) {
-      const auto& descriptor = variant.modifiers[index];
-      if (descriptor.presence == check_end::PresenceRequirement::Absent ||
-          !std::ranges::contains(descriptor.allowed_values,
-                                 actual.syntax.text)) {
-        continue;
-      }
-      if (owner != nullptr) {
-        throw ResolveException(fmt::format(
-            "Variant '{}' maps modifier spelling '{}' to both '{}' and '{}'.",
-            variant.variant_name, actual.syntax.text, owner->kind_id,
-            descriptor.kind_id));
-      }
-      owner = &descriptor;
-      owner_index = index;
+  size_t actual_index = 0;
+  for (const auto& descriptor : variant.modifiers) {
+    if (descriptor.presence == check_end::PresenceRequirement::Absent)
+      continue;
+    if (actual_index < ast.modifiers.size() &&
+        std::ranges::contains(descriptor.allowed_values,
+                              ast.modifiers[actual_index].syntax.text)) {
+      result.emplace(std::string(descriptor.kind_id),
+                     &ast.modifiers[actual_index++]);
+      continue;
     }
-
-    if (owner == nullptr)
+    if (descriptor.presence == check_end::PresenceRequirement::Required)
       return {};
+  }
 
-    if (result.contains(std::string(owner->kind_id))) {
+  if (actual_index == ast.modifiers.size())
+    return ModifierBindingAttempt{.modifiers = std::move(result)};
+
+  const auto& extra = ast.modifiers[actual_index];
+  for (auto descriptor = variant.modifiers.rbegin();
+       descriptor != variant.modifiers.rend(); ++descriptor) {
+    if (descriptor->presence != check_end::PresenceRequirement::Absent &&
+        result.contains(std::string(descriptor->kind_id)) &&
+        std::ranges::contains(descriptor->allowed_values, extra.syntax.text)) {
       return ModifierBindingAttempt{
-          .duplicate = &actual,
-          .duplicate_slot = owner->kind_id,
+          .duplicate = &extra,
+          .duplicate_slot = descriptor->kind_id,
       };
     }
-    if (previous_owner_index && owner_index < *previous_owner_index)
-      return {};
-
-    result.emplace(std::string(owner->kind_id), &actual);
-    previous_owner_index = owner_index;
   }
-
-  for (const auto& descriptor : variant.modifiers) {
-    if (descriptor.presence == check_end::PresenceRequirement::Required &&
-        !result.contains(std::string(descriptor.kind_id))) {
-      return {};
-    }
-  }
-
-  return ModifierBindingAttempt{.modifiers = std::move(result)};
+  return {};
 }
 
 bool is_known_modifier_spelling(const SyntaxInstructionDescriptor& instruction,

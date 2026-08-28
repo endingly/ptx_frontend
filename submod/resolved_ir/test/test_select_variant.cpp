@@ -1047,6 +1047,39 @@ TEST(CollectActualModifiersAdd, RejectsOutOfOrderMixedSlots) {
             "Modifier combination does not match instruction variant 'MixedF32'.");
 }
 
+TEST(CollectActualModifiers, BindsRepeatedSpellingsToOrderedSlots) {
+  const std::array<std::string_view, 1> f16 = {".f16"};
+  const std::array<check_end::SyntaxModifierDescriptor, 2> modifiers = {{
+      {.allowed_values = f16,
+       .presence = check_end::PresenceRequirement::Required,
+       .kind_id = "first_type"},
+      {.allowed_values = f16,
+       .presence = check_end::PresenceRequirement::Required,
+       .kind_id = "second_type"},
+  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 0> layouts{};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> variants = {{
+      {.variant_name = "Repeated", .modifiers = modifiers, .operand_layouts = layouts},
+  }};
+  const check_end::SyntaxInstructionDescriptor instruction{
+      .Opcode_name = "sample",
+      .variants = variants,
+  };
+
+  const auto ast = parse_instruction("sample.f16.f16;");
+  const auto actual = collect_actual_modifiers(ast, variants.front());
+  ASSERT_TRUE(actual.has_value()) << actual.error().message;
+  EXPECT_EQ(actual->at("first_type"), &ast.modifiers[0]);
+  EXPECT_EQ(actual->at("second_type"), &ast.modifiers[1]);
+  EXPECT_EQ(select_variant_name(ast, instruction), "Repeated");
+
+  const auto extra = parse_instruction("sample.f16.f16.f16;");
+  const auto duplicate = collect_actual_modifiers(extra, variants.front());
+  ASSERT_FALSE(duplicate.has_value());
+  EXPECT_EQ(duplicate.error().range, extra.modifiers.back().syntax.range);
+  EXPECT_EQ(duplicate.error().message, "Duplicate 'second_type' modifier.");
+}
+
 TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   const auto& descriptor = Add::get_resolved_descriptor();
 

@@ -547,6 +547,10 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
     std::string_view variant_name, const ResolveContext* context = nullptr);
 
+/** Translate catalogued special-register metadata into checker availability. */
+checker::AvailabilityDescriptor special_register_availability(
+    const base::Info& info);
+
 /**
    * @brief Get a resolved modifier field from the resolved instruction fields.
    * 

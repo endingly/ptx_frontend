@@ -798,11 +798,22 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
 
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
-  return ResolvedModule{
+  ResolvedModule module{
       .symbols = std::move(binding_result.table),
       .functions = std::move(functions),
       .range = ast.range,
   };
+  const auto availability = checkModuleAvailability(ast, module);
+  if (!availability) {
+    ModuleResolveDiagnostics availability_diagnostics;
+    availability_diagnostics.reserve(availability.error().size());
+    for (const checker::CheckDiagnostic& diagnostic : availability.error()) {
+      availability_diagnostics.push_back(
+          {.range = diagnostic.range, .message = diagnostic.message});
+    }
+    return std::unexpected(std::move(availability_diagnostics));
+  }
+  return module;
 }
 
 }  // namespace ptx_frontend::resolved_ir

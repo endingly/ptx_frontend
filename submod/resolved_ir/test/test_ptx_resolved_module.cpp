@@ -2086,19 +2086,21 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   const auto cluster_resolved = resolveInstruction(*cluster_ast);
   ASSERT_TRUE(cluster_resolved.has_value()) << cluster_resolved.error().message;
   const auto& cluster_mov = std::get<Mov>(*cluster_resolved);
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const auto cluster_check = checker::check(
       cluster_mov, checker::Context{
                        .target =
                            checker::TargetInfo{
                                .ptx_version = checker::PtxVersion{7, 8},
                                .sm_version = 80,
+                               .capabilities = cluster_capabilities,
                            },
                        .instruction_range = cluster_ast->range,
                    });
   ASSERT_FALSE(cluster_check.has_value());
   ASSERT_EQ(cluster_check.error().size(), 1u);
   EXPECT_EQ(cluster_check.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
 
   PtxSyntaxParser wide_parser("mov.u32 %r0, %clock64;");
   const auto wide_ast = wide_parser.parseInstruction();
@@ -2146,6 +2148,8 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
+  constexpr std::array<std::string_view, 3> capabilities{
+      "reserved_smem", "aggregate_smem", "graph_exec"};
 
   constexpr std::array spellings{
       "%reserved_smem_offset_begin", "%reserved_smem_offset_end",
@@ -2165,10 +2169,12 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
                             uint32_t sm) {
     return checker::check(std::get<Mov>(body[index]),
                           checker::Context{
-                              .target = checker::TargetInfo{
-                                  .ptx_version = version,
-                                  .sm_version = sm,
-                              },
+                              .target =
+                                  checker::TargetInfo{
+                                      .ptx_version = version,
+                                      .sm_version = sm,
+                                      .capabilities = capabilities,
+                                  },
                               .instruction_range = ast.range,
                           });
   };
@@ -2191,13 +2197,22 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
                                        boundary.too_old_ptx,
                                        boundary.minimum_sm);
     ASSERT_FALSE(ptx_rejected.has_value());
+    const auto info = base::metadata(
+        std::get<ResolvedSpecialRegisterRef>(
+            scalarMovOperands(std::get<Mov>(body[boundary.instruction]))
+                .src.value)
+            .id);
     EXPECT_EQ(ptx_rejected.error().front().kind,
-              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+              info.required_capability.empty()
+                  ? checker::CheckDiagnosticKind::UnsupportedPtxVersion
+                  : checker::CheckDiagnosticKind::UnsupportedAvailability);
     const auto sm_rejected = check_at(boundary.instruction, boundary.supported,
                                       boundary.minimum_sm - 1);
     ASSERT_FALSE(sm_rejected.has_value());
     EXPECT_EQ(sm_rejected.error().front().kind,
-              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+              info.required_capability.empty()
+                  ? checker::CheckDiagnosticKind::UnsupportedSmVersion
+                  : checker::CheckDiagnosticKind::UnsupportedAvailability);
   }
 
   const auto wrong_type = check_at(9, {9, 3}, 100);
@@ -5099,8 +5114,11 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
       resolve_scalar("mov.pred %p0, %is_explicit_cluster;");
   ASSERT_TRUE(explicit_cluster.has_value())
       << explicit_cluster.error().message;
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
-      .target = checker::TargetInfo{.ptx_version = {7, 8}, .sm_version = 90},
+      .target = checker::TargetInfo{.ptx_version = {7, 8},
+                                    .sm_version = 90,
+                                    .capabilities = cluster_capabilities},
   };
   EXPECT_TRUE(checker::check(std::get<Mov>(*explicit_cluster), supported)
                   .has_value());
@@ -5114,14 +5132,14 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
       checker::check(std::get<Mov>(*explicit_cluster), old_ptx);
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   auto old_sm = supported;
   old_sm.target.sm_version = 80;
   const auto sm_rejected =
       checker::check(std::get<Mov>(*explicit_cluster), old_sm);
   ASSERT_FALSE(sm_rejected.has_value());
   EXPECT_EQ(sm_rejected.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
 
   EXPECT_FALSE(resolve_scalar("mov.pred %p0, %cluster_ctarank;").has_value());
   for (const std::string_view source : {
@@ -5169,8 +5187,11 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
     EXPECT_EQ(base::metadata(vector.src.value.id).vector_width, 4u);
   }
 
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
-      .target = checker::TargetInfo{.ptx_version = {7, 8}, .sm_version = 90},
+      .target = checker::TargetInfo{.ptx_version = {7, 8},
+                                    .sm_version = 90,
+                                    .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
   EXPECT_TRUE(checker::check(std::get<Mov>(body[0]), supported).has_value());
@@ -5179,13 +5200,13 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
   const auto ptx_rejected = checker::check(std::get<Mov>(body[0]), old_ptx);
   ASSERT_FALSE(ptx_rejected.has_value());
   EXPECT_EQ(ptx_rejected.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   auto old_sm = supported;
   old_sm.target.sm_version = 80;
   const auto sm_rejected = checker::check(std::get<Mov>(body[0]), old_sm);
   ASSERT_FALSE(sm_rejected.has_value());
   EXPECT_EQ(sm_rejected.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
 
   const auto reject = [](std::string_view declaration,
                          std::string_view source) {
@@ -5217,6 +5238,131 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
        }) {
     EXPECT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
   }
+}
+
+TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
+  constexpr std::string_view no_target = R"ptx(
+.version 7.8
+.entry kernel() .reqnctapercluster 2, 1 {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+)ptx";
+  const auto resolved = resolveModule(parseModule(no_target));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto unavailable = checkModuleAvailability(parseModule(R"ptx(
+.version 7.8
+.target sm_80
+.entry kernel() .reqnctapercluster 2, 1 {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+)ptx"),
+                                                   *resolved);
+  ASSERT_FALSE(unavailable.has_value());
+  ASSERT_EQ(unavailable.error().size(), 2u);
+  for (const auto& diagnostic : unavailable.error()) {
+    EXPECT_EQ(diagnostic.kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+
+  const auto supported = checkModuleAvailability(parseModule(R"ptx(
+.version 7.8
+.target sm_90a, texmode_independent
+.entry kernel() .reqnctapercluster 2, 1 {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+)ptx"),
+                                                 *resolved);
+  EXPECT_TRUE(supported.has_value());
+
+  const auto unknown = checkModuleAvailability(parseModule(R"ptx(
+.version 7.8
+.target sm_123a
+.entry kernel() .reqnctapercluster 2, 1 {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+)ptx"),
+                                               *resolved);
+  ASSERT_FALSE(unknown.has_value());
+  ASSERT_EQ(unknown.error().size(), 1u);
+  EXPECT_EQ(unknown.error().front().kind,
+            checker::CheckDiagnosticKind::UnknownTarget);
+
+  const auto pipeline_unknown = resolveModule(parseModule(R"ptx(
+.version 7.8
+.target sm_123a
+.entry kernel() { ret; }
+)ptx"));
+  ASSERT_FALSE(pipeline_unknown.has_value());
+  ASSERT_EQ(pipeline_unknown.error().size(), 1u);
+  EXPECT_EQ(pipeline_unknown.error().front().message,
+            "Unknown validation target 'sm_123a'.");
+}
+
+TEST(ResolvedModule, ChecksNestedInstructionModuleAvailability) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 0.9
+.entry kernel() {
+  .reg .u32 %r<3>;
+  { add.u32 %r0, %r1, %r2; }
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto unavailable = checkModuleAvailability(parseModule(R"ptx(
+.version 0.9
+.target sm_80
+.entry kernel() {
+  .reg .u32 %r<3>;
+  { add.u32 %r0, %r1, %r2; }
+}
+)ptx"),
+                                                   *resolved);
+  ASSERT_FALSE(unavailable.has_value());
+  ASSERT_EQ(unavailable.error().size(), 1u);
+  EXPECT_EQ(unavailable.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+}
+
+TEST(ResolvedModule, ChecksAttributeModuleTargetAvailability) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 8.0
+.global .attribute(.unified(1, 2)) .u32 managed;
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto sm80 = checkModuleAvailability(parseModule(R"ptx(
+.version 8.0
+.target sm_80
+.global .attribute(.unified(1, 2)) .u32 managed;
+)ptx"),
+                                            *resolved);
+  ASSERT_FALSE(sm80.has_value());
+  ASSERT_EQ(sm80.error().size(), 1u);
+  EXPECT_EQ(sm80.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+
+  const auto sm90 = checkModuleAvailability(parseModule(R"ptx(
+.version 8.0
+.target sm_90
+.global .attribute(.unified(1, 2)) .u32 managed;
+)ptx"),
+                                            *resolved);
+  EXPECT_TRUE(sm90.has_value());
+
+  const auto unknown_without_version =
+      checkModuleAvailability(parseModule(R"ptx(
+.target sm_123a
+.global .attribute(.unified(1, 2)) .u32 managed;
+)ptx"),
+                              *resolved);
+  ASSERT_FALSE(unknown_without_version.has_value());
+  ASSERT_EQ(unknown_without_version.error().size(), 1u);
+  EXPECT_EQ(unknown_without_version.error().front().kind,
+            checker::CheckDiagnosticKind::UnknownTarget);
 }
 
 }  // namespace

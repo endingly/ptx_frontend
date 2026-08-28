@@ -436,6 +436,7 @@ struct InstructionDescriptor {
 };
 
 enum class CheckDiagnosticKind : uint8_t {
+  UnknownTarget,
   UnsupportedPtxVersion,
   UnsupportedSmVersion,
   UnsupportedTargetFamily,

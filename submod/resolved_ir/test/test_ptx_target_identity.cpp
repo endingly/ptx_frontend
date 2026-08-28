@@ -64,8 +64,11 @@ TEST(TargetIdentity, RejectsMalformedSpellings) {
 }
 
 TEST(TargetProfile, CatalogsOnlyExplicitM11ValidationTargets) {
-  constexpr std::array<std::string_view, 6> supported{
-      "sm_80", "sm_90", "sm_90a", "sm_100", "sm_100a", "sm_100f",
+  constexpr std::array supported{
+      std::string_view{"sm_30"},   std::string_view{"sm_80"},
+      std::string_view{"sm_90"},   std::string_view{"sm_90a"},
+      std::string_view{"sm_100"},  std::string_view{"sm_100a"},
+      std::string_view{"sm_100f"},
   };
   for (const std::string_view spelling : supported) {
     const auto profile = find_target_profile(spelling);
@@ -82,6 +85,11 @@ TEST(TargetProfile, CatalogsOnlyExplicitM11ValidationTargets) {
   EXPECT_NE(sm100->identity, sm100a->identity);
   EXPECT_NE(sm100a->identity, sm100f->identity);
 
+  const auto sm30 = find_target_profile("sm_30");
+  ASSERT_TRUE(sm30.has_value());
+  EXPECT_TRUE(sm30->capabilities.empty());
+  EXPECT_FALSE(find_target_profile("sm_30a").has_value());
+  EXPECT_FALSE(find_target_profile("sm_30f").has_value());
   EXPECT_FALSE(find_target_profile("sm_90f").has_value());
   EXPECT_FALSE(find_target_profile("sm_123a").has_value());
 }

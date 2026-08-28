@@ -14,7 +14,8 @@ struct Entry {
 
 constexpr Info scalar(SpecialRegisterKind kind, ScalarType type,
                       uint16_t ptx_major, uint16_t ptx_minor, uint32_t sm = 0,
-                      uint8_t index = 0) {
+                      uint8_t index = 0,
+                      std::string_view required_capability = {}) {
   return Info{
       .id = {.kind = kind, .index = index},
       .element_type = type,
@@ -22,6 +23,7 @@ constexpr Info scalar(SpecialRegisterKind kind, ScalarType type,
       .minimum_ptx_major = ptx_major,
       .minimum_ptx_minor = ptx_minor,
       .minimum_sm = sm,
+      .required_capability = required_capability,
   };
 }
 
@@ -37,12 +39,13 @@ constexpr std::array exact_entries{
           scalar(SpecialRegisterKind::NSmId, ScalarType::U32, 2, 0, 20)},
     Entry{"%gridid",
           scalar(SpecialRegisterKind::GridId, ScalarType::U64, 3, 0)},
-    Entry{"%is_explicit_cluster", scalar(SpecialRegisterKind::IsExplicitCluster,
-                                         ScalarType::Pred, 7, 8, 90)},
+    Entry{"%is_explicit_cluster",
+          scalar(SpecialRegisterKind::IsExplicitCluster, ScalarType::Pred, 7, 8,
+                 90, 0, "cluster")},
     Entry{"%cluster_ctarank", scalar(SpecialRegisterKind::ClusterCtaRank,
-                                     ScalarType::U32, 7, 8, 90)},
+                                     ScalarType::U32, 7, 8, 90, 0, "cluster")},
     Entry{"%cluster_nctarank", scalar(SpecialRegisterKind::ClusterNCtaRank,
-                                      ScalarType::U32, 7, 8, 90)},
+                                      ScalarType::U32, 7, 8, 90, 0, "cluster")},
     Entry{"%lanemask_eq",
           scalar(SpecialRegisterKind::LaneMaskEq, ScalarType::U32, 2, 0, 20)},
     Entry{"%lanemask_le",
@@ -66,21 +69,23 @@ constexpr std::array exact_entries{
                                     ScalarType::U32, 3, 1, 30)},
     Entry{"%reserved_smem_offset_begin",
           scalar(SpecialRegisterKind::ReservedSmemOffsetBegin, ScalarType::B32,
-                 7, 6, 80)},
+                 7, 6, 80, 0, "reserved_smem")},
     Entry{"%reserved_smem_offset_end",
           scalar(SpecialRegisterKind::ReservedSmemOffsetEnd, ScalarType::B32, 7,
-                 6, 80)},
+                 6, 80, 0, "reserved_smem")},
     Entry{"%reserved_smem_offset_cap",
           scalar(SpecialRegisterKind::ReservedSmemOffsetCap, ScalarType::B32, 7,
-                 6, 80)},
+                 6, 80, 0, "reserved_smem")},
     Entry{"%total_smem_size", scalar(SpecialRegisterKind::TotalSmemSize,
                                      ScalarType::U32, 4, 1, 20)},
     Entry{"%aggr_smem_size",
-          scalar(SpecialRegisterKind::AggrSmemSize, ScalarType::U32, 8, 1, 90)},
+          scalar(SpecialRegisterKind::AggrSmemSize, ScalarType::U32, 8, 1, 90,
+                 0, "aggregate_smem")},
     Entry{"%dynamic_smem_size", scalar(SpecialRegisterKind::DynamicSmemSize,
                                        ScalarType::U32, 4, 1, 20)},
-    Entry{"%current_graph_exec", scalar(SpecialRegisterKind::CurrentGraphExec,
-                                        ScalarType::U64, 8, 0, 50)},
+    Entry{"%current_graph_exec",
+          scalar(SpecialRegisterKind::CurrentGraphExec, ScalarType::U64, 8, 0,
+                 50, 0, "graph_exec")},
 };
 
 constexpr std::array vector_entries{
@@ -89,14 +94,14 @@ constexpr std::array vector_entries{
     Entry{"%ctaid", scalar(SpecialRegisterKind::CtaId, ScalarType::U32, 2, 0)},
     Entry{"%nctaid",
           scalar(SpecialRegisterKind::NCtaId, ScalarType::U32, 2, 0)},
-    Entry{"%clusterid",
-          scalar(SpecialRegisterKind::ClusterId, ScalarType::U32, 7, 8, 90)},
-    Entry{"%nclusterid",
-          scalar(SpecialRegisterKind::NClusterId, ScalarType::U32, 7, 8, 90)},
-    Entry{"%cluster_ctaid",
-          scalar(SpecialRegisterKind::ClusterCtaId, ScalarType::U32, 7, 8, 90)},
+    Entry{"%clusterid", scalar(SpecialRegisterKind::ClusterId, ScalarType::U32,
+                               7, 8, 90, 0, "cluster")},
+    Entry{"%nclusterid", scalar(SpecialRegisterKind::NClusterId,
+                                ScalarType::U32, 7, 8, 90, 0, "cluster")},
+    Entry{"%cluster_ctaid", scalar(SpecialRegisterKind::ClusterCtaId,
+                                   ScalarType::U32, 7, 8, 90, 0, "cluster")},
     Entry{"%cluster_nctaid", scalar(SpecialRegisterKind::ClusterNCtaId,
-                                    ScalarType::U32, 7, 8, 90)},
+                                    ScalarType::U32, 7, 8, 90, 0, "cluster")},
 };
 
 std::optional<uint32_t> parseIndexed(std::string_view spelling,
@@ -161,7 +166,7 @@ std::optional<Info> lookup(std::string_view spelling) noexcept {
   }
   if (const auto index = parseIndexed(spelling, "%reserved_smem_offset_", 2)) {
     return scalar(SpecialRegisterKind::ReservedSmemOffset, ScalarType::B32, 7,
-                  6, 80, static_cast<uint8_t>(*index));
+                  6, 80, static_cast<uint8_t>(*index), "reserved_smem");
   }
   return std::nullopt;
 }
@@ -191,7 +196,8 @@ Info metadata(SpecialRegisterId id) noexcept {
     case SpecialRegisterKind::Environment:
       return scalar(id.kind, ScalarType::B32, 2, 1, 0, id.index);
     case SpecialRegisterKind::ReservedSmemOffset:
-      return scalar(id.kind, ScalarType::B32, 7, 6, 80, id.index);
+      return scalar(id.kind, ScalarType::B32, 7, 6, 80, id.index,
+                    "reserved_smem");
     default:
       return {};
   }

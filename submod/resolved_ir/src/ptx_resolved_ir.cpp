@@ -2341,6 +2341,25 @@ ResolvedFieldValue resolve_default_modifier_value(
 
 }  // namespace
 
+checker::AvailabilityDescriptor special_register_availability(
+    const base::Info& info) {
+  checker::AvailabilityDescriptor availability{
+      .minimum_ptx_version = {info.minimum_ptx_major, info.minimum_ptx_minor},
+      .minimum_sm_version = info.minimum_sm,
+  };
+  if (info.required_capability.empty())
+    return availability;
+
+  availability.any_of[0] = checker::AvailabilityClause{
+      .minimum_ptx_version = {info.minimum_ptx_major, info.minimum_ptx_minor},
+      .minimum_sm_version = info.minimum_sm,
+      .capabilities = {info.required_capability},
+      .capability_count = 1,
+  };
+  availability.any_of_count = 1;
+  return availability;
+}
+
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type) {
   return resolve_immediate_value(immediate, type);

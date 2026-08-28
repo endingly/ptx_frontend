@@ -164,6 +164,10 @@ struct ResolvedModule {{
   SourceRange range;
 }};
 
+/** Check one resolved module against its source .version and .target profile. */
+checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
+                                             const ResolvedModule& module);
+
 std::expected<ResolvedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
 
@@ -1124,13 +1128,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     .special_register_type = info.element_type,
                     .special_register_id = special_register.id,
                     .vector_arity = info.vector_width,
-                    .value_availability = AvailabilityDescriptor{{
-                        .minimum_ptx_version = {{
-                            info.minimum_ptx_major,
-                            info.minimum_ptx_minor,
-                        }},
-                        .minimum_sm_version = info.minimum_sm,
-                    }},
+                    .value_availability = special_register_availability(info),
                     .value_name = special_register.spelling,
                     .locations = {object_name}.{field.name}.locs,
                 }};
@@ -1183,13 +1181,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
                       .special_register_type = info.element_type,
                       .special_register_id = special->id,
-                      .value_availability = AvailabilityDescriptor{{
-                          .minimum_ptx_version = {{
-                              info.minimum_ptx_major,
-                              info.minimum_ptx_minor,
-                          }},
-                          .minimum_sm_version = info.minimum_sm,
-                      }},
+                      .value_availability = special_register_availability(info),
                       .value_name = special->spelling,
                       .locations = {object_name}.{field.name}.locs,
                   }};
@@ -1230,13 +1222,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = std::nullopt,
                   .special_register_type = info.element_type,
                   .special_register_id = {object_name}.{field.name}.value.id,
-                  .value_availability = AvailabilityDescriptor{{
-                      .minimum_ptx_version = {{
-                          info.minimum_ptx_major,
-                          info.minimum_ptx_minor,
-                      }},
-                      .minimum_sm_version = info.minimum_sm,
-                  }},
+                  .value_availability = special_register_availability(info),
                   .value_name = {object_name}.{field.name}.value.spelling,
                   .locations = {object_name}.{field.name}.locs,
                 }};
@@ -1387,13 +1373,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .register_type = std::nullopt,
                       .special_register_type = info.element_type,
                       .special_register_id = special_register->id,
-                      .value_availability = AvailabilityDescriptor{{
-                          .minimum_ptx_version = {{
-                              info.minimum_ptx_major,
-                              info.minimum_ptx_minor,
-                          }},
-                          .minimum_sm_version = info.minimum_sm,
-                      }},
+                      .value_availability = special_register_availability(info),
                       .value_name = special_register->spelling,
                       .locations = {object_name}.{field.name}.locs,
                   }};

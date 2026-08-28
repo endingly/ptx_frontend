@@ -2273,7 +2273,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("ResolvedVectorRegisterRef", source)
         self.assertIn("ResolvedPredicateSource", source)
         self.assertIn(".vector_arity = static_cast<uint8_t>", source)
-        self.assertIn(".value_availability = AvailabilityDescriptor", source)
+        self.assertIn(".value_availability = special_register_availability(info)", source)
         self.assertIn(
             ".value_availability = symbol->address_availability", source
         )

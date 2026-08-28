@@ -7,6 +7,7 @@
 namespace ptx_frontend::base {
 namespace {
 
+constexpr std::array<std::string_view, 0> kNoCapabilities{};
 constexpr std::array<std::string_view, 2> kSm80Capabilities{
     "reserved_smem",
     "graph_exec",
@@ -27,6 +28,7 @@ struct CatalogEntry {
 // Keep this an explicit validation allowlist: do not infer profiles by number
 // or flavor suffix from lexically valid target spellings.
 constexpr CatalogEntry kTargetProfiles[]{
+    {{30}, TargetFlavor::Generic, kNoCapabilities},
     {{80}, TargetFlavor::Generic, kSm80Capabilities},
     {{90}, TargetFlavor::Generic, kSm90AndLaterCapabilities},
     {{90}, TargetFlavor::ArchitectureSpecific, kSm90AndLaterCapabilities},

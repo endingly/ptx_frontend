@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=schemas/ptx-isa-baseline-v1.schema.yaml
+
+# Frozen source baseline for the M11 registries and coverage ledger.  This is
+# deliberately not a pointer to NVIDIA's latest PTX ISA documentation.
+schema: ptx-isa-baseline/v1
+version: 1
+ptx_isa: "9.3"
+published: "2026-06-25"
+sources:
+  root: https://docs.nvidia.com/cuda/parallel-thread-execution/
+  contents: https://docs.nvidia.com/cuda/parallel-thread-execution/contents.html
+  instruction_set: https://docs.nvidia.com/cuda/parallel-thread-execution/#instruction-set
+  instructions_9_7: https://docs.nvidia.com/cuda/parallel-thread-execution/#instructions
+  special_registers_10: https://docs.nvidia.com/cuda/parallel-thread-execution/#special-registers
+  directives_11: https://docs.nvidia.com/cuda/parallel-thread-execution/#directives
+  pragma_strings_12: https://docs.nvidia.com/cuda/parallel-thread-execution/#descriptions-pragma-strings
+update_policy:
+  automatic_latest_tracking: false
+  upgrade_requires_review: true
+  required_artifact_diffs: [registry, coverage]

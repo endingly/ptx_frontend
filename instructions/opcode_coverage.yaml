@@ -36,6 +36,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: ldu
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: mov
     syntax: partial
     resolved: partial

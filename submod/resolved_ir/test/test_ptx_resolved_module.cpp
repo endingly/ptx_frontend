@@ -270,6 +270,86 @@ TEST(ResolvedModule, RejectsM10CacheHintPolicyWithoutU64Register) {
   ASSERT_FALSE(missing_policy.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u64 %wide;
+  ldu.global.u32 %wide, [global_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction = std::get<Ldu>(resolved->functions.front().body.front());
+  const auto& load = std::get<Ldu::GlobalU32>(instruction.variant);
+  EXPECT_EQ(load.state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(load.type, ScalarType::U32);
+  EXPECT_EQ(load.dst.value.declared_type, ScalarType::U64);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {2, 0}, .sm_version = 0},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 9}, .sm_version = 0},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old.has_value());
+  EXPECT_EQ(too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  .reg .u32 %r0;
+  ldu.global.u32 %r0, [local_value];
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_space = checker::check(
+      std::get<Ldu>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 0}});
+  ASSERT_FALSE(wrong_space.has_value());
+  EXPECT_EQ(wrong_space.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto narrow_dst = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u16 %h0;
+  ldu.global.u32 %h0, [global_value];
+}
+)ptx"));
+  ASSERT_TRUE(narrow_dst.has_value()) << narrow_dst.error().front().message;
+  const auto wrong_register = checker::check(
+      std::get<Ldu>(narrow_dst->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 0}});
+  ASSERT_FALSE(wrong_register.has_value());
+  EXPECT_EQ(wrong_register.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  ldu.global.b32 %r0, [global_value];
+}
+)ptx"));
+  ASSERT_FALSE(wrong_type.has_value());
+
+  const auto missing_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0;
+  ldu.global.u32 %r0;
+}
+)ptx"));
+  ASSERT_FALSE(missing_address.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

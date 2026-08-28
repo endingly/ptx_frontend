@@ -972,6 +972,36 @@ instructions:
           - ptx: "ld.shared.v4.u16 {%h0, %h1, %h2, %h3}, [shared_value];"
             valid: true
 
+  - opcode: ldu
+    section: "9.7.9.10"
+    doc: "Uniform load, limited to the scalar explicit-global .u32 form."
+    syntax: "ldu.global.u32 dst, [address]"
+
+    variants:
+      - name: ldu_global_u32
+        availability: {ptx: "2.0", sm: 0}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ldu.global.u32 %r0, [global_value];"
+            valid: true
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

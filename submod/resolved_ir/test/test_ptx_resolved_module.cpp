@@ -644,6 +644,58 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitGroupSlice) {
   ASSERT_FALSE(missing_async.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitAllSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { cp.async.wait_all; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Cp>(resolved->functions.front().body.front());
+  const auto& wait_all = std::get<Cp::AsyncWaitAll>(instruction.variant);
+  EXPECT_TRUE(wait_all.async);
+  EXPECT_TRUE(wait_all.wait_all);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto missing_async = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.wait_all; }
+)ptx"));
+  ASSERT_FALSE(missing_async.has_value());
+  const auto immediate_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_all 0; }
+)ptx"));
+  ASSERT_FALSE(immediate_operand.has_value());
+  const auto register_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %r0; cp.async.wait_all %r0; }
+)ptx"));
+  ASSERT_FALSE(register_operand.has_value());
+  const auto wrong_token = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group; }
+)ptx"));
+  ASSERT_FALSE(wrong_token.has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() { membar.cta; }

@@ -1138,6 +1138,26 @@ instructions:
           - ptx: "cp.async.wait_group 0;"
             valid: true
 
+      - name: cp_async_wait_all
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: wait_all
+            kind: flag
+            presence: fixed
+            value: true
+            token: .wait_all
+        operands: []
+        rule: data_movement.cp_async_wait_all
+
+        examples:
+          - ptx: "cp.async.wait_all;"
+            valid: true
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

@@ -1485,7 +1485,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Cp")
         self.assertEqual(
             [candidate.cpp_name for candidate in resolved.variants],
-            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup"],
+            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
@@ -1546,6 +1546,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIsNone(variant.immediate_value)
 
+    def test_cp_async_wait_all_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        variant = from_instruction_spec(cp).variants[3]
+
+        self.assertEqual(variant.cpp_name, "AsyncWaitAll")
+        self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("async", "bool"), ("wait_all", "bool")],
+        )
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
     def test_cp_generator_emits_immediate_value_checker(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1567,6 +1582,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("std::expected<Cp, ResolveDiagnostic>", source)
         self.assertIn("AsyncCommitGroup", source)
         self.assertIn("AsyncWaitGroup", source)
+        self.assertIn("AsyncWaitAll", source)
         self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
 

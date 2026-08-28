@@ -575,6 +575,75 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCommitGroupSlice) {
   ASSERT_FALSE(wrong_wait_token.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitGroupSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  cp.async.wait_group 0;
+  cp.async.wait_group 1;
+  cp.async.wait_group 4294967295;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& zero =
+      std::get<Cp::AsyncWaitGroup>(std::get<Cp>(body[0]).variant);
+  const auto& large =
+      std::get<Cp::AsyncWaitGroup>(std::get<Cp>(body[2]).variant);
+  EXPECT_TRUE(zero.async);
+  EXPECT_TRUE(zero.wait_group);
+  EXPECT_EQ(zero.n.value.type, ScalarType::U32);
+  EXPECT_EQ(zero.n.value.bits, 0u);
+  EXPECT_EQ(large.n.value.bits, 4294967295u);
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto register_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %r0; cp.async.wait_group %r0; }
+)ptx"));
+  ASSERT_FALSE(register_operand.has_value());
+  const auto float_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group 1.0; }
+)ptx"));
+  ASSERT_FALSE(float_operand.has_value());
+  const auto negative_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group -1; }
+)ptx"));
+  ASSERT_FALSE(negative_operand.has_value());
+  const auto missing_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group; }
+)ptx"));
+  ASSERT_FALSE(missing_operand.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group 0, 1; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+  const auto missing_async = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.wait_group 0; }
+)ptx"));
+  ASSERT_FALSE(missing_async.has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() { membar.cta; }

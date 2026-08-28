@@ -1113,6 +1113,31 @@ instructions:
           - ptx: "cp.async.commit_group;"
             valid: true
 
+      - name: cp_async_wait_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: wait_group
+            kind: flag
+            presence: fixed
+            value: true
+            token: .wait_group
+        operands:
+          - name: n
+            kind: imm
+            role: src
+            access: read
+            type: u32
+        rule: data_movement.cp_async_wait_group
+
+        examples:
+          - ptx: "cp.async.wait_group 0;"
+            valid: true
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

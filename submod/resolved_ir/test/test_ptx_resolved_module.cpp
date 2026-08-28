@@ -770,6 +770,73 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMmaSyncAlignedM16n8k8RowColSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .f32 %d<4>;
+  .reg .f32 %c<4>;
+  .reg .f16x2 %a<2>;
+  .reg .f16x2 %b<1>;
+  mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
+    {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Mma>(resolved->functions.front().body.front());
+  const auto& mma =
+      std::get<Mma::SyncAlignedM16n8k8RowColF32F16F16F32>(instruction.variant);
+  EXPECT_TRUE(mma.sync);
+  EXPECT_TRUE(mma.aligned);
+  EXPECT_TRUE(mma.m16n8k8);
+  EXPECT_TRUE(mma.row);
+  EXPECT_TRUE(mma.col);
+  EXPECT_EQ(mma.d_type, ScalarType::F32);
+  EXPECT_EQ(mma.a_type, ScalarType::F16);
+  EXPECT_EQ(mma.b_type, ScalarType::F16);
+  EXPECT_EQ(mma.c_type, ScalarType::F32);
+  ASSERT_EQ(mma.dst.value.elements.size(), 4u);
+  ASSERT_EQ(mma.a.value.elements.size(), 2u);
+  ASSERT_EQ(mma.b.value.elements.size(), 1u);
+  ASSERT_EQ(mma.c.value.elements.size(), 4u);
+  EXPECT_EQ(mma.dst.value.elements[0]->declared_type, ScalarType::F32);
+  EXPECT_EQ(mma.a.value.elements[0]->declared_type, ScalarType::F16x2);
+  EXPECT_EQ(mma.b.value.elements[0]->declared_type, ScalarType::F16x2);
+  EXPECT_EQ(mma.c.value.elements[0]->declared_type, ScalarType::F32);
+
+  const checker::Context context{
+      .target = {.ptx_version = {6, 5}, .sm_version = 75},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 75},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .f32 %d<3>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b0; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, %b0, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<3>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+       }) {
+    ASSERT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() { membar.cta; }

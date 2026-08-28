@@ -1601,6 +1601,68 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["shared"],
         )
 
+    def test_mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mma = next(
+            instruction for instruction in database.instructions if instruction.opcode == "mma"
+        )
+        variant = from_instruction_spec(mma).variants[0]
+
+        self.assertEqual(variant.cpp_name, "SyncAlignedM16n8k8RowColF32F16F16F32")
+        self.assertEqual(dict(variant.availability), {"ptx": "6.5", "sm": 75})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("aligned", "bool"),
+                ("m16n8k8", "bool"),
+                ("row", "bool"),
+                ("col", "bool"),
+                ("d_type", "ScalarType"),
+                ("a_type", "ScalarType"),
+                ("b_type", "ScalarType"),
+                ("c_type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterVector>"),
+                ("a", "WithLocs<ResolvedRegisterVector>"),
+                ("b", "WithLocs<ResolvedRegisterVector>"),
+                ("c", "WithLocs<ResolvedRegisterVector>"),
+            ],
+        )
+        bindings = variant.operand_layouts[0].bindings
+        self.assertEqual(
+            [binding.type_expression for binding in bindings],
+            [
+                ResolvedOperandTypeExpression(
+                    kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                    scalar_type=scalar_type,
+                )
+                for scalar_type in ("f32", "f16x2", "f16x2", "f32")
+            ],
+        )
+        self.assertEqual(
+            [binding.allowed_vector_arities for binding in bindings],
+            [(4,), (2,), (1,), (4,)],
+        )
+        self.assertEqual(
+            [binding.vector_type_policy for binding in bindings],
+            [ResolvedVectorTypePolicy.ELEMENT] * 4,
+        )
+        self.assertEqual(
+            [binding.register_width_policy for binding in bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
+            generate_resolved_ir_source(
+                database, category="arithmetic", output_path=output_path
+            )
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn("SyncAlignedM16n8k8RowColF32F16F16F32", source)
+        self.assertIn("std::expected<Mma, ResolveDiagnostic>", source)
+
     def test_cp_generator_emits_immediate_value_checker(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

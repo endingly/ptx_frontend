@@ -61,6 +61,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: mma
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: membar
     syntax: partial
     resolved: partial

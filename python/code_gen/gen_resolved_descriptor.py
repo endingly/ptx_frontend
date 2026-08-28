@@ -342,6 +342,27 @@ def _emit_operand_binding_descriptor(
         or binding.vector_arity_modifier_field_id is not None
         else ""
     )
+    type_tag = (
+        f'\n              .type_tag = "{binding.type_tag}",'
+        if binding.type_tag is not None
+        else ""
+    )
+    cardinality = (
+        f"\n              .minimum_elements = {binding.minimum_elements},"
+        f"\n              .maximum_elements = {binding.maximum_elements},"
+        if binding.minimum_elements is not None
+        else ""
+    )
+    element_shapes = (
+        "\n              .allowed_element_shapes = "
+        + " | ".join(
+            cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
+            for shape in binding.allowed_element_shapes
+        )
+        + ","
+        if binding.allowed_element_shapes
+        else ""
+    )
     address_state_spaces = (
         "\n              .allowed_address_state_spaces = "
         f"{address_state_spaces_name},"
@@ -374,7 +395,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

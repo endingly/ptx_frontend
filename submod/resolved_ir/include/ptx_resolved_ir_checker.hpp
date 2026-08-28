@@ -238,6 +238,13 @@ struct OperandDescriptor {
   std::string_view vector_arity_modifier_field_id{};
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
+  /** Stable descriptor/token domain tag; empty for ordinary operands. */
+  std::string_view type_tag{};
+  /** Inclusive brace-pack bounds; zero means this is not a variable pack. */
+  uint8_t minimum_elements = 0;
+  uint8_t maximum_elements = 0;
+  /** Source shapes allowed within a modern brace-pack primitive. */
+  OperandShape allowed_element_shapes{};
   /** Static effective-address allowlist; empty means no static restriction. */
   std::span<const AddressStateSpaceDescriptor> allowed_address_state_spaces;
   /** Resolved modifier field supplying an explicit address-space constraint. */

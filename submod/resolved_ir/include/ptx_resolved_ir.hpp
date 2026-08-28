@@ -96,6 +96,7 @@ enum class ResolvedValueKind : uint8_t {
   Symbol,
   Address,
   RegisterVector,
+  TensorCoordinate,
   DirectCallTarget,
   IndirectCallee,
   BranchTargetSet,
@@ -405,6 +406,12 @@ struct ResolvedOperandLayoutTag {
 
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
+/** A brace-pack coordinate with register or immediate components. */
+struct ResolvedTensorCoordinate {
+  std::vector<RegOrImm> elements;
+  bool operator==(const ResolvedTensorCoordinate&) const = default;
+};
+
 struct ResolvedShflSyncDestination {
   ResolvedRegisterRef data;
   ResolvedPredicate predicate;
@@ -436,6 +443,7 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedVectorSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
                  WithLocs<ResolvedRegisterVector>,
+                 WithLocs<ResolvedTensorCoordinate>,
                  WithLocs<ResolvedFunctionRef>,
                  WithLocs<ResolvedIndirectCallee>,
                  WithLocs<ResolvedCallParameterRef>,

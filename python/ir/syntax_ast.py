@@ -74,6 +74,10 @@ class SyntaxOperandSlotDescriptor:
 
     allowed_syntax_shapes: OperandSyntaxShape
     presence: OperandPresence
+    type_tag: str | None = None
+    minimum_elements: int | None = None
+    maximum_elements: int | None = None
+    allowed_element_shapes: OperandSyntaxShape = OperandSyntaxShape(0)
 
     def allows(self, actual_shape: OperandSyntaxShape) -> bool:
         return bool(self.allowed_syntax_shapes & actual_shape)
@@ -146,6 +150,10 @@ _OPERAND_SYNTAX_SHAPES = {
     "symbol": OperandSyntaxShape.IDENTIFIER_REF,
     "addr": OperandSyntaxShape.ADDRESS,
     "reg_vector": OperandSyntaxShape.VECTOR_PACK,
+    "descriptor": OperandSyntaxShape.IDENTIFIER_REF,
+    "typed_token": OperandSyntaxShape.IDENTIFIER_REF,
+    "tensor_coordinate": OperandSyntaxShape.VECTOR_PACK,
+    "matrix_fragment": OperandSyntaxShape.VECTOR_PACK,
     "direct_call_target": OperandSyntaxShape.CALL_TARGET,
     "indirect_call_target": OperandSyntaxShape.CALL_TARGET,
     "indirect_call_metadata": OperandSyntaxShape.CALL_TARGET_SET,
@@ -216,6 +224,18 @@ def _build_operand_slot_descriptor_view(
     return SyntaxOperandSlotDescriptor(
         allowed_syntax_shapes=shapes,
         presence=OperandPresence.REQUIRED,
+        type_tag=operand.type_tag,
+        minimum_elements=operand.minimum_elements,
+        maximum_elements=operand.maximum_elements,
+        allowed_element_shapes=sum(
+            (
+                OperandSyntaxShape.IDENTIFIER_REF
+                if kind == "reg"
+                else OperandSyntaxShape.IMMEDIATE
+                for kind in operand.element_kinds
+            ),
+            OperandSyntaxShape(0),
+        ),
     )
 
 

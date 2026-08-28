@@ -654,8 +654,10 @@ $defs:
       - operand_list
       - vector
       - tuple
+      - tensor_coordinate
       - matrix_fragment
       - descriptor
+      - typed_token
 
       - optional_reg
       - optional_pred
@@ -768,6 +770,30 @@ $defs:
       vector:
         $ref: "#/$defs/vector_spec"
 
+      type_tag:
+        description: >
+          Stable lower-snake semantic domain tag for descriptor and typed-token
+          operands. This is descriptor metadata, not a PTX spelling.
+        type: string
+        pattern: "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+
+      cardinality:
+        $ref: "#/$defs/operand_cardinality"
+
+      element_kinds:
+        description: >
+          Source element shapes accepted by a modern brace-pack primitive.
+          tensor_coordinate admits register and immediate; matrix_fragment
+          admits register only.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          enum:
+            - reg
+            - imm
+
       optional:
         type: boolean
         default: false
@@ -793,6 +819,85 @@ $defs:
 
       description:
         type: string
+
+    allOf:
+      - if:
+          properties:
+            kind:
+              enum:
+                - descriptor
+                - typed_token
+          required:
+            - kind
+        then:
+          required:
+            - type_tag
+          not:
+            anyOf:
+              - required:
+                  - cardinality
+              - required:
+                  - element_kinds
+
+      - if:
+          properties:
+            kind:
+              const: tensor_coordinate
+          required:
+            - kind
+        then:
+          required:
+            - cardinality
+            - element_kinds
+          properties:
+            cardinality:
+              properties:
+                max:
+                  maximum: 5
+            element_kinds:
+              minItems: 2
+              maxItems: 2
+              allOf:
+                - contains:
+                    const: reg
+                - contains:
+                    const: imm
+
+      - if:
+          properties:
+            kind:
+              const: matrix_fragment
+          required:
+            - kind
+        then:
+          required:
+            - cardinality
+            - element_kinds
+          properties:
+            cardinality:
+              properties:
+                max:
+                  maximum: 64
+            element_kinds:
+              minItems: 1
+              maxItems: 1
+              items:
+                const: reg
+
+  operand_cardinality:
+    description: "Inclusive variable brace-pack cardinality."
+    type: object
+    additionalProperties: false
+    required:
+      - min
+      - max
+    properties:
+      min:
+        type: integer
+        minimum: 1
+      max:
+        type: integer
+        minimum: 1
 
   vector_spec:
     description: "Vector, tuple, or matrix fragment operand shape."

@@ -199,6 +199,10 @@ domains:
       symbol: ResolvedSymbolRef
       addr: ResolvedAddress
       reg_vector: ResolvedRegisterVector
+      descriptor: ResolvedRegisterRef
+      typed_token: ResolvedRegisterRef
+      tensor_coordinate: ResolvedTensorCoordinate
+      matrix_fragment: ResolvedRegisterVector
       direct_call_target: ResolvedFunctionRef
       indirect_call_target: ResolvedIndirectCallee
       indirect_call_metadata: ResolvedIndirectCallee
@@ -234,6 +238,7 @@ domains:
       Symbol: ResolvedSymbolRef
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
+      TensorCoordinate: ResolvedTensorCoordinate
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
       BranchTargetSet: ResolvedBranchTargetSet
@@ -309,6 +314,7 @@ domains:
       Symbol: check_end::ResolvedValueKind::Symbol
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
+      TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
       BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet

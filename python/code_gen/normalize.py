@@ -96,6 +96,43 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
+    type_tag = raw.get("type_tag")
+    if raw["kind"] in {"descriptor", "typed_token"}:
+        if (not isinstance(type_tag, str) or
+                re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", type_tag) is None):
+            raise ValueError(f"{raw['kind']} operand requires a lower-snake type_tag")
+    elif type_tag is not None:
+        raise ValueError("type_tag is only valid for descriptor or typed_token operands")
+
+    minimum_elements: int | None = None
+    maximum_elements: int | None = None
+    element_kinds: tuple[str, ...] = ()
+    if raw["kind"] in {"tensor_coordinate", "matrix_fragment"}:
+        cardinality = raw.get("cardinality")
+        if not isinstance(cardinality, dict):
+            raise ValueError(f"{raw['kind']} operand requires cardinality")
+        minimum_elements = cardinality.get("min")
+        maximum_elements = cardinality.get("max")
+        ceiling = 5 if raw["kind"] == "tensor_coordinate" else 64
+        if (type(minimum_elements) is not int or type(maximum_elements) is not int or
+                minimum_elements < 1 or maximum_elements < minimum_elements or
+                maximum_elements > ceiling):
+            raise ValueError(
+                f"{raw['kind']} cardinality must be within 1..{ceiling} with min <= max"
+            )
+        raw_element_kinds = raw.get("element_kinds")
+        if not isinstance(raw_element_kinds, list):
+            raise ValueError(f"{raw['kind']} operand requires element_kinds")
+        element_kinds = tuple(raw_element_kinds)
+        expected_element_kinds = (
+            ("reg", "imm") if raw["kind"] == "tensor_coordinate" else ("reg",)
+        )
+        if set(element_kinds) != set(expected_element_kinds) or len(element_kinds) != len(expected_element_kinds):
+            raise ValueError(
+                f"{raw['kind']} element_kinds must be {expected_element_kinds!r}"
+            )
+    elif raw.get("cardinality") is not None or raw.get("element_kinds") is not None:
+        raise ValueError("cardinality and element_kinds are only valid for brace-pack primitives")
     if raw["kind"] in {"reg_vector", "vector_reg", "vector_sreg"}:
         vector = raw.get("vector")
         if not isinstance(vector, dict) or "arity" not in vector:
@@ -186,6 +223,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_arity_expression=vector_arity_expression,
         vector_type_policy=vector_type_policy,
         vector_allow_sink=vector_allow_sink,
+        type_tag=type_tag,
+        minimum_elements=minimum_elements,
+        maximum_elements=maximum_elements,
+        element_kinds=element_kinds,
     )
 
 

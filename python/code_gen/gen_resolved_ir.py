@@ -1091,6 +1091,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 }}
                 return view;
               }}()"""
+    if field.value_cpp_type == "ResolvedTensorCoordinate":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                  .vector_arity = static_cast<uint8_t>(
+                      {object_name}.{field.name}.value.elements.size()),
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedVectorRegisterRef":
         return f"""              [&]() -> OperandView {{
                 const auto& register_ref =

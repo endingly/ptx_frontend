@@ -75,6 +75,7 @@ class ResolvedValueKind(Enum):
     SYMBOL = "Symbol"
     ADDRESS = "Address"
     REGISTER_VECTOR = "RegisterVector"
+    TENSOR_COORDINATE = "TensorCoordinate"
     DIRECT_CALL_TARGET = "DirectCallTarget"
     INDIRECT_CALLEE = "IndirectCallee"
     BRANCH_TARGET_SET = "BranchTargetSet"
@@ -397,6 +398,10 @@ class ResolvedOperandBinding:
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
+    type_tag: str | None = None
+    minimum_elements: int | None = None
+    maximum_elements: int | None = None
+    allowed_element_shapes: tuple[ResolvedOperandShape, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -447,6 +452,10 @@ _OPERAND_ALLOWED_SHAPES = {
     "symbol": (ResolvedOperandShape.SYMBOL,),
     "addr": (ResolvedOperandShape.ADDRESS,),
     "reg_vector": (ResolvedOperandShape.VECTOR,),
+    "descriptor": (ResolvedOperandShape.REGISTER,),
+    "typed_token": (ResolvedOperandShape.REGISTER,),
+    "tensor_coordinate": (ResolvedOperandShape.VECTOR,),
+    "matrix_fragment": (ResolvedOperandShape.VECTOR,),
     "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
     "indirect_call_target": (ResolvedOperandShape.INDIRECT_CALLEE,),
     "indirect_call_metadata": (ResolvedOperandShape.INDIRECT_CALLEE,),
@@ -916,6 +925,15 @@ def _build_operand_layout(
                     operand.vector_type_policy.value.capitalize()
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
+                type_tag=operand.type_tag,
+                minimum_elements=operand.minimum_elements,
+                maximum_elements=operand.maximum_elements,
+                allowed_element_shapes=tuple(
+                    ResolvedOperandShape.REGISTER
+                    if kind == "reg"
+                    else ResolvedOperandShape.IMMEDIATE
+                    for kind in operand.element_kinds
+                ),
             )
             for operand, field in zip(operands, fields, strict=True)
         ),

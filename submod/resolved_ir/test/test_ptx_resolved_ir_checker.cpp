@@ -1436,8 +1436,9 @@ TEST(ResolvedIrChecker, ChecksGeneratedMemoryConsistencyCrossRules) {
 }
 
 TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
-  constexpr AddressAlignmentConstraint scalar_descriptor{
-      .address_field_id = "address",
+  constexpr std::array<std::string_view, 1> kAddressFieldIds{{"address"}};
+  const AddressAlignmentConstraint scalar_descriptor{
+      .address_field_ids = kAddressFieldIds,
       .type_field_id = "type",
   };
   const FieldView scalar_fields[] = {{
@@ -1463,8 +1464,8 @@ TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
             CheckDiagnosticKind::AddressAlignmentMismatch);
   EXPECT_EQ(scalar_mismatch.error().front().range, kInstructionRange);
 
-  constexpr AddressAlignmentConstraint vector_descriptor{
-      .address_field_id = "address",
+  const AddressAlignmentConstraint vector_descriptor{
+      .address_field_ids = kAddressFieldIds,
       .type_field_id = "type",
       .vector_field_id = "vector",
   };
@@ -1479,8 +1480,8 @@ TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
   EXPECT_EQ(vector_mismatch.error().front().kind,
             CheckDiagnosticKind::AddressAlignmentMismatch);
 
-  constexpr AddressAlignmentConstraint invalid_descriptor{
-      .address_field_id = "address",
+  const AddressAlignmentConstraint invalid_descriptor{
+      .address_field_ids = kAddressFieldIds,
       .type_field_id = "missing_type",
   };
   const auto invalid = check_address_alignment(
@@ -1488,8 +1489,8 @@ TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
   ASSERT_FALSE(invalid.has_value());
   EXPECT_EQ(invalid.error().front().kind, CheckDiagnosticKind::RuleViolation);
 
-  constexpr AddressAlignmentConstraint missing_vector_descriptor{
-      .address_field_id = "address",
+  const AddressAlignmentConstraint missing_vector_descriptor{
+      .address_field_ids = kAddressFieldIds,
       .type_field_id = "type",
       .vector_field_id = "missing_vector",
   };
@@ -1498,6 +1499,46 @@ TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
   ASSERT_FALSE(missing_vector.has_value());
   EXPECT_EQ(missing_vector.error().front().kind,
             CheckDiagnosticKind::RuleViolation);
+
+  constexpr std::array<std::string_view, 2> kCopyAddressFieldIds{
+      {"dst", "src"}};
+  const AddressAlignmentConstraint dynamic_descriptor{
+      .address_field_ids = kCopyAddressFieldIds,
+      .immediate_operand_field_id = "cp_size",
+  };
+  OperandView copy_operands[] = {
+      {.field_id = "dst",
+       .actual_shape = OperandShape::Address,
+       .address_alignment = 8},
+      {.field_id = "src",
+       .actual_shape = OperandShape::Address,
+       .address_alignment = 8},
+      {.field_id = "cp_size",
+       .actual_shape = OperandShape::Immediate,
+       .immediate_bits = 8},
+  };
+  EXPECT_TRUE(
+      check_address_alignment(dynamic_descriptor, {}, copy_operands, context)
+          .has_value());
+  copy_operands[0].address_alignment = 4;
+  EXPECT_EQ(
+      check_address_alignment(dynamic_descriptor, {}, copy_operands, context)
+          .error()
+          .front()
+          .kind,
+      CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const AddressAlignmentConstraint fixed_descriptor{
+      .address_field_ids = kAddressFieldIds,
+      .alignment = 16,
+  };
+  address.address_alignment = 8;
+  EXPECT_EQ(check_address_alignment(fixed_descriptor, {},
+                                    std::span{&address, 1}, context)
+                .error()
+                .front()
+                .kind,
+            CheckDiagnosticKind::AddressAlignmentMismatch);
 }
 
 TEST(ResolvedIrChecker, ChecksGeneratedModernMemoryVectorCrossRules) {

@@ -29,6 +29,7 @@ using base::RoundingMode;
 using base::ComparisonOperator;
 using base::BooleanOperator;
 using base::CacheOperator;
+using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
 namespace check_end {
@@ -51,6 +52,7 @@ enum class OperandSyntaxShape : uint16_t {
   CallTargetSet = 1 << 8,
   BranchTarget = 1 << 9,
   BranchTargetSet = 1 << 10,
+  ShflDestination = 1 << 11,
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
@@ -75,6 +77,7 @@ enum class ResolvedValueKind : uint8_t {
   ComparisonOperator,
   BooleanOperator,
   CacheOperator,
+  EvictionPriority,
   MemoryConsistency,
   MemoryScope,
   VectorArity,
@@ -83,6 +86,7 @@ enum class ResolvedValueKind : uint8_t {
   Predicate,
   Immediate,
   RegOrImm,
+  ShflDestination,
   MovSource,
   BranchTarget,
   SpecialRegister,
@@ -237,6 +241,7 @@ struct ResolvedRegisterRef {
 struct ResolvedImmediate {
   uint64_t bits;
   ScalarType type;
+  bool is_negative = false;
   bool operator==(const ResolvedImmediate&) const = default;
 };
 
@@ -379,6 +384,12 @@ struct ResolvedOperandLayoutTag {
 
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
+struct ResolvedShflSyncDestination {
+  ResolvedRegisterRef data;
+  ResolvedPredicate predicate;
+  bool operator==(const ResolvedShflSyncDestination&) const = default;
+};
+
 /** A scalar ``mov`` source after identifier classification and binding. */
 using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
@@ -389,11 +400,13 @@ using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ComparisonOperator>,
                  WithLocs<BooleanOperator>,
-                 WithLocs<CacheOperator>, WithLocs<MemoryConsistency>,
+                 WithLocs<CacheOperator>, WithLocs<EvictionPriority>,
+                 WithLocs<MemoryConsistency>,
                  WithLocs<MemoryScope>, WithLocs<VectorArity>,
                  WithLocs<MemoryStateSpace>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
-                 WithLocs<RegOrImm>, WithLocs<ResolvedMovSource>,
+                 WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
+                 WithLocs<ResolvedMovSource>,
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedBranchTargetSet>,
                  WithLocs<ResolvedSpecialRegisterRef>,

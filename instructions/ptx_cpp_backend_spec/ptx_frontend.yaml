@@ -96,6 +96,14 @@ domains:
       wb: CacheOperator::Wb
       wt: CacheOperator::Wt
 
+  eviction_priorities:
+    cpp_type: EvictionPriority
+    default: EvictionPriority::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      evict_first: EvictionPriority::EvictFirst
+      evict_last: EvictionPriority::EvictLast
+
   memory_consistencies:
     cpp_type: MemoryConsistency
     default: MemoryConsistency::Omitted
@@ -107,6 +115,7 @@ domains:
       relaxed: MemoryConsistency::Relaxed
       acquire: MemoryConsistency::Acquire
       release: MemoryConsistency::Release
+      acq_rel: MemoryConsistency::AcqRel
 
   memory_scopes:
     cpp_type: MemoryScope
@@ -153,6 +162,7 @@ domains:
     cpp_type: base::ScalarTypeSizePolicy
     default: base::ScalarTypeSizePolicy::SameWidth
     values:
+      exact: base::ScalarTypeSizePolicy::Exact
       same_width: base::ScalarTypeSizePolicy::SameWidth
       equal_or_wider: base::ScalarTypeSizePolicy::EqualOrWider
 
@@ -165,6 +175,7 @@ domains:
       comparison: ComparisonOperator
       boolean_op: BooleanOperator
       cache: CacheOperator
+      eviction_priority: EvictionPriority
       semantics: MemoryConsistency
       scope: MemoryScope
       vector: VectorArity
@@ -176,6 +187,7 @@ domains:
       reg: ResolvedRegisterRef
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
+      shfl_dest: ResolvedShflSyncDestination
       mov_scalar_src: ResolvedMovSource
       pred: ResolvedPredicate
       pred_or_not: ResolvedPredicate
@@ -200,6 +212,7 @@ domains:
       ComparisonOperator: ComparisonOperator
       BooleanOperator: BooleanOperator
       CacheOperator: CacheOperator
+      EvictionPriority: EvictionPriority
       MemoryConsistency: MemoryConsistency
       MemoryScope: MemoryScope
       VectorArity: VectorArity
@@ -208,6 +221,7 @@ domains:
       Predicate: ResolvedPredicate
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
+      ShflDestination: ResolvedShflSyncDestination
       MovSource: ResolvedMovSource
       BranchTarget: ResolvedBranchTarget
       SpecialRegister: ResolvedSpecialRegisterRef
@@ -259,6 +273,7 @@ domains:
       CALL_TARGET_SET: check_end::OperandSyntaxShape::CallTargetSet
       BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
       BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
+      SHFL_DESTINATION: check_end::OperandSyntaxShape::ShflDestination
 
   resolved_value_kinds:
     cpp_type: check_end::ResolvedValueKind
@@ -269,6 +284,7 @@ domains:
       ComparisonOperator: check_end::ResolvedValueKind::ComparisonOperator
       BooleanOperator: check_end::ResolvedValueKind::BooleanOperator
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
+      EvictionPriority: check_end::ResolvedValueKind::EvictionPriority
       MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
       MemoryScope: check_end::ResolvedValueKind::MemoryScope
       VectorArity: check_end::ResolvedValueKind::VectorArity
@@ -277,6 +293,7 @@ domains:
       Predicate: check_end::ResolvedValueKind::Predicate
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      ShflDestination: check_end::ResolvedValueKind::ShflDestination
       MovSource: check_end::ResolvedValueKind::MovSource
       BranchTarget: check_end::ResolvedValueKind::BranchTarget
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
@@ -322,6 +339,7 @@ domains:
       DirectCallTarget: check_end::OperandShape::DirectCallTarget
       IndirectCallee: check_end::OperandShape::IndirectCallee
       BranchTargetSet: check_end::OperandShape::BranchTargetSet
+      ShflDestination: check_end::OperandShape::ShflDestination
       CallReturnParameter: check_end::OperandShape::CallReturnParameter
       CallArguments: check_end::OperandShape::CallArguments
 
@@ -352,6 +370,7 @@ domains:
       ComparisonOperator: checker::ModifierValueKind::ComparisonOperator
       BooleanOperator: checker::ModifierValueKind::BooleanOperator
       CacheOperator: checker::ModifierValueKind::CacheOperator
+      EvictionPriority: checker::ModifierValueKind::EvictionPriority
       MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
       MemoryScope: checker::ModifierValueKind::MemoryScope
       VectorArity: checker::ModifierValueKind::VectorArity

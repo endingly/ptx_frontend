@@ -81,6 +81,7 @@ using base::RoundingMode;
 using base::ComparisonOperator;
 using base::BooleanOperator;
 using base::CacheOperator;
+using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
 namespace detail {
@@ -115,6 +116,7 @@ enum class OperandShape : uint16_t {
   CallArguments = 1 << 10,
   IndirectCallee = 1 << 11,
   BranchTargetSet = 1 << 12,
+  ShflDestination = 1 << 13,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -186,11 +188,13 @@ struct ParameterAddressConstraint {
   AvailabilityDescriptor function_availability;
 };
 
-/** Fields needed to derive one natural total-access alignment requirement. */
+/** Fields needed to derive one generated address-alignment requirement. */
 struct AddressAlignmentConstraint {
-  std::string_view address_field_id;
+  std::span<const std::string_view> address_field_ids;
   std::string_view type_field_id;
   std::string_view vector_field_id;
+  std::string_view immediate_operand_field_id;
+  uint64_t alignment = 0;
 };
 
 /** How a vector operand derives each element type from the instruction type. */
@@ -228,6 +232,7 @@ struct FieldView {
   std::string_view field_id;
   std::optional<bool> bool_value;
   std::optional<CacheOperator> cache_operator;
+  std::optional<EvictionPriority> eviction_priority;
   std::optional<ScalarType> scalar_type;
   std::optional<ComparisonOperator> comparison_operator;
   std::optional<BooleanOperator> boolean_operator;
@@ -253,6 +258,8 @@ struct OperandView {
   std::string_view field_id;
   OperandShape actual_shape;
   std::optional<ScalarType> immediate_type;
+  std::optional<uint64_t> immediate_bits;
+  std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
@@ -301,6 +308,7 @@ enum class ModifierValueKind : uint8_t {
   ComparisonOperator,
   BooleanOperator,
   CacheOperator,
+  EvictionPriority,
   VectorArity,
   MemoryStateSpace,
   MemoryConsistency,
@@ -317,6 +325,7 @@ struct ModifierValueAvailabilityDescriptor {
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
+  EvictionPriority eviction_priority = EvictionPriority::Invalid;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
@@ -334,6 +343,7 @@ struct ModifierValueView {
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
+  EvictionPriority eviction_priority = EvictionPriority::Invalid;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
@@ -368,7 +378,7 @@ struct VariantDescriptor {
     std::string_view address_field_id;
     std::string_view state_space_field_id;
   } memory_consistency;
-  /** Empty field IDs mean this variant has no static alignment rule. */
+  /** Empty address fields mean this variant has no static alignment rule. */
   AddressAlignmentConstraint address_alignment;
   /** Empty field IDs mean this variant has no modern memory-vector rule. */
   struct MemoryVectorDescriptor {
@@ -378,6 +388,18 @@ struct VariantDescriptor {
     std::string_view state_space_field_id;
     AvailabilityDescriptor availability;
   } memory_vector;
+  /** Empty field ID means this variant has no immediate allowlist. */
+  struct ImmediateValueDescriptor {
+    std::string_view operand_field_id;
+    std::span<const uint64_t> allowed_values;
+  } immediate_value;
+  /** Empty field ID means this variant has no immediate range constraint. */
+  struct ImmediateRangeDescriptor {
+    std::string_view operand_field_id;
+    uint64_t minimum = 0;
+    bool has_maximum = false;
+    uint64_t maximum = ~uint64_t{0};
+  } immediate_range;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -406,6 +428,7 @@ enum class CheckDiagnosticKind : uint8_t {
   ParameterQualifierMismatch,
   InvalidVectorOperand,
   MemoryConsistencyViolation,
+  ImmediateValueMismatch,
   RuleViolation,
 };
 
@@ -515,6 +538,16 @@ CheckResult check_memory_vector(
     const VariantDescriptor::MemoryVectorDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     const Context& context);
+
+/** Check an immediate operand against an exact generated integer allowlist. */
+CheckResult check_immediate_value(
+    const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context);
+
+/** Check an immediate operand against inclusive generated integer bounds. */
+CheckResult check_immediate_range(
+    const VariantDescriptor::ImmediateRangeDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context);
 
 /**
  * Check one generated resolved instruction.

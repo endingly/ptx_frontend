@@ -108,6 +108,8 @@ bool matches_modifier_value(
       return descriptor.boolean_operator == actual.boolean_operator;
     case ModifierValueKind::CacheOperator:
       return descriptor.cache_operator == actual.cache_operator;
+    case ModifierValueKind::EvictionPriority:
+      return descriptor.eviction_priority == actual.eviction_priority;
     case ModifierValueKind::VectorArity:
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:
@@ -937,43 +939,83 @@ CheckResult check_address_alignment(
     const AddressAlignmentConstraint& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     const Context& context) {
-  if (descriptor.address_field_id.empty())
+  if (descriptor.address_field_ids.empty())
     return {};
-  const OperandView* address = find_operand(operands, descriptor.address_field_id);
-  const FieldView* type = find_field(fields, descriptor.type_field_id);
-  const FieldView* vector = descriptor.vector_field_id.empty()
-                                ? nullptr
-                                : find_field(fields, descriptor.vector_field_id);
-  if (address == nullptr || type == nullptr || !type->scalar_type ||
-      (!descriptor.vector_field_id.empty() &&
-       (vector == nullptr || !vector->vector_arity))) {
+  uint64_t required = descriptor.alignment;
+  if (!descriptor.immediate_operand_field_id.empty()) {
+    const OperandView* immediate =
+        find_operand(operands, descriptor.immediate_operand_field_id);
+    if (immediate == nullptr ||
+        immediate->actual_shape != OperandShape::Immediate ||
+        !immediate->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = context.instruction_range,
+          .message = "Generated address-alignment descriptor has a missing "
+                     "immediate field.",
+      }});
+    }
+    required = *immediate->immediate_bits;
+  } else if (required == 0) {
+    const FieldView* type = find_field(fields, descriptor.type_field_id);
+    const FieldView* vector =
+        descriptor.vector_field_id.empty()
+            ? nullptr
+            : find_field(fields, descriptor.vector_field_id);
+    if (type == nullptr || !type->scalar_type ||
+        (!descriptor.vector_field_id.empty() &&
+         (vector == nullptr || !vector->vector_arity))) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = context.instruction_range,
+          .message =
+              "Generated address-alignment descriptor has missing fields.",
+      }});
+    }
+    const uint64_t element_size = base::scalar_size_of(*type->scalar_type);
+    const uint64_t arity =
+        vector == nullptr ? 1 : vector_arity_count(*vector->vector_arity);
+    if (element_size == 0 || arity == 0) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = context.instruction_range,
+          .message = "Generated address-alignment descriptor has invalid type "
+                     "or vector fields.",
+      }});
+    }
+    required = element_size * arity;
+  }
+  if (required == 0) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = "Generated address-alignment descriptor has missing fields.",
+        .message =
+            "Generated address-alignment descriptor has invalid alignment.",
     }});
   }
-  const uint64_t element_size = base::scalar_size_of(*type->scalar_type);
-  const uint64_t arity = vector == nullptr ? 1 : vector_arity_count(*vector->vector_arity);
-  if (element_size == 0 || arity == 0) {
+  for (const std::string_view field_id : descriptor.address_field_ids) {
+    const OperandView* address = find_operand(operands, field_id);
+    if (address == nullptr) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = context.instruction_range,
+          .message = "Generated address-alignment descriptor has a missing "
+                     "address field.",
+      }});
+    }
+    // Register/standalone addresses remain unknown and are intentionally valid.
+    if (!address->address_alignment || *address->address_alignment == 0 ||
+        *address->address_alignment >= required)
+      continue;
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-        .kind = CheckDiagnosticKind::RuleViolation,
-        .range = context.instruction_range,
-        .message = "Generated address-alignment descriptor has invalid type or vector fields.",
+        .kind = CheckDiagnosticKind::AddressAlignmentMismatch,
+        .range = diagnostic_range(address->locations, context),
+        .message = fmt::format("Address operand '{}' is aligned to {} byte(s), "
+                               "but this access requires {} byte alignment.",
+                               field_id, *address->address_alignment, required),
     }});
   }
-  const uint64_t required = element_size * arity;
-  // Register/standalone addresses remain unknown and are intentionally valid.
-  if (!address->address_alignment || *address->address_alignment == 0 ||
-      *address->address_alignment >= required)
-    return {};
-  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-      .kind = CheckDiagnosticKind::AddressAlignmentMismatch,
-      .range = diagnostic_range(address->locations, context),
-      .message = fmt::format(
-          "Address operand '{}' is aligned to {} byte(s), but this access requires {} byte alignment.",
-          descriptor.address_field_id, *address->address_alignment, required),
-  }});
+  return {};
 }
 
 CheckResult check_memory_vector(
@@ -1070,6 +1112,68 @@ CheckResult check_memory_vector(
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_immediate_value(
+    const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context) {
+  if (descriptor.operand_field_id.empty())
+    return {};
+  const OperandView* operand =
+      find_operand(operands, descriptor.operand_field_id);
+  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+      !operand->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format(
+            "Immediate-value constraint references missing immediate operand '{}'.",
+            descriptor.operand_field_id),
+    }});
+  }
+  if (std::ranges::find(descriptor.allowed_values, *operand->immediate_bits) !=
+      descriptor.allowed_values.end()) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand->locations, context),
+      .message = fmt::format("Immediate operand '{}' has unsupported value {}.",
+                             descriptor.operand_field_id,
+                             *operand->immediate_bits),
+  }});
+}
+
+CheckResult check_immediate_range(
+    const VariantDescriptor::ImmediateRangeDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context) {
+  if (descriptor.operand_field_id.empty())
+    return {};
+  const OperandView* operand =
+      find_operand(operands, descriptor.operand_field_id);
+  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+      !operand->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-range constraint references missing "
+                               "immediate operand '{}'.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  if (!operand->immediate_is_negative.value_or(false) &&
+      *operand->immediate_bits >= descriptor.minimum &&
+      (!descriptor.has_maximum ||
+       *operand->immediate_bits <= descriptor.maximum)) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand->locations, context),
+      .message = fmt::format(
+          "Immediate operand '{}' has value {} outside the supported range.",
+          descriptor.operand_field_id, *operand->immediate_bits),
+  }});
 }
 
 }  // namespace ptx_frontend::resolved_ir::checker

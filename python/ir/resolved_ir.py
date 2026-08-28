@@ -20,6 +20,8 @@ from code_gen.cpp_backend import (
 )
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateRangeConstraint,
+    ImmediateValueConstraint,
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
@@ -55,6 +57,7 @@ class ResolvedValueKind(Enum):
     COMPARISON_OPERATOR = "ComparisonOperator"
     BOOLEAN_OPERATOR = "BooleanOperator"
     CACHE_OPERATOR = "CacheOperator"
+    EVICTION_PRIORITY = "EvictionPriority"
     MEMORY_CONSISTENCY = "MemoryConsistency"
     MEMORY_SCOPE = "MemoryScope"
     VECTOR_ARITY = "VectorArity"
@@ -74,6 +77,7 @@ class ResolvedValueKind(Enum):
     BRANCH_TARGET_SET = "BranchTargetSet"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
+    SHFL_DESTINATION = "ShflDestination"
 
 
 class ResolvedFieldStorage(Enum):
@@ -120,6 +124,7 @@ class ResolvedOperandShape(Enum):
     BRANCH_TARGET_SET = "BranchTargetSet"
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
+    SHFL_DESTINATION = "ShflDestination"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -133,6 +138,7 @@ class ResolvedOperandTypeExpressionKind(Enum):
 class ResolvedRegisterWidthPolicy(Enum):
     """Descriptor-facing register-size relation for a typed operand."""
 
+    EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
 
@@ -183,11 +189,13 @@ class ResolvedMemoryConsistencyConstraint:
 
 @dataclass(frozen=True)
 class ResolvedAddressAlignmentConstraint:
-    """Generated field identities for one natural address-alignment rule."""
+    """Generated field identities for one address-alignment rule."""
 
-    address_field_id: str
-    type_field_id: str
+    address_field_ids: tuple[str, ...]
+    type_field_id: str | None = None
     vector_field_id: str | None = None
+    immediate_operand_field_id: str | None = None
+    alignment: int | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +207,23 @@ class ResolvedMemoryVectorConstraint:
     address_field_id: str
     availability: tuple[tuple[str, Any], ...]
     state_space_field_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedImmediateValueConstraint:
+    """Generated field identity and integer allowlist for one immediate."""
+
+    operand_field_id: str
+    values: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class ResolvedImmediateRangeConstraint:
+    """Generated field identity and inclusive bounds for one immediate."""
+
+    operand_field_id: str
+    minimum: int
+    maximum: int | None = None
 
 
 @dataclass(frozen=True)
@@ -294,6 +319,8 @@ class ResolvedVariant:
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
     address_alignment: ResolvedAddressAlignmentConstraint | None
     memory_vector: ResolvedMemoryVectorConstraint | None
+    immediate_value: ResolvedImmediateValueConstraint | None
+    immediate_range: ResolvedImmediateRangeConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -396,6 +423,7 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
+    "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
     "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
@@ -508,6 +536,12 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_vector,
             {field.source_name: field.name for field in modifier_fields},
         ),
+        immediate_value=_build_immediate_value_constraint(
+            variant.immediate_value,
+        ),
+        immediate_range=_build_immediate_range_constraint(
+            variant.immediate_range,
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )
@@ -543,12 +577,17 @@ def _build_address_alignment_constraint(
     if constraint is None:
         return None
     return ResolvedAddressAlignmentConstraint(
-        address_field_id=constraint.address_operand,
-        type_field_id=modifier_field_ids[constraint.type_modifier],
+        address_field_ids=constraint.address_operands,
+        type_field_id=(
+            modifier_field_ids[constraint.type_modifier]
+            if constraint.type_modifier is not None else None
+        ),
         vector_field_id=(
             modifier_field_ids[constraint.vector_modifier]
             if constraint.vector_modifier is not None else None
         ),
+        immediate_operand_field_id=constraint.immediate_operand,
+        alignment=constraint.alignment,
     )
 
 
@@ -567,6 +606,29 @@ def _build_memory_vector_constraint(
             modifier_field_ids[constraint.state_space_modifier]
             if constraint.state_space_modifier is not None else None
         ),
+    )
+
+
+def _build_immediate_value_constraint(
+    constraint: ImmediateValueConstraint | None,
+) -> ResolvedImmediateValueConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedImmediateValueConstraint(
+        operand_field_id=constraint.operand,
+        values=constraint.values,
+    )
+
+
+def _build_immediate_range_constraint(
+    constraint: ImmediateRangeConstraint | None,
+) -> ResolvedImmediateRangeConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedImmediateRangeConstraint(
+        operand_field_id=constraint.operand,
+        minimum=constraint.minimum,
+        maximum=constraint.maximum,
     )
 
 

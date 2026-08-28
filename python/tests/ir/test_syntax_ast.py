@@ -56,6 +56,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             if instruction.opcode == "call"
         )
         cls.call_descriptor = from_InstructionSpec(call)
+        shfl = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "shfl"
+        )
+        cls.shfl_descriptor = from_InstructionSpec(shfl)
 
     def test_call_uses_fixed_non_flat_group_layouts(self) -> None:
         variant = self.call_descriptor.variants[0]
@@ -253,6 +259,14 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET.value, 1 << 7)
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
+
+    def test_shfl_destination_uses_dedicated_single_operand_shape(self) -> None:
+        variant = self.shfl_descriptor.variants[0]
+        self.assertEqual(variant.variant_id, "shfl_sync_idx_b32")
+        self.assertEqual(
+            variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.SHFL_DESTINATION,
+        )
 
     def test_mov_source_layout_covers_data_and_address_forms(self) -> None:
         database = load_codegen_database(
@@ -1033,7 +1047,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         }
         cases = (
             ({"kind": "address_alignment", "address_operand": "address"},
-             "is missing"),
+             "requires exactly one"),
             ({**valid, "type_modifier": "missing"}, "inactive modifier"),
             ({**valid, "type_modifier": "vector"}, "must name a 'type'"),
             (valid, "kind 'addr'"),
@@ -1046,6 +1060,49 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         constraint,
                         operand_kind="reg" if message == "kind 'addr'" else "addr",
                     )
+
+    def test_immediate_value_constraint_normalization(self) -> None:
+        def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_immediate",
+                                    "availability": {"ptx": "1.0"},
+                                    "operands": [
+                                        {
+                                            "name": "size",
+                                            "kind": operand_kind,
+                                            "role": "src",
+                                            "access": "read",
+                                            "type": "u32",
+                                        }
+                                    ],
+                                    "constraints": [constraint],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        normalize_constraint(
+            {"kind": "immediate_value", "operand": "size", "values": [4, 8, 16]}
+        )
+        for constraint, message, kind in (
+            ({"kind": "immediate_value", "operand": "missing", "values": [4]}, "kind 'imm'", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4, 4]}, "unique", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4.0]}, "integers", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4]}, "kind 'imm'", "reg"),
+        ):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    normalize_constraint(constraint, operand_kind=kind)
 
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(

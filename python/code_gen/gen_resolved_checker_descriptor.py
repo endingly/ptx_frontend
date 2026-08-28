@@ -70,6 +70,16 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         _emit_variant_type_compatibility_descriptors(variant)
         for variant in instruction.variants
     )
+    immediate_value_definitions = "\n\n".join(
+        _emit_variant_immediate_value_descriptors(variant)
+        for variant in instruction.variants
+        if variant.immediate_value is not None
+    )
+    address_alignment_definitions = "\n\n".join(
+        _emit_variant_address_alignment_descriptors(variant)
+        for variant in instruction.variants
+        if variant.address_alignment is not None
+    )
     variants = ",\n".join(
         _emit_variant_descriptor(variant) for variant in instruction.variants
     )
@@ -79,6 +89,10 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 {layout_definitions}
 
 {type_compatibility_definitions}
+
+{immediate_value_definitions}
+
+{address_alignment_definitions}
 
   static constexpr std::array<checker::VariantDescriptor, {len(instruction.variants)}>
       variants = {{
@@ -145,6 +159,25 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                       .required_family = "{vector_family}",
                   }},
               }},'''
+    immediate_value = ""
+    if variant.immediate_value is not None:
+        immediate_value = f'''
+              .immediate_value = {{
+                  .operand_field_id = "{variant.immediate_value.operand_field_id}",
+                  .allowed_values = {variant.cpp_name}_immediate_value_values,
+              }},'''
+    immediate_range = ""
+    if variant.immediate_range is not None:
+        maximum = (
+            f"\n                  .maximum = {variant.immediate_range.maximum},"
+            if variant.immediate_range.maximum is not None else ""
+        )
+        immediate_range = f'''
+              .immediate_range = {{
+                  .operand_field_id = "{variant.immediate_range.operand_field_id}",
+                  .minimum = {variant.immediate_range.minimum},
+                  .has_maximum = {str(variant.immediate_range.maximum is not None).lower()},{maximum}
+              }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {{
@@ -159,19 +192,40 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   {variant.cpp_name}_operand_type_compatibilities,
               .rule_id = "{rule_id}",
 {memory_consistency}
-{_emit_address_alignment_descriptor(alignment)}
+{_emit_address_alignment_descriptor(variant)}
 {memory_vector}
+{immediate_value}
+{immediate_range}
           }}"""
 
 
-def _emit_address_alignment_descriptor(alignment) -> str:
+def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
+    constraint = variant.immediate_value
+    assert constraint is not None
+    values = ", ".join(str(value) for value in constraint.values)
+    return f"""  static constexpr std::array<uint64_t, {len(constraint.values)}>
+      {variant.cpp_name}_immediate_value_values = {{{{{values}}}}};"""
+
+
+def _emit_address_alignment_descriptor(variant: ResolvedVariant) -> str:
+    alignment = variant.address_alignment
     if alignment is None:
         return ""
     return f'''              .address_alignment = {{
-                  .address_field_id = "{alignment.address_field_id}",
-                  .type_field_id = "{alignment.type_field_id}",
+                  .address_field_ids = {variant.cpp_name}_address_alignment_address_fields,
+                  .type_field_id = "{alignment.type_field_id or ""}",
                   .vector_field_id = "{alignment.vector_field_id or ""}",
+                  .immediate_operand_field_id = "{alignment.immediate_operand_field_id or ""}",
+                  .alignment = {alignment.alignment or 0},
               }},'''
+
+
+def _emit_variant_address_alignment_descriptors(variant: ResolvedVariant) -> str:
+    alignment = variant.address_alignment
+    assert alignment is not None
+    addresses = ", ".join(f'"{address}"' for address in alignment.address_field_ids)
+    return f"""  static constexpr std::array<std::string_view, {len(alignment.address_field_ids)}>
+      {variant.cpp_name}_address_alignment_address_fields = {{{{{addresses}}}}};"""
 
 
 def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:

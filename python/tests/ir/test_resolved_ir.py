@@ -986,6 +986,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 "GenericScalar",
                 "ExplicitScalar",
+                "GlobalU32L1Evict",
+                "GlobalU32L2CacheHint",
                 "GenericVector",
                 "ExplicitVector",
             ],
@@ -1005,9 +1007,32 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         variant = instruction.variants[0]
         explicit_variant = instruction.variants[1]
-        vector_variant = instruction.variants[2]
-        explicit_vector_variant = instruction.variants[3]
+        l1_evict_variant = instruction.variants[2]
+        cache_hint_variant = instruction.variants[3]
+        vector_variant = instruction.variants[4]
+        explicit_vector_variant = instruction.variants[5]
         self.assertEqual(variant.cpp_name, "GenericScalar")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in l1_evict_variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("eviction_priority", "WithLocs<EvictionPriority>"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in cache_hint_variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("cache_hint", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("cache_policy", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
         expected_types = [
             "b8",
             "b16",
@@ -1024,7 +1049,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "f32",
             "f64",
         ]
-        for syntax_variant in ld.variants:
+        for syntax_variant in (
+            ld.variants[0], ld.variants[1], ld.variants[4], ld.variants[5]
+        ):
             self.assertEqual(
                 [value.value for value in syntax_variant.modifiers[-1].values],
                 expected_types,
@@ -1095,7 +1122,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
         self.assertEqual(variant.memory_consistency.address_field_id, "address")
-        self.assertEqual(variant.address_alignment.address_field_id, "address")
+        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
         self.assertEqual(variant.address_alignment.type_field_id, "type")
         self.assertIsNone(variant.address_alignment.vector_field_id)
         self.assertEqual(
@@ -1208,7 +1235,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
         self.assertEqual(vector_variant.address_alignment.vector_field_id, "vector")
         self.assertEqual(
-            [value.value for value in next(modifier for modifier in ld.variants[2].modifiers if modifier.name == "vector").values],
+            [value.value for value in next(modifier for modifier in ld.variants[4].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
         )
         vector_binding = vector_variant.operand_layouts[0].bindings[0]
@@ -1257,11 +1284,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 "GenericScalar",
                 "ExplicitScalar",
+                "GlobalU32L1Evict",
+                "GlobalU32L2CacheHint",
                 "GenericVector",
                 "ExplicitVector",
             ],
         )
-        for syntax_variant in st.variants:
+        for syntax_variant in (
+            st.variants[0], st.variants[1], st.variants[4], st.variants[5]
+        ):
             self.assertEqual(
                 [value.value for value in syntax_variant.modifiers[-1].values],
                 expected_types,
@@ -1347,14 +1378,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             dict(store_parameter.function_availability),
             {"ptx": "2.0", "sm": 20},
         )
-        store_vector = store.variants[2]
+        store_vector = store.variants[4]
         self.assertEqual(
             [field.name for field in store_vector.fields],
             ["semantics", "scope", "cache", "vector", "type", "address", "src"],
         )
         self.assertEqual(store_vector.memory_consistency.mmio_field_id, "")
         self.assertEqual(
-            [value.value for value in next(modifier for modifier in st.variants[2].modifiers if modifier.name == "vector").values],
+            [value.value for value in next(modifier for modifier in st.variants[4].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
         )
         store_vector_binding = store_vector.operand_layouts[0].bindings[1]
@@ -1370,13 +1401,544 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertTrue(store_vector_binding.allow_vector_sink)
         self.assertEqual(store_vector.memory_vector.vector_field_id, "src")
         store_vector_parameter = (
-            store.variants[3].operand_layouts[0].bindings[0].parameter_constraint
+            store.variants[5].operand_layouts[0].bindings[0].parameter_constraint
         )
         self.assertEqual(store_vector_parameter.direction, "return")
         self.assertEqual(
             dict(store_vector_parameter.function_availability),
             {"ptx": "2.0", "sm": 20},
         )
+
+    def test_ldu_global_u32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ldu = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ldu"
+        )
+        resolved = from_instruction_spec(ldu)
+
+        self.assertEqual(resolved.cpp_name, "Ldu")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["GlobalU32"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 0})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[1].state_space_modifier_field_id,
+            "state_space",
+        )
+
+    def test_prefetch_global_l1_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        prefetch = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "prefetch"
+        )
+        resolved = from_instruction_spec(prefetch)
+
+        self.assertEqual(resolved.cpp_name, "Prefetch")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["GlobalL1"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("l1", "bool"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].state_space_modifier_field_id,
+            "state_space",
+        )
+
+    def test_cp_async_ca_shared_global_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        resolved = from_instruction_spec(cp)
+        variant = resolved.variants[0]
+
+        self.assertEqual(resolved.cpp_name, "Cp")
+        self.assertEqual(
+            [candidate.cpp_name for candidate in resolved.variants],
+            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll"],
+        )
+        self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
+        self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("async", "bool"),
+                ("ca", "bool"),
+                ("shared", "bool"),
+                ("global", "bool"),
+                ("dst", "WithLocs<ResolvedAddress>"),
+                ("src", "WithLocs<ResolvedAddress>"),
+                ("cp_size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.operand_field_id, "cp_size")
+        self.assertEqual(variant.immediate_value.values, (4, 8, 16))
+        self.assertEqual(variant.address_alignment.address_field_ids, ("dst", "src"))
+        self.assertEqual(variant.address_alignment.immediate_operand_field_id, "cp_size")
+        self.assertEqual(
+            [value.value for value in variant.operand_layouts[0].bindings[0].allowed_address_state_spaces],
+            ["shared"],
+        )
+        self.assertEqual(
+            [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
+            ["global"],
+        )
+
+    def test_cp_async_commit_group_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        variant = from_instruction_spec(cp).variants[1]
+
+        self.assertEqual(variant.cpp_name, "AsyncCommitGroup")
+        self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("async", "bool"), ("commit_group", "bool")],
+        )
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_cp_async_wait_group_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        variant = from_instruction_spec(cp).variants[2]
+
+        self.assertEqual(variant.cpp_name, "AsyncWaitGroup")
+        self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("async", "bool"),
+                ("wait_group", "bool"),
+                ("n", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertIsNone(variant.immediate_value)
+        self.assertEqual(variant.immediate_range.operand_field_id, "n")
+        self.assertEqual((variant.immediate_range.minimum, variant.immediate_range.maximum), (0, None))
+
+    def test_cp_async_wait_all_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        variant = from_instruction_spec(cp).variants[3]
+
+        self.assertEqual(variant.cpp_name, "AsyncWaitAll")
+        self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("async", "bool"), ("wait_all", "bool")],
+        )
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_ldmatrix_sync_aligned_m8n8_x2_shared_b16_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ldmatrix = next(
+            instruction for instruction in database.instructions if instruction.opcode == "ldmatrix"
+        )
+        variant = from_instruction_spec(ldmatrix).variants[0]
+
+        self.assertEqual(variant.cpp_name, "SyncAlignedM8n8X2SharedB16")
+        self.assertEqual(dict(variant.availability), {"ptx": "6.5", "sm": 75})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("aligned", "bool"),
+                ("m8n8", "bool"),
+                ("x2", "bool"),
+                ("shared", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterVector>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        dst = variant.operand_layouts[0].bindings[0]
+        self.assertEqual(
+            dst.type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                scalar_type="b32",
+            ),
+        )
+        self.assertEqual(dst.allowed_vector_arities, (2,))
+        self.assertEqual(dst.vector_type_policy.value, "Element")
+        self.assertEqual(dst.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+        self.assertEqual(
+            [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
+            ["shared"],
+        )
+        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
+        self.assertEqual(variant.address_alignment.alignment, 16)
+
+    def test_mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mma = next(
+            instruction for instruction in database.instructions if instruction.opcode == "mma"
+        )
+        variant = from_instruction_spec(mma).variants[0]
+
+        self.assertEqual(variant.cpp_name, "SyncAlignedM16n8k8RowColF32F16F16F32")
+        self.assertEqual(dict(variant.availability), {"ptx": "6.5", "sm": 75})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("aligned", "bool"),
+                ("m16n8k8", "bool"),
+                ("row", "bool"),
+                ("col", "bool"),
+                ("d_type", "ScalarType"),
+                ("a_type", "ScalarType"),
+                ("b_type", "ScalarType"),
+                ("c_type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterVector>"),
+                ("a", "WithLocs<ResolvedRegisterVector>"),
+                ("b", "WithLocs<ResolvedRegisterVector>"),
+                ("c", "WithLocs<ResolvedRegisterVector>"),
+            ],
+        )
+        bindings = variant.operand_layouts[0].bindings
+        self.assertEqual(
+            [binding.type_expression for binding in bindings],
+            [
+                ResolvedOperandTypeExpression(
+                    kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                    scalar_type=scalar_type,
+                )
+                for scalar_type in ("f32", "f16x2", "f16x2", "f32")
+            ],
+        )
+        self.assertEqual(
+            [binding.allowed_vector_arities for binding in bindings],
+            [(4,), (2,), (1,), (4,)],
+        )
+        self.assertEqual(
+            [binding.vector_type_policy for binding in bindings],
+            [ResolvedVectorTypePolicy.ELEMENT] * 4,
+        )
+        self.assertEqual(
+            [binding.register_width_policy for binding in bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_matrix.gen.cpp"
+            generate_resolved_ir_source(
+                database, category="matrix", output_path=output_path
+            )
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn("SyncAlignedM16n8k8RowColF32F16F16F32", source)
+        self.assertIn("std::expected<Mma, ResolveDiagnostic>", source)
+
+    def test_cp_generator_emits_immediate_value_checker(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
+            descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_ir_source(
+                database, category="data_movement", output_path=output_path
+            )
+            generate_resolved_checker_descriptor_source(
+                database, output_path=descriptor_path
+            )
+            source = output_path.read_text(encoding="utf-8")
+            descriptor = descriptor_path.read_text(encoding="utf-8")
+
+        self.assertIn("check_immediate_value(", source)
+        self.assertIn("check_immediate_range(", source)
+        self.assertIn("check_address_alignment(", source)
+        self.assertIn("selected.cp_size.value.bits", source)
+        self.assertIn("std::expected<Cp, ResolveDiagnostic>", source)
+        self.assertIn("AsyncCommitGroup", source)
+        self.assertIn("AsyncWaitGroup", source)
+        self.assertIn("AsyncWaitAll", source)
+        self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
+        self.assertIn('.operand_field_id = "cp_size",', descriptor)
+        self.assertIn('AsyncCaSharedGlobal_address_alignment_address_fields = {{"dst", "src"}};', descriptor)
+        self.assertIn('.immediate_operand_field_id = "cp_size",', descriptor)
+        self.assertIn('.operand_field_id = "n",', descriptor)
+        self.assertIn('.minimum = 0,', descriptor)
+        self.assertIn('.has_maximum = false,', descriptor)
+
+    def test_membar_cta_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        membar = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "membar"
+        )
+        resolved = from_instruction_spec(membar)
+
+        self.assertEqual(resolved.cpp_name, "Membar")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["Cta"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "1.4", "sm": 0})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("scope", "MemoryScope")],
+        )
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_fence_acq_rel_cta_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        fence = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "fence"
+        )
+        resolved = from_instruction_spec(fence)
+
+        self.assertEqual(resolved.cpp_name, "Fence")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["AcqRelCta"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
+        )
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+    def test_atom_global_relaxed_cta_add_u32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        atom = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "atom"
+        )
+        resolved = from_instruction_spec(atom)
+
+        self.assertEqual(resolved.cpp_name, "Atom")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalRelaxedCtaAddU32"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("semantics", "MemoryConsistency"),
+                ("scope", "MemoryScope"),
+                ("add", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
+        bindings = variant.operand_layouts[0].bindings
+        self.assertEqual(
+            (bindings[0].register_width_policy, bindings[2].register_width_policy),
+            (
+                ResolvedRegisterWidthPolicy.SAME_WIDTH,
+                ResolvedRegisterWidthPolicy.SAME_WIDTH,
+            ),
+        )
+        self.assertEqual(bindings[1].state_space_modifier_field_id, "state_space")
+
+    def test_red_global_relaxed_cta_add_u32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        red = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "red"
+        )
+        resolved = from_instruction_spec(red)
+
+        self.assertEqual(resolved.cpp_name, "Red")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalRelaxedCtaAddU32"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("semantics", "MemoryConsistency"),
+                ("scope", "MemoryScope"),
+                ("add", "bool"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
+        bindings = variant.operand_layouts[0].bindings
+        self.assertEqual(len(bindings), 2)
+        self.assertEqual(
+            bindings[1].register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
+        )
+        self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
+
+    def test_activemask_b32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        activemask = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "activemask"
+        )
+        resolved = from_instruction_spec(activemask)
+
+        self.assertEqual(resolved.cpp_name, "Activemask")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["B32"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.2", "sm": 30})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("type", "ScalarType"), ("dst", "WithLocs<ResolvedRegisterRef>")],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.EXACT,
+        )
+
+    def test_vote_sync_ballot_b32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        vote = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "vote"
+        )
+        resolved = from_instruction_spec(vote)
+
+        self.assertEqual(resolved.cpp_name, "Vote")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["SyncBallotB32"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("ballot", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("predicate", "WithLocs<ResolvedPredicate>"),
+                ("membermask", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.EXACT,
+        )
+
+    def test_shfl_sync_idx_b32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        shfl = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "shfl"
+        )
+        resolved = from_instruction_spec(shfl)
+
+        self.assertEqual(resolved.cpp_name, "Shfl")
+        variant = resolved.variants[0]
+        self.assertEqual(variant.cpp_name, "SyncIdxB32")
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("idx", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedShflSyncDestination>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
+                ("lane", "WithLocs<RegOrImm>"),
+                ("clamp", "WithLocs<RegOrImm>"),
+                ("membermask", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].allowed_shapes,
+            (ResolvedOperandShape.SHFL_DESTINATION,),
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+
+    def test_shfl_generator_emits_pair_operand_view(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="data_movement",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("ResolvedShflSyncDestination", source)
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::ShflDestination,", source
+        )
+        self.assertIn("selected.dst.value.data.declared_type", source)
 
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
@@ -1392,10 +1954,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
             resolved = from_instruction_spec(spec)
             for variant in resolved.variants:
                 cache_binding = next(
-                    binding
-                    for binding in variant.modifier_bindings
-                    if binding.source_kind_id == "cache"
+                    (
+                        binding
+                        for binding in variant.modifier_bindings
+                        if binding.source_kind_id == "cache"
+                    ),
+                    None,
                 )
+                if cache_binding is None:
+                    continue
                 self.assertIsNotNone(cache_binding.default_value)
                 assert cache_binding.default_value is not None
                 self.assertEqual(
@@ -1425,7 +1992,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
+        self.assertIn("struct Atom {", source)
+        self.assertIn("struct Activemask {", source)
+        self.assertIn("struct Vote {", source)
+        self.assertIn("struct Red {", source)
         self.assertIn("struct Bar {", source)
+        self.assertIn("struct Membar {", source)
+        self.assertIn("struct Fence {", source)
         self.assertIn("struct Bra {", source)
         self.assertIn("struct Ret {", source)
         self.assertIn("struct Exit {", source)
@@ -1473,6 +2046,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("WithLocs<BooleanOperator> boolean;", source)
         self.assertIn("struct Mov {", source)
         self.assertIn("struct Ld {", source)
+        self.assertIn("struct Ldu {", source)
+        self.assertIn("struct Prefetch {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
         self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 1)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
@@ -1547,6 +2122,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolveInstruction(const syntax_ast::AstInstruction& ast)", source)
         self.assertIn('ast.opcode.syntax.text == "add"', source)
         self.assertIn("resolve<Add>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "atom"', source)
+        self.assertIn("resolve<Atom>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "activemask"', source)
+        self.assertIn("resolve<Activemask>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "vote"', source)
+        self.assertIn("resolve<Vote>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "red"', source)
+        self.assertIn("resolve<Red>(ast, context)", source)
         self.assertIn("namespace {", source)
         self.assertIn('ast.opcode.syntax.text == "sub"', source)
         self.assertIn("resolve<Sub>(ast, context)", source)
@@ -1591,6 +2174,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Mov>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ld"', source)
         self.assertIn("resolve<Ld>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "ldu"', source)
+        self.assertIn("resolve<Ldu>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "membar"', source)
+        self.assertIn("resolve<Membar>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "fence"', source)
+        self.assertIn("resolve<Fence>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "prefetch"', source)
+        self.assertIn("resolve<Prefetch>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:
@@ -1661,6 +2252,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("CheckResult check<Mov>(", source)
         self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
+        self.assertIn("std::expected<Ldu, ResolveDiagnostic>", source)
+        self.assertIn("std::expected<Prefetch, ResolveDiagnostic>", source)
         self.assertIn(
             ".address = resolved_operand<ResolvedAddress>", source
         )
@@ -1686,6 +2279,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".enclosing_function_kind =", source)
         self.assertIn(".parameter_direction = parameter_direction", source)
         self.assertIn("CheckResult check<Ld>(", source)
+        self.assertIn("CheckResult check<Ldu>(", source)
+        self.assertIn("CheckResult check<Prefetch>(", source)
         self.assertIn("check_memory_consistency(", source)
         self.assertIn("check_address_alignment(", source)
         self.assertIn(".address_alignment = address_alignment", source)

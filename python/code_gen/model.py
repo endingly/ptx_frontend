@@ -17,6 +17,7 @@ class OperandTypeExpressionKind(Enum):
 class OperandRegisterWidthPolicy(str, Enum):
     """Register-width relation accepted by an operand type constraint."""
 
+    EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
 
@@ -80,11 +81,13 @@ class MemoryConsistencyConstraint:
 
 @dataclass(frozen=True)
 class AddressAlignmentConstraint:
-    """Typed static alignment rule for an ld/st address operand."""
+    """Typed static alignment rule for one or more address operands."""
 
-    address_operand: str
-    type_modifier: str
+    address_operands: tuple[str, ...]
+    type_modifier: str | None = None
     vector_modifier: str | None = None
+    immediate_operand: str | None = None
+    alignment: int | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,23 @@ class MemoryVectorConstraint:
     address_operand: str
     availability: dict[str, Any] = field(default_factory=dict)
     state_space_modifier: str | None = None
+
+
+@dataclass(frozen=True)
+class ImmediateValueConstraint:
+    """Restrict one immediate operand to an explicit integer allowlist."""
+
+    operand: str
+    values: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class ImmediateRangeConstraint:
+    """Restrict one immediate operand to an inclusive integer range."""
+
+    operand: str
+    minimum: int
+    maximum: int | None = None
 
 
 class RuntimeLookupKind(str, Enum):
@@ -211,6 +231,8 @@ class VariantSpec:
     memory_consistency: MemoryConsistencyConstraint | None = None
     address_alignment: AddressAlignmentConstraint | None = None
     memory_vector: MemoryVectorConstraint | None = None
+    immediate_value: ImmediateValueConstraint | None = None
+    immediate_range: ImmediateRangeConstraint | None = None
 
 
 @dataclass(frozen=True)

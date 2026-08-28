@@ -22,6 +22,7 @@ using syntax_cst::CstCallTargets;
 using syntax_cst::CstBranchTargets;
 using syntax_cst::CstRecoveryKind;
 using syntax_cst::CstRecoveryNode;
+using syntax_cst::CstRegisterPredicatePair;
 using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
@@ -154,6 +155,21 @@ TEST(PtxCstParser, RetainsStructuredOperandDelimiterTokens) {
   EXPECT_EQ(result->token(pack.left_brace).kind, TokenKind::LBrace);
   EXPECT_EQ(result->token(pack.right_brace).kind, TokenKind::RBrace);
   ASSERT_EQ(pack.commas.size(), 1u);
+}
+
+TEST(PtxCstParser, RetainsRegisterPredicatePairAsOneOperand) {
+  PtxCstParser parser("shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;");
+
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto* instruction = result->instruction();
+  ASSERT_NE(instruction, nullptr);
+  ASSERT_EQ(instruction->operands.size(), 5u);
+  const auto& pair =
+      std::get<CstRegisterPredicatePair>(instruction->operands[0].operand);
+  EXPECT_EQ(result->token(pair.dst.token).text, "%b0");
+  EXPECT_EQ(result->token(pair.pipe_token).kind, TokenKind::Pipe);
+  EXPECT_EQ(result->token(pair.predicate.token).text, "%p0");
 }
 
 TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {

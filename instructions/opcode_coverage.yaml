@@ -11,6 +11,16 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: activemask
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: atom
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: bar
     syntax: partial
     resolved: partial
@@ -31,12 +41,52 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: fence
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: ld
     syntax: partial
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: ldu
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: ldmatrix
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: mma
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: membar
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: mov
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: prefetch
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: cp
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: red
     syntax: partial
     resolved: partial
     checker: partial
@@ -47,6 +97,16 @@ opcodes:
     checker: partial
     simulator: unsupported
   - opcode: sub
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: vote
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
+  - opcode: shfl
     syntax: partial
     resolved: partial
     checker: partial

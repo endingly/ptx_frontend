@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -89,6 +90,27 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_EQ(src1.declared_type, ScalarType::U32);
 }
 
+TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r<2>;
+  add.u32 %r0, %r1, -1;
+  mov.u32 %r0, -1;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& add = resolvedIntegerAdd(body[0]);
+  const auto& add_immediate = std::get<ResolvedImmediate>(add.src2.value);
+  EXPECT_EQ(add_immediate.type, ScalarType::U32);
+  EXPECT_EQ(add_immediate.bits, 0xffffffffU);
+  const auto& mov_immediate = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
+  EXPECT_EQ(mov_immediate.type, ScalarType::U32);
+  EXPECT_EQ(mov_immediate.bits, 0xffffffffU);
+}
+
 TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
   const auto ast = parseModule(R"ptx(
 .func device() {
@@ -166,6 +188,1296 @@ TEST(ResolvedModule, ResolvesBareAndPredicatedTrapInDeviceFunctionAndEntry) {
   const auto& entry_trap =
       std::get<Trap>(resolved->functions[1].body.front());
   EXPECT_FALSE(entry_trap.execution_predicate.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksM10CacheHintEvictionSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd<2>;
+  .reg .u32 %r<3>;
+  ld.global.L1::evict_first.u32 %r0, [%rd0];
+  ld.global.L1::evict_last.u32 %r1, [%rd0];
+  st.global.L1::evict_first.u32 [%rd0], %r0;
+  st.global.L1::evict_last.u32 [%rd0], %r1;
+  ld.global.L2::cache_hint.u32 %r2, [%rd0], %rd1;
+  st.global.L2::cache_hint.u32 [%rd0], %r2, %rd1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+
+  const auto& load_first =
+      std::get<Ld::GlobalU32L1Evict>(std::get<Ld>(body[0]).variant);
+  const auto& load_last =
+      std::get<Ld::GlobalU32L1Evict>(std::get<Ld>(body[1]).variant);
+  const auto& store_first =
+      std::get<St::GlobalU32L1Evict>(std::get<St>(body[2]).variant);
+  const auto& store_last =
+      std::get<St::GlobalU32L1Evict>(std::get<St>(body[3]).variant);
+  EXPECT_EQ(load_first.eviction_priority.value,
+            EvictionPriority::EvictFirst);
+  EXPECT_EQ(load_last.eviction_priority.value, EvictionPriority::EvictLast);
+  EXPECT_EQ(store_first.eviction_priority.value,
+            EvictionPriority::EvictFirst);
+  EXPECT_EQ(store_last.eviction_priority.value, EvictionPriority::EvictLast);
+
+  const auto& load_hint =
+      std::get<Ld::GlobalU32L2CacheHint>(std::get<Ld>(body[4]).variant);
+  const auto& store_hint =
+      std::get<St::GlobalU32L2CacheHint>(std::get<St>(body[5]).variant);
+  EXPECT_TRUE(load_hint.cache_hint);
+  EXPECT_TRUE(store_hint.cache_hint);
+  EXPECT_EQ(load_hint.cache_policy.value.declared_type, ScalarType::U64);
+  EXPECT_EQ(store_hint.cache_policy.value.declared_type, ScalarType::U64);
+
+  const checker::Context l1_target{
+      .target = {.ptx_version = {7, 4}, .sm_version = 70},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[0]), l1_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[1]), l1_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[2]), l1_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[3]), l1_target).has_value());
+  const checker::Context l2_target{
+      .target = {.ptx_version = {7, 4}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[4]), l2_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[5]), l2_target).has_value());
+
+  const auto l1_too_old = checker::check(
+      std::get<Ld>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(l1_too_old.has_value());
+  EXPECT_EQ(l1_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto l2_too_old = checker::check(
+      std::get<St>(body[5]),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(l2_too_old.has_value());
+  EXPECT_EQ(l2_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+}
+
+TEST(ResolvedModule, RejectsM10CacheHintPolicyWithoutU64Register) {
+  const auto wrong_policy_ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r0;
+  .reg .u32 %policy;
+  ld.global.L2::cache_hint.u32 %r0, [%rd0], %policy;
+}
+)ptx");
+  const auto wrong_policy = resolveModule(wrong_policy_ast);
+  ASSERT_TRUE(wrong_policy.has_value()) << wrong_policy.error().front().message;
+  const auto checked = checker::check(
+      std::get<Ld>(wrong_policy->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80},
+                       .instruction_range = wrong_policy_ast.range});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto missing_policy = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r0;
+  ld.global.L2::cache_hint.u32 %r0, [%rd0];
+}
+)ptx"));
+  ASSERT_FALSE(missing_policy.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u64 %wide;
+  ldu.global.u32 %wide, [global_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction = std::get<Ldu>(resolved->functions.front().body.front());
+  const auto& load = std::get<Ldu::GlobalU32>(instruction.variant);
+  EXPECT_EQ(load.state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(load.type, ScalarType::U32);
+  EXPECT_EQ(load.dst.value.declared_type, ScalarType::U64);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {2, 0}, .sm_version = 0},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 9}, .sm_version = 0},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old.has_value());
+  EXPECT_EQ(too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  .reg .u32 %r0;
+  ldu.global.u32 %r0, [local_value];
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_space = checker::check(
+      std::get<Ldu>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 0}});
+  ASSERT_FALSE(wrong_space.has_value());
+  EXPECT_EQ(wrong_space.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto narrow_dst = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u16 %h0;
+  ldu.global.u32 %h0, [global_value];
+}
+)ptx"));
+  ASSERT_TRUE(narrow_dst.has_value()) << narrow_dst.error().front().message;
+  const auto wrong_register = checker::check(
+      std::get<Ldu>(narrow_dst->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 0}});
+  ASSERT_FALSE(wrong_register.has_value());
+  EXPECT_EQ(wrong_register.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  ldu.global.b32 %r0, [global_value];
+}
+)ptx"));
+  ASSERT_FALSE(wrong_type.has_value());
+
+  const auto missing_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0;
+  ldu.global.u32 %r0;
+}
+)ptx"));
+  ASSERT_FALSE(missing_address.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  prefetch.global.L1 [global_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Prefetch>(resolved->functions.front().body.front());
+  const auto& prefetch = std::get<Prefetch::GlobalL1>(instruction.variant);
+  EXPECT_EQ(prefetch.state_space, MemoryStateSpace::Global);
+  EXPECT_TRUE(prefetch.l1);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  prefetch.global.L1 [local_value];
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_address = checker::check(
+      std::get<Prefetch>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
+  ASSERT_FALSE(wrong_address.has_value());
+  EXPECT_EQ(wrong_address.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto wrong_level = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() { prefetch.global.L2 [global_value]; }
+)ptx"));
+  ASSERT_FALSE(wrong_level.has_value());
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.local .u32 local_value;
+.entry kernel() { prefetch.local.L1 [local_value]; }
+)ptx"));
+  ASSERT_FALSE(wrong_space.has_value());
+  const auto missing_address = resolveModule(parseModule(R"ptx(
+.entry kernel() { prefetch.global.L1; }
+)ptx"));
+  ASSERT_FALSE(missing_address.has_value());
+  const auto extra_address = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() { prefetch.global.L1 [global_value], [global_value]; }
+)ptx"));
+  ASSERT_FALSE(extra_address.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 16 .b8 global_value[16];
+.shared .align 16 .b8 shared_value[16];
+.entry kernel() {
+  cp.async.ca.shared.global [shared_value], [global_value], 4;
+  cp.async.ca.shared.global [shared_value], [global_value], 8;
+  cp.async.ca.shared.global [shared_value], [global_value], 16;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& copy =
+      std::get<Cp::AsyncCaSharedGlobal>(std::get<Cp>(body.front()).variant);
+  EXPECT_TRUE(copy.async);
+  EXPECT_TRUE(copy.ca);
+  EXPECT_TRUE(copy.shared);
+  EXPECT_TRUE(copy.global);
+  EXPECT_EQ(copy.cp_size.value.type, ScalarType::U32);
+  EXPECT_EQ(copy.cp_size.value.bits, 4u);
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_spaces = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() {
+  cp.async.ca.shared.global [global_value], [global_value], 4;
+  cp.async.ca.shared.global [shared_value], [shared_value], 4;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_spaces.has_value())
+      << wrong_spaces.error().front().message;
+  for (const auto& instruction : wrong_spaces->functions.front().body) {
+    const auto checked = checker::check(std::get<Cp>(instruction), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  }
+
+  const auto invalid_sizes = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() {
+  cp.async.ca.shared.global [shared_value], [global_value], 3;
+  cp.async.ca.shared.global [shared_value], [global_value], 32;
+}
+)ptx"));
+  ASSERT_TRUE(invalid_sizes.has_value())
+      << invalid_sizes.error().front().message;
+  for (const auto& instruction : invalid_sizes->functions.front().body) {
+    const auto checked = checker::check(std::get<Cp>(instruction), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_TRUE(std::ranges::any_of(
+        checked.error(), [](const checker::CheckDiagnostic& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ImmediateValueMismatch;
+        }));
+  }
+
+  const auto register_size = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { .reg .u32 %r0; cp.async.ca.shared.global [shared_value], [global_value], %r0; }
+)ptx"));
+  ASSERT_FALSE(register_size.has_value());
+  const auto non_integer_size = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { cp.async.ca.shared.global [shared_value], [global_value], 4.0; }
+)ptx"));
+  ASSERT_FALSE(non_integer_size.has_value());
+  const auto wrong_modifier = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { cp.async.cg.shared.global [shared_value], [global_value], 4; }
+)ptx"));
+  ASSERT_FALSE(wrong_modifier.has_value());
+  const auto missing_size = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.shared .u32 shared_value;
+.entry kernel() { cp.async.ca.shared.global [shared_value], [global_value]; }
+)ptx"));
+  ASSERT_FALSE(missing_size.has_value());
+}
+
+TEST(ResolvedModule, ChecksCpAsyncDynamicAddressAlignment) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.global .align 16 .b8 global_copy_src[32];
+.shared .align 16 .b8 shared_copy_dst[32];
+.entry kernel() {
+  cp.async.ca.shared.global [shared_copy_dst+4], [global_copy_src+12], 4;
+  cp.async.ca.shared.global [shared_copy_dst+8], [global_copy_src+8], 8;
+  cp.async.ca.shared.global [shared_copy_dst+16], [global_copy_src+16], 16;
+  cp.async.ca.shared.global [shared_copy_dst+2], [global_copy_src+4], 4;
+  cp.async.ca.shared.global [shared_copy_dst+4], [global_copy_src+8], 8;
+  cp.async.ca.shared.global [shared_copy_dst+16], [global_copy_src+4], 16;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+  };
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  for (size_t index = 0; index < 3; ++index)
+    EXPECT_TRUE(checker::check(std::get<Cp>(body[index]), context).has_value());
+  for (size_t index = 3; index < body.size(); ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncCommitGroupSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { cp.async.commit_group; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Cp>(resolved->functions.front().body.front());
+  const auto& commit = std::get<Cp::AsyncCommitGroup>(instruction.variant);
+  EXPECT_TRUE(commit.async);
+  EXPECT_TRUE(commit.commit_group);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto missing_async = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.commit_group; }
+)ptx"));
+  ASSERT_FALSE(missing_async.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.commit_group 0; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+  const auto wrong_wait_token = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group; }
+)ptx"));
+  ASSERT_FALSE(wrong_wait_token.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitGroupSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  cp.async.wait_group 0;
+  cp.async.wait_group 1;
+  cp.async.wait_group 4294967295;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& zero =
+      std::get<Cp::AsyncWaitGroup>(std::get<Cp>(body[0]).variant);
+  const auto& large =
+      std::get<Cp::AsyncWaitGroup>(std::get<Cp>(body[2]).variant);
+  EXPECT_TRUE(zero.async);
+  EXPECT_TRUE(zero.wait_group);
+  EXPECT_EQ(zero.n.value.type, ScalarType::U32);
+  EXPECT_EQ(zero.n.value.bits, 0u);
+  EXPECT_EQ(large.n.value.bits, 4294967295u);
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Cp>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto register_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %r0; cp.async.wait_group %r0; }
+)ptx"));
+  ASSERT_FALSE(register_operand.has_value());
+  const auto float_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group 1.0; }
+)ptx"));
+  ASSERT_FALSE(float_operand.has_value());
+  const auto negative_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group -1; }
+)ptx"));
+  ASSERT_TRUE(negative_operand.has_value())
+      << negative_operand.error().front().message;
+  const auto negative_checked = checker::check(
+      std::get<Cp>(negative_operand->functions.front().body.front()), context);
+  ASSERT_FALSE(negative_checked.has_value());
+  EXPECT_EQ(negative_checked.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  const auto missing_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group; }
+)ptx"));
+  ASSERT_FALSE(missing_operand.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group 0, 1; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+  const auto missing_async = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.wait_group 0; }
+)ptx"));
+  ASSERT_FALSE(missing_async.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitAllSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { cp.async.wait_all; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Cp>(resolved->functions.front().body.front());
+  const auto& wait_all = std::get<Cp::AsyncWaitAll>(instruction.variant);
+  EXPECT_TRUE(wait_all.async);
+  EXPECT_TRUE(wait_all.wait_all);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto missing_async = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.wait_all; }
+)ptx"));
+  ASSERT_FALSE(missing_async.has_value());
+  const auto immediate_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_all 0; }
+)ptx"));
+  ASSERT_FALSE(immediate_operand.has_value());
+  const auto register_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %r0; cp.async.wait_all %r0; }
+)ptx"));
+  ASSERT_FALSE(register_operand.has_value());
+  const auto wrong_token = resolveModule(parseModule(R"ptx(
+.entry kernel() { cp.async.wait_group; }
+)ptx"));
+  ASSERT_FALSE(wrong_token.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 16 .b16 shared_value[16];
+.entry kernel() {
+  .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Ldmatrix>(resolved->functions.front().body.front());
+  const auto& matrix = std::get<Ldmatrix::SyncAlignedM8n8X2SharedB16>(
+      instruction.variant);
+  EXPECT_TRUE(matrix.sync);
+  EXPECT_TRUE(matrix.aligned);
+  EXPECT_TRUE(matrix.m8n8);
+  EXPECT_TRUE(matrix.x2);
+  EXPECT_TRUE(matrix.shared);
+  EXPECT_EQ(matrix.type, ScalarType::B16);
+  ASSERT_EQ(matrix.dst.value.elements.size(), 2u);
+  EXPECT_EQ(matrix.dst.value.elements[0]->declared_type, ScalarType::B32);
+  EXPECT_EQ(matrix.dst.value.elements[1]->declared_type, ScalarType::B32);
+  const checker::Context context{
+      .target = {.ptx_version = {6, 5}, .sm_version = 75},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 75},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_address = resolveModule(parseModule(R"ptx(
+.global .b16 global_value;
+.entry kernel() { .reg .b32 %r<2>; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [global_value]; }
+)ptx"));
+  ASSERT_TRUE(wrong_address.has_value())
+      << wrong_address.error().front().message;
+  const auto address_check = checker::check(
+      std::get<Ldmatrix>(wrong_address->functions.front().body.front()), context);
+  ASSERT_FALSE(address_check.has_value());
+  EXPECT_EQ(address_check.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto unaligned_address = resolveModule(parseModule(R"ptx(
+.shared .align 16 .b16 shared_value[16];
+.entry kernel() {
+  .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value+16];
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value+8];
+}
+)ptx"));
+  ASSERT_TRUE(unaligned_address.has_value())
+      << unaligned_address.error().front().message;
+  const auto& alignment_body = unaligned_address->functions.front().body;
+  EXPECT_TRUE(checker::check(std::get<Ldmatrix>(alignment_body[0]), context)
+                  .has_value());
+  const auto unaligned_check =
+      checker::check(std::get<Ldmatrix>(alignment_body[1]), context);
+  ASSERT_FALSE(unaligned_check.has_value());
+  EXPECT_EQ(unaligned_check.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const auto wrong_register = resolveModule(parseModule(R"ptx(
+.shared .b16 shared_value;
+.entry kernel() { .reg .b16 %r<2>; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value]; }
+)ptx"));
+  ASSERT_FALSE(wrong_register.has_value());
+
+  for (const auto source : {
+           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1, %r2}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
+       }) {
+    ASSERT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
+  }
+}
+
+TEST(ResolvedModule, ResolvesAndChecksMmaSyncAlignedM16n8k8RowColSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .f32 %d<4>;
+  .reg .f32 %c<4>;
+  .reg .f16x2 %a<2>;
+  .reg .f16x2 %b<1>;
+  mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
+    {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Mma>(resolved->functions.front().body.front());
+  const auto& mma =
+      std::get<Mma::SyncAlignedM16n8k8RowColF32F16F16F32>(instruction.variant);
+  EXPECT_TRUE(mma.sync);
+  EXPECT_TRUE(mma.aligned);
+  EXPECT_TRUE(mma.m16n8k8);
+  EXPECT_TRUE(mma.row);
+  EXPECT_TRUE(mma.col);
+  EXPECT_EQ(mma.d_type, ScalarType::F32);
+  EXPECT_EQ(mma.a_type, ScalarType::F16);
+  EXPECT_EQ(mma.b_type, ScalarType::F16);
+  EXPECT_EQ(mma.c_type, ScalarType::F32);
+  ASSERT_EQ(mma.dst.value.elements.size(), 4u);
+  ASSERT_EQ(mma.a.value.elements.size(), 2u);
+  ASSERT_EQ(mma.b.value.elements.size(), 1u);
+  ASSERT_EQ(mma.c.value.elements.size(), 4u);
+  EXPECT_EQ(mma.dst.value.elements[0]->declared_type, ScalarType::F32);
+  EXPECT_EQ(mma.a.value.elements[0]->declared_type, ScalarType::F16x2);
+  EXPECT_EQ(mma.b.value.elements[0]->declared_type, ScalarType::F16x2);
+  EXPECT_EQ(mma.c.value.elements[0]->declared_type, ScalarType::F32);
+
+  const checker::Context context{
+      .target = {.ptx_version = {6, 5}, .sm_version = 75},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 75},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .f32 %d<3>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b0; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, %b0, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<3>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+       }) {
+    ASSERT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
+  }
+}
+
+TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { membar.cta; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Membar>(resolved->functions.front().body.front());
+  const auto& membar = std::get<Membar::Cta>(instruction.variant);
+  EXPECT_EQ(membar.scope, MemoryScope::Cta);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {1, 4}, .sm_version = 0},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 3}, .sm_version = 0},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old.has_value());
+  EXPECT_EQ(too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto wrong_gl = resolveModule(parseModule(R"ptx(
+.entry kernel() { membar.gl; }
+)ptx"));
+  ASSERT_FALSE(wrong_gl.has_value());
+  const auto wrong_sys = resolveModule(parseModule(R"ptx(
+.entry kernel() { membar.sys; }
+)ptx"));
+  ASSERT_FALSE(wrong_sys.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { membar.cta 0; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { fence.acq_rel.cta; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Fence>(resolved->functions.front().body.front());
+  const auto& fence = std::get<Fence::AcqRelCta>(instruction.variant);
+  EXPECT_EQ(fence.semantics, MemoryConsistency::AcqRel);
+  EXPECT_EQ(fence.scope, MemoryScope::Cta);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_semantics = resolveModule(parseModule(R"ptx(
+.entry kernel() { fence.acquire.cta; }
+)ptx"));
+  ASSERT_FALSE(wrong_semantics.has_value());
+  const auto wrong_scope = resolveModule(parseModule(R"ptx(
+.entry kernel() { fence.acq_rel.sys; }
+)ptx"));
+  ASSERT_FALSE(wrong_scope.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { fence.acq_rel.cta 0; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value], %r1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction = std::get<Atom>(resolved->functions.front().body.front());
+  const auto& atom =
+      std::get<Atom::GlobalRelaxedCtaAddU32>(instruction.variant);
+  EXPECT_EQ(atom.state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(atom.semantics, MemoryConsistency::Relaxed);
+  EXPECT_EQ(atom.scope, MemoryScope::Cta);
+  EXPECT_TRUE(atom.add);
+  EXPECT_EQ(atom.type, ScalarType::U32);
+  EXPECT_EQ(atom.dst.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(atom.src.value.declared_type, ScalarType::U32);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  .reg .u32 %r<2>;
+  atom.global.relaxed.cta.add.u32 %r0, [local_value], %r1;
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_address = checker::check(
+      std::get<Atom>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 70}});
+  ASSERT_FALSE(wrong_address.has_value());
+  EXPECT_EQ(wrong_address.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto mismatched_registers = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u64 %wide<2>;
+  .reg .u16 %h<2>;
+  .reg .u32 %r0;
+  atom.global.relaxed.cta.add.u32 %wide0, [global_value], %r0;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value], %wide1;
+  atom.global.relaxed.cta.add.u32 %h0, [global_value], %r0;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value], %h1;
+}
+)ptx"));
+  ASSERT_TRUE(mismatched_registers.has_value())
+      << mismatched_registers.error().front().message;
+  for (const auto& candidate : mismatched_registers->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Atom>(candidate),
+        checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 70}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto wrong_operation = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  atom.global.relaxed.cta.and.u32 %r0, [global_value], %r1;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_operation.has_value());
+  const auto wrong_ordering = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  atom.global.acquire.cta.add.u32 %r0, [global_value], %r1;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_ordering.has_value());
+  const auto missing_operand = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value];
+}
+)ptx"));
+  ASSERT_FALSE(missing_operand.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  red.global.relaxed.cta.add.u32 [global_value], %r0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction = std::get<Red>(resolved->functions.front().body.front());
+  const auto& red = std::get<Red::GlobalRelaxedCtaAddU32>(instruction.variant);
+  EXPECT_EQ(red.state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(red.semantics, MemoryConsistency::Relaxed);
+  EXPECT_EQ(red.scope, MemoryScope::Cta);
+  EXPECT_TRUE(red.add);
+  EXPECT_EQ(red.type, ScalarType::U32);
+  EXPECT_EQ(red.src.value.declared_type, ScalarType::U32);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  .reg .u32 %r0;
+  red.global.relaxed.cta.add.u32 [local_value], %r0;
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_address = checker::check(
+      std::get<Red>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 70}});
+  ASSERT_FALSE(wrong_address.has_value());
+  EXPECT_EQ(wrong_address.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto mismatched_sources = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u16 %h0;
+  .reg .u64 %wide0;
+  red.global.relaxed.cta.add.u32 [global_value], %h0;
+  red.global.relaxed.cta.add.u32 [global_value], %wide0;
+}
+)ptx"));
+  ASSERT_TRUE(mismatched_sources.has_value())
+      << mismatched_sources.error().front().message;
+  for (const auto& candidate : mismatched_sources->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Red>(candidate),
+        checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 70}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto wrong_operation = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  red.global.relaxed.cta.and.u32 [global_value], %r0;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_operation.has_value());
+  const auto wrong_ordering = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  red.global.acquire.cta.add.u32 [global_value], %r0;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_ordering.has_value());
+  const auto unexpected_dst = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  red.global.relaxed.cta.add.u32 %r0, [global_value], %r1;
+}
+)ptx"));
+  ASSERT_FALSE(unexpected_dst.has_value());
+  const auto missing_source = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() { red.global.relaxed.cta.add.u32 [global_value]; }
+)ptx"));
+  ASSERT_FALSE(missing_source.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksActivemaskB32Slice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  activemask.b32 %b0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Activemask>(resolved->functions.front().body.front());
+  const auto& activemask = std::get<Activemask::B32>(instruction.variant);
+  EXPECT_EQ(activemask.type, ScalarType::B32);
+  EXPECT_EQ(activemask.dst.value.declared_type, ScalarType::B32);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 2}, .sm_version = 30},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 1}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 2}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto mismatched_dsts = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u0;
+  .reg .b64 %wide0;
+  activemask.b32 %u0;
+  activemask.b32 %wide0;
+}
+)ptx"));
+  ASSERT_TRUE(mismatched_dsts.has_value())
+      << mismatched_dsts.error().front().message;
+  for (const auto& candidate : mismatched_dsts->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Activemask>(candidate),
+        checker::Context{.target = {.ptx_version = {6, 2}, .sm_version = 30}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; activemask.u32 %b0; }
+)ptx"));
+  ASSERT_FALSE(wrong_type.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b<2>; activemask.b32 %b0, %b1; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  .reg .u32 %mask;
+  vote.sync.ballot.b32 %b0, %p0, 0xffffffff;
+  vote.sync.ballot.b32 %b1, %p0, %mask;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& immediate =
+      std::get<Vote::SyncBallotB32>(std::get<Vote>(body[0]).variant);
+  const auto& register_mask =
+      std::get<Vote::SyncBallotB32>(std::get<Vote>(body[1]).variant);
+  EXPECT_TRUE(immediate.sync);
+  EXPECT_TRUE(immediate.ballot);
+  EXPECT_EQ(immediate.type, ScalarType::B32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.membermask.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(register_mask.membermask.value));
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Vote>(body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Vote>(body[1]), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Vote>(body[0]),
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Vote>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto bad_dst_and_mask = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u0;
+  .reg .b64 %wide0;
+  .reg .pred %p0;
+  .reg .b64 %bad_mask;
+  vote.sync.ballot.b32 %u0, %p0, 0;
+  vote.sync.ballot.b32 %wide0, %p0, 0;
+  vote.sync.ballot.b32 %u0, %p0, %bad_mask;
+}
+)ptx"));
+  ASSERT_TRUE(bad_dst_and_mask.has_value())
+      << bad_dst_and_mask.error().front().message;
+  for (const auto& candidate : bad_dst_and_mask->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Vote>(candidate), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto bad_predicate = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  .reg .u32 %r0;
+  vote.sync.ballot.b32 %b0, %r0, 0;
+}
+)ptx"));
+  ASSERT_FALSE(bad_predicate.has_value());
+  const auto wrong_all = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.sync.all.pred %b0, %p0, 0; }
+)ptx"));
+  ASSERT_FALSE(wrong_all.has_value());
+  const auto wrong_any = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.sync.any.pred %b0, %p0, 0; }
+)ptx"));
+  ASSERT_FALSE(wrong_any.has_value());
+  const auto legacy = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.ballot.b32 %b0, %p0; }
+)ptx"));
+  ASSERT_FALSE(legacy.has_value());
+  const auto missing_mask = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.sync.ballot.b32 %b0, %p0; }
+)ptx"));
+  ASSERT_FALSE(missing_mask.has_value());
+}
+
+TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<3>;
+  .reg .pred %p<2>;
+  .reg .u32 %u<4>;
+  shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;
+  shfl.sync.idx.b32 %b1|%p1, %b2, %u0, %u1, %u2;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& immediate =
+      std::get<Shfl::SyncIdxB32>(std::get<Shfl>(body[0]).variant);
+  const auto& register_operands =
+      std::get<Shfl::SyncIdxB32>(std::get<Shfl>(body[1]).variant);
+  EXPECT_TRUE(immediate.sync);
+  EXPECT_TRUE(immediate.idx);
+  EXPECT_EQ(immediate.type, ScalarType::B32);
+  EXPECT_EQ(immediate.dst.value.data.declared_type, ScalarType::B32);
+  EXPECT_EQ(immediate.dst.value.predicate.register_ref.declared_type,
+            ScalarType::Pred);
+  EXPECT_FALSE(immediate.dst.locs.empty());
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.lane.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(register_operands.lane.value));
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Shfl>(body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Shfl>(body[1]), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Shfl>(body[0]),
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Shfl>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto bad_data_and_lane = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  .reg .b64 %wide0;
+  shfl.sync.idx.b32 %b0|%p0, %wide0, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_TRUE(bad_data_and_lane.has_value())
+      << bad_data_and_lane.error().front().message;
+  const auto bad_check = checker::check(
+      std::get<Shfl>(bad_data_and_lane->functions.front().body.front()), context);
+  ASSERT_FALSE(bad_check.has_value());
+  EXPECT_EQ(bad_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto bad_pair = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  .reg .u32 %u0;
+  shfl.sync.idx.b32 %b0|%u0, %b0, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_FALSE(bad_pair.has_value());
+  const auto wrong_mode = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  shfl.sync.up.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_mode.has_value());
+  const auto legacy = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  shfl.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;
+}
+)ptx"));
+  ASSERT_FALSE(legacy.has_value());
+  const auto missing_membermask = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31;
+}
+)ptx"));
+  ASSERT_FALSE(missing_membermask.has_value());
 }
 
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {

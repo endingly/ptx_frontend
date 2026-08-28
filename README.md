@@ -41,6 +41,10 @@ The frontend currently provides:
   remain exact-width;
 - explicit PTX ISA version, SM version, and target-family availability checks
   for modelled variants, modifiers, layouts, and operands.
+- a partial M10 frozen subset for cache-hint/eviction, `ldu`/`prefetch`, memory
+  ordering and scalar atomics/reductions, warp collectives, `cp.async`,
+  `ldmatrix`, and one `mma` form; these forms are resolved and checked only,
+  and remain unsupported by the simulator.
 - direct `call` and metadata-backed indirect `call` forms, including:
   `call function;`, `call function, (arguments);`, and
   `call (return), function, (arguments);`. Module resolution uses the canonical
@@ -118,7 +122,8 @@ PYTHONPATH=python python3 -m unittest discover \
   -s python/tests -t python -p 'test_*.py' -v
 ```
 
-The `ci-linux-gcc-release` preset provides the equivalent Release workflow.
+The `ci-linux-gcc-release` preset provides an equivalent local Release
+workflow; running it does not mean GitHub Actions was triggered.
 
 ## Use after installing
 
@@ -230,11 +235,11 @@ python/       normalization models, C++ generators, and Python tests
 cmake/        shared CMake helpers
 docs/us-en/   English design and coverage documentation
 docs/zh-han/  Simplified Chinese design and coverage documentation
-.agents/project_roadmap.md  authoritative roadmap and implementation priority
+.agents/project_roadmap.v2.md  authoritative roadmap and implementation priority
 docs/deprecated/next_step.md frozen historical implementation log
 ```
 
-The [project roadmap](.agents/project_roadmap.md) is the single source for
+The [project roadmap](.agents/project_roadmap.v2.md) is the single source for
 implementation status and priority. The
 [deprecated next-step log](docs/deprecated/next_step.md) is historical only.
 

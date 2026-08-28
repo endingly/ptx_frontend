@@ -348,6 +348,26 @@ std::expected<WithLocs<CacheOperator>, ResolveDiagnostic> resolve_cache_operator
   return WithLocs<CacheOperator>{*cache_operator, modifier.syntax.range};
 }
 
+std::optional<EvictionPriority> eviction_priority_from_ptx_name(
+    std::string_view spelling) {
+  if (spelling.starts_with(".L1::"))
+    spelling.remove_prefix(std::string_view{".L1::"}.size());
+  return lookup_ptx_suffix(generated_detail::kEvictionPriorities, spelling);
+}
+
+std::expected<WithLocs<EvictionPriority>, ResolveDiagnostic>
+resolve_eviction_priority(const syntax_ast::AstModifier& modifier) {
+  const auto value = eviction_priority_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown eviction priority '{}'.",
+                               modifier.syntax.text),
+    });
+  }
+  return WithLocs<EvictionPriority>{*value, modifier.syntax.range};
+}
+
 std::optional<MemoryConsistency> memory_consistency_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kMemoryConsistencies, spelling);
@@ -655,6 +675,28 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
       .range = syntax_ast::sourceRange(operand),
       .message = "Expected a predicate operand.",
   });
+}
+
+std::expected<WithLocs<ResolvedShflSyncDestination>, ResolveDiagnostic>
+resolve_shfl_destination(const syntax_ast::AstOperand& operand,
+                         const ResolveContext* context) {
+  const auto* pair =
+      std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
+  if (pair == nullptr) {
+    return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                                               .message = "Expected d|p destination."});
+  }
+  auto data = resolve_register(syntax_ast::AstOperand{pair->dst}, context);
+  if (!data)
+    return std::unexpected(data.error());
+  auto predicate = resolve_predicate_identifier(
+      pair->predicate, false, pair->predicate.syntax.range, context);
+  if (!predicate)
+    return std::unexpected(predicate.error());
+  return WithLocs<ResolvedShflSyncDestination>{
+      ResolvedShflSyncDestination{.data = std::move(data->value),
+                                  .predicate = std::move(predicate->value)},
+      pair->range};
 }
 
 std::expected<WithLocs<ResolvedBranchTarget>, ResolveDiagnostic>
@@ -1251,7 +1293,6 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
             "Integer literal '{}' is incompatible with scalar type '{}'.",
             immediate.syntax.text, to_string(type))));
   }
-
   const uint8_t byte_size = scalar_size_of(type);
   if (byte_size == 0 || byte_size > sizeof(uint64_t)) {
     return std::unexpected(invalid_immediate(
@@ -1285,7 +1326,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
 
   const uint64_t bits =
       negative ? (uint64_t{0} - *magnitude) & bit_mask : *magnitude;
-  return ResolvedImmediate{.bits = bits, .type = type};
+  return ResolvedImmediate{.bits = bits, .type = type, .is_negative = negative};
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
@@ -1742,10 +1783,11 @@ struct ModifierBindingAttempt {
  * Bind source modifier spellings to the slots of one candidate variant.
  *
  * Slot IDs are variant-local. The same spelling may therefore denote `type`
- * in one variant and `result_type` in another. Within one variant, however,
- * every spelling must have exactly one active owner and source spellings must
- * follow slot order, with optional slots permitted to be omitted. The Python
- * database validator enforces the unique-owner invariant.
+ * in one variant and `result_type` in another, or occupy multiple ordered
+ * required/fixed slots in the same variant. The database rejects repeated
+ * spellings involving optional slots, so source modifiers greedily consume
+ * descriptors in order; optional and absent slots may be skipped, but required
+ * slots may not.
  */
 ModifierBindingAttempt bind_variant_modifiers(
     const syntax_ast::AstInstruction& ast,
@@ -1760,51 +1802,37 @@ ModifierBindingAttempt bind_variant_modifiers(
   }
 
   ActualModifierTable result;
-  std::optional<size_t> previous_owner_index;
-  for (const auto& actual : ast.modifiers) {
-    const SyntaxModifierDescriptor* owner = nullptr;
-    size_t owner_index = 0;
-    for (size_t index = 0; index < variant.modifiers.size(); ++index) {
-      const auto& descriptor = variant.modifiers[index];
-      if (descriptor.presence == check_end::PresenceRequirement::Absent ||
-          !std::ranges::contains(descriptor.allowed_values,
-                                 actual.syntax.text)) {
-        continue;
-      }
-      if (owner != nullptr) {
-        throw ResolveException(fmt::format(
-            "Variant '{}' maps modifier spelling '{}' to both '{}' and '{}'.",
-            variant.variant_name, actual.syntax.text, owner->kind_id,
-            descriptor.kind_id));
-      }
-      owner = &descriptor;
-      owner_index = index;
+  size_t actual_index = 0;
+  for (const auto& descriptor : variant.modifiers) {
+    if (descriptor.presence == check_end::PresenceRequirement::Absent)
+      continue;
+    if (actual_index < ast.modifiers.size() &&
+        std::ranges::contains(descriptor.allowed_values,
+                              ast.modifiers[actual_index].syntax.text)) {
+      result.emplace(std::string(descriptor.kind_id),
+                     &ast.modifiers[actual_index++]);
+      continue;
     }
-
-    if (owner == nullptr)
+    if (descriptor.presence == check_end::PresenceRequirement::Required)
       return {};
+  }
 
-    if (result.contains(std::string(owner->kind_id))) {
+  if (actual_index == ast.modifiers.size())
+    return ModifierBindingAttempt{.modifiers = std::move(result)};
+
+  const auto& extra = ast.modifiers[actual_index];
+  for (auto descriptor = variant.modifiers.rbegin();
+       descriptor != variant.modifiers.rend(); ++descriptor) {
+    if (descriptor->presence != check_end::PresenceRequirement::Absent &&
+        result.contains(std::string(descriptor->kind_id)) &&
+        std::ranges::contains(descriptor->allowed_values, extra.syntax.text)) {
       return ModifierBindingAttempt{
-          .duplicate = &actual,
-          .duplicate_slot = owner->kind_id,
+          .duplicate = &extra,
+          .duplicate_slot = descriptor->kind_id,
       };
     }
-    if (previous_owner_index && owner_index < *previous_owner_index)
-      return {};
-
-    result.emplace(std::string(owner->kind_id), &actual);
-    previous_owner_index = owner_index;
   }
-
-  for (const auto& descriptor : variant.modifiers) {
-    if (descriptor.presence == check_end::PresenceRequirement::Required &&
-        !result.contains(std::string(descriptor.kind_id))) {
-      return {};
-    }
-  }
-
-  return ModifierBindingAttempt{.modifiers = std::move(result)};
+  return {};
 }
 
 bool is_known_modifier_spelling(const SyntaxInstructionDescriptor& instruction,
@@ -1975,6 +2003,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::ShflDestination: {
+      auto value = resolve_shfl_destination(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::MovSource: {
       const auto type =
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
@@ -2066,6 +2100,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::ComparisonOperator:
     case ResolvedValueKind::BooleanOperator:
     case ResolvedValueKind::CacheOperator:
+    case ResolvedValueKind::EvictionPriority:
     case ResolvedValueKind::MemoryConsistency:
     case ResolvedValueKind::MemoryScope:
     case ResolvedValueKind::VectorArity:
@@ -2129,6 +2164,11 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{WithLocs<CacheOperator>{
           default_value.cache_operator}};
+    case ResolvedValueKind::EvictionPriority:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' cannot use an eviction-priority default "
+          "for resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
     case ResolvedValueKind::MemoryConsistency:
       if (default_value.kind != ResolvedModifierDefaultKind::MemoryConsistency) {
         throw ResolveException(fmt::format(
@@ -2159,6 +2199,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
+    case ResolvedValueKind::ShflDestination:
     case ResolvedValueKind::MovSource:
     case ResolvedValueKind::BranchTarget:
     case ResolvedValueKind::BranchTargetSet:
@@ -2408,6 +2449,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));
       } break;
+      case ResolvedValueKind::EvictionPriority: {
+        auto value = resolve_eviction_priority(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
       case ResolvedValueKind::MemoryConsistency: {
         auto value = resolve_memory_consistency(*actual->second);
         if (!value)
@@ -2436,6 +2483,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
+      case ResolvedValueKind::ShflDestination:
       case ResolvedValueKind::MovSource:
       case ResolvedValueKind::BranchTarget:
       case ResolvedValueKind::BranchTargetSet:
@@ -2513,6 +2561,9 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
         } else if constexpr (std::same_as<Item,
                                           syntax_ast::AstBranchTargetSet>) {
           return check_end::OperandSyntaxShape::BranchTargetSet;
+        } else if constexpr (std::same_as<Item,
+                                          syntax_ast::AstRegisterPredicatePair>) {
+          return check_end::OperandSyntaxShape::ShflDestination;
         } else {
           return check_end::OperandSyntaxShape::BranchTarget;
         }

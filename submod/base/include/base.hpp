@@ -44,6 +44,7 @@ enum class ScalarKind { Invalid, Bit, Unsigned, Signed, Float, Pred };
 
 /** Width relation accepted when checking a register against an instruction. */
 enum class ScalarTypeSizePolicy : uint8_t {
+  Exact,
   SameWidth,
   EqualOrWider,
 };
@@ -84,6 +85,13 @@ enum class CacheOperator : uint8_t {
   Wt,
 };
 
+/** Semantic value of the accepted PTX L1 eviction-priority modifiers. */
+enum class EvictionPriority : uint8_t {
+  Invalid = 0,
+  EvictFirst,
+  EvictLast,
+};
+
 /** Source-level memory-consistency qualifier for ld/st.  Omitted is kept
  * distinct from explicit .weak so target availability and source provenance
  * remain observable in Resolved IR. */
@@ -94,6 +102,7 @@ enum class MemoryConsistency : uint8_t {
   Relaxed,
   Acquire,
   Release,
+  AcqRel,
 };
 
 /** Scope carried by memory-consistency operations; None represents omission. */

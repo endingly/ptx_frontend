@@ -8,7 +8,7 @@
 # Expected usage:
 #
 #   instructions/
-#     integer_arith.yaml
+#     arithmetic.yaml
 #
 #   schemas/
 #     ptx-instr-v1.schema.yaml
@@ -40,18 +40,18 @@ properties:
     description: "PTX ISA version targeted by this instruction spec file."
     $ref: "#/$defs/ptx_version"
     examples:
-      - "9.2"
+      - "9.3"
 
   category:
     description: "Instruction category represented by this spec file."
     $ref: "#/$defs/schema_identifier"
     examples:
-      - integer_arithmetic
-      - floating_point
-      - data_movement
+      - arithmetic
+      - comparison_and_selection
+      - data_movement_and_conversion
       - control_flow
-      - synchronization
-      - matrix
+      - parallel_synchronization_and_communication
+      - warp_level_matrix_multiply_accumulate
 
   codegen_category:
     description: >
@@ -636,6 +636,7 @@ $defs:
       - symbol
       - func
       - reg_or_imm
+      - shfl_dest
       - mov_scalar_src
       - reg_vector
       - direct_call_target
@@ -738,6 +739,7 @@ $defs:
           resolved instruction type. The default requires equal width.
         type: string
         enum:
+          - exact
           - same_width
           - equal_or_wider
         default: same_width
@@ -1013,11 +1015,16 @@ $defs:
           - memory_consistency
           - address_alignment
           - memory_vector
+          - immediate_value
+          - immediate_range
 
       operands:
         type: array
         items:
           $ref: "#/$defs/schema_identifier"
+
+      operand:
+        $ref: "#/$defs/schema_identifier"
 
       modifier:
         $ref: "#/$defs/schema_identifier"
@@ -1050,6 +1057,12 @@ $defs:
       address_operand:
         $ref: "#/$defs/schema_identifier"
 
+      address_operands:
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/schema_identifier"
+
       state_space_modifier:
         $ref: "#/$defs/schema_identifier"
 
@@ -1062,8 +1075,30 @@ $defs:
       vector_operand:
         $ref: "#/$defs/schema_identifier"
 
+      immediate_operand:
+        $ref: "#/$defs/schema_identifier"
+
+      alignment:
+        type: integer
+        minimum: 1
+
+      minimum:
+        type: integer
+        minimum: 0
+
+      maximum:
+        type: integer
+        minimum: 0
+
       availability:
         $ref: "#/$defs/availability"
+
+      values:
+        type: array
+        minItems: 1
+        items:
+          type: integer
+          minimum: 0
   example:
     description: "Positive or negative PTX example for an instruction or variant."
     type: object

@@ -26,6 +26,8 @@ if(BUILD_TESTING)
     include(CTest)
     enable_testing()
     include(GoogleTest)
+
+    include(python_test)
 endif()
 
 add_subdirectory(submod)

@@ -348,6 +348,24 @@ std::expected<WithLocs<CacheOperator>, ResolveDiagnostic> resolve_cache_operator
   return WithLocs<CacheOperator>{*cache_operator, modifier.syntax.range};
 }
 
+std::optional<EvictionPriority> eviction_priority_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kEvictionPriorities, spelling);
+}
+
+std::expected<WithLocs<EvictionPriority>, ResolveDiagnostic>
+resolve_eviction_priority(const syntax_ast::AstModifier& modifier) {
+  const auto value = eviction_priority_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown eviction priority '{}'.",
+                               modifier.syntax.text),
+    });
+  }
+  return WithLocs<EvictionPriority>{*value, modifier.syntax.range};
+}
+
 std::optional<MemoryConsistency> memory_consistency_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kMemoryConsistencies, spelling);
@@ -2066,6 +2084,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::ComparisonOperator:
     case ResolvedValueKind::BooleanOperator:
     case ResolvedValueKind::CacheOperator:
+    case ResolvedValueKind::EvictionPriority:
     case ResolvedValueKind::MemoryConsistency:
     case ResolvedValueKind::MemoryScope:
     case ResolvedValueKind::VectorArity:
@@ -2129,6 +2148,11 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{WithLocs<CacheOperator>{
           default_value.cache_operator}};
+    case ResolvedValueKind::EvictionPriority:
+      throw ResolveException(fmt::format(
+          "Optional modifier '{}' cannot use an eviction-priority default "
+          "for resolved field '{}'.",
+          binding.source_kind_id, field.field_id));
     case ResolvedValueKind::MemoryConsistency:
       if (default_value.kind != ResolvedModifierDefaultKind::MemoryConsistency) {
         throw ResolveException(fmt::format(
@@ -2404,6 +2428,12 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::CacheOperator: {
         auto value = resolve_cache_operator(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::EvictionPriority: {
+        auto value = resolve_eviction_priority(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));

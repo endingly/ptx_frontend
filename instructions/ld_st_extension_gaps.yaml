@@ -12,7 +12,7 @@ gaps:
     opcode: ld
     kind: cache_eviction
     forms: [".L1::evict_first", ".L1::evict_last"]
-    disposition: M10-I02
+    disposition: implemented
     reason: Accepted cache-hint/eviction slice.
     boundary: Scalar explicit-global ld only; excludes generic, vector, and ld.global.nc forms.
 
@@ -20,7 +20,7 @@ gaps:
     opcode: st
     kind: cache_eviction
     forms: [".L1::evict_first", ".L1::evict_last"]
-    disposition: M10-I02
+    disposition: implemented
     reason: Accepted cache-hint/eviction slice.
     boundary: Scalar explicit-global st only; excludes generic, vector, and st.async forms.
 
@@ -28,7 +28,7 @@ gaps:
     opcode: ld
     kind: cache_policy
     forms: ["ld.global.L2::cache_hint.type d, [a], cache_policy"]
-    disposition: M10-I02
+    disposition: implemented
     reason: Accepted cache-policy operand slice.
     boundary: Scalar explicit-global ld only; cache_policy is the required 64-bit operand.
 
@@ -36,7 +36,7 @@ gaps:
     opcode: st
     kind: cache_policy
     forms: ["st.global.L2::cache_hint.type [a], b, cache_policy"]
-    disposition: M10-I02
+    disposition: implemented
     reason: Accepted cache-policy operand slice.
     boundary: Scalar explicit-global st only; cache_policy is the required 64-bit operand.
 

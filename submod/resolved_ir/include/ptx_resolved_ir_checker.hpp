@@ -81,6 +81,7 @@ using base::RoundingMode;
 using base::ComparisonOperator;
 using base::BooleanOperator;
 using base::CacheOperator;
+using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
 namespace detail {
@@ -228,6 +229,7 @@ struct FieldView {
   std::string_view field_id;
   std::optional<bool> bool_value;
   std::optional<CacheOperator> cache_operator;
+  std::optional<EvictionPriority> eviction_priority;
   std::optional<ScalarType> scalar_type;
   std::optional<ComparisonOperator> comparison_operator;
   std::optional<BooleanOperator> boolean_operator;
@@ -301,6 +303,7 @@ enum class ModifierValueKind : uint8_t {
   ComparisonOperator,
   BooleanOperator,
   CacheOperator,
+  EvictionPriority,
   VectorArity,
   MemoryStateSpace,
   MemoryConsistency,
@@ -317,6 +320,7 @@ struct ModifierValueAvailabilityDescriptor {
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
+  EvictionPriority eviction_priority = EvictionPriority::Invalid;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
@@ -334,6 +338,7 @@ struct ModifierValueView {
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
+  EvictionPriority eviction_priority = EvictionPriority::Invalid;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;

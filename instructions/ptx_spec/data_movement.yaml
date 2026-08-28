@@ -158,6 +158,41 @@ operand_patterns:
           ptx: "2.0"
           sm: 20
 
+  ld_explicit_scalar_cache_policy:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  ld_explicit_scalar_global:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+
   ld_vector:
     - name: dst
       kind: reg_vector
@@ -282,6 +317,41 @@ operand_patterns:
         function_availability:
           ptx: "2.0"
           sm: 20
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+
+  st_explicit_scalar_cache_policy:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  st_explicit_scalar_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
     - name: src
       kind: reg
       role: src
@@ -718,6 +788,70 @@ instructions:
           - ptx: "ld.shared.u32 %r0, [shared_value];"
             valid: true
 
+      - name: ld_global_u32_l1_evict
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: eviction_priority
+            kind: eviction_priority
+            domain: eviction_priorities
+            presence: required
+            values:
+              - value: evict_first
+                token: .L1::evict_first
+              - value: evict_last
+                token: .L1::evict_last
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ld.global.L1::evict_first.u32 %r0, [global_value];"
+            valid: true
+          - ptx: "ld.global.L1::evict_last.u32 %r0, [global_value];"
+            valid: true
+
+      - name: ld_global_u32_l2_cache_hint
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: cache_hint
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L2::cache_hint
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_explicit_scalar_cache_policy
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ld.global.L2::cache_hint.u32 %r0, [global_value], %rd0;"
+            valid: true
+
       - name: ld_generic_vector
         availability:
           ptx: "2.0"
@@ -942,6 +1076,70 @@ instructions:
           - ptx: "st.global.u32 [global_value], %r0;"
             valid: true
           - ptx: "st.local.u32 [local_value], %r0;"
+            valid: true
+
+      - name: st_global_u32_l1_evict
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: eviction_priority
+            kind: eviction_priority
+            domain: eviction_priorities
+            presence: required
+            values:
+              - value: evict_first
+                token: .L1::evict_first
+              - value: evict_last
+                token: .L1::evict_last
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $st_explicit_scalar_global
+        rule: data_movement.st_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "st.global.L1::evict_first.u32 [global_value], %r0;"
+            valid: true
+          - ptx: "st.global.L1::evict_last.u32 [global_value], %r0;"
+            valid: true
+
+      - name: st_global_u32_l2_cache_hint
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: cache_hint
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L2::cache_hint
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $st_explicit_scalar_cache_policy
+        rule: data_movement.st_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "st.global.L2::cache_hint.u32 [global_value], %r0, %rd0;"
             valid: true
 
       - name: st_generic_vector

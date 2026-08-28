@@ -55,6 +55,7 @@ class ResolvedValueKind(Enum):
     COMPARISON_OPERATOR = "ComparisonOperator"
     BOOLEAN_OPERATOR = "BooleanOperator"
     CACHE_OPERATOR = "CacheOperator"
+    EVICTION_PRIORITY = "EvictionPriority"
     MEMORY_CONSISTENCY = "MemoryConsistency"
     MEMORY_SCOPE = "MemoryScope"
     VECTOR_ARITY = "VectorArity"

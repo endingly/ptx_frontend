@@ -84,6 +84,13 @@ enum class CacheOperator : uint8_t {
   Wt,
 };
 
+/** Semantic value of the accepted PTX L1 eviction-priority modifiers. */
+enum class EvictionPriority : uint8_t {
+  Invalid = 0,
+  EvictFirst,
+  EvictLast,
+};
+
 /** Source-level memory-consistency qualifier for ld/st.  Omitted is kept
  * distinct from explicit .weak so target availability and source provenance
  * remain observable in Resolved IR. */

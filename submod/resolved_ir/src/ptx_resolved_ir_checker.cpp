@@ -108,6 +108,8 @@ bool matches_modifier_value(
       return descriptor.boolean_operator == actual.boolean_operator;
     case ModifierValueKind::CacheOperator:
       return descriptor.cache_operator == actual.cache_operator;
+    case ModifierValueKind::EvictionPriority:
+      return descriptor.eviction_priority == actual.eviction_priority;
     case ModifierValueKind::VectorArity:
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:

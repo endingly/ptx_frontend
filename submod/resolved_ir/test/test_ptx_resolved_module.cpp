@@ -168,6 +168,108 @@ TEST(ResolvedModule, ResolvesBareAndPredicatedTrapInDeviceFunctionAndEntry) {
   EXPECT_FALSE(entry_trap.execution_predicate.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksM10CacheHintEvictionSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd<2>;
+  .reg .u32 %r<3>;
+  ld.global.L1::evict_first.u32 %r0, [%rd0];
+  ld.global.L1::evict_last.u32 %r1, [%rd0];
+  st.global.L1::evict_first.u32 [%rd0], %r0;
+  st.global.L1::evict_last.u32 [%rd0], %r1;
+  ld.global.L2::cache_hint.u32 %r2, [%rd0], %rd1;
+  st.global.L2::cache_hint.u32 [%rd0], %r2, %rd1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+
+  const auto& load_first =
+      std::get<Ld::GlobalU32L1Evict>(std::get<Ld>(body[0]).variant);
+  const auto& load_last =
+      std::get<Ld::GlobalU32L1Evict>(std::get<Ld>(body[1]).variant);
+  const auto& store_first =
+      std::get<St::GlobalU32L1Evict>(std::get<St>(body[2]).variant);
+  const auto& store_last =
+      std::get<St::GlobalU32L1Evict>(std::get<St>(body[3]).variant);
+  EXPECT_EQ(load_first.eviction_priority.value,
+            EvictionPriority::EvictFirst);
+  EXPECT_EQ(load_last.eviction_priority.value, EvictionPriority::EvictLast);
+  EXPECT_EQ(store_first.eviction_priority.value,
+            EvictionPriority::EvictFirst);
+  EXPECT_EQ(store_last.eviction_priority.value, EvictionPriority::EvictLast);
+
+  const auto& load_hint =
+      std::get<Ld::GlobalU32L2CacheHint>(std::get<Ld>(body[4]).variant);
+  const auto& store_hint =
+      std::get<St::GlobalU32L2CacheHint>(std::get<St>(body[5]).variant);
+  EXPECT_TRUE(load_hint.cache_hint);
+  EXPECT_TRUE(store_hint.cache_hint);
+  EXPECT_EQ(load_hint.cache_policy.value.declared_type, ScalarType::U64);
+  EXPECT_EQ(store_hint.cache_policy.value.declared_type, ScalarType::U64);
+
+  const checker::Context l1_target{
+      .target = {.ptx_version = {7, 4}, .sm_version = 70},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[0]), l1_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[1]), l1_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[2]), l1_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[3]), l1_target).has_value());
+  const checker::Context l2_target{
+      .target = {.ptx_version = {7, 4}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Ld>(body[4]), l2_target).has_value());
+  EXPECT_TRUE(checker::check(std::get<St>(body[5]), l2_target).has_value());
+
+  const auto l1_too_old = checker::check(
+      std::get<Ld>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(l1_too_old.has_value());
+  EXPECT_EQ(l1_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto l2_too_old = checker::check(
+      std::get<St>(body[5]),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(l2_too_old.has_value());
+  EXPECT_EQ(l2_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+}
+
+TEST(ResolvedModule, RejectsM10CacheHintPolicyWithoutU64Register) {
+  const auto wrong_policy_ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r0;
+  .reg .u32 %policy;
+  ld.global.L2::cache_hint.u32 %r0, [%rd0], %policy;
+}
+)ptx");
+  const auto wrong_policy = resolveModule(wrong_policy_ast);
+  ASSERT_TRUE(wrong_policy.has_value()) << wrong_policy.error().front().message;
+  const auto checked = checker::check(
+      std::get<Ld>(wrong_policy->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80},
+                       .instruction_range = wrong_policy_ast.range});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto missing_policy = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r0;
+  ld.global.L2::cache_hint.u32 %r0, [%rd0];
+}
+)ptx"));
+  ASSERT_FALSE(missing_policy.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

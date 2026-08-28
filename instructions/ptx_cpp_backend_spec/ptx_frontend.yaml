@@ -96,6 +96,14 @@ domains:
       wb: CacheOperator::Wb
       wt: CacheOperator::Wt
 
+  eviction_priorities:
+    cpp_type: EvictionPriority
+    default: EvictionPriority::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      evict_first: EvictionPriority::EvictFirst
+      evict_last: EvictionPriority::EvictLast
+
   memory_consistencies:
     cpp_type: MemoryConsistency
     default: MemoryConsistency::Omitted
@@ -165,6 +173,7 @@ domains:
       comparison: ComparisonOperator
       boolean_op: BooleanOperator
       cache: CacheOperator
+      eviction_priority: EvictionPriority
       semantics: MemoryConsistency
       scope: MemoryScope
       vector: VectorArity
@@ -200,6 +209,7 @@ domains:
       ComparisonOperator: ComparisonOperator
       BooleanOperator: BooleanOperator
       CacheOperator: CacheOperator
+      EvictionPriority: EvictionPriority
       MemoryConsistency: MemoryConsistency
       MemoryScope: MemoryScope
       VectorArity: VectorArity
@@ -269,6 +279,7 @@ domains:
       ComparisonOperator: check_end::ResolvedValueKind::ComparisonOperator
       BooleanOperator: check_end::ResolvedValueKind::BooleanOperator
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
+      EvictionPriority: check_end::ResolvedValueKind::EvictionPriority
       MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
       MemoryScope: check_end::ResolvedValueKind::MemoryScope
       VectorArity: check_end::ResolvedValueKind::VectorArity
@@ -352,6 +363,7 @@ domains:
       ComparisonOperator: checker::ModifierValueKind::ComparisonOperator
       BooleanOperator: checker::ModifierValueKind::BooleanOperator
       CacheOperator: checker::ModifierValueKind::CacheOperator
+      EvictionPriority: checker::ModifierValueKind::EvictionPriority
       MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
       MemoryScope: checker::ModifierValueKind::MemoryScope
       VectorArity: checker::ModifierValueKind::VectorArity

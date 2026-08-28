@@ -986,6 +986,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 "GenericScalar",
                 "ExplicitScalar",
+                "GlobalU32L1Evict",
+                "GlobalU32L2CacheHint",
                 "GenericVector",
                 "ExplicitVector",
             ],
@@ -1005,9 +1007,32 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         variant = instruction.variants[0]
         explicit_variant = instruction.variants[1]
-        vector_variant = instruction.variants[2]
-        explicit_vector_variant = instruction.variants[3]
+        l1_evict_variant = instruction.variants[2]
+        cache_hint_variant = instruction.variants[3]
+        vector_variant = instruction.variants[4]
+        explicit_vector_variant = instruction.variants[5]
         self.assertEqual(variant.cpp_name, "GenericScalar")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in l1_evict_variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("eviction_priority", "WithLocs<EvictionPriority>"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in cache_hint_variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("cache_hint", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("cache_policy", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
         expected_types = [
             "b8",
             "b16",
@@ -1024,7 +1049,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "f32",
             "f64",
         ]
-        for syntax_variant in ld.variants:
+        for syntax_variant in (
+            ld.variants[0], ld.variants[1], ld.variants[4], ld.variants[5]
+        ):
             self.assertEqual(
                 [value.value for value in syntax_variant.modifiers[-1].values],
                 expected_types,
@@ -1208,7 +1235,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
         self.assertEqual(vector_variant.address_alignment.vector_field_id, "vector")
         self.assertEqual(
-            [value.value for value in next(modifier for modifier in ld.variants[2].modifiers if modifier.name == "vector").values],
+            [value.value for value in next(modifier for modifier in ld.variants[4].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
         )
         vector_binding = vector_variant.operand_layouts[0].bindings[0]
@@ -1257,11 +1284,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 "GenericScalar",
                 "ExplicitScalar",
+                "GlobalU32L1Evict",
+                "GlobalU32L2CacheHint",
                 "GenericVector",
                 "ExplicitVector",
             ],
         )
-        for syntax_variant in st.variants:
+        for syntax_variant in (
+            st.variants[0], st.variants[1], st.variants[4], st.variants[5]
+        ):
             self.assertEqual(
                 [value.value for value in syntax_variant.modifiers[-1].values],
                 expected_types,
@@ -1347,14 +1378,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             dict(store_parameter.function_availability),
             {"ptx": "2.0", "sm": 20},
         )
-        store_vector = store.variants[2]
+        store_vector = store.variants[4]
         self.assertEqual(
             [field.name for field in store_vector.fields],
             ["semantics", "scope", "cache", "vector", "type", "address", "src"],
         )
         self.assertEqual(store_vector.memory_consistency.mmio_field_id, "")
         self.assertEqual(
-            [value.value for value in next(modifier for modifier in st.variants[2].modifiers if modifier.name == "vector").values],
+            [value.value for value in next(modifier for modifier in st.variants[4].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
         )
         store_vector_binding = store_vector.operand_layouts[0].bindings[1]
@@ -1370,7 +1401,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertTrue(store_vector_binding.allow_vector_sink)
         self.assertEqual(store_vector.memory_vector.vector_field_id, "src")
         store_vector_parameter = (
-            store.variants[3].operand_layouts[0].bindings[0].parameter_constraint
+            store.variants[5].operand_layouts[0].bindings[0].parameter_constraint
         )
         self.assertEqual(store_vector_parameter.direction, "return")
         self.assertEqual(
@@ -1392,10 +1423,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
             resolved = from_instruction_spec(spec)
             for variant in resolved.variants:
                 cache_binding = next(
-                    binding
-                    for binding in variant.modifier_bindings
-                    if binding.source_kind_id == "cache"
+                    (
+                        binding
+                        for binding in variant.modifier_bindings
+                        if binding.source_kind_id == "cache"
+                    ),
+                    None,
                 )
+                if cache_binding is None:
+                    continue
                 self.assertIsNotNone(cache_binding.default_value)
                 assert cache_binding.default_value is not None
                 self.assertEqual(

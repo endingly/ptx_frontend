@@ -29,6 +29,7 @@ using base::RoundingMode;
 using base::ComparisonOperator;
 using base::BooleanOperator;
 using base::CacheOperator;
+using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
 namespace check_end {
@@ -75,6 +76,7 @@ enum class ResolvedValueKind : uint8_t {
   ComparisonOperator,
   BooleanOperator,
   CacheOperator,
+  EvictionPriority,
   MemoryConsistency,
   MemoryScope,
   VectorArity,
@@ -389,7 +391,8 @@ using ResolvedFieldValue =
     std::variant<WithLocs<bool>, WithLocs<ScalarType>, WithLocs<RoundingMode>,
                  WithLocs<ComparisonOperator>,
                  WithLocs<BooleanOperator>,
-                 WithLocs<CacheOperator>, WithLocs<MemoryConsistency>,
+                 WithLocs<CacheOperator>, WithLocs<EvictionPriority>,
+                 WithLocs<MemoryConsistency>,
                  WithLocs<MemoryScope>, WithLocs<VectorArity>,
                  WithLocs<MemoryStateSpace>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,

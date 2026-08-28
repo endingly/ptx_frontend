@@ -12,10 +12,10 @@ SCHEMA = REPO_ROOT / "instructions/schemas/ld-st-extension-gaps-v1.schema.yaml"
 
 
 REQUIRED_GAPS = {
-    "ld-l1-evict-priority-m10-i02": ("ld", "cache_eviction", "M10-I02"),
-    "st-l1-evict-priority-m10-i02": ("st", "cache_eviction", "M10-I02"),
-    "ld-l2-cache-hint-policy-m10-i02": ("ld", "cache_policy", "M10-I02"),
-    "st-l2-cache-hint-policy-m10-i02": ("st", "cache_policy", "M10-I02"),
+    "ld-l1-evict-priority-m10-i02": ("ld", "cache_eviction", "implemented"),
+    "st-l1-evict-priority-m10-i02": ("st", "cache_eviction", "implemented"),
+    "ld-l2-cache-hint-policy-m10-i02": ("ld", "cache_policy", "implemented"),
+    "st-l2-cache-hint-policy-m10-i02": ("st", "cache_policy", "implemented"),
     "ld-l1-evict-priority-deferred": ("ld", "cache_eviction", "deferred"),
     "st-l1-evict-priority-deferred": ("st", "cache_eviction", "deferred"),
     "ld-l2-evict-priority-deferred": ("ld", "cache_eviction", "deferred"),
@@ -56,7 +56,7 @@ class LdStExtensionGapsManifestTests(unittest.TestCase):
         }
         self.assertTrue(m10_i02_ids)
         self.assertEqual(
-            {gap["id"] for gap in gaps if gap["disposition"] == "M10-I02"},
+            {gap["id"] for gap in gaps if gap["disposition"] == "implemented"},
             m10_i02_ids,
         )
 

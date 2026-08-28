@@ -537,6 +537,29 @@ TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
   EXPECT_TRUE(binding::isSpecialRegister("%pm0"));
   EXPECT_TRUE(binding::isSpecialRegister("%pm7_64"));
   EXPECT_TRUE(binding::isSpecialRegister("%reserved_smem_offset_1"));
+  for (const std::string_view spelling : {
+           "%is_explicit_cluster",
+           "%cluster_ctarank",
+           "%cluster_nctarank",
+           "%clusterid",
+           "%nclusterid",
+           "%cluster_ctaid",
+           "%cluster_nctaid",
+           "%clusterid.x",
+           "%clusterid.y",
+           "%clusterid.z",
+           "%nclusterid.x",
+           "%nclusterid.y",
+           "%nclusterid.z",
+           "%cluster_ctaid.x",
+           "%cluster_ctaid.y",
+           "%cluster_ctaid.z",
+           "%cluster_nctaid.x",
+           "%cluster_nctaid.y",
+           "%cluster_nctaid.z",
+       }) {
+    EXPECT_TRUE(binding::isSpecialRegister(spelling)) << spelling;
+  }
 
   EXPECT_FALSE(binding::isSpecialRegister("%tid.q"));
   EXPECT_FALSE(binding::isSpecialRegister("%envreg32"));
@@ -591,6 +614,30 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   EXPECT_EQ(cluster->minimum_ptx_major, 7u);
   EXPECT_EQ(cluster->minimum_ptx_minor, 8u);
   EXPECT_EQ(cluster->minimum_sm, 90u);
+
+  for (const std::string_view spelling : {
+           "%is_explicit_cluster",
+           "%cluster_ctarank",
+           "%cluster_nctarank",
+           "%clusterid",
+           "%nclusterid",
+           "%cluster_ctaid",
+           "%cluster_nctaid",
+       }) {
+    const auto info = base::lookup(spelling);
+    ASSERT_TRUE(info.has_value()) << spelling;
+    EXPECT_EQ(info->minimum_ptx_major, 7u) << spelling;
+    EXPECT_EQ(info->minimum_ptx_minor, 8u) << spelling;
+    EXPECT_EQ(info->minimum_sm, 90u) << spelling;
+  }
+  EXPECT_EQ(base::lookup("%is_explicit_cluster")->element_type,
+            base::ScalarType::Pred);
+  for (const std::string_view spelling :
+       {"%cluster_ctarank", "%cluster_nctarank"})
+    EXPECT_EQ(base::lookup(spelling)->element_type, base::ScalarType::U32);
+  for (const std::string_view spelling :
+       {"%clusterid", "%nclusterid", "%cluster_ctaid", "%cluster_nctaid"})
+    EXPECT_EQ(base::lookup(spelling)->vector_width, 4u);
 }
 
 TEST(PtxSymbolTable, DiagnosesDuplicateSymbolsAndInvalidCount) {

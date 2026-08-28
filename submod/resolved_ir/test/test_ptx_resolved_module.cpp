@@ -3614,16 +3614,17 @@ TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
 
   const auto& mov = std::get<Mov>(resolved->functions.front().body.front());
   const auto& predicate = std::get<Mov::Pred>(mov.variant);
+  const auto& source = std::get<ResolvedPredicate>(predicate.src.value);
   EXPECT_FALSE(predicate.dst.value.negated);
-  EXPECT_FALSE(predicate.src.value.negated);
+  EXPECT_FALSE(source.negated);
   ASSERT_TRUE(predicate.dst.value.register_ref.symbol_id.has_value());
-  ASSERT_TRUE(predicate.src.value.register_ref.symbol_id.has_value());
+  ASSERT_TRUE(source.register_ref.symbol_id.has_value());
   EXPECT_EQ(
       resolved->symbols.symbol(*predicate.dst.value.register_ref.symbol_id)
           .name,
       "%p");
   EXPECT_EQ(predicate.dst.value.register_ref.parameterized_index, 0u);
-  EXPECT_EQ(predicate.src.value.register_ref.parameterized_index, 1u);
+  EXPECT_EQ(source.register_ref.parameterized_index, 1u);
 
   EXPECT_TRUE(
       checker::check(mov,
@@ -3645,10 +3646,11 @@ TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
   ASSERT_TRUE(standalone.has_value()) << standalone.error().message;
   const auto& standalone_predicate =
       std::get<Mov::Pred>(std::get<Mov>(*standalone).variant);
+  const auto& standalone_source =
+      std::get<ResolvedPredicate>(standalone_predicate.src.value);
   EXPECT_FALSE(
       standalone_predicate.dst.value.register_ref.symbol_id.has_value());
-  EXPECT_FALSE(
-      standalone_predicate.src.value.register_ref.symbol_id.has_value());
+  EXPECT_FALSE(standalone_source.register_ref.symbol_id.has_value());
 }
 
 TEST(ResolvedModule, ResolvesU32MovSymbolAddressSource) {
@@ -4979,6 +4981,159 @@ TEST(ResolvedModule, ResolvesSameModuleAliasCallsToCanonicalSignature) {
 }
 )ptx"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+}
+
+TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
+  const auto resolve_scalar = [](std::string_view instruction) {
+    PtxSyntaxParser parser(instruction);
+    const auto ast = parser.parseInstruction();
+    EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    return resolveInstruction(*ast);
+  };
+  for (const std::string_view source : {
+           "mov.pred %p0, %is_explicit_cluster;",
+           "mov.u32 %r0, %cluster_ctarank;",
+           "mov.u32 %r0, %cluster_nctarank;",
+           "mov.u32 %r0, %clusterid.x;",
+           "mov.u32 %r0, %clusterid.y;",
+           "mov.u32 %r0, %clusterid.z;",
+           "mov.u32 %r0, %nclusterid.x;",
+           "mov.u32 %r0, %nclusterid.y;",
+           "mov.u32 %r0, %nclusterid.z;",
+           "mov.u32 %r0, %cluster_ctaid.x;",
+           "mov.u32 %r0, %cluster_ctaid.y;",
+           "mov.u32 %r0, %cluster_ctaid.z;",
+           "mov.u32 %r0, %cluster_nctaid.x;",
+           "mov.u32 %r0, %cluster_nctaid.y;",
+           "mov.u32 %r0, %cluster_nctaid.z;",
+       }) {
+    const auto resolved = resolve_scalar(source);
+    ASSERT_TRUE(resolved.has_value())
+        << source << ": " << resolved.error().message;
+  }
+
+  const auto explicit_cluster =
+      resolve_scalar("mov.pred %p0, %is_explicit_cluster;");
+  ASSERT_TRUE(explicit_cluster.has_value())
+      << explicit_cluster.error().message;
+  const checker::Context supported{
+      .target = checker::TargetInfo{.ptx_version = {7, 8}, .sm_version = 90},
+  };
+  EXPECT_TRUE(checker::check(std::get<Mov>(*explicit_cluster), supported)
+                  .has_value());
+  const auto& special_source = std::get<ResolvedSpecialRegisterRef>(
+      std::get<Mov::Pred>(std::get<Mov>(*explicit_cluster).variant)
+          .src.value);
+  EXPECT_EQ(special_source.id, base::lookup("%is_explicit_cluster")->id);
+  auto old_ptx = supported;
+  old_ptx.target.ptx_version = {7, 7};
+  const auto rejected =
+      checker::check(std::get<Mov>(*explicit_cluster), old_ptx);
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  auto old_sm = supported;
+  old_sm.target.sm_version = 80;
+  const auto sm_rejected =
+      checker::check(std::get<Mov>(*explicit_cluster), old_sm);
+  ASSERT_FALSE(sm_rejected.has_value());
+  EXPECT_EQ(sm_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  EXPECT_FALSE(resolve_scalar("mov.pred %p0, %cluster_ctarank;").has_value());
+  for (const std::string_view source : {
+           R"ptx(.entry kernel() {
+  .reg .u32 %r<3>;
+  @%is_explicit_cluster add.u32 %r0, %r1, %r2;
+})ptx",
+           R"ptx(.entry kernel() {
+  .reg .u32 %r<3>;
+  @%cluster_ctarank add.u32 %r0, %r1, %r2;
+})ptx",
+       }) {
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
+  }
+
+  PtxSyntaxParser invalid_parser("mov.u32 %r0, %clusterid.w;");
+  const auto invalid_ast = invalid_parser.parseInstruction();
+  ASSERT_TRUE(invalid_ast.has_value())
+      << invalid_ast.diagnostics.front().message;
+  const auto invalid = resolveInstruction(*invalid_ast);
+  ASSERT_FALSE(invalid.has_value());
+  EXPECT_EQ(invalid.error().message,
+            "Unknown special register '%clusterid.w'.");
+}
+
+TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .v4 .b32 %r0, %r1, %r2, %r3;
+  mov.v4.u32 %r0, %clusterid;
+  mov.v4.u32 %r1, %nclusterid;
+  mov.v4.u32 %r2, %cluster_ctaid;
+  mov.v4.u32 %r3, %cluster_nctaid;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  for (const auto& instruction : body) {
+    const auto& vector =
+        std::get<Mov::V4U32>(std::get<Mov>(instruction).variant);
+    EXPECT_EQ(vector.dst.value.register_ref.vector_width, 4u);
+    EXPECT_EQ(vector.dst.value.register_ref.declared_type, ScalarType::B32);
+    EXPECT_EQ(base::metadata(vector.src.value.id).vector_width, 4u);
+  }
+
+  const checker::Context supported{
+      .target = checker::TargetInfo{.ptx_version = {7, 8}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Mov>(body[0]), supported).has_value());
+  auto old_ptx = supported;
+  old_ptx.target.ptx_version = {7, 7};
+  const auto ptx_rejected = checker::check(std::get<Mov>(body[0]), old_ptx);
+  ASSERT_FALSE(ptx_rejected.has_value());
+  EXPECT_EQ(ptx_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  auto old_sm = supported;
+  old_sm.target.sm_version = 80;
+  const auto sm_rejected = checker::check(std::get<Mov>(body[0]), old_sm);
+  ASSERT_FALSE(sm_rejected.has_value());
+  EXPECT_EQ(sm_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto reject = [](std::string_view declaration,
+                         std::string_view source) {
+    return resolveModule(parseModule(fmt::format(R"ptx(
+.entry kernel() {{
+  {}
+  mov.v4.u32 %r0, {};
+}}
+)ptx",
+                                                 declaration, source)));
+  };
+  EXPECT_FALSE(reject(".reg .u32 %r0;", "%clusterid").has_value());
+  EXPECT_FALSE(reject(".reg .v4 .u32 %r0;", "%clusterid.x").has_value());
+  EXPECT_FALSE(reject(".reg .v4 .u32 %r0;", "%cluster_ctarank").has_value());
+
+  for (const std::string_view source : {
+           R"ptx(.entry kernel() {
+  .reg .u32 %r0;
+  mov.u32 %r0, %clusterid;
+})ptx",
+           R"ptx(.entry kernel() {
+  .reg .u8 %b<4>;
+  mov.b32 {%b0, %b1, %b2, %b3}, %clusterid;
+})ptx",
+           R"ptx(.entry kernel() {
+  .reg .u64 %rd0;
+  cvta.global.u64 %rd0, %clusterid;
+})ptx",
+       }) {
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
+  }
 }
 
 }  // namespace

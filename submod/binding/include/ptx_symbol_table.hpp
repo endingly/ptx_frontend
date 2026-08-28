@@ -89,6 +89,7 @@ struct Symbol {
   SymbolLinkage linkage{};
   std::optional<syntax_ast::AstStateSpace> state_space;
   std::optional<std::string> type;
+  std::optional<uint8_t> vector_width;
   /** Guaranteed byte alignment for an address of this data declaration. */
   std::optional<uint64_t> address_alignment;
   std::optional<uint32_t> parameterized_count;

@@ -64,9 +64,12 @@ class ResolvedValueKind(Enum):
     MEMORY_STATE_SPACE = "MemoryStateSpace"
     REGISTER = "Register"
     PREDICATE = "Predicate"
+    PREDICATE_SOURCE = "PredicateSource"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
     MOV_SOURCE = "MovSource"
+    VECTOR_REGISTER = "VectorRegister"
+    VECTOR_SPECIAL_REGISTER = "VectorSpecialRegister"
     BRANCH_TARGET = "BranchTarget"
     SPECIAL_REGISTER = "SpecialRegister"
     SYMBOL = "Symbol"
@@ -431,7 +434,13 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.SYMBOL,
         ResolvedOperandShape.ADDRESS,
     ),
+    "vector_reg": (ResolvedOperandShape.VECTOR,),
+    "vector_sreg": (ResolvedOperandShape.VECTOR,),
     "pred": (ResolvedOperandShape.PREDICATE,),
+    "pred_or_sreg": (
+        ResolvedOperandShape.PREDICATE,
+        ResolvedOperandShape.SPECIAL_REGISTER,
+    ),
     "pred_or_not": (ResolvedOperandShape.PREDICATE,),
     "label": (ResolvedOperandShape.BRANCH_TARGET,),
     "sreg": (ResolvedOperandShape.SPECIAL_REGISTER,),

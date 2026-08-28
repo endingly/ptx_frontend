@@ -189,7 +189,10 @@ domains:
       reg_or_imm: RegOrImm
       shfl_dest: ResolvedShflSyncDestination
       mov_scalar_src: ResolvedMovSource
+      vector_reg: ResolvedVectorRegisterRef
+      vector_sreg: ResolvedVectorSpecialRegisterRef
       pred: ResolvedPredicate
+      pred_or_sreg: ResolvedPredicateSource
       pred_or_not: ResolvedPredicate
       label: ResolvedBranchTarget
       sreg: ResolvedSpecialRegisterRef
@@ -219,10 +222,13 @@ domains:
       MemoryStateSpace: MemoryStateSpace
       Register: ResolvedRegisterRef
       Predicate: ResolvedPredicate
+      PredicateSource: ResolvedPredicateSource
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
       ShflDestination: ResolvedShflSyncDestination
       MovSource: ResolvedMovSource
+      VectorRegister: ResolvedVectorRegisterRef
+      VectorSpecialRegister: ResolvedVectorSpecialRegisterRef
       BranchTarget: ResolvedBranchTarget
       SpecialRegister: ResolvedSpecialRegisterRef
       Symbol: ResolvedSymbolRef
@@ -291,10 +297,13 @@ domains:
       MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
       Register: check_end::ResolvedValueKind::Register
       Predicate: check_end::ResolvedValueKind::Predicate
+      PredicateSource: check_end::ResolvedValueKind::PredicateSource
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
       MovSource: check_end::ResolvedValueKind::MovSource
+      VectorRegister: check_end::ResolvedValueKind::VectorRegister
+      VectorSpecialRegister: check_end::ResolvedValueKind::VectorSpecialRegister
       BranchTarget: check_end::ResolvedValueKind::BranchTarget
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
       Symbol: check_end::ResolvedValueKind::Symbol

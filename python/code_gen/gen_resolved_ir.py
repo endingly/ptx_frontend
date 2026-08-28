@@ -1091,6 +1091,45 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 }}
                 return view;
               }}()"""
+    if field.value_cpp_type == "ResolvedVectorRegisterRef":
+        return f"""              [&]() -> OperandView {{
+                const auto& register_ref =
+                    {object_name}.{field.name}.value.register_ref;
+                OperandView view{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                    .vector_arity = register_ref.vector_width.value_or(0),
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+                for (uint8_t index = 0; index < view.vector_arity; ++index)
+                  view.vector_element_types[index] =
+                      register_ref.declared_type.value_or(ScalarType::Invalid);
+                return view;
+              }}()"""
+    if field.value_cpp_type == "ResolvedVectorSpecialRegisterRef":
+        return f"""              [&]() -> OperandView {{
+                const auto& special_register = {object_name}.{field.name}.value;
+                const auto info = base::metadata(special_register.id);
+                OperandView view{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                    .special_register_type = info.element_type,
+                    .special_register_id = special_register.id,
+                    .vector_arity = info.vector_width,
+                    .value_availability = AvailabilityDescriptor{{
+                        .minimum_ptx_version = {{
+                            info.minimum_ptx_major,
+                            info.minimum_ptx_minor,
+                        }},
+                        .minimum_sm_version = info.minimum_sm,
+                    }},
+                    .value_name = special_register.spelling,
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+                for (uint8_t index = 0; index < view.vector_arity; ++index)
+                  view.vector_element_types[index] = info.element_type;
+                return view;
+              }}()"""
     if field.value_cpp_type == "ResolvedRegisterRef":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
@@ -1125,6 +1164,37 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedPredicateSource":
+        return f"""              [&]() -> OperandView {{
+                const auto& source = {object_name}.{field.name}.value;
+                if (const auto* special =
+                        std::get_if<ResolvedSpecialRegisterRef>(&source)) {{
+                  const auto info = base::metadata(special->id);
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
+                      .special_register_type = info.element_type,
+                      .special_register_id = special->id,
+                      .value_availability = AvailabilityDescriptor{{
+                          .minimum_ptx_version = {{
+                              info.minimum_ptx_major,
+                              info.minimum_ptx_minor,
+                          }},
+                          .minimum_sm_version = info.minimum_sm,
+                      }},
+                      .value_name = special->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                const auto& predicate = std::get<ResolvedPredicate>(source);
+                return OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
+                  .immediate_type = std::nullopt,
+                  .register_type = predicate.register_ref.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+                }};
+              }}()"""
     if field.value_cpp_type == "ResolvedBranchTarget":
         return f"""              OperandView{{
                   .field_id = "{field.name}",

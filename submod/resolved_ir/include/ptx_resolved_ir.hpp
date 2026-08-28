@@ -84,10 +84,13 @@ enum class ResolvedValueKind : uint8_t {
   MemoryStateSpace,
   Register,
   Predicate,
+  PredicateSource,
   Immediate,
   RegOrImm,
   ShflDestination,
   MovSource,
+  VectorRegister,
+  VectorSpecialRegister,
   BranchTarget,
   SpecialRegister,
   Symbol,
@@ -235,6 +238,7 @@ struct ResolvedRegisterRef {
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
   std::optional<ScalarType> declared_type;
+  std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
 
@@ -277,6 +281,23 @@ struct ResolvedSpecialRegisterRef {
   base::SpecialRegisterId id;
   std::optional<base::VectorComponent> component;
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
+};
+
+/** The sole predicate-source union: a predicate register or scalar .sreg. */
+using ResolvedPredicateSource =
+    std::variant<ResolvedPredicate, ResolvedSpecialRegisterRef>;
+
+/** A declared vector register accepted only by a vector instruction layout. */
+struct ResolvedVectorRegisterRef {
+  ResolvedRegisterRef register_ref;
+  bool operator==(const ResolvedVectorRegisterRef&) const = default;
+};
+
+/** A vector special-register base accepted only by a vector instruction layout. */
+struct ResolvedVectorSpecialRegisterRef {
+  std::string spelling;
+  base::SpecialRegisterId id;
+  bool operator==(const ResolvedVectorSpecialRegisterRef&) const = default;
 };
 
 /** A function reference, bound to a device or kernel function declaration. */
@@ -410,6 +431,9 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedBranchTargetSet>,
                  WithLocs<ResolvedSpecialRegisterRef>,
+                 WithLocs<ResolvedPredicateSource>,
+                 WithLocs<ResolvedVectorRegisterRef>,
+                 WithLocs<ResolvedVectorSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
                  WithLocs<ResolvedRegisterVector>,
                  WithLocs<ResolvedFunctionRef>,

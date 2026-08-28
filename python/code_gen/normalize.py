@@ -96,10 +96,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
-    if raw["kind"] == "reg_vector":
+    if raw["kind"] in {"reg_vector", "vector_reg", "vector_sreg"}:
         vector = raw.get("vector")
         if not isinstance(vector, dict) or "arity" not in vector:
-            raise ValueError("reg_vector operand must declare vector.arity")
+            raise ValueError(f"{raw['kind']} operand must declare vector.arity")
         raw_arities = vector["arity"]
         if isinstance(raw_arities, dict):
             vector_arity_expression = _normalize_operand_vector_arity_expression(
@@ -126,7 +126,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_allow_sink = vector.get("allow_sink", False)
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
-                "reg_vector vector.allow_sink must be a boolean when supplied."
+                f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
             )
 
     type_expression = _normalize_operand_type_expression(raw.get("type"))

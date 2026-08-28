@@ -511,7 +511,8 @@ std::optional<uint32_t> numbered_register_index(std::string_view spelling) {
 std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
     const syntax_ast::AstIdentifierRef& identifier,
     ResolvedRegisterClass register_class, const ResolveContext& context,
-    SourceRange range) {
+    SourceRange range,
+    std::optional<uint8_t> required_vector_width = std::nullopt) {
   if (binding::isSpecialRegister(identifier.syntax.text)) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
@@ -570,6 +571,23 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
             identifier.syntax.text),
     });
   }
+  if (required_vector_width) {
+    if (symbol.vector_width != required_vector_width) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message =
+              fmt::format("Expected a .reg .v{} register, but '{}' is not one.",
+                          *required_vector_width, identifier.syntax.text),
+      });
+    }
+  } else if (symbol.vector_width) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Vector register '{}' is not supported by this resolved operand.",
+            identifier.syntax.text),
+    });
+  }
 
   return ResolvedRegisterRef{
       .spelling = identifier.syntax.text,
@@ -578,6 +596,7 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
       .symbol_id = lookup->symbol,
       .parameterized_index = lookup->parameterized_index,
       .declared_type = *declared_type,
+      .vector_width = symbol.vector_width,
   };
 }
 
@@ -619,6 +638,32 @@ resolve_register(const syntax_ast::AstOperand& operand,
           .register_class = ResolvedRegisterClass::General,
           .index = parsed->index,
       },
+      identifier->syntax.range};
+}
+
+std::expected<WithLocs<ResolvedVectorRegisterRef>, ResolveDiagnostic>
+resolve_vector_register(const syntax_ast::AstOperand& operand,
+                        const ResolveContext* context) {
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector register operand.",
+    });
+  }
+  if (context == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier->syntax.range,
+        .message = "A vector register operand requires a module declaration.",
+    });
+  }
+  auto value =
+      resolve_bound_register(*identifier, ResolvedRegisterClass::General,
+                             *context, identifier->syntax.range, 4);
+  if (!value)
+    return std::unexpected(value.error());
+  return WithLocs<ResolvedVectorRegisterRef>{
+      ResolvedVectorRegisterRef{.register_ref = std::move(*value)},
       identifier->syntax.range};
 }
 
@@ -1056,6 +1101,60 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
                                  .id = info->id,
                                  .component = component},
       range};
+}
+
+std::expected<WithLocs<ResolvedPredicateSource>, ResolveDiagnostic>
+resolve_predicate_source(const syntax_ast::AstOperand& operand,
+                         const ResolveContext* context) {
+  const auto range = syntax_ast::sourceRange(operand);
+  if (std::holds_alternative<syntax_ast::AstIdentifierRef>(operand) ||
+      std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
+    auto special = resolve_special_register(operand);
+    if (special) {
+      if (base::metadata(special->value.id).element_type !=
+          base::ScalarType::Pred) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = range,
+            .message = fmt::format("Expected a predicate special register, got '{}'.",
+                                   special->value.spelling),
+        });
+      }
+      return WithLocs<ResolvedPredicateSource>{
+          ResolvedPredicateSource{std::move(special->value)}, range};
+    }
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+    if (identifier == nullptr || base::lookup(identifier->syntax.text))
+      return std::unexpected(special.error());
+  }
+  auto predicate = resolve_predicate(operand, context);
+  if (!predicate)
+    return std::unexpected(predicate.error());
+  return WithLocs<ResolvedPredicateSource>{
+      ResolvedPredicateSource{std::move(predicate->value)}, range};
+}
+
+std::expected<WithLocs<ResolvedVectorSpecialRegisterRef>, ResolveDiagnostic>
+resolve_vector_special_register(const syntax_ast::AstOperand& operand) {
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector special-register base operand.",
+    });
+  }
+  const auto info = base::lookup(identifier->syntax.text);
+  if (!info || info->vector_width != 4) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier->syntax.range,
+        .message = fmt::format("Expected a four-component special register, got '{}'.",
+                               identifier->syntax.text),
+    });
+  }
+  return WithLocs<ResolvedVectorSpecialRegisterRef>{
+      ResolvedVectorSpecialRegisterRef{.spelling = identifier->syntax.text,
+                                       .id = info->id},
+      identifier->syntax.range};
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
@@ -1975,6 +2074,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::PredicateSource: {
+      auto value = resolve_predicate_source(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Immediate: {
       const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
       if (immediate == nullptr) {
@@ -2016,6 +2121,18 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(type.error());
       auto value =
           resolve_mov_source(operand, *type, binding.allowed_shapes, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::VectorRegister: {
+      auto value = resolve_vector_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::VectorSpecialRegister: {
+      auto value = resolve_vector_special_register(operand);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2197,10 +2314,13 @@ ResolvedFieldValue resolve_default_modifier_value(
           default_value.memory_state_space}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
+    case ResolvedValueKind::PredicateSource:
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
     case ResolvedValueKind::ShflDestination:
     case ResolvedValueKind::MovSource:
+    case ResolvedValueKind::VectorRegister:
+    case ResolvedValueKind::VectorSpecialRegister:
     case ResolvedValueKind::BranchTarget:
     case ResolvedValueKind::BranchTargetSet:
     case ResolvedValueKind::SpecialRegister:
@@ -2481,10 +2601,13 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::Register:
       case ResolvedValueKind::Predicate:
+      case ResolvedValueKind::PredicateSource:
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
       case ResolvedValueKind::ShflDestination:
       case ResolvedValueKind::MovSource:
+      case ResolvedValueKind::VectorRegister:
+      case ResolvedValueKind::VectorSpecialRegister:
       case ResolvedValueKind::BranchTarget:
       case ResolvedValueKind::BranchTargetSet:
       case ResolvedValueKind::SpecialRegister:

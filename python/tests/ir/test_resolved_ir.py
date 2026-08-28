@@ -869,7 +869,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         instruction = from_instruction_spec(mov)
 
         self.assertEqual(instruction.cpp_name, "Mov")
-        self.assertEqual(len(instruction.variants), 2)
+        self.assertEqual(len(instruction.variants), 3)
         self.assertEqual(
             [value.value for value in mov.variants[0].modifiers[0].values],
             [
@@ -951,21 +951,43 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
 
-        predicate = instruction.variants[1]
+        vector = instruction.variants[1]
+        self.assertEqual(vector.cpp_name, "V4U32")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in vector.fields],
+            [
+                ("vector", "WithLocs<VectorArity>"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedVectorRegisterRef>"),
+                ("src", "WithLocs<ResolvedVectorSpecialRegisterRef>"),
+            ],
+        )
+        for binding in vector.operand_layouts[0].bindings:
+            self.assertEqual(binding.allowed_shapes, (ResolvedOperandShape.VECTOR,))
+            self.assertEqual(binding.vector_arity_modifier_field_id, "vector")
+
+        predicate = instruction.variants[2]
         self.assertEqual(predicate.cpp_name, "Pred")
         self.assertEqual(
             [(field.name, field.cpp_type) for field in predicate.fields],
             [
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedPredicate>"),
-                ("src", "WithLocs<ResolvedPredicate>"),
+                ("src", "WithLocs<ResolvedPredicateSource>"),
             ],
         )
+        self.assertEqual(
+            predicate.operand_layouts[0].bindings[0].allowed_shapes,
+            (ResolvedOperandShape.PREDICATE,),
+        )
+        self.assertEqual(
+            predicate.operand_layouts[0].bindings[1].allowed_shapes,
+            (
+                ResolvedOperandShape.PREDICATE,
+                ResolvedOperandShape.SPECIAL_REGISTER,
+            ),
+        )
         for binding in predicate.operand_layouts[0].bindings:
-            self.assertEqual(
-                binding.allowed_shapes,
-                (ResolvedOperandShape.PREDICATE,),
-            )
             self.assertEqual(
                 binding.type_expression,
                 ResolvedOperandTypeExpression(
@@ -2247,6 +2269,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::Vector", source
         )
+        self.assertIn("ResolvedVectorSpecialRegisterRef", source)
+        self.assertIn("ResolvedVectorRegisterRef", source)
+        self.assertIn("ResolvedPredicateSource", source)
         self.assertIn(".vector_arity = static_cast<uint8_t>", source)
         self.assertIn(".value_availability = AvailabilityDescriptor", source)
         self.assertIn(

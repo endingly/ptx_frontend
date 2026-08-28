@@ -626,6 +626,7 @@ $defs:
     enum:
       - reg
       - pred
+      - pred_or_sreg
       - pred_or_not
       - sreg
       - addr
@@ -638,6 +639,8 @@ $defs:
       - reg_or_imm
       - shfl_dest
       - mov_scalar_src
+      - vector_reg
+      - vector_sreg
       - reg_vector
       - direct_call_target
       - indirect_call_target

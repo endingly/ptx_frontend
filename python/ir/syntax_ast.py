@@ -136,7 +136,10 @@ _OPERAND_SYNTAX_SHAPES = {
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
     ),
+    "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
+    "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
+    "pred_or_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
     "label": OperandSyntaxShape.BRANCH_TARGET,
     "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,

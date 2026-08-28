@@ -291,6 +291,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             | OperandSyntaxShape.ADDRESS
             | OperandSyntaxShape.VECTOR_MEMBER,
         )
+        vector_layout = descriptor.variants[1].operand_layouts[0]
+        self.assertEqual(
+            [slot.allowed_syntax_shapes for slot in vector_layout.slots],
+            [OperandSyntaxShape.IDENTIFIER_REF, OperandSyntaxShape.IDENTIFIER_REF],
+        )
 
     def test_ld_layout_requires_address_syntax(self) -> None:
         database = load_codegen_database(

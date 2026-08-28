@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -2121,6 +2122,88 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   EXPECT_EQ(wide_check.error().front().message,
             "Special-register operand 'src' has declared type 'U64' but "
             "instruction type source 'type' is 'U32'.");
+}
+
+TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<5>;
+  .reg .u32 %r<4>;
+  .reg .u64 %rd;
+  mov.b32 %b0, %reserved_smem_offset_begin;
+  mov.b32 %b1, %reserved_smem_offset_end;
+  mov.b32 %b2, %reserved_smem_offset_cap;
+  mov.b32 %b3, %reserved_smem_offset_0;
+  mov.b32 %b4, %reserved_smem_offset_1;
+  mov.u32 %r0, %total_smem_size;
+  mov.u32 %r1, %dynamic_smem_size;
+  mov.u32 %r2, %aggr_smem_size;
+  mov.u64 %rd, %current_graph_exec;
+  mov.u32 %r3, %current_graph_exec;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 10u);
+
+  constexpr std::array spellings{
+      "%reserved_smem_offset_begin", "%reserved_smem_offset_end",
+      "%reserved_smem_offset_cap", "%reserved_smem_offset_0",
+      "%reserved_smem_offset_1", "%total_smem_size", "%dynamic_smem_size",
+      "%aggr_smem_size", "%current_graph_exec",
+  };
+  for (size_t index = 0; index < spellings.size(); ++index) {
+    const auto& special = std::get<ResolvedSpecialRegisterRef>(
+        scalarMovOperands(std::get<Mov>(body[index])).src.value);
+    EXPECT_EQ(special.spelling, spellings[index]);
+    ASSERT_TRUE(base::lookup(spellings[index]).has_value());
+    EXPECT_EQ(special.id, base::lookup(spellings[index])->id);
+  }
+
+  const auto check_at = [&](size_t index, checker::PtxVersion version,
+                            uint32_t sm) {
+    return checker::check(std::get<Mov>(body[index]),
+                          checker::Context{
+                              .target = checker::TargetInfo{
+                                  .ptx_version = version,
+                                  .sm_version = sm,
+                              },
+                              .instruction_range = ast.range,
+                          });
+  };
+  struct AvailabilityBoundary {
+    size_t instruction;
+    checker::PtxVersion supported;
+    checker::PtxVersion too_old_ptx;
+    uint32_t minimum_sm;
+  };
+  for (const AvailabilityBoundary boundary : {
+           AvailabilityBoundary{0, {7, 6}, {7, 5}, 80},
+           AvailabilityBoundary{5, {4, 1}, {4, 0}, 20},
+           AvailabilityBoundary{7, {8, 1}, {8, 0}, 90},
+           AvailabilityBoundary{8, {8, 0}, {7, 9}, 50},
+       }) {
+    EXPECT_TRUE(check_at(boundary.instruction, boundary.supported,
+                         boundary.minimum_sm)
+                    .has_value());
+    const auto ptx_rejected = check_at(boundary.instruction,
+                                       boundary.too_old_ptx,
+                                       boundary.minimum_sm);
+    ASSERT_FALSE(ptx_rejected.has_value());
+    EXPECT_EQ(ptx_rejected.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto sm_rejected = check_at(boundary.instruction, boundary.supported,
+                                      boundary.minimum_sm - 1);
+    ASSERT_FALSE(sm_rejected.has_value());
+    EXPECT_EQ(sm_rejected.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+
+  const auto wrong_type = check_at(9, {9, 3}, 100);
+  ASSERT_FALSE(wrong_type.has_value());
+  EXPECT_EQ(wrong_type.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 
 TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {

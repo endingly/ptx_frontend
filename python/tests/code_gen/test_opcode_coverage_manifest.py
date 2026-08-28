@@ -67,6 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
         self.assertEqual(len(slices), 98)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
+        self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
         database_keys = {
             (instruction.opcode, sections[(instruction.opcode, variant.name)],
@@ -231,6 +232,55 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                     for slice_ in layout_slices
                 )
             )
+
+    def test_disposition_schema_conditions(self) -> None:
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        slice_ = {
+            "id": "add-add-float-f32-default",
+            "section": "9.7.3.3",
+            "spec_variant": "add_float_f32",
+            "operand_layout": "default",
+            "selector": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar"},
+            "status": {
+                "syntax": "supported",
+                "resolved": "supported",
+                "checker": "supported",
+                "simulator": "unsupported",
+            },
+        }
+        implemented = {**slice_, "disposition": "implemented"}
+        self.assertEqual(list(validator.iter_errors({
+            "schema": "ptx-opcode-coverage/v2", "version": 2,
+            "opcodes": [{"opcode": "add", "status": implemented["status"],
+                         "slices": [implemented]}],
+        })), [])
+        for field in ("reason", "milestone"):
+            invalid = {**implemented, field: "not allowed"}
+            self.assertTrue(list(validator.iter_errors({
+                "schema": "ptx-opcode-coverage/v2", "version": 2,
+                "opcodes": [{"opcode": "add", "status": implemented["status"],
+                             "slices": [invalid]}],
+            })))
+
+        for disposition in ("planned", "deferred", "out_of_scope", "paused"):
+            valid = {
+                **slice_, "disposition": disposition,
+                "reason": "tracked outside the current implementation",
+                "milestone": "M11",
+            }
+            document = {
+                "schema": "ptx-opcode-coverage/v2", "version": 2,
+                "opcodes": [{"opcode": "add", "status": valid["status"],
+                             "slices": [valid]}],
+            }
+            self.assertEqual(list(validator.iter_errors(document)), [])
+            for field in ("reason", "milestone"):
+                invalid = valid.copy()
+                del invalid[field]
+                self.assertTrue(list(validator.iter_errors({
+                    **document, "opcodes": [{"opcode": "add", "status": valid["status"],
+                                               "slices": [invalid]}],
+                })))
 
 
 if __name__ == "__main__":

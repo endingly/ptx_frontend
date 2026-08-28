@@ -36,7 +36,7 @@ properties:
           items:
             type: object
             additionalProperties: false
-            required: [id, section, spec_variant, operand_layout, selector, status]
+            required: [id, section, spec_variant, operand_layout, selector, status, disposition]
             properties:
               id:
                 pattern: ^[a-z][a-z0-9-]*$
@@ -46,6 +46,14 @@ properties:
                 pattern: ^[a-z][a-z0-9_]*$
               operand_layout:
                 pattern: ^[a-z][a-z0-9_]*$
+              disposition:
+                enum: [implemented, planned, deferred, out_of_scope, paused]
+              reason:
+                type: string
+                pattern: \S
+              milestone:
+                type: string
+                pattern: \S
               selector:
                 type: object
                 additionalProperties: false
@@ -79,6 +87,18 @@ properties:
                       pattern: ^[a-z][a-z0-9_:]*$
               status:
                 $ref: "#/$defs/layer_status"
+            allOf:
+              - if:
+                  properties:
+                    disposition:
+                      const: implemented
+                then:
+                  not:
+                    anyOf:
+                      - required: [reason]
+                      - required: [milestone]
+                else:
+                  required: [reason, milestone]
 $defs:
   coverage_status:
     type: string

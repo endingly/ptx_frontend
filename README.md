@@ -235,11 +235,11 @@ python/       normalization models, C++ generators, and Python tests
 cmake/        shared CMake helpers
 docs/us-en/   English design and coverage documentation
 docs/zh-han/  Simplified Chinese design and coverage documentation
-.agents/project_roadmap.md  authoritative roadmap and implementation priority
+.agents/project_roadmap.v2.md  authoritative roadmap and implementation priority
 docs/deprecated/next_step.md frozen historical implementation log
 ```
 
-The [project roadmap](.agents/project_roadmap.md) is the single source for
+The [project roadmap](.agents/project_roadmap.v2.md) is the single source for
 implementation status and priority. The
 [deprecated next-step log](docs/deprecated/next_step.md) is historical only.
 

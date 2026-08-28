@@ -106,7 +106,7 @@ stage.
 
 ## Implementation priority
 
-The [project roadmap](../../.agents/project_roadmap.md) is the sole authority
+The [project roadmap](../../.agents/project_roadmap.v2.md) is the sole authority
 for implementation status, dependencies, and priority. This matrix records
 capability boundaries only and intentionally does not repeat that ordering.
 

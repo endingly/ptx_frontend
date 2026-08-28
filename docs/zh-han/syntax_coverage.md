@@ -100,7 +100,7 @@ instruction 间接保留/check 该 identity；`C` = 直接 binding/declaration s
 
 ## 实现优先级
 
-[项目 roadmap](../../.agents/project_roadmap.md) 是实现状态、依赖和优先级的唯一权威来源。
+[项目 roadmap](../../.agents/project_roadmap.v2.md) 是实现状态、依赖和优先级的唯一权威来源。
 本矩阵只记录能力边界，刻意不重复该排序。
 
 PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立

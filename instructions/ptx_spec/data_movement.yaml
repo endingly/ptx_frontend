@@ -1093,6 +1093,26 @@ instructions:
           - ptx: "cp.async.ca.shared.global [shared_value], [global_value], 16;"
             valid: true
 
+      - name: cp_async_commit_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: commit_group
+            kind: flag
+            presence: fixed
+            value: true
+            token: .commit_group
+        operands: []
+        rule: data_movement.cp_async_commit_group
+
+        examples:
+          - ptx: "cp.async.commit_group;"
+            valid: true
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

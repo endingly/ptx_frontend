@@ -1,6 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <filesystem>
+#include <fstream>
+#include <initializer_list>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -30,6 +35,21 @@ using syntax_ast::AstPredicateOperand;
 using syntax_ast::AstRegisterPredicatePair;
 using syntax_ast::AstVectorMember;
 using syntax_ast::AstVectorPack;
+
+std::string_view sourceSlice(std::string_view source, SourceRange range) {
+  const auto offset = [source](SourcePos position) {
+    size_t start = 0;
+    for (int32_t line = 1; line < position.line; ++line) {
+      const size_t newline = source.find('\n', start);
+      if (newline == std::string_view::npos)
+        return source.size();
+      start = newline + 1;
+    }
+    return start + static_cast<size_t>(position.column - 1);
+  };
+  return source.substr(offset(range.start),
+                       offset(range.end) - offset(range.start));
+}
 
 TEST(PtxSyntaxParser, ParsesInstructionWithoutCstTrivia) {
   PtxSyntaxParser parser("  // leading\nadd.sat.s32 %r1, %r2, -1;");
@@ -893,6 +913,83 @@ TEST(PtxSyntaxParser, LowersNestedInitializerAndSymbolAddressOperator) {
   EXPECT_EQ(std::get<syntax_ast::AstConstantBinary>(address_expression.node)
                 .operation,
             syntax_ast::AstConstantBinaryOperator::Add);
+}
+
+TEST(PtxSyntaxParser, PreservesM11ComplexModifierCorpusLosslessly) {
+  const auto root = std::filesystem::path(__FILE__)
+                        .parent_path()
+                        .parent_path()
+                        .parent_path()
+                        .parent_path();
+  std::ifstream input(root / "corpus" / "m11" / "complex_modifiers.ptx");
+  ASSERT_TRUE(input);
+  const std::string source{std::istreambuf_iterator<char>{input}, {}};
+
+  PtxCstParser cst_parser(source);
+  const auto cst = cst_parser.parseModule();
+  ASSERT_TRUE(cst.has_value()) << cst.diagnostics.front().message;
+  EXPECT_TRUE(cst.diagnostics.empty());
+  EXPECT_EQ(cst->sourceText(), source);
+  PtxCstParser reparsing(cst->sourceText());
+  const auto reparsed = reparsing.parseModule();
+  ASSERT_TRUE(reparsed.has_value()) << reparsed.diagnostics.front().message;
+  EXPECT_TRUE(reparsed.diagnostics.empty());
+  EXPECT_EQ(reparsed->sourceText(), source);
+
+  const auto& cst_function = std::get<syntax_cst::CstFunction>(
+      cst->module()->items.back());
+  ASSERT_EQ(cst_function.body.size(), 5u);
+  const auto& cst_packed_load =
+      std::get<syntax_cst::CstInstruction>(cst_function.body[1]);
+  const auto& cst_pack = std::get<syntax_cst::CstVectorPack>(
+      cst_packed_load.operands.front().operand);
+  ASSERT_EQ(cst_pack.elements.size(), 2u);
+  ASSERT_EQ(cst_pack.commas.size(), 1u);
+  EXPECT_EQ(cst->token(cst_pack.commas.front()).text, ",");
+  ASSERT_TRUE(cst_packed_load.operands.front().trailing_comma.has_value());
+  EXPECT_EQ(cst->token(*cst_packed_load.operands.front().trailing_comma).text,
+            ",");
+  for (const std::string_view spelling : {
+           ".16x64b",          ".16x128b",      ".4x256b",
+           ".layout::v0",      ".kind::mxf8f6f4", ".block_scale",
+           ".scale_vec::1X",   ".collector::a::fill",
+       }) {
+    const auto token = std::ranges::find_if(
+        cst->tokens, [spelling](const auto& candidate) {
+          return candidate.text == spelling;
+        });
+    ASSERT_NE(token, cst->tokens.end()) << spelling;
+    EXPECT_EQ(token->kind, TokenKind::DotIdent);
+  }
+
+  PtxSyntaxParser parser(source);
+  const auto ast = parser.parseModule();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  EXPECT_TRUE(ast.diagnostics.empty());
+  const auto& ast_function =
+      std::get<syntax_ast::AstFunction>(ast->items.back());
+  ASSERT_EQ(ast_function.body.size(), 5u);
+  const auto expect_modifiers = [&](size_t item,
+                                    std::initializer_list<std::string_view> expected) {
+    const auto& instruction = std::get<AstInstruction>(ast_function.body[item]);
+    ASSERT_EQ(instruction.modifiers.size(), expected.size());
+    for (size_t index = 0; index < expected.size(); ++index) {
+      const auto expected_spelling = *(expected.begin() + index);
+      EXPECT_EQ(instruction.modifiers[index].syntax.text, expected_spelling);
+      EXPECT_EQ(sourceSlice(source, instruction.modifiers[index].syntax.range),
+                expected_spelling);
+    }
+  };
+  expect_modifiers(0, {".ld", ".sync", ".aligned", ".16x64b", ".x1", ".b32"});
+  expect_modifiers(1, {".ld", ".sync", ".aligned", ".16x128b", ".x1", ".b32"});
+  expect_modifiers(2, {".cp", ".cta_group::1", ".4x256b"});
+  expect_modifiers(3, {".check_layout", ".layout::v0", ".shared::cta", ".b64"});
+  expect_modifiers(4, {".mma", ".cta_group::1", ".kind::mxf8f6f4",
+                       ".block_scale", ".scale_vec::1X",
+                       ".collector::a::fill"});
+  const auto& ast_pack = std::get<AstVectorPack>(
+      std::get<AstInstruction>(ast_function.body[1]).operands.front());
+  EXPECT_EQ(ast_pack.elements.size(), 2u);
 }
 
 TEST(PtxSyntaxParser, LowersM11DeclarationHeaderDirectivesLosslessly) {

@@ -1474,6 +1474,29 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "state_space",
         )
 
+    def test_membar_cta_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        membar = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "membar"
+        )
+        resolved = from_instruction_spec(membar)
+
+        self.assertEqual(resolved.cpp_name, "Membar")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["Cta"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "1.4", "sm": 0})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("scope", "MemoryScope")],
+        )
+        self.assertEqual(variant.operand_layouts[0].bindings, ())
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1527,6 +1550,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
         self.assertIn("struct Bar {", source)
+        self.assertIn("struct Membar {", source)
         self.assertIn("struct Bra {", source)
         self.assertIn("struct Ret {", source)
         self.assertIn("struct Exit {", source)
@@ -1696,6 +1720,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Ld>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "ldu"', source)
         self.assertIn("resolve<Ldu>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "membar"', source)
+        self.assertIn("resolve<Membar>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "prefetch"', source)
         self.assertIn("resolve<Prefetch>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)

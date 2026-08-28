@@ -423,6 +423,46 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
   ASSERT_FALSE(extra_address.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() { membar.cta; }
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Membar>(resolved->functions.front().body.front());
+  const auto& membar = std::get<Membar::Cta>(instruction.variant);
+  EXPECT_EQ(membar.scope, MemoryScope::Cta);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {1, 4}, .sm_version = 0},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 3}, .sm_version = 0},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old.has_value());
+  EXPECT_EQ(too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto wrong_gl = resolveModule(parseModule(R"ptx(
+.entry kernel() { membar.gl; }
+)ptx"));
+  ASSERT_FALSE(wrong_gl.has_value());
+  const auto wrong_sys = resolveModule(parseModule(R"ptx(
+.entry kernel() { membar.sys; }
+)ptx"));
+  ASSERT_FALSE(wrong_sys.has_value());
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { membar.cta 0; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

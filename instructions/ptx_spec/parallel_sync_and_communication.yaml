@@ -471,3 +471,23 @@ instructions:
         examples:
           - ptx: "bar.cta.red.or.pred %p0, 1, !%p1;"
             valid: true
+
+  - opcode: membar
+    doc: "Memory barrier, limited to CTA scope."
+    syntax: "membar.cta"
+
+    variants:
+      - name: membar_cta
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cta
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.cta;"
+            valid: true

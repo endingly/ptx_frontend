@@ -756,13 +756,7 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
 .shared .b16 shared_value;
 .entry kernel() { .reg .b16 %r<2>; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value]; }
 )ptx"));
-  ASSERT_TRUE(wrong_register.has_value())
-      << wrong_register.error().front().message;
-  const auto register_check = checker::check(
-      std::get<Ldmatrix>(wrong_register->functions.front().body.front()), context);
-  ASSERT_FALSE(register_check.has_value());
-  EXPECT_EQ(register_check.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  ASSERT_FALSE(wrong_register.has_value());
 
   for (const auto source : {
            ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",

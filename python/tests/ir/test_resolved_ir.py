@@ -1586,6 +1586,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         dst = variant.operand_layouts[0].bindings[0]
+        self.assertEqual(
+            dst.type_expression,
+            ResolvedOperandTypeExpression(
+                kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+                scalar_type="b32",
+            ),
+        )
         self.assertEqual(dst.allowed_vector_arities, (2,))
         self.assertEqual(dst.vector_type_policy.value, "Element")
         self.assertEqual(dst.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)

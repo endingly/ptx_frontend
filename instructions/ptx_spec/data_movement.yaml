@@ -1175,7 +1175,7 @@ instructions:
             valid: true
 
   - opcode: ldmatrix
-    section: "9.7.14.4.15"
+    section: "9.7.15.5.15"
     doc: "Matrix load, limited to synchronized aligned m8n8.x2 shared b16."
     syntax: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {dst0, dst1}, [address]"
 

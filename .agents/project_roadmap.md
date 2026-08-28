@@ -3,13 +3,13 @@
 > 文档名称：[`.agents/project_roadmap.md`](project_roadmap.md)
 > 仓库：`endingly/ptx_frontend`
 > 状态视角：当前文档所在分支
-> 功能事实基线：`dd9274812e7ce839bb15f902ed68771bf9178011`
-> 基准提交内容：`fix: recover after unterminated debug sections`
-> 基准日期：2026-08-27
+> 功能事实基线：`f1fa415de114c8c74361f7804ac1d3bfdb919448`
+> 基准提交内容：`test: add M10 advanced kernel corpus`
+> 基准日期：2026-08-28
 > 项目阶段：pre-1.0
 >
-> 当前工作分支已完成除暂停的 M8-I14 外的 M8 实现与验证，并以 machine-readable
-> opcode coverage manifest 与 simulator MVP corpus 启动 M9；本文状态以该分支的仓库事实为准。
+> 当前工作分支已完成除暂停的 M8-I14 外的 M8 实现与验证、M9 的 simulator MVP corpus，
+> 以及 M10 的 frozen memory/atomic/warp/async/matrix subset；本文状态以该分支的仓库事实为准。
 
 ---
 
@@ -23,6 +23,9 @@
 - `.file`、`.loc`、`.section`、`.pragma` 与第一组 kernel-resource directive；
 - ordered diagnostics、recovery node、synchronization 与 recovered CST → AST contract；
 - CST round-trip、fuzz harness、debug metadata binding 与真实 PTX module corpus。
+- M10-I01～I17 与 M10-C01～C03：冻结的 memory/atomic/warp/async/matrix forms 已贯通
+  YAML、Resolved IR、checker 和 advanced-kernel corpus；它们不是完整 opcode 覆盖，也没有
+  simulator execution semantics。
 
 M8-I14 仍因缺少 optional fixed-address 的规范或工具链证据而暂停；其余 M8 功能项已在
 当前工作分支实现并验证，因此统一标记为 ✅。
@@ -44,6 +47,14 @@ M8-I14 继续暂停。
 
 M7-C03 已删除 `resolve_fields()` 中的 opcode-string metadata fallback。合法 indirect
 call 走正式 descriptor；malformed metadata-bearing call 走通用 layout diagnostic。
+
+#### D-04：M10 frozen subset 状态（本轮已同步）
+
+M10-I01～I17 和 M10-C01～C03 已完成并验证。C01 让 `ld/st/fence/atom/red` 复用唯一的
+memory consistency/scope domain；C02 复用 generic descriptor、vector 和 availability 路径，
+未新增 matrix shape abstraction；C03 以 advanced-kernel 正例和 inline 负边界闭环。验证结果为
+Python 111、Debug 394、等价本地 Release 394 和 package consumer 全通过；该 Release 是本地
+等价配置，未触发 GitHub Actions。
 
 ### 0.3 原 roadmap 本身的偏离
 
@@ -1087,7 +1098,7 @@ recovery 与 debug metadata binding 的实际边界。
 | M7 | ✅ | 完成 indirect call 和 control-flow metadata |
 | M8 | ✅ | 完成除暂停 I14 外的 module grammar、nested scope 和 parser recovery |
 | M9 | 🚧 | 完成 simulator MVP 的核心 opcode 集 |
-| M10 | ⬜ | 扩展 memory、atomic、warp、async-copy 和 matrix instruction |
+| M10 | ✅ | 完成 frozen memory/atomic/warp/async/matrix subset 与 advanced-kernel corpus；仍非完整 PTX 或 execution |
 | M11 | ⬜ | 稳定公共 API、接入下游 simulator 并形成 1.0 gate |
 
 ---
@@ -1424,28 +1435,50 @@ operand/type/modifier matrix
 
 在 core scalar execution 稳定后扩展并发和现代 GPU instruction。
 
+### 当前状态
+
+M10-I01～I17 和 M10-C01～C03 均已完成。范围严格冻结为已建模 form：C01 复用唯一的
+memory consistency/scope domain；C02 复用 generic descriptor、vector 和 availability 路径，
+未新增 matrix shape abstraction；C03 由 `corpus/m10/advanced_kernel.ptx` 正例和 C++ inline
+负边界共同覆盖。该完成状态仅表示 parse/resolve/check；不表示完整 opcode 覆盖、simulator
+execution semantics 或 GitHub Actions 已运行。
+
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M10-I01 | ⬜ | 独立 | 建立现有 `ld/st` extension gap manifest | 每个尚未建模 qualifier/form 明确分类 |
-| M10-I02 | ⬜ | 独立 | 支持 `ld/st` cache-hint/eviction slice | 精确冻结 modifier、operand 和 target matrix |
-| M10-I03 | ⬜ | 独立 | 支持 `ldu` | 单 opcode 全链条闭环 |
-| M10-I04 | ⬜ | 独立 | 支持 `prefetch` | level、state space 和 address rule 闭环 |
-| M10-I05 | ⬜ | 独立 | 支持 `membar` | scope 和 target availability 闭环 |
-| M10-I06 | ⬜ | 独立 | 支持 `fence` | memory semantics、scope 和 target rule 闭环 |
-| M10-I07 | ⬜ | 独立 | 支持 `atom` 的首个 scalar slice | operation、state space、memory ordering 和 destination layout 冻结 |
-| M10-I08 | ⬜ | 独立 | 支持 `red` 的首个 scalar slice | operation、state space 和 no-destination layout 冻结 |
-| M10-I09 | ⬜ | 独立 | 支持 `activemask` | predicate-mask type 和 target rule 闭环 |
-| M10-I10 | ⬜ | 独立 | 支持 `vote` 的首个 sync slice | mask、predicate 和 result layout 闭环 |
-| M10-I11 | ⬜ | 独立 | 支持 `shfl.sync` 的首个 slice | mask、lane operand、predicate output 和 target rule 闭环 |
-| M10-I12 | ⬜ | 独立 | 支持 `cp.async` copy | source/destination space、size 和 cache rule 闭环 |
-| M10-I13 | ⬜ | 独立 | 支持 `cp.async.commit_group` | group state instruction syntax/check 闭环 |
-| M10-I14 | ⬜ | 独立 | 支持 `cp.async.wait_group` | immediate group count 和 target rule 闭环 |
-| M10-I15 | ⬜ | 独立 | 支持 `cp.async.wait_all` | standalone wait form 闭环 |
-| M10-I16 | ⬜ | 独立 | 支持 `ldmatrix` 的首个 shape/type slice | shape、transpose、destination layout 和 target rule 冻结 |
-| M10-I17 | ⬜ | 独立 | 支持 `mma` 的首个 shape/type slice | A/B/C/D type、shape、layout 和 target rule 冻结 |
-| M10-C01 | ⬜ | 耦合 | 统一 memory-ordering domain | `ld/st/fence/atom/red` 使用同一 consistency/scope 基础 |
-| M10-C02 | ⬜ | 耦合 | 统一 warp/matrix target constraint | mask、warp shape、matrix shape 和 availability 无重复实现 |
-| M10-C03 | ⬜ | 耦合 | 建立 advanced-kernel corpus | async-copy、atomic、warp 和 matrix 正反例共同通过 |
+| M10-I01 | ✅ | 独立 | 建立现有 `ld/st` extension gap manifest | 现有 gaps 以 machine-readable manifest 明确分类 |
+| M10-I02 | ✅ | 独立 | 支持 `ld/st` cache-hint/eviction slice | 冻结 L1 eviction 与 L2 cache-hint modifier、operand 和 target matrix |
+| M10-I03 | ✅ | 独立 | 支持 `ldu` | 冻结 global scalar form 的 parse/resolve/check 闭环 |
+| M10-I04 | ✅ | 独立 | 支持 `prefetch` | 冻结 level、global address 与 availability 规则 |
+| M10-I05 | ✅ | 独立 | 支持 `membar` | 冻结 scope 与 target availability |
+| M10-I06 | ✅ | 独立 | 支持 `fence` | 冻结 memory semantics、scope 和 target rule |
+| M10-I07 | ✅ | 独立 | 支持 `atom` 的首个 scalar slice | 冻结 global relaxed-CTA scalar operation、space、ordering 和 destination layout |
+| M10-I08 | ✅ | 独立 | 支持 `red` 的首个 scalar slice | 冻结 global relaxed-CTA scalar operation、space 和 no-destination layout |
+| M10-I09 | ✅ | 独立 | 支持 `activemask` | `.b32` predicate-mask form 与 target rule 闭环 |
+| M10-I10 | ✅ | 独立 | 支持 `vote` 的首个 sync slice | `vote.sync.ballot.b32` 的 mask、predicate 和 result layout 闭环 |
+| M10-I11 | ✅ | 独立 | 支持 `shfl.sync` 的首个 slice | `shfl.sync.idx.b32` 的 mask、lane、predicate output 和 target rule 闭环 |
+| M10-I12 | ✅ | 独立 | 支持 `cp.async` copy | `cp.async.ca.shared.global` 的 space、size 和 cache rule 闭环 |
+| M10-I13 | ✅ | 独立 | 支持 `cp.async.commit_group` | group-state instruction syntax/check 闭环 |
+| M10-I14 | ✅ | 独立 | 支持 `cp.async.wait_group` | 无符号 immediate group count 与 target rule 闭环 |
+| M10-I15 | ✅ | 独立 | 支持 `cp.async.wait_all` | standalone wait form 闭环 |
+| M10-I16 | ✅ | 独立 | 支持 `ldmatrix` 的首个 shape/type slice | PTX 9.3 §9.7.15.5.15 的 `ldmatrix.sync.aligned.m8n8.x2.shared.b16`，PTX 6.5 / SM 75，2×`b32` destination |
+| M10-I17 | ✅ | 独立 | 支持 `mma` 的首个 shape/type slice | PTX 9.3 §9.7.15.5.14 的 `mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32`，PTX 6.5 / SM 75，D/C 4×f32、A 2×f16x2、B 1×f16x2 |
+| M10-C01 | ✅ | 耦合 | 统一 memory-ordering domain | `ld/st/fence/atom/red` 复用唯一 consistency/scope domain |
+| M10-C02 | ✅ | 耦合 | 统一 warp/matrix target constraint | 复用 generic descriptor、vector、availability；不新增 shape abstraction |
+| M10-C03 | ✅ | 耦合 | 建立 advanced-kernel corpus | `advanced_kernel.ptx` 正例加 inline 负边界覆盖 async-copy、atomic、warp 和 matrix |
+
+### 出口
+
+```text
+frozen M10 PTX source
+        |
+        v
+parse -> resolve -> target-aware check -> advanced corpus positive/negative boundaries
+```
+
+出口只要求这些冻结 form 在 frontend 中 parse/resolve/check，并由 corpus 闭环；不要求完整
+PTX opcode 覆盖、simulator functional execution 或 GitHub Actions。当前验证为 Python 111、Debug
+394、等价本地 Release 394 和 package consumer 全通过；Release 是本地等价配置，并非 GitHub
+Actions 结果。
 
 ---
 
@@ -1529,11 +1562,11 @@ M11 diagnostic and CI infrastructure
 
 # 14. 当前推荐实施顺序
 
-基于当前工作分支的功能事实基线 `dd92748`，下一步应当是：
+基于当前工作分支的功能事实基线 `f1fa415`，下一步应当是：
 
 1. `M8-I14` 继续暂停，直到取得规范 grammar 或可复现 `ptxas` 行为；
-2. `M9-I14`：实现 `setp` 的冻结 MVP slice；
-3. M11 的 diagnostics/CI 基础设施可在不冻结公共 ABI 的前提下并行推进。
+2. `M9-C03`：打通 simulator MVP functional execution；
+3. M11：在不冻结公共 ABI 的前提下推进 diagnostics、CI 和下游接入基础设施。
 
 ---
 

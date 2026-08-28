@@ -495,11 +495,14 @@ generated category implementations
 
 ```text
 instructions/ptx_spec/
+├── arithmetic.yaml
+├── comparison_and_selection.yaml
 ├── control_flow.yaml
-├── data_movement.yaml
-├── floating_point.yaml
-├── integer_arith.yaml
-└── parallel_sync_and_communication.yaml
+├── data_movement_and_conversion.yaml
+├── logic_and_shift.yaml
+├── miscellaneous.yaml
+├── parallel_synchronization_and_communication.yaml
+└── warp_level_matrix_multiply_accumulate.yaml
 ```
 
 C++ spelling 和 runtime representation 位于：

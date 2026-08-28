@@ -2,10 +2,10 @@
 # yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
-ptx_isa: "9.2"
+ptx_isa: "9.3"
 category: parallel_synchronization_and_communication
 codegen_category: parallel_synchronization_and_communication
-section: "9.7.12"
+section: "9.7.14"
 
 operand_patterns:
   bar_sync_immediate_barrier:
@@ -155,36 +155,9 @@ operand_patterns:
       role: src
       access: read
       type: u32
-  shfl_sync_idx:
-    - name: dst
-      kind: shfl_dest
-      role: dst
-      access: write
-      type: b32
-    - name: src
-      kind: reg
-      role: src
-      access: read
-      type: b32
-    - name: lane
-      kind: reg_or_imm
-      role: src
-      access: read
-      type: u32
-    - name: clamp
-      kind: reg_or_imm
-      role: src
-      access: read
-      type: u32
-    - name: membermask
-      kind: reg_or_imm
-      role: src
-      access: read
-      type: u32
-
 instructions:
   - opcode: bar
-    section: "9.7.12.1"
+    section: "9.7.14.1"
     doc: >
       CTA barrier synchronization. The barrier identifier and optional
       participating-thread count are unsigned 32-bit values.
@@ -548,6 +521,7 @@ instructions:
             valid: true
 
   - opcode: membar
+    section: "9.7.14.4"
     doc: "Memory barrier, limited to CTA scope."
     syntax: "membar.cta"
 
@@ -568,6 +542,7 @@ instructions:
             valid: true
 
   - opcode: fence
+    section: "9.7.14.4"
     doc: "Memory fence, limited to acquire-release CTA scope."
     syntax: "fence.acq_rel.cta"
 
@@ -593,6 +568,7 @@ instructions:
             valid: true
 
   - opcode: atom
+    section: "9.7.14.5"
     doc: "Atomic operation, limited to relaxed CTA global add.u32."
     syntax: "atom.global.relaxed.cta.add.u32 dst, [address], src"
 
@@ -637,6 +613,7 @@ instructions:
             valid: true
 
   - opcode: red
+    section: "9.7.14.6"
     doc: "Reduction operation, limited to relaxed CTA global add.u32."
     syntax: "red.global.relaxed.cta.add.u32 [address], src"
 
@@ -681,6 +658,7 @@ instructions:
             valid: true
 
   - opcode: activemask
+    section: "9.7.14.12"
     doc: "Active-lane mask, limited to the b32 destination form."
     syntax: "activemask.b32 dst"
 
@@ -707,6 +685,7 @@ instructions:
             valid: true
 
   - opcode: vote
+    section: "9.7.14.10"
     doc: "Vote operation, limited to synchronized ballot.b32."
     syntax: "vote.sync.ballot.b32 dst, predicate, membermask"
 
@@ -734,34 +713,4 @@ instructions:
 
         examples:
           - ptx: "vote.sync.ballot.b32 %b0, %p0, 0xffffffff;"
-            valid: true
-
-  - opcode: shfl
-    doc: "Shuffle operation, limited to synchronized idx.b32 with d|p output."
-    syntax: "shfl.sync.idx.b32 dst|predicate, src, lane, clamp, membermask"
-
-    variants:
-      - name: shfl_sync_idx_b32
-        availability: {ptx: "6.0", sm: 30}
-        modifiers:
-          - name: sync
-            kind: flag
-            presence: fixed
-            value: true
-            token: .sync
-          - name: idx
-            kind: flag
-            presence: fixed
-            value: true
-            token: .idx
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b32
-        operands: $shfl_sync_idx
-        rule: parallel_sync_and_communication.shfl
-
-        examples:
-          - ptx: "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
             valid: true

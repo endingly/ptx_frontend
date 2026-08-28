@@ -1,4 +1,4 @@
-# PTX data-movement instructions.
+# PTX data movement and conversion instructions.
 # yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
@@ -218,21 +218,32 @@ operand_patterns:
       access: read
       type: u32
 
-  ldmatrix_m8n8_x2_shared_b16:
+  shfl_sync_idx:
     - name: dst
-      kind: reg_vector
+      kind: shfl_dest
       role: dst
       access: write
       type: b32
-      vector:
-        kind: matrix_fragment
-        arity: [2]
-        type_policy: element
-    - name: address
-      kind: addr
-      role: addr
+    - name: src
+      kind: reg
+      role: src
       access: read
-      state_space: [shared]
+      type: b32
+    - name: lane
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+    - name: clamp
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
 
   ld_vector:
     - name: dst
@@ -555,14 +566,14 @@ instructions:
             valid: true
 
   - opcode: mov
-    section: "9.7.9.3"
+    section: "9.7.9"
     doc: >
       Move a scalar register, immediate, or compatible special register into
       a 16/32/64-bit register. Integer/bit-size 32/64-bit forms also accept a data-variable
       or formal-parameter address, with an optional constant byte offset, or a
       bare device/kernel function address. Predicate register moves are also
       supported. Bit-size forms pack or unpack two/four scalar register elements;
-      .b128 is available only for these vector forms.
+      .b128 is available only for these vector forms (9.7.9.4).
     syntax: "mov.{pred|b16|u16|s16|b32|u32|s32|f32|b64|u64|s64|f64|b128} dst, src"
 
     variants:
@@ -1043,8 +1054,37 @@ instructions:
           - ptx: "ldu.global.u32 %r0, [global_value];"
             valid: true
 
+  - opcode: shfl
+    section: "9.7.9.6"
+    doc: "Synchronized shuffle, limited to idx.b32 with d|p output."
+    syntax: "shfl.sync.idx.b32 dst|predicate, src, lane, clamp, membermask"
+    variants:
+      - name: shfl_sync_idx_b32
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: idx
+            kind: flag
+            presence: fixed
+            value: true
+            token: .idx
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        operands: $shfl_sync_idx
+        rule: parallel_sync_and_communication.shfl
+        examples:
+          - ptx: "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
+            valid: true
+
   - opcode: prefetch
-    section: "9.7.9.13"
+    section: "9.7.9.16"
     doc: "Prefetch, limited to the explicit-global .L1 form."
     syntax: "prefetch.global.L1 [address]"
 
@@ -1070,7 +1110,7 @@ instructions:
             valid: true
 
   - opcode: cp
-    section: "9.7.9.22"
+    section: "9.7.9.26.3.1"
     doc: "Asynchronous copy, limited to cached shared-from-global fixed sizes."
     syntax: "cp.async.ca.shared.global [dst], [src], cp_size"
 
@@ -1109,6 +1149,11 @@ instructions:
           - ptx: "cp.async.ca.shared.global [shared_value], [global_value], 16;"
             valid: true
 
+  - opcode: cp
+    section: "9.7.9.26.3.2"
+    doc: "Asynchronous-copy group completion."
+    syntax: "cp.async.commit_group"
+    variants:
       - name: cp_async_commit_group
         availability: {ptx: "7.0", sm: 80}
         modifiers:
@@ -1129,6 +1174,11 @@ instructions:
           - ptx: "cp.async.commit_group;"
             valid: true
 
+  - opcode: cp
+    section: "9.7.9.26.3.3"
+    doc: "Asynchronous-copy group wait operations."
+    syntax: "cp.async.wait_group n | cp.async.wait_all"
+    variants:
       - name: cp_async_wait_group
         availability: {ptx: "7.0", sm: 80}
         modifiers:
@@ -1172,52 +1222,6 @@ instructions:
 
         examples:
           - ptx: "cp.async.wait_all;"
-            valid: true
-
-  - opcode: ldmatrix
-    section: "9.7.15.5.15"
-    doc: "Matrix load, limited to synchronized aligned m8n8.x2 shared b16."
-    syntax: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {dst0, dst1}, [address]"
-
-    variants:
-      - name: ldmatrix_sync_aligned_m8n8_x2_shared_b16
-        availability: {ptx: "6.5", sm: 75}
-        modifiers:
-          - name: sync
-            kind: flag
-            presence: fixed
-            value: true
-            token: .sync
-          - name: aligned
-            kind: flag
-            presence: fixed
-            value: true
-            token: .aligned
-          - name: m8n8
-            kind: flag
-            presence: fixed
-            value: true
-            token: .m8n8
-          - name: x2
-            kind: flag
-            presence: fixed
-            value: true
-            token: .x2
-          - name: shared
-            kind: flag
-            presence: fixed
-            value: true
-            token: .shared
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b16
-        operands: $ldmatrix_m8n8_x2_shared_b16
-        rule: data_movement.ldmatrix
-
-        examples:
-          - ptx: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];"
             valid: true
 
   - opcode: st

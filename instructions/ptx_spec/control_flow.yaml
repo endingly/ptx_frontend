@@ -26,7 +26,7 @@ operand_patterns:
 
 instructions:
   - opcode: call
-    section: "9.7.13.1"
+    section: "9.7.13.5"
     doc: "Direct call to a named function or indirect call through a register with function-local metadata."
     syntax: "call{.uni} [(return),] target [(arguments)] [, metadata]"
     variants:

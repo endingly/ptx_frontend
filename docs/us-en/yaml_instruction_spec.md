@@ -12,10 +12,9 @@ Every file uses `instructions/schemas/ptx-instr-v1.schema.yaml`:
 
 ```yaml
 schema: ptx-instr/v1
-ptx_isa: "9.2"
-category: integer_arithmetic
+ptx_isa: "9.3"
+category: arithmetic
 codegen_category: arithmetic
-section: "9.7.1"
 ```
 
 The schema validates field shape and primitive enums. The normalizer enforces
@@ -49,9 +48,10 @@ An instruction requires `opcode` and `variants`; it may also have instruction-
 level `syntax`, `operands`, `section`, and `doc`. Both `category` and
 `codegen_category` are required file-level fields and must not be repeated on
 an instruction. An opcode may naturally occur in several category YAML files,
-but all its definitions must use the same `codegen_category`. Floating-point
-and integer `add` can therefore remain in their respective spec files while
-producing one C++ `Add`.
+but all its definitions must use the same `codegen_category`. One YAML may
+also split one opcode into several instruction definitions when its variants
+belong to distinct PTX document sections. `arithmetic.yaml` is the deliberate
+exception that combines PTX 9.7.1 through 9.7.5 under one category.
 
 Merging follows sorted spec-path and in-file declaration order. The file path is
 already the definition source, so no separate `fragment` ID is needed. Before
@@ -431,10 +431,10 @@ modifier variant rather than copied variants with overlapping `.b16/.b32/.b64`
 forms, while `ld.v2` and `ld.v4` are one vector variant selected by a required
 runtime `vector` modifier.
 
-## Current floating Add coverage
+## Current Add coverage
 
-The `add` definitions in `floating_point.yaml` and `integer_arith.yaml` merge
-automatically. They cover the standard `.f32/.f32x2/.f64` forms,
+The section-specific `add` definitions in `arithmetic.yaml` merge automatically.
+They cover the standard `.f32/.f32x2/.f64` forms,
 mixed-precision `.f32.{f16,bf16}`, and the half-precision
 `.f16/.f16x2/.bf16/.bf16x2` forms. Rounding resolves to `RoundingMode`, and
 value availability expresses the `sm_20` requirement of `.rm/.rp.f32`.

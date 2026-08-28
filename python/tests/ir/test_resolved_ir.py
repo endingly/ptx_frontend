@@ -1655,9 +1655,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
+            output_path = Path(directory) / "resolved_ir_matrix.gen.cpp"
             generate_resolved_ir_source(
-                database, category="arithmetic", output_path=output_path
+                database, category="matrix", output_path=output_path
             )
             source = output_path.read_text(encoding="utf-8")
         self.assertIn("SyncAlignedM16n8k8RowColF32F16F16F32", source)
@@ -1685,7 +1685,6 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("AsyncCommitGroup", source)
         self.assertIn("AsyncWaitGroup", source)
         self.assertIn("AsyncWaitAll", source)
-        self.assertIn("SyncAlignedM8n8X2SharedB16", source)
         self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
 
@@ -1914,10 +1913,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_ir_parallel.gen.cpp"
+            output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             generate_resolved_ir_source(
                 database,
-                category="parallel_synchronization_and_communication",
+                category="data_movement",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")

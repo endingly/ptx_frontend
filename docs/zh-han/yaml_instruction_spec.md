@@ -11,10 +11,9 @@
 
 ```yaml
 schema: ptx-instr/v1
-ptx_isa: "9.2"
-category: integer_arithmetic
+ptx_isa: "9.3"
+category: arithmetic
 codegen_category: arithmetic
-section: "9.7.1"
 ```
 
 schema 负责字段形状和基础枚举；normalizer 负责跨字段的生成器不变量，例如一个
@@ -44,8 +43,9 @@ variant 不能同时写 `operands` 和 `operand_layouts`。
 每个 instruction 至少包含 `opcode` 和 `variants`，可以有 instruction-level 的
 `syntax`、`operands`、`section` 与 `doc`。`category` 与 `codegen_category` 都是必需的
 文件级字段，不得在 instruction 中重复。一个 opcode 可以自然分散在多个 category YAML
-中；同 opcode 的所有定义必须使用相同的 `codegen_category`。因此浮点与整数 `add`
-可以分别保留在对应规范文件中，最终仍合并成唯一的 C++ `Add`。
+中；同 opcode 的所有定义必须使用相同的 `codegen_category`。当 variant 属于不同 PTX
+文档节时，也可以在同一 YAML 中拆成多个 instruction 定义。`arithmetic.yaml` 是刻意将
+PTX 9.7.1 至 9.7.5 合并的例外。
 
 合并按 spec 文件路径及文件内声明顺序进行。文件路径本身就是定义来源，不再需要额外的
 `fragment` ID。database 会在发射代码前拒绝重复 variant ID、PascalCase 后冲突的
@@ -383,9 +383,9 @@ resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同
 的三种 layout，不能因 `.b16/.b32/.b64` 形式重叠而复制 variant；`ld.v2` 与 `ld.v4` 则是由
 required runtime `vector` modifier 选择的同一个 vector variant。
 
-## 浮点 Add 的当前覆盖
+## Add 的当前覆盖
 
-`floating_point.yaml` 与 `integer_arith.yaml` 中的 `add` 定义自动合并。当前覆盖标准
+`arithmetic.yaml` 中按节拆分的 `add` 定义会自动合并。当前覆盖标准
 `.f32/.f32x2/.f64`、mixed-precision `.f32.{f16,bf16}` 以及半精度
 `.f16/.f16x2/.bf16/.bf16x2` 形式；舍入模式解析为 `RoundingMode`，`.rm/.rp.f32`
 的 `sm_20` 要求使用 value availability 表达。packed 与 half/bfloat 形式按 PTX 规范

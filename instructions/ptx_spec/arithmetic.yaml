@@ -1,14 +1,20 @@
-# instructions/floating_point.yaml
+# PTX integer, floating-point, half-precision, and mixed-precision arithmetic.
 # yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
 ptx_isa: "9.3"
-category: floating_point
+category: arithmetic
 codegen_category: arithmetic
-section: "9.7.3"
-doc: "Floating-point and mixed-precision arithmetic forms."
+doc: "Merged PTX ISA 9.3 arithmetic categories 9.7.1 through 9.7.5."
 
 type_sets:
+  add_integer_scalar: [u16, u32, u64, s16, s32, s64]
+  add_simd_no_sat: [u16x2, s16x2]
+  add_packed_optional_sat: [u8x4, s8x4]
+  add_late_sat: [u16x2, s16x2, u32]
+  sub_integer_scalar: [u16, u32, u64, s16, s64]
+  sub_optional_sat: [s32, u8x4, s8x4]
+
   add_half_types:
     - f16
     - f16x2
@@ -25,6 +31,17 @@ value_sets:
     - rp
 
 operand_patterns:
+  binary_arith:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
+
+  ternary_arith:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(type)"}}
+
   binary_float_scalar:
     - name: dst
       kind: reg
@@ -120,53 +137,13 @@ operand_patterns:
       type:
         expr: modifier(result_type)
 
-  mma_m16n8k8_f32_f16:
-    - name: dst
-      kind: reg_vector
-      role: dst
-      access: write
-      type: f32
-      vector:
-        kind: matrix_fragment
-        arity: [4]
-        type_policy: element
-    - name: a
-      kind: reg_vector
-      role: src1
-      access: read
-      type: f16x2
-      vector:
-        kind: matrix_fragment
-        arity: [2]
-        type_policy: element
-    - name: b
-      kind: reg_vector
-      role: src2
-      access: read
-      type: f16x2
-      vector:
-        kind: matrix_fragment
-        arity: [1]
-        type_policy: element
-    - name: c
-      kind: reg_vector
-      role: src3
-      access: read
-      type: f32
-      vector:
-        kind: matrix_fragment
-        arity: [4]
-        type_policy: element
-
 instructions:
   - opcode: add
-    section: "9.7.3.1"
-    doc: "Standard, half-precision, bfloat, and mixed-precision add."
+    section: "9.7.3.3"
+    doc: "Standard floating-point add."
     syntax: >-
       add{.rnd}{.ftz}{.sat}.f32 | add{.rnd}{.ftz}.f32x2 |
-      add{.rnd}.f64 | add{.rn}{.ftz}{.sat}.{f16|f16x2} |
-      add{.rn}.{bf16|bf16x2} dst, src1, src2 |
-      add{.rnd}{.sat}.f32.{f16|bf16} dst, src, addend
+      add{.rnd}.f64 dst, src1, src2
     operands: $binary_float_scalar
 
     variants:
@@ -288,6 +265,11 @@ instructions:
           - ptx: "add.rm.f64 d, a, b;"
             valid: true
 
+  - opcode: add
+    section: "9.7.4.1"
+    doc: "Half-precision and bfloat add."
+    syntax: "add{.rn}{.ftz}{.sat}.{f16|f16x2|bf16|bf16x2} dst, src1, src2"
+    variants:
       - name: add_half
         operands: $binary_float_register
         availability:
@@ -364,6 +346,11 @@ instructions:
           - ptx: "add.rn.bf16x2 d, a, b;"
             valid: true
 
+  - opcode: add
+    section: "9.7.5.1"
+    doc: "Mixed-precision add."
+    syntax: "add{.rnd}{.sat}.f32.{f16|bf16} dst, src, addend"
+    variants:
       - name: add_mixed_f32
         operands: $binary_mixed_float_register
         availability:
@@ -411,12 +398,10 @@ instructions:
 
   - opcode: sub
     section: "9.7.3.4"
-    doc: "Standard, half-precision, bfloat, and mixed-precision subtract."
+    doc: "Standard floating-point subtract."
     syntax: >-
       sub{.rnd}{.ftz}{.sat}.f32 | sub{.rnd}{.ftz}.f32x2 |
-      sub{.rnd}.f64 | sub{.rn}{.ftz}{.sat}.{f16|f16x2} |
-      sub{.rn}.{bf16|bf16x2} dst, src1, src2 |
-      sub{.rnd}{.sat}.f32.{f16|bf16} dst, src, subtrahend
+      sub{.rnd}.f64 dst, src1, src2
     operands: $binary_float_scalar
 
     variants:
@@ -538,6 +523,11 @@ instructions:
           - ptx: "sub.rm.f64 d, a, b;"
             valid: true
 
+  - opcode: sub
+    section: "9.7.4.2"
+    doc: "Half-precision and bfloat subtract."
+    syntax: "sub{.rn}{.ftz}{.sat}.{f16|f16x2|bf16|bf16x2} dst, src1, src2"
+    variants:
       - name: sub_half
         operands: $binary_float_register
         availability:
@@ -614,6 +604,11 @@ instructions:
           - ptx: "sub.rn.bf16x2 d, a, b;"
             valid: true
 
+  - opcode: sub
+    section: "9.7.5.2"
+    doc: "Mixed-precision subtract."
+    syntax: "sub{.rnd}{.sat}.f32.{f16|bf16} dst, src, subtrahend"
+    variants:
       - name: sub_mixed_f32
         operands:
           - name: dst
@@ -731,67 +726,133 @@ instructions:
           - ptx: "fma.rn.f32 %f0, %f1, %f2, %f3;"
             valid: true
 
-  - opcode: mma
-    section: "9.7.15.5.14"
-    doc: "Matrix multiply-accumulate, limited to m16n8k8 f16 inputs and f32 accumulation."
-    syntax: >-
-      mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
-      {dst0, dst1, dst2, dst3}, {a0, a1}, {b0}, {c0, c1, c2, c3}
-    operands: $mma_m16n8k8_f32_f16
-
+  - opcode: add
+    section: "9.7.1.1"
+    doc: "Integer add."
+    syntax: "add{.sat}.{type} dst, src1, src2"
+    operands: $binary_arith
     variants:
-      - name: mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32
-        availability: {ptx: "6.5", sm: 75}
+      - name: add_integer_no_sat
+        availability: {ptx: "1.0", sm: 0}
         modifiers:
-          - name: sync
-            kind: flag
-            presence: fixed
-            value: true
-            token: .sync
-          - name: aligned
-            kind: flag
-            presence: fixed
-            value: true
-            token: .aligned
-          - name: m16n8k8
-            kind: flag
-            presence: fixed
-            value: true
-            token: .m16n8k8
-          - name: row
-            kind: flag
-            presence: fixed
-            value: true
-            token: .row
-          - name: col
-            kind: flag
-            presence: fixed
-            value: true
-            token: .col
-          - name: d_type
+          - {name: sat, kind: flag, presence: absent}
+          - name: type
             kind: type
             domain: scalar_types
-            presence: fixed
-            value: f32
-          - name: a_type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: f16
-          - name: b_type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: f16
-          - name: c_type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: f32
-        rule: matrix.mma
-
+            presence: required
+            values:
+              - $add_integer_scalar
+              - value: $add_simd_no_sat
+                availability: {ptx: "8.0", sm: 90}
+        rule: integer_arith.add
         examples:
-          - ptx: >-
-              mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
-              {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
-            valid: true
+          - {ptx: "add.u32 r1, r2, r3;", valid: true}
+          - {ptx: "add.s32 r1, r2, 1;", valid: true}
+          - {ptx: "add.u16x2 r1, r2, r3;", valid: true}
+          - {ptx: "add.s16x2 r1, r2, r3;", valid: true}
+      - name: add_sat
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: sat, kind: flag, presence: fixed, value: true, token: ".sat"}
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - s32
+              - value: $add_late_sat
+                availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        rule: integer_arith.add_sat
+        examples:
+          - {ptx: "add.sat.s32 r1, r2, r3;", valid: true}
+          - {ptx: "add.sat.u16x2 r1, r2, r3;", valid: true}
+          - {ptx: "add.sat.s16x2 r1, r2, r3;", valid: true}
+          - {ptx: "add.sat.u32 r1, r2, r3;", valid: true}
+      - name: add_packed_optional_sat
+        availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        modifiers:
+          - {name: sat, kind: flag, presence: optional, default: false, token: ".sat"}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$add_packed_optional_sat]}
+        rule: integer_arith.add_packed
+        examples:
+          - {ptx: "add.u8x4 r1, r2, r3;", valid: true}
+          - {ptx: "add.sat.u8x4 r1, r2, r3;", valid: true}
+          - {ptx: "add.s8x4 r1, r2, r3;", valid: true}
+          - {ptx: "add.sat.s8x4 r1, r2, r3;", valid: true}
+
+  - opcode: sub
+    section: "9.7.1.2"
+    doc: "Integer subtract."
+    syntax: "sub{.sat}.{type} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: sub_integer_no_sat
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: sat, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$sub_integer_scalar]}
+        rule: integer_arith.sub
+        examples:
+          - {ptx: "sub.u32 r1, r2, r3;", valid: true}
+          - {ptx: "sub.s16 r1, r2, 1;", valid: true}
+      - name: sub_optional_sat
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - s32
+              - value: u8x4
+                availability: {ptx: "9.2", sm: 120, family: sm_120f}
+              - value: s8x4
+                availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        rule: integer_arith.sub_sat
+        examples:
+          - {ptx: "sub.s32 r1, r2, r3;", valid: true}
+          - {ptx: "sub.sat.s32 r1, r2, r3;", valid: true}
+          - {ptx: "sub.u8x4 r1, r2, r3;", valid: true}
+          - {ptx: "sub.sat.s8x4 r1, r2, r3;", valid: true}
+
+  - opcode: mul
+    section: "9.7.1.3"
+    doc: "Frozen low 32-bit unsigned integer multiply."
+    syntax: "mul.lo.u32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: mul_lo_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "mul.lo.u32 %r0, %r1, 7;", valid: true}
+
+  - opcode: mad
+    section: "9.7.1.4"
+    doc: "Frozen low 32-bit unsigned integer multiply-add."
+    syntax: "mad.lo.u32 dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: mad_lo_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "mad.lo.u32 %r0, %r1, 7, %r2;", valid: true}
+
+  - opcode: div
+    section: "9.7.1.9"
+    doc: "Frozen unsigned 32-bit integer division."
+    syntax: "div.u32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: div_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "div.u32 %r0, %r1, 0;", valid: true}

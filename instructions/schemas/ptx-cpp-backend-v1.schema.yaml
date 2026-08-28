@@ -13,7 +13,7 @@
 #     ptx-cpp-backend-v1.schema.yaml
 #
 #   instructions/
-#     integer_arith.yaml
+#     arithmetic.yaml
 #
 #   ptx_cpp_backend_spec/
 #     ptx_frontend.yaml

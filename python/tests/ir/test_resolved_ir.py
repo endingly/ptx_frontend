@@ -1561,6 +1561,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
+    def test_ldmatrix_sync_aligned_m8n8_x2_shared_b16_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        ldmatrix = next(
+            instruction for instruction in database.instructions if instruction.opcode == "ldmatrix"
+        )
+        variant = from_instruction_spec(ldmatrix).variants[0]
+
+        self.assertEqual(variant.cpp_name, "SyncAlignedM8n8X2SharedB16")
+        self.assertEqual(dict(variant.availability), {"ptx": "6.5", "sm": 75})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("aligned", "bool"),
+                ("m8n8", "bool"),
+                ("x2", "bool"),
+                ("shared", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterVector>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        dst = variant.operand_layouts[0].bindings[0]
+        self.assertEqual(dst.allowed_vector_arities, (2,))
+        self.assertEqual(dst.vector_type_policy.value, "Element")
+        self.assertEqual(dst.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+        self.assertEqual(
+            [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
+            ["shared"],
+        )
+
     def test_cp_generator_emits_immediate_value_checker(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1583,6 +1616,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("AsyncCommitGroup", source)
         self.assertIn("AsyncWaitGroup", source)
         self.assertIn("AsyncWaitAll", source)
+        self.assertIn("SyncAlignedM8n8X2SharedB16", source)
         self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
 

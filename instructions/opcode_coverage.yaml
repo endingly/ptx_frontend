@@ -56,6 +56,11 @@ opcodes:
     resolved: partial
     checker: partial
     simulator: unsupported
+  - opcode: ldmatrix
+    syntax: partial
+    resolved: partial
+    checker: partial
+    simulator: unsupported
   - opcode: membar
     syntax: partial
     resolved: partial

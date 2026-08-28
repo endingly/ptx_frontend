@@ -218,6 +218,22 @@ operand_patterns:
       access: read
       type: u32
 
+  ldmatrix_m8n8_x2_shared_b16:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type: b32
+      vector:
+        kind: matrix_fragment
+        arity: [2]
+        type_policy: element
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+
   ld_vector:
     - name: dst
       kind: reg_vector
@@ -1156,6 +1172,52 @@ instructions:
 
         examples:
           - ptx: "cp.async.wait_all;"
+            valid: true
+
+  - opcode: ldmatrix
+    section: "9.7.14.4.15"
+    doc: "Matrix load, limited to synchronized aligned m8n8.x2 shared b16."
+    syntax: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {dst0, dst1}, [address]"
+
+    variants:
+      - name: ldmatrix_sync_aligned_m8n8_x2_shared_b16
+        availability: {ptx: "6.5", sm: 75}
+        modifiers:
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: aligned
+            kind: flag
+            presence: fixed
+            value: true
+            token: .aligned
+          - name: m8n8
+            kind: flag
+            presence: fixed
+            value: true
+            token: .m8n8
+          - name: x2
+            kind: flag
+            presence: fixed
+            value: true
+            token: .x2
+          - name: shared
+            kind: flag
+            presence: fixed
+            value: true
+            token: .shared
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b16
+        operands: $ldmatrix_m8n8_x2_shared_b16
+        rule: data_movement.ldmatrix
+
+        examples:
+          - ptx: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];"
             valid: true
 
   - opcode: st

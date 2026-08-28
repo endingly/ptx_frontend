@@ -696,6 +696,86 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitAllSlice) {
   ASSERT_FALSE(wrong_token.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
+  const auto ast = parseModule(R"ptx(
+.shared .b16 shared_value;
+.entry kernel() {
+  .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Ldmatrix>(resolved->functions.front().body.front());
+  const auto& matrix = std::get<Ldmatrix::SyncAlignedM8n8X2SharedB16>(
+      instruction.variant);
+  EXPECT_TRUE(matrix.sync);
+  EXPECT_TRUE(matrix.aligned);
+  EXPECT_TRUE(matrix.m8n8);
+  EXPECT_TRUE(matrix.x2);
+  EXPECT_TRUE(matrix.shared);
+  EXPECT_EQ(matrix.type, ScalarType::B16);
+  ASSERT_EQ(matrix.dst.value.elements.size(), 2u);
+  EXPECT_EQ(matrix.dst.value.elements[0]->declared_type, ScalarType::B32);
+  EXPECT_EQ(matrix.dst.value.elements[1]->declared_type, ScalarType::B32);
+  const checker::Context context{
+      .target = {.ptx_version = {6, 5}, .sm_version = 75},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 75},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_address = resolveModule(parseModule(R"ptx(
+.global .b16 global_value;
+.entry kernel() { .reg .b32 %r<2>; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [global_value]; }
+)ptx"));
+  ASSERT_TRUE(wrong_address.has_value())
+      << wrong_address.error().front().message;
+  const auto address_check = checker::check(
+      std::get<Ldmatrix>(wrong_address->functions.front().body.front()), context);
+  ASSERT_FALSE(address_check.has_value());
+  EXPECT_EQ(address_check.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto wrong_register = resolveModule(parseModule(R"ptx(
+.shared .b16 shared_value;
+.entry kernel() { .reg .b16 %r<2>; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value]; }
+)ptx"));
+  ASSERT_TRUE(wrong_register.has_value())
+      << wrong_register.error().front().message;
+  const auto register_check = checker::check(
+      std::get<Ldmatrix>(wrong_register->functions.front().body.front()), context);
+  ASSERT_FALSE(register_check.has_value());
+  EXPECT_EQ(register_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1, %r2}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
+       }) {
+    ASSERT_FALSE(resolveModule(parseModule(source)).has_value()) << source;
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() { membar.cta; }

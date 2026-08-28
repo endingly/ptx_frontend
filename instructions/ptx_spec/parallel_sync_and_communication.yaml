@@ -106,6 +106,25 @@ operand_patterns:
       role: predicate
       access: read
       type: pred
+  atom_global_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
 
 instructions:
   - opcode: bar
@@ -515,4 +534,48 @@ instructions:
 
         examples:
           - ptx: "fence.acq_rel.cta;"
+            valid: true
+
+  - opcode: atom
+    doc: "Atomic operation, limited to relaxed CTA global add.u32."
+    syntax: "atom.global.relaxed.cta.add.u32 dst, [address], src"
+
+    variants:
+      - name: atom_global_relaxed_cta_add_u32
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: fixed
+            value: relaxed
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cta
+          - name: add
+            kind: flag
+            presence: fixed
+            value: true
+            token: .add
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $atom_global_scalar
+        rule: parallel_sync_and_communication.atom
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "atom.global.relaxed.cta.add.u32 %r0, [global_value], %r1;"
             valid: true

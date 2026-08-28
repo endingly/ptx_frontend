@@ -1520,6 +1520,47 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
+    def test_atom_global_relaxed_cta_add_u32_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        atom = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "atom"
+        )
+        resolved = from_instruction_spec(atom)
+
+        self.assertEqual(resolved.cpp_name, "Atom")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalRelaxedCtaAddU32"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("semantics", "MemoryConsistency"),
+                ("scope", "MemoryScope"),
+                ("add", "bool"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("src", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
+        bindings = variant.operand_layouts[0].bindings
+        self.assertEqual(
+            (bindings[0].register_width_policy, bindings[2].register_width_policy),
+            (
+                ResolvedRegisterWidthPolicy.SAME_WIDTH,
+                ResolvedRegisterWidthPolicy.SAME_WIDTH,
+            ),
+        )
+        self.assertEqual(bindings[1].state_space_modifier_field_id, "state_space")
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1572,6 +1613,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertEqual(source.count("namespace checker {"), 1)
         self.assertIn("struct Add {", source)
+        self.assertIn("struct Atom {", source)
         self.assertIn("struct Bar {", source)
         self.assertIn("struct Membar {", source)
         self.assertIn("struct Fence {", source)
@@ -1698,6 +1740,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolveInstruction(const syntax_ast::AstInstruction& ast)", source)
         self.assertIn('ast.opcode.syntax.text == "add"', source)
         self.assertIn("resolve<Add>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "atom"', source)
+        self.assertIn("resolve<Atom>(ast, context)", source)
         self.assertIn("namespace {", source)
         self.assertIn('ast.opcode.syntax.text == "sub"', source)
         self.assertIn("resolve<Sub>(ast, context)", source)

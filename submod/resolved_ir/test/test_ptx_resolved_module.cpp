@@ -511,6 +511,114 @@ TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
   ASSERT_FALSE(extra_operand.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value], %r1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction = std::get<Atom>(resolved->functions.front().body.front());
+  const auto& atom =
+      std::get<Atom::GlobalRelaxedCtaAddU32>(instruction.variant);
+  EXPECT_EQ(atom.state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(atom.semantics, MemoryConsistency::Relaxed);
+  EXPECT_EQ(atom.scope, MemoryScope::Cta);
+  EXPECT_TRUE(atom.add);
+  EXPECT_EQ(atom.type, ScalarType::U32);
+  EXPECT_EQ(atom.dst.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(atom.src.value.declared_type, ScalarType::U32);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .local .u32 local_value;
+  .reg .u32 %r<2>;
+  atom.global.relaxed.cta.add.u32 %r0, [local_value], %r1;
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
+  const auto wrong_address = checker::check(
+      std::get<Atom>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 70}});
+  ASSERT_FALSE(wrong_address.has_value());
+  EXPECT_EQ(wrong_address.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto mismatched_registers = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u64 %wide<2>;
+  .reg .u16 %h<2>;
+  .reg .u32 %r0;
+  atom.global.relaxed.cta.add.u32 %wide0, [global_value], %r0;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value], %wide1;
+  atom.global.relaxed.cta.add.u32 %h0, [global_value], %r0;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value], %h1;
+}
+)ptx"));
+  ASSERT_TRUE(mismatched_registers.has_value())
+      << mismatched_registers.error().front().message;
+  for (const auto& candidate : mismatched_registers->functions.front().body) {
+    const auto checked = checker::check(
+        std::get<Atom>(candidate),
+        checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 70}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto wrong_operation = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  atom.global.relaxed.cta.and.u32 %r0, [global_value], %r1;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_operation.has_value());
+  const auto wrong_ordering = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  atom.global.acquire.cta.add.u32 %r0, [global_value], %r1;
+}
+)ptx"));
+  ASSERT_FALSE(wrong_ordering.has_value());
+  const auto missing_operand = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  atom.global.relaxed.cta.add.u32 %r0, [global_value];
+}
+)ptx"));
+  ASSERT_FALSE(missing_operand.has_value());
+}
+
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto valid_ast = parseModule(R"ptx(
 .entry kernel() {

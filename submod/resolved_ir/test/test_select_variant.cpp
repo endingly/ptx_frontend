@@ -168,6 +168,70 @@ const WithLocs<ResolvedIndirectCallee>& indirect_callee_field(
       fields.operands.at("callee"));
 }
 
+std::expected<ResolvedInstructionFields, ResolveDiagnostic>
+resolve_register_pack(const syntax_ast::AstInstruction& ast) {
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1> syntax_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+       .presence = check_end::OperandPresence::Required,
+       .minimum_elements = 1,
+       .maximum_elements = 5,
+       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
+  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts = {{
+      {.layout_id = "pack",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = syntax_slots},
+  }};
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{
+      {.variant_name = "Pack",
+       .modifiers = {},
+       .operand_layouts = syntax_layouts},
+  }};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+  const std::array<check_end::ResolvedFieldDescriptor, 0> fields{};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 0> bindings{};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 1> layouts = {{
+      {.layout_id = "pack", .fields = fields, .bindings = bindings},
+  }};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> variants = {{
+      {.variant_name = "Pack",
+       .fields = {},
+       .modifier_bindings = {},
+       .operand_layouts = layouts},
+  }};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = variants,
+  };
+  return resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Pack");
+}
+
+TEST(ResolveFields, DiagnosesModernPackCardinalityAtSyntaxSelection) {
+  const auto ast = parse_instruction("sample {%r0, %r1, %r2, %r3, %r4, %r5};");
+  const auto resolved = resolve_register_pack(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().range,
+            std::get<syntax_ast::AstVectorPack>(ast.operands.front()).range);
+  EXPECT_EQ(resolved.error().message, "Vector operand requires 1 to 5 elements.");
+}
+
+TEST(ResolveFields, DiagnosesModernPackElementShapeAtSyntaxSelection) {
+  const auto ast = parse_instruction("sample {1};");
+  const auto& vector = std::get<syntax_ast::AstVectorPack>(ast.operands.front());
+  const auto resolved = resolve_register_pack(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().range,
+            std::get<syntax_ast::AstImmediate>(vector.elements.front()).syntax.range);
+  EXPECT_EQ(resolved.error().message,
+            "Vector operand element has a shape not accepted by this "
+            "instruction layout.");
+}
+
 TEST(ResolveIndirectCallee, ResolvesStandaloneRegisterAndMetadataSpelling) {
   const auto register_fields =
       resolve_indirect_callee_field(parse_instruction("call %r12;"));

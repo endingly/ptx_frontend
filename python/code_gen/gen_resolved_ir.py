@@ -1083,11 +1083,15 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 size_t index = 0;
                 for (const auto& element :
                      {object_name}.{field.name}.value.elements) {{
-                  if (index >= view.vector_element_types.size())
+                  if (index >= view.vector_element_shapes.size())
                     break;
                   if (element) {{
-                    view.vector_element_types[index] =
-                        element->declared_type.value_or(ScalarType::Invalid);
+                    view.vector_element_shapes[index] =
+                        {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
+                    if (index < view.vector_element_types.size()) {{
+                      view.vector_element_types[index] =
+                          element->declared_type.value_or(ScalarType::Invalid);
+                    }}
                   }} else {{
                     ++view.vector_sink_count;
                   }}
@@ -1096,13 +1100,26 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 return view;
               }}()"""
     if field.value_cpp_type == "ResolvedTensorCoordinate":
-        return f"""              OperandView{{
+        return f"""              [&]() -> OperandView {{
+                OperandView view{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
                   .vector_arity = static_cast<uint8_t>(
                       {object_name}.{field.name}.value.elements.size()),
                   .locations = {object_name}.{field.name}.locs,
-              }}"""
+                }};
+                size_t index = 0;
+                for (const auto& element :
+                     {object_name}.{field.name}.value.elements) {{
+                  if (index >= view.vector_element_shapes.size())
+                    break;
+                  view.vector_element_shapes[index++] =
+                      std::holds_alternative<ResolvedRegisterRef>(element)
+                          ? {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")}
+                          : {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")};
+                }}
+                return view;
+              }}()"""
     if field.value_cpp_type == "ResolvedVectorRegisterRef":
         return f"""              [&]() -> OperandView {{
                 const auto& register_ref =

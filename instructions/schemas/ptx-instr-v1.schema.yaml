@@ -842,6 +842,37 @@ $defs:
       - if:
           properties:
             kind:
+              not:
+                enum:
+                  - descriptor
+                  - typed_token
+          required:
+            - kind
+        then:
+          not:
+            required:
+              - type_tag
+
+      - if:
+          properties:
+            kind:
+              not:
+                enum:
+                  - tensor_coordinate
+                  - matrix_fragment
+          required:
+            - kind
+        then:
+          not:
+            anyOf:
+              - required:
+                  - cardinality
+              - required:
+                  - element_kinds
+
+      - if:
+          properties:
+            kind:
               const: tensor_coordinate
           required:
             - kind
@@ -862,6 +893,9 @@ $defs:
                     const: reg
                 - contains:
                     const: imm
+          not:
+            required:
+              - vector
 
       - if:
           properties:
@@ -883,6 +917,9 @@ $defs:
               maxItems: 1
               items:
                 const: reg
+          not:
+            required:
+              - vector
 
   operand_cardinality:
     description: "Inclusive variable brace-pack cardinality."

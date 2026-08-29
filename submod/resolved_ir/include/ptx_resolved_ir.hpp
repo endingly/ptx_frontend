@@ -107,6 +107,13 @@ enum class ResolvedValueKind : uint8_t {
 struct SyntaxOperandSlotDescriptor {
   OperandSyntaxShape allowed_shapes;
   OperandPresence presence;
+  /** Descriptor/domain identity only; syntax has no token tag to compare. */
+  std::string_view type_tag{};
+  /** Inclusive brace-pack bounds; zero means this is not a variable pack. */
+  uint8_t minimum_elements = 0;
+  uint8_t maximum_elements = 0;
+  /** Syntax shapes accepted for each element of a modern brace pack. */
+  OperandSyntaxShape allowed_element_shapes{};
 };
 
 enum class OperandLayoutKind : uint8_t {

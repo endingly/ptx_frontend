@@ -450,6 +450,41 @@ CheckResult check_operands(
       });
     }
 
+    if (descriptor.minimum_elements != 0) {
+      const SourceRange& range = diagnostic_range(operand->locations, context);
+      if (operand->actual_shape != OperandShape::Vector ||
+          operand->vector_arity < descriptor.minimum_elements ||
+          operand->vector_arity > descriptor.maximum_elements ||
+          operand->vector_arity > kMaxOperandElements) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::InvalidVectorOperand,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' has an unsupported element count.",
+                descriptor.target_field_id),
+        });
+      } else {
+        const auto mismatched = std::ranges::find_if(
+            operand->vector_element_shapes.begin(),
+            operand->vector_element_shapes.begin() + operand->vector_arity,
+            [&](OperandShape element_shape) {
+              return !allows_shape(descriptor.allowed_element_shapes,
+                                   element_shape);
+            });
+        if (mismatched != operand->vector_element_shapes.begin() +
+                              operand->vector_arity) {
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+              .range = range,
+              .message = fmt::format(
+                  "Vector operand '{}' has an element shape not accepted by "
+                  "this instruction layout.",
+                  descriptor.target_field_id),
+          });
+        }
+      }
+    }
+
     std::optional<MemoryStateSpace> selected_state_space;
     if (!descriptor.state_space_modifier_field_id.empty()) {
       const FieldView* state_space_field =
@@ -578,7 +613,8 @@ CheckResult check_operands(
     }
     append_value_availability_diagnostics(*operand, context, diagnostics);
 
-    if (operand->actual_shape == OperandShape::Vector) {
+    if (operand->actual_shape == OperandShape::Vector &&
+        descriptor.minimum_elements == 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
       std::optional<uint8_t> required_vector_arity;
       if (!descriptor.vector_arity_modifier_field_id.empty()) {

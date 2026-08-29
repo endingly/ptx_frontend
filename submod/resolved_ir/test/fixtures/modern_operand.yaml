@@ -1,0 +1,24 @@
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: test
+codegen_category: test
+
+instructions:
+  - opcode: synthetic_modern
+    variants:
+      - name: synthetic_modern_primitive
+        availability: {ptx: "9.3", sm: 0}
+        operands:
+          - name: coordinate
+            kind: tensor_coordinate
+            role: src
+            access: read
+            type: u32
+            cardinality: {min: 1, max: 5}
+            element_kinds: [reg, imm]
+          - name: fragment
+            kind: matrix_fragment
+            role: src
+            access: read
+            cardinality: {min: 1, max: 64}
+            element_kinds: [reg]

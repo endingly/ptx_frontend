@@ -999,6 +999,102 @@ TEST(ResolvedIrChecker, ChecksDynamicVectorArityAndElementPolicy) {
             CheckDiagnosticKind::MissingVectorArityField);
 }
 
+TEST(ResolvedIrChecker, ChecksModernBracePackCardinalityAndElementShapes) {
+  constexpr OperandDescriptor tensor[] = {{
+      .target_field_id = "coordinate",
+      .type_expression = {.kind = OperandTypeExpressionKind::None},
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Vector,
+      .minimum_elements = 1,
+      .maximum_elements = 5,
+      .allowed_element_shapes = OperandShape::Register | OperandShape::Immediate,
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView coordinate{
+      .field_id = "coordinate",
+      .actual_shape = OperandShape::Vector,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const auto check_tensor = [&] {
+    return check_operands(tensor, {}, std::span<const OperandView>{&coordinate, 1},
+                          {}, context);
+  };
+
+  auto rejected = check_tensor();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind, CheckDiagnosticKind::InvalidVectorOperand);
+
+  coordinate.vector_arity = 6;
+  rejected = check_tensor();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind, CheckDiagnosticKind::InvalidVectorOperand);
+
+  for (uint8_t arity = 1; arity <= 5; ++arity) {
+    coordinate.vector_arity = arity;
+    coordinate.vector_element_shapes.fill(OperandShape::Register);
+    if (arity > 1)
+      coordinate.vector_element_shapes[1] = OperandShape::Immediate;
+    EXPECT_TRUE(check_tensor().has_value()) << "arity " << unsigned{arity};
+  }
+
+  coordinate.vector_arity = 1;
+  coordinate.vector_element_shapes.fill(OperandShape::Address);
+  rejected = check_tensor();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedOperandShape);
+}
+
+TEST(ResolvedIrChecker, ChecksModernMatrixFragmentShapes) {
+  constexpr OperandDescriptor matrix[] = {{
+      .target_field_id = "fragment",
+      .type_expression = {.kind = OperandTypeExpressionKind::None},
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Vector,
+      .minimum_elements = 1,
+      .maximum_elements = 64,
+      .allowed_element_shapes = OperandShape::Register,
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView fragment{
+      .field_id = "fragment",
+      .actual_shape = OperandShape::Vector,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const auto check_matrix = [&] {
+    return check_operands(matrix, {}, std::span<const OperandView>{&fragment, 1},
+                          {}, context);
+  };
+
+  fragment.vector_arity = 1;
+  fragment.vector_element_shapes.fill(OperandShape::Register);
+  EXPECT_TRUE(check_matrix().has_value());
+
+  fragment.vector_arity = 64;
+  EXPECT_TRUE(check_matrix().has_value());
+
+  fragment.vector_arity = 65;
+  auto rejected = check_matrix();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind, CheckDiagnosticKind::InvalidVectorOperand);
+
+  fragment.vector_arity = 1;
+  fragment.vector_element_shapes.fill(OperandShape::Immediate);
+  rejected = check_matrix();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedOperandShape);
+
+  fragment.vector_element_shapes.fill(OperandShape{});
+  fragment.vector_sink_count = 1;
+  rejected = check_matrix();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedOperandShape);
+}
+
 TEST(ResolvedIrChecker, RejectsOverwideVectorOperandPayload) {
   const std::array<uint8_t, 3> allowed_vector_arities = {2, 4, 8};
   const OperandDescriptor descriptors[] = {{

@@ -22,6 +22,7 @@ from code_gen.gen_resolved_ir import (
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
+from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
 from code_gen.load_yaml import load_yaml
 from code_gen.normalize import normalize_operand
 from ir.resolved_ir import ResolvedOperandShape, from_instruction_spec
@@ -81,7 +82,13 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         )
         self.assertFalse(list(self.operand_validator.iter_errors(reversed_coordinate)))
         for operand in (
+            _operand("reg", "value", type_tag="ordinary_register"),
             _operand("descriptor", "desc"),
+            _operand(
+                "descriptor", "desc", type_tag="tensor_descriptor",
+                cardinality={"min": 1, "max": 5},
+            ),
+            _operand("vector", "values", element_kinds=["reg"]),
             _operand("typed_token", "token", type_tag="Not_snake"),
             _operand("typed_token", "token", type_tag="tag_"),
             _operand("typed_token", "token", type_tag="tag__two"),
@@ -108,6 +115,11 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             _operand(
                 "tensor_coordinate", "coordinate",
                 cardinality={"min": 1, "max": 5}, element_kinds=["imm"],
+            ),
+            _operand(
+                "tensor_coordinate", "coordinate",
+                cardinality={"min": 1, "max": 5},
+                element_kinds=["reg", "imm"], vector={"arity": 2},
             ),
         ):
             self.assertTrue(list(self.operand_validator.iter_errors(operand)))
@@ -187,14 +199,17 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             header_path = directory_path / "resolved_ir.gen.hpp"
             descriptor_path = directory_path / "resolved_descriptor.gen.cpp"
             source_path = directory_path / "resolved_ir_test.gen.cpp"
+            syntax_path = directory_path / "syntax_descriptor.gen.cpp"
             generate_resolved_ir_header(database, output_path=header_path)
             generate_resolved_descriptor_source(database, output_path=descriptor_path)
             generate_resolved_ir_source(
                 database, category="test", output_path=source_path
             )
+            generate_syntax_descriptor_source(database, output_path=syntax_path)
             header = header_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
             source = source_path.read_text(encoding="utf-8")
+            syntax_source = syntax_path.read_text(encoding="utf-8")
 
         self.assertIn("WithLocs<ResolvedRegisterRef> desc;", header)
         self.assertIn("WithLocs<ResolvedTensorCoordinate> coordinate;", header)
@@ -205,6 +220,16 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         self.assertIn(".allowed_element_shapes = check_end::OperandShape::Register | "
                       "check_end::OperandShape::Immediate,", descriptor)
         self.assertIn(".vector_arity = static_cast<uint8_t>(", source)
+        self.assertIn('.type_tag = "tensor_descriptor",', syntax_source)
+        self.assertIn(".minimum_elements = 1,", syntax_source)
+        self.assertIn(".maximum_elements = 64,", syntax_source)
+        self.assertIn(
+            ".allowed_element_shapes = check_end::OperandSyntaxShape::Identifier | "
+            "check_end::OperandSyntaxShape::Immediate,",
+            syntax_source,
+        )
+        self.assertIn("view.vector_element_shapes[index] =", source)
+        self.assertIn("std::holds_alternative<ResolvedRegisterRef>(element)", source)
 
 
 if __name__ == "__main__":

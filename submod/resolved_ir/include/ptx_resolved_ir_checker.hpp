@@ -223,6 +223,8 @@ enum class VectorTypePolicy : uint8_t {
 
 /** Maximum resolved register-vector payload width supported by this frontend. */
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
+/** Maximum element count accepted by schema-defined modern brace packs. */
+inline constexpr size_t kMaxOperandElements = 64;
 
 /** Semantic constraints for one operand position in a resolved layout. */
 struct OperandDescriptor {
@@ -299,6 +301,8 @@ struct OperandView {
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
   std::array<ScalarType, 8> vector_element_types{};
+  /** Per-element source shape for variable modern brace packs. */
+  std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
   uint8_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
   std::optional<AvailabilityDescriptor> value_availability;

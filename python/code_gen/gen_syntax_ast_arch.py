@@ -246,10 +246,28 @@ def _emit_operand_slot(
     slot: SyntaxOperandSlotDescriptor,
 ) -> str:
     allowed_shapes = _cpp_operand_syntax_shape(slot.allowed_syntax_shapes)
+    type_tag = (
+        f'\n              .type_tag = {_cpp_string(slot.type_tag)},'
+        if slot.type_tag is not None
+        else ""
+    )
+    cardinality = (
+        f"\n              .minimum_elements = {slot.minimum_elements},"
+        f"\n              .maximum_elements = {slot.maximum_elements},"
+        if slot.minimum_elements is not None
+        else ""
+    )
+    element_shapes = (
+        f"\n              .allowed_element_shapes = "
+        f"{_cpp_operand_syntax_shape(slot.allowed_element_shapes)},"
+        if slot.allowed_element_shapes
+        else ""
+    )
     return f"""\
           check_end::SyntaxOperandSlotDescriptor{{
               .allowed_shapes = {allowed_shapes},
               .presence = {cpp_value(CppDomain.SYNTAX_OPERAND_PRESENCE, slot.presence.value)},
+{type_tag}{cardinality}{element_shapes}
           }}"""
 
 

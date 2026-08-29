@@ -48,6 +48,14 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
 
+  clz_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
+  clz_b64:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b64, register_width: same_width}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1142,3 +1150,23 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         examples:
           - {ptx: "popc.b32 %r0, %r1;", valid: true}
+
+  - opcode: clz
+    section: "9.7.1.16"
+    doc: "Frozen 32-bit and 64-bit count-leading-zeros forms."
+    syntax: "clz.b32 dst, src | clz.b64 dst, src"
+    variants:
+      - name: clz_b32
+        operands: $clz_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "clz.b32 %r0, %r1;", valid: true}
+      - name: clz_b64
+        operands: $clz_b64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        examples:
+          - {ptx: "clz.b64 %r0, %rd1;", valid: true}

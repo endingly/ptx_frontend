@@ -52,6 +52,8 @@ KNOWN_NONE = {
 } | {
     ("M12-I19", "popc.b32"),
 } | {
+    ("M12-I20", form) for form in ("clz.b32", "clz.b64")
+} | {
     ("M12-I25", "cvt.rzi.u32.f32"),
 }
 

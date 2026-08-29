@@ -1325,6 +1325,16 @@ TEST(ResolvePopc, SelectsFrozenB32VariantAndRejectsB64) {
   EXPECT_FALSE(selectVariant<Popc>(parse_instruction("popc.b64 %rd0, %rd1;")).has_value());
 }
 
+TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
+  const auto b32 = resolve<Clz>(parse_instruction("clz.b32 %r0, %r1;"));
+  ASSERT_TRUE(b32.has_value()) << b32.error().message;
+  EXPECT_NE(std::get_if<Clz::B32>(&b32->variant), nullptr);
+  const auto b64 = resolve<Clz>(parse_instruction("clz.b64 %r0, %rd1;"));
+  ASSERT_TRUE(b64.has_value()) << b64.error().message;
+  EXPECT_NE(std::get_if<Clz::B64>(&b64->variant), nullptr);
+  EXPECT_FALSE(selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

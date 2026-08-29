@@ -2681,6 +2681,24 @@ TEST(ResolvedModule, ChecksM12PopcTypes) {
   }
 }
 
+TEST(ResolvedModule, ChecksM12ClzTypes) {
+  const auto context = checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  const auto valid = resolveModule(parseModule(".entry kernel() { .reg .u32 %dst, %src32; .reg .u64 %src64; clz.b32 %dst, %src32; clz.b64 %dst, %src64; }"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Clz>(valid->functions.front().body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Clz>(valid->functions.front().body[1]), context).has_value());
+  for (const auto source : {
+           ".entry kernel() { .reg .u64 %dst, %src; clz.b64 %dst, %src; }",
+           ".entry kernel() { .reg .u32 %dst; .reg .u16 %src; clz.b32 %dst, %src; }",
+       }) {
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(std::get<Clz>(wrong->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

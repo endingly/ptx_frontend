@@ -113,8 +113,8 @@ gaps:
   - owner: M12-I20
     marker: m12_i20_clz
     forms:
-      - {variant: b32, canonical_form: clz.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: b64_to_u32, canonical_form: clz.b64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: b32, canonical_form: clz.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: b64_to_u32, canonical_form: clz.b64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I21
     marker: m12_i21_bfind
     forms:

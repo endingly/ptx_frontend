@@ -971,10 +971,27 @@ TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src2.value));
 }
 
+TEST(ResolveMul, SelectsM12HiAndWideU32Variants) {
+  const auto hi = resolve<Mul>(parse_instruction("mul.hi.u32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(hi.has_value()) << hi.error().message;
+  const auto* hi_variant = std::get_if<Mul::HiU32>(&hi->variant);
+  ASSERT_NE(hi_variant, nullptr);
+  EXPECT_TRUE(Mul::HiU32::hi);
+  EXPECT_EQ(Mul::HiU32::type, ScalarType::U32);
+
+  const auto wide =
+      resolve<Mul>(parse_instruction("mul.wide.u32 %rd0, %r1, %r2;"));
+  ASSERT_TRUE(wide.has_value()) << wide.error().message;
+  const auto* wide_variant = std::get_if<Mul::WideU32>(&wide->variant);
+  ASSERT_NE(wide_variant, nullptr);
+  EXPECT_TRUE(Mul::WideU32::wide);
+  EXPECT_EQ(Mul::WideU32::type, ScalarType::U32);
+}
+
 TEST(ResolveMul, RejectsUnfrozenVariants) {
   for (const auto source : {"mul.u32 %r0, %r1, %r2;",
-                            "mul.hi.u32 %r0, %r1, %r2;",
-                            "mul.lo.s32 %r0, %r1, %r2;"}) {
+                            "mul.lo.s32 %r0, %r1, %r2;",
+                            "mul.wide.s32 %rd0, %r1, %r2;"}) {
     const auto selected = selectVariant<Mul>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());

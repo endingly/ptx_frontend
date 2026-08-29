@@ -2044,6 +2044,62 @@ TEST(ResolvedModule, ChecksMulLoU32OperandTypes) {
   EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksMulHiAndWideU32OperandTypes) {
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0, %r1, %r2;
+  .reg .u64 %rd0;
+  mul.hi.u32 %r0, %r1, %r2;
+  mul.wide.u32 %rd0, %r1, %r2;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& hi = std::get<Mul>(body[0]);
+  const auto& wide = std::get<Mul>(body[1]);
+  EXPECT_TRUE(std::holds_alternative<Mul::HiU32>(hi.variant));
+  EXPECT_TRUE(std::holds_alternative<Mul::WideU32>(wide.variant));
+  EXPECT_TRUE(checker::check(hi, context).has_value());
+  EXPECT_TRUE(checker::check(wide, context).has_value());
+
+  const auto narrow_hi = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u16 %dst, %src; mul.hi.u32 %dst, %src, %src; }
+)ptx"));
+  ASSERT_TRUE(narrow_hi.has_value()) << narrow_hi.error().front().message;
+  const auto& narrow_instruction = std::get<Mul>(narrow_hi->functions.front().body.front());
+  const auto& narrow_variant = std::get<Mul::HiU32>(narrow_instruction.variant);
+  const auto narrow_checked = checker::check(narrow_instruction, context);
+  ASSERT_FALSE(narrow_checked.has_value());
+  EXPECT_EQ(narrow_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(narrow_checked.error().front().range, narrow_variant.dst.locs.front());
+
+  const auto bit_wide_source = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u64 %dst; .reg .b32 %src; mul.wide.u32 %dst, %src, %src; }
+)ptx"));
+  ASSERT_TRUE(bit_wide_source.has_value()) << bit_wide_source.error().front().message;
+  const auto& bit_instruction = std::get<Mul>(bit_wide_source->functions.front().body.front());
+  const auto& bit_variant = std::get<Mul::WideU32>(bit_instruction.variant);
+  const auto bit_checked = checker::check(bit_instruction, context);
+  ASSERT_FALSE(bit_checked.has_value());
+  EXPECT_EQ(bit_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(bit_checked.error().front().range, bit_variant.src1.locs.front());
+
+  const auto narrow_wide_dst = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst, %src; mul.wide.u32 %dst, %src, %src; }
+)ptx"));
+  ASSERT_TRUE(narrow_wide_dst.has_value()) << narrow_wide_dst.error().front().message;
+  const auto& dst_instruction = std::get<Mul>(narrow_wide_dst->functions.front().body.front());
+  const auto& dst_variant = std::get<Mul::WideU32>(dst_instruction.variant);
+  const auto dst_checked = checker::check(dst_instruction, context);
+  ASSERT_FALSE(dst_checked.has_value());
+  EXPECT_EQ(dst_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(dst_checked.error().front().range, dst_variant.dst.locs.front());
+}
+
 TEST(ResolvedModule, ChecksMulRnF32OperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .f32 %dst, %src1, %src2; mul.rn.f32 %dst, %src1, %src2; }

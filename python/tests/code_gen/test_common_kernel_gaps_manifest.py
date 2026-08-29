@@ -25,7 +25,8 @@ KNOWN_NONE = {
 } | {
     ("M12-I06", form) for form in ("sub.u32", "sub.s32", "sub.u64", "sub.f32")
 } | {
-    ("M12-I07", "mul.rn.f32"),
+    ("M12-I07", form) for form in ("mul.hi.u32", "mul.wide.u32", "mul.rn.f32")
+} | {
     ("M12-I09", "fma.rn.f32"),
     ("M12-I25", "cvt.rzi.u32.f32"),
 }

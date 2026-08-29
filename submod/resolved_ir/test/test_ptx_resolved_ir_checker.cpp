@@ -1151,6 +1151,21 @@ TEST(ResolvedIrChecker, ChecksGeneratedShfAvailability) {
   }
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailabilityAndSelectorRange) {
+  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 0;", "prmt.b32 %r0, %r1, %r2, 65535;"}) {
+    PtxSyntaxParser parser(source); const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()); const auto prmt = resolve<Prmt>(*ast); ASSERT_TRUE(prmt.has_value());
+    EXPECT_TRUE(check(*prmt, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}}).has_value());
+    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20}}).has_value());
+    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19}}).has_value());
+  }
+  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 65536;", "prmt.b32 %r0, %r1, %r2, -1;"}) {
+    PtxSyntaxParser parser(source); const auto ast = parser.parseInstruction(); ASSERT_TRUE(ast.has_value());
+    const auto prmt = resolve<Prmt>(*ast); ASSERT_TRUE(prmt.has_value());
+    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}}).has_value());
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

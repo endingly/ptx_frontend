@@ -1305,6 +1305,18 @@ TEST(ResolveShf, RejectsUnfrozenDirectionAndModeVariants) {
   }
 }
 
+TEST(ResolvePrmt, SelectsFrozenGenericAndF4eVariants) {
+  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 0x5410;", "prmt.b32 %r0, %r1, %r2, 0;", "prmt.b32 %r0, %r1, %r2, 65535;"})
+    EXPECT_TRUE(resolve<Prmt>(parse_instruction(source)).has_value()) << source;
+  EXPECT_TRUE(resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, %r3;")).has_value());
+}
+
+TEST(ResolvePrmt, RejectsWrongSelectorFormsAndModes) {
+  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32 %r0, %r1, %r2, %r3;")).has_value());
+  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, 0;")).has_value());
+  EXPECT_FALSE(selectVariant<Prmt>(parse_instruction("prmt.b32.b4e %r0, %r1, %r2, %r3;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

@@ -108,6 +108,18 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  prmt_generic_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: selector, kind: imm, role: src, access: read, type: u32}
+
+  prmt_f4e_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: selector, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+
   mov_pack:
     - name: dst
       kind: reg
@@ -1565,3 +1577,26 @@ instructions:
             valid: true
           - ptx: "st.shared.v4.u16 [shared_value], {%h0, %h1, %h2, %h3};"
             valid: true
+
+  - opcode: prmt
+    section: "9.7.9.7"
+    doc: "Frozen byte-permute generic and f4e forms."
+    syntax: "prmt.b32 dst, src1, src2, selector | prmt.b32.f4e dst, src1, src2, selector"
+    variants:
+      - name: prmt_generic_b32
+        operands: $prmt_generic_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        constraints:
+          - {kind: immediate_range, operand: selector, minimum: 0, maximum: 65535}
+        examples:
+          - {ptx: "prmt.b32 %r0, %r1, %r2, 0x5410;", valid: true}
+      - name: prmt_f4e_b32
+        operands: $prmt_f4e_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: f4e, kind: flag, presence: fixed, value: true, token: ".f4e"}
+        examples:
+          - {ptx: "prmt.b32.f4e %r0, %r1, %r2, %r3;", valid: true}

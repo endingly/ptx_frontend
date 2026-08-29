@@ -48,6 +48,8 @@ KNOWN_NONE = {
 } | {
     ("M12-I17", form) for form in ("shf.l.clamp.b32", "shf.r.wrap.b32")
 } | {
+    ("M12-I18", form) for form in ("prmt.b32", "prmt.b32.f4e")
+} | {
     ("M12-I25", "cvt.rzi.u32.f32"),
 }
 

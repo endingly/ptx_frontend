@@ -2651,6 +2651,17 @@ TEST(ResolvedModule, ChecksM12ShfTypesAndCounts) {
   EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 
+TEST(ResolvedModule, ChecksM12PrmtRegisterWidths) {
+  const auto valid = resolveModule(parseModule(".entry kernel() { .reg .u32 %r0, %r1, %r2, %r3; prmt.b32 %r0, %r1, %r2, 0x5410; prmt.b32.f4e %r0, %r1, %r2, %r3; }"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto context = checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  EXPECT_TRUE(checker::check(std::get<Prmt>(valid->functions.front().body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Prmt>(valid->functions.front().body[1]), context).has_value());
+  const auto wrong = resolveModule(parseModule(".entry kernel() { .reg .u16 %r0; .reg .u32 %r1, %r2; prmt.b32 %r0, %r1, %r2, 0; }"));
+  ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+  EXPECT_FALSE(checker::check(std::get<Prmt>(wrong->functions.front().body.front()), context).has_value());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

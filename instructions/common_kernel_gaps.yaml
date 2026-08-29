@@ -104,8 +104,8 @@ gaps:
   - owner: M12-I18
     marker: m12_i18_prmt
     forms:
-      - {variant: generic, canonical_form: prmt.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: f4e_mode, canonical_form: prmt.b32.f4e, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: generic, canonical_form: prmt.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: f4e_mode, canonical_form: prmt.b32.f4e, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I19
     marker: m12_i19_popc
     forms:

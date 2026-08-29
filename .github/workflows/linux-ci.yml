@@ -121,13 +121,14 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/ccache
-          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.cache-epoch.outputs.month }}
+          key: ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ github.sha }}
           restore-keys: |
-            ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
-
+            ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
       - name: Run CMake workflow preset
         shell: bash
-        run: cmake --workflow --preset "${{ matrix.preset }}"
+        run: |
+          ccache --zero-stats
+          cmake --workflow --preset "${{ matrix.preset }}"
 
       - name: Show compiler cache statistics
         if: always()

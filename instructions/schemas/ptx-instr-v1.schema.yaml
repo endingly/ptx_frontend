@@ -167,17 +167,17 @@ $defs:
       - 100
       - 120
 
-  arch_family:
+  family_feature_target:
     description: >
-      Legacy compatible f-feature family published by the explicit
-      validation-target catalog, for example sm_100f or sm_120f. Generic
-      targets do not infer family membership; compatibility must be explicit
-      in that catalog. Use any_of.target for an exact a target.
+      Minimum family-specific source feature target level enabled by the
+      current .target profile, for example sm_100f or sm_103f. This does not
+      describe PTX-to-physical-GPU translation compatibility. Use
+      any_of.target for an exact target requirement.
     type: string
     pattern: "^sm_[1-9][0-9]*f$"
     examples:
       - sm_100f
-      - sm_120f
+      - sm_103f
 
   doc_section:
     type: string
@@ -1094,7 +1094,10 @@ $defs:
           sm:
             $ref: "#/$defs/sm_version"
           family:
-            $ref: "#/$defs/arch_family"
+            description: >
+              Minimum family-specific source feature target required from the
+              current .target profile's enabled_family_features.
+            $ref: "#/$defs/family_feature_target"
           deprecated:
             type: boolean
             default: false

@@ -376,6 +376,17 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             _emit_availability(normalize_availability(availability)),
         )
 
+    def test_schema_defines_family_as_source_feature_target(self) -> None:
+        schema = load_yaml(SCHEMA)
+        family_feature = schema["$defs"]["family_feature_target"]
+        self.assertNotIn("arch_family", schema["$defs"])
+        self.assertIn("source feature target", family_feature["description"])
+        self.assertIn("translation compatibility", family_feature["description"])
+        self.assertIn("sm_103f", family_feature["examples"])
+        family = schema["$defs"]["availability"]["oneOf"][0]["properties"]["family"]
+        self.assertEqual(family["$ref"], "#/$defs/family_feature_target")
+        self.assertIn("enabled_family_features", family["description"])
+
     def test_rejects_non_feature_legacy_families(self) -> None:
         for family in ("sm_90a", "sm_90", "sm_0f", "sm_90ff"):
             with self.assertRaisesRegex(ValueError, "availability family"):

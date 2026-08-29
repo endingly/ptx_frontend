@@ -113,6 +113,7 @@ M11 必须把它升级为覆盖 instruction、directive、special register 的 e
 TargetProfile
   = numeric architecture
   + target flavor
+  + explicit compatible f-feature family memberships
   + explicit capability set
   + preserved source spelling
 ```
@@ -763,13 +764,16 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 - instruction、directive 与 special-register registry 均通过 official inventory accounting
   join；每个官方 item 只有一个可解释的 support outcome，新增、缺失、重复或冲突均产生
   structured diff。
-- generic、architecture-specific exact identity、compatible `f`-feature family 与 capability
-  在同一 `TargetProfile` 路径中分别验证；`sm_100a` 可满足 `sm_100f` compatible-family 规则，
-  generic target 不可满足，且 numeric target/SM 受 `uint32_t` 范围约束。
+- generic、architecture-specific exact identity、catalogued compatible `f`-feature family 与
+  capability 在同一 `TargetProfile` 路径中分别验证；`sm_100a` 与显式 catalog 中同 family 的
+  `sm_103`/`sm_103f`/`sm_103a` 可满足 `sm_100f`，而不同 family 的 `sm_120f` 不可满足；
+  membership 不由数值或 suffix 推导，numeric target/SM 受 `uint32_t` 范围约束。
 - modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
   contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
-- synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；incremental
-  build 对缺失 header 自愈，并由 backend schema 变更正确触发生成输出失效与重建。
+- synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；spec 内容变更通过
+  `CMAKE_CONFIGURE_DEPENDS` 自动重配置 output/source topology，回归门禁验证 category source
+  切换、编译与无修改 no-op；incremental build 对缺失 header 自愈，并由 backend schema 变更
+  正确触发生成输出失效与重建。
 - corpus provenance 为每个 fixture 保存有序 `targets`；multi-target corpus 保留完整 directive
   sequence，删除、重排或追加 target 都会触发 provenance mismatch。
 

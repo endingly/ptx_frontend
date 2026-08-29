@@ -1384,6 +1384,24 @@ TEST(ResolveBfind, SelectsFrozenShiftamtU32AndRejectsPlainForm) {
   EXPECT_FALSE(selectVariant<Bfind>(plain).has_value());
 }
 
+TEST(ResolveIsspacep, SelectsFrozenGlobalU64AndRejectsOtherForms) {
+  const auto ast = parse_instruction("isspacep.global %p0, %rd0;");
+  const auto resolved = resolve<Isspacep>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* global = std::get_if<Isspacep::GlobalU64>(&resolved->variant);
+  ASSERT_NE(global, nullptr);
+  EXPECT_EQ(Isspacep::GlobalU64::state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(global->src.value.register_class, ResolvedRegisterClass::General);
+
+  for (const auto source : {"isspacep %p0, %rd0;",
+                            "isspacep.shared %p0, %rd0;",
+                            "isspacep.global %r0, %rd0;",
+                            "isspacep.global %p0, [%rd0];"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Isspacep>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

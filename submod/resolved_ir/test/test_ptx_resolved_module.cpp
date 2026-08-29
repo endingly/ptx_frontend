@@ -2085,6 +2085,43 @@ TEST(ResolvedModule, ChecksCvtaU64OperandWidths) {
   EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
 }
 
+TEST(ResolvedModule, ChecksIsspacepGlobalU64OperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %p;
+  .reg .u64 %rd;
+  isspacep.global %p, %rd;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& instruction =
+      std::get<Isspacep>(valid->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Isspacep::GlobalU64>(instruction.variant));
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}})
+                  .has_value());
+
+  for (const auto source : {
+           ".entry kernel() { .reg .pred %p; .reg .u32 %r; isspacep.global %p, %r; }",
+           ".entry kernel() { .reg .pred %p; .reg .s32 %s; isspacep.global %p, %s; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(
+        std::get<Isspacep>(wrong->functions.front().body.front()),
+        checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  EXPECT_FALSE(resolveModule(parseModule(
+                   ".entry kernel() { .reg .u32 %r; .reg .u64 %rd; isspacep.global %r, %rd; }"))
+                   .has_value());
+}
+
 TEST(ResolvedModule, ChecksMulLoU32OperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .u32 %dst, %src; mul.lo.u32 %dst, %src, 7; }

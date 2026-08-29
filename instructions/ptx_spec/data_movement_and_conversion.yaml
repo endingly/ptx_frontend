@@ -269,6 +269,10 @@ operand_patterns:
       access: read
       type: u32
 
+  isspacep_global_u64:
+    - {name: dst, kind: pred, role: dst, access: write, type: pred}
+    - {name: src, kind: reg, role: src, access: read, type: u64, register_width: exact}
+
   shfl_sync_idx:
     - name: dst
       kind: shfl_dest
@@ -464,6 +468,20 @@ operand_patterns:
       register_width: equal_or_wider
 
 instructions:
+  - opcode: isspacep
+    section: "9.7.9.20"
+    doc: "Test whether a bare u64 general register belongs to global address space."
+    syntax: "isspacep.global dst, src"
+    operands: $isspacep_global_u64
+    variants:
+      - name: isspacep_global_u64
+        description: "Register-only global address-space predicate test."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: global}
+        examples:
+          - {ptx: "isspacep.global %p0, %rd0;", valid: true}
+
   - opcode: cvta
     section: "9.7.9.21"
     doc: "Convert register-only global and generic u64 addresses."

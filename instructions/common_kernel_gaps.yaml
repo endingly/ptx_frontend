@@ -144,7 +144,7 @@ gaps:
   - owner: M12-I27
     marker: m12_i27_isspacep
     forms:
-      - {variant: global_u64, canonical_form: isspacep.global, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: global_u64, canonical_form: isspacep.global, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I28
     marker: m12_i28_ld_global_nc
     forms:

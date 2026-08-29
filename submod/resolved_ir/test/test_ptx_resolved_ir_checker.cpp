@@ -1420,6 +1420,26 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRnF32F64Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedIsspacepGlobalU64Availability) {
+  PtxSyntaxParser parser("isspacep.global %p0, %rd0;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto isspacep = resolve<Isspacep>(*ast);
+  ASSERT_TRUE(isspacep.has_value()) << isspacep.error().message;
+  EXPECT_FALSE(check(*isspacep,
+                     Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                             .instruction_range = ast->range})
+                   .has_value());
+  EXPECT_FALSE(check(*isspacep,
+                     Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                             .instruction_range = ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*isspacep,
+                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedCvtRziU32F32Availability) {
   PtxSyntaxParser parser("cvt.rzi.u32.f32 %r0, %f0;");
   const auto ast = parser.parseInstruction();

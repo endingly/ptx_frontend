@@ -168,6 +168,10 @@ opcodes:
   - {"id":"cvt-cvt-rzi-u32-f32-default","section":"9.7.9.22","spec_variant":"cvt_rzi_u32_f32","operand_layout":"default","selector":{"topology":"conversion","types":["u32","f32"],"shape":"scalar","modifiers":["rzi"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"cvt-cvt-rn-f16x2-f32-default","section":"9.7.9.22","spec_variant":"cvt_rn_f16x2_f32","operand_layout":"default","selector":{"topology":"conversion","types":["f16x2","f32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"cvt-cvt-pack-sat-u8-s32-b32-default","section":"9.7.9.23","spec_variant":"cvt_pack_sat_u8_s32_b32","operand_layout":"default","selector":{"topology":"conversion","types":["u8","s32","b32"],"shape":"scalar","modifiers":["pack","sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: isspacep
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"isspacep-isspacep-global-u64-default","section":"9.7.9.20","spec_variant":"isspacep_global_u64","operand_layout":"default","selector":{"topology":"data_movement","types":["pred","u64"],"shape":"scalar","state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: mov
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 import unittest
 
@@ -46,6 +47,16 @@ def source_variant_sections() -> dict[tuple[str, str], str]:
 
 
 class OpcodeCoverageManifestTests(unittest.TestCase):
+    def test_slice_pattern_fields_reject_non_strings(self) -> None:
+        manifest = load_yaml(MANIFEST)
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        for field in ("id", "section", "spec_variant", "operand_layout"):
+            for value in (0, None, {}, []):
+                with self.subTest(field=field, value=value):
+                    document = deepcopy(manifest)
+                    document["opcodes"][0]["slices"][0][field] = value
+                    self.assertTrue(list(validator.iter_errors(document)))
+
     def test_matches_current_database_m9_plan_and_frozen_slices(self) -> None:
         manifest = load_yaml(MANIFEST)
         errors = sorted(

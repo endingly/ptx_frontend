@@ -1,4 +1,5 @@
 from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 import re
 import unittest
@@ -82,6 +83,25 @@ def flattened_forms(records):
 
 
 class PtxSpecialRegisterRegistryTests(unittest.TestCase):
+    def test_pattern_fields_reject_non_strings(self) -> None:
+        registry = load_yaml(REGISTRY)
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        for path, field in (
+            (("records", 0), "id"),
+            (("records", 0), "section"),
+            (("records", 0), "anchor"),
+            (("records", 0, "forms", 0), "min_ptx"),
+            (("records", 0, "forms", 0, "spellings"), 0),
+        ):
+            for value in (0, None, {}, []):
+                with self.subTest(path=path, field=field, value=value):
+                    document = deepcopy(registry)
+                    target = document
+                    for key in path:
+                        target = target[key]
+                    target[field] = value
+                    self.assertTrue(list(validator.iter_errors(document)))
+
     def test_frozen_chapter_10_registry_and_runtime_catalog(self) -> None:
         registry = load_yaml(REGISTRY)
         errors = sorted(

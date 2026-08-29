@@ -1,4 +1,5 @@
 from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 import re
 import unittest
@@ -45,6 +46,16 @@ CHAPTER_11_SECTIONS = frozenset(
 
 
 class PtxDirectiveRegistryTests(unittest.TestCase):
+    def test_pattern_fields_reject_non_strings(self) -> None:
+        registry = load_yaml(REGISTRY)
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        for field in ("id", "source_section", "source_anchor"):
+            for value in (0, None, {}, []):
+                with self.subTest(field=field, value=value):
+                    document = deepcopy(registry)
+                    document["records"][0][field] = value
+                    self.assertTrue(list(validator.iter_errors(document)))
+
     def test_frozen_ptx_93_directive_and_pragma_headings(self) -> None:
         registry = load_yaml(REGISTRY)
         errors = sorted(

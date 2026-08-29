@@ -1,4 +1,5 @@
 from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 import unittest
 
@@ -101,6 +102,20 @@ EXPECTED_RECORD_SECTIONS = frozenset(
 
 
 class PtxInstructionRegistryTests(unittest.TestCase):
+    def test_pattern_fields_reject_non_strings(self) -> None:
+        registry = load_yaml(REGISTRY)
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        for collection, fields in (
+            ("families", ("id", "section", "anchor")),
+            ("records", ("id", "family", "section", "anchor")),
+        ):
+            for field in fields:
+                for value in (0, None, {}, []):
+                    with self.subTest(collection=collection, field=field, value=value):
+                        document = deepcopy(registry)
+                        document[collection][0][field] = value
+                        self.assertTrue(list(validator.iter_errors(document)))
+
     def test_frozen_ptx_93_instruction_headings(self) -> None:
         registry = load_yaml(REGISTRY)
         errors = sorted(

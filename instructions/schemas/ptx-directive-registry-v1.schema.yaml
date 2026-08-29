@@ -33,17 +33,20 @@ properties:
         - spelling
       properties:
         id:
+          type: string
           pattern: ^ptx-9-3-[a-z0-9-]+$
         ptx_isa:
           const: "9.3"
         source_scope:
           enum: [chapter_11, chapter_12, supplemental_official]
         source_section:
+          type: string
           pattern: ^(?:[45]|1[12])(?:\.[0-9]+)+$
         source_title:
           type: string
           minLength: 1
         source_anchor:
+          type: string
           pattern: ^[a-z0-9-]+$
         kind:
           enum: [directive, pragma_string, legacy_construct]

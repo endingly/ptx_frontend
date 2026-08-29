@@ -27,13 +27,16 @@ properties:
       required: [id, section, title, anchor]
       properties:
         id:
+          type: string
           pattern: ^[a-z][a-z0-9-]*$
         section:
+          type: string
           pattern: ^9\.7\.(?:[1-9]|1[0-9]|20)$
         title:
           type: string
           minLength: 1
         anchor:
+          type: string
           pattern: ^[a-z0-9-]+$
   records:
     type: array
@@ -44,12 +47,15 @@ properties:
       required: [id, ptx_isa, family, section, title, opcodes, anchor]
       properties:
         id:
+          type: string
           pattern: ^ptx-9-3-[a-z0-9-]+$
         ptx_isa:
           const: "9.3"
         family:
+          type: string
           pattern: ^[a-z][a-z0-9-]*$
         section:
+          type: string
           pattern: ^9\.7(?:\.[0-9]+)+$
         title:
           type: string
@@ -66,4 +72,5 @@ properties:
           default: opcode
           enum: [opcode, syntax_construct, instruction_family]
         anchor:
+          type: string
           pattern: ^[a-z0-9-]+$

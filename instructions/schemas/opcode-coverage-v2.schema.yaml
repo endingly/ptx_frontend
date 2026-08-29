@@ -39,12 +39,16 @@ properties:
             required: [id, section, spec_variant, operand_layout, selector, status, disposition]
             properties:
               id:
+                type: string
                 pattern: ^[a-z][a-z0-9-]*$
               section:
+                type: string
                 pattern: ^9\.7(?:\.[0-9]+)+$
               spec_variant:
+                type: string
                 pattern: ^[a-z][a-z0-9_]*$
               operand_layout:
+                type: string
                 pattern: ^[a-z][a-z0-9_]*$
               disposition:
                 enum: [implemented, planned, deferred, out_of_scope, paused]

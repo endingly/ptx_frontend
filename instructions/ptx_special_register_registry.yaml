@@ -7,8 +7,8 @@
 schema: ptx-special-register-registry/v1
 version: 1
 ptx_isa: "9.3"
-source_url: https://docs.nvidia.com/cuda/parallel-thread-execution/
-evidence_url: https://docs.nvidia.com/cuda/parallel-thread-execution/contents.html
+source_url: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/
+evidence_url: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
 records:
 - id: ptx-9-3-special-registers-tid
   ptx_isa: "9.3"

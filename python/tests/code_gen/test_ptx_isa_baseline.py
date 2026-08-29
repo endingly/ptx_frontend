@@ -17,6 +17,11 @@ from scripts.verify_ptx_isa_baseline import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BASELINE = REPO_ROOT / "instructions/ptx_isa_baseline.yaml"
 SCHEMA = REPO_ROOT / "instructions/schemas/ptx-isa-baseline-v1.schema.yaml"
+REGISTRIES = (
+    REPO_ROOT / "instructions/ptx_instruction_registry.yaml",
+    REPO_ROOT / "instructions/ptx_directive_registry.yaml",
+    REPO_ROOT / "instructions/ptx_special_register_registry.yaml",
+)
 
 
 class FakeResponse:
@@ -49,6 +54,19 @@ class FakeOpener:
 
 
 class PtxIsaBaselineTests(unittest.TestCase):
+    def test_registries_match_frozen_baseline_sources(self) -> None:
+        baseline = load_yaml(BASELINE)
+        expected_sources = {
+            "source_url": baseline["sources"]["root"],
+            "evidence_url": baseline["sources"]["contents"],
+        }
+        for registry_path in REGISTRIES:
+            with self.subTest(registry=registry_path.name):
+                registry = load_yaml(registry_path)
+                self.assertEqual(
+                    {field: registry[field] for field in expected_sources}, expected_sources
+                )
+
     def test_freezes_ptx_93_evidence_and_update_policy(self) -> None:
         baseline = load_yaml(BASELINE)
         errors = sorted(

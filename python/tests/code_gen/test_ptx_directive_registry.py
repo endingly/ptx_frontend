@@ -101,14 +101,6 @@ class PtxDirectiveRegistryTests(unittest.TestCase):
         self.assertEqual(len({record["id"] for record in records}), len(records))
         self.assertEqual(len({record["spelling"] for record in records}), len(records))
         self.assertTrue(all(record["ptx_isa"] == "9.3" for record in records))
-        self.assertTrue(
-            all(
-                f'{registry["source_url"]}#{record["source_anchor"]}'
-                .startswith("https://docs.nvidia.com/cuda/parallel-thread-execution/#")
-                for record in records
-            )
-        )
-
         coverage = SYNTAX_COVERAGE.read_text(encoding="utf-8")
         coverage_registry = coverage.split("## PTX 9.3 directive registry", 1)[1].split(
             "## Implementation priority", 1

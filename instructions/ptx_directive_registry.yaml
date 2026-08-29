@@ -6,8 +6,8 @@
 schema: ptx-directive-registry/v1
 version: 1
 ptx_isa: "9.3"
-source_url: https://docs.nvidia.com/cuda/parallel-thread-execution/
-evidence_url: https://docs.nvidia.com/cuda/parallel-thread-execution/contents.html
+source_url: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/
+evidence_url: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
 records:
 
 - {id: ptx-9-3-ptx-module-directives-version, ptx_isa: "9.3", source_scope: chapter_11, source_section: "11.1.1", source_title: "PTX Module Directives: .version", source_anchor: ptx-module-directives-version, kind: directive, spelling: ".version"}

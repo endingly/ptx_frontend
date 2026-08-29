@@ -13,9 +13,9 @@ properties:
   ptx_isa:
     const: "9.3"
   source_url:
-    const: https://docs.nvidia.com/cuda/parallel-thread-execution/
+    const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/
   evidence_url:
-    const: https://docs.nvidia.com/cuda/parallel-thread-execution/contents.html
+    const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
   records:
     type: array
     minItems: 1

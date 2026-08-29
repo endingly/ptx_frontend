@@ -160,13 +160,9 @@ class PtxInstructionRegistryTests(unittest.TestCase):
         )
         self.assertEqual({record["family"] for record in records}, set(EXPECTED_FAMILY_SECTIONS))
         self.assertTrue(all(record["ptx_isa"] == "9.3" for record in records))
-        source_urls = {
-            f'{registry["source_url"]}#{entry["anchor"]}'
-            for entry in [*families, *records]
-        }
-        self.assertEqual(len(source_urls), len(families) + len(records))
-        self.assertTrue(
-            all(url.startswith("https://docs.nvidia.com/cuda/parallel-thread-execution/#") for url in source_urls)
+        self.assertEqual(
+            len({entry["anchor"] for entry in [*families, *records]}),
+            len(families) + len(records),
         )
 
 

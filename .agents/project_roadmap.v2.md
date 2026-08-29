@@ -17,8 +17,8 @@
 >
 > ISA 规划基线：
 >
-> - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/parallel-thread-execution/)；
-> - [PTX ISA 9.3 Contents](https://docs.nvidia.com/cuda/parallel-thread-execution/contents.html)；
+> - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/)；
+> - [PTX ISA 9.3 Contents](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html)；
 > - PTX ISA 9.3 文档发布日期：2026-06-25。
 >
 > 本文不记录托管平台、外部分支、代码评审、流水线运行或合入状态，也不据此推断功能状态。

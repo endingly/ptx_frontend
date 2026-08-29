@@ -121,7 +121,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/ccache
-          key: ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ github.sha }}
+          key: ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.cache-epoch.outputs.month }}-${{ hashFiles('.github/workflows/linux-ci.yml', 'CMakeLists.txt', 'CMakePresets.json', '**/CMakeLists.txt', '**/*.cmake', 'vcpkg.json', 'requirements.txt', 'python/base/**/*.py', 'python/code_gen/**/*.py', 'python/ir/**/*.py', 'python/scripts/**/*.py', 'instructions/**/*.yaml') }}
           restore-keys: |
             ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
       - name: Run CMake workflow preset

@@ -757,19 +757,25 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 ### 闭环证据（持续可验证）
 
 - PTX ISA 9.3 证据固定到 CUDA 13.3.0 archive；digest 明确 `contents.html` subject 和
-  `raw_response_body`，scheduled/manual workflow 可重算远端原始 bytes。
+  `raw_response_body`。baseline 与 instruction/directive/special-register registry 的
+  `source_url`/`evidence_url` 由 cross-artifact equality 测试分别对齐 archive
+  `root`/`contents`，scheduled/manual workflow 可重算远端原始 bytes。
 - instruction、directive 与 special-register registry 均通过 official inventory accounting
   join；每个官方 item 只有一个可解释的 support outcome，新增、缺失、重复或冲突均产生
   structured diff。
-- generic、architecture-specific、family-specific exact target 与 ordered `.target` directive
-  在同一 `TargetProfile` 路径中验证；numeric target/SM 受 `uint32_t` 范围约束。
+- generic、architecture-specific exact identity、compatible `f`-feature family 与 capability
+  在同一 `TargetProfile` 路径中分别验证；`sm_100a` 可满足 `sm_100f` compatible-family 规则，
+  generic target 不可满足，且 numeric target/SM 受 `uint32_t` 范围约束。
 - modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
   contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
+- synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；incremental
+  build 对缺失 header 自愈，并由 backend schema 变更正确触发生成输出失效与重建。
 - corpus provenance 为每个 fixture 保存有序 `targets`；multi-target corpus 保留完整 directive
   sequence，删除、重排或追加 target 都会触发 provenance mismatch。
 
-M11 的完成状态以前述离线测试以及 Debug/Release workflow、installed consumer 和
-`git diff --check` 全部通过为前置条件；这些是持续门禁，不记录一次性运行数量。
+M11 的完成状态以前述离线测试以及最终 Debug/Release workflow、installed consumer、online
+archive digest verifier 和 `git diff --check` 全部通过为前置条件；这些是持续门禁，不记录
+一次性运行数量。
 
 ### 出口
 

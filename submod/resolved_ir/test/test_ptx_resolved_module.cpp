@@ -91,6 +91,55 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_EQ(src1.declared_type, ScalarType::U32);
 }
 
+TEST(ResolvedModule, ResolvesAndChecksM12I05FrozenAddForms) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 9.3
+.entry kernel() {
+  .reg .u32 %r<3>;
+  .reg .u64 %rd<3>;
+  .reg .f32 %f<3>;
+  add.u32 %r0, %r1, %r2;
+  add.s32 %r0, %r1, %r2;
+  add.u64 %rd0, %rd1, %rd2;
+  add.f32 %f0, %f1, %f2;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+
+  const auto& u32 = std::get<Add>(body[0]);
+  const auto& s32 = std::get<Add>(body[1]);
+  const auto& u64 = std::get<Add>(body[2]);
+  const auto& f32 = std::get<Add>(body[3]);
+  const auto* u32_variant = std::get_if<Add::IntegerNoSat>(&u32.variant);
+  const auto* s32_variant = std::get_if<Add::IntegerNoSat>(&s32.variant);
+  const auto* u64_variant = std::get_if<Add::IntegerNoSat>(&u64.variant);
+  const auto* f32_variant = std::get_if<Add::FloatF32>(&f32.variant);
+  ASSERT_NE(u32_variant, nullptr);
+  ASSERT_NE(s32_variant, nullptr);
+  ASSERT_NE(u64_variant, nullptr);
+  ASSERT_NE(f32_variant, nullptr);
+  EXPECT_EQ(u32_variant->type.value, ScalarType::U32);
+  EXPECT_EQ(s32_variant->type.value, ScalarType::S32);
+  EXPECT_EQ(u64_variant->type.value, ScalarType::U64);
+  EXPECT_EQ(Add::FloatF32::type, ScalarType::F32);
+
+  for (const std::string_view target : {"sm_80", "sm_90a", "sm_100"}) {
+    const auto profile = base::find_target_profile(target);
+    ASSERT_TRUE(profile.has_value()) << target;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3},
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+    };
+    for (const Add* add : {&u32, &s32, &u64, &f32})
+      EXPECT_TRUE(checker::check(*add, context).has_value()) << target;
+  }
+}
+
 TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .entry kernel() {

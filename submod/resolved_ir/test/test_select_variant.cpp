@@ -1420,6 +1420,31 @@ TEST(ResolveCvt, SelectsFrozenMixedVariants) {
   EXPECT_EQ(Cvt::RziU32F32::src_type, ScalarType::F32);
 }
 
+TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
+  const auto scalar = resolve<Cvt>(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
+  ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
+  ASSERT_NE(std::get_if<Cvt::RnF32S32>(&scalar->variant), nullptr);
+
+  const auto packed =
+      resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0, %f1;"));
+  ASSERT_TRUE(packed.has_value()) << packed.error().message;
+  ASSERT_NE(std::get_if<Cvt::RnF16x2F32>(&packed->variant), nullptr);
+  EXPECT_EQ(Cvt::RnF16x2F32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Cvt::RnF16x2F32::dst_type, ScalarType::F16x2);
+  EXPECT_EQ(Cvt::RnF16x2F32::src_type, ScalarType::F32);
+}
+
+TEST(ResolveCvt, RejectsM12UnfrozenAndPackedTwoOperandForms) {
+  for (const auto source : {"cvt.rz.f32.s32 %f0, %r0;",
+                            "cvt.rn.f32.s16 %f0, %r0;",
+                            "cvt.rz.f16x2.f32 %r0, %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(
+      resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;")).has_value());
+}
+
 TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
   for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
                             "cvt.rz.f32.f64 %f0, %fd0;",

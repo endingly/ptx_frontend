@@ -1992,6 +1992,46 @@ TEST(ResolvedModule, ChecksMixedCvtOperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12CvtScalarAndPackedTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .f32 %f0, %f1;
+  .reg .u32 %u0;
+  .reg .b32 %r0;
+  cvt.rn.f32.s32 %f0, %u0;
+  cvt.rn.f16x2.f32 %r0, %f0, %f1;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& scalar = std::get<Cvt>(valid->functions.front().body[0]);
+  const auto& packed = std::get<Cvt>(valid->functions.front().body[1]);
+  EXPECT_TRUE(std::holds_alternative<Cvt::RnF32S32>(scalar.variant));
+  EXPECT_TRUE(std::holds_alternative<Cvt::RnF16x2F32>(packed.variant));
+  EXPECT_TRUE(checker::check(
+                  scalar,
+                  checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  packed,
+                  checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}})
+                  .has_value());
+
+  for (const auto source : {
+           ".entry kernel() { .reg .f16x2 %dst; .reg .f32 %a, %b; cvt.rn.f16x2.f32 %dst, %a, %b; }",
+           ".entry kernel() { .reg .f32 %dst, %a, %b; cvt.rn.f16x2.f32 %dst, %a, %b; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(
+        std::get<Cvt>(wrong->functions.front().body.front()),
+        checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ChecksCvtaU64OperandWidths) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .u64 %dst, %src; cvta.global.u64 %dst, %src; cvta.to.global.u64 %dst, %src; }

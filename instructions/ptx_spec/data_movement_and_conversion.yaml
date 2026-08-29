@@ -94,6 +94,15 @@ operand_patterns:
         expr: modifier(src_type)
       register_width: equal_or_wider
 
+  cvt_rn_f32_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: f32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: s32, register_width: equal_or_wider}
+
+  cvt_rn_f16x2_f32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: f32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: f32, register_width: exact}
+
   cvta_register:
     - name: dst
       kind: reg
@@ -505,8 +514,8 @@ instructions:
 
   - opcode: cvt
     section: "9.7.9.22"
-    doc: "Convert frozen register-only .u32→.s32/.f32, .f64→.f32, or .f32→.u32 pairs."
-    syntax: "cvt.s32.u32 dst, src | cvt.rn.f32.f64 dst, src | cvt.rn.f32.u32 dst, src | cvt.rzi.u32.f32 dst, src"
+    doc: "Convert frozen register-only integer and floating-point forms, including one packed f16x2 result."
+    syntax: "cvt.s32.u32 dst, src | cvt.rn.f32.f64 dst, src | cvt.rn.f32.u32 dst, src | cvt.rn.f32.s32 dst, src | cvt.rzi.u32.f32 dst, src | cvt.rn.f16x2.f32 dst, src1, src2"
     operands: $cvt_scalar
     variants:
       - name: cvt_s32_u32
@@ -576,6 +585,16 @@ instructions:
         examples:
           - ptx: "cvt.rn.f32.u32 %f0, %r0;"
             valid: true
+      - name: cvt_rn_f32_s32
+        description: "Register-only round-to-nearest signed 32-bit to f32 conversion."
+        operands: $cvt_rn_f32_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "cvt.rn.f32.s32 %f0, %r0;", valid: true}
       - name: cvt_rzi_u32_f32
         description: "Register-only round-toward-zero f32 to u32 conversion."
         availability:
@@ -600,6 +619,16 @@ instructions:
         examples:
           - ptx: "cvt.rzi.u32.f32 %r0, %f0;"
             valid: true
+      - name: cvt_rn_f16x2_f32
+        description: "Register-only round-to-nearest packed f16x2 conversion from two f32 sources."
+        operands: $cvt_rn_f16x2_f32
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "cvt.rn.f16x2.f32 %r0, %f0, %f1;", valid: true}
 
   - opcode: mov
     section: "9.7.9"

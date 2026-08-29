@@ -1438,6 +1438,40 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRziU32F32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedM12CvtAvailability) {
+  PtxSyntaxParser scalar_parser("cvt.rn.f32.s32 %f0, %r0;");
+  const auto scalar_ast = scalar_parser.parseInstruction();
+  ASSERT_TRUE(scalar_ast.has_value()) << scalar_ast.diagnostics.front().message;
+  const auto scalar = resolve<Cvt>(*scalar_ast);
+  ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
+  EXPECT_FALSE(check(*scalar,
+                     Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                             .instruction_range = scalar_ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*scalar,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = scalar_ast->range})
+                  .has_value());
+
+  PtxSyntaxParser packed_parser("cvt.rn.f16x2.f32 %r0, %f0, %f1;");
+  const auto packed_ast = packed_parser.parseInstruction();
+  ASSERT_TRUE(packed_ast.has_value()) << packed_ast.diagnostics.front().message;
+  const auto packed = resolve<Cvt>(*packed_ast);
+  ASSERT_TRUE(packed.has_value()) << packed.error().message;
+  EXPECT_FALSE(check(*packed,
+                     Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                             .instruction_range = packed_ast->range})
+                   .has_value());
+  EXPECT_FALSE(check(*packed,
+                     Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                             .instruction_range = packed_ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*packed,
+                    Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                            .instruction_range = packed_ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   constexpr std::array<std::string_view, 1> families{"sm_100"};
   const Context context{

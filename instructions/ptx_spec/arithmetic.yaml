@@ -97,6 +97,11 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  binary_float_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+
   ternary_float_register:
     - name: dst
       kind: reg
@@ -780,6 +785,28 @@ instructions:
         examples:
           - {ptx: "mad.rn.f32 %f0, %f1, %f2, %f3;", valid: true}
 
+  - opcode: div
+    section: "9.7.3.8"
+    doc: "Frozen round-to-nearest single- and double-precision division."
+    syntax: "div.rn.f32 | div.rn.f64 dst, src1, src2"
+    operands: $binary_float_register_exact
+    variants:
+      - name: div_rn_f32
+        availability: {ptx: "1.4", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "div.rn.f32 %f0, %f1, %f2;", valid: true}
+
+      - name: div_rn_f64
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "div.rn.f64 %d0, %d1, %d2;", valid: true}
+
   - opcode: add
     section: "9.7.1.1"
     doc: "Integer add."
@@ -934,8 +961,8 @@ instructions:
 
   - opcode: div
     section: "9.7.1.9"
-    doc: "Frozen unsigned 32-bit integer division."
-    syntax: "div.u32 dst, src1, src2"
+    doc: "Frozen signed and unsigned 32-bit integer division."
+    syntax: "div.u32 | div.s32 dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: div_u32
@@ -944,3 +971,10 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "div.u32 %r0, %r1, 0;", valid: true}
+
+      - name: div_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "div.s32 %r0, %r1, %r2;", valid: true}

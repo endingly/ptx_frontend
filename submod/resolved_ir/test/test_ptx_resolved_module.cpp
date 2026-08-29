@@ -2333,6 +2333,62 @@ TEST(ResolvedModule, ChecksDivU32OperandTypes) {
   EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12DivS32AndRnFloatingOperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0, %r1, %r2;
+  .reg .f32 %f0, %f1, %f2;
+  .reg .f64 %d0, %d1, %d2;
+  div.s32 %r0, %r1, %r2;
+  div.rn.f32 %f0, %f1, %f2;
+  div.rn.f64 %d0, %d1, %d2;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& s32 = std::get<Div>(body[0]);
+  const auto& f32 = std::get<Div>(body[1]);
+  const auto& f64 = std::get<Div>(body[2]);
+  EXPECT_TRUE(std::holds_alternative<Div::S32>(s32.variant));
+  EXPECT_TRUE(std::holds_alternative<Div::RnF32>(f32.variant));
+  EXPECT_TRUE(std::holds_alternative<Div::RnF64>(f64.variant));
+  EXPECT_TRUE(checker::check(
+                  s32, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  f32, checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 20}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  f64, checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 13}})
+                  .has_value());
+
+  const auto bit_f32_source = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst, %src2; .reg .b32 %src1; div.rn.f32 %dst, %src1, %src2; }
+)ptx"));
+  ASSERT_TRUE(bit_f32_source.has_value()) << bit_f32_source.error().front().message;
+  const auto& f32_instruction = std::get<Div>(bit_f32_source->functions.front().body.front());
+  const auto& f32_variant = std::get<Div::RnF32>(f32_instruction.variant);
+  const auto f32_checked = checker::check(
+      f32_instruction, checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 20}});
+  ASSERT_FALSE(f32_checked.has_value());
+  EXPECT_EQ(f32_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(f32_checked.error().front().range, f32_variant.src1.locs.front());
+
+  const auto bit_f64_source = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f64 %dst, %src2; .reg .b64 %src1; div.rn.f64 %dst, %src1, %src2; }
+)ptx"));
+  ASSERT_TRUE(bit_f64_source.has_value()) << bit_f64_source.error().front().message;
+  const auto& f64_instruction = std::get<Div>(bit_f64_source->functions.front().body.front());
+  const auto& f64_variant = std::get<Div::RnF64>(f64_instruction.variant);
+  const auto f64_checked = checker::check(
+      f64_instruction, checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 13}});
+  ASSERT_FALSE(f64_checked.has_value());
+  EXPECT_EQ(f64_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(f64_checked.error().front().range, f64_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

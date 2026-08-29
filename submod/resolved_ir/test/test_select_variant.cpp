@@ -1118,9 +1118,32 @@ TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(div->src2.value));
 }
 
+TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
+  const auto s32 = resolve<Div>(parse_instruction("div.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Div::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Div::S32::type, ScalarType::S32);
+
+  const auto f32 =
+      resolve<Div>(parse_instruction("div.rn.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Div::RnF32>(&f32->variant), nullptr);
+  EXPECT_EQ(Div::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Div::RnF32::type, ScalarType::F32);
+
+  const auto f64 =
+      resolve<Div>(parse_instruction("div.rn.f64 %d0, %d1, %d2;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  ASSERT_NE(std::get_if<Div::RnF64>(&f64->variant), nullptr);
+  EXPECT_EQ(Div::RnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Div::RnF64::type, ScalarType::F64);
+}
+
 TEST(ResolveDiv, RejectsUnfrozenVariants) {
-  for (const auto source : {"div.s32 %r0, %r1, %r2;",
-                            "div.f32 %f0, %f1, %f2;",
+  for (const auto source : {"div.rz.f32 %f0, %f1, %f2;",
+                            "div.approx.f32 %f0, %f1, %f2;",
+                            "div.full.f64 %d0, %d1, %d2;",
+                            "div.rn.f16 %h0, %h1, %h2;",
                             "div.sat.u32 %r0, %r1, %r2;"}) {
     const auto selected = selectVariant<Div>(parse_instruction(source));
     SCOPED_TRACE(source);

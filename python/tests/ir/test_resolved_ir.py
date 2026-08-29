@@ -404,15 +404,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 [ResolvedRegisterWidthPolicy.EXACT] * 4,
             )
 
-    def test_div_has_frozen_u32_binary_layout(self) -> None:
+    def test_div_merges_frozen_integer_and_floating_binary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.div_instruction.variants],
-            ["U32"],
+            ["RnF32", "RnF64", "U32", "S32"],
         )
         self.assertEqual(
-            [field.name for field in self.div_instruction.variants[0].fields],
+            [field.name for field in self.div_instruction.variants[2].fields],
             ["type", "dst", "src1", "src2"],
         )
+        for variant in self.div_instruction.variants[:2]:
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            )
 
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}

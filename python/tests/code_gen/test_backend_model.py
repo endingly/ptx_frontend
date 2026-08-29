@@ -111,6 +111,10 @@ class BackendModelTests(unittest.TestCase):
             "CacheOperator::Unspecified",
         )
         self.assertEqual(
+            unit.domains[CppDomain.EVICTION_PRIORITIES.value].values["no_allocate"],
+            "EvictionPriority::NoAllocate",
+        )
+        self.assertEqual(
             unit.domains[CppDomain.COMPARISON_OPERATORS.value].values,
             {"eq": "ComparisonOperator::Eq", "lt": "ComparisonOperator::Lt"},
         )

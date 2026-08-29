@@ -295,6 +295,10 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.CACHE_OPERATORS, self.constant_value)
+        if self.value_cpp_type == "EvictionPriority" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.EVICTION_PRIORITIES, self.constant_value)
         if self.value_cpp_type == "MemoryStateSpace" and isinstance(
             self.constant_value, str
         ):

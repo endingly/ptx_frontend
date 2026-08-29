@@ -362,6 +362,80 @@ TEST(ResolvedModule, ResolvesAndChecksM10CacheHintEvictionSlice) {
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 }
 
+TEST(ResolvedModule, ChecksM12LdGlobalNcL1NoAllocateSlice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  ld.global.nc.L1::no_allocate.u32 %r0, [global_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction = std::get<Ld>(resolved->functions.front().body.front());
+  const auto& load =
+      std::get<Ld::GlobalNcL1NoAllocateU32>(instruction.variant);
+  EXPECT_EQ(load.dst.value.declared_type, ScalarType::U32);
+  const auto& global_address =
+      std::get<ResolvedSymbolRef>(load.address.value.base);
+  EXPECT_EQ(global_address.address_state_space,
+            syntax_ast::AstStateSpace::Global);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{.target = {.ptx_version = {7, 4},
+                                              .sm_version = 70},
+                                   .instruction_range = ast.range})
+                  .has_value());
+
+  const auto ptx_too_old = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 3}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(ptx_too_old.has_value());
+  EXPECT_EQ(ptx_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto sm_too_old = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(sm_too_old.has_value());
+  EXPECT_EQ(sm_too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_address = resolveModule(parseModule(R"ptx(
+.local .align 4 .u32 local_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  ld.global.nc.L1::no_allocate.u32 %r0, [local_value];
+}
+)ptx"));
+  ASSERT_TRUE(wrong_address.has_value())
+      << wrong_address.error().front().message;
+  const auto address_checked = checker::check(
+      std::get<Ld>(wrong_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(address_checked.has_value());
+  EXPECT_EQ(address_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto wrong_dst = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u16 %h0;
+  ld.global.nc.L1::no_allocate.u32 %h0, [global_value];
+}
+)ptx"));
+  ASSERT_TRUE(wrong_dst.has_value()) << wrong_dst.error().front().message;
+  const auto dst_checked = checker::check(
+      std::get<Ld>(wrong_dst->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(dst_checked.has_value());
+  EXPECT_EQ(dst_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
 TEST(ResolvedModule, RejectsM10CacheHintPolicyWithoutU64Register) {
   const auto wrong_policy_ast = parseModule(R"ptx(
 .entry kernel() {

@@ -1228,6 +1228,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "GlobalU32L2CacheHint",
                 "GenericVector",
                 "ExplicitVector",
+                "GlobalNcL1NoAllocateU32",
             ],
         )
         self.assertEqual(ld.variants[1].modifiers[0].presence, "required")

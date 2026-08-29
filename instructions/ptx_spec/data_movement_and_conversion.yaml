@@ -1152,6 +1152,26 @@ instructions:
           - ptx: "ld.shared.v4.u16 {%h0, %h1, %h2, %h3}, [shared_value];"
             valid: true
 
+  - opcode: ld
+    section: "9.7.9.9"
+    doc: "Frozen non-coherent global u32 load with L1 no-allocate priority."
+    syntax: "ld.global.nc.L1::no_allocate.u32 dst, [address]"
+    operands: $ld_explicit_scalar_global
+    variants:
+      - name: ld_global_nc_l1_no_allocate_u32
+        description: "Register-only global non-coherent u32 load with L1 no-allocate."
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: nc, kind: flag, presence: fixed, value: true, token: .nc}
+          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: no_allocate, token: .L1::no_allocate}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        rule: data_movement.ld_explicit
+        constraints:
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
+        examples:
+          - {ptx: "ld.global.nc.L1::no_allocate.u32 %r0, [global_value];", valid: true}
+
   - opcode: ldu
     section: "9.7.9.10"
     doc: "Uniform load, limited to the scalar explicit-global .u32 form."

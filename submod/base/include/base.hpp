@@ -91,6 +91,7 @@ enum class EvictionPriority : uint8_t {
   Invalid = 0,
   EvictFirst,
   EvictLast,
+  NoAllocate,
 };
 
 /** Source-level memory-consistency qualifier for ld/st.  Omitted is kept

@@ -104,6 +104,7 @@ domains:
     values:
       evict_first: EvictionPriority::EvictFirst
       evict_last: EvictionPriority::EvictLast
+      no_allocate: EvictionPriority::NoAllocate
 
   memory_consistencies:
     cpp_type: MemoryConsistency

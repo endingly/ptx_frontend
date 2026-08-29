@@ -148,7 +148,7 @@ gaps:
   - owner: M12-I28
     marker: m12_i28_ld_global_nc
     forms:
-      - {variant: nc_l1_no_allocate_u32, canonical_form: ld.global.nc.L1::no_allocate.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: nc_l1_no_allocate_u32, canonical_form: ld.global.nc.L1::no_allocate.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I29
     marker: m12_i29_prefetchu
     forms:

@@ -1490,6 +1490,36 @@ TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
                    .has_value());
 }
 
+TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
+  const auto ast =
+      parse_instruction("ld.global.nc.L1::no_allocate.u32 %r0, [%rd0];");
+  const auto resolved = resolve<Ld>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant),
+            nullptr);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::state_space,
+            MemoryStateSpace::Global);
+  EXPECT_TRUE(Ld::GlobalNcL1NoAllocateU32::nc);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::eviction_priority,
+            EvictionPriority::NoAllocate);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::type, ScalarType::U32);
+
+  const auto dispatched = resolveInstruction(ast);
+  ASSERT_TRUE(dispatched.has_value()) << dispatched.error().message;
+  EXPECT_TRUE(std::holds_alternative<Ld>(*dispatched));
+
+  for (const auto source : {
+           "ld.global.L1::no_allocate.u32 %r0, [%rd0];",
+           "ld.global.nc.L2::evict_first.u32 %r0, [%rd0];",
+           "ld.global.nc.L1::evict_first.u32 %r0, [%rd0];",
+           "ld.global.nc.L1::no_allocate.b32 %r0, [%rd0];",
+           "ld.global.ca.nc.L1::no_allocate.u32 %r0, [%rd0];",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Ld>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
   for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
                             "cvt.rz.f32.f64 %f0, %fd0;",

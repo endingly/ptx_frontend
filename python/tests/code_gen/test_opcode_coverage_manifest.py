@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 58)
+        self.assertEqual(len(opcodes), 59)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 146)
+        self.assertEqual(len(slices), 147)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -179,6 +179,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "prefetchu-prefetchu-l1",
                 "createpolicy-createpolicy-fractional-l2-evict-last-b64",
                 "applypriority-applypriority-global-l2-evict-normal",
+                "discard-discard-global-l2",
                 "set-set-eq-u32-u32", "set-set-lt-and-f32-s32",
                 "ld-ld-generic-scalar", "ld-ld-generic-vector", "ld-ld-global-u32-l1-evict",
                 "ld-ld-explicit-vector", "st-st-generic-scalar", "st-st-generic-vector",
@@ -236,6 +237,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "prefetchu-prefetchu-l1": {"topology": "memory", "types": [], "shape": "address", "modifiers": ["l1"], "state_space": ["generic"]},
                 "createpolicy-createpolicy-fractional-l2-evict-last-b64": {"topology": "data_movement", "types": ["b64", "f32"], "shape": "scalar", "modifiers": ["fractional", "l2_evict_last"]},
                 "applypriority-applypriority-global-l2-evict-normal": {"topology": "data_movement", "types": ["u32"], "shape": "address", "modifiers": ["l2_evict_normal"], "state_space": ["global"]},
+                "discard-discard-global-l2": {"topology": "data_movement", "types": ["u32"], "shape": "address", "modifiers": ["l2"], "state_space": ["global"]},
                 "set-set-eq-u32-u32": {"topology": "comparison", "types": ["u32"], "shape": "scalar", "modifiers": ["eq"]},
                 "set-set-lt-and-f32-s32": {"topology": "comparison", "types": ["f32", "s32"], "shape": "scalar", "modifiers": ["lt", "and"]},
                 "ld-ld-generic-scalar": {"topology": "memory", "types": ["b8", "b16", "b32", "b64", "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64"], "shape": "scalar", "state_space": ["const", "global", "local", "param", "shared"]},

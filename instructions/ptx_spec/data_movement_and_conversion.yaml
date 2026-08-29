@@ -1353,6 +1353,27 @@ instructions:
           - ptx: "applypriority.global.L2::evict_normal [global_value], 128;"
             valid: true
 
+  - opcode: discard
+    section: "9.7.9.18"
+    doc: "Frozen global L2 discard for one 128-byte range."
+    syntax: "discard.global.L2 [address], size"
+
+    variants:
+      - name: discard_global_l2
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: l2, kind: flag, presence: fixed, value: true, token: .L2}
+        operands: $applypriority_global_l2_evict_normal
+        rule: data_movement.discard
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 128}
+          - {kind: immediate_value, operand: size, values: [128]}
+
+        examples:
+          - ptx: "discard.global.L2 [global_value], 128;"
+            valid: true
+
   - opcode: cp
     section: "9.7.9.26.3.1"
     doc: "Asynchronous copy, limited to cached shared-from-global fixed sizes."

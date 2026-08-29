@@ -214,6 +214,10 @@ opcodes:
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:
   - {"id":"applypriority-applypriority-global-l2-evict-normal-default","section":"9.7.9.17","spec_variant":"applypriority_global_l2_evict_normal","operand_layout":"default","selector":{"topology":"data_movement","types":["u32"],"shape":"address","modifiers":["l2_evict_normal"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: discard
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"discard-discard-global-l2-default","section":"9.7.9.18","spec_variant":"discard_global_l2","operand_layout":"default","selector":{"topology":"data_movement","types":["u32"],"shape":"address","modifiers":["l2"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: cp
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

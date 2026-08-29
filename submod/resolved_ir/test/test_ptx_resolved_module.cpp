@@ -140,6 +140,55 @@ TEST(ResolvedModule, ResolvesAndChecksM12I05FrozenAddForms) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksM12I06FrozenSubForms) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 9.3
+.entry kernel() {
+  .reg .u32 %r<3>;
+  .reg .u64 %rd<3>;
+  .reg .f32 %f<3>;
+  sub.u32 %r0, %r1, %r2;
+  sub.s32 %r0, %r1, %r2;
+  sub.u64 %rd0, %rd1, %rd2;
+  sub.f32 %f0, %f1, %f2;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+
+  const auto& u32 = std::get<Sub>(body[0]);
+  const auto& s32 = std::get<Sub>(body[1]);
+  const auto& u64 = std::get<Sub>(body[2]);
+  const auto& f32 = std::get<Sub>(body[3]);
+  const auto* u32_variant = std::get_if<Sub::IntegerNoSat>(&u32.variant);
+  const auto* s32_variant = std::get_if<Sub::OptionalSat>(&s32.variant);
+  const auto* u64_variant = std::get_if<Sub::IntegerNoSat>(&u64.variant);
+  const auto* f32_variant = std::get_if<Sub::FloatF32>(&f32.variant);
+  ASSERT_NE(u32_variant, nullptr);
+  ASSERT_NE(s32_variant, nullptr);
+  ASSERT_NE(u64_variant, nullptr);
+  ASSERT_NE(f32_variant, nullptr);
+  EXPECT_EQ(u32_variant->type.value, ScalarType::U32);
+  EXPECT_EQ(s32_variant->type.value, ScalarType::S32);
+  EXPECT_EQ(u64_variant->type.value, ScalarType::U64);
+  EXPECT_EQ(Sub::FloatF32::type, ScalarType::F32);
+
+  for (const std::string_view target : {"sm_80", "sm_90a", "sm_100"}) {
+    const auto profile = base::find_target_profile(target);
+    ASSERT_TRUE(profile.has_value()) << target;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3},
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+    };
+    for (const Sub* sub : {&u32, &s32, &u64, &f32})
+      EXPECT_TRUE(checker::check(*sub, context).has_value()) << target;
+  }
+}
+
 TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .entry kernel() {

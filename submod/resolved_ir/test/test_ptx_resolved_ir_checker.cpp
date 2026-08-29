@@ -1081,6 +1081,49 @@ TEST(ResolvedIrChecker, ChecksGeneratedNegAvailability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedLop3AvailabilityAndLutRange) {
+  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 0;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto lop3 = resolve<Lop3>(*ast);
+    ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
+    const auto old_ptx = check(
+        *lop3, Context{.target = {.ptx_version = {4, 2}, .sm_version = 50},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *lop3, Context{.target = {.ptx_version = {4, 3}, .sm_version = 49},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*lop3,
+                      Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+
+  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 256;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, -1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto lop3 = resolve<Lop3>(*ast);
+    ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
+    const auto checked = check(
+        *lop3, Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

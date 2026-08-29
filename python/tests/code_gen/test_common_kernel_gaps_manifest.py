@@ -44,6 +44,8 @@ KNOWN_NONE = {
 } | {
     ("M12-I15", form) for form in ("neg.s32", "neg.f32", "neg.f16x2")
 } | {
+    ("M12-I16", "lop3.b32"),
+} | {
     ("M12-I25", "cvt.rzi.u32.f32"),
 }
 

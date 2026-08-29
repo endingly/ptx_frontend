@@ -1269,6 +1269,25 @@ TEST(ResolveNeg, RejectsUnfrozenForms) {
   }
 }
 
+TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
+  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 0x1a;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, 0;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Lop3>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ASSERT_NE(std::get_if<Lop3::B32>(&resolved->variant), nullptr);
+    EXPECT_EQ(Lop3::B32::type, ScalarType::B32);
+  }
+}
+
+TEST(ResolveLop3, RejectsUnfrozenPredicateExtensionAndNonImmediateLut) {
+  EXPECT_FALSE(selectVariant<Lop3>(parse_instruction(
+      "lop3.and.b32 %r0, %r1, %r2, %r3, 0x1a, %p0;")).has_value());
+  EXPECT_FALSE(resolve<Lop3>(parse_instruction(
+      "lop3.b32 %r0, %r1, %r2, %r3, %r4;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

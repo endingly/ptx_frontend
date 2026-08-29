@@ -95,7 +95,7 @@ gaps:
   - owner: M12-I16
     marker: m12_i16_lop3
     forms:
-      - {variant: lut_1a, canonical_form: lop3.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: lut_1a, canonical_form: lop3.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I17
     marker: m12_i17_shf
     forms:

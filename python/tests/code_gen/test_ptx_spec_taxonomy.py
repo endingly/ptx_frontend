@@ -45,7 +45,7 @@ EXPECTED_SECTIONS = {
     },
     "logic_and_shift.yaml": {
         "and": {"9.7.8.1"}, "or": {"9.7.8.2"}, "xor": {"9.7.8.3"},
-        "not": {"9.7.8.4"}, "shl": {"9.7.8.8"}, "shr": {"9.7.8.9"},
+        "not": {"9.7.8.4"}, "lop3": {"9.7.8.6"}, "shl": {"9.7.8.8"}, "shr": {"9.7.8.9"},
     },
     "data_movement_and_conversion.yaml": {
         "mov": {"9.7.9"}, "shfl": {"9.7.9.6"}, "ld": {"9.7.9.8"},

@@ -117,6 +117,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "neg"
         )
+        lop3_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "lop3"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
@@ -128,6 +133,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.max_instruction = from_instruction_spec(max_instruction)
         cls.abs_instruction = from_instruction_spec(abs_instruction)
         cls.neg_instruction = from_instruction_spec(neg_instruction)
+        cls.lop3_instruction = from_instruction_spec(lop3_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -534,6 +540,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [binding.register_width_policy
              for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
             [ResolvedRegisterWidthPolicy.EXACT] * 2,
+        )
+
+    def test_lop3_has_fixed_b32_variant_and_lut_range(self) -> None:
+        variant = self.lop3_instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "B32")
+        self.assertEqual(
+            [field.name for field in variant.fields],
+            ["type", "dst", "src1", "src2", "src3", "lut"],
+        )
+        self.assertEqual(variant.fields[0].constant_value, "b32")
+        self.assertEqual(variant.immediate_range.operand_field_id, "lut")
+        self.assertEqual(
+            (variant.immediate_range.minimum, variant.immediate_range.maximum), (0, 255)
         )
 
     def test_add_resolved_variant_fields(self) -> None:

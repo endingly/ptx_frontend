@@ -2612,6 +2612,22 @@ TEST(ResolvedModule, ChecksM12NegTypesAndPackedContainers) {
   }
 }
 
+TEST(ResolvedModule, ChecksM12Lop3B32WidthCompatibility) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0, %r1, %r2, %r3;
+  lop3.b32 %r0, %r1, %r2, %r3, 0x1a;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& instruction = std::get<Lop3>(valid->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Lop3::B32>(instruction.variant));
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{.target = {.ptx_version = {4, 3}, .sm_version = 50}})
+                  .has_value());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

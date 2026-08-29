@@ -37,6 +37,13 @@ operand_patterns:
       access: read
       type: b32
 
+  lop3_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: src3, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+    - {name: lut, kind: imm, role: src, access: read, type: u32}
+
   shift_b32:
     - name: dst
       kind: reg
@@ -149,6 +156,20 @@ instructions:
             valid: true
           - ptx: "not.b32 %r0, 1;"
             valid: true
+  - opcode: lop3
+    section: "9.7.8.6"
+    doc: "Frozen 32-bit three-input logic operation with an 8-bit immediate LUT."
+    syntax: "lop3.b32 dst, src1, src2, src3, lut"
+    operands: $lop3_b32
+    variants:
+      - name: lop3_b32
+        availability: {ptx: "4.3", sm: 50}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        constraints:
+          - {kind: immediate_range, operand: lut, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "lop3.b32 %r0, %r1, %r2, %r3, 0x1a;", valid: true}
   - opcode: shl
     section: "9.7.8.8"
     doc: "Shift a 32-bit operand left by a 32-bit count."

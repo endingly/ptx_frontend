@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 50)
+        self.assertEqual(len(opcodes), 51)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 134)
+        self.assertEqual(len(slices), 135)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -168,6 +168,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "prmt-prmt-generic-b32", "prmt-prmt-f4e-b32",
                 "popc-popc-b32",
                 "clz-clz-b32", "clz-clz-b64",
+                "bfind-bfind-shiftamt-u32",
                 "cvt-cvt-s32-u32",
                 "cvt-cvt-rn-f32-f64", "cvt-cvt-rn-f32-u32", "cvt-cvt-rzi-u32-f32",
                 "set-set-eq-u32-u32", "set-set-lt-and-f32-s32",
@@ -211,6 +212,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "popc-popc-b32": {"topology": "arithmetic", "types": ["u32", "b32"], "shape": "scalar"},
                 "clz-clz-b32": {"topology": "arithmetic", "types": ["u32", "b32"], "shape": "scalar"},
                 "clz-clz-b64": {"topology": "arithmetic", "types": ["u32", "b64"], "shape": "scalar"},
+                "bfind-bfind-shiftamt-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar", "modifiers": ["shiftamt"]},
                 "cvt-cvt-s32-u32": {"topology": "conversion", "types": ["s32", "u32"], "shape": "scalar"},
                 "cvt-cvt-rn-f32-f64": {"topology": "conversion", "types": ["f32", "f64"], "shape": "scalar", "modifiers": ["rn"]},
                 "cvt-cvt-rn-f32-u32": {"topology": "conversion", "types": ["f32", "u32"], "shape": "scalar", "modifiers": ["rn"]},

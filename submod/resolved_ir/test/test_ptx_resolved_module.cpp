@@ -2699,6 +2699,24 @@ TEST(ResolvedModule, ChecksM12ClzTypes) {
   }
 }
 
+TEST(ResolvedModule, ChecksM12BfindTypes) {
+  const auto context = checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  const auto valid = resolveModule(parseModule(".entry kernel() { .reg .u32 %dst, %src; bfind.shiftamt.u32 %dst, %src; }"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Bfind>(valid->functions.front().body.front()), context).has_value());
+  for (const auto source : {
+           ".entry kernel() { .reg .s32 %dst, %src; bfind.shiftamt.u32 %dst, %src; }",
+           ".entry kernel() { .reg .u64 %dst, %src; bfind.shiftamt.u32 %dst, %src; }",
+           ".entry kernel() { .reg .u32 %dst; .reg .s32 %src; bfind.shiftamt.u32 %dst, %src; }",
+       }) {
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(std::get<Bfind>(wrong->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

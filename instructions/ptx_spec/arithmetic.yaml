@@ -56,6 +56,10 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
     - {name: src, kind: reg, role: src, access: read, type: b64, register_width: same_width}
 
+  bfind_shiftamt_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: exact}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1170,3 +1174,17 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         examples:
           - {ptx: "clz.b64 %r0, %rd1;", valid: true}
+
+  - opcode: bfind
+    section: "9.7.1.17"
+    doc: "Frozen unsigned 32-bit bit-find shift-amount form."
+    syntax: "bfind.shiftamt.u32 dst, src"
+    operands: $bfind_shiftamt_u32
+    variants:
+      - name: bfind_shiftamt_u32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: shiftamt, kind: flag, presence: fixed, value: true, token: ".shiftamt"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "bfind.shiftamt.u32 %r0, %r1;", valid: true}

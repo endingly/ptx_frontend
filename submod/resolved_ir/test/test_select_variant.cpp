@@ -1335,6 +1335,15 @@ TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
   EXPECT_FALSE(selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
 }
 
+TEST(ResolveBfind, SelectsFrozenShiftamtU32AndRejectsPlainForm) {
+  const auto bfind = resolve<Bfind>(parse_instruction("bfind.shiftamt.u32 %r0, %r1;"));
+  ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
+  ASSERT_NE(std::get_if<Bfind::ShiftamtU32>(&bfind->variant), nullptr);
+  EXPECT_TRUE(Bfind::ShiftamtU32::shiftamt);
+  const auto plain = parse_instruction("bfind.u32 %r0, %r1;");
+  EXPECT_FALSE(selectVariant<Bfind>(plain).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

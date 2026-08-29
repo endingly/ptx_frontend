@@ -153,6 +153,10 @@ opcodes:
   slices:
   - {"id":"clz-clz-b32-default","section":"9.7.1.16","spec_variant":"clz_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32","b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"clz-clz-b64-default","section":"9.7.1.16","spec_variant":"clz_b64","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32","b64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: bfind
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"bfind-bfind-shiftamt-u32-default","section":"9.7.1.17","spec_variant":"bfind_shiftamt_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar","modifiers":["shiftamt"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: cvt
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   m9_issues: [M9-I16, M9-I17, M9-I18]

@@ -37,6 +37,7 @@ EXPECTED_SECTIONS = {
         "neg": {"9.7.1.12", "9.7.3.10", "9.7.4.5"},
         "popc": {"9.7.1.15"},
         "clz": {"9.7.1.16"},
+        "bfind": {"9.7.1.17"},
         "fma": {"9.7.3.6", "9.7.4.4"},
     },
     "comparison_and_selection.yaml": {

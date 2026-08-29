@@ -118,7 +118,7 @@ gaps:
   - owner: M12-I21
     marker: m12_i21_bfind
     forms:
-      - {variant: shiftamt_u32, canonical_form: bfind.shiftamt.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: shiftamt_u32, canonical_form: bfind.shiftamt.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I22
     marker: m12_i22_bfe
     forms:

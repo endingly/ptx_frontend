@@ -52,7 +52,7 @@ enum class OperandSyntaxShape : uint16_t {
   CallTargetSet = 1 << 8,
   BranchTarget = 1 << 9,
   BranchTargetSet = 1 << 10,
-  ShflDestination = 1 << 11,
+  RegisterPredicatePair = 1 << 11,
 };
 
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
@@ -88,6 +88,7 @@ enum class ResolvedValueKind : uint8_t {
   Immediate,
   RegOrImm,
   ShflDestination,
+  PredicatePair,
   MovSource,
   VectorRegister,
   VectorSpecialRegister,
@@ -425,6 +426,12 @@ struct ResolvedShflSyncDestination {
   bool operator==(const ResolvedShflSyncDestination&) const = default;
 };
 
+struct ResolvedPredicatePair {
+  ResolvedPredicate first;
+  ResolvedPredicate second;
+  bool operator==(const ResolvedPredicatePair&) const = default;
+};
+
 /** A scalar ``mov`` source after identifier classification and binding. */
 using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
@@ -441,6 +448,7 @@ using ResolvedFieldValue =
                  WithLocs<MemoryStateSpace>,
                  WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
+                 WithLocs<ResolvedPredicatePair>,
                  WithLocs<ResolvedMovSource>,
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedBranchTargetSet>,

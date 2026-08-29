@@ -639,6 +639,7 @@ $defs:
       - func
       - reg_or_imm
       - shfl_dest
+      - pred_pair
       - mov_scalar_src
       - vector_reg
       - vector_sreg

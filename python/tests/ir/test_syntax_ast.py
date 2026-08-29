@@ -260,12 +260,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
 
-    def test_shfl_destination_uses_dedicated_single_operand_shape(self) -> None:
+    def test_register_predicate_pair_uses_dedicated_single_operand_shape(self) -> None:
         variant = self.shfl_descriptor.variants[0]
         self.assertEqual(variant.variant_id, "shfl_sync_idx_b32")
         self.assertEqual(
             variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
-            OperandSyntaxShape.SHFL_DESTINATION,
+            OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
         )
 
     def test_mov_source_layout_covers_data_and_address_forms(self) -> None:

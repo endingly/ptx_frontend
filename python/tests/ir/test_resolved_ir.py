@@ -1967,6 +1967,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("selected.dst.value.data.declared_type", source)
 
+    def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="arithmetic",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("ResolvedPredicatePair", source)
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::PredicatePair,", source
+        )
+        self.assertIn("selected.dst.value.first.register_ref.declared_type", source)
+        self.assertIn("selected.dst.value.second.register_ref.declared_type", source)
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

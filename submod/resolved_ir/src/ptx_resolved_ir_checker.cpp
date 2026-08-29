@@ -619,6 +619,29 @@ CheckResult check_operands(
     }
     append_value_availability_diagnostics(*operand, context, diagnostics);
 
+    if (operand->actual_shape == OperandShape::PredicatePair) {
+      for (size_t index = 0; index < operand->predicate_pair_types.size();
+           ++index) {
+        const ScalarType actual = operand->predicate_pair_types[index];
+        if (actual != ScalarType::Invalid &&
+            !scalar_types_compatible(actual, expected_type,
+                                     descriptor.register_width_policy)) {
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message = fmt::format(
+                  "Predicate-pair operand '{}' has an endpoint type '{}' "
+                  "incompatible with instruction type source '{}' ('{}').",
+                  descriptor.target_field_id, to_string(actual),
+                  expected_type_source, to_string(expected_type)),
+          });
+        }
+      }
+      continue;
+    }
+
     if (operand->actual_shape == OperandShape::Vector &&
         descriptor.minimum_elements != 0) {
       if (operand->vector_arity <= kMaxOperandElements) {

@@ -1674,6 +1674,31 @@ TEST(ResolvedModule, ChecksSetpLtU32OperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksSetpDualPredicateOperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .pred %p0, %p1, %p2; .reg .u32 %u0, %u1; .reg .s32 %s0, %s1; setp.eq.u32 %p0|%p1, %u0, %u1; setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  for (const auto& body : valid->functions.front().body) {
+    EXPECT_TRUE(checker::check(
+                    std::get<Setp>(body),
+                    checker::Context{.target = {.ptx_version = {1, 0},
+                                                 .sm_version = 0}})
+                    .has_value());
+  }
+
+  auto instruction = std::get<Setp>(valid->functions.front().body.front());
+  auto& variant = std::get<Setp::EqU32Pair>(instruction.variant);
+  variant.dst.value.second.register_ref.declared_type = ScalarType::U32;
+  const auto checked = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.dst.locs[1]);
+}
+
 TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() {

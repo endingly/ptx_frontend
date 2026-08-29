@@ -75,6 +75,13 @@ TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
   ASSERT_EQ(indexed_branch->operands.size(), 2u);
   EXPECT_EQ(check_end::get_operand_syntax_shape(indexed_branch->operands[1]),
             check_end::OperandSyntaxShape::BranchTargetSet);
+
+  PtxSyntaxParser predicate_pair_parser("setp.eq.u32 %p0|%p1, %r0, %r1;");
+  const auto predicate_pair = predicate_pair_parser.parseInstruction();
+  ASSERT_TRUE(predicate_pair.has_value())
+      << predicate_pair.diagnostics.front().message;
+  EXPECT_EQ(check_end::get_operand_syntax_shape(predicate_pair->operands[0]),
+            check_end::OperandSyntaxShape::RegisterPredicatePair);
 }
 
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {
@@ -852,6 +859,44 @@ TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
   EXPECT_TRUE(lt_and->combine.value.negated);
+}
+
+TEST(ResolveSetp, SelectsFrozenDualPredicateVariants) {
+  const auto equality_ast =
+      parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
+  const auto equality = resolve<Setp>(equality_ast);
+  ASSERT_TRUE(equality.has_value()) << equality.error().message;
+  const auto* eq = std::get_if<Setp::EqU32Pair>(&equality->variant);
+  ASSERT_NE(eq, nullptr);
+  EXPECT_EQ(eq->comparison.value, ComparisonOperator::Eq);
+  EXPECT_EQ(eq->dst.value.first.register_ref.spelling, "%p0");
+  EXPECT_EQ(eq->dst.value.second.register_ref.spelling, "%p1");
+
+  const auto combined_ast =
+      parse_instruction("setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;");
+  const auto combined = resolve<Setp>(combined_ast);
+  ASSERT_TRUE(combined.has_value()) << combined.error().message;
+  const auto* lt_and = std::get_if<Setp::LtAndS32Pair>(&combined->variant);
+  ASSERT_NE(lt_and, nullptr);
+  EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
+  EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
+  EXPECT_FALSE(lt_and->combine.value.negated);
+  EXPECT_EQ(lt_and->combine.value.register_ref.spelling, "%p2");
+}
+
+TEST(ResolveSetp, RejectsUnfrozenDualPredicateForms) {
+  for (const auto source : {
+           "setp.eq.u32 %p0|_, %r0, %r1;",
+           "setp.lt.and.s32 %p0|%p1, %s0, %s1, !%p2;",
+       }) {
+    const auto selected = resolve<Setp>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+
+  const auto non_predicate =
+      resolve<Setp>(parse_instruction("setp.eq.u32 %r0|%p1, %r0, %r1;"));
+  EXPECT_FALSE(non_predicate.has_value());
 }
 
 TEST(ResolveSelp, SelectsFrozenU32Variant) {

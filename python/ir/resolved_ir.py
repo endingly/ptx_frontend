@@ -82,6 +82,7 @@ class ResolvedValueKind(Enum):
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
+    PREDICATE_PAIR = "PredicatePair"
 
 
 class ResolvedFieldStorage(Enum):
@@ -129,6 +130,7 @@ class ResolvedOperandShape(Enum):
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
+    PREDICATE_PAIR = "PredicatePair"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -432,6 +434,7 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.IMMEDIATE,
     ),
     "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
+    "pred_pair": (ResolvedOperandShape.PREDICATE_PAIR,),
     "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,

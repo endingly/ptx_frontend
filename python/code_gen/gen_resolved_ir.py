@@ -1176,6 +1176,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.data.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedPredicatePair":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
+                  .immediate_type = std::nullopt,
+                  .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or(ScalarType::Invalid), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or(ScalarType::Invalid)}},
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedImmediate":
         return f"""              OperandView{{
                   .field_id = "{field.name}",

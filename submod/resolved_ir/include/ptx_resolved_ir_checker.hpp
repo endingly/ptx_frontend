@@ -118,6 +118,7 @@ enum class OperandShape : uint16_t {
   IndirectCallee = 1 << 11,
   BranchTargetSet = 1 << 12,
   ShflDestination = 1 << 13,
+  PredicatePair = 1 << 14,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -289,6 +290,7 @@ struct OperandView {
   std::optional<uint64_t> immediate_bits;
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  std::array<ScalarType, 2> predicate_pair_types{};
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
   /** Effective address space; unknown for register/immediate/standalone bases. */

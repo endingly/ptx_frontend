@@ -86,6 +86,44 @@ operand_patterns:
       access: read
       type: pred
 
+  setp_eq_u32_pair:
+    - name: dst
+      kind: pred_pair
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+  setp_lt_and_s32_pair:
+    - name: dst
+      kind: pred_pair
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: s32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: s32
+    - name: combine
+      kind: pred
+      role: predicate
+      access: read
+      type: pred
   selp_u32:
     - name: dst
       kind: reg
@@ -175,8 +213,8 @@ instructions:
             valid: true
   - opcode: setp
     section: "9.7.6.2"
-    doc: "Compare two .u32 values and optionally combine the result with one predicate."
-    syntax: "setp.lt.u32 dst, src1, src2 | setp.lt.and.u32 dst, src1, src2, combine"
+    doc: "Frozen predicate comparison forms, including two dual-predicate destinations."
+    syntax: "setp.lt.u32 dst, src1, src2 | setp.lt.and.u32 dst, src1, src2, combine | setp.eq.u32 dst0|dst1, src1, src2 | setp.lt.and.s32 dst0|dst1, src1, src2, combine"
     variants:
       - name: setp_lt_u32
         description: "Single-destination unsigned less-than predicate comparison."
@@ -226,6 +264,55 @@ instructions:
         operands: $setp_lt_and_u32
         examples:
           - ptx: "setp.lt.and.u32 %p0, %r0, 16, !%p1;"
+            valid: true
+      - name: setp_eq_u32_pair
+        description: "Unsigned equality with two predicate destinations."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [eq]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $setp_eq_u32_pair
+        examples:
+          - ptx: "setp.eq.u32 %p0|%p1, %r0, %r1;"
+            valid: true
+      - name: setp_lt_and_s32_pair
+        description: "Signed less-than combined with one non-negated predicate and two predicate destinations."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: required
+            values: [and]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $setp_lt_and_s32_pair
+        examples:
+          - ptx: "setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;"
             valid: true
   - opcode: selp
     section: "9.7.6.3"

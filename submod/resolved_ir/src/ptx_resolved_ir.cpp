@@ -870,6 +870,33 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
       pair->range};
 }
 
+std::expected<WithLocs<ResolvedPredicatePair>, ResolveDiagnostic>
+resolve_predicate_pair(const syntax_ast::AstOperand& operand,
+                       const ResolveContext* context) {
+  const auto* pair =
+      std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
+  if (pair == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a predicate-pair operand.",
+    });
+  }
+  auto first = resolve_predicate_identifier(pair->dst, false,
+                                            pair->dst.syntax.range, context);
+  if (!first)
+    return std::unexpected(first.error());
+  auto second = resolve_predicate_identifier(
+      pair->predicate, false, pair->predicate.syntax.range, context);
+  if (!second)
+    return std::unexpected(second.error());
+  WithLocs<ResolvedPredicatePair> result{
+      ResolvedPredicatePair{.first = std::move(first->value),
+                            .second = std::move(second->value)},
+      pair->range};
+  result.locs = {pair->dst.syntax.range, pair->predicate.syntax.range};
+  return result;
+}
+
 std::expected<WithLocs<ResolvedBranchTarget>, ResolveDiagnostic>
 resolve_branch_target(const syntax_ast::AstOperand& operand,
                       const ResolveContext* context) {
@@ -2356,6 +2383,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::PredicatePair: {
+      auto value = resolve_predicate_pair(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::MovSource: {
       const auto type =
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
@@ -2572,6 +2605,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
     case ResolvedValueKind::ShflDestination:
+    case ResolvedValueKind::PredicatePair:
     case ResolvedValueKind::MovSource:
     case ResolvedValueKind::VectorRegister:
     case ResolvedValueKind::VectorSpecialRegister:
@@ -2879,6 +2913,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
       case ResolvedValueKind::ShflDestination:
+      case ResolvedValueKind::PredicatePair:
       case ResolvedValueKind::MovSource:
       case ResolvedValueKind::VectorRegister:
       case ResolvedValueKind::VectorSpecialRegister:
@@ -2960,7 +2995,7 @@ check_end::OperandSyntaxShape check_end::get_operand_syntax_shape(
           return check_end::OperandSyntaxShape::BranchTargetSet;
         } else if constexpr (std::same_as<Item,
                                           syntax_ast::AstRegisterPredicatePair>) {
-          return check_end::OperandSyntaxShape::ShflDestination;
+          return check_end::OperandSyntaxShape::RegisterPredicatePair;
         } else {
           return check_end::OperandSyntaxShape::BranchTarget;
         }

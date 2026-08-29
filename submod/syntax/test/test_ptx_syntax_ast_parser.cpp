@@ -115,14 +115,14 @@ TEST(PtxSyntaxParser, ParsesVectorPack) {
 }
 
 TEST(PtxSyntaxParser, LowersRegisterPredicatePairAsOneOperand) {
-  PtxSyntaxParser parser("shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;");
+  PtxSyntaxParser parser("setp.eq.u32 %p0|%p1, %r0, %r1;");
   const auto result = parser.parseInstruction();
   ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
-  ASSERT_EQ(result->operands.size(), 5u);
+  ASSERT_EQ(result->operands.size(), 3u);
   const auto& pair =
       std::get<AstRegisterPredicatePair>(result->operands.front());
-  EXPECT_EQ(pair.dst.syntax.text, "%b0");
-  EXPECT_EQ(pair.predicate.syntax.text, "%p0");
+  EXPECT_EQ(pair.dst.syntax.text, "%p0");
+  EXPECT_EQ(pair.predicate.syntax.text, "%p1");
   EXPECT_NE(pair.range.start, pair.range.end);
 }
 

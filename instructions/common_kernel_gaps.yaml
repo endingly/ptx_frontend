@@ -21,8 +21,8 @@ gaps:
   - owner: M12-I03
     marker: m12_i03_setp
     forms:
-      - {variant: dual_predicate_eq_u32, canonical_form: setp.eq.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
-      - {variant: dual_predicate_lt_and_s32, canonical_form: setp.lt.and.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: dual_predicate_eq_u32, canonical_form: setp.eq.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: dual_predicate_lt_and_s32, canonical_form: setp.lt.and.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I04
     marker: m12_i04_slct
     forms:

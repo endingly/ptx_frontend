@@ -16,6 +16,9 @@ KNOWN_NONE = {
     ("M12-I02", "set.eq.u32.u32"),
     ("M12-I02", "set.lt.and.f32.s32"),
 } | {
+    ("M12-I03", form)
+    for form in ("setp.eq.u32", "setp.lt.and.s32")
+} | {
     ("M12-I05", form) for form in ("add.u32", "add.s32", "add.u64", "add.f32")
 } | {
     ("M12-I06", form) for form in ("sub.u32", "sub.s32", "sub.u64", "sub.f32")

@@ -1193,6 +1193,34 @@ TEST(ResolveMin, RejectsUnfrozenVariants) {
       resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
 }
 
+TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
+  const auto s32 = resolve<Max>(parse_instruction("max.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Max::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Max::S32::type, ScalarType::S32);
+
+  const auto nan =
+      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(nan.has_value()) << nan.error().message;
+  ASSERT_NE(std::get_if<Max::NanF32>(&nan->variant), nullptr);
+  EXPECT_TRUE(Max::NanF32::nan);
+  EXPECT_EQ(Max::NanF32::type, ScalarType::F32);
+}
+
+TEST(ResolveMax, RejectsUnfrozenVariants) {
+  for (const auto source : {"max.relu.s32 %r0, %r1, %r2;",
+                            "max.f32 %f0, %f1, %f2;",
+                            "max.ftz.f32 %f0, %f1, %f2;",
+                            "max.xorsign.abs.f32 %f0, %f1, %f2;",
+                            "max.abs.f32 %f0, %f1, %f2;",
+                            "max.nan.f32 %f0, %f1, %f2;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Max>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(
+      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

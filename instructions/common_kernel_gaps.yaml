@@ -79,8 +79,8 @@ gaps:
   - owner: M12-I13
     marker: m12_i13_max
     forms:
-      - {variant: s32, canonical_form: max.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: nan_f32, canonical_form: max.NaN.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: s32, canonical_form: max.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: nan_f32, canonical_form: max.NaN.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I14
     marker: m12_i14_abs
     forms:

@@ -2483,6 +2483,57 @@ TEST(ResolvedModule, ChecksM12MinTypes) {
   EXPECT_EQ(nan_checked.error().front().range, nan_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12MaxTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0, %s1, %s2;
+  .reg .f32 %f0, %f1, %f2;
+  max.s32 %s0, %s1, %s2;
+  max.NaN.f32 %f0, %f1, %f2;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& integer_max = std::get<Max>(body[0]);
+  const auto& nan_max = std::get<Max>(body[1]);
+  EXPECT_TRUE(std::holds_alternative<Max::S32>(integer_max.variant));
+  EXPECT_TRUE(std::holds_alternative<Max::NanF32>(nan_max.variant));
+  EXPECT_TRUE(checker::check(
+                  integer_max,
+                  checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  nan_max,
+                  checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}})
+                  .has_value());
+
+  const auto wrong_integer_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .s32 %dst, %src2; .reg .f32 %src1; max.s32 %dst, %src1, %src2; }
+)ptx"));
+  ASSERT_TRUE(wrong_integer_type.has_value()) << wrong_integer_type.error().front().message;
+  const auto& integer_instruction = std::get<Max>(wrong_integer_type->functions.front().body.front());
+  const auto& integer_variant = std::get<Max::S32>(integer_instruction.variant);
+  const auto integer_checked = checker::check(
+      integer_instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(integer_checked.has_value());
+  EXPECT_EQ(integer_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(integer_checked.error().front().range, integer_variant.src1.locs.front());
+
+  const auto wrong_nan_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst, %src2; .reg .b32 %src1; max.NaN.f32 %dst, %src1, %src2; }
+)ptx"));
+  ASSERT_TRUE(wrong_nan_width.has_value()) << wrong_nan_width.error().front().message;
+  const auto& nan_instruction = std::get<Max>(wrong_nan_width->functions.front().body.front());
+  const auto& nan_variant = std::get<Max::NanF32>(nan_instruction.variant);
+  const auto nan_checked = checker::check(
+      nan_instruction,
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
+  ASSERT_FALSE(nan_checked.has_value());
+  EXPECT_EQ(nan_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(nan_checked.error().front().range, nan_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

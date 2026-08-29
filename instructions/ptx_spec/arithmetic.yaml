@@ -1025,3 +1025,30 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "min.NaN.f32 %f0, %f1, %f2;", valid: true}
+
+  - opcode: max
+    section: "9.7.1.14"
+    doc: "Frozen signed 32-bit integer maximum."
+    syntax: "max.s32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: max_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "max.s32 %r0, %r1, %r2;", valid: true}
+
+  - opcode: max
+    section: "9.7.3.12"
+    doc: "Frozen NaN-propagating single-precision maximum."
+    syntax: "max.NaN.f32 dst, src1, src2"
+    operands: $binary_float_register_exact
+    variants:
+      - name: max_nan_f32
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: nan, kind: flag, presence: fixed, value: true, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "max.NaN.f32 %f0, %f1, %f2;", valid: true}

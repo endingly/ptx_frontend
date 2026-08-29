@@ -38,6 +38,8 @@ KNOWN_NONE = {
 } | {
     ("M12-I12", form) for form in ("min.s32", "min.NaN.f32")
 } | {
+    ("M12-I13", form) for form in ("max.s32", "max.NaN.f32")
+} | {
     ("M12-I25", "cvt.rzi.u32.f32"),
 }
 

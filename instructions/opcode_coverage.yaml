@@ -77,6 +77,12 @@ opcodes:
   slices:
   - {"id":"abs-abs-s32-default","section":"9.7.1.11","spec_variant":"abs_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"abs-abs-f32-default","section":"9.7.3.9","spec_variant":"abs_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: neg
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"neg-neg-s32-default","section":"9.7.1.12","spec_variant":"neg_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"neg-neg-f32-default","section":"9.7.3.10","spec_variant":"neg_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"neg-neg-f16x2-default","section":"9.7.4.5","spec_variant":"neg_f16x2","operand_layout":"default","selector":{"topology":"arithmetic","types":["f16x2"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: set
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

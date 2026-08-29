@@ -112,6 +112,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "abs"
         )
+        neg_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "neg"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
@@ -122,6 +127,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.min_instruction = from_instruction_spec(min_instruction)
         cls.max_instruction = from_instruction_spec(max_instruction)
         cls.abs_instruction = from_instruction_spec(abs_instruction)
+        cls.neg_instruction = from_instruction_spec(neg_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -511,6 +517,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 [field.name for field in variant.fields], ["type", "dst", "src"]
             )
             self.assertEqual(variant.fields[0].constant_value, scalar_type)
+
+    def test_neg_has_frozen_scalar_and_packed_unary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.neg_instruction.variants],
+            ["S32", "F32", "F16x2"],
+        )
+        for variant, scalar_type in zip(
+            self.neg_instruction.variants, ("s32", "f32", "f16x2"), strict=True
+        ):
+            self.assertEqual(
+                [field.name for field in variant.fields], ["type", "dst", "src"]
+            )
+            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 2,
+        )
 
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}

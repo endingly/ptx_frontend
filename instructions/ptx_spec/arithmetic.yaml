@@ -40,6 +40,10 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
     - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
 
+  unary_packed_b32_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1082,3 +1086,42 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "abs.f32 %f0, %f1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.1.12"
+    doc: "Frozen signed 32-bit integer negation."
+    syntax: "neg.s32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: neg_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "neg.s32 %r0, %r1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.3.10"
+    doc: "Frozen single-precision floating-point negation."
+    syntax: "neg.f32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: neg_f32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "neg.f32 %f0, %f1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.4.5"
+    doc: "Frozen packed half-precision negation using b32 register containers."
+    syntax: "neg.f16x2 dst, src"
+    operands: $unary_packed_b32_register_exact
+    variants:
+      - name: neg_f16x2
+        availability: {ptx: "6.0", sm: 53}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "neg.f16x2 %r0, %r1;", valid: true}

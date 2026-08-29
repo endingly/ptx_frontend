@@ -2565,6 +2565,53 @@ TEST(ResolvedModule, ChecksM12AbsTypes) {
   EXPECT_EQ(checked.error().front().range, variant.src.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12NegTypesAndPackedContainers) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0, %s1;
+  .reg .f32 %f0, %f1;
+  .reg .b32 %r0, %r1;
+  neg.s32 %s0, %s1;
+  neg.f32 %f0, %f1;
+  neg.f16x2 %r0, %r1;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& integer_neg = std::get<Neg>(body[0]);
+  const auto& float_neg = std::get<Neg>(body[1]);
+  const auto& packed_neg = std::get<Neg>(body[2]);
+  EXPECT_TRUE(std::holds_alternative<Neg::S32>(integer_neg.variant));
+  EXPECT_TRUE(std::holds_alternative<Neg::F32>(float_neg.variant));
+  EXPECT_TRUE(std::holds_alternative<Neg::F16x2>(packed_neg.variant));
+  EXPECT_TRUE(checker::check(
+                  integer_neg,
+                  checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  float_neg,
+                  checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  packed_neg,
+                  checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 53}})
+                  .has_value());
+
+  for (const auto source : {
+           ".entry kernel() { .reg .f16 %dst, %src; neg.f16x2 %dst, %src; }",
+           ".entry kernel() { .reg .f32 %dst, %src; neg.f16x2 %dst, %src; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto wrong_container = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong_container.has_value()) << wrong_container.error().front().message;
+    const auto& instruction = std::get<Neg>(wrong_container->functions.front().body.front());
+    const auto checked = checker::check(
+        instruction, checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 53}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

@@ -89,9 +89,9 @@ gaps:
   - owner: M12-I15
     marker: m12_i15_neg
     forms:
-      - {variant: s32, canonical_form: neg.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: f32, canonical_form: neg.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: f16x2_packed_b32, canonical_form: neg.f16x2, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: s32, canonical_form: neg.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: f32, canonical_form: neg.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: f16x2_packed_b32, canonical_form: neg.f16x2, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I16
     marker: m12_i16_lop3
     forms:

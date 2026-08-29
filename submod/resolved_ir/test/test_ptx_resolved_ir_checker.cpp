@@ -1039,6 +1039,48 @@ TEST(ResolvedIrChecker, ChecksGeneratedAbsAvailability) {
   }
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedNegAvailability) {
+  for (const auto source : {"neg.s32 %r0, %r1;", "neg.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto neg = resolve<Neg>(*ast);
+    ASSERT_TRUE(neg.has_value()) << neg.error().message;
+    const auto old_ptx = check(
+        *neg, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*neg,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+
+  PtxSyntaxParser packed_parser("neg.f16x2 %r0, %r1;");
+  const auto packed_ast = packed_parser.parseInstruction();
+  ASSERT_TRUE(packed_ast.has_value()) << packed_ast.diagnostics.front().message;
+  const auto packed = resolve<Neg>(*packed_ast);
+  ASSERT_TRUE(packed.has_value()) << packed.error().message;
+  const auto old_ptx = check(
+      *packed, Context{.target = {.ptx_version = {5, 9}, .sm_version = 53},
+                       .instruction_range = packed_ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *packed, Context{.target = {.ptx_version = {6, 0}, .sm_version = 52},
+                       .instruction_range = packed_ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*packed,
+                    Context{.target = {.ptx_version = {6, 0}, .sm_version = 53},
+                            .instruction_range = packed_ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

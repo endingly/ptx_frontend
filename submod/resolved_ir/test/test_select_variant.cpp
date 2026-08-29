@@ -1243,6 +1243,32 @@ TEST(ResolveAbs, RejectsUnfrozenAndInvalidForms) {
   EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
 }
 
+TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
+  const auto s32 = resolve<Neg>(parse_instruction("neg.s32 %r0, %r1;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Neg::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Neg::S32::type, ScalarType::S32);
+
+  const auto f32 = resolve<Neg>(parse_instruction("neg.f32 %f0, %f1;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Neg::F32>(&f32->variant), nullptr);
+  EXPECT_EQ(Neg::F32::type, ScalarType::F32);
+
+  const auto f16x2 = resolve<Neg>(parse_instruction("neg.f16x2 %r0, %r1;"));
+  ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
+  ASSERT_NE(std::get_if<Neg::F16x2>(&f16x2->variant), nullptr);
+  EXPECT_EQ(Neg::F16x2::type, ScalarType::F16x2);
+}
+
+TEST(ResolveNeg, RejectsUnfrozenForms) {
+  for (const auto source : {"neg.ftz.f32 %f0, %f1;",
+                            "neg.bf16x2 %r0, %r1;",
+                            "neg.sat.s32 %r0, %r1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Neg>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

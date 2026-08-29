@@ -29,6 +29,7 @@ from code_gen.model import (
     OperandVectorTypePolicy,
     VariantSpec,
 )
+from ir.syntax_ast import OPERAND_SYNTAX_SHAPES
 
 
 _MODIFIER_TYPE_EXPR = re.compile(
@@ -639,7 +640,76 @@ def normalize_operand_layouts(
         )
     if not layouts:
         raise ValueError(f"variant {raw_variant['name']!r} has no operand layouts")
-    return tuple(layouts)
+    normalized_layouts = tuple(layouts)
+    _validate_flat_operand_layout_ordering(raw_variant["name"], normalized_layouts)
+    return normalized_layouts
+
+
+def _modern_pack_interval(operand: OperandSpec) -> tuple[int, int] | None:
+    if operand.minimum_elements is None:
+        return None
+    return operand.minimum_elements, operand.maximum_elements
+
+
+def _flat_slot_overlap(left: OperandSpec, right: OperandSpec) -> bool:
+    if not (OPERAND_SYNTAX_SHAPES[left.kind] & OPERAND_SYNTAX_SHAPES[right.kind]):
+        return False
+    left_interval = _modern_pack_interval(left)
+    right_interval = _modern_pack_interval(right)
+    if left_interval is None and right_interval is None:
+        return True
+    if left_interval is not None and right_interval is not None:
+        if max(left_interval[0], right_interval[0]) > min(left_interval[1], right_interval[1]):
+            return False
+        return bool(set(left.element_kinds) & set(right.element_kinds))
+    return True
+
+
+def _flat_slot_is_subset(candidate: OperandSpec, other: OperandSpec) -> bool:
+    candidate_shapes = OPERAND_SYNTAX_SHAPES[candidate.kind]
+    other_shapes = OPERAND_SYNTAX_SHAPES[other.kind]
+    if (candidate_shapes & other_shapes) != candidate_shapes:
+        return False
+    candidate_interval = _modern_pack_interval(candidate)
+    other_interval = _modern_pack_interval(other)
+    if candidate_interval is None:
+        return other_interval is None
+    if other_interval is None:
+        return True
+    return (
+        candidate_interval[0] >= other_interval[0]
+        and candidate_interval[1] <= other_interval[1]
+        and set(candidate.element_kinds) <= set(other.element_kinds)
+    )
+
+
+def _validate_flat_operand_layout_ordering(
+    variant_name: str, layouts: tuple[OperandLayoutSpec, ...]
+) -> None:
+    flat_layouts = tuple(layout for layout in layouts if layout.kind is OperandLayoutKind.FLAT)
+    for left_index, left in enumerate(flat_layouts):
+        for right in flat_layouts[left_index + 1:]:
+            if len(left.operands) != len(right.operands):
+                continue
+            if not all(
+                _flat_slot_overlap(left_operand, right_operand)
+                for left_operand, right_operand in zip(left.operands, right.operands, strict=True)
+            ):
+                continue
+            left_subset = all(
+                _flat_slot_is_subset(left_operand, right_operand)
+                for left_operand, right_operand in zip(left.operands, right.operands, strict=True)
+            )
+            right_subset = all(
+                _flat_slot_is_subset(right_operand, left_operand)
+                for left_operand, right_operand in zip(left.operands, right.operands, strict=True)
+            )
+            if left_subset == right_subset:
+                raise ValueError(
+                    f"variant {variant_name!r}: flat operand layouts {left.name!r} and "
+                    f"{right.name!r} accept overlapping syntax without a unique "
+                    "most-specific layout"
+                )
 
 
 def _resolve_operands(

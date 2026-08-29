@@ -24,9 +24,13 @@ from code_gen.gen_resolved_ir import (
 )
 from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
 from code_gen.load_yaml import load_yaml
-from code_gen.normalize import normalize_operand
+from code_gen.normalize import normalize_instruction_spec, normalize_operand
 from ir.resolved_ir import ResolvedOperandShape, from_instruction_spec
-from ir.syntax_ast import OperandSyntaxShape, from_InstructionSpec
+from ir.syntax_ast import (
+    OPERAND_SYNTAX_SHAPES,
+    OperandSyntaxShape,
+    from_InstructionSpec,
+)
 
 
 def _operand(kind: str, name: str, **extra: object) -> dict[str, object]:
@@ -143,6 +147,87 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 normalize_operand(operand)
+
+    def test_normalizer_rejects_incomparable_modern_pack_layouts(self) -> None:
+        spec = _modern_instruction()
+        variant = spec["instructions"][0]["variants"][0]
+        variant.pop("operands")
+        variant["operand_layouts"] = [
+            {
+                "name": "one_to_three",
+                "operands": [
+                    _operand(
+                        "matrix_fragment", "fragment",
+                        cardinality={"min": 1, "max": 3}, element_kinds=["reg"],
+                    )
+                ],
+            },
+            {
+                "name": "two_to_five",
+                "operands": [
+                    _operand(
+                        "matrix_fragment", "fragment",
+                        cardinality={"min": 2, "max": 5}, element_kinds=["reg"],
+                    )
+                ],
+            },
+        ]
+        with self.assertRaisesRegex(ValueError, "overlapping syntax"):
+            normalize_instruction_spec(spec)
+
+    def test_normalizer_rejects_type_tag_only_layout_difference(self) -> None:
+        spec = _modern_instruction()
+        variant = spec["instructions"][0]["variants"][0]
+        variant.pop("operands")
+        variant["operand_layouts"] = [
+            {
+                "name": "first_tag",
+                "operands": [
+                    _operand("descriptor", "descriptor", type_tag="first_tag")
+                ],
+            },
+            {
+                "name": "second_tag",
+                "operands": [
+                    _operand("descriptor", "descriptor", type_tag="second_tag")
+                ],
+            },
+        ]
+        with self.assertRaisesRegex(ValueError, "overlapping syntax"):
+            normalize_instruction_spec(spec)
+
+    def test_normalizer_accepts_strictly_contained_modern_pack_layout(self) -> None:
+        spec = _modern_instruction()
+        variant = spec["instructions"][0]["variants"][0]
+        variant.pop("operands")
+        variant["operand_layouts"] = [
+            {
+                "name": "narrow",
+                "operands": [
+                    _operand(
+                        "matrix_fragment", "fragment",
+                        cardinality={"min": 1, "max": 2}, element_kinds=["reg"],
+                    )
+                ],
+            },
+            {
+                "name": "wide",
+                "operands": [
+                    _operand(
+                        "matrix_fragment", "fragment",
+                        cardinality={"min": 1, "max": 5}, element_kinds=["reg"],
+                    )
+                ],
+            },
+        ]
+        self.assertEqual(
+            [layout.name for layout in normalize_instruction_spec(spec)[0].variants[0].operand_layouts],
+            ["narrow", "wide"],
+        )
+        self.assertEqual(
+            OPERAND_SYNTAX_SHAPES["matrix_fragment"],
+            OperandSyntaxShape.VECTOR_PACK,
+        )
 
     def test_full_synthetic_model_and_codegen_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

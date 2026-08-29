@@ -129,7 +129,7 @@ _PRESENCE_MAP = {
     "fixed": ModifierPresence.REQUIRED,
 }
 
-_OPERAND_SYNTAX_SHAPES = {
+OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
@@ -214,7 +214,7 @@ def _build_operand_slot_descriptor_view(
 ) -> SyntaxOperandSlotDescriptor:
     """Return the AST operand slot descriptor for one normalized PTX operand spec."""
     try:
-        shapes = _OPERAND_SYNTAX_SHAPES[operand.kind]
+        shapes = OPERAND_SYNTAX_SHAPES[operand.kind]
     except KeyError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported syntax operand kind "

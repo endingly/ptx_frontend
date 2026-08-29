@@ -245,8 +245,10 @@ bool is_more_specific_operand_layout(
   for (size_t index = 0; index < candidate.slots.size(); ++index) {
     const auto& candidate_slot = candidate.slots[index];
     const auto& other_slot = other.slots[index];
-    if (candidate_slot.presence != other_slot.presence)
+    if (candidate_slot.presence == OperandPresence::Optional &&
+        other_slot.presence == OperandPresence::Required)
       return false;
+    strictly_more_specific |= candidate_slot.presence != other_slot.presence;
 
     const auto candidate_shapes =
         static_cast<Underlying>(candidate_slot.allowed_shapes);
@@ -255,6 +257,39 @@ bool is_more_specific_operand_layout(
     if ((candidate_shapes & other_shapes) != candidate_shapes)
       return false;
     strictly_more_specific |= candidate_shapes != other_shapes;
+
+    if (candidate_slot.minimum_elements == 0) {
+      if (other_slot.minimum_elements != 0)
+        return false;
+      continue;
+    }
+
+    if (other_slot.minimum_elements != 0) {
+      if (candidate_slot.minimum_elements < other_slot.minimum_elements ||
+          candidate_slot.maximum_elements > other_slot.maximum_elements) {
+        return false;
+      }
+      strictly_more_specific |=
+          candidate_slot.minimum_elements != other_slot.minimum_elements ||
+          candidate_slot.maximum_elements != other_slot.maximum_elements;
+    } else {
+      strictly_more_specific = true;
+    }
+
+    if (other_slot.allowed_element_shapes == OperandSyntaxShape{})
+      continue;
+    if (candidate_slot.allowed_element_shapes == OperandSyntaxShape{})
+      return false;
+
+    const auto candidate_element_shapes =
+        static_cast<Underlying>(candidate_slot.allowed_element_shapes);
+    const auto other_element_shapes =
+        static_cast<Underlying>(other_slot.allowed_element_shapes);
+    if ((candidate_element_shapes & other_element_shapes) !=
+        candidate_element_shapes) {
+      return false;
+    }
+    strictly_more_specific |= candidate_element_shapes != other_element_shapes;
   }
   return strictly_more_specific;
 }

@@ -209,6 +209,61 @@ resolve_register_pack(const syntax_ast::AstInstruction& ast) {
   return resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Pack");
 }
 
+std::expected<ResolvedInstructionFields, ResolveDiagnostic>
+resolve_modern_pack_layouts(
+    const syntax_ast::AstInstruction& ast,
+    const std::array<check_end::SyntaxOperandLayoutDescriptor, 2>&
+        syntax_layouts) {
+  const check_end::SyntaxVariantDescriptor syntax_variant{
+      .variant_name = "Pack",
+      .modifiers = {},
+      .operand_layouts = syntax_layouts,
+  };
+  const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{
+      syntax_variant,
+  }};
+  const check_end::SyntaxInstructionDescriptor syntax_descriptor{
+      .Opcode_name = "sample",
+      .variants = syntax_variants,
+  };
+  const std::array<check_end::ResolvedFieldDescriptor, 1> fields = {{
+      {.field_id = "pack",
+       .value_kind = check_end::ResolvedValueKind::RegisterVector},
+  }};
+  const std::array<check_end::ResolvedOperandBindingDescriptor, 1> bindings = {{
+      {.target_field_id = "pack",
+       .type_expression = {},
+       .role = check_end::OperandRole::Source,
+       .access = check_end::OperandAccess::Read,
+       .allowed_shapes = checker::OperandShape::Vector,
+       .allowed_vector_arities = {},
+       .minimum_elements = 1,
+       .maximum_elements = 64,
+       .allowed_element_shapes = checker::OperandShape::Register,
+       .allowed_address_state_spaces = {}},
+  }};
+  const std::array<check_end::ResolvedOperandLayoutDescriptor, 2>
+      resolved_layouts = {{
+          {.layout_id = syntax_layouts[0].layout_id,
+           .fields = fields,
+           .bindings = bindings},
+          {.layout_id = syntax_layouts[1].layout_id,
+           .fields = fields,
+           .bindings = bindings},
+      }};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants = {{
+      {.variant_name = "Pack",
+       .fields = {},
+       .modifier_bindings = {},
+       .operand_layouts = resolved_layouts},
+  }};
+  const check_end::ResolvedInstructionDescriptor resolved_descriptor{
+      .opcode_name = "sample",
+      .variants = resolved_variants,
+  };
+  return resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Pack");
+}
+
 TEST(ResolveFields, DiagnosesModernPackCardinalityAtSyntaxSelection) {
   const auto ast = parse_instruction("sample {%r0, %r1, %r2, %r3, %r4, %r5};");
   const auto resolved = resolve_register_pack(ast);
@@ -230,6 +285,107 @@ TEST(ResolveFields, DiagnosesModernPackElementShapeAtSyntaxSelection) {
   EXPECT_EQ(resolved.error().message,
             "Vector operand element has a shape not accepted by this "
             "instruction layout.");
+}
+
+TEST(ResolveFields, SelectsRegisterOnlyModernPackLayout) {
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1>
+      register_only_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+       .presence = check_end::OperandPresence::Required,
+       .minimum_elements = 1,
+       .maximum_elements = 5,
+       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
+  }};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1>
+      register_or_immediate_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+       .presence = check_end::OperandPresence::Required,
+       .minimum_elements = 1,
+       .maximum_elements = 5,
+       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier |
+                                 check_end::OperandSyntaxShape::Immediate},
+  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 2> layouts = {{
+      {.layout_id = "register_only",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = register_only_slots},
+      {.layout_id = "register_or_immediate",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = register_or_immediate_slots},
+  }};
+
+  const auto fields = resolve_modern_pack_layouts(
+      parse_instruction("sample {%r0};"), layouts);
+  ASSERT_TRUE(fields.has_value()) << fields.error().message;
+  EXPECT_EQ(fields->operand_layout.value, 0u);
+}
+
+TEST(ResolveFields, SelectsNarrowModernPackCardinalityLayout) {
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1> narrow_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+       .presence = check_end::OperandPresence::Required,
+       .minimum_elements = 1,
+       .maximum_elements = 2,
+       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
+  }};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1> wide_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+       .presence = check_end::OperandPresence::Required,
+       .minimum_elements = 1,
+       .maximum_elements = 5,
+       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
+  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 2> layouts = {{
+      {.layout_id = "narrow",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = narrow_slots},
+      {.layout_id = "wide",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = wide_slots},
+  }};
+
+  const auto narrow =
+      resolve_modern_pack_layouts(parse_instruction("sample {%r0};"), layouts);
+  ASSERT_TRUE(narrow.has_value()) << narrow.error().message;
+  EXPECT_EQ(narrow->operand_layout.value, 0u);
+
+  const auto wide = resolve_modern_pack_layouts(
+      parse_instruction("sample {%r0, %r1, %r2, %r3};"), layouts);
+  ASSERT_TRUE(wide.has_value()) << wide.error().message;
+  EXPECT_EQ(wide->operand_layout.value, 1u);
+}
+
+TEST(ResolveFields, SelectsBoundedModernPackOverUnconstrainedVectorPack) {
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1> bounded_slots = {{
+      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+       .presence = check_end::OperandPresence::Required,
+       .minimum_elements = 1,
+       .maximum_elements = 2,
+       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
+  }};
+  const std::array<check_end::SyntaxOperandSlotDescriptor, 1>
+      unconstrained_slots = {{
+          {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+           .presence = check_end::OperandPresence::Required},
+      }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 2> layouts = {{
+      {.layout_id = "bounded",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = bounded_slots},
+      {.layout_id = "unconstrained",
+       .kind = check_end::OperandLayoutKind::Flat,
+       .slots = unconstrained_slots},
+  }};
+
+  const auto bounded =
+      resolve_modern_pack_layouts(parse_instruction("sample {%r0};"), layouts);
+  ASSERT_TRUE(bounded.has_value()) << bounded.error().message;
+  EXPECT_EQ(bounded->operand_layout.value, 0u);
+
+  const auto unconstrained = resolve_modern_pack_layouts(
+      parse_instruction("sample {%r0, %r1, %r2};"), layouts);
+  ASSERT_TRUE(unconstrained.has_value()) << unconstrained.error().message;
+  EXPECT_EQ(unconstrained->operand_layout.value, 1u);
 }
 
 TEST(ResolveIndirectCallee, ResolvesStandaloneRegisterAndMetadataSpelling) {

@@ -109,7 +109,7 @@ gaps:
   - owner: M12-I19
     marker: m12_i19_popc
     forms:
-      - {variant: b32, canonical_form: popc.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: b32, canonical_form: popc.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I20
     marker: m12_i20_clz
     forms:

@@ -1317,6 +1317,14 @@ TEST(ResolvePrmt, RejectsWrongSelectorFormsAndModes) {
   EXPECT_FALSE(selectVariant<Prmt>(parse_instruction("prmt.b32.b4e %r0, %r1, %r2, %r3;")).has_value());
 }
 
+TEST(ResolvePopc, SelectsFrozenB32VariantAndRejectsB64) {
+  const auto popc = resolve<Popc>(parse_instruction("popc.b32 %r0, %r1;"));
+  ASSERT_TRUE(popc.has_value()) << popc.error().message;
+  ASSERT_NE(std::get_if<Popc::B32>(&popc->variant), nullptr);
+  EXPECT_EQ(Popc::B32::type, ScalarType::B32);
+  EXPECT_FALSE(selectVariant<Popc>(parse_instruction("popc.b64 %rd0, %rd1;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

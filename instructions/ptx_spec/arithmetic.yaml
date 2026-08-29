@@ -44,6 +44,10 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
 
+  popc_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1125,3 +1129,16 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
         examples:
           - {ptx: "neg.f16x2 %r0, %r1;", valid: true}
+
+  - opcode: popc
+    section: "9.7.1.15"
+    doc: "Frozen 32-bit population count."
+    syntax: "popc.b32 dst, src"
+    operands: $popc_b32
+    variants:
+      - name: popc_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "popc.b32 %r0, %r1;", valid: true}

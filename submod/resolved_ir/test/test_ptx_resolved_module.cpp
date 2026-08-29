@@ -2662,6 +2662,25 @@ TEST(ResolvedModule, ChecksM12PrmtRegisterWidths) {
   EXPECT_FALSE(checker::check(std::get<Prmt>(wrong->functions.front().body.front()), context).has_value());
 }
 
+TEST(ResolvedModule, ChecksM12PopcTypes) {
+  const auto context = checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  const auto valid = resolveModule(parseModule(".entry kernel() { .reg .u32 %dst, %src; popc.b32 %dst, %src; }"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& instruction = std::get<Popc>(valid->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Popc::B32>(instruction.variant));
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+  for (const auto source : {
+           ".entry kernel() { .reg .u16 %dst; .reg .u32 %src; popc.b32 %dst, %src; }",
+           ".entry kernel() { .reg .u32 %dst; .reg .u16 %src; popc.b32 %dst, %src; }",
+       }) {
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(std::get<Popc>(wrong->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

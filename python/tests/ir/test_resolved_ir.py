@@ -97,6 +97,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "rem"
         )
+        min_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "min"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
@@ -104,6 +109,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.fma_instruction = from_instruction_spec(fma)
         cls.div_instruction = from_instruction_spec(div)
         cls.rem_instruction = from_instruction_spec(rem)
+        cls.min_instruction = from_instruction_spec(min_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -438,6 +444,27 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ["type", "dst", "src1", "src2"],
             )
             self.assertEqual(variant.fields[0].constant_value, scalar_type.lower())
+
+    def test_min_has_frozen_signed_and_nan_binary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.min_instruction.variants],
+            ["S32", "NanF32"],
+        )
+        s32, nan_f32 = self.min_instruction.variants
+        self.assertEqual(
+            [field.name for field in s32.fields], ["type", "dst", "src1", "src2"]
+        )
+        self.assertEqual(s32.fields[0].constant_value, "s32")
+        self.assertEqual(
+            [field.name for field in nan_f32.fields],
+            ["nan", "type", "dst", "src1", "src2"],
+        )
+        self.assertTrue(nan_f32.fields[0].constant_value)
+        self.assertEqual(nan_f32.fields[1].constant_value, "f32")
+        self.assertEqual(
+            [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 3,
+        )
 
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}

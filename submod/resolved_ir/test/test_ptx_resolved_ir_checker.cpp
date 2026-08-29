@@ -940,6 +940,45 @@ TEST(ResolvedIrChecker, ChecksGeneratedRemAvailability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedMinAvailability) {
+  PtxSyntaxParser integer_parser("min.s32 %r0, %r1, %r2;");
+  const auto integer_ast = integer_parser.parseInstruction();
+  ASSERT_TRUE(integer_ast.has_value()) << integer_ast.diagnostics.front().message;
+  const auto integer_min = resolve<Min>(*integer_ast);
+  ASSERT_TRUE(integer_min.has_value()) << integer_min.error().message;
+  const auto old_integer = check(
+      *integer_min, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = integer_ast->range});
+  ASSERT_FALSE(old_integer.has_value());
+  EXPECT_EQ(old_integer.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*integer_min,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = integer_ast->range})
+                  .has_value());
+
+  PtxSyntaxParser nan_parser("min.NaN.f32 %f0, %f1, %f2;");
+  const auto nan_ast = nan_parser.parseInstruction();
+  ASSERT_TRUE(nan_ast.has_value()) << nan_ast.diagnostics.front().message;
+  const auto nan_min = resolve<Min>(*nan_ast);
+  ASSERT_TRUE(nan_min.has_value()) << nan_min.error().message;
+  const auto old_ptx = check(
+      *nan_min, Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                        .instruction_range = nan_ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *nan_min, Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                        .instruction_range = nan_ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*nan_min,
+                    Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                            .instruction_range = nan_ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

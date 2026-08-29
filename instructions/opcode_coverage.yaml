@@ -62,6 +62,11 @@ opcodes:
   slices:
   - {"id":"rem-rem-s32-default","section":"9.7.1.10","spec_variant":"rem_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"rem-rem-u32-default","section":"9.7.1.10","spec_variant":"rem_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: min
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"min-min-s32-default","section":"9.7.1.13","spec_variant":"min_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"min-min-nan-f32-default","section":"9.7.3.11","spec_variant":"min_nan_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["nan"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: set
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

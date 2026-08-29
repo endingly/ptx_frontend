@@ -2432,6 +2432,57 @@ TEST(ResolvedModule, ChecksM12RemTypesAndZeroDivisor) {
   EXPECT_EQ(width_checked.error().front().range, width_variant.dst.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12MinTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0, %s1, %s2;
+  .reg .f32 %f0, %f1, %f2;
+  min.s32 %s0, %s1, %s2;
+  min.NaN.f32 %f0, %f1, %f2;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& integer_min = std::get<Min>(body[0]);
+  const auto& nan_min = std::get<Min>(body[1]);
+  EXPECT_TRUE(std::holds_alternative<Min::S32>(integer_min.variant));
+  EXPECT_TRUE(std::holds_alternative<Min::NanF32>(nan_min.variant));
+  EXPECT_TRUE(checker::check(
+                  integer_min,
+                  checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  nan_min,
+                  checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}})
+                  .has_value());
+
+  const auto wrong_integer_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .s32 %dst, %src2; .reg .f32 %src1; min.s32 %dst, %src1, %src2; }
+)ptx"));
+  ASSERT_TRUE(wrong_integer_type.has_value()) << wrong_integer_type.error().front().message;
+  const auto& integer_instruction = std::get<Min>(wrong_integer_type->functions.front().body.front());
+  const auto& integer_variant = std::get<Min::S32>(integer_instruction.variant);
+  const auto integer_checked = checker::check(
+      integer_instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(integer_checked.has_value());
+  EXPECT_EQ(integer_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(integer_checked.error().front().range, integer_variant.src1.locs.front());
+
+  const auto wrong_nan_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst, %src2; .reg .b32 %src1; min.NaN.f32 %dst, %src1, %src2; }
+)ptx"));
+  ASSERT_TRUE(wrong_nan_width.has_value()) << wrong_nan_width.error().front().message;
+  const auto& nan_instruction = std::get<Min>(wrong_nan_width->functions.front().body.front());
+  const auto& nan_variant = std::get<Min::NanF32>(nan_instruction.variant);
+  const auto nan_checked = checker::check(
+      nan_instruction,
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
+  ASSERT_FALSE(nan_checked.has_value());
+  EXPECT_EQ(nan_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(nan_checked.error().front().range, nan_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

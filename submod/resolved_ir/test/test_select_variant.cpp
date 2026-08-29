@@ -1165,6 +1165,34 @@ TEST(ResolveRem, SelectsFrozenVariantsAndAcceptsZeroDivisor) {
   EXPECT_EQ(Rem::U32::type, ScalarType::U32);
 }
 
+TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
+  const auto s32 = resolve<Min>(parse_instruction("min.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Min::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Min::S32::type, ScalarType::S32);
+
+  const auto nan =
+      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(nan.has_value()) << nan.error().message;
+  ASSERT_NE(std::get_if<Min::NanF32>(&nan->variant), nullptr);
+  EXPECT_TRUE(Min::NanF32::nan);
+  EXPECT_EQ(Min::NanF32::type, ScalarType::F32);
+}
+
+TEST(ResolveMin, RejectsUnfrozenVariants) {
+  for (const auto source : {"min.relu.s32 %r0, %r1, %r2;",
+                            "min.f32 %f0, %f1, %f2;",
+                            "min.ftz.f32 %f0, %f1, %f2;",
+                            "min.xorsign.abs.f32 %f0, %f1, %f2;",
+                            "min.abs.f32 %f0, %f1, %f2;",
+                            "min.nan.f32 %f0, %f1, %f2;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Min>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(
+      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

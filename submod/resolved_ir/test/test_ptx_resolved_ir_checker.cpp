@@ -78,7 +78,7 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   const Context context{
       .target = {.ptx_version = {9, 2},
                  .sm_version = 120,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = kInstructionRange,
   };
 
@@ -88,7 +88,7 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
 }
 
-TEST(ResolvedIrChecker, UsesCatalogCompatibleFamiliesForProductionAvailability) {
+TEST(ResolvedIrChecker, UsesCatalogEnabledFamilyFeaturesForProductionAvailability) {
   const auto sm120f = base::find_target_profile("sm_120f");
   ASSERT_TRUE(sm120f.has_value());
 
@@ -96,18 +96,18 @@ TEST(ResolvedIrChecker, UsesCatalogCompatibleFamiliesForProductionAvailability) 
     return TargetInfo{
         .ptx_version = {9, 2},
         .sm_version = profile.identity.architecture.number,
-        .families = profile.compatible_families,
+        .enabled_family_features = profile.enabled_family_features,
         .identity = profile.identity,
         .capabilities = profile.capabilities,
     };
   };
   EXPECT_TRUE(is_available(kVariants[0].availability, target_info(*sm120f)));
   auto without_family = target_info(*sm120f);
-  without_family.families = {};
+  without_family.enabled_family_features = {};
   EXPECT_FALSE(is_available(kVariants[0].availability, without_family));
 }
 
-TEST(ResolvedIrChecker, KeepsCompatibleFamilyRequirementsDistinctFromExactTargets) {
+TEST(ResolvedIrChecker, KeepsFamilyFeatureRequirementsDistinctFromExactTargets) {
   const auto target_info = [](std::string_view spelling) {
     const auto profile = base::find_target_profile(spelling);
     EXPECT_TRUE(profile.has_value()) << spelling;
@@ -116,7 +116,7 @@ TEST(ResolvedIrChecker, KeepsCompatibleFamilyRequirementsDistinctFromExactTarget
     return TargetInfo{
         .ptx_version = {9, 3},
         .sm_version = profile->identity.architecture.number,
-        .families = profile->compatible_families,
+        .enabled_family_features = profile->enabled_family_features,
         .identity = profile->identity,
         .capabilities = profile->capabilities,
     };
@@ -129,17 +129,53 @@ TEST(ResolvedIrChecker, KeepsCompatibleFamilyRequirementsDistinctFromExactTarget
 
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100a")));
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100f")));
-  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103")));
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103a")));
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103f")));
   EXPECT_FALSE(is_available(sm100f_family, target_info("sm_100")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_103")));
   EXPECT_FALSE(is_available(sm100f_family, target_info("sm_90a")));
   EXPECT_FALSE(is_available(sm100f_family, target_info("sm_120f")));
+
+  constexpr AvailabilityDescriptor sm103f_family{
+      .minimum_ptx_version = {9, 3},
+      .minimum_sm_version = 103,
+      .required_family = "sm_103f",
+  };
+  EXPECT_TRUE(is_available(sm103f_family, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(sm103f_family, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_100a")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_100f")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_103")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_120f")));
 
   constexpr AvailabilityDescriptor exact_sm100a{
       .any_of = {{
           {.has_exact_target = true,
            .exact_target_architecture = {100},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor exact_sm103{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::Generic},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor exact_sm103f{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::FamilySpecific},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor exact_sm103a{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {103},
            .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
       }},
       .any_of_count = 1,
@@ -152,6 +188,15 @@ TEST(ResolvedIrChecker, KeepsCompatibleFamilyRequirementsDistinctFromExactTarget
   };
   EXPECT_TRUE(is_available(exact_sm100a, target_info("sm_100a")));
   EXPECT_FALSE(is_available(exact_sm100a, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(exact_sm103, target_info("sm_103")));
+  EXPECT_FALSE(is_available(exact_sm103, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(exact_sm103, target_info("sm_103a")));
+  EXPECT_FALSE(is_available(exact_sm103f, target_info("sm_103")));
+  EXPECT_TRUE(is_available(exact_sm103f, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(exact_sm103f, target_info("sm_103a")));
+  EXPECT_FALSE(is_available(exact_sm103a, target_info("sm_103")));
+  EXPECT_FALSE(is_available(exact_sm103a, target_info("sm_103f")));
+  EXPECT_TRUE(is_available(exact_sm103a, target_info("sm_103a")));
   EXPECT_TRUE(is_available(cluster_capability, target_info("sm_100")));
 }
 
@@ -736,7 +781,7 @@ TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   const Context context{
       .target = {.ptx_version = {9, 1},
                  .sm_version = 100,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = kInstructionRange,
   };
 
@@ -1281,7 +1326,7 @@ TEST(ResolvedIrChecker, ChecksStaticAddressStateSpaceAvailability) {
   auto supported_context = old_context;
   supported_context.target.ptx_version = {3, 1};
   supported_context.target.sm_version = 30;
-  supported_context.target.families = families;
+  supported_context.target.enabled_family_features = families;
   EXPECT_TRUE(check_operands(descriptors, {}, operands, {}, supported_context)
                   .has_value());
 }
@@ -1422,7 +1467,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
   const Context unsupported_context{
       .target = {.ptx_version = {9, 1},
                  .sm_version = 100,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = ast->range,
   };
 
@@ -1437,7 +1482,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
   const Context supported_context{
       .target = {.ptx_version = {9, 2},
                  .sm_version = 120,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = ast->range,
   };
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
@@ -1454,7 +1499,8 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
 
   constexpr std::array<std::string_view, 1> family{"sm_120f"};
   const Context unsupported_context{
-      .target = {.ptx_version = {9, 1}, .sm_version = 100, .families = family},
+      .target = {.ptx_version = {9, 1}, .sm_version = 100,
+                 .enabled_family_features = family},
       .instruction_range = ast->range,
   };
   const auto unsupported = check(*resolved, unsupported_context);
@@ -1466,7 +1512,8 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
             CheckDiagnosticKind::UnsupportedSmVersion);
 
   const Context supported_context{
-      .target = {.ptx_version = {9, 2}, .sm_version = 120, .families = family},
+      .target = {.ptx_version = {9, 2}, .sm_version = 120,
+                 .enabled_family_features = family},
       .instruction_range = ast->range,
   };
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
@@ -1511,7 +1558,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   const Context old_sat_target{
       .target = {.ptx_version = {9, 1},
                  .sm_version = 100,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = sat_ast->range,
   };
   const auto unsupported_sat = check(*sat, old_sat_target);
@@ -1525,7 +1572,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   const Context supported_sat_target{
       .target = {.ptx_version = {9, 2},
                  .sm_version = 120,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = sat_ast->range,
   };
   EXPECT_TRUE(check(*sat, supported_sat_target).has_value());

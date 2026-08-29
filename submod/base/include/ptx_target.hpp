@@ -26,11 +26,11 @@ struct TargetIdentity {
   bool operator==(const TargetIdentity&) const = default;
 };
 
-/** One explicitly supported validation target, compatible f-feature families,
+/** One explicitly supported validation target, enabled family feature levels,
  * and capabilities. */
 struct TargetProfile {
   TargetIdentity identity;
-  std::span<const std::string_view> compatible_families;
+  std::span<const std::string_view> enabled_family_features;
   std::span<const std::string_view> capabilities;
 };
 

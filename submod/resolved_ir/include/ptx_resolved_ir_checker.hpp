@@ -177,6 +177,7 @@ struct AvailabilityClause {
 struct AvailabilityDescriptor {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
+  // YAML `family`: minimum family-specific feature target.
   std::string_view required_family{};
   std::array<AvailabilityClause, kMaxAvailabilityClauses> any_of{};
   uint8_t any_of_count = 0;
@@ -313,15 +314,15 @@ struct OperandView {
 /**
  * The target properties relevant to instruction availability checks.
  *
- * ``families`` is borrowed from the target profile's compatible f-feature
- * families: the caller owns the underlying strings for the duration of the
- * check. Keeping the ABI view-only also lets one target advertise more than
- * one compatible family.
+ * ``enabled_family_features`` is borrowed from the target profile's enabled
+ * family feature levels: the caller owns the underlying strings for the
+ * duration of the check. Keeping the ABI view-only also lets one target
+ * advertise more than one enabled feature level.
  */
 struct TargetInfo {
   PtxVersion ptx_version{};
   uint32_t sm_version = 0;
-  std::span<const std::string_view> families{};
+  std::span<const std::string_view> enabled_family_features{};
   std::optional<base::TargetIdentity> identity;
   std::span<const std::string_view> capabilities{};
 };

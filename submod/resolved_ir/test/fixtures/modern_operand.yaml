@@ -22,6 +22,12 @@ instructions:
         availability: {ptx: "8.8", sm: 100, family: sm_100f}
         operands: []
 
+  - opcode: synthetic_sm103f_feature
+    variants:
+      - name: synthetic_sm103f_feature_default
+        availability: {ptx: "9.3", sm: 103, family: sm_103f}
+        operands: []
+
   - opcode: synthetic_modern
     variants:
       - name: synthetic_modern_primitive

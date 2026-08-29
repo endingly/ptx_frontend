@@ -8,10 +8,12 @@ namespace ptx_frontend::base {
 namespace {
 
 constexpr std::array<std::string_view, 0> kNoCapabilities{};
-constexpr std::array<std::string_view, 0> kNoFamilies{};
-constexpr std::array<std::string_view, 1> kSm100fCompatibleFamilies{
+constexpr std::array<std::string_view, 0> kNoEnabledFamilyFeatures{};
+constexpr std::array<std::string_view, 1> kSm100fEnabledFamilyFeatures{
     "sm_100f"};
-constexpr std::array<std::string_view, 1> kSm120fCompatibleFamilies{
+constexpr std::array<std::string_view, 2> kSm103fEnabledFamilyFeatures{
+    "sm_100f", "sm_103f"};
+constexpr std::array<std::string_view, 1> kSm120fEnabledFamilyFeatures{
     "sm_120f"};
 constexpr std::array<std::string_view, 2> kSm80Capabilities{
     "reserved_smem",
@@ -26,24 +28,24 @@ constexpr std::array<std::string_view, 4> kSm90AndLaterCapabilities{
 
 struct CatalogEntry {
   std::string_view spelling;
-  std::span<const std::string_view> compatible_families;
+  std::span<const std::string_view> enabled_family_features;
   std::span<const std::string_view> capabilities;
 };
 
 // Keep this an explicit validation allowlist: do not infer profiles by number
 // or flavor suffix from lexically valid target spellings.
 constexpr CatalogEntry kTargetProfiles[]{
-    {"sm_30", kNoFamilies, kNoCapabilities},
-    {"sm_80", kNoFamilies, kSm80Capabilities},
-    {"sm_90", kNoFamilies, kSm90AndLaterCapabilities},
-    {"sm_90a", kNoFamilies, kSm90AndLaterCapabilities},
-    {"sm_100", kNoFamilies, kSm90AndLaterCapabilities},
-    {"sm_100a", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
-    {"sm_100f", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
-    {"sm_103", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
-    {"sm_103a", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
-    {"sm_103f", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
-    {"sm_120f", kSm120fCompatibleFamilies, kSm90AndLaterCapabilities},
+    {"sm_30", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_80", kNoEnabledFamilyFeatures, kSm80Capabilities},
+    {"sm_90", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_90a", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_100", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_100a", kSm100fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_100f", kSm100fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_103", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_103a", kSm103fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_103f", kSm103fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_120f", kSm120fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
 };
 
 }  // namespace
@@ -90,7 +92,7 @@ std::optional<TargetProfile> find_target_profile(std::string_view spelling) {
     if (entry.spelling == spelling) {
       return TargetProfile{
           .identity = *identity,
-          .compatible_families = entry.compatible_families,
+          .enabled_family_features = entry.enabled_family_features,
           .capabilities = entry.capabilities,
       };
     }

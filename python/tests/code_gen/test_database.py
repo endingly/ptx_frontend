@@ -368,6 +368,14 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         ]}
         self.assertEqual(normalize_availability(dnf), dnf)
 
+    def test_emits_sm103f_minimum_family_feature(self) -> None:
+        availability = {"ptx": "9.3", "sm": 103, "family": "sm_103f"}
+        self.assertEqual(normalize_availability(availability), availability)
+        self.assertIn(
+            '.required_family = "sm_103f",',
+            _emit_availability(normalize_availability(availability)),
+        )
+
     def test_rejects_non_feature_legacy_families(self) -> None:
         for family in ("sm_90a", "sm_90", "sm_0f", "sm_90ff"):
             with self.assertRaisesRegex(ValueError, "availability family"):

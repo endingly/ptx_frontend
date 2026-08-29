@@ -11,9 +11,11 @@ std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
 
-bool has_family(std::span<const std::string_view> families,
-                std::string_view required_family) noexcept {
-  return std::ranges::find(families, required_family) != families.end();
+bool has_enabled_family_feature(
+    std::span<const std::string_view> enabled_family_features,
+    std::string_view required_family) noexcept {
+  return std::ranges::find(enabled_family_features, required_family) !=
+         enabled_family_features.end();
 }
 
 bool has_capability(std::span<const std::string_view> capabilities,
@@ -92,7 +94,8 @@ void append_value_availability_diagnostics(const OperandView& operand,
     });
   }
   if (!availability.required_family.empty() &&
-      !has_family(context.target.families, availability.required_family)) {
+      !has_enabled_family_feature(context.target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = range,
@@ -193,7 +196,8 @@ void append_address_constraint_availability_diagnostics(
     });
   }
   if (!availability.required_family.empty() &&
-      !has_family(context.target.families, availability.required_family)) {
+      !has_enabled_family_feature(context.target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = range,
@@ -332,7 +336,8 @@ bool is_available(const AvailabilityDescriptor& availability,
   return target.ptx_version >= availability.minimum_ptx_version &&
          target.sm_version >= availability.minimum_sm_version &&
          (availability.required_family.empty() ||
-          has_family(target.families, availability.required_family));
+          has_enabled_family_feature(target.enabled_family_features,
+                                     availability.required_family));
 }
 
 const VariantDescriptor* find_variant_descriptor(
@@ -387,7 +392,8 @@ CheckResult check_availability(const VariantDescriptor& variant,
   }
 
   if (!availability.required_family.empty() &&
-      !has_family(target.families, availability.required_family)) {
+      !has_enabled_family_feature(target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = context.instruction_range,
@@ -912,7 +918,8 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
   }
 
   if (!availability.required_family.empty() &&
-      !has_family(target.families, availability.required_family)) {
+      !has_enabled_family_feature(target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = context.instruction_range,
@@ -980,7 +987,8 @@ CheckResult check_modifier_value_availability(
       });
     }
     if (!availability.required_family.empty() &&
-        !has_family(target.families, availability.required_family)) {
+        !has_enabled_family_feature(target.enabled_family_features,
+                                    availability.required_family)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
           .range = range,
@@ -1264,7 +1272,8 @@ CheckResult check_memory_vector(
     });
   }
   if (!availability.required_family.empty() &&
-      !has_family(context.target.families, availability.required_family)) {
+      !has_enabled_family_feature(context.target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = vector_range,

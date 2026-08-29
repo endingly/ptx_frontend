@@ -196,7 +196,7 @@ TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {
             checker::CheckDiagnosticKind::UnsupportedAvailability);
 }
 
-TEST(ModernOperandCodegen, AppliesCompatibleFeatureFamiliesThroughModuleAvailability) {
+TEST(ModernOperandCodegen, AppliesEnabledFamilyFeaturesThroughModuleAvailability) {
   const auto module = resolveModule(parseModule(R"ptx(
 .version 9.3
 .entry kernel() { synthetic_sm100f_feature; }
@@ -212,11 +212,40 @@ TEST(ModernOperandCodegen, AppliesCompatibleFeatureFamiliesThroughModuleAvailabi
 
   EXPECT_TRUE(check_for_target("sm_100a").has_value());
   EXPECT_TRUE(check_for_target("sm_100f").has_value());
-  EXPECT_TRUE(check_for_target("sm_103").has_value());
   EXPECT_TRUE(check_for_target("sm_103a").has_value());
   EXPECT_TRUE(check_for_target("sm_103f").has_value());
 
-  for (const std::string_view target : {"sm_100", "sm_90a", "sm_120f"}) {
+  for (const std::string_view target : {"sm_100", "sm_103", "sm_90a", "sm_120f"}) {
+    const auto rejected = check_for_target(target);
+    ASSERT_FALSE(rejected.has_value()) << target;
+    EXPECT_TRUE(std::ranges::any_of(
+        rejected.error(), [](const checker::CheckDiagnostic& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::UnsupportedTargetFamily;
+        })) << target;
+  }
+}
+
+TEST(ModernOperandCodegen,
+     AppliesSm103fFamilyFeaturesThroughModuleAvailability) {
+  const auto module = resolveModule(parseModule(R"ptx(
+.version 9.3
+.entry kernel() { synthetic_sm103f_feature; }
+)ptx"));
+  ASSERT_TRUE(module.has_value()) << module.error().front().message;
+
+  const auto check_for_target = [&module](std::string_view target) {
+    std::string source = ".version 9.3\n.target ";
+    source.append(target);
+    source.append("\n.entry kernel() { synthetic_sm103f_feature; }\n");
+    return checkModuleAvailability(parseModule(source), *module);
+  };
+
+  for (const std::string_view target : {"sm_103a", "sm_103f"})
+    EXPECT_TRUE(check_for_target(target).has_value()) << target;
+
+  for (const std::string_view target :
+       {"sm_100a", "sm_100f", "sm_103", "sm_120f"}) {
     const auto rejected = check_for_target(target);
     ASSERT_FALSE(rejected.has_value()) << target;
     EXPECT_TRUE(std::ranges::any_of(

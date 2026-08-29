@@ -81,7 +81,7 @@ def parse_availability_target(target: object) -> tuple[int, str]:
 
 
 def validate_availability_family(family: object) -> str:
-    """Return one legacy compatible f-feature family spelling."""
+    """Return one YAML minimum family-specific feature target spelling."""
 
     if not isinstance(family, str) or _AVAILABILITY_FAMILY.fullmatch(family) is None:
         raise ValueError("availability family must be an sm_<number>f spelling")

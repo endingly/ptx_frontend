@@ -26,8 +26,8 @@ gaps:
   - owner: M12-I04
     marker: m12_i04_slct
     forms:
-      - {variant: u32_s32_selector, canonical_form: slct.u32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: ftz_u64_f32_selector, canonical_form: slct.ftz.u64.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: u32_s32_selector, canonical_form: slct.u32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: ftz_u64_f32_selector, canonical_form: slct.ftz.u64.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I05
     marker: m12_i05_add
     forms:

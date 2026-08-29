@@ -146,6 +146,58 @@ operand_patterns:
       access: read
       type: pred
 
+  slct_u32_s32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+      register_width: same_width
+    - name: src_true
+      kind: reg
+      role: src1
+      access: read
+      type: u32
+      register_width: same_width
+    - name: src_false
+      kind: reg
+      role: src2
+      access: read
+      type: u32
+      register_width: same_width
+    - name: selector
+      kind: reg
+      role: src3
+      access: read
+      type: s32
+      register_width: exact
+
+  slct_ftz_u64_f32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u64
+      register_width: same_width
+    - name: src_true
+      kind: reg
+      role: src1
+      access: read
+      type: u64
+      register_width: same_width
+    - name: src_false
+      kind: reg
+      role: src2
+      access: read
+      type: u64
+      register_width: same_width
+    - name: selector
+      kind: reg
+      role: src3
+      access: read
+      type: f32
+      register_width: exact
+
 instructions:
   - opcode: set
     section: "9.7.6.1"
@@ -333,4 +385,57 @@ instructions:
             value: u32
         examples:
           - ptx: "selp.u32 %r0, %r1, 0, %p0;"
+            valid: true
+  - opcode: slct
+    section: "9.7.6.4"
+    doc: "Select one same-width data operand by the sign of a numeric selector."
+    syntax: "slct.u32.s32 dst, src_true, src_false, selector | slct.ftz.u64.f32 dst, src_true, src_false, selector"
+    variants:
+      - name: slct_u32_s32
+        description: "32-bit data selection with an exact signed 32-bit numeric selector."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: ftz
+            kind: flag
+            presence: absent
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $slct_u32_s32
+        examples:
+          - ptx: "slct.u32.s32 %r0, %r1, %r2, %r3;"
+            valid: true
+      - name: slct_ftz_u64_f32
+        description: "64-bit data selection with an .ftz single-precision numeric selector."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: ftz
+            kind: flag
+            presence: fixed
+            value: true
+            token: .ftz
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        operands: $slct_ftz_u64_f32
+        examples:
+          - ptx: "slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;"
             valid: true

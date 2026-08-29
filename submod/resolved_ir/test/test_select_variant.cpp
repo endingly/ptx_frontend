@@ -909,6 +909,33 @@ TEST(ResolveSelp, SelectsFrozenU32Variant) {
   EXPECT_FALSE(selp->predicate.value.negated);
 }
 
+TEST(ResolveSlct, SelectsFrozenNumericSelectorVariants) {
+  const auto integer =
+      resolve<Slct>(parse_instruction("slct.u32.s32 %r0, %r1, %r2, %r3;"));
+  ASSERT_TRUE(integer.has_value()) << integer.error().message;
+  const auto* u32_s32 = std::get_if<Slct::U32S32>(&integer->variant);
+  ASSERT_NE(u32_s32, nullptr);
+  EXPECT_EQ(u32_s32->selector.value.register_class,
+            ResolvedRegisterClass::General);
+
+  const auto floating = resolve<Slct>(
+      parse_instruction("slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;"));
+  ASSERT_TRUE(floating.has_value()) << floating.error().message;
+  EXPECT_NE(std::get_if<Slct::FtzU64F32>(&floating->variant), nullptr);
+  EXPECT_TRUE(Slct::FtzU64F32::ftz);
+}
+
+TEST(ResolveSlct, RejectsUnfrozenModifierForms) {
+  for (const auto source : {
+           "slct.ftz.u32.s32 %r0, %r1, %r2, %r3;",
+           "slct.u64.f32 %rd0, %rd1, %rd2, %f0;",
+           "slct.ftz.u64.s32 %rd0, %rd1, %rd2, %r0;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Slct>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
   const auto to_generic = resolve<Cvta>(parse_instruction("cvta.global.u64 %rd0, %rd1;"));
   ASSERT_TRUE(to_generic.has_value()) << to_generic.error().message;

@@ -1740,6 +1740,82 @@ TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %d32;
+  .reg .s32 %a32;
+  .reg .u32 %b32;
+  .reg .s32 %selector32;
+  .reg .b64 %d64;
+  .reg .s64 %a64;
+  .reg .u64 %b64;
+  .reg .f32 %selector64;
+  slct.u32.s32 %d32, %a32, %b32, %selector32;
+  slct.ftz.u64.f32 %d64, %a64, %b64, %selector64;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  for (const auto& body : valid->functions.front().body) {
+    EXPECT_TRUE(checker::check(
+                    std::get<Slct>(body),
+                    checker::Context{.target = {.ptx_version = {1, 0},
+                                                 .sm_version = 0}})
+                    .has_value());
+  }
+
+  const auto wrong_selector = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %d, %a, %b, %selector;
+  slct.u32.s32 %d, %a, %b, %selector;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_selector.has_value())
+      << wrong_selector.error().front().message;
+  const auto& selector_instruction =
+      std::get<Slct>(wrong_selector->functions.front().body.front());
+  const auto& selector_variant =
+      std::get<Slct::U32S32>(selector_instruction.variant);
+  const auto bad_selector = checker::check(
+      selector_instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(bad_selector.has_value());
+  EXPECT_EQ(bad_selector.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(bad_selector.error().front().range,
+            selector_variant.selector.locs.front());
+
+  const auto wrong_data = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %d, %b;
+  .reg .f32 %a;
+  .reg .s32 %selector;
+  slct.u32.s32 %d, %a, %b, %selector;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_data.has_value()) << wrong_data.error().front().message;
+  const auto& data_instruction =
+      std::get<Slct>(wrong_data->functions.front().body.front());
+  const auto& data_variant = std::get<Slct::U32S32>(data_instruction.variant);
+  const auto bad_data = checker::check(
+      data_instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(bad_data.has_value());
+  EXPECT_EQ(bad_data.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(bad_data.error().front().range,
+            data_variant.src_true.locs.front());
+
+  const auto predicate_selector = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %d, %a, %b;
+  .reg .pred %p;
+  slct.u32.s32 %d, %a, %b, %p;
+}
+)ptx"));
+  EXPECT_FALSE(predicate_selector.has_value());
+}
+
 TEST(ResolvedModule, ChecksSelpU32OperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .pred %p; .reg .u32 %dst, %src; selp.u32 %dst, %src, 0, %p; }

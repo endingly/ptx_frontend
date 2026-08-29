@@ -15,6 +15,8 @@ TARGET = re.compile(r"^\.target\s+(sm_[A-Za-z0-9]+)\s*$", re.MULTILINE)
 KNOWN_NONE = {
     ("M12-I02", "set.eq.u32.u32"),
     ("M12-I02", "set.lt.and.f32.s32"),
+    ("M12-I04", "slct.u32.s32"),
+    ("M12-I04", "slct.ftz.u64.f32"),
 } | {
     ("M12-I03", form)
     for form in ("setp.eq.u32", "setp.lt.and.s32")

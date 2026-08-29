@@ -631,6 +631,29 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetpDualPredicateAvailability) {
   }
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedSlctAvailability) {
+  for (const auto source : {
+           "slct.u32.s32 %r0, %r1, %r2, %r3;",
+           "slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto slct = resolve<Slct>(*ast);
+    ASSERT_TRUE(slct.has_value()) << slct.error().message;
+    const auto rejected = check(
+        *slct, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*slct,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedSelpU32Availability) {
   PtxSyntaxParser parser("selp.u32 %r0, %r1, %r2, %p0;");
   const auto ast = parser.parseInstruction();

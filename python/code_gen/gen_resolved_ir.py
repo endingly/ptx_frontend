@@ -506,12 +506,14 @@ def _emit_check_operand_dispatch(
             }}
 """
     immediate_range_check = ""
-    if variant.immediate_range is not None:
-        immediate_range_check = f"""            const auto immediate_range_check = check_immediate_range(
-                {checker_variant_expr}.immediate_range, operands, context);
-            if (!immediate_range_check) {{
-              diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
-                                 immediate_range_check.error().end());
+    if variant.immediate_ranges:
+        immediate_range_check = f"""            for (const auto& immediate_range : {checker_variant_expr}.immediate_ranges) {{
+              const auto immediate_range_check = check_immediate_range(
+                  immediate_range, operands, context);
+              if (!immediate_range_check) {{
+                diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
+                                   immediate_range_check.error().end());
+              }}
             }}
 """
     if len(variant.operand_layouts) == 1:
@@ -604,7 +606,7 @@ def _emit_check_multi_layout_lambda(
             variant.address_alignment is not None or
             variant.memory_vector is not None or
             variant.immediate_value is not None or
-            variant.immediate_range is not None):
+            variant.immediate_ranges):
         consistency_return = f"""
             const auto operand_check = check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
@@ -691,14 +693,16 @@ def _emit_multi_layout_cross_rule_checks(
                                  immediate_value_check.error().end());
             }}
 """
-    if variant.immediate_range is not None:
-        checks += f"""            const auto immediate_range_check = check_immediate_range(
+    if variant.immediate_ranges:
+        checks += f"""            for (const auto& immediate_range :
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .immediate_range,
-                operands, context);
-            if (!immediate_range_check) {{
-              diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
-                                 immediate_range_check.error().end());
+                    .immediate_ranges) {{
+              const auto immediate_range_check = check_immediate_range(
+                  immediate_range, operands, context);
+              if (!immediate_range_check) {{
+                diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
+                                   immediate_range_check.error().end());
+              }}
             }}
 """
     return checks

@@ -1182,49 +1182,55 @@ def _normalize_immediate_value_constraint(
     return ImmediateValueConstraint(operand=operand_name, values=tuple(values))
 
 
-def _normalize_immediate_range_constraint(
+def _normalize_immediate_range_constraints(
     raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
-) -> ImmediateRangeConstraint | None:
-    """Lower one inclusive non-negative integer range for an immediate."""
+) -> tuple[ImmediateRangeConstraint, ...]:
+    """Lower inclusive non-negative ranges, one for each immediate operand."""
 
     matches = [
         item for item in raw_variant.get("constraints", ())
         if item.get("kind") == "immediate_range"
     ]
     if not matches:
-        return None
-    if len(matches) != 1:
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: at most one immediate_range "
-            "constraint is supported"
+        return ()
+    ranges = []
+    operands = set()
+    for raw in matches:
+        if set(raw) not in ({"kind", "operand", "minimum"},
+                            {"kind", "operand", "minimum", "maximum"}):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: immediate_range constraint "
+                "requires operand, minimum, and optional maximum"
+            )
+        operand_name, minimum, maximum = raw["operand"], raw["minimum"], raw.get("maximum")
+        if operand_name in operands:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: duplicate immediate_range "
+                f"operand {operand_name!r}"
+            )
+        operands.add(operand_name)
+        matching = [
+            operand for layout in layouts for operand in layout.operands
+            if operand.name == operand_name
+        ]
+        if not matching or any(operand.kind != "imm" for operand in matching):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: immediate_range operand must "
+                "name an active kind 'imm' operand"
+            )
+        if (type(minimum) is not int or minimum < 0 or
+                (maximum is not None and
+                 (type(maximum) is not int or maximum < minimum))):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: immediate_range bounds must "
+                "be non-negative integers with optional maximum >= minimum"
+            )
+        ranges.append(
+            ImmediateRangeConstraint(
+                operand=operand_name, minimum=minimum, maximum=maximum
+            )
         )
-    raw = matches[0]
-    if set(raw) not in ({"kind", "operand", "minimum"},
-                        {"kind", "operand", "minimum", "maximum"}):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_range constraint "
-            "requires operand, minimum, and optional maximum"
-        )
-    operand_name, minimum, maximum = raw["operand"], raw["minimum"], raw.get("maximum")
-    matching = [
-        operand for layout in layouts for operand in layout.operands
-        if operand.name == operand_name
-    ]
-    if not matching or any(operand.kind != "imm" for operand in matching):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_range operand must "
-            "name an active kind 'imm' operand"
-        )
-    if (type(minimum) is not int or minimum < 0 or
-            (maximum is not None and
-             (type(maximum) is not int or maximum < minimum))):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_range bounds must "
-            "be non-negative integers with optional maximum >= minimum"
-        )
-    return ImmediateRangeConstraint(
-        operand=operand_name, minimum=minimum, maximum=maximum
-    )
+    return tuple(ranges)
 
 
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
@@ -1289,7 +1295,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     immediate_value=_normalize_immediate_value_constraint(
                         raw_variant, operand_layouts
                     ),
-                    immediate_range=_normalize_immediate_range_constraint(
+                    immediate_ranges=_normalize_immediate_range_constraints(
                         raw_variant, operand_layouts
                     ),
                 )

@@ -80,6 +80,11 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         for variant in instruction.variants
         if variant.immediate_value is not None
     )
+    immediate_range_definitions = "\n\n".join(
+        _emit_variant_immediate_range_descriptors(variant)
+        for variant in instruction.variants
+        if variant.immediate_ranges
+    )
     address_alignment_definitions = "\n\n".join(
         _emit_variant_address_alignment_descriptors(variant)
         for variant in instruction.variants
@@ -96,6 +101,8 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 {type_compatibility_definitions}
 
 {immediate_value_definitions}
+
+{immediate_range_definitions}
 
 {address_alignment_definitions}
 
@@ -157,18 +164,10 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .operand_field_id = "{variant.immediate_value.operand_field_id}",
                   .allowed_values = {variant.cpp_name}_immediate_value_values,
               }},'''
-    immediate_range = ""
-    if variant.immediate_range is not None:
-        maximum = (
-            f"\n                  .maximum = {variant.immediate_range.maximum},"
-            if variant.immediate_range.maximum is not None else ""
-        )
-        immediate_range = f'''
-              .immediate_range = {{
-                  .operand_field_id = "{variant.immediate_range.operand_field_id}",
-                  .minimum = {variant.immediate_range.minimum},
-                  .has_maximum = {str(variant.immediate_range.maximum is not None).lower()},{maximum}
-              }},'''
+    immediate_ranges = ""
+    if variant.immediate_ranges:
+        immediate_ranges = f'''
+              .immediate_ranges = {variant.cpp_name}_immediate_ranges,'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {_emit_availability(dict(variant.availability))},
@@ -182,7 +181,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
 {_emit_address_alignment_descriptor(variant)}
 {memory_vector}
 {immediate_value}
-{immediate_range}
+{immediate_ranges}
           }}"""
 
 
@@ -192,6 +191,22 @@ def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
     values = ", ".join(str(value) for value in constraint.values)
     return f"""  static constexpr std::array<uint64_t, {len(constraint.values)}>
       {variant.cpp_name}_immediate_value_values = {{{{{values}}}}};"""
+
+
+def _emit_variant_immediate_range_descriptors(variant: ResolvedVariant) -> str:
+    entries = ",\n".join(
+        f'''          checker::VariantDescriptor::ImmediateRangeDescriptor{{
+              .operand_field_id = "{constraint.operand_field_id}",
+              .minimum = {constraint.minimum},
+              .has_maximum = {str(constraint.maximum is not None).lower()},
+              .maximum = {constraint.maximum if constraint.maximum is not None else "~uint64_t{0}"},
+          }}'''
+        for constraint in variant.immediate_ranges
+    )
+    return f"""  static constexpr std::array<checker::VariantDescriptor::ImmediateRangeDescriptor, {len(variant.immediate_ranges)}>
+      {variant.cpp_name}_immediate_ranges = {{{{
+{entries}
+      }}}};"""
 
 
 def _emit_address_alignment_descriptor(variant: ResolvedVariant) -> str:

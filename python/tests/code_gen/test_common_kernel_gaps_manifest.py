@@ -56,6 +56,8 @@ KNOWN_NONE = {
 } | {
     ("M12-I21", "bfind.shiftamt.u32"),
 } | {
+    ("M12-I22", "bfe.u32"),
+} | {
     ("M12-I25", "cvt.rzi.u32.f32"),
 }
 

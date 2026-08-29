@@ -1288,6 +1288,22 @@ TEST(ResolveLop3, RejectsUnfrozenPredicateExtensionAndNonImmediateLut) {
       "lop3.b32 %r0, %r1, %r2, %r3, %r4;")).has_value());
 }
 
+TEST(ResolveBfe, SelectsFrozenU32VariantAndRejectsNonImmediateBounds) {
+  for (const auto source : {"bfe.u32 %r0, %r1, 0, 8;",
+                            "bfe.u32 %r0, %r1, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Bfe>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ASSERT_NE(std::get_if<Bfe::U32>(&resolved->variant), nullptr);
+    EXPECT_EQ(Bfe::U32::type, ScalarType::U32);
+  }
+  for (const auto source : {"bfe.u32 %r0, %r1, %r2, 8;",
+                            "bfe.u32 %r0, %r1, 8, %r2;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Bfe>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
   const auto left = resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;

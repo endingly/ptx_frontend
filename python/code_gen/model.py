@@ -236,7 +236,7 @@ class VariantSpec:
     address_alignment: AddressAlignmentConstraint | None = None
     memory_vector: MemoryVectorConstraint | None = None
     immediate_value: ImmediateValueConstraint | None = None
-    immediate_range: ImmediateRangeConstraint | None = None
+    immediate_ranges: tuple[ImmediateRangeConstraint, ...] = ()
 
 
 @dataclass(frozen=True)

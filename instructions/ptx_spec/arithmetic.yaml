@@ -60,6 +60,12 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
     - {name: src, kind: reg, role: src, access: read, type: u32, register_width: exact}
 
+  bfe_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src1, access: read, type: u32, register_width: exact}
+    - {name: offset, kind: imm, role: src2, access: read, type: u32}
+    - {name: width, kind: imm, role: src3, access: read, type: u32}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1188,3 +1194,19 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "bfind.shiftamt.u32 %r0, %r1;", valid: true}
+
+  - opcode: bfe
+    section: "9.7.1.20"
+    doc: "Frozen unsigned 32-bit bit-field extract with immediate offset and width."
+    syntax: "bfe.u32 dst, src, offset, width"
+    operands: $bfe_u32
+    variants:
+      - name: bfe_u32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfe.u32 %r0, %r1, 0, 8;", valid: true}

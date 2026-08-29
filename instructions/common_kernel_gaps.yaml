@@ -122,7 +122,7 @@ gaps:
   - owner: M12-I22
     marker: m12_i22_bfe
     forms:
-      - {variant: u32, canonical_form: bfe.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: u32, canonical_form: bfe.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I23
     marker: m12_i23_bfi
     forms:

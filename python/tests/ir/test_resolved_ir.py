@@ -127,6 +127,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "shf"
         )
+        bfe_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "bfe"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
@@ -140,6 +145,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.neg_instruction = from_instruction_spec(neg_instruction)
         cls.lop3_instruction = from_instruction_spec(lop3_instruction)
         cls.shf_instruction = from_instruction_spec(shf_instruction)
+        cls.bfe_instruction = from_instruction_spec(bfe_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -556,9 +562,28 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["type", "dst", "src1", "src2", "src3", "lut"],
         )
         self.assertEqual(variant.fields[0].constant_value, "b32")
-        self.assertEqual(variant.immediate_range.operand_field_id, "lut")
         self.assertEqual(
-            (variant.immediate_range.minimum, variant.immediate_range.maximum), (0, 255)
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("lut", 0, 255)],
+        )
+
+    def test_bfe_has_two_immediate_ranges(self) -> None:
+        variant = self.bfe_instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "U32")
+        self.assertEqual(
+            [field.name for field in variant.fields],
+            ["type", "dst", "src", "offset", "width"],
+        )
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("offset", 0, 255), ("width", 0, 255)],
+        )
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in variant.operand_layouts[0].bindings[:2]],
+            [ResolvedRegisterWidthPolicy.EXACT] * 2,
         )
 
     def test_shf_has_frozen_direction_and_mode_variants(self) -> None:
@@ -1760,8 +1785,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertIsNone(variant.immediate_value)
-        self.assertEqual(variant.immediate_range.operand_field_id, "n")
-        self.assertEqual((variant.immediate_range.minimum, variant.immediate_range.maximum), (0, None))
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("n", 0, None)],
+        )
 
     def test_cp_async_wait_all_model(self) -> None:
         database = load_codegen_database(

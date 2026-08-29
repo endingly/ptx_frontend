@@ -428,13 +428,14 @@ struct VariantDescriptor {
     std::string_view operand_field_id;
     std::span<const uint64_t> allowed_values;
   } immediate_value;
-  /** Empty field ID means this variant has no immediate range constraint. */
+  /** Empty span means this variant has no immediate range constraints. */
   struct ImmediateRangeDescriptor {
     std::string_view operand_field_id;
     uint64_t minimum = 0;
     bool has_maximum = false;
     uint64_t maximum = ~uint64_t{0};
-  } immediate_range;
+  };
+  std::span<const ImmediateRangeDescriptor> immediate_ranges;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */

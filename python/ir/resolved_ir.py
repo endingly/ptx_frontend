@@ -326,7 +326,7 @@ class ResolvedVariant:
     address_alignment: ResolvedAddressAlignmentConstraint | None
     memory_vector: ResolvedMemoryVectorConstraint | None
     immediate_value: ResolvedImmediateValueConstraint | None
-    immediate_range: ResolvedImmediateRangeConstraint | None
+    immediate_ranges: tuple[ResolvedImmediateRangeConstraint, ...]
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -560,8 +560,8 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         immediate_value=_build_immediate_value_constraint(
             variant.immediate_value,
         ),
-        immediate_range=_build_immediate_range_constraint(
-            variant.immediate_range,
+        immediate_ranges=_build_immediate_range_constraints(
+            variant.immediate_ranges,
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
@@ -641,15 +641,16 @@ def _build_immediate_value_constraint(
     )
 
 
-def _build_immediate_range_constraint(
-    constraint: ImmediateRangeConstraint | None,
-) -> ResolvedImmediateRangeConstraint | None:
-    if constraint is None:
-        return None
-    return ResolvedImmediateRangeConstraint(
-        operand_field_id=constraint.operand,
-        minimum=constraint.minimum,
-        maximum=constraint.maximum,
+def _build_immediate_range_constraints(
+    constraints: tuple[ImmediateRangeConstraint, ...],
+) -> tuple[ResolvedImmediateRangeConstraint, ...]:
+    return tuple(
+        ResolvedImmediateRangeConstraint(
+            operand_field_id=constraint.operand,
+            minimum=constraint.minimum,
+            maximum=constraint.maximum,
+        )
+        for constraint in constraints
     )
 
 

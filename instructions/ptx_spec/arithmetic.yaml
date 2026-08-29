@@ -36,6 +36,10 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
 
+  unary_scalar_register:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+    - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1052,3 +1056,29 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "max.NaN.f32 %f0, %f1, %f2;", valid: true}
+
+  - opcode: abs
+    section: "9.7.1.11"
+    doc: "Frozen signed 32-bit integer absolute value."
+    syntax: "abs.s32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: abs_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "abs.s32 %r0, %r1;", valid: true}
+
+  - opcode: abs
+    section: "9.7.3.9"
+    doc: "Frozen single-precision floating-point absolute value."
+    syntax: "abs.f32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: abs_f32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "abs.f32 %f0, %f1;", valid: true}

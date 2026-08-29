@@ -2534,6 +2534,37 @@ TEST(ResolvedModule, ChecksM12MaxTypes) {
   EXPECT_EQ(nan_checked.error().front().range, nan_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12AbsTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0, %s1;
+  .reg .f32 %f0, %f1;
+  abs.s32 %s0, %s1;
+  abs.f32 %f0, %f1;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& integer_abs = std::get<Abs>(body[0]);
+  const auto& float_abs = std::get<Abs>(body[1]);
+  EXPECT_TRUE(std::holds_alternative<Abs::S32>(integer_abs.variant));
+  EXPECT_TRUE(std::holds_alternative<Abs::F32>(float_abs.variant));
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  EXPECT_TRUE(checker::check(integer_abs, context).has_value());
+  EXPECT_TRUE(checker::check(float_abs, context).has_value());
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst; .reg .s32 %src; abs.f32 %dst, %src; }
+)ptx"));
+  ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
+  const auto& instruction = std::get<Abs>(wrong_type->functions.front().body.front());
+  const auto& variant = std::get<Abs::F32>(instruction.variant);
+  const auto checked = checker::check(instruction, context);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.src.locs.front());
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

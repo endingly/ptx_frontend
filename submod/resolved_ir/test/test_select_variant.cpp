@@ -1221,6 +1221,28 @@ TEST(ResolveMax, RejectsUnfrozenVariants) {
       resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
 }
 
+TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
+  const auto s32 = resolve<Abs>(parse_instruction("abs.s32 %r0, %r1;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Abs::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Abs::S32::type, ScalarType::S32);
+
+  const auto f32 = resolve<Abs>(parse_instruction("abs.f32 %f0, %f1;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Abs::F32>(&f32->variant), nullptr);
+  EXPECT_EQ(Abs::F32::type, ScalarType::F32);
+}
+
+TEST(ResolveAbs, RejectsUnfrozenAndInvalidForms) {
+  for (const auto source : {"abs.sat.s32 %r0, %r1;",
+                            "abs.ftz.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Abs>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.s32 %r0;")).has_value());
+  EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

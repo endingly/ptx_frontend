@@ -1018,6 +1018,27 @@ TEST(ResolvedIrChecker, ChecksGeneratedMaxAvailability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedAbsAvailability) {
+  for (const auto source : {"abs.s32 %r0, %r1;", "abs.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto abs = resolve<Abs>(*ast);
+    ASSERT_TRUE(abs.has_value()) << abs.error().message;
+    const auto old_ptx = check(
+        *abs, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*abs,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

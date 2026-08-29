@@ -49,7 +49,20 @@ _STATE_SPACES = frozenset(
         "generic",
     }
 )
-_AVAILABILITY_TARGET = re.compile(r"sm_[1-9][0-9]*(?:a|f)?$")
+_AVAILABILITY_TARGET = re.compile(r"sm_([1-9][0-9]*)([af]?)$")
+
+
+def parse_availability_target(target: object) -> tuple[int, str]:
+    """Parse an exact availability target into its architecture and flavor."""
+
+    match = _AVAILABILITY_TARGET.fullmatch(target) if isinstance(target, str) else None
+    if match is None:
+        raise ValueError("availability target must be an sm_<number>[a|f] spelling")
+    return int(match.group(1)), {
+        "": "Generic",
+        "a": "ArchitectureSpecific",
+        "f": "FamilySpecific",
+    }[match.group(2)]
 
 
 def normalize_availability(raw: object) -> dict[str, Any]:
@@ -75,10 +88,8 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise TypeError("availability any_of clauses must be objects")
         if set(clause) - {"ptx", "sm", "target", "capabilities"} or not clause:
             raise ValueError("availability any_of clause has invalid fields")
-        target = clause.get("target")
-        if target is not None and (not isinstance(target, str) or
-                                   _AVAILABILITY_TARGET.fullmatch(target) is None):
-            raise ValueError("availability target must be an sm_<number>[a|f] spelling")
+        if "target" in clause:
+            parse_availability_target(clause["target"])
         capabilities = clause.get("capabilities")
         if capabilities is not None:
             if (not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 4

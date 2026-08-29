@@ -379,6 +379,11 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             with self.assertRaises((TypeError, ValueError)):
                 normalize_availability(availability)
 
+    def test_rejects_malformed_exact_targets_during_normalization(self) -> None:
+        for target in ("sm_0", "sm_80b", "sm_80aa", "", 80):
+            with self.assertRaisesRegex(ValueError, "availability target"):
+                normalize_availability({"any_of": [{"target": target}]})
+
     def test_availability_schema_dnf_boundaries(self) -> None:
         schema = load_yaml(SCHEMA)
         validator = Draft202012Validator({
@@ -399,6 +404,22 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         ]})
         self.assertIn(".any_of_count = 2", source)
         self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
+        source = _emit_availability(normalize_availability({"any_of": [
+            {"target": "sm_80", "capabilities": ["tensor", "cluster"]},
+            {"target": "sm_90a"},
+            {"target": "sm_100f"},
+        ]}))
+        self.assertIn(".any_of_count = 3", source)
+        self.assertIn(".has_exact_target = true", source)
+        self.assertIn(".exact_target_architecture = {80}", source)
+        self.assertIn("TargetFlavor::Generic", source)
+        self.assertIn(".exact_target_architecture = {90}", source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn(".exact_target_architecture = {100}", source)
+        self.assertIn("TargetFlavor::FamilySpecific", source)
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
 
 

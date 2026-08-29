@@ -7,6 +7,7 @@ from pathlib import Path
 from base.utils import generated_at_comment
 from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from code_gen.database import CodegenDatabase
+from code_gen.normalize import parse_availability_target
 from ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierValueAvailability,
@@ -376,17 +377,17 @@ def _emit_availability(availability: dict[str, object]) -> str:
     for clause in clauses:
         assert isinstance(clause, dict)
         minimum_ptx = _parse_ptx_version(clause.get("ptx", "0.0"))
-        target = str(clause.get("target", ""))
-        suffix = target[-1:] if target else ""
-        number = int(target[3:-1] if suffix in {"a", "f"} else target[3:]) if target else 0
-        flavor = {"": "Generic", "a": "ArchitectureSpecific", "f": "FamilySpecific"}[suffix]
+        target = clause.get("target")
+        number, flavor = (
+            parse_availability_target(target) if target is not None else (0, "Generic")
+        )
         capabilities = clause.get("capabilities", [])
         assert isinstance(capabilities, list)
         capability_values = ", ".join(f'"{value}"' for value in capabilities)
         emitted.append(f'''checker::AvailabilityClause{{
                       .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                       .minimum_sm_version = {int(clause.get("sm", 0))},
-                      .has_exact_target = {str(bool(target)).lower()},
+                      .has_exact_target = {str(target is not None).lower()},
                       .exact_target_architecture = {{{number}}},
                       .exact_target_flavor = base::TargetFlavor::{flavor},
                       .capabilities = {{{{{capability_values}}}}},

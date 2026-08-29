@@ -42,36 +42,44 @@ if(BUILD_TESTING)
     )
     gtest_discover_tests(test_resolved_ir)
 
-    set(PTX_MODERN_OPERAND_TEST_SPEC
-        "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/modern_operand.yaml")
+    set(PTX_MODERN_OPERAND_TEST_SPEC_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
+    file(GLOB_RECURSE PTX_MODERN_OPERAND_TEST_SPEC_FILES CONFIGURE_DEPENDS
+        "${PTX_MODERN_OPERAND_TEST_SPEC_DIR}/*.yaml")
     set(PTX_MODERN_OPERAND_TEST_GENERATED_DIR
         "${CMAKE_CURRENT_BINARY_DIR}/test_generated")
     set(PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC
         "${PTX_MODERN_OPERAND_TEST_GENERATED_DIR}/public")
     set(PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE
         "${PTX_MODERN_OPERAND_TEST_GENERATED_DIR}/private")
+    ptx_resolved_ir_list_generated_outputs(
+        PTX_MODERN_OPERAND_TEST_GENERATED_FILES
+        "${PTX_MODERN_OPERAND_TEST_SPEC_DIR}"
+        "${PTX_MODERN_OPERAND_TEST_GENERATED_DIR}")
     set(PTX_MODERN_OPERAND_TEST_GENERATED_SRCS
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_ir_dispatch.gen.cpp"
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_ir_test.gen.cpp"
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/syntax_descriptor.gen.cpp"
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_descriptor.gen.cpp"
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_ir_checker_descriptor.gen.cpp")
+        ${PTX_MODERN_OPERAND_TEST_GENERATED_FILES})
+    list(FILTER PTX_MODERN_OPERAND_TEST_GENERATED_SRCS
+        INCLUDE REGEX "\\.gen\\.cpp$")
     add_custom_command(
-        OUTPUT "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}/resolved_ir.gen.hpp"
-               ${PTX_MODERN_OPERAND_TEST_GENERATED_SRCS}
+        OUTPUT ${PTX_MODERN_OPERAND_TEST_GENERATED_FILES}
         COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/python/scripts/gen_all.py"
-                --spec-dir "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures"
+                --spec-dir "${PTX_MODERN_OPERAND_TEST_SPEC_DIR}"
                 --backend-spec "${PTX_RESOLVED_IR_BACKEND_SPEC}"
                 --output "${PTX_MODERN_OPERAND_TEST_GENERATED_DIR}"
-        DEPENDS ${PTX_MODERN_OPERAND_TEST_SPEC}
+        DEPENDS ${PTX_MODERN_OPERAND_TEST_SPEC_FILES}
                 ${PTX_RESOLVED_IR_INSTRUCTION_SCHEMA}
                 ${PTX_RESOLVED_IR_BACKEND_SPEC}
+                ${PTX_RESOLVED_IR_BACKEND_SCHEMA}
                 ${PTX_RESOLVED_IR_CODEGEN_FILES}
         COMMENT "Generating modern operand test fixture"
         VERBATIM)
+    add_custom_target(modern_operand_resolved_ir_codegen
+        DEPENDS ${PTX_MODERN_OPERAND_TEST_GENERATED_FILES})
     add_library(modern_operand_resolved_ir STATIC
         ${resolved_ir_srcs}
         ${PTX_MODERN_OPERAND_TEST_GENERATED_SRCS})
+    add_dependencies(modern_operand_resolved_ir
+        modern_operand_resolved_ir_codegen)
     target_include_directories(modern_operand_resolved_ir
         PUBLIC "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
                "$<TARGET_PROPERTY:resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
@@ -84,6 +92,17 @@ if(BUILD_TESTING)
     target_link_libraries(test_modern_operand_codegen
         PRIVATE GTest::gtest GTest::gtest_main modern_operand_resolved_ir)
     gtest_discover_tests(test_modern_operand_codegen)
+
+    add_test(
+        NAME resolved_ir.modern_operand_codegen_self_heal
+        COMMAND "${CMAKE_COMMAND}"
+            "-DPTX_BINARY_DIR=${CMAKE_BINARY_DIR}"
+            "-DPTX_TEST_CONFIG=$<CONFIG>"
+            "-DPTX_GENERATED_HEADER=${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_value_domains.gen.hpp"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_self_heal.cmake"
+    )
+    set_tests_properties(resolved_ir.modern_operand_codegen_self_heal
+        PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
         NAME ptx_frontend.package_consumer

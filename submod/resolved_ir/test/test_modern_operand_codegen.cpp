@@ -1,11 +1,21 @@
 #include <gtest/gtest.h>
 
+#include <string_view>
+#include <utility>
+
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 #include "resolved_ir.gen.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
+
+syntax_ast::AstModule parseModule(std::string_view source) {
+  PtxSyntaxParser parser(source);
+  auto module = parser.parseModule();
+  EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  return std::move(*module);
+}
 
 TEST(ModernOperandCodegen, ResolvesAndChecksSyntheticPrimitive) {
   PtxSyntaxParser parser("synthetic_modern {%r0, 1}, {%r1};");
@@ -41,6 +51,46 @@ TEST(ModernOperandCodegen, ResolvesAndChecksSyntheticPrimitive) {
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             checker::CheckDiagnosticKind::InvalidVectorOperand);
+}
+
+TEST(ModernOperandCodegen, AppliesLegacyFamiliesThroughModuleAvailability) {
+  const auto sm90a_module = resolveModule(parseModule(R"ptx(
+.version 8.0
+.entry kernel() { synthetic_sm90a; }
+)ptx"));
+  ASSERT_TRUE(sm90a_module.has_value())
+      << sm90a_module.error().front().message;
+
+  const auto sm90a = checkModuleAvailability(parseModule(R"ptx(
+.version 8.0
+.target sm_90a
+.entry kernel() { synthetic_sm90a; }
+)ptx"), *sm90a_module);
+  EXPECT_TRUE(sm90a.has_value());
+
+  const auto sm90 = checkModuleAvailability(parseModule(R"ptx(
+.version 8.0
+.target sm_90
+.entry kernel() { synthetic_sm90a; }
+)ptx"), *sm90a_module);
+  ASSERT_FALSE(sm90.has_value());
+  ASSERT_EQ(sm90.error().size(), 1u);
+  EXPECT_EQ(sm90.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedTargetFamily);
+
+  const auto sm100a_module = resolveModule(parseModule(R"ptx(
+.version 8.0
+.entry kernel() { synthetic_sm100a; }
+)ptx"));
+  ASSERT_TRUE(sm100a_module.has_value())
+      << sm100a_module.error().front().message;
+
+  const auto sm100a = checkModuleAvailability(parseModule(R"ptx(
+.version 8.0
+.target sm_100a
+.entry kernel() { synthetic_sm100a; }
+)ptx"), *sm100a_module);
+  EXPECT_TRUE(sm100a.has_value());
 }
 
 }  // namespace

@@ -363,12 +363,15 @@ instructions:
 availability:
   ptx: "8.0"
   sm: 90
-  family: sm_90a       # 可选
+  family: sm_90a       # 可选的 legacy target-family identity
 rule: integer_arith.add # 可选但建议提供
 ```
 
-checker 公共逻辑解释最低 PTX、SM、family；`rule` 是稳定 rule ID，供 instruction-specific
-checker 使用。`examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
+checker 公共逻辑解释最低 PTX、SM 与 legacy target-family identity。family identity
+仅由显式 target-profile catalog 发布：`sm_90a`、`sm_100a`、`sm_100f` 与 `sm_120f`
+分别发布自身。generic target 不继承 `a` 或 `f` identity，且不得由 SM 数字或 target
+后缀推断 compatibility。`rule` 是稳定 rule ID，供 instruction-specific checker 使用。
+`examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 
 `operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：

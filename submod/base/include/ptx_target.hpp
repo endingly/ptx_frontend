@@ -26,7 +26,8 @@ struct TargetIdentity {
   bool operator==(const TargetIdentity&) const = default;
 };
 
-/** One explicitly supported validation target and its M11 capabilities. */
+/** One explicitly supported validation target, legacy family identities, and
+ * capabilities. */
 struct TargetProfile {
   TargetIdentity identity;
   std::span<const std::string_view> families;

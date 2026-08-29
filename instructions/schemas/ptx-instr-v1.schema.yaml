@@ -168,9 +168,9 @@ $defs:
 
   arch_family:
     description: >
-      Architecture family marker, for example sm_90a or sm_120f.
-      Use this when a PTX feature is architecture-family-specific rather than
-      merely SM-version-specific.
+      Legacy target-family identity published by the explicit validation-target
+      catalog, for example sm_90a or sm_120f. Generic targets do not infer a
+      or f identities; compatibility must be explicit in that catalog.
     type: string
     pattern: "^sm_[0-9]+[a-z]?$"
     examples:

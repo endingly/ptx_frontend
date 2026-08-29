@@ -5303,6 +5303,40 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
             "Unknown validation target 'sm_123a'.");
 }
 
+TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 9.2
+.entry kernel() {
+  .reg .u8x4 %r<3>;
+  add.u8x4 %r0, %r1, %r2;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto sm120f = checkModuleAvailability(parseModule(R"ptx(
+.version 9.2
+.target sm_120f
+.entry kernel() {
+  .reg .u8x4 %r<3>;
+  add.u8x4 %r0, %r1, %r2;
+}
+)ptx"), *resolved);
+  EXPECT_TRUE(sm120f.has_value());
+
+  const auto sm100f = resolveModule(parseModule(R"ptx(
+.version 9.2
+.target sm_100f
+.entry kernel() {
+  .reg .u8x4 %r<3>;
+  add.u8x4 %r0, %r1, %r2;
+}
+)ptx"));
+  ASSERT_FALSE(sm100f.has_value());
+  EXPECT_EQ(sm100f.error().back().message,
+            "Instruction variant 'PackedOptionalSat' requires target family "
+            "'sm_120f'.");
+}
+
 TEST(ResolvedModule, AppliesTargetProfilesInSourceOrder) {
   const auto supported = resolveModule(parseModule(R"ptx(
 .version 9.3

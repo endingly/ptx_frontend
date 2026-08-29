@@ -51,6 +51,7 @@ if(BUILD_TESTING)
     set(PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE
         "${PTX_MODERN_OPERAND_TEST_GENERATED_DIR}/private")
     set(PTX_MODERN_OPERAND_TEST_GENERATED_SRCS
+        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_ir_dispatch.gen.cpp"
         "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_ir_test.gen.cpp"
         "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/syntax_descriptor.gen.cpp"
         "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}/resolved_descriptor.gen.cpp"
@@ -68,14 +69,20 @@ if(BUILD_TESTING)
                 ${PTX_RESOLVED_IR_CODEGEN_FILES}
         COMMENT "Generating modern operand test fixture"
         VERBATIM)
-    add_executable(test_modern_operand_codegen
-        test/test_modern_operand_codegen.cpp
+    add_library(modern_operand_resolved_ir STATIC
+        ${resolved_ir_srcs}
         ${PTX_MODERN_OPERAND_TEST_GENERATED_SRCS})
-    target_include_directories(test_modern_operand_codegen PRIVATE
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
-        "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}")
+    target_include_directories(modern_operand_resolved_ir
+        PUBLIC "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
+               "$<TARGET_PROPERTY:resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
+        PRIVATE "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}")
+    target_link_libraries(modern_operand_resolved_ir
+        PUBLIC ptx_frontend::base ptx_frontend::binding ptx_frontend::syntax
+               ptx_frontend::common ptx_frontend::semantic fmt::fmt)
+    add_executable(test_modern_operand_codegen
+        test/test_modern_operand_codegen.cpp)
     target_link_libraries(test_modern_operand_codegen
-        PRIVATE GTest::gtest GTest::gtest_main resolved_ir)
+        PRIVATE GTest::gtest GTest::gtest_main modern_operand_resolved_ir)
     gtest_discover_tests(test_modern_operand_codegen)
 
     add_test(

@@ -4,6 +4,18 @@ category: test
 codegen_category: test
 
 instructions:
+  - opcode: synthetic_sm90a
+    variants:
+      - name: synthetic_sm90a_family
+        availability: {ptx: "8.0", sm: 90, family: sm_90a}
+        operands: []
+
+  - opcode: synthetic_sm100a
+    variants:
+      - name: synthetic_sm100a_family
+        availability: {ptx: "8.0", sm: 100, family: sm_100a}
+        operands: []
+
   - opcode: synthetic_modern
     variants:
       - name: synthetic_modern_primitive

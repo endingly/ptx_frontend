@@ -407,12 +407,16 @@ Every variant must declare:
 availability:
   ptx: "8.0"
   sm: 90
-  family: sm_90a       # optional
+  family: sm_90a       # optional legacy target-family identity
 rule: integer_arith.add # optional but recommended
 ```
 
-Common checker logic interprets minimum PTX, SM, and family. `rule` is a stable
-rule ID for instruction-specific checking. `examples`, `doc`, and
+Common checker logic interprets minimum PTX, SM, and legacy target-family
+identity. Family identities are published only by the explicit target-profile
+catalog: `sm_90a`, `sm_100a`, `sm_100f`, and `sm_120f` each publish themselves.
+Generic targets do not inherit `a` or `f` identities, and compatibility is
+never inferred from an SM number or target suffix. `rule` is a stable rule ID
+for instruction-specific checking. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
 
 `operand_layouts[].availability` accumulates with variant availability; it

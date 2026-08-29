@@ -156,7 +156,7 @@ gaps:
   - owner: M12-I30
     marker: m12_i30_createpolicy
     forms:
-      - {variant: fractional_l2_evict_last, canonical_form: createpolicy.fractional.L2::evict_last.b64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: fractional_l2_evict_last, canonical_form: createpolicy.fractional.L2::evict_last.b64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I31
     marker: m12_i31_applypriority
     forms:

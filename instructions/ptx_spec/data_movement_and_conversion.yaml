@@ -259,6 +259,19 @@ operand_patterns:
       access: read
       state_space: [generic]
 
+  createpolicy_fractional_l2_evict_last:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+    - name: fraction
+      kind: imm
+      role: src
+      access: read
+      type: f32
+
   cp_async_shared_global:
     - name: dst
       kind: addr
@@ -1283,6 +1296,27 @@ instructions:
 
         examples:
           - ptx: "prefetchu.L1 [%rd0];"
+            valid: true
+
+  - opcode: createpolicy
+    section: "9.7.9.19"
+    doc: "Frozen fractional L2 evict-last policy creation with fraction 0.5."
+    syntax: "createpolicy.fractional.L2::evict_last.b64 dst, fraction"
+
+    variants:
+      - name: createpolicy_fractional_l2_evict_last_b64
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: fractional, kind: flag, presence: fixed, value: true, token: .fractional}
+          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: evict_last, token: .L2::evict_last}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $createpolicy_fractional_l2_evict_last
+        rule: data_movement.createpolicy
+        constraints:
+          - {kind: immediate_value, operand: fraction, values: [1056964608]}
+
+        examples:
+          - ptx: "createpolicy.fractional.L2::evict_last.b64 %rd0, 0.5;"
             valid: true
 
   - opcode: cp

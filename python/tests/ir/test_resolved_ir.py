@@ -1738,6 +1738,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["generic"],
         )
 
+    def test_createpolicy_fractional_l2_evict_last_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        createpolicy = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "createpolicy"
+        )
+        resolved = from_instruction_spec(createpolicy)
+
+        self.assertEqual(resolved.cpp_name, "Createpolicy")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["FractionalL2EvictLastB64"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("fractional", "bool"),
+                ("eviction_priority", "EvictionPriority"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("fraction", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.values, (1056964608,))
+
     def test_cp_async_ca_shared_global_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2478,6 +2508,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Prefetch>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "prefetchu"', source)
         self.assertIn("resolve<Prefetchu>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "createpolicy"', source)
+        self.assertIn("resolve<Createpolicy>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:

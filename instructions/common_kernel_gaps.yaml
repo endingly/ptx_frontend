@@ -16,8 +16,8 @@ gaps:
   - owner: M12-I02
     marker: m12_i02_set
     forms:
-      - {variant: eq_u32_u32, canonical_form: set.eq.u32.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: lt_and_f32_s32, canonical_form: set.lt.and.f32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: eq_u32_u32, canonical_form: set.eq.u32.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: lt_and_f32_s32, canonical_form: set.lt.and.f32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I03
     marker: m12_i03_setp
     forms:

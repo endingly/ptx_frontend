@@ -8,6 +8,45 @@ codegen_category: arithmetic
 section: "9.7.6"
 
 operand_patterns:
+  set_eq_u32_u32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+  set_lt_and_f32_s32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: f32
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: s32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: s32
+    - name: combine
+      kind: pred_or_not
+      role: predicate
+      access: read
+      type: pred
+
   setp_lt_u32:
     - name: dst
       kind: pred
@@ -70,6 +109,70 @@ operand_patterns:
       type: pred
 
 instructions:
+  - opcode: set
+    section: "9.7.6.1"
+    doc: "Frozen scalar comparison results for one unsigned equality and one signed predicate-combined comparison."
+    syntax: "set.eq.u32.u32 dst, src1, src2 | set.lt.and.f32.s32 dst, src1, src2, combine"
+    variants:
+      - name: set_eq_u32_u32
+        description: "Unsigned equality with a .u32 result."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [eq]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $set_eq_u32_u32
+        examples:
+          - ptx: "set.eq.u32.u32 %r0, %r1, 16;"
+            valid: true
+      - name: set_lt_and_f32_s32
+        description: "Signed less-than combined with one predicate and materialized as .f32."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: required
+            values: [and]
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $set_lt_and_f32_s32
+        examples:
+          - ptx: "set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"
+            valid: true
   - opcode: setp
     section: "9.7.6.2"
     doc: "Compare two .u32 values and optionally combine the result with one predicate."

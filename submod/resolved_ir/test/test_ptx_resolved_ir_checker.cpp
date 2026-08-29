@@ -565,6 +565,30 @@ TEST(ResolvedIrChecker, ChecksGeneratedShrU32Availability) {
   EXPECT_TRUE(check(*shr, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}, .instruction_range = ast->range}).has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedSetAvailability) {
+  for (const auto source : {
+           "set.eq.u32.u32 %r0, %r1, %r2;",
+           "set.lt.and.f32.s32 %f0, %s0, %s1, !%p0;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto set = resolve<Set>(*ast);
+    ASSERT_TRUE(set.has_value()) << set.error().message;
+    const auto rejected = check(
+        *set, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(
+                    *set,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                             .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedSetpLtU32Availability) {
   PtxSyntaxParser parser("setp.lt.u32 %p0, %r0, %r1;");
   const auto ast = parser.parseInstruction();

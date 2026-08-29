@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 38)
+        self.assertEqual(len(opcodes), 39)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 99)
+        self.assertEqual(len(slices), 101)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -156,6 +156,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             {slice_id: selectors[f"{slice_id}-default"] for slice_id in (
                 "mul-mul-lo-u32", "mul-mul-rn-f32", "cvt-cvt-s32-u32",
                 "cvt-cvt-rn-f32-f64", "cvt-cvt-rn-f32-u32", "cvt-cvt-rzi-u32-f32",
+                "set-set-eq-u32-u32", "set-set-lt-and-f32-s32",
                 "ld-ld-generic-scalar", "ld-ld-generic-vector", "ld-ld-global-u32-l1-evict",
                 "ld-ld-explicit-vector", "st-st-generic-scalar", "st-st-generic-vector",
                 "st-st-global-u32-l2-cache-hint", "st-st-explicit-vector",
@@ -171,6 +172,8 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "cvt-cvt-rn-f32-f64": {"topology": "conversion", "types": ["f32", "f64"], "shape": "scalar", "modifiers": ["rn"]},
                 "cvt-cvt-rn-f32-u32": {"topology": "conversion", "types": ["f32", "u32"], "shape": "scalar", "modifiers": ["rn"]},
                 "cvt-cvt-rzi-u32-f32": {"topology": "conversion", "types": ["u32", "f32"], "shape": "scalar", "modifiers": ["rzi"]},
+                "set-set-eq-u32-u32": {"topology": "comparison", "types": ["u32"], "shape": "scalar", "modifiers": ["eq"]},
+                "set-set-lt-and-f32-s32": {"topology": "comparison", "types": ["f32", "s32"], "shape": "scalar", "modifiers": ["lt", "and"]},
                 "ld-ld-generic-scalar": {"topology": "memory", "types": ["b8", "b16", "b32", "b64", "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64"], "shape": "scalar", "state_space": ["const", "global", "local", "param", "shared"]},
                 "ld-ld-generic-vector": {"topology": "memory", "types": ["b8", "b16", "b32", "b64", "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64"], "shape": "vector_legacy", "state_space": ["const", "global", "local", "param", "shared"]},
                 "ld-ld-global-u32-l1-evict": {"topology": "memory", "types": ["u32"], "shape": "scalar", "modifiers": ["l1_evict"], "state_space": ["global"]},

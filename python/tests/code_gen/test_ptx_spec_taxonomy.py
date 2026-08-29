@@ -32,7 +32,11 @@ EXPECTED_SECTIONS = {
         "mul": {"9.7.1.3", "9.7.3.5"}, "mad": {"9.7.1.4"},
         "div": {"9.7.1.9"}, "fma": {"9.7.3.6"},
     },
-    "comparison_and_selection.yaml": {"setp": {"9.7.6.2"}, "selp": {"9.7.6.3"}},
+    "comparison_and_selection.yaml": {
+        "set": {"9.7.6.1"},
+        "setp": {"9.7.6.2"},
+        "selp": {"9.7.6.3"},
+    },
     "logic_and_shift.yaml": {
         "and": {"9.7.8.1"}, "or": {"9.7.8.2"}, "xor": {"9.7.8.3"},
         "not": {"9.7.8.4"}, "shl": {"9.7.8.8"}, "shr": {"9.7.8.9"},

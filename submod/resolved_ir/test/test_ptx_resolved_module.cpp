@@ -1674,6 +1674,47 @@ TEST(ResolvedModule, ChecksSetpLtU32OperandTypes) {
   EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %p;
+  .reg .u32 %r0, %r1, %r2;
+  .reg .f32 %f;
+  .reg .s32 %s0, %s1;
+  set.eq.u32.u32 %r0, %r1, %r2;
+  set.lt.and.f32.s32 %f, %s0, %s1, !%p;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  for (const auto& body : valid->functions.front().body) {
+    EXPECT_TRUE(checker::check(
+                    std::get<Set>(body),
+                    checker::Context{.target = {.ptx_version = {1, 0},
+                                                 .sm_version = 0}})
+                    .has_value());
+  }
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %p;
+  .reg .f32 %f;
+  .reg .s32 %s;
+  .reg .u64 %wrong;
+  set.lt.and.f32.s32 %f, %wrong, %s, %p;
+}
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& instruction = std::get<Set>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Set::LtAndF32S32>(instruction.variant);
+  const auto checked = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ChecksSelpU32OperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .pred %p; .reg .u32 %dst, %src; selp.u32 %dst, %src, 0, %p; }

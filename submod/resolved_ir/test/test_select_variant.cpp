@@ -804,6 +804,36 @@ TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
 }
 
+TEST(ResolveSet, SelectsFrozenCommonScalarVariants) {
+  const auto eq = resolve<Set>(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
+  ASSERT_TRUE(eq.has_value()) << eq.error().message;
+  const auto* eq_u32_u32 = std::get_if<Set::EqU32U32>(&eq->variant);
+  ASSERT_NE(eq_u32_u32, nullptr);
+  EXPECT_EQ(eq_u32_u32->comparison.value, ComparisonOperator::Eq);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(eq_u32_u32->src2.value));
+
+  const auto lt_and = resolve<Set>(
+      parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
+  ASSERT_TRUE(lt_and.has_value()) << lt_and.error().message;
+  const auto* lt_and_f32_s32 = std::get_if<Set::LtAndF32S32>(&lt_and->variant);
+  ASSERT_NE(lt_and_f32_s32, nullptr);
+  EXPECT_EQ(lt_and_f32_s32->comparison.value, ComparisonOperator::Lt);
+  EXPECT_EQ(lt_and_f32_s32->boolean.value, BooleanOperator::And);
+  EXPECT_TRUE(lt_and_f32_s32->combine.value.negated);
+}
+
+TEST(ResolveSet, RejectsUnfrozenDtypeStypeAndBooleanForms) {
+  for (const auto source : {
+           "set.eq.f32.u32 %f0, %r0, %r1;",
+           "set.eq.and.u32.u32 %r0, %r1, %r2, %p0;",
+           "set.lt.and.f32.u32 %f0, %r0, %r1, %p0;",
+       }) {
+    const auto selected = selectVariant<Set>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
   const auto simple_ast = parse_instruction("setp.lt.u32 %p0, %r0, 16;");
   const auto simple = resolve<Setp>(simple_ast);

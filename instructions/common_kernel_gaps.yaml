@@ -51,9 +51,9 @@ gaps:
   - owner: M12-I08
     marker: m12_i08_mad
     forms:
-      - {variant: lo_s32, canonical_form: mad.lo.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
-      - {variant: wide_u32, canonical_form: mad.wide.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
-      - {variant: rn_f32, canonical_form: mad.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: lo_s32, canonical_form: mad.lo.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: wide_u32, canonical_form: mad.wide.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: rn_f32, canonical_form: mad.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I09
     marker: m12_i09_fma
     forms:

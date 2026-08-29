@@ -47,6 +47,12 @@ operand_patterns:
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(type)"}}
 
+  ternary_wide_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: exact}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: u64, register_width: exact}
+
   binary_float_scalar:
     - name: dst
       kind: reg
@@ -119,6 +125,12 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
+
+  ternary_float_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src3, kind: reg, role: src3, access: read, type: {expr: "modifier(type)"}, register_width: exact}
 
   binary_mixed_float_register:
     - name: dst
@@ -731,6 +743,20 @@ instructions:
           - ptx: "fma.rn.f32 %f0, %f1, %f2, %f3;"
             valid: true
 
+  - opcode: mad
+    section: "9.7.3.7"
+    doc: "Frozen round-to-nearest single-precision multiply-add."
+    syntax: "mad.rn.f32 dst, src1, src2, src3"
+    operands: $ternary_float_register_exact
+    variants:
+      - name: mad_rn_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "mad.rn.f32 %f0, %f1, %f2, %f3;", valid: true}
+
   - opcode: add
     section: "9.7.1.1"
     doc: "Integer add."
@@ -854,8 +880,8 @@ instructions:
 
   - opcode: mad
     section: "9.7.1.4"
-    doc: "Frozen low 32-bit unsigned integer multiply-add."
-    syntax: "mad.lo.u32 dst, src1, src2, src3"
+    doc: "Frozen low and wide 32-bit integer multiply-add."
+    syntax: "mad.lo.u32 | mad.lo.s32 | mad.wide.u32 dst, src1, src2, src3"
     operands: $ternary_arith
     variants:
       - name: mad_lo_u32
@@ -865,6 +891,23 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "mad.lo.u32 %r0, %r1, 7, %r2;", valid: true}
+
+      - name: mad_lo_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "mad.lo.s32 %r0, %r1, %r2, %r3;", valid: true}
+
+      - name: mad_wide_u32
+        operands: $ternary_wide_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "mad.wide.u32 %rd0, %r1, %r2, %rd3;", valid: true}
 
   - opcode: div
     section: "9.7.1.9"

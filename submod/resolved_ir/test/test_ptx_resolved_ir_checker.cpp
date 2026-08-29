@@ -786,6 +786,52 @@ TEST(ResolvedIrChecker, ChecksGeneratedMadLoU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedMadLoS32AndWideU32Availability) {
+  for (const auto source : {"mad.lo.s32 %r0, %r1, %r2, %r3;",
+                            "mad.wide.u32 %rd0, %r1, %r2, %rd3;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto mad = resolve<Mad>(*ast);
+    ASSERT_TRUE(mad.has_value()) << mad.error().message;
+    const auto rejected = check(
+        *mad, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*mad,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedMadRnF32Availability) {
+  PtxSyntaxParser parser("mad.rn.f32 %f0, %f1, %f2, %f3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto mad = resolve<Mad>(*ast);
+  ASSERT_TRUE(mad.has_value()) << mad.error().message;
+  const auto old_ptx = check(
+      *mad, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *mad, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*mad,
+                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF32Availability) {
   PtxSyntaxParser parser("fma.rn.f32 %f0, %f1, %f2, %f3;");
   const auto ast = parser.parseInstruction();

@@ -2151,6 +2151,88 @@ TEST(ResolvedModule, ChecksMadLoU32OperandTypes) {
   EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
 }
 
+TEST(ResolvedModule, ChecksM12MadWideAndRnOperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0, %r1, %r2, %r3;
+  .reg .u64 %rd0, %rd3;
+  .reg .f32 %f0, %f1, %f2, %f3;
+  mad.lo.s32 %r0, %r1, %r2, %r3;
+  mad.wide.u32 %rd0, %r1, %r2, %rd3;
+  mad.rn.f32 %f0, %f1, %f2, %f3;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& lo = std::get<Mad>(body[0]);
+  const auto& wide = std::get<Mad>(body[1]);
+  const auto& rn = std::get<Mad>(body[2]);
+  EXPECT_TRUE(std::holds_alternative<Mad::LoS32>(lo.variant));
+  EXPECT_TRUE(std::holds_alternative<Mad::WideU32>(wide.variant));
+  EXPECT_TRUE(std::holds_alternative<Mad::RnF32>(rn.variant));
+  EXPECT_TRUE(checker::check(
+                  lo, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  wide, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  rn, checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}})
+                  .has_value());
+
+  const auto bit_wide_source = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u64 %dst, %addend; .reg .b32 %src; mad.wide.u32 %dst, %src, %src, %addend; }
+)ptx"));
+  ASSERT_TRUE(bit_wide_source.has_value()) << bit_wide_source.error().front().message;
+  const auto& bit_instruction = std::get<Mad>(bit_wide_source->functions.front().body.front());
+  const auto& bit_variant = std::get<Mad::WideU32>(bit_instruction.variant);
+  const auto bit_checked = checker::check(
+      bit_instruction, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(bit_checked.has_value());
+  EXPECT_EQ(bit_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(bit_checked.error().front().range, bit_variant.src1.locs.front());
+
+  const auto narrow_wide_addend = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u64 %dst; .reg .u32 %src, %addend; mad.wide.u32 %dst, %src, %src, %addend; }
+)ptx"));
+  ASSERT_TRUE(narrow_wide_addend.has_value()) << narrow_wide_addend.error().front().message;
+  const auto& addend_instruction = std::get<Mad>(narrow_wide_addend->functions.front().body.front());
+  const auto& addend_variant = std::get<Mad::WideU32>(addend_instruction.variant);
+  const auto addend_checked = checker::check(
+      addend_instruction, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(addend_checked.has_value());
+  EXPECT_EQ(addend_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(addend_checked.error().front().range, addend_variant.src3.locs.front());
+
+  const auto narrow_wide_dst = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst, %src; .reg .u64 %addend; mad.wide.u32 %dst, %src, %src, %addend; }
+)ptx"));
+  ASSERT_TRUE(narrow_wide_dst.has_value()) << narrow_wide_dst.error().front().message;
+  const auto& dst_instruction = std::get<Mad>(narrow_wide_dst->functions.front().body.front());
+  const auto& dst_variant = std::get<Mad::WideU32>(dst_instruction.variant);
+  const auto dst_checked = checker::check(
+      dst_instruction, checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(dst_checked.has_value());
+  EXPECT_EQ(dst_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(dst_checked.error().front().range, dst_variant.dst.locs.front());
+
+  const auto bit_float_source = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .f32 %dst, %src2, %src3; .reg .b32 %src1; mad.rn.f32 %dst, %src1, %src2, %src3; }
+)ptx"));
+  ASSERT_TRUE(bit_float_source.has_value()) << bit_float_source.error().front().message;
+  const auto& float_instruction = std::get<Mad>(bit_float_source->functions.front().body.front());
+  const auto& float_variant = std::get<Mad::RnF32>(float_instruction.variant);
+  const auto float_checked = checker::check(
+      float_instruction, checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
+  ASSERT_FALSE(float_checked.has_value());
+  EXPECT_EQ(float_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(float_checked.error().front().range, float_variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ChecksFmaRnF32OperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .f32 %dst, %src1, %src2, %src3; fma.rn.f32 %dst, %src1, %src2, %src3; }

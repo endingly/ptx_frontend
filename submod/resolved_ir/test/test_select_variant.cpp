@@ -1029,10 +1029,34 @@ TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
 }
 
+TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
+  const auto lo =
+      resolve<Mad>(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
+  ASSERT_TRUE(lo.has_value()) << lo.error().message;
+  ASSERT_NE(std::get_if<Mad::LoS32>(&lo->variant), nullptr);
+  EXPECT_TRUE(Mad::LoS32::lo);
+  EXPECT_EQ(Mad::LoS32::type, ScalarType::S32);
+
+  const auto wide = resolve<Mad>(
+      parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
+  ASSERT_TRUE(wide.has_value()) << wide.error().message;
+  ASSERT_NE(std::get_if<Mad::WideU32>(&wide->variant), nullptr);
+  EXPECT_TRUE(Mad::WideU32::wide);
+  EXPECT_EQ(Mad::WideU32::type, ScalarType::U32);
+
+  const auto rn =
+      resolve<Mad>(parse_instruction("mad.rn.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(rn.has_value()) << rn.error().message;
+  ASSERT_NE(std::get_if<Mad::RnF32>(&rn->variant), nullptr);
+  EXPECT_EQ(Mad::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
+}
+
 TEST(ResolveMad, RejectsUnfrozenVariants) {
   for (const auto source : {"mad.u32 %r0, %r1, %r2, %r3;",
                             "mad.hi.u32 %r0, %r1, %r2, %r3;",
-                            "mad.lo.s32 %r0, %r1, %r2, %r3;",
+                            "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
+                            "mad.rz.f32 %f0, %f1, %f2, %f3;",
                             "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);

@@ -1713,6 +1713,31 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "state_space",
         )
 
+    def test_prefetchu_l1_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        prefetchu = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "prefetchu"
+        )
+        resolved = from_instruction_spec(prefetchu)
+
+        self.assertEqual(resolved.cpp_name, "Prefetchu")
+        self.assertEqual([variant.cpp_name for variant in resolved.variants], ["L1"])
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("l1", "bool"), ("address", "WithLocs<ResolvedAddress>")],
+        )
+        self.assertEqual(
+            [state_space.value for state_space in variant.operand_layouts[0]
+             .bindings[0].allowed_address_state_spaces],
+            ["generic"],
+        )
+
     def test_cp_async_ca_shared_global_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2451,6 +2476,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Fence>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "prefetch"', source)
         self.assertIn("resolve<Prefetch>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "prefetchu"', source)
+        self.assertIn("resolve<Prefetchu>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:

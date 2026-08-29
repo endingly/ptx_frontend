@@ -69,6 +69,8 @@ KNOWN_NONE = {
     ("M12-I27", "isspacep.global"),
 } | {
     ("M12-I28", "ld.global.nc.L1::no_allocate.u32"),
+} | {
+    ("M12-I29", "prefetchu.L1"),
 }
 
 

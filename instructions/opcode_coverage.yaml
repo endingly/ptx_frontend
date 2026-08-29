@@ -202,6 +202,10 @@ opcodes:
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:
   - {"id":"prefetch-prefetch-global-l1-default","section":"9.7.9.16","spec_variant":"prefetch_global_l1","operand_layout":"default","selector":{"topology":"memory","types":[],"shape":"address","modifiers":["l1"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: prefetchu
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"prefetchu-prefetchu-l1-default","section":"9.7.9.16","spec_variant":"prefetchu_l1","operand_layout":"default","selector":{"topology":"memory","types":[],"shape":"address","modifiers":["l1"],"state_space":["generic"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: cp
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

@@ -252,6 +252,13 @@ operand_patterns:
       state_space:
         expr: modifier(state_space)
 
+  prefetchu_generic:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [generic]
+
   cp_async_shared_global:
     - name: dst
       kind: addr
@@ -1255,6 +1262,27 @@ instructions:
 
         examples:
           - ptx: "prefetch.global.L1 [global_value];"
+            valid: true
+
+  - opcode: prefetchu
+    section: "9.7.9.16"
+    doc: "Uniform prefetch, limited to the generic-address .L1 form."
+    syntax: "prefetchu.L1 [address]"
+
+    variants:
+      - name: prefetchu_l1
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - name: l1
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L1
+        operands: $prefetchu_generic
+        rule: data_movement.prefetch
+
+        examples:
+          - ptx: "prefetchu.L1 [%rd0];"
             valid: true
 
   - opcode: cp

@@ -618,6 +618,67 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
   ASSERT_FALSE(extra_address.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksPrefetchuL1GenericAddressSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  prefetchu.L1 [%rd0];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Prefetchu>(resolved->functions.front().body.front());
+  const auto& prefetchu = std::get<Prefetchu::L1>(instruction.variant);
+  EXPECT_TRUE(prefetchu.l1);
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+
+  const auto too_old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto global_address = resolveModule(parseModule(R"ptx(
+.global .u32 global_value;
+.entry kernel() { prefetchu.L1 [global_value]; }
+)ptx"));
+  ASSERT_TRUE(global_address.has_value())
+      << global_address.error().front().message;
+  const auto wrong_address = checker::check(
+      std::get<Prefetchu>(global_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
+  ASSERT_FALSE(wrong_address.has_value());
+  EXPECT_EQ(wrong_address.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .u64 %rd0; prefetchu.L2 [%rd0]; }",
+           ".entry kernel() { .reg .u64 %rd0; prefetchu.global.L1 [%rd0]; }",
+           ".entry kernel() { .reg .u64 %rd0; prefetchu.L1 %rd0; }",
+           ".entry kernel() { prefetchu.L1; }",
+           ".entry kernel() { .reg .u64 %rd0; prefetchu.L1 [%rd0], [%rd0]; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
   const auto ast = parseModule(R"ptx(
 .global .align 16 .b8 global_value[16];

@@ -46,6 +46,8 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
     file(GLOB_RECURSE PTX_MODERN_OPERAND_TEST_SPEC_FILES CONFIGURE_DEPENDS
         "${PTX_MODERN_OPERAND_TEST_SPEC_DIR}/*.yaml")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${PTX_MODERN_OPERAND_TEST_SPEC_FILES})
     set(PTX_MODERN_OPERAND_TEST_GENERATED_DIR
         "${CMAKE_CURRENT_BINARY_DIR}/test_generated")
     set(PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC
@@ -102,6 +104,18 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_self_heal.cmake"
     )
     set_tests_properties(resolved_ir.modern_operand_codegen_self_heal
+        PROPERTIES RUN_SERIAL TRUE)
+
+    add_test(
+        NAME resolved_ir.modern_operand_codegen_topology_reconfigure
+        COMMAND "${CMAKE_COMMAND}"
+            "-DPTX_BINARY_DIR=${CMAKE_BINARY_DIR}"
+            "-DPTX_TEST_CONFIG=$<CONFIG>"
+            "-DPTX_FIXTURE=${PTX_MODERN_OPERAND_TEST_SPEC_DIR}/modern_operand.yaml"
+            "-DPTX_GENERATED_PRIVATE=${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_topology_reconfigure.cmake"
+    )
+    set_tests_properties(resolved_ir.modern_operand_codegen_topology_reconfigure
         PROPERTIES RUN_SERIAL TRUE)
 
     add_test(

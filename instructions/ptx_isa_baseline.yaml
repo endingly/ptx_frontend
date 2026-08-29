@@ -11,6 +11,8 @@ published: "2026-06-25"
 retrieved_at: "2026-08-29"
 content_digest:
   algorithm: sha256
+  subject: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
+  canonicalization: raw_response_body
   value: 14f6af4c0aefa9aadd257f85c5bcb577c27b8fcd16c4954af4e281409cd1ebcc
 sources:
   root: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/

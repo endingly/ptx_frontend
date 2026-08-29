@@ -10,6 +10,7 @@ on:
       - vcpkg.json
   schedule:
     - cron: "0 0 1 * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -129,6 +130,11 @@ jobs:
         run: |
           ccache --zero-stats
           cmake --workflow --preset "${{ matrix.preset }}"
+
+      - name: Verify archived PTX ISA baseline
+        if: matrix.name == 'Debug' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: .venv/bin/python python/scripts/verify_ptx_isa_baseline.py instructions/ptx_isa_baseline.yaml
 
       - name: Show compiler cache statistics
         if: always()

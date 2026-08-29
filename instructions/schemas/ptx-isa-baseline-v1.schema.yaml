@@ -33,10 +33,14 @@ properties:
   content_digest:
     type: object
     additionalProperties: false
-    required: [algorithm, value]
+    required: [algorithm, subject, canonicalization, value]
     properties:
       algorithm:
         const: sha256
+      subject:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
+      canonicalization:
+        const: raw_response_body
       value:
         const: 14f6af4c0aefa9aadd257f85c5bcb577c27b8fcd16c4954af4e281409cd1ebcc
   sources:

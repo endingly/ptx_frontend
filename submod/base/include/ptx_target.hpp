@@ -29,6 +29,7 @@ struct TargetIdentity {
 /** One explicitly supported validation target and its M11 capabilities. */
 struct TargetProfile {
   TargetIdentity identity;
+  std::span<const std::string_view> families;
   std::span<const std::string_view> capabilities;
 };
 

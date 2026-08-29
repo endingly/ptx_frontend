@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <span>
 #include <string_view>
 
 #include <ptx_frontend/base/ptx_target.hpp>
@@ -63,34 +65,55 @@ TEST(TargetIdentity, RejectsMalformedSpellings) {
     EXPECT_FALSE(parse_target_identity(spelling).has_value()) << spelling;
 }
 
-TEST(TargetProfile, CatalogsOnlyExplicitM11ValidationTargets) {
-  constexpr std::array supported{
-      std::string_view{"sm_30"},   std::string_view{"sm_80"},
-      std::string_view{"sm_90"},   std::string_view{"sm_90a"},
-      std::string_view{"sm_100"},  std::string_view{"sm_100a"},
-      std::string_view{"sm_100f"},
+TEST(TargetProfile, CatalogsExactIdentityFamiliesAndCapabilities) {
+  constexpr std::array<std::string_view, 0> none{};
+  constexpr std::array<std::string_view, 1> sm100f_families{"sm_100f"};
+  constexpr std::array<std::string_view, 1> sm120f_families{"sm_120f"};
+  constexpr std::array<std::string_view, 2> sm80_capabilities{"reserved_smem",
+                                                              "graph_exec"};
+  constexpr std::array<std::string_view, 4> sm90_capabilities{
+      "cluster", "aggregate_smem", "reserved_smem", "graph_exec"};
+  struct ExpectedProfile {
+    std::string_view spelling;
+    uint32_t architecture;
+    TargetFlavor flavor;
+    std::span<const std::string_view> families;
+    std::span<const std::string_view> capabilities;
   };
-  for (const std::string_view spelling : supported) {
-    const auto profile = find_target_profile(spelling);
-    ASSERT_TRUE(profile.has_value()) << spelling;
-    EXPECT_EQ(profile->identity.source_spelling, spelling);
+  const std::array profiles{
+      ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_80", 80, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_90", 90, TargetFlavor::Generic, none,
+                      sm90_capabilities},
+      ExpectedProfile{"sm_90a", 90, TargetFlavor::ArchitectureSpecific,
+                      none, sm90_capabilities},
+      ExpectedProfile{"sm_100", 100, TargetFlavor::Generic, none,
+                      sm90_capabilities},
+      ExpectedProfile{"sm_100a", 100, TargetFlavor::ArchitectureSpecific,
+                      none, sm90_capabilities},
+      ExpectedProfile{"sm_100f", 100, TargetFlavor::FamilySpecific,
+                      sm100f_families, sm90_capabilities},
+      ExpectedProfile{"sm_120f", 120, TargetFlavor::FamilySpecific,
+                      sm120f_families, sm90_capabilities},
+  };
+
+  for (const auto& expected : profiles) {
+    const auto profile = find_target_profile(expected.spelling);
+    ASSERT_TRUE(profile.has_value()) << expected.spelling;
+    EXPECT_EQ(profile->identity.architecture.number, expected.architecture);
+    EXPECT_EQ(profile->identity.flavor, expected.flavor);
+    EXPECT_EQ(profile->identity.source_spelling, expected.spelling);
+    EXPECT_TRUE(std::ranges::equal(profile->families, expected.families));
+    EXPECT_TRUE(
+        std::ranges::equal(profile->capabilities, expected.capabilities));
   }
 
-  const auto sm100 = find_target_profile("sm_100");
-  const auto sm100a = find_target_profile("sm_100a");
-  const auto sm100f = find_target_profile("sm_100f");
-  ASSERT_TRUE(sm100.has_value());
-  ASSERT_TRUE(sm100a.has_value());
-  ASSERT_TRUE(sm100f.has_value());
-  EXPECT_NE(sm100->identity, sm100a->identity);
-  EXPECT_NE(sm100a->identity, sm100f->identity);
-
-  const auto sm30 = find_target_profile("sm_30");
-  ASSERT_TRUE(sm30.has_value());
-  EXPECT_TRUE(sm30->capabilities.empty());
+  EXPECT_TRUE(find_target_profile("sm_30")->capabilities.empty());
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());
   EXPECT_FALSE(find_target_profile("sm_90f").has_value());
+  EXPECT_FALSE(find_target_profile("sm_120").has_value());
   EXPECT_FALSE(find_target_profile("sm_123a").has_value());
 }
 

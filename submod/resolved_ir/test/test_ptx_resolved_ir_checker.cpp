@@ -87,6 +87,25 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
 }
 
+TEST(ResolvedIrChecker, UsesCatalogFamiliesForProductionAvailability) {
+  const auto sm120f = base::find_target_profile("sm_120f");
+  ASSERT_TRUE(sm120f.has_value());
+
+  const auto target_info = [](const base::TargetProfile& profile) {
+    return TargetInfo{
+        .ptx_version = {9, 2},
+        .sm_version = profile.identity.architecture.number,
+        .families = profile.families,
+        .identity = profile.identity,
+        .capabilities = profile.capabilities,
+    };
+  };
+  EXPECT_TRUE(is_available(kVariants[0].availability, target_info(*sm120f)));
+  auto without_family = target_info(*sm120f);
+  without_family.families = {};
+  EXPECT_FALSE(is_available(kVariants[0].availability, without_family));
+}
+
 TEST(ResolvedIrChecker, EvaluatesBoundedAvailabilityDnf) {
   constexpr AvailabilityDescriptor availability{
       .any_of = {{

@@ -35,15 +35,6 @@ std::optional<checker::PtxVersion> module_version(
   return std::nullopt;
 }
 
-const syntax_ast::AstTargetDirective* module_target(
-    const syntax_ast::AstModule& module) {
-  for (const auto& item : module.items) {
-    if (const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item))
-      return target;
-  }
-  return nullptr;
-}
-
 checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
                                              uint32_t minimum_sm = 0,
                                              std::string_view capability = {}) {
@@ -61,6 +52,27 @@ checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
   };
   result.any_of_count = 1;
   return result;
+}
+
+enum class DirectiveAvailability {
+  Alias,
+  Noreturn,
+  AbiPreserve,
+  AbiPreserveControl,
+};
+
+checker::AvailabilityDescriptor directive_availability(
+    DirectiveAvailability directive) {
+  switch (directive) {
+    case DirectiveAvailability::Alias:
+      return availability({6, 3}, 30);
+    case DirectiveAvailability::Noreturn:
+      return availability({6, 4}, 30);
+    case DirectiveAvailability::AbiPreserve:
+    case DirectiveAvailability::AbiPreserveControl:
+      return availability({9, 0}, 80);
+  }
+  return {};
 }
 
 void append_requirement(checker::CheckDiagnostics& diagnostics,
@@ -133,6 +145,27 @@ void check_attributes(const std::vector<syntax_ast::AstAttribute>& attributes,
   }
 }
 
+void check_function_directives(
+    const std::optional<syntax_ast::AstSyntax>& noreturn_directive,
+    const std::optional<syntax_ast::AstCallPrototypeAbiSuffix>& abi_preserve,
+    const std::optional<syntax_ast::AstCallPrototypeAbiSuffix>&
+        abi_preserve_control,
+    const checker::TargetInfo& target, checker::CheckDiagnostics& diagnostics) {
+  if (noreturn_directive)
+    append_requirement(diagnostics,
+                       directive_availability(DirectiveAvailability::Noreturn),
+                       target, noreturn_directive->range, ".noreturn");
+  if (abi_preserve)
+    append_requirement(
+        diagnostics, directive_availability(DirectiveAvailability::AbiPreserve),
+        target, abi_preserve->range, ".abi_preserve");
+  if (abi_preserve_control)
+    append_requirement(
+        diagnostics,
+        directive_availability(DirectiveAvailability::AbiPreserveControl),
+        target, abi_preserve_control->range, ".abi_preserve_control");
+}
+
 void check_body_directives(
     const std::vector<syntax_ast::AstFunctionBodyItem>& body,
     const checker::TargetInfo& target, checker::CheckDiagnostics& diagnostics) {
@@ -142,16 +175,9 @@ void check_body_directives(
       check_attributes(declaration->attributes, target, diagnostics);
     } else if (const auto* prototype =
                    std::get_if<syntax_ast::AstCallPrototype>(&item)) {
-      if (prototype->noreturn_directive)
-        append_requirement(diagnostics, availability({6, 4}), target,
-                           prototype->noreturn_directive->range, ".noreturn");
-      if (prototype->abi_preserve)
-        append_requirement(diagnostics, availability({9, 0}), target,
-                           prototype->abi_preserve->range, ".abi_preserve");
-      if (prototype->abi_preserve_control)
-        append_requirement(diagnostics, availability({9, 0}), target,
-                           prototype->abi_preserve_control->range,
-                           ".abi_preserve_control");
+      check_function_directives(
+          prototype->noreturn_directive, prototype->abi_preserve,
+          prototype->abi_preserve_control, target, diagnostics);
     } else if (const auto* block =
                    std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
                block != nullptr && *block) {
@@ -195,77 +221,71 @@ void check_instruction_body(
 checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
                                              const ResolvedModule& module) {
   const auto version = module_version(ast);
-  const auto* target_directive = module_target(ast);
-  if (target_directive == nullptr || target_directive->targets.empty())
-    return {};
-
-  const syntax_ast::AstSyntax& target_syntax =
-      target_directive->targets.front();
-  const auto profile = base::find_target_profile(target_syntax.text);
-  if (!profile) {
-    return std::unexpected(checker::CheckDiagnostics{checker::CheckDiagnostic{
-        .kind = checker::CheckDiagnosticKind::UnknownTarget,
-        .range = target_syntax.range,
-        .message =
-            fmt::format("Unknown validation target '{}'.", target_syntax.text),
-    }});
-  }
-  if (!version)
-    return {};
-  const checker::TargetInfo target{
-      .ptx_version = *version,
-      .sm_version = profile->identity.architecture.number,
-      .identity = profile->identity,
-      .capabilities = profile->capabilities,
-  };
   checker::CheckDiagnostics diagnostics;
+  std::optional<checker::TargetInfo> active_target;
+  size_t function_index = 0;
 
   for (const auto& item : ast.items) {
-    if (const auto* variable =
-            std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-      check_attributes(variable->attributes, target, diagnostics);
+    if (const auto* target =
+            std::get_if<syntax_ast::AstTargetDirective>(&item)) {
+      active_target.reset();
+      if (target->targets.empty())
+        continue;
+      const auto profile =
+          base::find_target_profile(target->targets.front().text);
+      if (!profile) {
+        diagnostics.push_back(checker::CheckDiagnostic{
+            .kind = checker::CheckDiagnosticKind::UnknownTarget,
+            .range = target->range,
+            .message = fmt::format("Unknown validation target '{}'.",
+                                   target->targets.front().text),
+        });
+      } else if (version) {
+        active_target = checker::TargetInfo{
+            .ptx_version = *version,
+            .sm_version = profile->identity.architecture.number,
+            .families = profile->families,
+            .identity = profile->identity,
+            .capabilities = profile->capabilities,
+        };
+      }
+    } else if (const auto* variable =
+                   std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+      if (active_target)
+        check_attributes(variable->attributes, *active_target, diagnostics);
     } else if (const auto* alias =
                    std::get_if<syntax_ast::AstAliasDirective>(&item)) {
-      append_requirement(diagnostics, availability({6, 3}), target,
-                         alias->range, ".alias");
+      if (active_target)
+        append_requirement(diagnostics,
+                           directive_availability(DirectiveAvailability::Alias),
+                           *active_target, alias->range, ".alias");
     } else if (const auto* function =
                    std::get_if<syntax_ast::AstFunction>(&item)) {
-      check_attributes(function->attributes, target, diagnostics);
-      if (function->noreturn_directive)
-        append_requirement(diagnostics, availability({6, 4}), target,
-                           function->noreturn_directive->range, ".noreturn");
-      if (function->abi_preserve)
-        append_requirement(diagnostics, availability({9, 0}), target,
-                           function->abi_preserve->range, ".abi_preserve");
-      if (function->abi_preserve_control)
-        append_requirement(diagnostics, availability({9, 0}), target,
-                           function->abi_preserve_control->range,
-                           ".abi_preserve_control");
+      const size_t resolved_index = function_index++;
+      if (!active_target)
+        continue;
+      check_attributes(function->attributes, *active_target, diagnostics);
+      check_function_directives(
+          function->noreturn_directive, function->abi_preserve,
+          function->abi_preserve_control, *active_target, diagnostics);
       if (function->blocks_are_clusters)
         append_requirement(diagnostics, availability({9, 0}, 0, "cluster"),
-                           target, function->blocks_are_clusters->range,
+                           *active_target, function->blocks_are_clusters->range,
                            ".blocksareclusters");
       if (function->language)
-        append_requirement(diagnostics, availability({9, 3}), target,
+        append_requirement(diagnostics, availability({9, 3}), *active_target,
                            function->language->range, ".language");
       for (const auto& resource : function->resources)
         append_requirement(diagnostics, resource_availability(resource.kind),
-                           target, resource.range,
+                           *active_target, resource.range,
                            resource_name(resource.kind));
-      check_body_directives(function->body, target, diagnostics);
+      check_body_directives(function->body, *active_target, diagnostics);
+      if (resolved_index < module.functions.size()) {
+        size_t instruction_index = 0;
+        check_instruction_body(function->body, module.functions[resolved_index],
+                               *active_target, instruction_index, diagnostics);
+      }
     }
-  }
-
-  size_t function_index = 0;
-  for (const auto& item : ast.items) {
-    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
-    if (function == nullptr)
-      continue;
-    if (function_index >= module.functions.size())
-      break;
-    size_t instruction_index = 0;
-    check_instruction_body(function->body, module.functions[function_index++],
-                           target, instruction_index, diagnostics);
   }
   if (diagnostics.empty())
     return {};

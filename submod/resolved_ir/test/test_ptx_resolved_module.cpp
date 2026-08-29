@@ -5303,6 +5303,107 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
             "Unknown validation target 'sm_123a'.");
 }
 
+TEST(ResolvedModule, AppliesTargetProfilesInSourceOrder) {
+  const auto supported = resolveModule(parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.entry first() { ret; }
+.target sm_90
+.entry cluster() {
+  .reg .u32 %r;
+  { mov.u32 %r, %cluster_ctarank; }
+}
+)ptx"));
+  ASSERT_TRUE(supported.has_value()) << supported.error().front().message;
+  EXPECT_EQ(supported->functions.size(), 2u);
+
+  const auto rejected = resolveModule(parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.entry first() {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+.target sm_80
+.entry cluster() {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+)ptx"));
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().message,
+            "Operand value '%cluster_ctarank' has no matching availability "
+            "clause.");
+}
+
+TEST(ResolvedModule, ClearsUnknownTargetAndKeepsFunctionIndicesAligned) {
+  const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.entry first() {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+.target sm_123a
+.entry skipped() { ret; }
+.target sm_80
+.entry rejected() {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}
+)ptx");
+  const auto rejected = resolveModule(ast);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2u);
+  EXPECT_EQ(rejected.error()[0].message,
+            "Unknown validation target 'sm_123a'.");
+  EXPECT_EQ(rejected.error()[0].range,
+            std::get<syntax_ast::AstTargetDirective>(ast.items[3]).range);
+  EXPECT_EQ(rejected.error()[1].message,
+            "Operand value '%cluster_ctarank' has no matching availability "
+            "clause.");
+}
+
+TEST(ResolvedModule, SharesDirectiveAvailabilityAcrossFunctionsAndPrototypes) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 9.3
+.func alias_fn(.param .u32 input) .noreturn;
+.func target(.param .u32 input) .noreturn .abi_preserve 1 .abi_preserve_control 1 {
+prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
+}
+.alias alias_fn, target;
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  const auto sm30 = checkModuleAvailability(parseModule(R"ptx(
+.version 9.3
+.target sm_30
+.func alias_fn(.param .u32 input) .noreturn;
+.func target(.param .u32 input) .noreturn .abi_preserve 1 .abi_preserve_control 1 {
+prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
+}
+.alias alias_fn, target;
+)ptx"), *resolved);
+  ASSERT_FALSE(sm30.has_value());
+  ASSERT_EQ(sm30.error().size(), 4u);
+  for (const auto& diagnostic : sm30.error()) {
+    EXPECT_EQ(diagnostic.kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+
+  const auto sm80 = checkModuleAvailability(parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.func alias_fn(.param .u32 input) .noreturn;
+.func target(.param .u32 input) .noreturn .abi_preserve 1 .abi_preserve_control 1 {
+prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
+}
+.alias alias_fn, target;
+)ptx"), *resolved);
+  EXPECT_TRUE(sm80.has_value());
+}
+
 TEST(ResolvedModule, ChecksNestedInstructionModuleAvailability) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .version 0.9

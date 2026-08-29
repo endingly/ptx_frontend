@@ -8,6 +8,9 @@ namespace ptx_frontend::base {
 namespace {
 
 constexpr std::array<std::string_view, 0> kNoCapabilities{};
+constexpr std::array<std::string_view, 0> kNoFamilies{};
+constexpr std::array<std::string_view, 1> kSm100fFamilies{"sm_100f"};
+constexpr std::array<std::string_view, 1> kSm120fFamilies{"sm_120f"};
 constexpr std::array<std::string_view, 2> kSm80Capabilities{
     "reserved_smem",
     "graph_exec",
@@ -20,21 +23,22 @@ constexpr std::array<std::string_view, 4> kSm90AndLaterCapabilities{
 };
 
 struct CatalogEntry {
-  TargetArchitecture architecture;
-  TargetFlavor flavor;
+  std::string_view spelling;
+  std::span<const std::string_view> families;
   std::span<const std::string_view> capabilities;
 };
 
 // Keep this an explicit validation allowlist: do not infer profiles by number
 // or flavor suffix from lexically valid target spellings.
 constexpr CatalogEntry kTargetProfiles[]{
-    {{30}, TargetFlavor::Generic, kNoCapabilities},
-    {{80}, TargetFlavor::Generic, kSm80Capabilities},
-    {{90}, TargetFlavor::Generic, kSm90AndLaterCapabilities},
-    {{90}, TargetFlavor::ArchitectureSpecific, kSm90AndLaterCapabilities},
-    {{100}, TargetFlavor::Generic, kSm90AndLaterCapabilities},
-    {{100}, TargetFlavor::ArchitectureSpecific, kSm90AndLaterCapabilities},
-    {{100}, TargetFlavor::FamilySpecific, kSm90AndLaterCapabilities},
+    {"sm_30", kNoFamilies, kNoCapabilities},
+    {"sm_80", kNoFamilies, kSm80Capabilities},
+    {"sm_90", kNoFamilies, kSm90AndLaterCapabilities},
+    {"sm_90a", kNoFamilies, kSm90AndLaterCapabilities},
+    {"sm_100", kNoFamilies, kSm90AndLaterCapabilities},
+    {"sm_100a", kNoFamilies, kSm90AndLaterCapabilities},
+    {"sm_100f", kSm100fFamilies, kSm90AndLaterCapabilities},
+    {"sm_120f", kSm120fFamilies, kSm90AndLaterCapabilities},
 };
 
 }  // namespace
@@ -78,10 +82,10 @@ std::optional<TargetProfile> find_target_profile(std::string_view spelling) {
     return std::nullopt;
 
   for (const CatalogEntry& entry : kTargetProfiles) {
-    if (entry.architecture == identity->architecture &&
-        entry.flavor == identity->flavor) {
+    if (entry.spelling == spelling) {
       return TargetProfile{
           .identity = *identity,
+          .families = entry.families,
           .capabilities = entry.capabilities,
       };
     }

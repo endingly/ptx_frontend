@@ -20,6 +20,15 @@
       "license": "MIT"
     },
     {
+      "path": "corpus/m11/multi_target_profiles.ptx",
+      "sha256": "7361393ac33da767b285c1093554eb8d2f8d8b7f6e35a9965f3c99c7e9cf5efa",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "target": "sm_80",
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
       "path": "corpus/m11/sm100_supported.ptx",
       "sha256": "5c1b5bc95fb56e74d0b7ce38c0acbc128de29169b54d04da9977d8b1dd1dae4c",
       "generator": "project-authored",

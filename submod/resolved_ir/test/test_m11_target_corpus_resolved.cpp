@@ -32,6 +32,7 @@ TEST(ResolvedModule, ResolvesM11MultiGenerationTargetCorpus) {
            "sm80_supported.ptx",
            "sm90a_supported.ptx",
            "sm100_supported.ptx",
+           "multi_target_profiles.ptx",
        }) {
     const auto file = corpus / name;
     SCOPED_TRACE(file.string());
@@ -41,8 +42,12 @@ TEST(ResolvedModule, ResolvesM11MultiGenerationTargetCorpus) {
     EXPECT_TRUE(parsed.diagnostics.empty()) << file;
 
     const auto resolved = resolveModule(*parsed);
-    ASSERT_TRUE(resolved.has_value()) << file;
-    ASSERT_EQ(resolved->functions.size(), 1u);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.error().empty() ? "resolution failed"
+                                     : resolved.error().front().message)
+        << file;
+    ASSERT_EQ(resolved->functions.size(),
+              name == "multi_target_profiles.ptx" ? 3u : 1u);
     EXPECT_FALSE(resolved->functions.front().body.empty());
   }
 }

@@ -80,8 +80,10 @@ bool isVariableStateSpace(TokenKind kind);
 
 bool isKernelResourceDirective(TokenKind kind) {
   return kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMaxntid ||
-         kind == TokenKind::DotReqntid ||
-         kind == TokenKind::DotMinnctapersm;
+         kind == TokenKind::DotReqntid || kind == TokenKind::DotMinnctapersm ||
+         kind == TokenKind::DotReqnctapercluster ||
+         kind == TokenKind::DotExplicitcluster ||
+         kind == TokenKind::DotMaxclusterrank;
 }
 
 bool isFunctionBoundary(TokenKind kind) {
@@ -889,6 +891,15 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers,
                                               "expected variable state space"});
   }
 
+  std::optional<syntax_cst::CstAttributeList> attributes;
+  if (token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".attribute") {
+    auto parsed = parseAttributeList();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    attributes = std::move(*parsed);
+  }
+
   std::optional<TokenId> align_directive;
   std::optional<TokenId> alignment;
   if (token(peek()).kind == TokenKind::DotAlign) {
@@ -1010,6 +1021,7 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers,
   return syntax_cst::CstVariableDeclaration{
       .qualifiers = std::move(qualifiers),
       .state_space = state_space,
+      .attributes = std::move(attributes),
       .align_directive = align_directive,
       .alignment = alignment,
       .vector_type = vector_type,
@@ -1018,6 +1030,73 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers,
       .commas = std::move(commas),
       .semicolon = *semicolon,
       .token_range = {first, *semicolon + 1},
+  };
+}
+
+std::expected<syntax_cst::CstAttributeList, CstParseDiagnostic>
+PtxCstParser::parseAttributeList() {
+  const TokenId directive = consume();
+  const TokenId first = directive;
+  auto left_paren = expect(TokenKind::LParen, "'(' after .attribute");
+  if (!left_paren)
+    return std::unexpected(left_paren.error());
+  std::vector<syntax_cst::CstAttribute> attributes;
+  std::vector<TokenId> commas;
+  for (;;) {
+    auto name = expect(TokenKind::DotIdent, "attribute name");
+    if (!name)
+      return std::unexpected(name.error());
+    if (token(*name).text != ".managed" && token(*name).text != ".unified") {
+      return std::unexpected(CstParseDiagnostic{token(*name).range,
+                                                "unsupported .attribute member"});
+    }
+    std::vector<TokenId> values;
+    std::vector<TokenId> value_commas;
+    TokenId last = *name;
+    if (token(peek()).kind == TokenKind::LParen) {
+      consume();
+      auto first_value = expectIntegerLiteral("attribute integer value");
+      if (!first_value)
+        return std::unexpected(first_value.error());
+      values.push_back(*first_value);
+      auto comma = expect(TokenKind::Comma, "',' in .unified attribute");
+      if (!comma)
+        return std::unexpected(comma.error());
+      value_commas.push_back(*comma);
+      auto second_value = expectIntegerLiteral("attribute integer value");
+      if (!second_value)
+        return std::unexpected(second_value.error());
+      values.push_back(*second_value);
+      auto right = expect(TokenKind::RParen, "')' in .unified attribute");
+      if (!right)
+        return std::unexpected(right.error());
+      last = *right;
+    }
+    if ((token(*name).text == ".managed" && !values.empty()) ||
+        (token(*name).text == ".unified" && values.size() != 2)) {
+      return std::unexpected(CstParseDiagnostic{token(*name).range,
+                                                "invalid .attribute member arity"});
+    }
+    attributes.push_back(syntax_cst::CstAttribute{
+        .name = *name,
+        .values = std::move(values),
+        .commas = std::move(value_commas),
+        .token_range = {*name, last + 1},
+    });
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+  }
+  auto right_paren = expect(TokenKind::RParen, "')' after .attribute");
+  if (!right_paren)
+    return std::unexpected(right_paren.error());
+  return syntax_cst::CstAttributeList{
+      .directive = directive,
+      .left_paren = *left_paren,
+      .attributes = std::move(attributes),
+      .commas = std::move(commas),
+      .right_paren = *right_paren,
+      .token_range = {first, *right_paren + 1},
   };
 }
 
@@ -1461,13 +1540,26 @@ PtxCstParser::parseKernelResourceDirective() {
         token(directive).range, "expected kernel resource directive"});
   }
 
+  if (kind == TokenKind::DotExplicitcluster) {
+    if (token(peek()).kind == TokenKind::Decimal ||
+        token(peek()).kind == TokenKind::Comma) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range, ".explicitcluster does not accept a value"});
+    }
+    return syntax_cst::CstKernelResourceDirective{
+        .directive = directive,
+        .token_range = {directive, directive + 1},
+    };
+  }
+
   auto first = expect(TokenKind::Decimal, "kernel resource value");
   if (!first)
     return std::unexpected(first.error());
   std::vector<TokenId> values{*first};
   std::vector<TokenId> commas;
 
-  if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMinnctapersm) {
+  if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMinnctapersm ||
+      kind == TokenKind::DotMaxclusterrank) {
     if (token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range, "this kernel resource directive accepts one value"});
@@ -1492,6 +1584,56 @@ PtxCstParser::parseKernelResourceDirective() {
       .values = std::move(values),
       .commas = std::move(commas),
       .token_range = {directive, last + 1},
+  };
+}
+
+std::expected<syntax_cst::CstLanguageDirective, CstParseDiagnostic>
+PtxCstParser::parseLanguageDirective() {
+  const TokenId directive = consume();
+  std::vector<TokenId> values;
+  std::vector<TokenId> commas;
+  for (;;) {
+    const TokenKind kind = token(peek()).kind;
+    if (kind != TokenKind::String && kind != TokenKind::Decimal &&
+        kind != TokenKind::Hex) {
+      return std::unexpected(CstParseDiagnostic{
+          token(peek()).range, "expected string or integer in .language"});
+    }
+    values.push_back(consume());
+    if (token(peek()).kind != TokenKind::Comma)
+      break;
+    commas.push_back(consume());
+  }
+  return syntax_cst::CstLanguageDirective{
+      .directive = directive,
+      .values = std::move(values),
+      .commas = std::move(commas),
+      .token_range = {directive, peek()},
+  };
+}
+
+std::expected<syntax_cst::CstAliasDirective, CstParseDiagnostic>
+PtxCstParser::parseAliasDirective() {
+  const TokenId directive = consume();
+  auto alias = expect(TokenKind::Ident, "alias function name");
+  if (!alias)
+    return std::unexpected(alias.error());
+  auto comma = expect(TokenKind::Comma, "',' in .alias");
+  if (!comma)
+    return std::unexpected(comma.error());
+  auto aliasee = expect(TokenKind::Ident, "aliased function name");
+  if (!aliasee)
+    return std::unexpected(aliasee.error());
+  auto semicolon = expect(TokenKind::Semicolon, "';' after .alias");
+  if (!semicolon)
+    return std::unexpected(semicolon.error());
+  return syntax_cst::CstAliasDirective{
+      .directive = directive,
+      .alias = *alias,
+      .comma = *comma,
+      .aliasee = *aliasee,
+      .semicolon = *semicolon,
+      .token_range = {directive, *semicolon + 1},
   };
 }
 
@@ -1806,6 +1948,17 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       header_tokens.push_back(id);
   };
 
+  std::optional<syntax_cst::CstAttributeList> attributes;
+  if (token(directive).kind == TokenKind::DotFunc &&
+      token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".attribute") {
+    auto parsed = parseAttributeList();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    append_range(parsed->token_range);
+    attributes = std::move(*parsed);
+  }
+
   std::optional<syntax_cst::CstFunctionParameterList> return_parameters;
   if (token(directive).kind == TokenKind::DotFunc &&
       token(peek()).kind == TokenKind::LParen) {
@@ -1831,9 +1984,44 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
   }
 
   std::optional<TokenId> noreturn_directive;
-  if (token(peek()).kind == TokenKind::DotNoreturn) {
+  if (token(directive).kind == TokenKind::DotFunc &&
+      token(peek()).kind == TokenKind::DotNoreturn) {
     noreturn_directive = consume();
     header_tokens.push_back(*noreturn_directive);
+  }
+
+  const auto parse_abi_suffix = [this]()
+      -> std::expected<syntax_cst::CstCallPrototypeAbiSuffix,
+                       CstParseDiagnostic> {
+    const TokenId suffix_directive = consume();
+    auto count = expect(TokenKind::Decimal, "ABI preserved register count");
+    if (!count)
+      return std::unexpected(count.error());
+    return syntax_cst::CstCallPrototypeAbiSuffix{
+        .directive = suffix_directive,
+        .count = *count,
+        .token_range = {suffix_directive, *count + 1},
+    };
+  };
+  std::optional<syntax_cst::CstCallPrototypeAbiSuffix> abi_preserve;
+  std::optional<syntax_cst::CstCallPrototypeAbiSuffix> abi_preserve_control;
+  if (token(directive).kind == TokenKind::DotFunc &&
+      token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".abi_preserve") {
+    auto suffix = parse_abi_suffix();
+    if (!suffix)
+      return std::unexpected(suffix.error());
+    append_range(suffix->token_range);
+    abi_preserve = std::move(*suffix);
+  }
+  if (token(directive).kind == TokenKind::DotFunc &&
+      token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".abi_preserve_control") {
+    auto suffix = parse_abi_suffix();
+    if (!suffix)
+      return std::unexpected(suffix.error());
+    append_range(suffix->token_range);
+    abi_preserve_control = std::move(*suffix);
   }
 
   std::vector<syntax_cst::CstPragma> pragmas;
@@ -1863,6 +2051,23 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     }
   }
 
+  std::optional<TokenId> blocks_are_clusters;
+  if (token(directive).kind == TokenKind::DotEntry &&
+      token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".blocksareclusters") {
+    blocks_are_clusters = consume();
+    header_tokens.push_back(*blocks_are_clusters);
+  }
+  std::optional<syntax_cst::CstLanguageDirective> language;
+  if (token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".language") {
+    auto parsed = parseLanguageDirective();
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    append_range(parsed->token_range);
+    language = std::move(*parsed);
+  }
+
   if (token(peek()).kind == TokenKind::Eof) {
     return std::unexpected(CstParseDiagnostic{
         token(peek()).range, "expected function body or prototype terminator"});
@@ -1883,10 +2088,15 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     return syntax_cst::CstFunction{
         .qualifiers = std::move(qualifiers),
         .directive = directive,
+        .attributes = std::move(attributes),
         .return_parameters = std::move(return_parameters),
         .name = *name,
         .parameters = std::move(parameters),
         .noreturn_directive = noreturn_directive,
+        .abi_preserve = std::move(abi_preserve),
+        .abi_preserve_control = std::move(abi_preserve_control),
+        .blocks_are_clusters = blocks_are_clusters,
+        .language = std::move(language),
         .pragmas = std::move(pragmas),
         .resources = std::move(resources),
         .header_tokens = std::move(header_tokens),
@@ -1905,10 +2115,15 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     return syntax_cst::CstFunction{
         .qualifiers = std::move(qualifiers),
         .directive = directive,
+        .attributes = std::move(attributes),
         .return_parameters = std::move(return_parameters),
         .name = *name,
         .parameters = std::move(parameters),
         .noreturn_directive = noreturn_directive,
+        .abi_preserve = std::move(abi_preserve),
+        .abi_preserve_control = std::move(abi_preserve_control),
+        .blocks_are_clusters = blocks_are_clusters,
+        .language = std::move(language),
         .pragmas = std::move(pragmas),
         .resources = std::move(resources),
         .header_tokens = std::move(header_tokens),
@@ -1965,10 +2180,15 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
   return syntax_cst::CstFunction{
       .qualifiers = std::move(qualifiers),
       .directive = directive,
+      .attributes = std::move(attributes),
       .return_parameters = std::move(return_parameters),
       .name = *name,
       .parameters = std::move(parameters),
       .noreturn_directive = noreturn_directive,
+      .abi_preserve = std::move(abi_preserve),
+      .abi_preserve_control = std::move(abi_preserve_control),
+      .blocks_are_clusters = blocks_are_clusters,
+      .language = std::move(language),
       .pragmas = std::move(pragmas),
       .resources = std::move(resources),
       .header_tokens = std::move(header_tokens),
@@ -2022,6 +2242,18 @@ CstParseResult PtxCstParser::parseModule() {
       }
       last = section->token_range.last - 1;
       items.emplace_back(std::move(*section));
+      continue;
+    }
+
+    if (qualifiers.empty() && token(peek()).kind == TokenKind::DotIdent &&
+        token(peek()).text == ".alias") {
+      auto alias = parseAliasDirective();
+      if (!alias) {
+        recover_item(item_first, std::move(alias.error()));
+        continue;
+      }
+      last = alias->token_range.last - 1;
+      items.emplace_back(std::move(*alias));
       continue;
     }
 

@@ -29,6 +29,7 @@ from code_gen.model import (
     OperandVectorTypePolicy,
     VariantSpec,
 )
+from ir.syntax_ast import OPERAND_SYNTAX_SHAPES
 
 
 _MODIFIER_TYPE_EXPR = re.compile(
@@ -49,6 +50,83 @@ _STATE_SPACES = frozenset(
         "generic",
     }
 )
+_AVAILABILITY_TARGET = re.compile(r"sm_([1-9][0-9]*)([af]?)$")
+_AVAILABILITY_FAMILY = re.compile(r"sm_[1-9][0-9]*f$")
+UINT32_MAX = (1 << 32) - 1
+
+
+def validate_availability_sm_version(
+    value: object, *, field: str = "availability SM version"
+) -> int:
+    """Return one SM version representable by the generated C++ descriptors."""
+
+    if type(value) is not int or not 0 <= value <= UINT32_MAX:
+        raise ValueError(f"{field} must be a uint32")
+    return value
+
+
+def parse_availability_target(target: object) -> tuple[int, str]:
+    """Parse an exact availability target into its architecture and flavor."""
+
+    match = _AVAILABILITY_TARGET.fullmatch(target) if isinstance(target, str) else None
+    if match is None:
+        raise ValueError("availability target must be an sm_<number>[a|f] spelling")
+    return validate_availability_sm_version(
+        int(match.group(1)), field="availability target architecture"
+    ), {
+        "": "Generic",
+        "a": "ArchitectureSpecific",
+        "f": "FamilySpecific",
+    }[match.group(2)]
+
+
+def validate_availability_family(family: object) -> str:
+    """Return one YAML minimum family-specific feature target spelling."""
+
+    if not isinstance(family, str) or _AVAILABILITY_FAMILY.fullmatch(family) is None:
+        raise ValueError("availability family must be an sm_<number>f spelling")
+    return family
+
+
+def normalize_availability(raw: object) -> dict[str, Any]:
+    """Validate the legacy availability form or its bounded DNF replacement."""
+
+    if not isinstance(raw, dict):
+        raise TypeError("availability must be an object")
+    if not raw:
+        return {}
+    if "any_of" not in raw:
+        allowed = {"ptx", "sm", "family", "deprecated", "removed", "notes"}
+        if set(raw) - allowed or not set(raw) & {"ptx", "sm", "family"}:
+            raise ValueError("availability must contain a legacy requirement or any_of")
+        if "sm" in raw:
+            validate_availability_sm_version(raw["sm"])
+        if "family" in raw:
+            validate_availability_family(raw["family"])
+        return dict(raw)
+    if set(raw) != {"any_of"}:
+        raise ValueError("any_of availability cannot mix with legacy fields")
+    clauses = raw["any_of"]
+    if not isinstance(clauses, list) or not 1 <= len(clauses) <= 4:
+        raise ValueError("availability any_of must contain one to four clauses")
+    normalized: list[dict[str, Any]] = []
+    for clause in clauses:
+        if not isinstance(clause, dict):
+            raise TypeError("availability any_of clauses must be objects")
+        if set(clause) - {"ptx", "sm", "target", "capabilities"} or not clause:
+            raise ValueError("availability any_of clause has invalid fields")
+        if "sm" in clause:
+            validate_availability_sm_version(clause["sm"])
+        if "target" in clause:
+            parse_availability_target(clause["target"])
+        capabilities = clause.get("capabilities")
+        if capabilities is not None:
+            if (not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 4
+                    or len(capabilities) != len(set(capabilities))
+                    or not all(isinstance(item, str) and item for item in capabilities)):
+                raise ValueError("availability capabilities must be one to four unique names")
+        normalized.append(dict(clause))
+    return {"any_of": normalized}
 
 
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
@@ -58,10 +136,47 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
-    if raw["kind"] == "reg_vector":
+    type_tag = raw.get("type_tag")
+    if raw["kind"] in {"descriptor", "typed_token"}:
+        if (not isinstance(type_tag, str) or
+                re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", type_tag) is None):
+            raise ValueError(f"{raw['kind']} operand requires a lower-snake type_tag")
+    elif type_tag is not None:
+        raise ValueError("type_tag is only valid for descriptor or typed_token operands")
+
+    minimum_elements: int | None = None
+    maximum_elements: int | None = None
+    element_kinds: tuple[str, ...] = ()
+    if raw["kind"] in {"tensor_coordinate", "matrix_fragment"}:
+        cardinality = raw.get("cardinality")
+        if not isinstance(cardinality, dict):
+            raise ValueError(f"{raw['kind']} operand requires cardinality")
+        minimum_elements = cardinality.get("min")
+        maximum_elements = cardinality.get("max")
+        ceiling = 5 if raw["kind"] == "tensor_coordinate" else 64
+        if (type(minimum_elements) is not int or type(maximum_elements) is not int or
+                minimum_elements < 1 or maximum_elements < minimum_elements or
+                maximum_elements > ceiling):
+            raise ValueError(
+                f"{raw['kind']} cardinality must be within 1..{ceiling} with min <= max"
+            )
+        raw_element_kinds = raw.get("element_kinds")
+        if not isinstance(raw_element_kinds, list):
+            raise ValueError(f"{raw['kind']} operand requires element_kinds")
+        element_kinds = tuple(raw_element_kinds)
+        expected_element_kinds = (
+            ("reg", "imm") if raw["kind"] == "tensor_coordinate" else ("reg",)
+        )
+        if set(element_kinds) != set(expected_element_kinds) or len(element_kinds) != len(expected_element_kinds):
+            raise ValueError(
+                f"{raw['kind']} element_kinds must be {expected_element_kinds!r}"
+            )
+    elif raw.get("cardinality") is not None or raw.get("element_kinds") is not None:
+        raise ValueError("cardinality and element_kinds are only valid for brace-pack primitives")
+    if raw["kind"] in {"reg_vector", "vector_reg", "vector_sreg"}:
         vector = raw.get("vector")
         if not isinstance(vector, dict) or "arity" not in vector:
-            raise ValueError("reg_vector operand must declare vector.arity")
+            raise ValueError(f"{raw['kind']} operand must declare vector.arity")
         raw_arities = vector["arity"]
         if isinstance(raw_arities, dict):
             vector_arity_expression = _normalize_operand_vector_arity_expression(
@@ -88,7 +203,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_allow_sink = vector.get("allow_sink", False)
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
-                "reg_vector vector.allow_sink must be a boolean when supplied."
+                f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
             )
 
     type_expression = _normalize_operand_type_expression(raw.get("type"))
@@ -148,6 +263,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_arity_expression=vector_arity_expression,
         vector_type_policy=vector_type_policy,
         vector_allow_sink=vector_allow_sink,
+        type_tag=type_tag,
+        minimum_elements=minimum_elements,
+        maximum_elements=maximum_elements,
+        element_kinds=element_kinds,
     )
 
 
@@ -262,7 +381,7 @@ def _normalize_operand_state_space_values(
             raw_availability = raw_value["availability"]
             if not isinstance(raw_availability, dict):
                 raise TypeError("operand state_space availability must be an object")
-            availability = dict(raw_availability)
+            availability = normalize_availability(raw_availability)
         else:
             raise TypeError(
                 "operand state_space list entries must be strings or value objects"
@@ -300,7 +419,7 @@ def _normalize_operand_parameter_constraint(
         raise TypeError("parameter function_availability must be an object")
     return OperandParameterConstraint(
         direction=direction,
-        function_availability=dict(availability),
+        function_availability=normalize_availability(availability),
     )
 
 
@@ -424,7 +543,7 @@ def _normalize_modifier_values(
         if isinstance(raw_value, dict):
             raw_semantic_value = raw_value["value"]
             token = raw_value.get("token")
-            availability = dict(raw_value.get("availability", {}))
+            availability = normalize_availability(raw_value.get("availability", {}))
         else:
             raw_semantic_value = raw_value
             token = None
@@ -544,12 +663,81 @@ def normalize_operand_layouts(
                 name=name,
                 operands=operands,
                 kind=kind,
-                availability=dict(raw_layout.get("availability", {})),
+                availability=normalize_availability(raw_layout.get("availability", {})),
             )
         )
     if not layouts:
         raise ValueError(f"variant {raw_variant['name']!r} has no operand layouts")
-    return tuple(layouts)
+    normalized_layouts = tuple(layouts)
+    _validate_flat_operand_layout_ordering(raw_variant["name"], normalized_layouts)
+    return normalized_layouts
+
+
+def _modern_pack_interval(operand: OperandSpec) -> tuple[int, int] | None:
+    if operand.minimum_elements is None:
+        return None
+    return operand.minimum_elements, operand.maximum_elements
+
+
+def _flat_slot_overlap(left: OperandSpec, right: OperandSpec) -> bool:
+    if not (OPERAND_SYNTAX_SHAPES[left.kind] & OPERAND_SYNTAX_SHAPES[right.kind]):
+        return False
+    left_interval = _modern_pack_interval(left)
+    right_interval = _modern_pack_interval(right)
+    if left_interval is None and right_interval is None:
+        return True
+    if left_interval is not None and right_interval is not None:
+        if max(left_interval[0], right_interval[0]) > min(left_interval[1], right_interval[1]):
+            return False
+        return bool(set(left.element_kinds) & set(right.element_kinds))
+    return True
+
+
+def _flat_slot_is_subset(candidate: OperandSpec, other: OperandSpec) -> bool:
+    candidate_shapes = OPERAND_SYNTAX_SHAPES[candidate.kind]
+    other_shapes = OPERAND_SYNTAX_SHAPES[other.kind]
+    if (candidate_shapes & other_shapes) != candidate_shapes:
+        return False
+    candidate_interval = _modern_pack_interval(candidate)
+    other_interval = _modern_pack_interval(other)
+    if candidate_interval is None:
+        return other_interval is None
+    if other_interval is None:
+        return True
+    return (
+        candidate_interval[0] >= other_interval[0]
+        and candidate_interval[1] <= other_interval[1]
+        and set(candidate.element_kinds) <= set(other.element_kinds)
+    )
+
+
+def _validate_flat_operand_layout_ordering(
+    variant_name: str, layouts: tuple[OperandLayoutSpec, ...]
+) -> None:
+    flat_layouts = tuple(layout for layout in layouts if layout.kind is OperandLayoutKind.FLAT)
+    for left_index, left in enumerate(flat_layouts):
+        for right in flat_layouts[left_index + 1:]:
+            if len(left.operands) != len(right.operands):
+                continue
+            if not all(
+                _flat_slot_overlap(left_operand, right_operand)
+                for left_operand, right_operand in zip(left.operands, right.operands, strict=True)
+            ):
+                continue
+            left_subset = all(
+                _flat_slot_is_subset(left_operand, right_operand)
+                for left_operand, right_operand in zip(left.operands, right.operands, strict=True)
+            )
+            right_subset = all(
+                _flat_slot_is_subset(right_operand, left_operand)
+                for left_operand, right_operand in zip(left.operands, right.operands, strict=True)
+            )
+            if left_subset == right_subset:
+                raise ValueError(
+                    f"variant {variant_name!r}: flat operand layouts {left.name!r} and "
+                    f"{right.name!r} accept overlapping syntax without a unique "
+                    "most-specific layout"
+                )
 
 
 def _resolve_operands(
@@ -674,7 +862,7 @@ def _normalize_operand_type_compatibilities(
                 values=tuple(raw["values"]),
                 instruction_width=raw["instruction_width"],
                 effective_type=raw["effective_type"],
-                availability=dict(raw["availability"]),
+                availability=normalize_availability(raw["availability"]),
             )
         )
     return tuple(result)
@@ -946,7 +1134,7 @@ def _normalize_memory_vector_constraint(
         type_modifier=raw["type_modifier"],
         vector_operand=raw["vector_operand"],
         address_operand=raw["address_operand"],
-        availability=dict(availability),
+        availability=normalize_availability(availability),
         state_space_modifier=state_space_modifier,
     )
 
@@ -1080,7 +1268,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             variants.append(
                 VariantSpec(
                     name=raw_variant["name"],
-                    availability=raw_variant["availability"],
+                    availability=normalize_availability(raw_variant["availability"]),
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
                     rule=raw_variant.get("rule"),

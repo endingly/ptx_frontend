@@ -1,0 +1,12 @@
+.version 9.3
+.target sm_80
+.address_size 64
+
+.global .attribute(.managed) .u32 m11_managed;
+
+.visible .entry m11_sm80_supported() {
+  .reg .b32 %b;
+  .reg .u64 %rd;
+  mov.b32 %b, %reserved_smem_offset_begin;
+  mov.u64 %rd, %current_graph_exec;
+}

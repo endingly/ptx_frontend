@@ -39,8 +39,10 @@ trees; brace initializers recursively retain every brace level, element, and
 comma. Function qualifiers and the complete token sequence for the supported
 header grammar remain in the CST; the entry/function kind and name are also
 identified explicitly. Entry headers additionally retain typed `.maxnreg`,
-`.maxntid`, `.reqntid`, and `.minnctapersm` constraints: CST retains directive,
-integer values, and commas, while AST retains kind, values, and ranges.
+`.maxntid`, `.reqntid`, `.minnctapersm`, `.reqnctapercluster`,
+`.explicitcluster`, and `.maxclusterrank` constraints: CST retains directive,
+integer values, and commas, while AST retains kind, values, and ranges;
+`.explicitcluster` has no values.
 
 The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
 selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the

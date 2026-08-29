@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -10,6 +11,35 @@ namespace ptx_frontend::resolved_ir::checker {
 namespace {
 
 const SourceRange kInstructionRange{{4, 3}, {4, 17}};
+
+constexpr AvailabilityDescriptor kRejectedDnfAvailability{
+    .any_of = {{
+        {.has_exact_target = true,
+         .exact_target_architecture = {100},
+         .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific,
+         .capabilities = {"tensor"},
+         .capability_count = 1},
+    }},
+    .any_of_count = 1,
+};
+
+Context rejected_dnf_context() {
+  return {
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = 100,
+                 .identity =
+                     base::TargetIdentity{
+                         {100}, base::TargetFlavor::Generic, "sm_100"}},
+      .instruction_range = kInstructionRange,
+  };
+}
+
+void expect_single_unsupported_availability(const CheckResult& result) {
+  ASSERT_FALSE(result.has_value());
+  ASSERT_EQ(result.error().size(), 1u);
+  EXPECT_EQ(result.error().front().kind,
+            CheckDiagnosticKind::UnsupportedAvailability);
+}
 
 constexpr ModifierValueAvailabilityDescriptor kModifierValueAvailabilities[] = {
     {
@@ -48,7 +78,7 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   const Context context{
       .target = {.ptx_version = {9, 2},
                  .sm_version = 120,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = kInstructionRange,
   };
 
@@ -56,6 +86,290 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
 
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
+}
+
+TEST(ResolvedIrChecker, UsesCatalogEnabledFamilyFeaturesForProductionAvailability) {
+  const auto sm120f = base::find_target_profile("sm_120f");
+  ASSERT_TRUE(sm120f.has_value());
+
+  const auto target_info = [](const base::TargetProfile& profile) {
+    return TargetInfo{
+        .ptx_version = {9, 2},
+        .sm_version = profile.identity.architecture.number,
+        .enabled_family_features = profile.enabled_family_features,
+        .identity = profile.identity,
+        .capabilities = profile.capabilities,
+    };
+  };
+  EXPECT_TRUE(is_available(kVariants[0].availability, target_info(*sm120f)));
+  auto without_family = target_info(*sm120f);
+  without_family.enabled_family_features = {};
+  EXPECT_FALSE(is_available(kVariants[0].availability, without_family));
+}
+
+TEST(ResolvedIrChecker, KeepsFamilyFeatureRequirementsDistinctFromExactTargets) {
+  const auto target_info = [](std::string_view spelling) {
+    const auto profile = base::find_target_profile(spelling);
+    EXPECT_TRUE(profile.has_value()) << spelling;
+    if (!profile)
+      return TargetInfo{};
+    return TargetInfo{
+        .ptx_version = {9, 3},
+        .sm_version = profile->identity.architecture.number,
+        .enabled_family_features = profile->enabled_family_features,
+        .identity = profile->identity,
+        .capabilities = profile->capabilities,
+    };
+  };
+  constexpr AvailabilityDescriptor sm100f_family{
+      .minimum_ptx_version = {8, 0},
+      .minimum_sm_version = 100,
+      .required_family = "sm_100f",
+  };
+
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100a")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_100")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_103")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_90a")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_120f")));
+
+  constexpr AvailabilityDescriptor sm103f_family{
+      .minimum_ptx_version = {9, 3},
+      .minimum_sm_version = 103,
+      .required_family = "sm_103f",
+  };
+  EXPECT_TRUE(is_available(sm103f_family, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(sm103f_family, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_100a")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_100f")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_103")));
+  EXPECT_FALSE(is_available(sm103f_family, target_info("sm_120f")));
+
+  constexpr AvailabilityDescriptor exact_sm100a{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {100},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor exact_sm103{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::Generic},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor exact_sm103f{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::FamilySpecific},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor exact_sm103a{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor cluster_capability{
+      .any_of = {{
+          {.capabilities = {"cluster"}, .capability_count = 1},
+      }},
+      .any_of_count = 1,
+  };
+  EXPECT_TRUE(is_available(exact_sm100a, target_info("sm_100a")));
+  EXPECT_FALSE(is_available(exact_sm100a, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(exact_sm103, target_info("sm_103")));
+  EXPECT_FALSE(is_available(exact_sm103, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(exact_sm103, target_info("sm_103a")));
+  EXPECT_FALSE(is_available(exact_sm103f, target_info("sm_103")));
+  EXPECT_TRUE(is_available(exact_sm103f, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(exact_sm103f, target_info("sm_103a")));
+  EXPECT_FALSE(is_available(exact_sm103a, target_info("sm_103")));
+  EXPECT_FALSE(is_available(exact_sm103a, target_info("sm_103f")));
+  EXPECT_TRUE(is_available(exact_sm103a, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(cluster_capability, target_info("sm_100")));
+}
+
+TEST(ResolvedIrChecker, EvaluatesBoundedAvailabilityDnf) {
+  constexpr AvailabilityDescriptor availability{
+      .any_of = {{
+          {.minimum_ptx_version = {9, 0},
+           .minimum_sm_version = 100,
+           .has_exact_target = true,
+           .exact_target_architecture = {100},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific,
+           .capabilities = {"tensor", "cluster"},
+           .capability_count = 2},
+          {.minimum_ptx_version = {9, 2}, .minimum_sm_version = 120},
+      }},
+      .any_of_count = 2,
+  };
+  constexpr std::array<std::string_view, 2> capabilities{"tensor", "cluster"};
+  TargetInfo exact{
+      .ptx_version = {9, 0},
+      .sm_version = 100,
+      .identity =
+          base::TargetIdentity{
+              {100}, base::TargetFlavor::ArchitectureSpecific, "sm_100a"},
+      .capabilities = capabilities,
+  };
+  EXPECT_TRUE(is_available(availability, exact));
+
+  TargetInfo generic = exact;
+  generic.identity =
+      base::TargetIdentity{{100}, base::TargetFlavor::Generic, "sm_100"};
+  EXPECT_FALSE(is_available(availability, generic));
+  generic.identity = base::TargetIdentity{
+      {100}, base::TargetFlavor::FamilySpecific, "sm_100f"};
+  EXPECT_FALSE(is_available(availability, generic));
+
+  TargetInfo missing_capability = exact;
+  constexpr std::array<std::string_view, 1> one_capability{"tensor"};
+  missing_capability.capabilities = one_capability;
+  EXPECT_FALSE(is_available(availability, missing_capability));
+  TargetInfo missing_identity = exact;
+  missing_identity.identity.reset();
+  EXPECT_FALSE(is_available(availability, missing_identity));
+
+  TargetInfo fallback{.ptx_version = {9, 2}, .sm_version = 120};
+  EXPECT_TRUE(is_available(availability, fallback));
+
+  const VariantDescriptor variant{.variant_name = "Dnf",
+                                  .availability = availability};
+  const auto rejected = check_availability(
+      variant,
+      Context{.target = generic, .instruction_range = kInstructionRange});
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedAvailability);
+}
+
+TEST(ResolvedIrChecker, RejectsDnfAtEveryAvailabilityCheckerEntrypoint) {
+  const Context context = rejected_dnf_context();
+
+  static constexpr OperandLayoutDescriptor layouts[] = {{
+      .layout_name = "Dnf",
+      .availability = kRejectedDnfAvailability,
+  }};
+  constexpr VariantDescriptor layout_variant{
+      .variant_name = "Dnf",
+      .operand_layouts = layouts,
+  };
+  expect_single_unsupported_availability(
+      check_operand_layout_availability(layout_variant, 0, context));
+
+  constexpr ModifierValueAvailabilityDescriptor modifier_descriptors[] = {{
+      .kind_id = "flag",
+      .value_kind = ModifierValueKind::Bool,
+      .bool_value = true,
+      .availability = kRejectedDnfAvailability,
+  }};
+  constexpr ModifierValueView modifier_values[] = {{
+      .kind_id = "flag",
+      .value_kind = ModifierValueKind::Bool,
+      .bool_value = true,
+      .is_present = true,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  }};
+  expect_single_unsupported_availability(check_modifier_value_availability(
+      modifier_descriptors, modifier_values, context));
+
+  constexpr OperandDescriptor value_descriptors[] = {{
+      .target_field_id = "value",
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Register,
+  }};
+  const OperandView value_operand{
+      .field_id = "value",
+      .actual_shape = OperandShape::Register,
+      .value_availability = kRejectedDnfAvailability,
+      .value_name = "late_value",
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  expect_single_unsupported_availability(check_operands(
+      value_descriptors, {}, std::span{&value_operand, 1}, {}, context));
+
+  static constexpr AddressStateSpaceDescriptor state_spaces[] = {{
+      .state_space = MemoryStateSpace::Global,
+      .availability = kRejectedDnfAvailability,
+  }};
+  constexpr OperandDescriptor state_descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .allowed_address_state_spaces = state_spaces,
+  }};
+  const OperandView state_operand{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Global,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  expect_single_unsupported_availability(check_operands(
+      state_descriptors, {}, std::span{&state_operand, 1}, {}, context));
+
+  constexpr OperandDescriptor parameter_descriptors[] = {{
+      .target_field_id = "address",
+      .role = OperandRole::Address,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Address,
+      .state_space_modifier_field_id = "state_space",
+      .parameter_constraint =
+          {
+              .direction = ParameterDirection::Input,
+              .function_availability = kRejectedDnfAvailability,
+          },
+  }};
+  constexpr FieldView parameter_fields[] = {{
+      .field_id = "state_space",
+      .memory_state_space = MemoryStateSpace::Parameter,
+  }};
+  const OperandView parameter_operand{
+      .field_id = "address",
+      .actual_shape = OperandShape::Address,
+      .address_state_space = MemoryStateSpace::Parameter,
+      .enclosing_function_kind = EnclosingFunctionKind::Device,
+      .parameter_direction = ParameterDirection::Input,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  expect_single_unsupported_availability(
+      check_operands(parameter_descriptors, parameter_fields,
+                     std::span{&parameter_operand, 1}, {}, context));
+
+  constexpr VariantDescriptor::MemoryVectorDescriptor memory_vector{
+      .type_field_id = "type",
+      .vector_field_id = "vector",
+      .address_field_id = "address",
+      .availability = kRejectedDnfAvailability,
+  };
+  constexpr FieldView vector_fields[] = {{
+      .field_id = "type",
+      .scalar_type = ScalarType::U32,
+  }};
+  const OperandView vector_operands[] = {
+      {.field_id = "vector",
+       .actual_shape = OperandShape::Vector,
+       .vector_arity = 8,
+       .locations = std::span<const SourceRange>{&kInstructionRange, 1}},
+      {.field_id = "address",
+       .actual_shape = OperandShape::Address,
+       .locations = std::span<const SourceRange>{&kInstructionRange, 1}},
+  };
+  expect_single_unsupported_availability(check_memory_vector(
+      memory_vector, vector_fields, vector_operands, context));
 }
 
 TEST(ResolvedIrChecker, ChecksGeneratedBareRetAvailability) {
@@ -467,7 +781,7 @@ TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   const Context context{
       .target = {.ptx_version = {9, 1},
                  .sm_version = 100,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = kInstructionRange,
   };
 
@@ -779,6 +1093,102 @@ TEST(ResolvedIrChecker, ChecksDynamicVectorArityAndElementPolicy) {
             CheckDiagnosticKind::MissingVectorArityField);
 }
 
+TEST(ResolvedIrChecker, ChecksModernBracePackCardinalityAndElementShapes) {
+  constexpr OperandDescriptor tensor[] = {{
+      .target_field_id = "coordinate",
+      .type_expression = {.kind = OperandTypeExpressionKind::None},
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Vector,
+      .minimum_elements = 1,
+      .maximum_elements = 5,
+      .allowed_element_shapes = OperandShape::Register | OperandShape::Immediate,
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView coordinate{
+      .field_id = "coordinate",
+      .actual_shape = OperandShape::Vector,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const auto check_tensor = [&] {
+    return check_operands(tensor, {}, std::span<const OperandView>{&coordinate, 1},
+                          {}, context);
+  };
+
+  auto rejected = check_tensor();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind, CheckDiagnosticKind::InvalidVectorOperand);
+
+  coordinate.vector_arity = 6;
+  rejected = check_tensor();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind, CheckDiagnosticKind::InvalidVectorOperand);
+
+  for (uint8_t arity = 1; arity <= 5; ++arity) {
+    coordinate.vector_arity = arity;
+    coordinate.vector_element_shapes.fill(OperandShape::Register);
+    if (arity > 1)
+      coordinate.vector_element_shapes[1] = OperandShape::Immediate;
+    EXPECT_TRUE(check_tensor().has_value()) << "arity " << unsigned{arity};
+  }
+
+  coordinate.vector_arity = 1;
+  coordinate.vector_element_shapes.fill(OperandShape::Address);
+  rejected = check_tensor();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedOperandShape);
+}
+
+TEST(ResolvedIrChecker, ChecksModernMatrixFragmentShapes) {
+  constexpr OperandDescriptor matrix[] = {{
+      .target_field_id = "fragment",
+      .type_expression = {.kind = OperandTypeExpressionKind::None},
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Vector,
+      .minimum_elements = 1,
+      .maximum_elements = 64,
+      .allowed_element_shapes = OperandShape::Register,
+  }};
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  OperandView fragment{
+      .field_id = "fragment",
+      .actual_shape = OperandShape::Vector,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const auto check_matrix = [&] {
+    return check_operands(matrix, {}, std::span<const OperandView>{&fragment, 1},
+                          {}, context);
+  };
+
+  fragment.vector_arity = 1;
+  fragment.vector_element_shapes.fill(OperandShape::Register);
+  EXPECT_TRUE(check_matrix().has_value());
+
+  fragment.vector_arity = 64;
+  EXPECT_TRUE(check_matrix().has_value());
+
+  fragment.vector_arity = 65;
+  auto rejected = check_matrix();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind, CheckDiagnosticKind::InvalidVectorOperand);
+
+  fragment.vector_arity = 1;
+  fragment.vector_element_shapes.fill(OperandShape::Immediate);
+  rejected = check_matrix();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedOperandShape);
+
+  fragment.vector_element_shapes.fill(OperandShape{});
+  fragment.vector_sink_count = 1;
+  rejected = check_matrix();
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedOperandShape);
+}
+
 TEST(ResolvedIrChecker, RejectsOverwideVectorOperandPayload) {
   const std::array<uint8_t, 3> allowed_vector_arities = {2, 4, 8};
   const OperandDescriptor descriptors[] = {{
@@ -916,7 +1326,7 @@ TEST(ResolvedIrChecker, ChecksStaticAddressStateSpaceAvailability) {
   auto supported_context = old_context;
   supported_context.target.ptx_version = {3, 1};
   supported_context.target.sm_version = 30;
-  supported_context.target.families = families;
+  supported_context.target.enabled_family_features = families;
   EXPECT_TRUE(check_operands(descriptors, {}, operands, {}, supported_context)
                   .has_value());
 }
@@ -1057,7 +1467,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
   const Context unsupported_context{
       .target = {.ptx_version = {9, 1},
                  .sm_version = 100,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = ast->range,
   };
 
@@ -1072,7 +1482,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
   const Context supported_context{
       .target = {.ptx_version = {9, 2},
                  .sm_version = 120,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = ast->range,
   };
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
@@ -1089,7 +1499,8 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
 
   constexpr std::array<std::string_view, 1> family{"sm_120f"};
   const Context unsupported_context{
-      .target = {.ptx_version = {9, 1}, .sm_version = 100, .families = family},
+      .target = {.ptx_version = {9, 1}, .sm_version = 100,
+                 .enabled_family_features = family},
       .instruction_range = ast->range,
   };
   const auto unsupported = check(*resolved, unsupported_context);
@@ -1101,7 +1512,8 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
             CheckDiagnosticKind::UnsupportedSmVersion);
 
   const Context supported_context{
-      .target = {.ptx_version = {9, 2}, .sm_version = 120, .families = family},
+      .target = {.ptx_version = {9, 2}, .sm_version = 120,
+                 .enabled_family_features = family},
       .instruction_range = ast->range,
   };
   EXPECT_TRUE(check(*resolved, supported_context).has_value());
@@ -1146,7 +1558,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   const Context old_sat_target{
       .target = {.ptx_version = {9, 1},
                  .sm_version = 100,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = sat_ast->range,
   };
   const auto unsupported_sat = check(*sat, old_sat_target);
@@ -1160,7 +1572,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
   const Context supported_sat_target{
       .target = {.ptx_version = {9, 2},
                  .sm_version = 120,
-                 .families = families},
+                 .enabled_family_features = families},
       .instruction_range = sat_ast->range,
   };
   EXPECT_TRUE(check(*sat, supported_sat_target).has_value());

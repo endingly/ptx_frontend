@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PTX opcode coverage manifest
+type: object
+additionalProperties: false
+required: [schema, version, opcodes]
+properties:
+  schema:
+    const: ptx-opcode-coverage/v2
+  version:
+    const: 2
+  opcodes:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [opcode, status, slices]
+      properties:
+        opcode:
+          type: string
+          pattern: ^[a-z][a-z0-9_]*$
+        status:
+          $ref: "#/$defs/layer_status"
+        m9_issues:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^M9-I(0[3-9]|1[0-9]|2[0-4])$
+        slices:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, section, spec_variant, operand_layout, selector, status, disposition]
+            properties:
+              id:
+                type: string
+                pattern: ^[a-z][a-z0-9-]*$
+              section:
+                type: string
+                pattern: ^9\.7(?:\.[0-9]+)+$
+              spec_variant:
+                type: string
+                pattern: ^[a-z][a-z0-9_]*$
+              operand_layout:
+                type: string
+                pattern: ^[a-z][a-z0-9_]*$
+              disposition:
+                enum: [implemented, planned, deferred, out_of_scope, paused]
+              reason:
+                type: string
+                pattern: \S
+              milestone:
+                type: string
+                pattern: \S
+              selector:
+                type: object
+                additionalProperties: false
+                required: [topology, types, shape]
+                properties:
+                  topology:
+                    type: string
+                    pattern: ^[a-z][a-z0-9_-]*$
+                  types:
+                    type: array
+                    uniqueItems: true
+                    items:
+                      type: string
+                      pattern: ^[a-z][a-z0-9_]*$
+                  shape:
+                    type: string
+                    pattern: ^[a-z][a-z0-9_-]*$
+                  modifiers:
+                    type: array
+                    minItems: 1
+                    uniqueItems: true
+                    items:
+                      type: string
+                      pattern: ^[a-z][a-z0-9_:-]*$
+                  state_space:
+                    type: array
+                    minItems: 1
+                    uniqueItems: true
+                    items:
+                      type: string
+                      pattern: ^[a-z][a-z0-9_:]*$
+              status:
+                $ref: "#/$defs/layer_status"
+            allOf:
+              - if:
+                  properties:
+                    disposition:
+                      const: implemented
+                then:
+                  not:
+                    anyOf:
+                      - required: [reason]
+                      - required: [milestone]
+                else:
+                  required: [reason, milestone]
+$defs:
+  coverage_status:
+    type: string
+    enum: [unsupported, partial, supported]
+  layer_status:
+    type: object
+    additionalProperties: false
+    required: [syntax, resolved, checker, simulator]
+    properties:
+      syntax:
+        $ref: "#/$defs/coverage_status"
+      resolved:
+        $ref: "#/$defs/coverage_status"
+      checker:
+        $ref: "#/$defs/coverage_status"
+      simulator:
+        $ref: "#/$defs/coverage_status"

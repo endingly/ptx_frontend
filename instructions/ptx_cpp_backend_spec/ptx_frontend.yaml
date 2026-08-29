@@ -189,13 +189,20 @@ domains:
       reg_or_imm: RegOrImm
       shfl_dest: ResolvedShflSyncDestination
       mov_scalar_src: ResolvedMovSource
+      vector_reg: ResolvedVectorRegisterRef
+      vector_sreg: ResolvedVectorSpecialRegisterRef
       pred: ResolvedPredicate
+      pred_or_sreg: ResolvedPredicateSource
       pred_or_not: ResolvedPredicate
       label: ResolvedBranchTarget
       sreg: ResolvedSpecialRegisterRef
       symbol: ResolvedSymbolRef
       addr: ResolvedAddress
       reg_vector: ResolvedRegisterVector
+      descriptor: ResolvedRegisterRef
+      typed_token: ResolvedRegisterRef
+      tensor_coordinate: ResolvedTensorCoordinate
+      matrix_fragment: ResolvedRegisterVector
       direct_call_target: ResolvedFunctionRef
       indirect_call_target: ResolvedIndirectCallee
       indirect_call_metadata: ResolvedIndirectCallee
@@ -219,15 +226,19 @@ domains:
       MemoryStateSpace: MemoryStateSpace
       Register: ResolvedRegisterRef
       Predicate: ResolvedPredicate
+      PredicateSource: ResolvedPredicateSource
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
       ShflDestination: ResolvedShflSyncDestination
       MovSource: ResolvedMovSource
+      VectorRegister: ResolvedVectorRegisterRef
+      VectorSpecialRegister: ResolvedVectorSpecialRegisterRef
       BranchTarget: ResolvedBranchTarget
       SpecialRegister: ResolvedSpecialRegisterRef
       Symbol: ResolvedSymbolRef
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
+      TensorCoordinate: ResolvedTensorCoordinate
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
       BranchTargetSet: ResolvedBranchTargetSet
@@ -291,15 +302,19 @@ domains:
       MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
       Register: check_end::ResolvedValueKind::Register
       Predicate: check_end::ResolvedValueKind::Predicate
+      PredicateSource: check_end::ResolvedValueKind::PredicateSource
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
       MovSource: check_end::ResolvedValueKind::MovSource
+      VectorRegister: check_end::ResolvedValueKind::VectorRegister
+      VectorSpecialRegister: check_end::ResolvedValueKind::VectorSpecialRegister
       BranchTarget: check_end::ResolvedValueKind::BranchTarget
       SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
       Symbol: check_end::ResolvedValueKind::Symbol
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
+      TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
       BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet

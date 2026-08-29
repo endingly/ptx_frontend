@@ -155,6 +155,7 @@ $defs:
     description: "Numeric SM architecture version."
     type: integer
     minimum: 0
+    maximum: 4294967295
     examples:
       - 0
       - 20
@@ -166,17 +167,17 @@ $defs:
       - 100
       - 120
 
-  arch_family:
+  family_feature_target:
     description: >
-      Architecture family marker, for example sm_90a or sm_120f.
-      Use this when a PTX feature is architecture-family-specific rather than
-      merely SM-version-specific.
+      Minimum family-specific source feature target level enabled by the
+      current .target profile, for example sm_100f or sm_103f. This does not
+      describe PTX-to-physical-GPU translation compatibility. Use
+      any_of.target for an exact target requirement.
     type: string
-    pattern: "^sm_[0-9]+[a-z]?$"
+    pattern: "^sm_[1-9][0-9]*f$"
     examples:
-      - sm_90a
-      - sm_100a
-      - sm_120f
+      - sm_100f
+      - sm_103f
 
   doc_section:
     type: string
@@ -626,6 +627,7 @@ $defs:
     enum:
       - reg
       - pred
+      - pred_or_sreg
       - pred_or_not
       - sreg
       - addr
@@ -638,6 +640,8 @@ $defs:
       - reg_or_imm
       - shfl_dest
       - mov_scalar_src
+      - vector_reg
+      - vector_sreg
       - reg_vector
       - direct_call_target
       - indirect_call_target
@@ -651,8 +655,10 @@ $defs:
       - operand_list
       - vector
       - tuple
+      - tensor_coordinate
       - matrix_fragment
       - descriptor
+      - typed_token
 
       - optional_reg
       - optional_pred
@@ -765,6 +771,30 @@ $defs:
       vector:
         $ref: "#/$defs/vector_spec"
 
+      type_tag:
+        description: >
+          Stable lower-snake semantic domain tag for descriptor and typed-token
+          operands. This is descriptor metadata, not a PTX spelling.
+        type: string
+        pattern: "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+
+      cardinality:
+        $ref: "#/$defs/operand_cardinality"
+
+      element_kinds:
+        description: >
+          Source element shapes accepted by a modern brace-pack primitive.
+          tensor_coordinate admits register and immediate; matrix_fragment
+          admits register only.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          enum:
+            - reg
+            - imm
+
       optional:
         type: boolean
         default: false
@@ -790,6 +820,122 @@ $defs:
 
       description:
         type: string
+
+    allOf:
+      - if:
+          properties:
+            kind:
+              enum:
+                - descriptor
+                - typed_token
+          required:
+            - kind
+        then:
+          required:
+            - type_tag
+          not:
+            anyOf:
+              - required:
+                  - cardinality
+              - required:
+                  - element_kinds
+
+      - if:
+          properties:
+            kind:
+              not:
+                enum:
+                  - descriptor
+                  - typed_token
+          required:
+            - kind
+        then:
+          not:
+            required:
+              - type_tag
+
+      - if:
+          properties:
+            kind:
+              not:
+                enum:
+                  - tensor_coordinate
+                  - matrix_fragment
+          required:
+            - kind
+        then:
+          not:
+            anyOf:
+              - required:
+                  - cardinality
+              - required:
+                  - element_kinds
+
+      - if:
+          properties:
+            kind:
+              const: tensor_coordinate
+          required:
+            - kind
+        then:
+          required:
+            - cardinality
+            - element_kinds
+          properties:
+            cardinality:
+              properties:
+                max:
+                  maximum: 5
+            element_kinds:
+              minItems: 2
+              maxItems: 2
+              allOf:
+                - contains:
+                    const: reg
+                - contains:
+                    const: imm
+          not:
+            required:
+              - vector
+
+      - if:
+          properties:
+            kind:
+              const: matrix_fragment
+          required:
+            - kind
+        then:
+          required:
+            - cardinality
+            - element_kinds
+          properties:
+            cardinality:
+              properties:
+                max:
+                  maximum: 64
+            element_kinds:
+              minItems: 1
+              maxItems: 1
+              items:
+                const: reg
+          not:
+            required:
+              - vector
+
+  operand_cardinality:
+    description: "Inclusive variable brace-pack cardinality."
+    type: object
+    additionalProperties: false
+    required:
+      - min
+      - max
+    properties:
+      min:
+        type: integer
+        minimum: 1
+      max:
+        type: integer
+        minimum: 1
 
   vector_spec:
     description: "Vector, tuple, or matrix fragment operand shape."
@@ -939,37 +1085,62 @@ $defs:
     description: >
       PTX/SM availability constraints for a variant, layout, modifier value,
       or operand state-space entry.
-    type: object
-    additionalProperties: false
-
-    properties:
-      ptx:
-        $ref: "#/$defs/ptx_version"
-
-      sm:
-        $ref: "#/$defs/sm_version"
-
-      family:
-        $ref: "#/$defs/arch_family"
-
-      deprecated:
-        type: boolean
-        default: false
-
-      removed:
-        type: boolean
-        default: false
-
-      notes:
-        type: string
-
-    anyOf:
-      - required:
-          - ptx
-      - required:
-          - sm
-      - required:
-          - family
+    oneOf:
+      - type: object
+        additionalProperties: false
+        properties:
+          ptx:
+            $ref: "#/$defs/ptx_version"
+          sm:
+            $ref: "#/$defs/sm_version"
+          family:
+            description: >
+              Minimum family-specific source feature target required from the
+              current .target profile's enabled_family_features.
+            $ref: "#/$defs/family_feature_target"
+          deprecated:
+            type: boolean
+            default: false
+          removed:
+            type: boolean
+            default: false
+          notes:
+            type: string
+        anyOf:
+          - required: [ptx]
+          - required: [sm]
+          - required: [family]
+      - type: object
+        additionalProperties: false
+        required: [any_of]
+        properties:
+          any_of:
+            type: array
+            minItems: 1
+            maxItems: 4
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                ptx:
+                  $ref: "#/$defs/ptx_version"
+                sm:
+                  $ref: "#/$defs/sm_version"
+                target:
+                  type: string
+                  pattern: "^sm_[1-9][0-9]*(a|f)?$"
+                capabilities:
+                  type: array
+                  minItems: 1
+                  maxItems: 4
+                  uniqueItems: true
+                  items:
+                    $ref: "#/$defs/schema_identifier"
+              anyOf:
+                - required: [ptx]
+                - required: [sm]
+                - required: [target]
+                - required: [capabilities]
 
   semantic_rule:
     description: >

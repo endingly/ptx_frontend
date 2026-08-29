@@ -357,6 +357,29 @@ syntax_ast::AstStateSpace lowerStateSpace(TokenKind kind) {
   }
 }
 
+std::vector<syntax_ast::AstAttribute> lowerAttributes(
+    const syntax_cst::CstFile& cst,
+    const std::optional<syntax_cst::CstAttributeList>& list) {
+  std::vector<syntax_ast::AstAttribute> attributes;
+  if (!list)
+    return attributes;
+  attributes.reserve(list->attributes.size());
+  for (const auto& attribute : list->attributes) {
+    std::vector<syntax_ast::AstSyntax> values;
+    values.reserve(attribute.values.size());
+    for (const auto value : attribute.values)
+      values.push_back(leafSyntax(cst, value));
+    attributes.push_back(syntax_ast::AstAttribute{
+        .kind = cst.token(attribute.name).text == ".managed"
+                    ? syntax_ast::AstAttributeKind::Managed
+                    : syntax_ast::AstAttributeKind::Unified,
+        .values = std::move(values),
+        .range = cst.sourceRange(attribute.token_range),
+    });
+  }
+  return attributes;
+}
+
 syntax_ast::AstVariableDeclaration lowerVariableDeclaration(
     const syntax_cst::CstFile& cst,
     const syntax_cst::CstVariableDeclaration& declaration) {
@@ -371,6 +394,8 @@ syntax_ast::AstVariableDeclaration lowerVariableDeclaration(
   std::optional<syntax_ast::AstSyntax> vector_type;
   if (declaration.vector_type)
     vector_type = leafSyntax(cst, *declaration.vector_type);
+
+  auto attributes = lowerAttributes(cst, declaration.attributes);
 
   std::vector<syntax_ast::AstVariableDeclarator> declarators;
   declarators.reserve(declaration.declarators.size());
@@ -405,6 +430,7 @@ syntax_ast::AstVariableDeclaration lowerVariableDeclaration(
   return syntax_ast::AstVariableDeclaration{
       .qualifiers = std::move(qualifiers),
       .state_space = lowerStateSpace(cst.token(declaration.state_space).kind),
+      .attributes = std::move(attributes),
       .alignment = std::move(alignment),
       .vector_type = std::move(vector_type),
       .type = leafSyntax(cst, declaration.type),
@@ -575,6 +601,15 @@ syntax_ast::AstKernelResourceDirective lowerKernelResourceDirective(
       break;
     case TokenKind::DotMinnctapersm:
       kind = syntax_ast::AstKernelResourceKind::MinNctaPerSm;
+      break;
+    case TokenKind::DotReqnctapercluster:
+      kind = syntax_ast::AstKernelResourceKind::ReqNctaPerCluster;
+      break;
+    case TokenKind::DotExplicitcluster:
+      kind = syntax_ast::AstKernelResourceKind::ExplicitCluster;
+      break;
+    case TokenKind::DotMaxclusterrank:
+      kind = syntax_ast::AstKernelResourceKind::MaxClusterRank;
       break;
     default:
       throw std::logic_error("invalid kernel resource directive in CST");
@@ -758,15 +793,36 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
       continue;
     }
 
+    if (const auto* alias = std::get_if<syntax_cst::CstAliasDirective>(&item)) {
+      ast.items.emplace_back(syntax_ast::AstAliasDirective{
+          .alias = lowerIdentifier(cst, {alias->alias}),
+          .aliasee = lowerIdentifier(cst, {alias->aliasee}),
+          .range = cst.sourceRange(alias->token_range),
+      });
+      continue;
+    }
+
     const auto& function = std::get<syntax_cst::CstFunction>(item);
     syntax_ast::AstFunction lowered{
         .is_entry = cst.token(function.directive).kind == TokenKind::DotEntry,
         .is_prototype = function.terminator.has_value(),
         .is_noreturn = function.noreturn_directive.has_value(),
         .qualifiers = {},
+        .attributes = lowerAttributes(cst, function.attributes),
         .name = lowerIdentifier(cst, {function.name}),
         .return_parameters = {},
         .parameters = {},
+        .noreturn_directive = function.noreturn_directive
+                                 ? std::optional{leafSyntax(
+                                       cst, *function.noreturn_directive)}
+                                 : std::nullopt,
+        .abi_preserve = std::nullopt,
+        .abi_preserve_control = std::nullopt,
+        .blocks_are_clusters = function.blocks_are_clusters
+                                   ? std::optional{leafSyntax(
+                                         cst, *function.blocks_are_clusters)}
+                                   : std::nullopt,
+        .language = std::nullopt,
         .pragmas = {},
         .resources = {},
         .body = {},
@@ -775,6 +831,30 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
     lowered.qualifiers.reserve(function.qualifiers.size());
     for (const auto qualifier : function.qualifiers)
       lowered.qualifiers.push_back(leafSyntax(cst, qualifier));
+    const auto lower_suffix = [&cst](
+                                  const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>&
+                                      suffix)
+        -> std::optional<syntax_ast::AstCallPrototypeAbiSuffix> {
+      if (!suffix)
+        return std::nullopt;
+      return syntax_ast::AstCallPrototypeAbiSuffix{
+          .directive = leafSyntax(cst, suffix->directive),
+          .count = leafSyntax(cst, suffix->count),
+          .range = cst.sourceRange(suffix->token_range),
+      };
+    };
+    lowered.abi_preserve = lower_suffix(function.abi_preserve);
+    lowered.abi_preserve_control = lower_suffix(function.abi_preserve_control);
+    if (function.language) {
+      std::vector<syntax_ast::AstSyntax> values;
+      values.reserve(function.language->values.size());
+      for (const auto value : function.language->values)
+        values.push_back(leafSyntax(cst, value));
+      lowered.language = syntax_ast::AstLanguageDirective{
+          .values = std::move(values),
+          .range = cst.sourceRange(function.language->token_range),
+      };
+    }
     if (function.return_parameters) {
       lowered.return_parameters.reserve(
           function.return_parameters->parameters.size());

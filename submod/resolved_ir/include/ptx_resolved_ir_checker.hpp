@@ -16,6 +16,7 @@
 
 #include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
+#include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -157,11 +158,29 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 
+inline constexpr size_t kMaxAvailabilityClauses = 4;
+inline constexpr size_t kMaxAvailabilityCapabilities = 4;
+
+/** One AND-clause in a bounded generated availability expression. */
+struct AvailabilityClause {
+  PtxVersion minimum_ptx_version{};
+  uint32_t minimum_sm_version = 0;
+  bool has_exact_target = false;
+  base::TargetArchitecture exact_target_architecture{};
+  base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
+  // ponytail: fixed DNF capacity; raise schema and this bound together if needed.
+  std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
+  uint8_t capability_count = 0;
+};
+
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
+  // YAML `family`: minimum family-specific feature target.
   std::string_view required_family{};
+  std::array<AvailabilityClause, kMaxAvailabilityClauses> any_of{};
+  uint8_t any_of_count = 0;
 };
 
 /**
@@ -205,6 +224,8 @@ enum class VectorTypePolicy : uint8_t {
 
 /** Maximum resolved register-vector payload width supported by this frontend. */
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
+/** Maximum element count accepted by schema-defined modern brace packs. */
+inline constexpr size_t kMaxOperandElements = 64;
 
 /** Semantic constraints for one operand position in a resolved layout. */
 struct OperandDescriptor {
@@ -220,6 +241,13 @@ struct OperandDescriptor {
   std::string_view vector_arity_modifier_field_id{};
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
+  /** Stable descriptor/token domain tag; empty for ordinary operands. */
+  std::string_view type_tag{};
+  /** Inclusive brace-pack bounds; zero means this is not a variable pack. */
+  uint8_t minimum_elements = 0;
+  uint8_t maximum_elements = 0;
+  /** Source shapes allowed within a modern brace-pack primitive. */
+  OperandShape allowed_element_shapes{};
   /** Static effective-address allowlist; empty means no static restriction. */
   std::span<const AddressStateSpaceDescriptor> allowed_address_state_spaces;
   /** Resolved modifier field supplying an explicit address-space constraint. */
@@ -273,7 +301,9 @@ struct OperandView {
   ParameterDirection parameter_direction = ParameterDirection::None;
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
-  std::array<ScalarType, 8> vector_element_types{};
+  std::array<ScalarType, kMaxOperandElements> vector_element_types{};
+  /** Per-element source shape for variable modern brace packs. */
+  std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
   uint8_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
   std::optional<AvailabilityDescriptor> value_availability;
@@ -284,14 +314,17 @@ struct OperandView {
 /**
  * The target properties relevant to instruction availability checks.
  *
- * ``families`` is borrowed: the caller owns the underlying strings for the
- * duration of the check.  Keeping the ABI view-only also lets one target
- * advertise more than one compatible family in the future.
+ * ``enabled_family_features`` is borrowed from the target profile's enabled
+ * family feature levels: the caller owns the underlying strings for the
+ * duration of the check. Keeping the ABI view-only also lets one target
+ * advertise more than one enabled feature level.
  */
 struct TargetInfo {
   PtxVersion ptx_version{};
   uint32_t sm_version = 0;
-  std::span<const std::string_view> families{};
+  std::span<const std::string_view> enabled_family_features{};
+  std::optional<base::TargetIdentity> identity;
+  std::span<const std::string_view> capabilities{};
 };
 
 /** Additional target requirements for one selected operand layout. */
@@ -409,9 +442,11 @@ struct InstructionDescriptor {
 };
 
 enum class CheckDiagnosticKind : uint8_t {
+  UnknownTarget,
   UnsupportedPtxVersion,
   UnsupportedSmVersion,
   UnsupportedTargetFamily,
+  UnsupportedAvailability,
   MissingVariantDescriptor,
   MissingOperand,
   UnexpectedOperand,

@@ -277,6 +277,16 @@ TEST(PtxLexerNew, KernelResourceDirectivesRemainDedicatedTokens) {
   expect_token(toks[8], TokenKind::DotMinnctapersm, ".minnctapersm");
 }
 
+TEST(PtxLexerNew, ClusterDimensionDirectivesRemainDedicatedTokens) {
+  const auto toks =
+      lex_all(".reqnctapercluster 2, 1 .explicitcluster .maxclusterrank 8");
+
+  ASSERT_EQ(toks.size(), 7u);
+  expect_token(toks[0], TokenKind::DotReqnctapercluster, ".reqnctapercluster");
+  expect_token(toks[4], TokenKind::DotExplicitcluster, ".explicitcluster");
+  expect_token(toks[5], TokenKind::DotMaxclusterrank, ".maxclusterrank");
+}
+
 TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
   const auto toks = lex_all(
       ".file 0 \"source.ptx\", 0, 18446744073709551615U");

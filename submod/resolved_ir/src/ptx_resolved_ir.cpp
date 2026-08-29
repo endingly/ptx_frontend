@@ -78,6 +78,95 @@ bool allows_shape(checker::OperandShape allowed, checker::OperandShape actual) {
          0;
 }
 
+OperandSyntaxShape vector_element_syntax_shape(
+    const syntax_ast::AstVectorElement& element) {
+  return std::visit(
+      [](const auto& value) {
+        using Value = std::remove_cvref_t<decltype(value)>;
+        if constexpr (std::same_as<Value, syntax_ast::AstIdentifierRef>)
+          return OperandSyntaxShape::Identifier;
+        else
+          return OperandSyntaxShape::Immediate;
+      },
+      element);
+}
+
+bool matches_operand_slot(const SyntaxOperandSlotDescriptor& slot,
+                          const syntax_ast::AstOperand& operand) {
+  if (!allows_shape(slot.allowed_shapes,
+                    check_end::get_operand_syntax_shape(operand))) {
+    return false;
+  }
+
+  const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (vector == nullptr)
+    return true;
+  if (slot.minimum_elements != 0 &&
+      (vector->elements.size() < slot.minimum_elements ||
+       vector->elements.size() > slot.maximum_elements)) {
+    return false;
+  }
+  if (slot.allowed_element_shapes == OperandSyntaxShape{})
+    return true;
+  return std::ranges::all_of(vector->elements, [&slot](const auto& element) {
+    return allows_shape(slot.allowed_element_shapes,
+                        vector_element_syntax_shape(element));
+  });
+}
+
+std::optional<ResolveDiagnostic> diagnose_modern_pack_mismatch(
+    const SyntaxOperandLayoutDescriptor& layout,
+    const syntax_ast::AstInstruction& ast) {
+  if (ast.operands.size() != layout.slots.size())
+    return std::nullopt;
+
+  for (size_t index = 0; index < layout.slots.size(); ++index) {
+    const auto& slot = layout.slots[index];
+    const auto* vector =
+        std::get_if<syntax_ast::AstVectorPack>(&ast.operands[index]);
+    if (slot.minimum_elements == 0 || vector == nullptr ||
+        !allows_shape(slot.allowed_shapes,
+                      check_end::get_operand_syntax_shape(ast.operands[index]))) {
+      continue;
+    }
+    bool other_slots_match = true;
+    for (size_t other_index = 0; other_index < layout.slots.size();
+         ++other_index) {
+      if (other_index != index &&
+          !matches_operand_slot(layout.slots[other_index],
+                                ast.operands[other_index])) {
+        other_slots_match = false;
+        break;
+      }
+    }
+    if (!other_slots_match)
+      continue;
+    if (vector->elements.size() < slot.minimum_elements ||
+        vector->elements.size() > slot.maximum_elements) {
+      return ResolveDiagnostic{
+          .range = vector->range,
+          .message = fmt::format("Vector operand requires {} to {} elements.",
+                                 slot.minimum_elements, slot.maximum_elements),
+      };
+    }
+    for (const auto& element : vector->elements) {
+      if (allows_shape(slot.allowed_element_shapes,
+                       vector_element_syntax_shape(element))) {
+        continue;
+      }
+      const auto range = std::visit(
+          [](const auto& value) { return value.syntax.range; }, element);
+      return ResolveDiagnostic{
+          .range = range,
+          .message =
+              "Vector operand element has a shape not accepted by this "
+              "instruction layout.",
+      };
+    }
+  }
+  return std::nullopt;
+}
+
 /**
  * @brief Check if the actual operands of an instruction match the operand layout descriptor.
  * 
@@ -93,9 +182,7 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
     if (ast.operands.size() != layout.slots.size())
       return false;
     for (size_t index = 0; index < layout.slots.size(); ++index) {
-      if (!allows_shape(layout.slots[index].allowed_shapes,
-                         check_end::get_operand_syntax_shape(
-                             ast.operands[index]))) {
+      if (!matches_operand_slot(layout.slots[index], ast.operands[index])) {
         return false;
       }
     }
@@ -132,8 +219,7 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
       continue;
     }
 
-    if (!allows_shape(slot.allowed_shapes, check_end::get_operand_syntax_shape(
-                                               ast.operands[index]))) {
+    if (!matches_operand_slot(slot, ast.operands[index])) {
       return false;
     }
   }
@@ -159,8 +245,10 @@ bool is_more_specific_operand_layout(
   for (size_t index = 0; index < candidate.slots.size(); ++index) {
     const auto& candidate_slot = candidate.slots[index];
     const auto& other_slot = other.slots[index];
-    if (candidate_slot.presence != other_slot.presence)
+    if (candidate_slot.presence == OperandPresence::Optional &&
+        other_slot.presence == OperandPresence::Required)
       return false;
+    strictly_more_specific |= candidate_slot.presence != other_slot.presence;
 
     const auto candidate_shapes =
         static_cast<Underlying>(candidate_slot.allowed_shapes);
@@ -169,6 +257,39 @@ bool is_more_specific_operand_layout(
     if ((candidate_shapes & other_shapes) != candidate_shapes)
       return false;
     strictly_more_specific |= candidate_shapes != other_shapes;
+
+    if (candidate_slot.minimum_elements == 0) {
+      if (other_slot.minimum_elements != 0)
+        return false;
+      continue;
+    }
+
+    if (other_slot.minimum_elements != 0) {
+      if (candidate_slot.minimum_elements < other_slot.minimum_elements ||
+          candidate_slot.maximum_elements > other_slot.maximum_elements) {
+        return false;
+      }
+      strictly_more_specific |=
+          candidate_slot.minimum_elements != other_slot.minimum_elements ||
+          candidate_slot.maximum_elements != other_slot.maximum_elements;
+    } else {
+      strictly_more_specific = true;
+    }
+
+    if (other_slot.allowed_element_shapes == OperandSyntaxShape{})
+      continue;
+    if (candidate_slot.allowed_element_shapes == OperandSyntaxShape{})
+      return false;
+
+    const auto candidate_element_shapes =
+        static_cast<Underlying>(candidate_slot.allowed_element_shapes);
+    const auto other_element_shapes =
+        static_cast<Underlying>(other_slot.allowed_element_shapes);
+    if ((candidate_element_shapes & other_element_shapes) !=
+        candidate_element_shapes) {
+      return false;
+    }
+    strictly_more_specific |= candidate_element_shapes != other_element_shapes;
   }
   return strictly_more_specific;
 }
@@ -214,6 +335,11 @@ std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
         "Descriptor variant '{}': multiple operand layouts match one syntax "
         "instruction without a unique most-specific layout.",
         variant.variant_name));
+  }
+
+  for (const auto& layout : variant.operand_layouts) {
+    if (const auto diagnostic = diagnose_modern_pack_mismatch(layout, ast))
+      return std::unexpected(*diagnostic);
   }
 
   return std::unexpected(ResolveDiagnostic{
@@ -511,7 +637,8 @@ std::optional<uint32_t> numbered_register_index(std::string_view spelling) {
 std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
     const syntax_ast::AstIdentifierRef& identifier,
     ResolvedRegisterClass register_class, const ResolveContext& context,
-    SourceRange range) {
+    SourceRange range,
+    std::optional<uint8_t> required_vector_width = std::nullopt) {
   if (binding::isSpecialRegister(identifier.syntax.text)) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
@@ -570,6 +697,23 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
             identifier.syntax.text),
     });
   }
+  if (required_vector_width) {
+    if (symbol.vector_width != required_vector_width) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message =
+              fmt::format("Expected a .reg .v{} register, but '{}' is not one.",
+                          *required_vector_width, identifier.syntax.text),
+      });
+    }
+  } else if (symbol.vector_width) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
+            "Vector register '{}' is not supported by this resolved operand.",
+            identifier.syntax.text),
+    });
+  }
 
   return ResolvedRegisterRef{
       .spelling = identifier.syntax.text,
@@ -578,6 +722,7 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
       .symbol_id = lookup->symbol,
       .parameterized_index = lookup->parameterized_index,
       .declared_type = *declared_type,
+      .vector_width = symbol.vector_width,
   };
 }
 
@@ -619,6 +764,32 @@ resolve_register(const syntax_ast::AstOperand& operand,
           .register_class = ResolvedRegisterClass::General,
           .index = parsed->index,
       },
+      identifier->syntax.range};
+}
+
+std::expected<WithLocs<ResolvedVectorRegisterRef>, ResolveDiagnostic>
+resolve_vector_register(const syntax_ast::AstOperand& operand,
+                        const ResolveContext* context) {
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector register operand.",
+    });
+  }
+  if (context == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier->syntax.range,
+        .message = "A vector register operand requires a module declaration.",
+    });
+  }
+  auto value =
+      resolve_bound_register(*identifier, ResolvedRegisterClass::General,
+                             *context, identifier->syntax.range, 4);
+  if (!value)
+    return std::unexpected(value.error());
+  return WithLocs<ResolvedVectorRegisterRef>{
+      ResolvedVectorRegisterRef{.register_ref = std::move(*value)},
       identifier->syntax.range};
 }
 
@@ -1058,6 +1229,60 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
       range};
 }
 
+std::expected<WithLocs<ResolvedPredicateSource>, ResolveDiagnostic>
+resolve_predicate_source(const syntax_ast::AstOperand& operand,
+                         const ResolveContext* context) {
+  const auto range = syntax_ast::sourceRange(operand);
+  if (std::holds_alternative<syntax_ast::AstIdentifierRef>(operand) ||
+      std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
+    auto special = resolve_special_register(operand);
+    if (special) {
+      if (base::metadata(special->value.id).element_type !=
+          base::ScalarType::Pred) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = range,
+            .message = fmt::format("Expected a predicate special register, got '{}'.",
+                                   special->value.spelling),
+        });
+      }
+      return WithLocs<ResolvedPredicateSource>{
+          ResolvedPredicateSource{std::move(special->value)}, range};
+    }
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+    if (identifier == nullptr || base::lookup(identifier->syntax.text))
+      return std::unexpected(special.error());
+  }
+  auto predicate = resolve_predicate(operand, context);
+  if (!predicate)
+    return std::unexpected(predicate.error());
+  return WithLocs<ResolvedPredicateSource>{
+      ResolvedPredicateSource{std::move(predicate->value)}, range};
+}
+
+std::expected<WithLocs<ResolvedVectorSpecialRegisterRef>, ResolveDiagnostic>
+resolve_vector_special_register(const syntax_ast::AstOperand& operand) {
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (identifier == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector special-register base operand.",
+    });
+  }
+  const auto info = base::lookup(identifier->syntax.text);
+  if (!info || info->vector_width != 4) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier->syntax.range,
+        .message = fmt::format("Expected a four-component special register, got '{}'.",
+                               identifier->syntax.text),
+    });
+  }
+  return WithLocs<ResolvedVectorSpecialRegisterRef>{
+      ResolvedVectorSpecialRegisterRef{.spelling = identifier->syntax.text,
+                                       .id = info->id},
+      identifier->syntax.range};
+}
+
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type);
 
@@ -1441,6 +1666,10 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
   });
 }
 
+std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
+    const ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const SourceRange& range);
+
 std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
 resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    ScalarType instruction_type,
@@ -1574,6 +1803,118 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     });
   }
   WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
+  resolved.locs = std::move(locations);
+  return resolved;
+}
+
+std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
+resolve_modern_register_vector(const syntax_ast::AstOperand& operand,
+                               const check_end::ResolvedOperandBindingDescriptor& binding,
+                               const ResolveContext* context) {
+  const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (vector == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector-pack operand.",
+    });
+  }
+  if (vector->elements.size() < binding.minimum_elements ||
+      vector->elements.size() > binding.maximum_elements) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = fmt::format("Vector operand requires {} to {} elements.",
+                               binding.minimum_elements,
+                               binding.maximum_elements),
+    });
+  }
+
+  ResolvedRegisterVector result;
+  result.elements.reserve(vector->elements.size());
+  std::vector<SourceRange> locations;
+  locations.reserve(vector->elements.size());
+  for (const auto& element : vector->elements) {
+    const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&element);
+    if (identifier == nullptr) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
+          .message = "A matrix fragment element must be a register or '_' sink.",
+      });
+    }
+    locations.push_back(identifier->syntax.range);
+    if (identifier->syntax.text == "_") {
+      result.elements.emplace_back(std::nullopt);
+      continue;
+    }
+    syntax_ast::AstOperand register_operand{*identifier};
+    auto register_ref = resolve_register(register_operand, context);
+    if (!register_ref)
+      return std::unexpected(register_ref.error());
+    result.elements.emplace_back(std::move(register_ref->value));
+  }
+  WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
+  resolved.locs = std::move(locations);
+  return resolved;
+}
+
+std::expected<WithLocs<ResolvedTensorCoordinate>, ResolveDiagnostic>
+resolve_tensor_coordinate(
+    const syntax_ast::AstOperand& operand,
+    const check_end::ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const ResolveContext* context) {
+  const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (vector == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a vector-pack operand.",
+    });
+  }
+  if (vector->elements.size() < binding.minimum_elements ||
+      vector->elements.size() > binding.maximum_elements) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = vector->range,
+        .message = fmt::format("Vector operand requires {} to {} elements.",
+                               binding.minimum_elements,
+                               binding.maximum_elements),
+    });
+  }
+
+  ResolvedTensorCoordinate result;
+  result.elements.reserve(vector->elements.size());
+  std::vector<SourceRange> locations;
+  locations.reserve(vector->elements.size());
+  std::optional<ScalarType> immediate_type;
+  for (const auto& element : vector->elements) {
+    if (const auto* identifier =
+            std::get_if<syntax_ast::AstIdentifierRef>(&element)) {
+      syntax_ast::AstOperand register_operand{*identifier};
+      auto register_ref = resolve_register(register_operand, context);
+      if (!register_ref)
+        return std::unexpected(register_ref.error());
+      locations.push_back(identifier->syntax.range);
+      result.elements.emplace_back(std::move(register_ref->value));
+      continue;
+    }
+
+    const auto& immediate = std::get<syntax_ast::AstImmediate>(element);
+    if (!immediate_type) {
+      auto type = type_for_operand(binding, fields, immediate.syntax.range);
+      if (!type)
+        return std::unexpected(type.error());
+      if (*type == ScalarType::Invalid) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = immediate.syntax.range,
+            .message = "Tensor coordinate immediates require an operand scalar type.",
+        });
+      }
+      immediate_type = *type;
+    }
+    auto value = resolve_immediate_value(immediate, *immediate_type);
+    if (!value)
+      return std::unexpected(value.error());
+    locations.push_back(immediate.syntax.range);
+    result.elements.emplace_back(std::move(*value));
+  }
+  WithLocs<ResolvedTensorCoordinate> resolved{std::move(result)};
   resolved.locs = std::move(locations);
   return resolved;
 }
@@ -1975,6 +2316,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::PredicateSource: {
+      auto value = resolve_predicate_source(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Immediate: {
       const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
       if (immediate == nullptr) {
@@ -2020,6 +2367,18 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::VectorRegister: {
+      auto value = resolve_vector_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::VectorSpecialRegister: {
+      auto value = resolve_vector_special_register(operand);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::BranchTarget: {
       auto value = resolve_branch_target(operand, context);
       if (!value)
@@ -2051,6 +2410,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::RegisterVector: {
+      if (binding.minimum_elements != 0) {
+        auto value = resolve_modern_register_vector(operand, binding, context);
+        if (!value)
+          return std::unexpected(value.error());
+        return ResolvedFieldValue{std::move(*value)};
+      }
       const auto type =
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
@@ -2066,6 +2431,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
                              binding.vector_type_policy,
                              binding.register_width_policy,
                              binding.allow_vector_sink, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TensorCoordinate: {
+      auto value = resolve_tensor_coordinate(operand, binding, fields, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2197,16 +2568,20 @@ ResolvedFieldValue resolve_default_modifier_value(
           default_value.memory_state_space}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
+    case ResolvedValueKind::PredicateSource:
     case ResolvedValueKind::Immediate:
     case ResolvedValueKind::RegOrImm:
     case ResolvedValueKind::ShflDestination:
     case ResolvedValueKind::MovSource:
+    case ResolvedValueKind::VectorRegister:
+    case ResolvedValueKind::VectorSpecialRegister:
     case ResolvedValueKind::BranchTarget:
     case ResolvedValueKind::BranchTargetSet:
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
     case ResolvedValueKind::RegisterVector:
+    case ResolvedValueKind::TensorCoordinate:
     case ResolvedValueKind::DirectCallTarget:
     case ResolvedValueKind::IndirectCallee:
     case ResolvedValueKind::CallReturnParameter:
@@ -2220,6 +2595,25 @@ ResolvedFieldValue resolve_default_modifier_value(
 }
 
 }  // namespace
+
+checker::AvailabilityDescriptor special_register_availability(
+    const base::Info& info) {
+  checker::AvailabilityDescriptor availability{
+      .minimum_ptx_version = {info.minimum_ptx_major, info.minimum_ptx_minor},
+      .minimum_sm_version = info.minimum_sm,
+  };
+  if (info.required_capability.empty())
+    return availability;
+
+  availability.any_of[0] = checker::AvailabilityClause{
+      .minimum_ptx_version = {info.minimum_ptx_major, info.minimum_ptx_minor},
+      .minimum_sm_version = info.minimum_sm,
+      .capabilities = {info.required_capability},
+      .capability_count = 1,
+  };
+  availability.any_of_count = 1;
+  return availability;
+}
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type) {
@@ -2481,10 +2875,13 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::Register:
       case ResolvedValueKind::Predicate:
+      case ResolvedValueKind::PredicateSource:
       case ResolvedValueKind::Immediate:
       case ResolvedValueKind::RegOrImm:
       case ResolvedValueKind::ShflDestination:
       case ResolvedValueKind::MovSource:
+      case ResolvedValueKind::VectorRegister:
+      case ResolvedValueKind::VectorSpecialRegister:
       case ResolvedValueKind::BranchTarget:
       case ResolvedValueKind::BranchTargetSet:
       case ResolvedValueKind::SpecialRegister:

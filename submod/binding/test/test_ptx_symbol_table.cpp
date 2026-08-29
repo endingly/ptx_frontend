@@ -536,7 +536,42 @@ TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
   EXPECT_TRUE(binding::isSpecialRegister("%envreg31"));
   EXPECT_TRUE(binding::isSpecialRegister("%pm0"));
   EXPECT_TRUE(binding::isSpecialRegister("%pm7_64"));
-  EXPECT_TRUE(binding::isSpecialRegister("%reserved_smem_offset_1"));
+  for (const std::string_view spelling : {
+           "%reserved_smem_offset_begin",
+           "%reserved_smem_offset_end",
+           "%reserved_smem_offset_cap",
+           "%reserved_smem_offset_0",
+           "%reserved_smem_offset_1",
+           "%total_smem_size",
+           "%dynamic_smem_size",
+           "%aggr_smem_size",
+           "%current_graph_exec",
+       }) {
+    EXPECT_TRUE(binding::isSpecialRegister(spelling)) << spelling;
+  }
+  for (const std::string_view spelling : {
+           "%is_explicit_cluster",
+           "%cluster_ctarank",
+           "%cluster_nctarank",
+           "%clusterid",
+           "%nclusterid",
+           "%cluster_ctaid",
+           "%cluster_nctaid",
+           "%clusterid.x",
+           "%clusterid.y",
+           "%clusterid.z",
+           "%nclusterid.x",
+           "%nclusterid.y",
+           "%nclusterid.z",
+           "%cluster_ctaid.x",
+           "%cluster_ctaid.y",
+           "%cluster_ctaid.z",
+           "%cluster_nctaid.x",
+           "%cluster_nctaid.y",
+           "%cluster_nctaid.z",
+       }) {
+    EXPECT_TRUE(binding::isSpecialRegister(spelling)) << spelling;
+  }
 
   EXPECT_FALSE(binding::isSpecialRegister("%tid.q"));
   EXPECT_FALSE(binding::isSpecialRegister("%envreg32"));
@@ -545,6 +580,9 @@ TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
   EXPECT_FALSE(binding::isSpecialRegister("%pm00"));
   EXPECT_FALSE(binding::isSpecialRegister("%pm8_64"));
   EXPECT_FALSE(binding::isSpecialRegister("%reserved_smem_offset_2"));
+  EXPECT_FALSE(binding::isSpecialRegister("%reserved_smem_offset_01"));
+  EXPECT_FALSE(binding::isSpecialRegister("%reserved_smem_offset_begin_"));
+  EXPECT_FALSE(binding::isSpecialRegister("%total_smem_sizes"));
   EXPECT_FALSE(binding::isSpecialRegister("%tid.w"));
   EXPECT_FALSE(binding::isSpecialRegister("%made_up"));
 }
@@ -591,6 +629,60 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   EXPECT_EQ(cluster->minimum_ptx_major, 7u);
   EXPECT_EQ(cluster->minimum_ptx_minor, 8u);
   EXPECT_EQ(cluster->minimum_sm, 90u);
+
+  for (const std::string_view spelling : {
+           "%is_explicit_cluster",
+           "%cluster_ctarank",
+           "%cluster_nctarank",
+           "%clusterid",
+           "%nclusterid",
+           "%cluster_ctaid",
+           "%cluster_nctaid",
+       }) {
+    const auto info = base::lookup(spelling);
+    ASSERT_TRUE(info.has_value()) << spelling;
+    EXPECT_EQ(info->minimum_ptx_major, 7u) << spelling;
+    EXPECT_EQ(info->minimum_ptx_minor, 8u) << spelling;
+    EXPECT_EQ(info->minimum_sm, 90u) << spelling;
+  }
+  EXPECT_EQ(base::lookup("%is_explicit_cluster")->element_type,
+            base::ScalarType::Pred);
+  for (const std::string_view spelling :
+       {"%cluster_ctarank", "%cluster_nctarank"})
+    EXPECT_EQ(base::lookup(spelling)->element_type, base::ScalarType::U32);
+  for (const std::string_view spelling :
+       {"%clusterid", "%nclusterid", "%cluster_ctaid", "%cluster_nctaid"})
+    EXPECT_EQ(base::lookup(spelling)->vector_width, 4u);
+
+  struct ExpectedSpecialRegister {
+    std::string_view spelling;
+    base::ScalarType type;
+    uint8_t ptx_major;
+    uint8_t ptx_minor;
+    uint32_t sm;
+  };
+  constexpr ExpectedSpecialRegister expected_special_registers[] = {
+      {"%reserved_smem_offset_begin", base::ScalarType::B32, 7, 6, 80},
+      {"%reserved_smem_offset_end", base::ScalarType::B32, 7, 6, 80},
+      {"%reserved_smem_offset_cap", base::ScalarType::B32, 7, 6, 80},
+      {"%reserved_smem_offset_0", base::ScalarType::B32, 7, 6, 80},
+      {"%reserved_smem_offset_1", base::ScalarType::B32, 7, 6, 80},
+      {"%total_smem_size", base::ScalarType::U32, 4, 1, 20},
+      {"%dynamic_smem_size", base::ScalarType::U32, 4, 1, 20},
+      {"%aggr_smem_size", base::ScalarType::U32, 8, 1, 90},
+      {"%current_graph_exec", base::ScalarType::U64, 8, 0, 50},
+  };
+  for (const ExpectedSpecialRegister expected : expected_special_registers) {
+    const auto info = base::lookup(expected.spelling);
+    ASSERT_TRUE(info.has_value()) << expected.spelling;
+    EXPECT_EQ(info->element_type, expected.type) << expected.spelling;
+    EXPECT_EQ(info->vector_width, 1u) << expected.spelling;
+    EXPECT_EQ(info->minimum_ptx_major, expected.ptx_major)
+        << expected.spelling;
+    EXPECT_EQ(info->minimum_ptx_minor, expected.ptx_minor)
+        << expected.spelling;
+    EXPECT_EQ(info->minimum_sm, expected.sm) << expected.spelling;
+  }
 }
 
 TEST(PtxSymbolTable, DiagnosesDuplicateSymbolsAndInvalidCount) {

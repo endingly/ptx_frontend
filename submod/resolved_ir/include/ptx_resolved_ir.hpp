@@ -84,15 +84,19 @@ enum class ResolvedValueKind : uint8_t {
   MemoryStateSpace,
   Register,
   Predicate,
+  PredicateSource,
   Immediate,
   RegOrImm,
   ShflDestination,
   MovSource,
+  VectorRegister,
+  VectorSpecialRegister,
   BranchTarget,
   SpecialRegister,
   Symbol,
   Address,
   RegisterVector,
+  TensorCoordinate,
   DirectCallTarget,
   IndirectCallee,
   BranchTargetSet,
@@ -103,6 +107,13 @@ enum class ResolvedValueKind : uint8_t {
 struct SyntaxOperandSlotDescriptor {
   OperandSyntaxShape allowed_shapes;
   OperandPresence presence;
+  /** Descriptor/domain identity only; syntax has no token tag to compare. */
+  std::string_view type_tag{};
+  /** Inclusive brace-pack bounds; zero means this is not a variable pack. */
+  uint8_t minimum_elements = 0;
+  uint8_t maximum_elements = 0;
+  /** Syntax shapes accepted for each element of a modern brace pack. */
+  OperandSyntaxShape allowed_element_shapes{};
 };
 
 enum class OperandLayoutKind : uint8_t {
@@ -235,6 +246,7 @@ struct ResolvedRegisterRef {
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
   std::optional<ScalarType> declared_type;
+  std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
 
@@ -277,6 +289,23 @@ struct ResolvedSpecialRegisterRef {
   base::SpecialRegisterId id;
   std::optional<base::VectorComponent> component;
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
+};
+
+/** The sole predicate-source union: a predicate register or scalar .sreg. */
+using ResolvedPredicateSource =
+    std::variant<ResolvedPredicate, ResolvedSpecialRegisterRef>;
+
+/** A declared vector register accepted only by a vector instruction layout. */
+struct ResolvedVectorRegisterRef {
+  ResolvedRegisterRef register_ref;
+  bool operator==(const ResolvedVectorRegisterRef&) const = default;
+};
+
+/** A vector special-register base accepted only by a vector instruction layout. */
+struct ResolvedVectorSpecialRegisterRef {
+  std::string spelling;
+  base::SpecialRegisterId id;
+  bool operator==(const ResolvedVectorSpecialRegisterRef&) const = default;
 };
 
 /** A function reference, bound to a device or kernel function declaration. */
@@ -384,6 +413,12 @@ struct ResolvedOperandLayoutTag {
 
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 
+/** A brace-pack coordinate with register or immediate components. */
+struct ResolvedTensorCoordinate {
+  std::vector<RegOrImm> elements;
+  bool operator==(const ResolvedTensorCoordinate&) const = default;
+};
+
 struct ResolvedShflSyncDestination {
   ResolvedRegisterRef data;
   ResolvedPredicate predicate;
@@ -410,8 +445,12 @@ using ResolvedFieldValue =
                  WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
                  WithLocs<ResolvedBranchTargetSet>,
                  WithLocs<ResolvedSpecialRegisterRef>,
+                 WithLocs<ResolvedPredicateSource>,
+                 WithLocs<ResolvedVectorRegisterRef>,
+                 WithLocs<ResolvedVectorSpecialRegisterRef>,
                  WithLocs<ResolvedSymbolRef>, WithLocs<ResolvedAddress>,
                  WithLocs<ResolvedRegisterVector>,
+                 WithLocs<ResolvedTensorCoordinate>,
                  WithLocs<ResolvedFunctionRef>,
                  WithLocs<ResolvedIndirectCallee>,
                  WithLocs<ResolvedCallParameterRef>,
@@ -514,6 +553,10 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
     std::string_view variant_name, const ResolveContext* context = nullptr);
+
+/** Translate catalogued special-register metadata into checker availability. */
+checker::AvailabilityDescriptor special_register_availability(
+    const base::Info& info);
 
 /**
    * @brief Get a resolved modifier field from the resolved instruction fields.

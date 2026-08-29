@@ -70,6 +70,7 @@ struct Info {
   uint16_t minimum_ptx_major = 0;
   uint16_t minimum_ptx_minor = 0;
   uint32_t minimum_sm = 0;
+  std::string_view required_capability{};
   bool operator==(const Info&) const = default;
 };
 

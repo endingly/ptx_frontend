@@ -11,9 +11,16 @@ std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
 
-bool has_family(std::span<const std::string_view> families,
-                std::string_view required_family) noexcept {
-  return std::ranges::find(families, required_family) != families.end();
+bool has_enabled_family_feature(
+    std::span<const std::string_view> enabled_family_features,
+    std::string_view required_family) noexcept {
+  return std::ranges::find(enabled_family_features, required_family) !=
+         enabled_family_features.end();
+}
+
+bool has_capability(std::span<const std::string_view> capabilities,
+                    std::string_view required) noexcept {
+  return std::ranges::find(capabilities, required) != capabilities.end();
 }
 
 bool allows_shape(OperandShape allowed, OperandShape actual) noexcept {
@@ -53,6 +60,17 @@ void append_value_availability_diagnostics(const OperandView& operand,
 
   const AvailabilityDescriptor& availability = *operand.value_availability;
   const SourceRange& range = diagnostic_range(operand.locations, context);
+  if (is_available(availability, context.target))
+    return;
+  if (availability.any_of_count != 0) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedAvailability,
+        .range = range,
+        .message = fmt::format("Operand value '{}' has no matching availability clause.",
+                               operand.value_name),
+    });
+    return;
+  }
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -76,7 +94,8 @@ void append_value_availability_diagnostics(const OperandView& operand,
     });
   }
   if (!availability.required_family.empty() &&
-      !has_family(context.target.families, availability.required_family)) {
+      !has_enabled_family_feature(context.target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = range,
@@ -147,6 +166,16 @@ void append_address_constraint_availability_diagnostics(
     const OperandView& operand, const Context& context,
     CheckDiagnostics& diagnostics) {
   const SourceRange& range = diagnostic_range(operand.locations, context);
+  if (is_available(availability, context.target))
+    return;
+  if (availability.any_of_count != 0) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedAvailability,
+        .range = range,
+        .message = fmt::format("{} has no matching availability clause.", constraint),
+    });
+    return;
+  }
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -167,7 +196,8 @@ void append_address_constraint_availability_diagnostics(
     });
   }
   if (!availability.required_family.empty() &&
-      !has_family(context.target.families, availability.required_family)) {
+      !has_enabled_family_feature(context.target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = range,
@@ -280,10 +310,34 @@ void append_parameter_address_diagnostics(
 
 bool is_available(const AvailabilityDescriptor& availability,
                   const TargetInfo& target) noexcept {
+  if (availability.any_of_count != 0) {
+    for (size_t index = 0; index < availability.any_of_count; ++index) {
+      const AvailabilityClause& clause = availability.any_of[index];
+      if (target.ptx_version < clause.minimum_ptx_version ||
+          target.sm_version < clause.minimum_sm_version ||
+          (clause.has_exact_target &&
+           (!target.identity ||
+            target.identity->architecture != clause.exact_target_architecture ||
+            target.identity->flavor != clause.exact_target_flavor)))
+        continue;
+      bool capabilities_match = true;
+      for (size_t capability = 0; capability < clause.capability_count;
+           ++capability) {
+        if (!has_capability(target.capabilities, clause.capabilities[capability])) {
+          capabilities_match = false;
+          break;
+        }
+      }
+      if (capabilities_match)
+        return true;
+    }
+    return false;
+  }
   return target.ptx_version >= availability.minimum_ptx_version &&
          target.sm_version >= availability.minimum_sm_version &&
          (availability.required_family.empty() ||
-          has_family(target.families, availability.required_family));
+          has_enabled_family_feature(target.enabled_family_features,
+                                     availability.required_family));
 }
 
 const VariantDescriptor* find_variant_descriptor(
@@ -301,6 +355,17 @@ CheckResult check_availability(const VariantDescriptor& variant,
   CheckDiagnostics diagnostics;
   const auto& availability = variant.availability;
   const auto& target = context.target;
+
+  if (is_available(availability, target))
+    return {};
+  if (availability.any_of_count != 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedAvailability,
+        .range = context.instruction_range,
+        .message = fmt::format("Instruction variant '{}' has no matching availability clause.",
+                               variant.variant_name),
+    }});
+  }
 
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
@@ -327,7 +392,8 @@ CheckResult check_availability(const VariantDescriptor& variant,
   }
 
   if (!availability.required_family.empty() &&
-      !has_family(target.families, availability.required_family)) {
+      !has_enabled_family_feature(target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = context.instruction_range,
@@ -388,6 +454,41 @@ CheckResult check_operands(
               "instruction layout.",
               descriptor.target_field_id),
       });
+    }
+
+    if (descriptor.minimum_elements != 0) {
+      const SourceRange& range = diagnostic_range(operand->locations, context);
+      if (operand->actual_shape != OperandShape::Vector ||
+          operand->vector_arity < descriptor.minimum_elements ||
+          operand->vector_arity > descriptor.maximum_elements ||
+          operand->vector_arity > kMaxOperandElements) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::InvalidVectorOperand,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' has an unsupported element count.",
+                descriptor.target_field_id),
+        });
+      } else {
+        const auto mismatched = std::ranges::find_if(
+            operand->vector_element_shapes.begin(),
+            operand->vector_element_shapes.begin() + operand->vector_arity,
+            [&](OperandShape element_shape) {
+              return !allows_shape(descriptor.allowed_element_shapes,
+                                   element_shape);
+            });
+        if (mismatched != operand->vector_element_shapes.begin() +
+                              operand->vector_arity) {
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+              .range = range,
+              .message = fmt::format(
+                  "Vector operand '{}' has an element shape not accepted by "
+                  "this instruction layout.",
+                  descriptor.target_field_id),
+          });
+        }
+      }
     }
 
     std::optional<MemoryStateSpace> selected_state_space;
@@ -518,7 +619,41 @@ CheckResult check_operands(
     }
     append_value_availability_diagnostics(*operand, context, diagnostics);
 
-    if (operand->actual_shape == OperandShape::Vector) {
+    if (operand->actual_shape == OperandShape::Vector &&
+        descriptor.minimum_elements != 0) {
+      if (operand->vector_arity <= kMaxOperandElements) {
+        const auto mismatched = std::ranges::find_if(
+            operand->vector_element_types.begin(),
+            operand->vector_element_types.begin() + operand->vector_arity,
+            [&](ScalarType element_type) {
+              // Standalone operands have no declaration to establish a type.
+              return element_type != ScalarType::Invalid &&
+                     !scalar_types_compatible(
+                         element_type, expected_type,
+                         descriptor.register_width_policy);
+            });
+        if (mismatched != operand->vector_element_types.begin() +
+                              operand->vector_arity) {
+          const size_t index =
+              static_cast<size_t>(mismatched - operand->vector_element_types.begin());
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message = fmt::format(
+                  "Vector operand '{}' has an element type '{}' incompatible "
+                  "with instruction type source '{}' ('{}').",
+                  descriptor.target_field_id, to_string(*mismatched),
+                  expected_type_source, to_string(expected_type)),
+          });
+        }
+      }
+      continue;
+    }
+
+    if (operand->actual_shape == OperandShape::Vector &&
+        descriptor.minimum_elements == 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
       std::optional<uint8_t> required_vector_arity;
       if (!descriptor.vector_arity_modifier_field_id.empty()) {
@@ -746,6 +881,17 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
   const auto& target = context.target;
   CheckDiagnostics diagnostics;
 
+  if (is_available(availability, target))
+    return {};
+  if (availability.any_of_count != 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedAvailability,
+        .range = context.instruction_range,
+        .message = fmt::format("Operand layout '{}' of instruction variant '{}' has no matching availability clause.",
+                               layout.layout_name, variant.variant_name),
+    }});
+  }
+
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -772,7 +918,8 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
   }
 
   if (!availability.required_family.empty() &&
-      !has_family(target.families, availability.required_family)) {
+      !has_enabled_family_feature(target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = context.instruction_range,
@@ -808,6 +955,17 @@ CheckResult check_modifier_value_availability(
     const auto& availability = it->availability;
     const auto& target = context.target;
     const SourceRange& range = diagnostic_range(actual.locations, context);
+    if (is_available(availability, target))
+      continue;
+    if (availability.any_of_count != 0) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedAvailability,
+          .range = range,
+          .message = fmt::format("Modifier '{}' has no matching availability clause.",
+                                 actual.kind_id),
+      });
+      continue;
+    }
     if (target.ptx_version < availability.minimum_ptx_version) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -829,7 +987,8 @@ CheckResult check_modifier_value_availability(
       });
     }
     if (!availability.required_family.empty() &&
-        !has_family(target.families, availability.required_family)) {
+        !has_enabled_family_feature(target.enabled_family_features,
+                                    availability.required_family)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
           .range = range,
@@ -1080,6 +1239,19 @@ CheckResult check_memory_vector(
   }
 
   const auto& availability = descriptor.availability;
+  if (is_available(availability, context.target)) {
+    if (diagnostics.empty())
+      return {};
+    return std::unexpected(std::move(diagnostics));
+  }
+  if (availability.any_of_count != 0) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedAvailability,
+        .range = vector_range,
+        .message = "Modern memory vectors have no matching availability clause.",
+    });
+    return std::unexpected(std::move(diagnostics));
+  }
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -1100,7 +1272,8 @@ CheckResult check_memory_vector(
     });
   }
   if (!availability.required_family.empty() &&
-      !has_family(context.target.families, availability.required_family)) {
+      !has_enabled_family_feature(context.target.enabled_family_features,
+                                  availability.required_family)) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = vector_range,

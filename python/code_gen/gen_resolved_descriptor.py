@@ -6,6 +6,7 @@ from pathlib import Path
 
 from base.utils import generated_at_comment, to_file_stem
 from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
+from code_gen.gen_resolved_checker_descriptor import _emit_availability
 from code_gen.database import CodegenDatabase
 from ir.resolved_ir import (
     ResolvedField,
@@ -300,16 +301,10 @@ def _emit_vector_arities(arities: tuple[int, ...]) -> str:
 def _emit_address_state_spaces(entries) -> str:
     result: list[str] = []
     for entry in entries:
-        availability = dict(entry.availability)
-        minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
         result.append(
             f"""          checker::AddressStateSpaceDescriptor{{
               .state_space = {cpp_value(CppDomain.MEMORY_STATE_SPACES, entry.value)},
-              .availability = {{
-                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {int(availability.get("sm", 0))},
-                  .required_family = "{str(availability.get("family", ""))}",
-              }},
+              .availability = {_emit_availability(dict(entry.availability))},
           }}"""
         )
     return ",\n".join(result)
@@ -347,6 +342,27 @@ def _emit_operand_binding_descriptor(
         or binding.vector_arity_modifier_field_id is not None
         else ""
     )
+    type_tag = (
+        f'\n              .type_tag = "{binding.type_tag}",'
+        if binding.type_tag is not None
+        else ""
+    )
+    cardinality = (
+        f"\n              .minimum_elements = {binding.minimum_elements},"
+        f"\n              .maximum_elements = {binding.maximum_elements},"
+        if binding.minimum_elements is not None
+        else ""
+    )
+    element_shapes = (
+        "\n              .allowed_element_shapes = "
+        + " | ".join(
+            cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
+            for shape in binding.allowed_element_shapes
+        )
+        + ","
+        if binding.allowed_element_shapes
+        else ""
+    )
     address_state_spaces = (
         "\n              .allowed_address_state_spaces = "
         f"{address_state_spaces_name},"
@@ -364,15 +380,10 @@ def _emit_operand_binding_descriptor(
         availability = dict(
             binding.parameter_constraint.function_availability
         )
-        minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
         parameter_constraint = f"""
               .parameter_constraint = {{
                   .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction)},
-                  .function_availability = {{
-                      .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                      .minimum_sm_version = {int(availability.get("sm", 0))},
-                      .required_family = "{str(availability.get("family", ""))}",
-                  }},
+                  .function_availability = {_emit_availability(availability)},
               }},"""
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,
@@ -384,7 +395,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

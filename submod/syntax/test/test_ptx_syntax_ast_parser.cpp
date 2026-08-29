@@ -1,5 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <filesystem>
+#include <fstream>
+#include <initializer_list>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -29,6 +35,21 @@ using syntax_ast::AstPredicateOperand;
 using syntax_ast::AstRegisterPredicatePair;
 using syntax_ast::AstVectorMember;
 using syntax_ast::AstVectorPack;
+
+std::string_view sourceSlice(std::string_view source, SourceRange range) {
+  const auto offset = [source](SourcePos position) {
+    size_t start = 0;
+    for (int32_t line = 1; line < position.line; ++line) {
+      const size_t newline = source.find('\n', start);
+      if (newline == std::string_view::npos)
+        return source.size();
+      start = newline + 1;
+    }
+    return start + static_cast<size_t>(position.column - 1);
+  };
+  return source.substr(offset(range.start),
+                       offset(range.end) - offset(range.start));
+}
 
 TEST(PtxSyntaxParser, ParsesInstructionWithoutCstTrivia) {
   PtxSyntaxParser parser("  // leading\nadd.sat.s32 %r1, %r2, -1;");
@@ -565,6 +586,29 @@ TEST(PtxSyntaxParser, LowersRequiredThreadCountDirective) {
   EXPECT_EQ(function.resources[0].values.size(), 2u);
 }
 
+TEST(PtxSyntaxParser, LowersClusterDimensionDirectives) {
+  PtxSyntaxParser parser(R"ptx(
+.entry kernel() .reqnctapercluster 2, 3 .explicitcluster .maxclusterrank 8 { }
+)ptx");
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(result->items.front());
+  ASSERT_EQ(function.resources.size(), 3u);
+  const auto& req = function.resources[0];
+  EXPECT_EQ(req.kind, syntax_ast::AstKernelResourceKind::ReqNctaPerCluster);
+  ASSERT_EQ(req.values.size(), 2u);
+  EXPECT_EQ(req.values[1].text, "3");
+  const auto& explicit_cluster = function.resources[1];
+  EXPECT_EQ(explicit_cluster.kind,
+            syntax_ast::AstKernelResourceKind::ExplicitCluster);
+  EXPECT_TRUE(explicit_cluster.values.empty());
+  EXPECT_EQ(function.resources[2].kind,
+            syntax_ast::AstKernelResourceKind::MaxClusterRank);
+}
+
 TEST(PtxSyntaxParser, LowersNestedLocDirectives) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   .loc 0x2U 4237 0
@@ -869,6 +913,135 @@ TEST(PtxSyntaxParser, LowersNestedInitializerAndSymbolAddressOperator) {
   EXPECT_EQ(std::get<syntax_ast::AstConstantBinary>(address_expression.node)
                 .operation,
             syntax_ast::AstConstantBinaryOperator::Add);
+}
+
+TEST(PtxSyntaxParser, PreservesM11ComplexModifierCorpusLosslessly) {
+  const auto root = std::filesystem::path(__FILE__)
+                        .parent_path()
+                        .parent_path()
+                        .parent_path()
+                        .parent_path();
+  std::ifstream input(root / "corpus" / "m11" / "complex_modifiers.ptx");
+  ASSERT_TRUE(input);
+  const std::string source{std::istreambuf_iterator<char>{input}, {}};
+
+  PtxCstParser cst_parser(source);
+  const auto cst = cst_parser.parseModule();
+  ASSERT_TRUE(cst.has_value()) << cst.diagnostics.front().message;
+  EXPECT_TRUE(cst.diagnostics.empty());
+  EXPECT_EQ(cst->sourceText(), source);
+  PtxCstParser reparsing(cst->sourceText());
+  const auto reparsed = reparsing.parseModule();
+  ASSERT_TRUE(reparsed.has_value()) << reparsed.diagnostics.front().message;
+  EXPECT_TRUE(reparsed.diagnostics.empty());
+  EXPECT_EQ(reparsed->sourceText(), source);
+
+  const auto& cst_function = std::get<syntax_cst::CstFunction>(
+      cst->module()->items.back());
+  ASSERT_EQ(cst_function.body.size(), 5u);
+  const auto& cst_packed_load =
+      std::get<syntax_cst::CstInstruction>(cst_function.body[1]);
+  const auto& cst_pack = std::get<syntax_cst::CstVectorPack>(
+      cst_packed_load.operands.front().operand);
+  ASSERT_EQ(cst_pack.elements.size(), 2u);
+  ASSERT_EQ(cst_pack.commas.size(), 1u);
+  EXPECT_EQ(cst->token(cst_pack.commas.front()).text, ",");
+  ASSERT_TRUE(cst_packed_load.operands.front().trailing_comma.has_value());
+  EXPECT_EQ(cst->token(*cst_packed_load.operands.front().trailing_comma).text,
+            ",");
+  for (const std::string_view spelling : {
+           ".16x64b",          ".16x128b",      ".4x256b",
+           ".layout::v0",      ".kind::mxf8f6f4", ".block_scale",
+           ".scale_vec::1X",   ".collector::a::fill",
+       }) {
+    const auto token = std::ranges::find_if(
+        cst->tokens, [spelling](const auto& candidate) {
+          return candidate.text == spelling;
+        });
+    ASSERT_NE(token, cst->tokens.end()) << spelling;
+    EXPECT_EQ(token->kind, TokenKind::DotIdent);
+  }
+
+  PtxSyntaxParser parser(source);
+  const auto ast = parser.parseModule();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  EXPECT_TRUE(ast.diagnostics.empty());
+  const auto& ast_function =
+      std::get<syntax_ast::AstFunction>(ast->items.back());
+  ASSERT_EQ(ast_function.body.size(), 5u);
+  const auto expect_modifiers = [&](size_t item,
+                                    std::initializer_list<std::string_view> expected) {
+    const auto& instruction = std::get<AstInstruction>(ast_function.body[item]);
+    ASSERT_EQ(instruction.modifiers.size(), expected.size());
+    for (size_t index = 0; index < expected.size(); ++index) {
+      const auto expected_spelling = *(expected.begin() + index);
+      EXPECT_EQ(instruction.modifiers[index].syntax.text, expected_spelling);
+      EXPECT_EQ(sourceSlice(source, instruction.modifiers[index].syntax.range),
+                expected_spelling);
+    }
+  };
+  expect_modifiers(0, {".ld", ".sync", ".aligned", ".16x64b", ".x1", ".b32"});
+  expect_modifiers(1, {".ld", ".sync", ".aligned", ".16x128b", ".x1", ".b32"});
+  expect_modifiers(2, {".cp", ".cta_group::1", ".4x256b"});
+  expect_modifiers(3, {".check_layout", ".layout::v0", ".shared::cta", ".b64"});
+  expect_modifiers(4, {".mma", ".cta_group::1", ".kind::mxf8f6f4",
+                       ".block_scale", ".scale_vec::1X",
+                       ".collector::a::fill"});
+  const auto& ast_pack = std::get<AstVectorPack>(
+      std::get<AstInstruction>(ast_function.body[1]).operands.front());
+  EXPECT_EQ(ast_pack.elements.size(), 2u);
+}
+
+TEST(PtxSyntaxParser, LowersM11DeclarationHeaderDirectivesLosslessly) {
+  PtxSyntaxParser parser(R"ptx(
+.version 9.3
+.global .attribute(.managed, .unified(1, 2)) .u32 managed;
+.alias alias_fn, target;
+.func .attribute(.unified(3, 4)) target() .noreturn .abi_preserve 2
+    .abi_preserve_control 1 .language "PTX", 10;
+.entry kernel() .reqntid 1 .reqnctapercluster 1 .blocksareclusters
+    .language "cuda c++" {}
+)ptx");
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& variable =
+      std::get<syntax_ast::AstVariableDeclaration>(result->items[1]);
+  ASSERT_EQ(variable.attributes.size(), 2u);
+  EXPECT_EQ(variable.attributes[1].values.size(), 2u);
+  const auto& alias = std::get<syntax_ast::AstAliasDirective>(result->items[2]);
+  EXPECT_EQ(alias.alias.syntax.text, "alias_fn");
+  const auto& function = std::get<syntax_ast::AstFunction>(result->items[3]);
+  EXPECT_TRUE(function.noreturn_directive.has_value());
+  EXPECT_TRUE(function.abi_preserve.has_value());
+  ASSERT_TRUE(function.language.has_value());
+  EXPECT_EQ(function.language->values.size(), 2u);
+  EXPECT_EQ(function.language->range.end.line, function.range.end.line);
+  EXPECT_LT(function.language->range.end.column, function.range.end.column);
+  const auto& entry = std::get<syntax_ast::AstFunction>(result->items[4]);
+  EXPECT_TRUE(entry.blocks_are_clusters.has_value());
+}
+
+TEST(PtxSyntaxParser, RejectsMalformedM11DeclarationSyntax) {
+  constexpr std::array<std::string_view, 4> sources = {
+      ".global .attribute(.managed(1, 2)) .u32 x;",
+      ".global .attribute(.unified(1)) .u32 x;",
+      ".entry kernel() .noreturn {}",
+      ".func f() .abi_preserve;",
+  };
+  for (const auto source : sources) {
+    PtxSyntaxParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_FALSE(result.diagnostics.empty()) << source;
+  }
+}
+
+TEST(PtxSyntaxParser, RetainsMmaThroughputAsGenericPragma) {
+  PtxSyntaxParser parser(".pragma \"mma_throughput\";");
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& pragma = std::get<syntax_ast::AstPragma>(result->items.front());
+  ASSERT_EQ(pragma.strings.size(), 1u);
+  EXPECT_EQ(pragma.strings.front().text, "\"mma_throughput\"");
 }
 
 }  // namespace

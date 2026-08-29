@@ -195,6 +195,9 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".maxntid"              { TOK(DotMaxntid); }
 ".reqntid"              { TOK(DotReqntid); }
 ".minnctapersm"         { TOK(DotMinnctapersm); }
+".reqnctapercluster"    { TOK(DotReqnctapercluster); }
+".explicitcluster"      { TOK(DotExplicitcluster); }
+".maxclusterrank"       { TOK(DotMaxclusterrank); }
 ".noreturn"             { TOK(DotNoreturn); }
 
 ".reg"                  { TOK(DotReg); }

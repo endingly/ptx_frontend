@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=schemas/ptx-special-register-registry-v1.schema.yaml
+
+# Frozen PTX 9.3 Chapter 10 inventory.  Every form lists concrete source
+# spellings, including vector components and indexed-register domains.
+# `min_ptx` is the minimum PTX for each current type/shape form, not the
+# version where the register identity first appeared.
+schema: ptx-special-register-registry/v1
+version: 1
+ptx_isa: "9.3"
+source_url: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/
+evidence_url: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
+records:
+- id: ptx-9-3-special-registers-tid
+  ptx_isa: "9.3"
+  section: "10.1"
+  title: "Special Registers: %tid"
+  anchor: special-registers-tid
+  forms:
+  - {spellings: ["%tid"], shape: vector4, type: u32, min_ptx: "2.0", min_sm: 0}
+  - {spellings: ["%tid.x", "%tid.y", "%tid.z"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 0}
+- id: ptx-9-3-special-registers-ntid
+  ptx_isa: "9.3"
+  section: "10.2"
+  title: "Special Registers: %ntid"
+  anchor: special-registers-ntid
+  forms:
+  - {spellings: ["%ntid"], shape: vector4, type: u32, min_ptx: "2.0", min_sm: 0}
+  - {spellings: ["%ntid.x", "%ntid.y", "%ntid.z"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 0}
+- {id: ptx-9-3-special-registers-laneid, ptx_isa: "9.3", section: "10.3", title: "Special Registers: %laneid", anchor: special-registers-laneid, forms: [{spellings: ["%laneid"], shape: scalar, type: u32, min_ptx: "1.3", min_sm: 0}]}
+- {id: ptx-9-3-special-registers-warpid, ptx_isa: "9.3", section: "10.4", title: "Special Registers: %warpid", anchor: special-registers-warpid, forms: [{spellings: ["%warpid"], shape: scalar, type: u32, min_ptx: "1.3", min_sm: 0}]}
+- {id: ptx-9-3-special-registers-nwarpid, ptx_isa: "9.3", section: "10.5", title: "Special Registers: %nwarpid", anchor: special-registers-nwarpid, forms: [{spellings: ["%nwarpid"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- id: ptx-9-3-special-registers-ctaid
+  ptx_isa: "9.3"
+  section: "10.6"
+  title: "Special Registers: %ctaid"
+  anchor: special-registers-ctaid
+  forms:
+  - {spellings: ["%ctaid"], shape: vector4, type: u32, min_ptx: "2.0", min_sm: 0}
+  - {spellings: ["%ctaid.x", "%ctaid.y", "%ctaid.z"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 0}
+- id: ptx-9-3-special-registers-nctaid
+  ptx_isa: "9.3"
+  section: "10.7"
+  title: "Special Registers: %nctaid"
+  anchor: special-registers-nctaid
+  forms:
+  - {spellings: ["%nctaid"], shape: vector4, type: u32, min_ptx: "2.0", min_sm: 0}
+  - {spellings: ["%nctaid.x", "%nctaid.y", "%nctaid.z"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 0}
+- {id: ptx-9-3-special-registers-smid, ptx_isa: "9.3", section: "10.8", title: "Special Registers: %smid", anchor: special-registers-smid, forms: [{spellings: ["%smid"], shape: scalar, type: u32, min_ptx: "1.3", min_sm: 0}]}
+- {id: ptx-9-3-special-registers-nsmid, ptx_isa: "9.3", section: "10.9", title: "Special Registers: %nsmid", anchor: special-registers-nsmid, forms: [{spellings: ["%nsmid"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-gridid, ptx_isa: "9.3", section: "10.10", title: "Special Registers: %gridid", anchor: special-registers-gridid, forms: [{spellings: ["%gridid"], shape: scalar, type: u64, min_ptx: "3.0", min_sm: 0}]}
+- {id: ptx-9-3-special-registers-is-explicit-cluster, ptx_isa: "9.3", section: "10.11", title: "Special Registers: %is_explicit_cluster", anchor: special-registers-is-explicit-cluster, forms: [{spellings: ["%is_explicit_cluster"], shape: scalar, type: pred, min_ptx: "7.8", min_sm: 90}]}
+- id: ptx-9-3-special-registers-clusterid
+  ptx_isa: "9.3"
+  section: "10.12"
+  title: "Special Registers: %clusterid"
+  anchor: special-registers-clusterid
+  forms:
+  - {spellings: ["%clusterid"], shape: vector4, type: u32, min_ptx: "7.8", min_sm: 90}
+  - {spellings: ["%clusterid.x", "%clusterid.y", "%clusterid.z"], shape: scalar, type: u32, min_ptx: "7.8", min_sm: 90}
+- id: ptx-9-3-special-registers-nclusterid
+  ptx_isa: "9.3"
+  section: "10.13"
+  title: "Special Registers: %nclusterid"
+  anchor: special-registers-nclusterid
+  forms:
+  - {spellings: ["%nclusterid"], shape: vector4, type: u32, min_ptx: "7.8", min_sm: 90}
+  - {spellings: ["%nclusterid.x", "%nclusterid.y", "%nclusterid.z"], shape: scalar, type: u32, min_ptx: "7.8", min_sm: 90}
+- id: ptx-9-3-special-registers-cluster-ctaid
+  ptx_isa: "9.3"
+  section: "10.14"
+  title: "Special Registers: %cluster_ctaid"
+  anchor: special-registers-cluster-ctaid
+  forms:
+  - {spellings: ["%cluster_ctaid"], shape: vector4, type: u32, min_ptx: "7.8", min_sm: 90}
+  - {spellings: ["%cluster_ctaid.x", "%cluster_ctaid.y", "%cluster_ctaid.z"], shape: scalar, type: u32, min_ptx: "7.8", min_sm: 90}
+- id: ptx-9-3-special-registers-cluster-nctaid
+  ptx_isa: "9.3"
+  section: "10.15"
+  title: "Special Registers: %cluster_nctaid"
+  anchor: special-registers-cluster-nctaid
+  forms:
+  - {spellings: ["%cluster_nctaid"], shape: vector4, type: u32, min_ptx: "7.8", min_sm: 90}
+  - {spellings: ["%cluster_nctaid.x", "%cluster_nctaid.y", "%cluster_nctaid.z"], shape: scalar, type: u32, min_ptx: "7.8", min_sm: 90}
+- {id: ptx-9-3-special-registers-cluster-ctarank, ptx_isa: "9.3", section: "10.16", title: "Special Registers: %cluster_ctarank", anchor: special-registers-cluster-ctarank, forms: [{spellings: ["%cluster_ctarank"], shape: scalar, type: u32, min_ptx: "7.8", min_sm: 90}]}
+- {id: ptx-9-3-special-registers-cluster-nctarank, ptx_isa: "9.3", section: "10.17", title: "Special Registers: %cluster_nctarank", anchor: special-registers-cluster-nctarank, forms: [{spellings: ["%cluster_nctarank"], shape: scalar, type: u32, min_ptx: "7.8", min_sm: 90}]}
+- {id: ptx-9-3-special-registers-lanemask-eq, ptx_isa: "9.3", section: "10.18", title: "Special Registers: %lanemask_eq", anchor: special-registers-lanemask-eq, forms: [{spellings: ["%lanemask_eq"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-lanemask-le, ptx_isa: "9.3", section: "10.19", title: "Special Registers: %lanemask_le", anchor: special-registers-lanemask-le, forms: [{spellings: ["%lanemask_le"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-lanemask-lt, ptx_isa: "9.3", section: "10.20", title: "Special Registers: %lanemask_lt", anchor: special-registers-lanemask-lt, forms: [{spellings: ["%lanemask_lt"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-lanemask-ge, ptx_isa: "9.3", section: "10.21", title: "Special Registers: %lanemask_ge", anchor: special-registers-lanemask-ge, forms: [{spellings: ["%lanemask_ge"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-lanemask-gt, ptx_isa: "9.3", section: "10.22", title: "Special Registers: %lanemask_gt", anchor: special-registers-lanemask-gt, forms: [{spellings: ["%lanemask_gt"], shape: scalar, type: u32, min_ptx: "2.0", min_sm: 20}]}
+- id: ptx-9-3-special-registers-clock
+  ptx_isa: "9.3"
+  section: "10.23"
+  title: "Special Registers: %clock, %clock_hi"
+  anchor: special-registers-clock
+  forms:
+  - {spellings: ["%clock"], shape: scalar, type: u32, min_ptx: "1.0", min_sm: 0}
+  - {spellings: ["%clock_hi"], shape: scalar, type: u32, min_ptx: "5.0", min_sm: 20}
+- {id: ptx-9-3-special-registers-clock64, ptx_isa: "9.3", section: "10.24", title: "Special Registers: %clock64", anchor: special-registers-clock64, forms: [{spellings: ["%clock64"], shape: scalar, type: u64, min_ptx: "2.0", min_sm: 20}]}
+- id: ptx-9-3-special-registers-pm0-pm7
+  ptx_isa: "9.3"
+  section: "10.25"
+  title: "Special Registers: %pm0 … %pm7"
+  anchor: special-registers-pm0-pm7
+  forms:
+  - {spellings: ["%pm0", "%pm1", "%pm2", "%pm3"], shape: scalar, type: u32, min_ptx: "1.3", min_sm: 0}
+  - {spellings: ["%pm4", "%pm5", "%pm6", "%pm7"], shape: scalar, type: u32, min_ptx: "3.0", min_sm: 20}
+- {id: ptx-9-3-special-registers-pm0-64-pm7-64, ptx_isa: "9.3", section: "10.26", title: "Special Registers: %pm0_64 … %pm7_64", anchor: special-registers-pm0-64-pm7-64, forms: [{spellings: ["%pm0_64", "%pm1_64", "%pm2_64", "%pm3_64", "%pm4_64", "%pm5_64", "%pm6_64", "%pm7_64"], shape: scalar, type: u64, min_ptx: "4.0", min_sm: 50}]}
+- {id: ptx-9-3-special-registers-envreg-32, ptx_isa: "9.3", section: "10.27", title: "Special Registers: %envreg<32>", anchor: special-registers-envreg-32, forms: [{spellings: ["%envreg0", "%envreg1", "%envreg2", "%envreg3", "%envreg4", "%envreg5", "%envreg6", "%envreg7", "%envreg8", "%envreg9", "%envreg10", "%envreg11", "%envreg12", "%envreg13", "%envreg14", "%envreg15", "%envreg16", "%envreg17", "%envreg18", "%envreg19", "%envreg20", "%envreg21", "%envreg22", "%envreg23", "%envreg24", "%envreg25", "%envreg26", "%envreg27", "%envreg28", "%envreg29", "%envreg30", "%envreg31"], shape: scalar, type: b32, min_ptx: "2.1", min_sm: 0}]}
+- id: ptx-9-3-special-registers-globaltimer
+  ptx_isa: "9.3"
+  section: "10.28"
+  title: "Special Registers: %globaltimer, %globaltimer_lo, %globaltimer_hi"
+  anchor: special-registers-globaltimer
+  forms:
+  - {spellings: ["%globaltimer"], shape: scalar, type: u64, min_ptx: "3.1", min_sm: 30}
+  - {spellings: ["%globaltimer_lo", "%globaltimer_hi"], shape: scalar, type: u32, min_ptx: "3.1", min_sm: 30}
+- {id: ptx-9-3-special-registers-reserved-smem, ptx_isa: "9.3", section: "10.29", title: "Special Registers: %reserved_smem_offset_begin, %reserved_smem_offset_end, %reserved_smem_offset_cap, %reserved_smem_offset_<2>", anchor: special-registers-reserved-smem, forms: [{spellings: ["%reserved_smem_offset_begin", "%reserved_smem_offset_end", "%reserved_smem_offset_cap", "%reserved_smem_offset_0", "%reserved_smem_offset_1"], shape: scalar, type: b32, min_ptx: "7.6", min_sm: 80}]}
+- {id: ptx-9-3-special-registers-total-smem-size, ptx_isa: "9.3", section: "10.30", title: "Special Registers: %total_smem_size", anchor: special-registers-total-smem-size, forms: [{spellings: ["%total_smem_size"], shape: scalar, type: u32, min_ptx: "4.1", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-aggr-smem-size, ptx_isa: "9.3", section: "10.31", title: "Special Registers: %aggr_smem_size", anchor: special-registers-aggr-smem-size, forms: [{spellings: ["%aggr_smem_size"], shape: scalar, type: u32, min_ptx: "8.1", min_sm: 90}]}
+- {id: ptx-9-3-special-registers-dynamic-smem-size, ptx_isa: "9.3", section: "10.32", title: "Special Registers: %dynamic_smem_size", anchor: special-registers-dynamic-smem-size, forms: [{spellings: ["%dynamic_smem_size"], shape: scalar, type: u32, min_ptx: "4.1", min_sm: 20}]}
+- {id: ptx-9-3-special-registers-current-graph-exec, ptx_isa: "9.3", section: "10.33", title: "Special Registers: %current_graph_exec", anchor: special-registers-current-graph-exec, forms: [{spellings: ["%current_graph_exec"], shape: scalar, type: u64, min_ptx: "8.0", min_sm: 50}]}

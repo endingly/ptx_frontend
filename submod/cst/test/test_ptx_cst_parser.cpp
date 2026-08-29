@@ -753,6 +753,35 @@ TEST(PtxCstParser, ParsesRequiredThreadCountDimensions) {
   EXPECT_EQ(function.resources[0].values.size(), 2u);
 }
 
+TEST(PtxCstParser, RetainsEntryClusterDimensionDirectives) {
+  constexpr std::string_view source = R"ptx(.entry kernel()
+    .reqnctapercluster 2, 3, 1 .explicitcluster .maxclusterrank 8 { }
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_EQ(function.resources.size(), 3u);
+  const auto& req = function.resources[0];
+  EXPECT_EQ(result->token(req.directive).kind, TokenKind::DotReqnctapercluster);
+  ASSERT_EQ(req.values.size(), 3u);
+  EXPECT_EQ(result->token(req.values[1]).text, "3");
+  ASSERT_EQ(req.commas.size(), 2u);
+  const auto& explicit_cluster = function.resources[1];
+  EXPECT_EQ(result->token(explicit_cluster.directive).kind,
+            TokenKind::DotExplicitcluster);
+  EXPECT_TRUE(explicit_cluster.values.empty());
+  EXPECT_TRUE(explicit_cluster.commas.empty());
+  const auto& maximum = function.resources[2];
+  EXPECT_EQ(result->token(maximum.directive).kind,
+            TokenKind::DotMaxclusterrank);
+  ASSERT_EQ(maximum.values.size(), 1u);
+  EXPECT_EQ(result->token(maximum.values[0]).text, "8");
+}
+
 TEST(PtxCstParser, RejectsMalformedOrMisplacedKernelResourceDirectives) {
   for (const std::string_view source : {
            ".maxnreg 32",
@@ -765,6 +794,14 @@ TEST(PtxCstParser, RejectsMalformedOrMisplacedKernelResourceDirectives) {
            ".entry kernel() .maxntid 1, 2, 3, 4 { }",
            ".entry kernel() .reqntid 1.0 { }",
            ".entry kernel() .minnctapersm 2; { }",
+           ".func device() .explicitcluster { }",
+           ".entry kernel() { .maxclusterrank 8 }",
+           ".entry kernel() .reqnctapercluster { }",
+           ".entry kernel() .reqnctapercluster 1, 2, 3, 4 { }",
+           ".entry kernel() .explicitcluster 1 { }",
+           ".entry kernel() .explicitcluster, { }",
+           ".entry kernel() .maxclusterrank { }",
+           ".entry kernel() .maxclusterrank 1, 2 { }",
        }) {
     PtxCstParser parser(source);
     const auto result = parser.parseModule();

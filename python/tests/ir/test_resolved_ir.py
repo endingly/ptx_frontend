@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import sys
 import tempfile
@@ -15,7 +16,11 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from code_gen.database import load_codegen_database
 from code_gen.database import CodegenDatabase
-from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
+from code_gen.gen_resolved_descriptor import (
+    _emit_address_state_spaces,
+    _emit_operand_binding_descriptor,
+    generate_resolved_descriptor_source,
+)
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
@@ -864,7 +869,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         instruction = from_instruction_spec(mov)
 
         self.assertEqual(instruction.cpp_name, "Mov")
-        self.assertEqual(len(instruction.variants), 2)
+        self.assertEqual(len(instruction.variants), 3)
         self.assertEqual(
             [value.value for value in mov.variants[0].modifiers[0].values],
             [
@@ -946,21 +951,43 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
 
-        predicate = instruction.variants[1]
+        vector = instruction.variants[1]
+        self.assertEqual(vector.cpp_name, "V4U32")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in vector.fields],
+            [
+                ("vector", "WithLocs<VectorArity>"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedVectorRegisterRef>"),
+                ("src", "WithLocs<ResolvedVectorSpecialRegisterRef>"),
+            ],
+        )
+        for binding in vector.operand_layouts[0].bindings:
+            self.assertEqual(binding.allowed_shapes, (ResolvedOperandShape.VECTOR,))
+            self.assertEqual(binding.vector_arity_modifier_field_id, "vector")
+
+        predicate = instruction.variants[2]
         self.assertEqual(predicate.cpp_name, "Pred")
         self.assertEqual(
             [(field.name, field.cpp_type) for field in predicate.fields],
             [
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedPredicate>"),
-                ("src", "WithLocs<ResolvedPredicate>"),
+                ("src", "WithLocs<ResolvedPredicateSource>"),
             ],
         )
+        self.assertEqual(
+            predicate.operand_layouts[0].bindings[0].allowed_shapes,
+            (ResolvedOperandShape.PREDICATE,),
+        )
+        self.assertEqual(
+            predicate.operand_layouts[0].bindings[1].allowed_shapes,
+            (
+                ResolvedOperandShape.PREDICATE,
+                ResolvedOperandShape.SPECIAL_REGISTER,
+            ),
+        )
         for binding in predicate.operand_layouts[0].bindings:
-            self.assertEqual(
-                binding.allowed_shapes,
-                (ResolvedOperandShape.PREDICATE,),
-            )
             self.assertEqual(
                 binding.type_expression,
                 ResolvedOperandTypeExpression(
@@ -2242,8 +2269,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::Vector", source
         )
+        self.assertIn("ResolvedVectorSpecialRegisterRef", source)
+        self.assertIn("ResolvedVectorRegisterRef", source)
+        self.assertIn("ResolvedPredicateSource", source)
         self.assertIn(".vector_arity = static_cast<uint8_t>", source)
-        self.assertIn(".value_availability = AvailabilityDescriptor", source)
+        self.assertIn(".value_availability = special_register_availability(info)", source)
         self.assertIn(
             ".value_availability = symbol->address_availability", source
         )
@@ -2420,6 +2450,49 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertNotIn("resolve<Add>", source)
         self.assertNotIn("resolve_fields(", source)
+
+    def test_state_space_and_parameter_availability_emit_dnf(self) -> None:
+        dnf = (("any_of", [{"target": "sm_100a", "capabilities": ["tensor"]}]),)
+        ld = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "ld"
+        )
+        resolved = from_instruction_spec(ld)
+        static_binding = next(
+            binding
+            for variant in resolved.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.allowed_address_state_spaces
+        )
+        state_space = replace(
+            static_binding.allowed_address_state_spaces[0], availability=dnf
+        )
+        state_source = _emit_address_state_spaces((state_space,))
+        self.assertIn(".any_of_count = 1", state_source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", state_source)
+
+        parameter_binding = next(
+            binding
+            for variant in resolved.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.parameter_constraint is not None
+        )
+        parameter_binding = replace(
+            parameter_binding,
+            parameter_constraint=replace(
+                parameter_binding.parameter_constraint,
+                function_availability=dnf,
+            ),
+        )
+        parameter_source = _emit_operand_binding_descriptor(
+            parameter_binding, "vector_arities", "address_state_spaces"
+        )
+        self.assertIn(".function_availability = {", parameter_source)
+        self.assertIn(".any_of_count = 1", parameter_source)
+        self.assertIn('.capabilities = {{"tensor"}}', parameter_source)
 
     def test_generate_private_checker_descriptor_source(self) -> None:
         database = load_codegen_database(

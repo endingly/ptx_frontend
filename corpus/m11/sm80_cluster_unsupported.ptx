@@ -1,0 +1,8 @@
+.version 9.3
+.target sm_80
+.address_size 64
+
+.visible .entry m11_sm80_cluster_unsupported() .reqnctapercluster 1, 1 {
+  .reg .u32 %r;
+  mov.u32 %r, %cluster_ctarank;
+}

@@ -93,6 +93,8 @@ class PtxCstParser {
   std::expected<syntax_cst::CstVariableDeclaration, CstParseDiagnostic>
   parseVariableDeclaration(std::vector<TokenId> qualifiers = {},
                            std::optional<TokenId> first_token = std::nullopt);
+  std::expected<syntax_cst::CstAttributeList, CstParseDiagnostic>
+  parseAttributeList();
   std::expected<syntax_cst::CstFunctionParameter, CstParseDiagnostic>
   parseFunctionParameter();
   std::expected<syntax_cst::CstFunctionParameterList, CstParseDiagnostic>
@@ -108,6 +110,10 @@ class PtxCstParser {
   std::expected<syntax_cst::CstPragma, CstParseDiagnostic> parsePragma();
   std::expected<syntax_cst::CstKernelResourceDirective, CstParseDiagnostic>
   parseKernelResourceDirective();
+  std::expected<syntax_cst::CstLanguageDirective, CstParseDiagnostic>
+  parseLanguageDirective();
+  std::expected<syntax_cst::CstAliasDirective, CstParseDiagnostic>
+  parseAliasDirective();
   std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
   parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
                         std::size_t block_depth = 0);

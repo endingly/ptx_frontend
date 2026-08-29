@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PTX corpus provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "fixtures"],
+  "properties": {
+    "schema": {
+      "const": "ptx_frontend.corpus_provenance/v1"
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/fixture"}
+    }
+  },
+  "$defs": {
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "generator",
+        "toolkit",
+        "targets",
+        "source",
+        "license"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^corpus/(?:[^/]+/)*[^/]+\\.ptx$"
+        },
+        "sha256": {
+          "description": "SHA-256 of UTF-8 fixture text after CRLF is normalized to LF.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "generator": {"type": "string", "minLength": 1},
+        "toolkit": {"type": "string", "minLength": 1},
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "source": {"type": "string", "minLength": 1},
+        "license": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

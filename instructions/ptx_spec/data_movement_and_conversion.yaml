@@ -49,10 +49,34 @@ operand_patterns:
       access: write
       type: pred
     - name: src
-      kind: pred
+      kind: pred_or_sreg
       role: src
       access: read
       type: pred
+
+  mov_v4_u32:
+    - name: dst
+      kind: vector_reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+    - name: src
+      kind: vector_sreg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
 
   cvt_scalar:
     - name: dst
@@ -574,7 +598,7 @@ instructions:
       bare device/kernel function address. Predicate register moves are also
       supported. Bit-size forms pack or unpack two/four scalar register elements;
       .b128 is available only for these vector forms (9.7.9.4).
-    syntax: "mov.{pred|b16|u16|s16|b32|u32|s32|f32|b64|u64|s64|f64|b128} dst, src"
+    syntax: "mov{.v4.u32|.pred|.b16|.u16|.s16|.b32|.u32|.s32|.f32|.b64|.u64|.s64|.f64|.b128} dst, src"
 
     variants:
       - name: mov_scalar
@@ -684,6 +708,27 @@ instructions:
             valid: true
           - ptx: "mov.b128 %b0, {%rd0, %rd1};"
             valid: true
+
+      - name: mov_v4_u32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values: [v4]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values: [u32]
+        operands: $mov_v4_u32
+        rule: data_movement.mov
+        examples:
+          - ptx: "mov.v4.u32 %r0, %clusterid;"
+            valid: false
 
       - name: mov_pred
         availability:

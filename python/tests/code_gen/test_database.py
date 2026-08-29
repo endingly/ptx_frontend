@@ -4,8 +4,16 @@ from typing import Any, cast
 import unittest
 
 import yaml
+from jsonschema import Draft202012Validator
 
 from code_gen.database import load_codegen_database
+from code_gen.load_yaml import load_yaml
+from code_gen.gen_resolved_checker_descriptor import _emit_availability
+from code_gen.normalize import normalize_availability
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCHEMA = REPO_ROOT / "instructions/schemas/ptx-instr-v1.schema.yaml"
 
 
 def _variant(name: str, type_value: str) -> dict[str, object]:
@@ -347,6 +355,132 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             [variant.name for variant in database.instructions[0].variants],
             ["add_first", "add_second"],
         )
+
+
+class AvailabilityNormalizationTests(unittest.TestCase):
+    def test_legacy_and_dnf_availability(self) -> None:
+        legacy = {"ptx": "9.0", "sm": 90, "family": "sm_120f"}
+        self.assertEqual(normalize_availability(legacy), legacy)
+        dnf = {"any_of": [
+            {"ptx": "9.0", "sm": 100, "target": "sm_100a",
+             "capabilities": ["tensor", "cluster"]},
+            {"ptx": "9.2", "sm": 120},
+        ]}
+        self.assertEqual(normalize_availability(dnf), dnf)
+
+    def test_emits_sm103f_minimum_family_feature(self) -> None:
+        availability = {"ptx": "9.3", "sm": 103, "family": "sm_103f"}
+        self.assertEqual(normalize_availability(availability), availability)
+        self.assertIn(
+            '.required_family = "sm_103f",',
+            _emit_availability(normalize_availability(availability)),
+        )
+
+    def test_schema_defines_family_as_source_feature_target(self) -> None:
+        schema = load_yaml(SCHEMA)
+        family_feature = schema["$defs"]["family_feature_target"]
+        self.assertNotIn("arch_family", schema["$defs"])
+        self.assertIn("source feature target", family_feature["description"])
+        self.assertIn("translation compatibility", family_feature["description"])
+        self.assertIn("sm_103f", family_feature["examples"])
+        family = schema["$defs"]["availability"]["oneOf"][0]["properties"]["family"]
+        self.assertEqual(family["$ref"], "#/$defs/family_feature_target")
+        self.assertIn("enabled_family_features", family["description"])
+
+    def test_rejects_non_feature_legacy_families(self) -> None:
+        for family in ("sm_90a", "sm_90", "sm_0f", "sm_90ff"):
+            with self.assertRaisesRegex(ValueError, "availability family"):
+                normalize_availability({"family": family})
+
+    def test_rejects_invalid_dnf_availability(self) -> None:
+        for availability in (
+            {"any_of": []},
+            {"any_of": [{}]},
+            {"any_of": [{"target": "sm_90b"}]},
+            {"any_of": [{"capabilities": []}]},
+            {"any_of": [{"sm": 90}] * 5},
+        ):
+            with self.assertRaises((TypeError, ValueError)):
+                normalize_availability(availability)
+
+    def test_rejects_malformed_exact_targets_during_normalization(self) -> None:
+        for target in ("sm_0", "sm_80b", "sm_80aa", "sm_4294967296", "", 80):
+            with self.assertRaisesRegex(ValueError, "availability target"):
+                normalize_availability({"any_of": [{"target": target}]})
+
+    def test_accepts_maximum_exact_target_during_normalization(self) -> None:
+        availability = {"any_of": [{"target": "sm_4294967295"}]}
+        self.assertEqual(normalize_availability(availability), availability)
+        source = _emit_availability(normalize_availability(availability))
+        self.assertIn(".exact_target_architecture = {4294967295}", source)
+        self.assertIn("TargetFlavor::Generic", source)
+
+    def test_rejects_non_uint32_sm_during_normalization(self) -> None:
+        for availability in (
+            {"sm": 4294967296},
+            {"sm": True},
+            {"any_of": [{"sm": 4294967296}]},
+            {"any_of": [{"sm": True}]},
+        ):
+            with self.assertRaisesRegex(ValueError, "availability SM version"):
+                normalize_availability(availability)
+
+    def test_accepts_uint32_sm_boundaries_during_normalization(self) -> None:
+        for availability in (
+            {"sm": 0},
+            {"sm": 4294967295},
+            {"any_of": [{"sm": 4294967295}]},
+        ):
+            self.assertEqual(normalize_availability(availability), availability)
+
+    def test_availability_schema_dnf_boundaries(self) -> None:
+        schema = load_yaml(SCHEMA)
+        validator = Draft202012Validator({
+            "$schema": schema["$schema"],
+            "$defs": schema["$defs"],
+            "$ref": "#/$defs/availability",
+        })
+        self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
+        self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
+        for availability in ({"any_of": []}, {"any_of": [{}]},
+                             {"any_of": [{"sm": 100}] * 5},
+                             {"sm": 4294967296}, {"sm": True},
+                             {"family": "sm_90a"},
+                             {"any_of": [{"target": 80}]}):
+            self.assertTrue(list(validator.iter_errors(availability)))
+
+    def test_dnf_generator_keeps_or_clauses_and_and_terms(self) -> None:
+        source = _emit_availability({"any_of": [
+            {"ptx": "9.0", "sm": 100, "target": "sm_100a",
+             "capabilities": ["tensor", "cluster"]},
+            {"sm": 120},
+        ]})
+        self.assertIn(".any_of_count = 2", source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
+        source = _emit_availability(normalize_availability({"any_of": [
+            {"target": "sm_80", "capabilities": ["tensor", "cluster"]},
+            {"target": "sm_90a"},
+            {"target": "sm_100f"},
+        ]}))
+        self.assertIn(".any_of_count = 3", source)
+        self.assertIn(".has_exact_target = true", source)
+        self.assertIn(".exact_target_architecture = {80}", source)
+        self.assertIn("TargetFlavor::Generic", source)
+        self.assertIn(".exact_target_architecture = {90}", source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn(".exact_target_architecture = {100}", source)
+        self.assertIn("TargetFlavor::FamilySpecific", source)
+        self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_emitter_rejects_unvalidated_sm(self) -> None:
+        for availability in ({"sm": 4294967296}, {"any_of": [{"sm": True}]}):
+            with self.assertRaisesRegex(ValueError, "availability SM version"):
+                _emit_availability(availability)
+        with self.assertRaisesRegex(ValueError, "availability target"):
+            _emit_availability({"any_of": [{"target": "sm_4294967296"}]})
 
 
 if __name__ == "__main__":

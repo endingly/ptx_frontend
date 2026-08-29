@@ -7,6 +7,11 @@ from pathlib import Path
 from base.utils import generated_at_comment
 from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from code_gen.database import CodegenDatabase
+from code_gen.normalize import (
+    parse_availability_target,
+    validate_availability_family,
+    validate_availability_sm_version,
+)
 from ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierValueAvailability,
@@ -120,10 +125,6 @@ const checker::InstructionDescriptor&
 
 
 def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
-    availability = dict(variant.availability)
-    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
-    minimum_sm = int(availability.get("sm", 0))
-    family = str(availability.get("family", ""))
     rule_id = variant.rule or ""
     consistency = variant.memory_consistency
     alignment = variant.address_alignment
@@ -141,23 +142,13 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
     vector = variant.memory_vector
     memory_vector = ""
     if vector is not None:
-        vector_availability = dict(vector.availability)
-        vector_minimum_ptx = _parse_ptx_version(
-            vector_availability.get("ptx", "0.0")
-        )
-        vector_minimum_sm = int(vector_availability.get("sm", 0))
-        vector_family = str(vector_availability.get("family", ""))
         memory_vector = f'''
               .memory_vector = {{
                   .type_field_id = "{vector.type_field_id}",
                   .vector_field_id = "{vector.vector_field_id}",
                   .address_field_id = "{vector.address_field_id}",
                   .state_space_field_id = "{vector.state_space_field_id or ""}",
-                  .availability = {{
-                      .minimum_ptx_version = {{{vector_minimum_ptx[0]}, {vector_minimum_ptx[1]}}},
-                      .minimum_sm_version = {vector_minimum_sm},
-                      .required_family = "{vector_family}",
-                  }},
+                  .availability = {_emit_availability(dict(vector.availability))},
               }},'''
     immediate_value = ""
     if variant.immediate_value is not None:
@@ -180,11 +171,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
               }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
-              .availability = {{
-                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {minimum_sm},
-                  .required_family = "{family}",
-              }},
+              .availability = {_emit_availability(dict(variant.availability))},
               .modifier_value_availabilities =
                   {variant.cpp_name}_modifier_value_availabilities,
               .operand_layouts = {variant.cpp_name}_operand_layouts,
@@ -242,10 +229,6 @@ def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:
 def _emit_modifier_value_descriptor(
     entry: ResolvedModifierValueAvailability,
 ) -> str:
-    availability = dict(entry.availability)
-    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
-    minimum_sm = int(availability.get("sm", 0))
-    family = str(availability.get("family", ""))
     if entry.value_cpp_type == "bool":
         bool_value = "true" if entry.value else "false"
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
@@ -334,11 +317,7 @@ def _emit_modifier_value_descriptor(
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
               .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},
               .memory_scope = {memory_scope if entry.value_cpp_type == "MemoryScope" else cpp_default(CppDomain.MEMORY_SCOPES)},
-              .availability = {{
-                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {minimum_sm},
-                  .required_family = "{family}",
-              }},
+              .availability = {_emit_availability(dict(entry.availability))},
           }}"""
 
 
@@ -356,17 +335,9 @@ def _emit_variant_layout_descriptors(variant: ResolvedVariant) -> str:
 
 
 def _emit_operand_layout_descriptor(layout: ResolvedOperandLayout) -> str:
-    availability = dict(layout.availability)
-    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
-    minimum_sm = int(availability.get("sm", 0))
-    family = str(availability.get("family", ""))
     return f"""          checker::OperandLayoutDescriptor{{
               .layout_name = "{layout.layout_id}",
-              .availability = {{
-                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {minimum_sm},
-                  .required_family = "{family}",
-              }},
+              .availability = {_emit_availability(dict(layout.availability))},
           }}"""
 
 
@@ -386,21 +357,52 @@ def _emit_variant_type_compatibility_descriptors(
 def _emit_operand_type_compatibility_descriptor(
     entry: ResolvedOperandTypeCompatibility,
 ) -> str:
-    availability = dict(entry.availability)
-    minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
-    minimum_sm = int(availability.get("sm", 0))
-    family = str(availability.get("family", ""))
     return f"""          checker::OperandTypeCompatibilityDescriptor{{
               .target_field_id = "{entry.target_field_id}",
               .special_register_kind = {cpp_value(CppDomain.SPECIAL_REGISTER_KINDS, entry.special_register_kind)},
               .instruction_width = {entry.instruction_width},
               .effective_type = {cpp_value(CppDomain.SCALAR_TYPES, entry.effective_type)},
-              .availability = {{
-                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {minimum_sm},
-                  .required_family = "{family}",
-              }},
+              .availability = {_emit_availability(dict(entry.availability))},
           }}"""
+
+
+def _emit_availability(availability: dict[str, object]) -> str:
+    if "any_of" not in availability:
+        minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
+        return f'''{{
+                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                  .minimum_sm_version = {validate_availability_sm_version(availability.get("sm", 0))},
+                  .required_family = "{validate_availability_family(availability["family"]) if "family" in availability else ""}",
+              }}'''
+
+    clauses = availability["any_of"]
+    assert isinstance(clauses, list)
+    emitted = []
+    for clause in clauses:
+        assert isinstance(clause, dict)
+        minimum_ptx = _parse_ptx_version(clause.get("ptx", "0.0"))
+        target = clause.get("target")
+        number, flavor = (
+            parse_availability_target(target) if target is not None else (0, "Generic")
+        )
+        capabilities = clause.get("capabilities", [])
+        assert isinstance(capabilities, list)
+        capability_values = ", ".join(f'"{value}"' for value in capabilities)
+        emitted.append(f'''checker::AvailabilityClause{{
+                      .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
+                      .minimum_sm_version = {validate_availability_sm_version(clause.get("sm", 0))},
+                      .has_exact_target = {str(target is not None).lower()},
+                      .exact_target_architecture = {{{number}}},
+                      .exact_target_flavor = base::TargetFlavor::{flavor},
+                      .capabilities = {{{{{capability_values}}}}},
+                      .capability_count = {len(capabilities)},
+                  }}''')
+    return f'''{{
+                  .any_of = {{{{
+                      {",\n                      ".join(emitted)}
+                  }}}},
+                  .any_of_count = {len(clauses)},
+              }}'''
 
 
 def _parse_ptx_version(value: object) -> tuple[int, int]:

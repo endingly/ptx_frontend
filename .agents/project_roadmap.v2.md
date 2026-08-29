@@ -13,12 +13,12 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11～M19 尚未开始。
+> - M11 已完成；M12～M19 尚未开始。
 >
 > ISA 规划基线：
 >
-> - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/parallel-thread-execution/)；
-> - [PTX ISA 9.3 Contents](https://docs.nvidia.com/cuda/parallel-thread-execution/contents.html)；
+> - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/)；
+> - [PTX ISA 9.3 Contents](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html)；
 > - PTX ISA 9.3 文档发布日期：2026-06-25。
 >
 > 本文不记录托管平台、外部分支、代码评审、流水线运行或合入状态，也不据此推断功能状态。
@@ -113,6 +113,7 @@ M11 必须把它升级为覆盖 instruction、directive、special register 的 e
 TargetProfile
   = numeric architecture
   + target flavor
+  + explicit enabled family-specific source-feature set
   + explicit capability set
   + preserved source spelling
 ```
@@ -501,7 +502,7 @@ evidence links
 | M8 | ✅ | module grammar、nested scope 与 recovery；I14 暂停 |
 | M9 | ✅ | simulator MVP frontend opcode coverage；C03 暂停 |
 | M10 | ✅ | modern instruction seed slices |
-| M11 | ⬜ | PTX 9.3 基线、exhaustive ledger 与 target capability |
+| M11 | ✅ | PTX 9.3 基线、exhaustive ledger 与 target capability |
 | M12 | ⬜ | common compiler-generated scalar/data-movement closure |
 | M13 | ⬜ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
@@ -734,25 +735,54 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M11-I01 | ⬜ | 独立 | 冻结 PTX ISA 9.3 规范基线 | 记录版本、发布日期、章节 URL 与更新策略；不得无审查追随 latest |
-| M11-I02 | ⬜ | 独立 | 建立 exhaustive instruction registry | PTX 9.3 §9.7 每个 family/opcode/sub-opcode 均有 record |
-| M11-I03 | ⬜ | 独立 | 建立 exhaustive directive registry | Chapter 11 与已知 pragma string 全部有 record |
-| M11-I04 | ⬜ | 独立 | 建立 exhaustive special-register registry | Chapter 10 每个 spelling、shape、type、availability 有 record |
-| M11-I05 | ⬜ | 独立 | 将 coverage 提升到 variant-slice 粒度 | 同一 opcode 的不同 topology/type/shape 可独立标记 |
-| M11-I06 | ⬜ | 独立 | 建立 disposition/reason schema | planned/deferred/out-of-scope/paused 均要求理由和 milestone |
-| M11-I07 | ⬜ | 独立 | 建立 `TargetArchitecture` 与 `TargetFlavor` | 保留 source spelling；numeric、`a`、`f` 不混淆 |
-| M11-I08 | ⬜ | 独立 | 扩展 availability expression | 支持 min PTX、numeric SM、exact target、feature capability 与 AND/OR |
-| M11-I09 | ⬜ | 独立 | 建立 validation `TargetProfile` catalog | 至少覆盖 sm80、sm90/sm90a、sm100/sm100a/sm100f；未知 target 不猜测 |
-| M11-I10 | ⬜ | 独立 | 支持 cluster dimension directives | `.reqnctapercluster/.explicitcluster/.maxclusterrank` CST/AST/semantic |
-| M11-I11 | ⬜ | 独立 | 补齐 1.0 modern directive subset | `.alias/.attribute/.noreturn/.abi_preserve/.abi_preserve_control/.blocksareclusters/.language` 与 `mma_throughput` provenance |
-| M11-I12 | ⬜ | 独立 | 支持 cluster special-register family | `%is_explicit_cluster/%clusterid/%nclusterid/%cluster_ctaid/%cluster_nctaid/%cluster_ctarank/%cluster_nctarank` |
-| M11-I13 | ⬜ | 独立 | 支持 modern smem/graph special-register family | reserved/aggr/dynamic/total smem 与 `%current_graph_exec` 的 type/availability |
-| M11-I14 | ⬜ | 独立 | 建立 complex modifier/shape lexical corpus | `::`、numeric-leading shape、comma-bearing form、collector/layout/kind round-trip |
-| M11-I15 | ⬜ | 独立 | 扩展 modern operand schema primitive | opaque descriptor、tensor coordinate、variable fragment cardinality、typed token |
-| M11-I16 | ⬜ | 独立 | 定义 real-PTX corpus provenance contract | fixture 记录生成器/toolkit/target/source/license/hash，禁止无来源 blob |
-| M11-C01 | ⬜ | 耦合 | 统一 instruction/directive/sreg availability | 三类 checker 共用 `TargetProfile` 与 diagnostic protocol |
-| M11-C02 | ⬜ | 耦合 | 建立 no-unaccounted-item CI gate | PTX 9.3 官方 inventory 新增/删除时 CI 给出结构化 diff |
-| M11-C03 | ⬜ | 耦合 | 建立 SM80/SM90a/SM100 multi-generation corpus | 支持项通过，未支持项明确 diagnostic，无 silent drop |
+| M11-I01 | ✅ | 独立 | 冻结 PTX ISA 9.3 规范基线 | 记录版本、发布日期、章节 URL 与更新策略；不得无审查追随 latest |
+| M11-I02 | ✅ | 独立 | 建立 exhaustive instruction registry | PTX 9.3 §9.7 每个 family/opcode/sub-opcode 均有 record |
+| M11-I03 | ✅ | 独立 | 建立 exhaustive directive registry | Chapter 11 与已知 pragma string 全部有 record |
+| M11-I04 | ✅ | 独立 | 建立 exhaustive special-register registry | Chapter 10 每个 spelling、shape、type、availability 有 record |
+| M11-I05 | ✅ | 独立 | 将 coverage 提升到 variant-slice 粒度 | 同一 opcode 的不同 topology/type/shape 可独立标记 |
+| M11-I06 | ✅ | 独立 | 建立 disposition/reason schema | planned/deferred/out-of-scope/paused 均要求理由和 milestone |
+| M11-I07 | ✅ | 独立 | 建立 `TargetArchitecture` 与 `TargetFlavor` | 保留 source spelling；numeric、`a`、`f` 不混淆 |
+| M11-I08 | ✅ | 独立 | 扩展 availability expression | 支持 min PTX、numeric SM、exact target、feature capability 与 AND/OR |
+| M11-I09 | ✅ | 独立 | 建立 validation `TargetProfile` catalog | 至少覆盖 sm80、sm90/sm90a、sm100/sm100a/sm100f；未知 target 不猜测 |
+| M11-I10 | ✅ | 独立 | 支持 cluster dimension directives | `.reqnctapercluster/.explicitcluster/.maxclusterrank` CST/AST/semantic |
+| M11-I11 | ✅ | 独立 | 补齐 1.0 modern directive subset | `.alias/.attribute/.noreturn/.abi_preserve/.abi_preserve_control/.blocksareclusters/.language` 与 `mma_throughput` provenance |
+| M11-I12 | ✅ | 独立 | 支持 cluster special-register family | `%is_explicit_cluster/%clusterid/%nclusterid/%cluster_ctaid/%cluster_nctaid/%cluster_ctarank/%cluster_nctarank` |
+| M11-I13 | ✅ | 独立 | 支持 modern smem/graph special-register family | reserved/aggr/dynamic/total smem 与 `%current_graph_exec` 的 type/availability |
+| M11-I14 | ✅ | 独立 | 建立 complex modifier/shape lexical corpus | `::`、numeric-leading shape、comma-bearing form、collector/layout/kind round-trip |
+| M11-I15 | ✅ | 独立 | 扩展 modern operand schema primitive | opaque descriptor、tensor coordinate、variable fragment cardinality、typed token |
+| M11-I16 | ✅ | 独立 | 定义 real-PTX corpus provenance contract | fixture 记录生成器/toolkit/target/source/license/hash，禁止无来源 blob |
+| M11-C01 | ✅ | 耦合 | 统一 instruction/directive/sreg availability | 三类 checker 共用 `TargetProfile` 与 diagnostic protocol |
+| M11-C02 | ✅ | 耦合 | 建立 no-unaccounted-item CI gate | PTX 9.3 官方 inventory 新增/删除时 CI 给出结构化 diff |
+| M11-C03 | ✅ | 耦合 | 建立 SM80/SM90a/SM100 multi-generation corpus | 支持项通过，未支持项明确 diagnostic，无 silent drop |
+
+### 闭环证据（持续可验证）
+
+- PTX ISA 9.3 证据固定到 CUDA 13.3.0 archive；digest 明确 `contents.html` subject 和
+  `raw_response_body`。baseline 与 instruction/directive/special-register registry 的
+  `source_url`/`evidence_url` 由 cross-artifact equality 测试分别对齐 archive
+  `root`/`contents`，scheduled/manual workflow 可重算远端原始 bytes。
+- instruction、directive 与 special-register registry 均通过 official inventory accounting
+  join；每个官方 item 只有一个可解释的 support outcome，新增、缺失、重复或冲突均产生
+  structured diff。
+- generic、architecture-specific exact identity、`family` 与 capability 在同一
+  `TargetProfile` 路径中分别验证。`family` 是最低 family-specific 源特性 target，只查
+  `enabled_family_features`：`sm_100`/`sm_103` 为无，`sm_100f`/`sm_100a` 为 `sm_100f`，
+  `sm_103f`/`sm_103a` 为 `sm_100f`+`sm_103f`，`sm_120f` 仅为 `sm_120f`。此集合不由数值或
+  suffix 推导，也不表示当前未建模的 PTX-to-physical-GPU translation compatibility；numeric
+  target/SM 受 `uint32_t` 范围约束。
+- modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
+  contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
+- synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；spec 内容变更通过
+  `CMAKE_CONFIGURE_DEPENDS` 自动重配置 output/source topology。topology regression 每次运行都在
+  唯一的 nested temporary fixture/build 中执行，repo source 与主 build 均只读不变，因此可并发；
+  它验证 category 切换、编译与无修改 no-op。incremental build 对缺失 header 自愈，并由 backend
+  schema 变更正确触发生成输出失效与重建。
+- corpus provenance 为每个 fixture 保存有序 `targets`；multi-target corpus 保留完整 directive
+  sequence，删除、重排或追加 target 都会触发 provenance mismatch。
+
+M11 的完成状态以前述离线测试以及最终 Debug/Release workflow、installed consumer、online
+archive digest verifier 和 `git diff --check` 全部通过为前置条件；这些是持续门禁，不记录
+一次性运行数量。
 
 ### 出口
 

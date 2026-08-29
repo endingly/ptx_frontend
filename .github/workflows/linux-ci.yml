@@ -10,6 +10,7 @@ on:
       - vcpkg.json
   schedule:
     - cron: "0 0 1 * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -121,13 +122,19 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/ccache
-          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.cache-epoch.outputs.month }}
+          key: ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.cache-epoch.outputs.month }}-${{ hashFiles('.github/workflows/linux-ci.yml', 'CMakeLists.txt', 'CMakePresets.json', '**/CMakeLists.txt', '**/*.cmake', 'vcpkg.json', 'requirements.txt', 'python/base/**/*.py', 'python/code_gen/**/*.py', 'python/ir/**/*.py', 'python/scripts/**/*.py', 'instructions/**/*.yaml') }}
           restore-keys: |
-            ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
-
+            ccache-v3-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-
       - name: Run CMake workflow preset
         shell: bash
-        run: cmake --workflow --preset "${{ matrix.preset }}"
+        run: |
+          ccache --zero-stats
+          cmake --workflow --preset "${{ matrix.preset }}"
+
+      - name: Verify archived PTX ISA baseline
+        if: matrix.name == 'Debug' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: .venv/bin/python python/scripts/verify_ptx_isa_baseline.py instructions/ptx_isa_baseline.yaml
 
       - name: Show compiler cache statistics
         if: always()

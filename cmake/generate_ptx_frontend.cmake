@@ -31,21 +31,29 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     ${PTX_RESOLVED_IR_BACKEND_SCHEMA}
     ${PTX_RESOLVED_IR_CODEGEN_FILES})
 
-execute_process(
-    COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/python/scripts/gen_all.py"
-            --spec-dir "${PROJECT_SOURCE_DIR}/instructions/ptx_spec"
+function(ptx_resolved_ir_list_generated_outputs output_variable spec_dir output_dir)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/python/scripts/gen_all.py"
+            --spec-dir "${spec_dir}"
             --backend-spec "${PTX_RESOLVED_IR_BACKEND_SPEC}"
-            --output "${PTX_RESOLVED_IR_GENERATED_DIR}" --list-outputs
-    RESULT_VARIABLE PTX_RESOLVED_IR_GENERATED_FILES_RESULT
-    OUTPUT_VARIABLE PTX_RESOLVED_IR_GENERATED_FILES_OUTPUT
-    ERROR_VARIABLE PTX_RESOLVED_IR_GENERATED_FILES_ERROR
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(NOT PTX_RESOLVED_IR_GENERATED_FILES_RESULT EQUAL 0)
-    message(FATAL_ERROR "Failed to determine generated files: ${PTX_RESOLVED_IR_GENERATED_FILES_ERROR}")
-endif()
+            --output "${output_dir}" --list-outputs
+        RESULT_VARIABLE _result
+        OUTPUT_VARIABLE _output
+        ERROR_VARIABLE _error
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR "Failed to determine generated files: ${_error}")
+    endif()
 
-string(REPLACE "\n" ";" PTX_RESOLVED_IR_GENERATED_FILES
-    "${PTX_RESOLVED_IR_GENERATED_FILES_OUTPUT}")
+    string(REPLACE "\n" ";" _generated_files "${_output}")
+    set(${output_variable} "${_generated_files}" PARENT_SCOPE)
+endfunction()
+
+ptx_resolved_ir_list_generated_outputs(
+    PTX_RESOLVED_IR_GENERATED_FILES
+    "${PROJECT_SOURCE_DIR}/instructions/ptx_spec"
+    "${PTX_RESOLVED_IR_GENERATED_DIR}")
+
 add_custom_command(
     OUTPUT ${PTX_RESOLVED_IR_GENERATED_FILES}
     COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/python/scripts/gen_all.py"

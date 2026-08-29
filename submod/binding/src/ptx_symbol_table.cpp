@@ -142,6 +142,13 @@ std::optional<uint64_t> declarationAlignment(
   return *scalar * (vector_type->text == ".v2" ? 2 : 4);
 }
 
+std::optional<uint8_t> vectorWidth(
+    const std::optional<syntax_ast::AstSyntax>& vector_type) {
+  if (!vector_type)
+    return std::nullopt;
+  return vector_type->text == ".v2" ? 2 : 4;
+}
+
 std::string_view referenceDescription(ReferenceKind kind) {
   switch (kind) {
     case ReferenceKind::InstructionOperand:
@@ -288,7 +295,8 @@ struct SymbolTableBuilder {
       std::optional<std::string_view> type = std::nullopt,
       std::optional<uint64_t> address_alignment = std::nullopt,
       std::optional<uint32_t> parameterized_count = std::nullopt,
-      bool allow_redeclaration = false, bool function_is_entry = false) {
+      bool allow_redeclaration = false, bool function_is_entry = false,
+      std::optional<uint8_t> vector_width = std::nullopt) {
     if (const auto previous = exactSymbol(scope, name, parameterized_count)) {
       const Symbol& existing = result.table.symbol(*previous);
       if (!allow_redeclaration) {
@@ -331,10 +339,12 @@ struct SymbolTableBuilder {
         .state_space = state_space,
         .type = type ? std::optional<std::string>{std::string{*type}}
                      : std::nullopt,
+        .vector_width = vector_width,
         .address_alignment = address_alignment,
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
         .function_is_entry = function_is_entry,
+        .canonical_function = std::nullopt,
     });
     return id;
   }
@@ -434,14 +444,14 @@ struct SymbolTableBuilder {
             ? SymbolKind::CallParameter
             : SymbolKind::Variable;
     for (const auto& declarator : declaration.declarators) {
-      addSymbol(scope, kind, declarator.name.syntax.text,
-                declarator.name.syntax.range, declaration_linkage,
-                declaration.state_space, declaration.type.text,
-                declarationAlignment(declaration.alignment,
-                                     declaration.vector_type,
-                                     declaration.type.text),
-                parameterizedCount(declarator),
-                scope == result.table.moduleScope());
+      addSymbol(
+          scope, kind, declarator.name.syntax.text,
+          declarator.name.syntax.range, declaration_linkage,
+          declaration.state_space, declaration.type.text,
+          declarationAlignment(declaration.alignment, declaration.vector_type,
+                               declaration.type.text),
+          parameterizedCount(declarator), scope == result.table.moduleScope(),
+          false, vectorWidth(declaration.vector_type));
     }
   }
 
@@ -503,6 +513,21 @@ struct SymbolTableBuilder {
                                      parameter.type.text));
     }
     collectBody(function.body, function_scope, function_scope);
+  }
+
+  void collectAlias(const syntax_ast::AstAliasDirective& alias) {
+    const auto target = exactSymbol(result.table.moduleScope(),
+                                    alias.aliasee.syntax.text, std::nullopt);
+    if (!target || result.table.symbol(*target).kind != SymbolKind::Function)
+      return;
+    const SymbolId alias_symbol =
+        addSymbol(result.table.moduleScope(), SymbolKind::Function,
+                  alias.alias.syntax.text, alias.alias.syntax.range,
+                  SymbolLinkage::None, std::nullopt, std::nullopt,
+                  std::nullopt, std::nullopt, true, false);
+    Symbol& symbol = result.table.symbols_[alias_symbol.value];
+    if (symbol.kind == SymbolKind::Function)
+      symbol.canonical_function = *target;
   }
 
   void collectBody(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
@@ -899,6 +924,10 @@ struct SymbolTableBuilder {
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         collectFunction(*function);
       }
+    }
+    for (const auto& item : module.items) {
+      if (const auto* alias = std::get_if<syntax_ast::AstAliasDirective>(&item))
+        collectAlias(*alias);
     }
 
     for (const auto& item : module.items) {

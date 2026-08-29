@@ -62,6 +62,7 @@ enum class RoundingMode : uint8_t {
 /** Semantic value of a PTX comparison operator modifier. */
 enum class ComparisonOperator : uint8_t {
   Invalid = 0,
+  Eq,
   Lt,
 };
 

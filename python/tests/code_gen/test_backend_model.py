@@ -111,12 +111,22 @@ class BackendModelTests(unittest.TestCase):
             "CacheOperator::Unspecified",
         )
         self.assertEqual(
-            unit.domains[CppDomain.COMPARISON_OPERATORS.value].values["lt"],
-            "ComparisonOperator::Lt",
+            unit.domains[CppDomain.COMPARISON_OPERATORS.value].values,
+            {"eq": "ComparisonOperator::Eq", "lt": "ComparisonOperator::Lt"},
         )
         self.assertIs(
             unit.domains[CppDomain.COMPARISON_OPERATORS.value].runtime_lookup,
             RuntimeLookupKind.PTX_SUFFIX,
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.ROUNDING_MODES.value].values,
+            {
+                "rn": "RoundingMode::Rn",
+                "rz": "RoundingMode::Rz",
+                "rm": "RoundingMode::Rm",
+                "rp": "RoundingMode::Rp",
+                "rzi": "RoundingMode::Rzi",
+            },
         )
         self.assertEqual(
             unit.domains[CppDomain.BOOLEAN_OPERATORS.value].values["xor"],

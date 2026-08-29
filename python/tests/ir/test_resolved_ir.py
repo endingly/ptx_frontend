@@ -2374,6 +2374,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Shr>(", source)
         self.assertNotIn("struct Bar {", source)
 
+    def test_common_scalar_checker_contract_uses_shared_descriptor_pipeline(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            arithmetic = root / "arithmetic.gen.cpp"
+            descriptor = root / "resolved_descriptor.gen.cpp"
+            generate_resolved_ir_source(
+                self.database, category="arithmetic", output_path=arithmetic
+            )
+            generate_resolved_descriptor_source(
+                self.database, output_path=descriptor
+            )
+            checker_source = arithmetic.read_text(encoding="utf-8")
+            descriptor_source = descriptor.read_text(encoding="utf-8")
+
+        self.assertIn("check_common(", checker_source)
+        self.assertIn("check_modifier_value_availability(", checker_source)
+        self.assertIn("check_operands(", checker_source)
+        self.assertIn("ResolvedOperandBindingDescriptor", descriptor_source)
+        self.assertIn("ScalarTypeSizePolicy", descriptor_source)
+        for opcode_wrapper in (
+            "check_comparison(",
+            "check_rounding(",
+            "check_saturation(",
+            "check_scalar_type(",
+            "check_register_width(",
+        ):
+            self.assertNotIn(opcode_wrapper, checker_source)
+
     def test_generate_private_resolved_descriptor_source(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

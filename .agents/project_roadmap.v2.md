@@ -754,14 +754,22 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 | M11-C02 | ✅ | 耦合 | 建立 no-unaccounted-item CI gate | PTX 9.3 官方 inventory 新增/删除时 CI 给出结构化 diff |
 | M11-C03 | ✅ | 耦合 | 建立 SM80/SM90a/SM100 multi-generation corpus | 支持项通过，未支持项明确 diagnostic，无 silent drop |
 
-### 闭环证据（2026-08-29）
+### 闭环证据（持续可验证）
 
-- PTX 9.3 pinned digest 与 inventory accounting 已固定；
-- exact/family/profile + ordered target checks 已覆盖；
-- modern operand runtime contract 已完成端到端约束；
-- SM80/SM90a/SM100 multi-generation corpus 已纳入验证。
+- PTX ISA 9.3 证据固定到 CUDA 13.3.0 archive；digest 明确 `contents.html` subject 和
+  `raw_response_body`，scheduled/manual workflow 可重算远端原始 bytes。
+- instruction、directive 与 special-register registry 均通过 official inventory accounting
+  join；每个官方 item 只有一个可解释的 support outcome，新增、缺失、重复或冲突均产生
+  structured diff。
+- generic、architecture-specific、family-specific exact target 与 ordered `.target` directive
+  在同一 `TargetProfile` 路径中验证；numeric target/SM 受 `uint32_t` 范围约束。
+- modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
+  contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
+- corpus provenance 为每个 fixture 保存有序 `targets`；multi-target corpus 保留完整 directive
+  sequence，删除、重排或追加 target 都会触发 provenance mismatch。
 
-本地最终验证：Debug workflow 433/433、Release workflow 432/432、Python 142/142 通过。
+M11 的完成状态以前述离线测试以及 Debug/Release workflow、installed consumer 和
+`git diff --check` 全部通过为前置条件；这些是持续门禁，不记录一次性运行数量。
 
 ### 出口
 

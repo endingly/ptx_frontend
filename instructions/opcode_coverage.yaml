@@ -210,6 +210,10 @@ opcodes:
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:
   - {"id":"createpolicy-createpolicy-fractional-l2-evict-last-b64-default","section":"9.7.9.19","spec_variant":"createpolicy_fractional_l2_evict_last_b64","operand_layout":"default","selector":{"topology":"data_movement","types":["b64","f32"],"shape":"scalar","modifiers":["fractional","l2_evict_last"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: applypriority
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"applypriority-applypriority-global-l2-evict-normal-default","section":"9.7.9.17","spec_variant":"applypriority_global_l2_evict_normal","operand_layout":"default","selector":{"topology":"data_movement","types":["u32"],"shape":"address","modifiers":["l2_evict_normal"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: cp
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

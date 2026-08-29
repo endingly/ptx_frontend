@@ -86,9 +86,10 @@ enum class CacheOperator : uint8_t {
   Wt,
 };
 
-/** Semantic value of the accepted PTX L1 eviction-priority modifiers. */
+/** Semantic value of the accepted PTX eviction-priority modifiers. */
 enum class EvictionPriority : uint8_t {
   Invalid = 0,
+  EvictNormal,
   EvictFirst,
   EvictLast,
   NoAllocate,

@@ -115,6 +115,10 @@ class BackendModelTests(unittest.TestCase):
             "EvictionPriority::NoAllocate",
         )
         self.assertEqual(
+            unit.domains[CppDomain.EVICTION_PRIORITIES.value].values["evict_normal"],
+            "EvictionPriority::EvictNormal",
+        )
+        self.assertEqual(
             unit.domains[CppDomain.COMPARISON_OPERATORS.value].values,
             {"eq": "ComparisonOperator::Eq", "lt": "ComparisonOperator::Lt"},
         )

@@ -1768,6 +1768,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.immediate_value.values, (1056964608,))
 
+    def test_applypriority_global_l2_evict_normal_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        applypriority = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "applypriority"
+        )
+        resolved = from_instruction_spec(applypriority)
+
+        self.assertEqual(resolved.cpp_name, "Applypriority")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalL2EvictNormal"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("eviction_priority", "EvictionPriority"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.values, (128,))
+        self.assertEqual(variant.address_alignment.alignment, 128)
+
     def test_cp_async_ca_shared_global_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2510,6 +2540,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Prefetchu>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "createpolicy"', source)
         self.assertIn("resolve<Createpolicy>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "applypriority"', source)
+        self.assertIn("resolve<Applypriority>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:

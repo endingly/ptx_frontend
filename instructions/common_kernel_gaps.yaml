@@ -160,7 +160,7 @@ gaps:
   - owner: M12-I31
     marker: m12_i31_applypriority
     forms:
-      - {variant: global_l2_evict_normal, canonical_form: applypriority.global.L2::evict_normal, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: global_l2_evict_normal, canonical_form: applypriority.global.L2::evict_normal, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I32
     marker: m12_i32_discard
     forms:

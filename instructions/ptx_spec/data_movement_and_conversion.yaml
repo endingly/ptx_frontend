@@ -272,6 +272,19 @@ operand_patterns:
       access: read
       type: f32
 
+  applypriority_global_l2_evict_normal:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: size
+      kind: imm
+      role: src
+      access: read
+      type: u32
+
   cp_async_shared_global:
     - name: dst
       kind: addr
@@ -1317,6 +1330,27 @@ instructions:
 
         examples:
           - ptx: "createpolicy.fractional.L2::evict_last.b64 %rd0, 0.5;"
+            valid: true
+
+  - opcode: applypriority
+    section: "9.7.9.17"
+    doc: "Frozen global L2 normal-eviction priority for one 128-byte range."
+    syntax: "applypriority.global.L2::evict_normal [address], size"
+
+    variants:
+      - name: applypriority_global_l2_evict_normal
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: evict_normal, token: .L2::evict_normal}
+        operands: $applypriority_global_l2_evict_normal
+        rule: data_movement.applypriority
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 128}
+          - {kind: immediate_value, operand: size, values: [128]}
+
+        examples:
+          - ptx: "applypriority.global.L2::evict_normal [global_value], 128;"
             valid: true
 
   - opcode: cp

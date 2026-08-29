@@ -73,6 +73,8 @@ KNOWN_NONE = {
     ("M12-I29", "prefetchu.L1"),
 } | {
     ("M12-I30", "createpolicy.fractional.L2::evict_last.b64"),
+} | {
+    ("M12-I31", "applypriority.global.L2::evict_normal"),
 }
 
 

@@ -782,6 +782,103 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksApplypriorityGlobalL2EvictNormalSlice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 128 .b8 aligned_value[128];
+.entry kernel() {
+  .reg .u64 %rd0;
+  applypriority.global.L2::evict_normal [%rd0], 128;
+  applypriority.global.L2::evict_normal [aligned_value], 128;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  for (const auto& resolved_instruction : body) {
+    const auto& instruction = std::get<Applypriority>(resolved_instruction);
+    const auto& priority =
+        std::get<Applypriority::GlobalL2EvictNormal>(instruction.variant);
+    EXPECT_EQ(priority.state_space, MemoryStateSpace::Global);
+    EXPECT_EQ(priority.eviction_priority, EvictionPriority::EvictNormal);
+    EXPECT_EQ(priority.size.value.type, ScalarType::U32);
+    EXPECT_EQ(priority.size.value.bits, 128u);
+    EXPECT_TRUE(checker::check(
+                    instruction,
+                    checker::Context{.target = {.ptx_version = {7, 4},
+                                                .sm_version = 80},
+                                     .instruction_range = ast.range})
+                    .has_value());
+  }
+
+  const auto too_old_ptx = checker::check(
+      std::get<Applypriority>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 3}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Applypriority>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_size = resolveModule(parseModule(R"ptx(
+.global .align 128 .b8 aligned_value[128];
+.entry kernel() {
+  applypriority.global.L2::evict_normal [aligned_value], 64;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_size.has_value()) << wrong_size.error().front().message;
+  const auto size_checked = checker::check(
+      std::get<Applypriority>(wrong_size->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
+  ASSERT_FALSE(size_checked.has_value());
+  EXPECT_EQ(size_checked.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+
+  const auto unaligned = resolveModule(parseModule(R"ptx(
+.global .align 64 .b8 unaligned_value[128];
+.entry kernel() {
+  applypriority.global.L2::evict_normal [unaligned_value], 128;
+}
+)ptx"));
+  ASSERT_TRUE(unaligned.has_value()) << unaligned.error().front().message;
+  const auto alignment_checked = checker::check(
+      std::get<Applypriority>(unaligned->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
+  ASSERT_FALSE(alignment_checked.has_value());
+  EXPECT_EQ(alignment_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const auto local_address = resolveModule(parseModule(R"ptx(
+.local .align 128 .b8 local_value[128];
+.entry kernel() {
+  applypriority.global.L2::evict_normal [local_value], 128;
+}
+)ptx"));
+  ASSERT_TRUE(local_address.has_value()) << local_address.error().front().message;
+  const auto address_checked = checker::check(
+      std::get<Applypriority>(local_address->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
+  ASSERT_FALSE(address_checked.has_value());
+  EXPECT_EQ(address_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; applypriority.global.L2::evict_normal [%rd0], %r0; }",
+           ".entry kernel() { .reg .u64 %rd0; applypriority.L2::evict_normal [%rd0], 128; }",
+           ".entry kernel() { .reg .u64 %rd0; applypriority.global.L1::evict_normal [%rd0], 128; }",
+           ".entry kernel() { .reg .u64 %rd0; applypriority.global.L2::evict_last [%rd0], 128; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
   const auto ast = parseModule(R"ptx(
 .global .align 16 .b8 global_value[16];

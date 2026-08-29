@@ -102,6 +102,7 @@ domains:
     default: EvictionPriority::Invalid
     runtime_lookup: ptx_suffix
     values:
+      evict_normal: EvictionPriority::EvictNormal
       evict_first: EvictionPriority::EvictFirst
       evict_last: EvictionPriority::EvictLast
       no_allocate: EvictionPriority::NoAllocate

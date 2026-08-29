@@ -122,6 +122,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "lop3"
         )
+        shf_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "shf"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
@@ -134,6 +139,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.abs_instruction = from_instruction_spec(abs_instruction)
         cls.neg_instruction = from_instruction_spec(neg_instruction)
         cls.lop3_instruction = from_instruction_spec(lop3_instruction)
+        cls.shf_instruction = from_instruction_spec(shf_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -554,6 +560,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             (variant.immediate_range.minimum, variant.immediate_range.maximum), (0, 255)
         )
+
+    def test_shf_has_frozen_direction_and_mode_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.shf_instruction.variants],
+            ["LClampB32", "RWrapB32"],
+        )
+        for variant in self.shf_instruction.variants:
+            self.assertEqual(
+                [field.name for field in variant.fields],
+                ["left" if variant.cpp_name == "LClampB32" else "right",
+                 "clamp" if variant.cpp_name == "LClampB32" else "wrap",
+                 "type", "dst", "src1", "src2", "count"],
+            )
 
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}

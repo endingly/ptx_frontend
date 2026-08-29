@@ -1124,6 +1124,33 @@ TEST(ResolvedIrChecker, ChecksGeneratedLop3AvailabilityAndLutRange) {
   }
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedShfAvailability) {
+  for (const auto source : {"shf.l.clamp.b32 %r0, %r1, %r2, 8;",
+                            "shf.r.wrap.b32 %r0, %r1, %r2, %r3;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto shf = resolve<Shf>(*ast);
+    ASSERT_TRUE(shf.has_value()) << shf.error().message;
+    const auto old_ptx = check(
+        *shf, Context{.target = {.ptx_version = {3, 0}, .sm_version = 32},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *shf, Context{.target = {.ptx_version = {3, 1}, .sm_version = 31},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*shf,
+                      Context{.target = {.ptx_version = {3, 1}, .sm_version = 32},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

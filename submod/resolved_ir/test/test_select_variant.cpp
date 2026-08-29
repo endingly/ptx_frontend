@@ -1288,6 +1288,23 @@ TEST(ResolveLop3, RejectsUnfrozenPredicateExtensionAndNonImmediateLut) {
       "lop3.b32 %r0, %r1, %r2, %r3, %r4;")).has_value());
 }
 
+TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
+  const auto left = resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
+  ASSERT_TRUE(left.has_value()) << left.error().message;
+  ASSERT_NE(std::get_if<Shf::LClampB32>(&left->variant), nullptr);
+  const auto right = resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
+  ASSERT_TRUE(right.has_value()) << right.error().message;
+  ASSERT_NE(std::get_if<Shf::RWrapB32>(&right->variant), nullptr);
+}
+
+TEST(ResolveShf, RejectsUnfrozenDirectionAndModeVariants) {
+  for (const auto source : {"shf.l.wrap.b32 %r0, %r1, %r2, 8;",
+                            "shf.r.clamp.b32 %r0, %r1, %r2, 8;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Shf>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);

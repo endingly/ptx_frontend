@@ -99,8 +99,8 @@ gaps:
   - owner: M12-I17
     marker: m12_i17_shf
     forms:
-      - {variant: left_clamp_b32, canonical_form: shf.l.clamp.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: right_wrap_b32, canonical_form: shf.r.wrap.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: left_clamp_b32, canonical_form: shf.l.clamp.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: right_wrap_b32, canonical_form: shf.r.wrap.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I18
     marker: m12_i18_prmt
     forms:

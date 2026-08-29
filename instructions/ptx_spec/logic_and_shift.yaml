@@ -44,6 +44,12 @@ operand_patterns:
     - {name: src3, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
     - {name: lut, kind: imm, role: src, access: read, type: u32}
 
+  shf_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: count, kind: reg_or_imm, role: src3, access: read, type: u32}
+
   shift_b32:
     - name: dst
       kind: reg
@@ -170,6 +176,28 @@ instructions:
           - {kind: immediate_range, operand: lut, minimum: 0, maximum: 255}
         examples:
           - {ptx: "lop3.b32 %r0, %r1, %r2, %r3, 0x1a;", valid: true}
+  - opcode: shf
+    section: "9.7.8.7"
+    doc: "Frozen 32-bit funnel shifts with fixed left-clamp and right-wrap modes."
+    syntax: "shf.l.clamp.b32 dst, src1, src2, count | shf.r.wrap.b32 dst, src1, src2, count"
+    operands: $shf_b32
+    variants:
+      - name: shf_l_clamp_b32
+        availability: {ptx: "3.1", sm: 32}
+        modifiers:
+          - {name: left, kind: flag, presence: fixed, value: true, token: ".l"}
+          - {name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "shf.l.clamp.b32 %r0, %r1, %r2, 8;", valid: true}
+      - name: shf_r_wrap_b32
+        availability: {ptx: "3.1", sm: 32}
+        modifiers:
+          - {name: right, kind: flag, presence: fixed, value: true, token: ".r"}
+          - {name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "shf.r.wrap.b32 %r0, %r1, %r2, %r3;", valid: true}
   - opcode: shl
     section: "9.7.8.8"
     doc: "Shift a 32-bit operand left by a 32-bit count."

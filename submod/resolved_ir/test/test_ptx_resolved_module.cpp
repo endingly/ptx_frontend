@@ -2628,6 +2628,29 @@ TEST(ResolvedModule, ChecksM12Lop3B32WidthCompatibility) {
                   .has_value());
 }
 
+TEST(ResolvedModule, ChecksM12ShfTypesAndCounts) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0, %r1, %r2, %r3;
+  shf.l.clamp.b32 %r0, %r1, %r2, 8;
+  shf.r.wrap.b32 %r0, %r1, %r2, %r3;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  EXPECT_TRUE(std::holds_alternative<Shf::LClampB32>(std::get<Shf>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Shf::RWrapB32>(std::get<Shf>(body[1]).variant));
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u16 %dst; .reg .u32 %a, %b; shf.l.clamp.b32 %dst, %a, %b, 8; }
+)ptx"));
+  ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
+  const auto checked = checker::check(
+      std::get<Shf>(wrong_type->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {3, 1}, .sm_version = 32}});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

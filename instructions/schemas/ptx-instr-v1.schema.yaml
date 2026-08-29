@@ -155,6 +155,7 @@ $defs:
     description: "Numeric SM architecture version."
     type: integer
     minimum: 0
+    maximum: 4294967295
     examples:
       - 0
       - 20

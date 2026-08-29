@@ -51,6 +51,17 @@ _STATE_SPACES = frozenset(
     }
 )
 _AVAILABILITY_TARGET = re.compile(r"sm_([1-9][0-9]*)([af]?)$")
+UINT32_MAX = (1 << 32) - 1
+
+
+def validate_availability_sm_version(
+    value: object, *, field: str = "availability SM version"
+) -> int:
+    """Return one SM version representable by the generated C++ descriptors."""
+
+    if type(value) is not int or not 0 <= value <= UINT32_MAX:
+        raise ValueError(f"{field} must be a uint32")
+    return value
 
 
 def parse_availability_target(target: object) -> tuple[int, str]:
@@ -59,7 +70,9 @@ def parse_availability_target(target: object) -> tuple[int, str]:
     match = _AVAILABILITY_TARGET.fullmatch(target) if isinstance(target, str) else None
     if match is None:
         raise ValueError("availability target must be an sm_<number>[a|f] spelling")
-    return int(match.group(1)), {
+    return validate_availability_sm_version(
+        int(match.group(1)), field="availability target architecture"
+    ), {
         "": "Generic",
         "a": "ArchitectureSpecific",
         "f": "FamilySpecific",
@@ -77,6 +90,8 @@ def normalize_availability(raw: object) -> dict[str, Any]:
         allowed = {"ptx", "sm", "family", "deprecated", "removed", "notes"}
         if set(raw) - allowed or not set(raw) & {"ptx", "sm", "family"}:
             raise ValueError("availability must contain a legacy requirement or any_of")
+        if "sm" in raw:
+            validate_availability_sm_version(raw["sm"])
         return dict(raw)
     if set(raw) != {"any_of"}:
         raise ValueError("any_of availability cannot mix with legacy fields")
@@ -89,6 +104,8 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise TypeError("availability any_of clauses must be objects")
         if set(clause) - {"ptx", "sm", "target", "capabilities"} or not clause:
             raise ValueError("availability any_of clause has invalid fields")
+        if "sm" in clause:
+            validate_availability_sm_version(clause["sm"])
         if "target" in clause:
             parse_availability_target(clause["target"])
         capabilities = clause.get("capabilities")

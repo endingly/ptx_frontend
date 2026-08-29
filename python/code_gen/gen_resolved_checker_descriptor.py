@@ -7,7 +7,10 @@ from pathlib import Path
 from base.utils import generated_at_comment
 from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from code_gen.database import CodegenDatabase
-from code_gen.normalize import parse_availability_target
+from code_gen.normalize import (
+    parse_availability_target,
+    validate_availability_sm_version,
+)
 from ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierValueAvailability,
@@ -367,7 +370,7 @@ def _emit_availability(availability: dict[str, object]) -> str:
         minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
         return f'''{{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {int(availability.get("sm", 0))},
+                  .minimum_sm_version = {validate_availability_sm_version(availability.get("sm", 0))},
                   .required_family = "{str(availability.get("family", ""))}",
               }}'''
 
@@ -386,7 +389,7 @@ def _emit_availability(availability: dict[str, object]) -> str:
         capability_values = ", ".join(f'"{value}"' for value in capabilities)
         emitted.append(f'''checker::AvailabilityClause{{
                       .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                      .minimum_sm_version = {int(clause.get("sm", 0))},
+                      .minimum_sm_version = {validate_availability_sm_version(clause.get("sm", 0))},
                       .has_exact_target = {str(target is not None).lower()},
                       .exact_target_architecture = {{{number}}},
                       .exact_target_flavor = base::TargetFlavor::{flavor},

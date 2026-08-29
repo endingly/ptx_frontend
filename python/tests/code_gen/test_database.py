@@ -380,9 +380,34 @@ class AvailabilityNormalizationTests(unittest.TestCase):
                 normalize_availability(availability)
 
     def test_rejects_malformed_exact_targets_during_normalization(self) -> None:
-        for target in ("sm_0", "sm_80b", "sm_80aa", "", 80):
+        for target in ("sm_0", "sm_80b", "sm_80aa", "sm_4294967296", "", 80):
             with self.assertRaisesRegex(ValueError, "availability target"):
                 normalize_availability({"any_of": [{"target": target}]})
+
+    def test_accepts_maximum_exact_target_during_normalization(self) -> None:
+        availability = {"any_of": [{"target": "sm_4294967295"}]}
+        self.assertEqual(normalize_availability(availability), availability)
+        source = _emit_availability(normalize_availability(availability))
+        self.assertIn(".exact_target_architecture = {4294967295}", source)
+        self.assertIn("TargetFlavor::Generic", source)
+
+    def test_rejects_non_uint32_sm_during_normalization(self) -> None:
+        for availability in (
+            {"sm": 4294967296},
+            {"sm": True},
+            {"any_of": [{"sm": 4294967296}]},
+            {"any_of": [{"sm": True}]},
+        ):
+            with self.assertRaisesRegex(ValueError, "availability SM version"):
+                normalize_availability(availability)
+
+    def test_accepts_uint32_sm_boundaries_during_normalization(self) -> None:
+        for availability in (
+            {"sm": 0},
+            {"sm": 4294967295},
+            {"any_of": [{"sm": 4294967295}]},
+        ):
+            self.assertEqual(normalize_availability(availability), availability)
 
     def test_availability_schema_dnf_boundaries(self) -> None:
         schema = load_yaml(SCHEMA)
@@ -392,8 +417,11 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             "$ref": "#/$defs/availability",
         })
         self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
+        self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
         for availability in ({"any_of": []}, {"any_of": [{}]},
-                             {"any_of": [{"sm": 100}] * 5}):
+                             {"any_of": [{"sm": 100}] * 5},
+                             {"sm": 4294967296}, {"sm": True},
+                             {"any_of": [{"target": 80}]}):
             self.assertTrue(list(validator.iter_errors(availability)))
 
     def test_dnf_generator_keeps_or_clauses_and_and_terms(self) -> None:
@@ -421,6 +449,13 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertIn(".exact_target_architecture = {100}", source)
         self.assertIn("TargetFlavor::FamilySpecific", source)
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_emitter_rejects_unvalidated_sm(self) -> None:
+        for availability in ({"sm": 4294967296}, {"any_of": [{"sm": True}]}):
+            with self.assertRaisesRegex(ValueError, "availability SM version"):
+                _emit_availability(availability)
+        with self.assertRaisesRegex(ValueError, "availability target"):
+            _emit_availability({"any_of": [{"target": "sm_4294967296"}]})
 
 
 if __name__ == "__main__":

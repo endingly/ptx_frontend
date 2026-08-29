@@ -103,6 +103,12 @@ operand_patterns:
     - {name: src1, kind: reg, role: src1, access: read, type: f32, register_width: exact}
     - {name: src2, kind: reg, role: src2, access: read, type: f32, register_width: exact}
 
+  cvt_pack_sat_u8_s32_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: equal_or_wider}
+    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: equal_or_wider}
+    - {name: carry, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+
   cvta_register:
     - name: dst
       kind: reg
@@ -629,6 +635,24 @@ instructions:
           - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "cvt.rn.f16x2.f32 %r0, %f0, %f1;", valid: true}
+
+  - opcode: cvt
+    section: "9.7.9.23"
+    doc: "Pack two saturated s32 values into a u8 pair with a b32 carry container."
+    syntax: "cvt.pack.sat.u8.s32.b32 dst, src1, src2, carry"
+    operands: $cvt_pack_sat_u8_s32_b32
+    variants:
+      - name: cvt_pack_sat_u8_s32_b32
+        description: "Register-only saturated packed u8 conversion."
+        availability: {ptx: "6.5", sm: 72}
+        modifiers:
+          - {name: pack, kind: flag, presence: fixed, value: true, token: ".pack"}
+          - {name: sat, kind: flag, presence: fixed, value: true, token: ".sat"}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: u8}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+          - {name: carry_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;", valid: true}
 
   - opcode: mov
     section: "9.7.9"

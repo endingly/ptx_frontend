@@ -1445,6 +1445,33 @@ TEST(ResolveCvt, RejectsM12UnfrozenAndPackedTwoOperandForms) {
       resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;")).has_value());
 }
 
+TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
+  const auto ast =
+      parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
+  const auto resolved = resolve<Cvt>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Cvt::PackSatU8S32B32>(&resolved->variant), nullptr);
+  EXPECT_TRUE(Cvt::PackSatU8S32B32::pack);
+  EXPECT_TRUE(Cvt::PackSatU8S32B32::saturate);
+  EXPECT_EQ(Cvt::PackSatU8S32B32::dst_type, ScalarType::U8);
+  EXPECT_EQ(Cvt::PackSatU8S32B32::src_type, ScalarType::S32);
+  EXPECT_EQ(Cvt::PackSatU8S32B32::carry_type, ScalarType::B32);
+
+  const auto dispatched = resolveInstruction(ast);
+  ASSERT_TRUE(dispatched.has_value()) << dispatched.error().message;
+  EXPECT_TRUE(std::holds_alternative<Cvt>(*dispatched));
+
+  for (const auto source : {"cvt.sat.u8.s32.b32 %r0, %r1, %r2, %r3;",
+                            "cvt.pack.u8.s32.b32 %r0, %r1, %r2, %r3;",
+                            "cvt.pack.sat.u16.s32.b32 %r0, %r1, %r2, %r3;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Cvt>(
+                   parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2;"))
+                   .has_value());
+}
+
 TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
   for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
                             "cvt.rz.f32.f64 %f0, %fd0;",

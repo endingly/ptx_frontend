@@ -2032,6 +2032,38 @@ TEST(ResolvedModule, ChecksM12CvtScalarAndPackedTypes) {
   }
 }
 
+TEST(ResolvedModule, ChecksM12CvtPackOperandTypes) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0, %r1, %r2, %r3;
+  cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& instruction = std::get<Cvt>(valid->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Cvt::PackSatU8S32B32>(instruction.variant));
+  EXPECT_TRUE(checker::check(
+                  instruction,
+                  checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 72}})
+                  .has_value());
+
+  for (const auto source : {
+           ".entry kernel() { .reg .u16 %dst; .reg .u32 %a, %b, %c; cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
+           ".entry kernel() { .reg .u32 %dst, %a, %c; .reg .f32 %b; cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
+           ".entry kernel() { .reg .u32 %dst, %a, %b; .reg .u64 %c; cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(
+        std::get<Cvt>(wrong->functions.front().body.front()),
+        checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 72}});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ChecksCvtaU64OperandWidths) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .u64 %dst, %src; cvta.global.u64 %dst, %src; cvta.to.global.u64 %dst, %src; }

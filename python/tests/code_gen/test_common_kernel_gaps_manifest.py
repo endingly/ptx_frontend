@@ -63,6 +63,8 @@ KNOWN_NONE = {
     ("M12-I24", "brev.b32"),
 } | {
     ("M12-I25", form) for form in ("cvt.rn.f32.s32", "cvt.rzi.u32.f32", "cvt.rn.f16x2.f32")
+} | {
+    ("M12-I26", "cvt.pack.sat.u8.s32.b32"),
 }
 
 

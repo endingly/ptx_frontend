@@ -140,7 +140,7 @@ gaps:
   - owner: M12-I26
     marker: m12_i26_cvt_pack
     forms:
-      - {variant: sat_u8_s32_b32, canonical_form: cvt.pack.sat.u8.s32.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: sat_u8_s32_b32, canonical_form: cvt.pack.sat.u8.s32.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I27
     marker: m12_i27_isspacep
     forms:

@@ -1,8 +1,22 @@
 if(NOT DEFINED PTX_SOURCE_DIR OR NOT DEFINED PTX_FIXTURE OR
-   NOT DEFINED PTX_TEST_ROOT)
+   NOT DEFINED PTX_TEST_ROOT OR NOT DEFINED PTX_INITIAL_CACHE)
     message(FATAL_ERROR
-        "PTX_SOURCE_DIR, PTX_FIXTURE, and PTX_TEST_ROOT are required")
+        "PTX_SOURCE_DIR, PTX_FIXTURE, PTX_TEST_ROOT, and PTX_INITIAL_CACHE are required")
 endif()
+
+if(NOT EXISTS "${PTX_INITIAL_CACHE}")
+    message(FATAL_ERROR "Expected initial cache: ${PTX_INITIAL_CACHE}")
+endif()
+
+include("${PTX_INITIAL_CACHE}")
+foreach(_required_cache_var Python3_EXECUTABLE fmt_DIR magic_enum_DIR GTest_DIR)
+    if(NOT DEFINED ${_required_cache_var} OR "${${_required_cache_var}}" STREQUAL "")
+        message(FATAL_ERROR
+            "Initial cache must set ${_required_cache_var}")
+    endif()
+    set("_expected_${_required_cache_var}" "${${_required_cache_var}}")
+endforeach()
+set(_expected_CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}")
 
 string(RANDOM LENGTH 16 ALPHABET 0123456789abcdef _test_run_id)
 set(_test_run_root "${PTX_TEST_ROOT}/${_test_run_id}")
@@ -18,7 +32,8 @@ file(COPY_FILE "${PTX_FIXTURE}" "${_fixture_dir}/modern_operand.yaml")
 set(_fixture "${_fixture_dir}/modern_operand.yaml")
 
 set(_configure_command
-    "${CMAKE_COMMAND}" -S "${PTX_SOURCE_DIR}" -B "${_nested_binary_dir}"
+    "${CMAKE_COMMAND}" -C "${PTX_INITIAL_CACHE}"
+    -S "${PTX_SOURCE_DIR}" -B "${_nested_binary_dir}"
     "-DBUILD_TESTING=ON"
     "-DPTX_MODERN_OPERAND_TEST_SPEC_DIR:PATH=${_fixture_dir}")
 if(DEFINED PTX_CMAKE_GENERATOR AND NOT PTX_CMAKE_GENERATOR STREQUAL "")
@@ -32,20 +47,27 @@ if(DEFINED PTX_CMAKE_GENERATOR_TOOLSET AND
    NOT PTX_CMAKE_GENERATOR_TOOLSET STREQUAL "")
     list(APPEND _configure_command -T "${PTX_CMAKE_GENERATOR_TOOLSET}")
 endif()
-foreach(_cache_var
-        CMAKE_MAKE_PROGRAM
-        CMAKE_BUILD_TYPE
-        CMAKE_TOOLCHAIN_FILE
-        CMAKE_C_COMPILER
-        CMAKE_CXX_COMPILER
-        fmt_DIR
-        magic_enum_DIR)
+foreach(_cache_spec
+        "CMAKE_MAKE_PROGRAM:FILEPATH"
+        "CMAKE_BUILD_TYPE:STRING"
+        "CMAKE_C_COMPILER:FILEPATH"
+        "CMAKE_CXX_COMPILER:FILEPATH")
+    string(REPLACE ":" ";" _cache_spec_parts "${_cache_spec}")
+    list(GET _cache_spec_parts 0 _cache_var)
+    list(GET _cache_spec_parts 1 _cache_type)
     set(_forward_var "PTX_${_cache_var}")
     if(DEFINED ${_forward_var} AND NOT "${${_forward_var}}" STREQUAL "")
         list(APPEND _configure_command
-            "-D${_cache_var}:STRING=${${_forward_var}}")
+            "-D${_cache_var}:${_cache_type}=${${_forward_var}}")
     endif()
 endforeach()
+if(PTX_DISABLE_NESTED_TOOLCHAIN)
+    list(APPEND _configure_command "-DCMAKE_TOOLCHAIN_FILE:FILEPATH=")
+elseif(DEFINED PTX_CMAKE_TOOLCHAIN_FILE AND
+       NOT "${PTX_CMAKE_TOOLCHAIN_FILE}" STREQUAL "")
+    list(APPEND _configure_command
+        "-DCMAKE_TOOLCHAIN_FILE:FILEPATH=${PTX_CMAKE_TOOLCHAIN_FILE}")
+endif()
 
 execute_process(
     COMMAND ${_configure_command}
@@ -56,6 +78,26 @@ if(NOT _configure_result EQUAL 0)
     message(FATAL_ERROR
         "Nested topology test configure failed (${_configure_result}):\n"
         "${_configure_stdout}${_configure_stderr}")
+endif()
+
+file(READ "${_nested_binary_dir}/CMakeCache.txt" _nested_cache)
+foreach(_cache_var Python3_EXECUTABLE fmt_DIR magic_enum_DIR GTest_DIR CMAKE_PREFIX_PATH)
+    string(REGEX MATCH "(^|[\r\n])${_cache_var}:[^=\r\n]*=([^\r\n]*)"
+        _cache_entry "${_nested_cache}")
+    if(NOT _cache_entry)
+        message(FATAL_ERROR "Nested cache does not set ${_cache_var}")
+    endif()
+    if(NOT "${CMAKE_MATCH_2}" STREQUAL "${_expected_${_cache_var}}")
+        message(FATAL_ERROR
+            "Nested cache changed ${_cache_var}: expected '${_expected_${_cache_var}}', got '${CMAKE_MATCH_2}'")
+    endif()
+endforeach()
+if(PTX_DISABLE_NESTED_TOOLCHAIN)
+    string(REGEX MATCH "(^|[\r\n])CMAKE_TOOLCHAIN_FILE:[^=\r\n]*=([^\r\n]*)"
+        _toolchain_entry "${_nested_cache}")
+    if(_toolchain_entry AND NOT "${CMAKE_MATCH_2}" STREQUAL "")
+        message(FATAL_ERROR "Nested configure unexpectedly used a toolchain")
+    endif()
 endif()
 
 file(READ "${PTX_FIXTURE}" _fixture_before)

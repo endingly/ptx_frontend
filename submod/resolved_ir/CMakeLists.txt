@@ -42,8 +42,10 @@ if(BUILD_TESTING)
     )
     gtest_discover_tests(test_resolved_ir)
 
-    set(PTX_MODERN_OPERAND_TEST_SPEC_DIR
-        "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
+    if(NOT DEFINED PTX_MODERN_OPERAND_TEST_SPEC_DIR)
+        set(PTX_MODERN_OPERAND_TEST_SPEC_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
+    endif()
     file(GLOB_RECURSE PTX_MODERN_OPERAND_TEST_SPEC_FILES CONFIGURE_DEPENDS
         "${PTX_MODERN_OPERAND_TEST_SPEC_DIR}/*.yaml")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -109,10 +111,20 @@ if(BUILD_TESTING)
     add_test(
         NAME resolved_ir.modern_operand_codegen_topology_reconfigure
         COMMAND "${CMAKE_COMMAND}"
-            "-DPTX_BINARY_DIR=${CMAKE_BINARY_DIR}"
+            "-DPTX_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             "-DPTX_TEST_CONFIG=$<CONFIG>"
             "-DPTX_FIXTURE=${PTX_MODERN_OPERAND_TEST_SPEC_DIR}/modern_operand.yaml"
-            "-DPTX_GENERATED_PRIVATE=${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}"
+            "-DPTX_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/topology_reconfigure"
+            "-DPTX_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
+            "-DPTX_CMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+            "-DPTX_CMAKE_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+            "-DPTX_CMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "-DPTX_CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+            "-DPTX_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+            "-DPTX_C_COMPILER=${CMAKE_C_COMPILER}"
+            "-DPTX_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "-DPTX_FMT_DIR=${fmt_DIR}"
+            "-DPTX_MAGIC_ENUM_DIR=${magic_enum_DIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_topology_reconfigure.cmake"
     )
     set_tests_properties(resolved_ir.modern_operand_codegen_topology_reconfigure

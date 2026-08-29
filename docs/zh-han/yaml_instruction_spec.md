@@ -363,17 +363,19 @@ instructions:
 availability:
   ptx: "8.0"
   sm: 100
-  family: sm_100f      # 可选的兼容 f-feature family
+  family: sm_100f      # 可选的最低 family-specific 源特性 target
 rule: integer_arith.add # 可选但建议提供
 ```
 
-checker 公共逻辑解释最低 PTX、SM 与 legacy 兼容 `f`-feature-family 要求。family membership
-仅由显式 target-profile catalog 发布：`sm_100f`、`sm_100a` 与显式
-`sm_103`/`sm_103f`/`sm_103a` 后继 target 发布 `sm_100f`，而 `sm_120f` 仅发布
-`sm_120f`。不得由 SM 数字或 target 后缀推断 compatibility。`a` target 是 exact
-identity，不能作 family spelling；需要精确 target 时使用 `any_of: [{target: sm_100a}]`。
-capability clause 与 exact target、family 均相互独立。`rule` 是稳定 rule ID，供
-instruction-specific checker 使用。
+checker 公共逻辑解释最低 PTX、SM 与 `family` 要求。`family` 是最低
+family-specific 源特性 target：checker 只在 source target profile 的
+`enabled_family_features` 中查找。显式 catalog 为：`sm_100` → 无；
+`sm_100f`/`sm_100a` → `sm_100f`；`sm_103` → 无；`sm_103f`/`sm_103a` →
+`sm_100f`、`sm_103f`；`sm_120f` → 仅 `sm_120f`。不得由 SM 数字或 target 后缀
+推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
+`a` target 是 exact identity，不能作 family spelling；需要精确 target 时使用
+`any_of: [{target: sm_100a}]`。capability clause、exact target 与 `family` 均是相互独立的
+constraint。`rule` 是稳定 rule ID，供 instruction-specific checker 使用。
 `examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 

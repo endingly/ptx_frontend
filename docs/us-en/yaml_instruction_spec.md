@@ -407,18 +407,20 @@ Every variant must declare:
 availability:
   ptx: "8.0"
   sm: 100
-  family: sm_100f      # optional compatible f-feature family
+  family: sm_100f      # optional minimum family-specific source-feature target
 rule: integer_arith.add # optional but recommended
 ```
 
-Common checker logic interprets minimum PTX, SM, and legacy compatible
-`f`-feature-family requirements. Family membership is published only by the
-explicit target-profile catalog: `sm_100f`, `sm_100a`, and the explicit
-`sm_103`/`sm_103f`/`sm_103a` successors publish `sm_100f`, while `sm_120f`
-publishes only `sm_120f`. Compatibility is never inferred from an SM number or
-target suffix. An `a` target is an exact identity, not a family spelling: use
+Common checker logic interprets minimum PTX, SM, and `family` requirements.
+`family` is the minimum family-specific source-feature target: the checker
+looks only in the source target profile's `enabled_family_features`. The
+explicit catalog is: `sm_100` → none; `sm_100f`/`sm_100a` → `sm_100f`;
+`sm_103` → none; `sm_103f`/`sm_103a` → `sm_100f`, `sm_103f`; `sm_120f` →
+`sm_120f` only. Do not infer this set from the SM number or target suffix. It
+is distinct from PTX-to-physical-GPU translation compatibility, which is not
+modelled. An `a` target is an exact identity, not a family spelling: use
 `any_of: [{target: sm_100a}]` when that exact target is required. Capability
-clauses remain independent of both exact targets and families. `rule` is a
+clauses, exact target, and `family` are independent constraints. `rule` is a
 stable rule ID for instruction-specific checking. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
 

@@ -39,10 +39,15 @@ The frontend currently provides:
   registers through 64 bits; wider `.b128` declarations remain deferred until
   declaration-type target availability is checked, and other instructions
   remain exact-width;
-- explicit PTX ISA version, SM version, catalogued compatible `f`-feature
-  family (including `sm_100f` on explicit `sm_103` successors), exact target,
-  and capability availability checks for modelled variants, modifiers, layouts,
-  and operands.
+- explicit PTX ISA version, SM version, minimum family-specific source-feature
+  target (`family`), exact target, and capability availability checks for
+  modelled variants, modifiers, layouts, and operands. `family` checks the
+  profile's `enabled_family_features`: `sm_100` and `sm_103` enable none;
+  `sm_100f`/`sm_100a` enable `sm_100f`; `sm_103f`/`sm_103a` enable
+  `sm_100f` and `sm_103f`; and `sm_120f` enables only `sm_120f`. This is a
+  source-target feature requirement, not PTX-to-physical-GPU translation
+  compatibility, which is not modelled. Exact identity and capability remain
+  independent constraints.
 - a partial M10 frozen subset for cache-hint/eviction, `ldu`/`prefetch`, memory
   ordering and scalar atomics/reductions, warp collectives, `cp.async`,
   `ldmatrix`, and one `mma` form; these forms are resolved and checked only,

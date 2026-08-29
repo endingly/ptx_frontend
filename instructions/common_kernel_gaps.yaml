@@ -1,0 +1,171 @@
+# M12-I01: a small, executable inventory of forms frozen in corpus/m12.
+# This is intentionally not the C03 disposition/reason ledger.
+schema: ptx-common-kernel-gaps/v1
+version: 1
+basis:
+  ptx_isa: "9.3"
+  source: project-authored nvcc-compiled inline-PTX fixture
+fixtures:
+  - profile: sm_80
+    path: corpus/m12/common_kernel_sm80.ptx
+  - profile: sm_90a
+    path: corpus/m12/common_kernel_sm90a.ptx
+  - profile: sm_100
+    path: corpus/m12/common_kernel_sm100.ptx
+gaps:
+  - owner: M12-I02
+    marker: m12_i02_set
+    forms:
+      - {variant: eq_u32_u32, canonical_form: set.eq.u32.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: lt_and_f32_s32, canonical_form: set.lt.and.f32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I03
+    marker: m12_i03_setp
+    forms:
+      - {variant: dual_predicate_eq_u32, canonical_form: setp.eq.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: dual_predicate_lt_and_s32, canonical_form: setp.lt.and.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I04
+    marker: m12_i04_slct
+    forms:
+      - {variant: u32_s32_selector, canonical_form: slct.u32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: ftz_u64_f32_selector, canonical_form: slct.ftz.u64.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I05
+    marker: m12_i05_add
+    forms:
+      - {variant: u32, canonical_form: add.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: s32, canonical_form: add.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: u64, canonical_form: add.u64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: f32, canonical_form: add.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+  - owner: M12-I06
+    marker: m12_i06_sub
+    forms:
+      - {variant: u32, canonical_form: sub.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: s32, canonical_form: sub.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: u64, canonical_form: sub.u64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: f32, canonical_form: sub.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+  - owner: M12-I07
+    marker: m12_i07_mul
+    forms:
+      - {variant: hi_u32, canonical_form: mul.hi.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: wide_u32, canonical_form: mul.wide.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f32, canonical_form: mul.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+  - owner: M12-I08
+    marker: m12_i08_mad
+    forms:
+      - {variant: lo_s32, canonical_form: mad.lo.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: wide_u32, canonical_form: mad.wide.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f32, canonical_form: mad.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I09
+    marker: m12_i09_fma
+    forms:
+      - {variant: rn_f16, canonical_form: fma.rn.f16, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f32, canonical_form: fma.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: rn_f64, canonical_form: fma.rn.f64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I10
+    marker: m12_i10_div
+    forms:
+      - {variant: s32, canonical_form: div.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f32, canonical_form: div.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f64, canonical_form: div.rn.f64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I11
+    marker: m12_i11_rem
+    forms:
+      - {variant: s32_zero_divisor, canonical_form: rem.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: u32, canonical_form: rem.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I12
+    marker: m12_i12_min
+    forms:
+      - {variant: s32, canonical_form: min.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: nan_f32, canonical_form: min.NaN.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I13
+    marker: m12_i13_max
+    forms:
+      - {variant: s32, canonical_form: max.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: nan_f32, canonical_form: max.NaN.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I14
+    marker: m12_i14_abs
+    forms:
+      - {variant: s32, canonical_form: abs.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: f32, canonical_form: abs.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I15
+    marker: m12_i15_neg
+    forms:
+      - {variant: s32, canonical_form: neg.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: f32, canonical_form: neg.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: f16x2_packed_b32, canonical_form: neg.f16x2, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I16
+    marker: m12_i16_lop3
+    forms:
+      - {variant: lut_1a, canonical_form: lop3.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I17
+    marker: m12_i17_shf
+    forms:
+      - {variant: left_clamp_b32, canonical_form: shf.l.clamp.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: right_wrap_b32, canonical_form: shf.r.wrap.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I18
+    marker: m12_i18_prmt
+    forms:
+      - {variant: generic, canonical_form: prmt.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: f4e_mode, canonical_form: prmt.b32.f4e, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I19
+    marker: m12_i19_popc
+    forms:
+      - {variant: b32, canonical_form: popc.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I20
+    marker: m12_i20_clz
+    forms:
+      - {variant: b32, canonical_form: clz.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: b64_to_u32, canonical_form: clz.b64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I21
+    marker: m12_i21_bfind
+    forms:
+      - {variant: shiftamt_u32, canonical_form: bfind.shiftamt.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I22
+    marker: m12_i22_bfe
+    forms:
+      - {variant: u32, canonical_form: bfe.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I23
+    marker: m12_i23_bfi
+    forms:
+      - {variant: b32, canonical_form: bfi.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I24
+    marker: m12_i24_brev
+    forms:
+      - {variant: b32, canonical_form: brev.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I25
+    marker: m12_i25_cvt
+    forms:
+      - {variant: rn_f32_s32, canonical_form: cvt.rn.f32.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rzi_u32_f32, canonical_form: cvt.rzi.u32.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: rn_f16x2_f32, canonical_form: cvt.rn.f16x2.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I26
+    marker: m12_i26_cvt_pack
+    forms:
+      - {variant: sat_u8_s32_b32, canonical_form: cvt.pack.sat.u8.s32.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I27
+    marker: m12_i27_isspacep
+    forms:
+      - {variant: global_u64, canonical_form: isspacep.global, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I28
+    marker: m12_i28_ld_global_nc
+    forms:
+      - {variant: nc_l1_no_allocate_u32, canonical_form: ld.global.nc.L1::no_allocate.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+  - owner: M12-I29
+    marker: m12_i29_prefetchu
+    forms:
+      - {variant: l1, canonical_form: prefetchu.L1, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I30
+    marker: m12_i30_createpolicy
+    forms:
+      - {variant: fractional_l2_evict_last, canonical_form: createpolicy.fractional.L2::evict_last.b64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I31
+    marker: m12_i31_applypriority
+    forms:
+      - {variant: global_l2_evict_normal, canonical_form: applypriority.global.L2::evict_normal, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I32
+    marker: m12_i32_discard
+    forms:
+      - {variant: global_l2, canonical_form: discard.global.L2, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+  - owner: M12-I33
+    marker: m12_i33_setmaxnreg
+    forms:
+      - {variant: inc_sync_aligned_192, canonical_form: setmaxnreg.inc.sync.aligned.u32, profiles: [sm_90a], frequency: 1, first_blocker: unsupported_opcode}

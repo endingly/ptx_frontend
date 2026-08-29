@@ -74,6 +74,33 @@
       "license": "MIT"
     },
     {
+      "path": "corpus/m12/common_kernel_sm80.ptx",
+      "sha256": "2e7fe5c580a0b20bba50dd52b04c7b03e8eecafa5e2aaa1356f6bc3b7c83cce9",
+      "generator": "nvcc V13.3.33",
+      "toolkit": "CUDA Toolkit 13.3",
+      "targets": ["sm_80"],
+      "source": "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m12/common_kernel_sm90a.ptx",
+      "sha256": "c2a9d0ab447173e8de8714c4408aabc538a1524d67b043c89ef55e3174e9f572",
+      "generator": "nvcc V13.3.33",
+      "toolkit": "CUDA Toolkit 13.3",
+      "targets": ["sm_90a"],
+      "source": "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m12/common_kernel_sm100.ptx",
+      "sha256": "a8cf784d6293f3cbf9ebbc5bd93e5f924dcbd7c6dd25c3eadc14aa25cbe11798",
+      "generator": "nvcc V13.3.33",
+      "toolkit": "CUDA Toolkit 13.3",
+      "targets": ["sm_100"],
+      "source": "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+      "license": "MIT"
+    },
+    {
       "path": "corpus/m9/address_conversion.ptx",
       "sha256": "82519eb1a4fa228fecc0331a53bee3cdda192b40326946526db9fb1c0b619799",
       "generator": "project-authored",

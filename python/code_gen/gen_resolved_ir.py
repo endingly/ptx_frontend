@@ -516,6 +516,15 @@ def _emit_check_operand_dispatch(
               }}
             }}
 """
+    immediate_multiple_of_check = ""
+    if variant.immediate_multiple_of is not None:
+        immediate_multiple_of_check = f"""            const auto immediate_multiple_of_check = check_immediate_multiple_of(
+                {checker_variant_expr}.immediate_multiple_of, operands, context);
+            if (!immediate_multiple_of_check) {{
+              diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
+                                 immediate_multiple_of_check.error().end());
+            }}
+"""
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -545,7 +554,7 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-{consistency_check}{memory_vector_check}{alignment_check}{immediate_value_check}{immediate_range_check}          }}"""
+{consistency_check}{memory_vector_check}{alignment_check}{immediate_value_check}{immediate_multiple_of_check}{immediate_range_check}          }}"""
 
     layout_lambdas = "\n\n".join(
         _emit_check_multi_layout_lambda(
@@ -606,7 +615,8 @@ def _emit_check_multi_layout_lambda(
             variant.address_alignment is not None or
             variant.memory_vector is not None or
             variant.immediate_value is not None or
-            variant.immediate_ranges):
+            variant.immediate_ranges or
+            variant.immediate_multiple_of is not None):
         consistency_return = f"""
             const auto operand_check = check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
@@ -703,6 +713,16 @@ def _emit_multi_layout_cross_rule_checks(
                 diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
                                    immediate_range_check.error().end());
               }}
+            }}
+"""
+    if variant.immediate_multiple_of is not None:
+        checks += f"""            const auto immediate_multiple_of_check = check_immediate_multiple_of(
+                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                    .immediate_multiple_of,
+                operands, context);
+            if (!immediate_multiple_of_check) {{
+              diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
+                                 immediate_multiple_of_check.error().end());
             }}
 """
     return checks

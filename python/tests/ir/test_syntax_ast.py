@@ -1109,6 +1109,49 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     normalize_constraint(constraint, operand_kind=kind)
 
+    def test_immediate_multiple_of_constraint_normalization(self) -> None:
+        def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_immediate",
+                                    "availability": {"ptx": "1.0"},
+                                    "operands": [
+                                        {
+                                            "name": "count",
+                                            "kind": operand_kind,
+                                            "role": "src",
+                                            "access": "read",
+                                            "type": "u32",
+                                        }
+                                    ],
+                                    "constraints": [constraint],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        normalize_constraint(
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 8}
+        )
+        for constraint, message, kind in (
+            ({"kind": "immediate_multiple_of", "operand": "missing", "divisor": 8}, "kind 'imm'", "imm"),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 0}, "positive integer", "imm"),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 8.0}, "positive integer", "imm"),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 8}, "kind 'imm'", "reg"),
+        ):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    normalize_constraint(constraint, operand_kind=kind)
+
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(
             {

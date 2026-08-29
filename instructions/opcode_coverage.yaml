@@ -290,6 +290,10 @@ opcodes:
   m9_issues: [M9-I05]
   slices:
   - {"id":"trap-trap-bare-default","section":"9.7.20.4","spec_variant":"trap_bare","operand_layout":"default","selector":{"topology":"control","types":[],"shape":"none"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: setmaxnreg
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"setmaxnreg-setmaxnreg-inc-sync-aligned-u32-default","section":"9.7.20.5","spec_variant":"setmaxnreg_inc_sync_aligned_u32","operand_layout":"default","selector":{"topology":"control","types":["u32"],"shape":"immediate","modifiers":["inc","sync","aligned"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: bar
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

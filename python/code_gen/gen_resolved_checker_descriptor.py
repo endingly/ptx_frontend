@@ -168,6 +168,13 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
     if variant.immediate_ranges:
         immediate_ranges = f'''
               .immediate_ranges = {variant.cpp_name}_immediate_ranges,'''
+    immediate_multiple_of = ""
+    if variant.immediate_multiple_of is not None:
+        immediate_multiple_of = f'''
+              .immediate_multiple_of = {{
+                  .operand_field_id = "{variant.immediate_multiple_of.operand_field_id}",
+                  .divisor = {variant.immediate_multiple_of.divisor},
+              }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {_emit_availability(dict(variant.availability))},
@@ -181,6 +188,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
 {_emit_address_alignment_descriptor(variant)}
 {memory_vector}
 {immediate_value}
+{immediate_multiple_of}
 {immediate_ranges}
           }}"""
 

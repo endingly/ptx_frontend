@@ -1340,6 +1340,46 @@ CheckResult check_immediate_value(
   }});
 }
 
+CheckResult check_immediate_multiple_of(
+    const VariantDescriptor::ImmediateMultipleOfDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context) {
+  if (descriptor.operand_field_id.empty())
+    return {};
+  const OperandView* operand =
+      find_operand(operands, descriptor.operand_field_id);
+  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+      !operand->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-multiple constraint references missing "
+                               "immediate operand '{}'.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  if (descriptor.divisor == 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-multiple constraint for '{}' has zero "
+                               "divisor.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  if (!operand->immediate_is_negative.value_or(false) &&
+      *operand->immediate_bits % descriptor.divisor == 0) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand->locations, context),
+      .message = fmt::format("Immediate operand '{}' has value {} that is not a "
+                             "multiple of {}.",
+                             descriptor.operand_field_id,
+                             *operand->immediate_bits, descriptor.divisor),
+  }});
+}
+
 CheckResult check_immediate_range(
     const VariantDescriptor::ImmediateRangeDescriptor& descriptor,
     std::span<const OperandView> operands, const Context& context) {

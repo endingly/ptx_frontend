@@ -77,6 +77,7 @@ KNOWN_NONE = {
     ("M12-I31", "applypriority.global.L2::evict_normal"),
 } | {
     ("M12-I32", "discard.global.L2"),
+    ("M12-I33", "setmaxnreg.inc.sync.aligned.u32"),
 }
 
 

@@ -168,4 +168,4 @@ gaps:
   - owner: M12-I33
     marker: m12_i33_setmaxnreg
     forms:
-      - {variant: inc_sync_aligned_192, canonical_form: setmaxnreg.inc.sync.aligned.u32, profiles: [sm_90a], frequency: 1, first_blocker: unsupported_opcode}
+      - {variant: inc_sync_aligned_192, canonical_form: setmaxnreg.inc.sync.aligned.u32, profiles: [sm_90a], frequency: 1, first_blocker: none}

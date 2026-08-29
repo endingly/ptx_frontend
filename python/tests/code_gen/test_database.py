@@ -131,6 +131,32 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected"):
             self._load(invalid)
 
+    def test_schema_requires_positive_immediate_multiple_divisor(self) -> None:
+        spec = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_integer",
+            type_value="u32",
+        )
+        instruction = cast(list[dict[str, object]], spec["instructions"])[0]
+        variant = cast(list[dict[str, object]], instruction["variants"])[0]
+        variant["operands"] = [{
+            "name": "count",
+            "kind": "imm",
+            "role": "src",
+            "access": "read",
+            "type": "u32",
+        }]
+        variant["constraints"] = [{
+            "kind": "immediate_multiple_of",
+            "operand": "count",
+            "divisor": 8,
+        }]
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        self.assertEqual(list(validator.iter_errors(spec)), [])
+        cast(list[dict[str, object]], variant["constraints"])[0]["divisor"] = 0
+        self.assertTrue(list(validator.iter_errors(spec)))
+
     def test_rejects_codegen_category_disagreement(self) -> None:
         with self.assertRaisesRegex(ValueError, "disagree on codegen_category"):
             self._load(

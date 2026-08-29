@@ -8,6 +8,7 @@ from typing import Any
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
     ImmediateValueConstraint,
     InstructionSpec,
@@ -1233,6 +1234,46 @@ def _normalize_immediate_range_constraints(
     return tuple(ranges)
 
 
+def _normalize_immediate_multiple_of_constraint(
+    raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
+) -> ImmediateMultipleOfConstraint | None:
+    """Lower one positive-divisor constraint for an immediate operand."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "immediate_multiple_of"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: at most one immediate_multiple_of "
+            "constraint is supported"
+        )
+    raw = matches[0]
+    if set(raw) != {"kind", "operand", "divisor"}:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_multiple_of constraint "
+            "requires only operand and divisor"
+        )
+    operand_name, divisor = raw["operand"], raw["divisor"]
+    matching = [
+        operand for layout in layouts for operand in layout.operands
+        if operand.name == operand_name
+    ]
+    if not matching or any(operand.kind != "imm" for operand in matching):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_multiple_of operand must "
+            "name an active kind 'imm' operand"
+        )
+    if type(divisor) is not int or divisor <= 0:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_multiple_of divisor must "
+            "be a positive integer"
+        )
+    return ImmediateMultipleOfConstraint(operand=operand_name, divisor=divisor)
+
+
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
     """Normalize all instruction definitions in one PTX ISA YAML file."""
 
@@ -1296,6 +1337,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                         raw_variant, operand_layouts
                     ),
                     immediate_ranges=_normalize_immediate_range_constraints(
+                        raw_variant, operand_layouts
+                    ),
+                    immediate_multiple_of=_normalize_immediate_multiple_of_constraint(
                         raw_variant, operand_layouts
                     ),
                 )

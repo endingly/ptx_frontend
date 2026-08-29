@@ -1827,6 +1827,60 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.immediate_value.values, (128,))
         self.assertEqual(variant.address_alignment.alignment, 128)
 
+    def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        setmaxnreg = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "setmaxnreg"
+        )
+        resolved = from_instruction_spec(setmaxnreg)
+        self.assertEqual(resolved.cpp_name, "Setmaxnreg")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["IncSyncAlignedU32"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(
+            dict(variant.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90, "target": "sm_90a"}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("inc", "bool"),
+                ("sync", "bool"),
+                ("aligned", "bool"),
+                ("type", "ScalarType"),
+                ("count", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("count", 24, 256)],
+        )
+        self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count")
+        self.assertEqual(variant.immediate_multiple_of.divisor, 8)
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
+            descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_ir_source(
+                database, category="control_flow", output_path=output_path
+            )
+            generate_resolved_checker_descriptor_source(
+                database, output_path=descriptor_path
+            )
+            source = output_path.read_text(encoding="utf-8")
+            descriptor = descriptor_path.read_text(encoding="utf-8")
+        self.assertIn("check_immediate_multiple_of(", source)
+        self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
+        self.assertIn('.operand_field_id = "count",', descriptor)
+        self.assertIn(".divisor = 8,", descriptor)
+
     def test_cp_async_ca_shared_global_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

@@ -118,6 +118,14 @@ class ImmediateRangeConstraint:
     maximum: int | None = None
 
 
+@dataclass(frozen=True)
+class ImmediateMultipleOfConstraint:
+    """Require one immediate operand to be divisible by a positive integer."""
+
+    operand: str
+    divisor: int
+
+
 class RuntimeLookupKind(str, Enum):
     """Runtime C++ lookup forms emitted for backend value domains."""
 
@@ -237,6 +245,7 @@ class VariantSpec:
     memory_vector: MemoryVectorConstraint | None = None
     immediate_value: ImmediateValueConstraint | None = None
     immediate_ranges: tuple[ImmediateRangeConstraint, ...] = ()
+    immediate_multiple_of: ImmediateMultipleOfConstraint | None = None
 
 
 @dataclass(frozen=True)

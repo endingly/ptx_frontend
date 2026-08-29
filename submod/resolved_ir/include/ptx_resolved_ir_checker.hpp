@@ -428,6 +428,11 @@ struct VariantDescriptor {
     std::string_view operand_field_id;
     std::span<const uint64_t> allowed_values;
   } immediate_value;
+  /** Empty field ID means this variant has no immediate divisor constraint. */
+  struct ImmediateMultipleOfDescriptor {
+    std::string_view operand_field_id;
+    uint64_t divisor = 0;
+  } immediate_multiple_of;
   /** Empty span means this variant has no immediate range constraints. */
   struct ImmediateRangeDescriptor {
     std::string_view operand_field_id;
@@ -580,6 +585,11 @@ CheckResult check_memory_vector(
 /** Check an immediate operand against an exact generated integer allowlist. */
 CheckResult check_immediate_value(
     const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context);
+
+/** Check an immediate operand is divisible by a generated positive divisor. */
+CheckResult check_immediate_multiple_of(
+    const VariantDescriptor::ImmediateMultipleOfDescriptor& descriptor,
     std::span<const OperandView> operands, const Context& context);
 
 /** Check an immediate operand against inclusive generated integer bounds. */

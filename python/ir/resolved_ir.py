@@ -20,6 +20,7 @@ from code_gen.cpp_backend import (
 )
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
     ImmediateValueConstraint,
     InstructionSpec,
@@ -233,6 +234,14 @@ class ResolvedImmediateRangeConstraint:
 
 
 @dataclass(frozen=True)
+class ResolvedImmediateMultipleOfConstraint:
+    """Generated field identity and positive divisor for one immediate."""
+
+    operand_field_id: str
+    divisor: int
+
+
+@dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
 
@@ -331,6 +340,7 @@ class ResolvedVariant:
     memory_vector: ResolvedMemoryVectorConstraint | None
     immediate_value: ResolvedImmediateValueConstraint | None
     immediate_ranges: tuple[ResolvedImmediateRangeConstraint, ...]
+    immediate_multiple_of: ResolvedImmediateMultipleOfConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -567,6 +577,9 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         immediate_ranges=_build_immediate_range_constraints(
             variant.immediate_ranges,
         ),
+        immediate_multiple_of=_build_immediate_multiple_of_constraint(
+            variant.immediate_multiple_of,
+        ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
     )
@@ -655,6 +668,17 @@ def _build_immediate_range_constraints(
             maximum=constraint.maximum,
         )
         for constraint in constraints
+    )
+
+
+def _build_immediate_multiple_of_constraint(
+    constraint: ImmediateMultipleOfConstraint | None,
+) -> ResolvedImmediateMultipleOfConstraint | None:
+    if constraint is None:
+        return None
+    return ResolvedImmediateMultipleOfConstraint(
+        operand_field_id=constraint.operand,
+        divisor=constraint.divisor,
     )
 
 

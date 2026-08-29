@@ -968,6 +968,102 @@ TEST(ResolvedModule, ResolvesAndChecksDiscardGlobalL2Slice) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
+  const auto ast = parseModule(R"ptx(
+.version 8.0
+.target sm_90a
+.entry kernel() {
+  setmaxnreg.inc.sync.aligned.u32 24;
+  setmaxnreg.inc.sync.aligned.u32 192;
+  setmaxnreg.inc.sync.aligned.u32 256;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+
+  const auto profile = base::find_target_profile("sm_90a");
+  ASSERT_TRUE(profile.has_value());
+  const checker::Context supported_context{
+      .target = {.ptx_version = {8, 0},
+                 .sm_version = profile->identity.architecture.number,
+                 .enabled_family_features = profile->enabled_family_features,
+                 .identity = profile->identity,
+                 .capabilities = profile->capabilities},
+      .instruction_range = ast.range,
+  };
+  constexpr std::array<uint64_t, 3> expected_counts{24, 192, 256};
+  for (size_t index = 0; index < body.size(); ++index) {
+    const auto& resolved_instruction = body[index];
+    const auto& instruction = std::get<Setmaxnreg>(resolved_instruction);
+    const auto& setmaxnreg =
+        std::get<Setmaxnreg::IncSyncAlignedU32>(instruction.variant);
+    EXPECT_TRUE(setmaxnreg.inc);
+    EXPECT_TRUE(setmaxnreg.sync);
+    EXPECT_TRUE(setmaxnreg.aligned);
+    EXPECT_EQ(Setmaxnreg::IncSyncAlignedU32::type, ScalarType::U32);
+    EXPECT_EQ(setmaxnreg.count.value.type, ScalarType::U32);
+    EXPECT_EQ(setmaxnreg.count.value.bits, expected_counts[index]);
+    EXPECT_TRUE(checker::check(instruction, supported_context).has_value());
+  }
+
+  for (const auto source : {
+           "setmaxnreg.inc.sync.aligned.u32 23;",
+           "setmaxnreg.inc.sync.aligned.u32 25;",
+           "setmaxnreg.inc.sync.aligned.u32 193;",
+           "setmaxnreg.inc.sync.aligned.u32 257;",
+           "setmaxnreg.inc.sync.aligned.u32 -8;",
+       }) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto instruction_ast = parser.parseInstruction();
+    ASSERT_TRUE(instruction_ast.has_value()) << instruction_ast.diagnostics.front().message;
+    const auto setmaxnreg = resolve<Setmaxnreg>(*instruction_ast);
+    ASSERT_TRUE(setmaxnreg.has_value()) << setmaxnreg.error().message;
+    const auto checked = checker::check(
+        *setmaxnreg, checker::Context{.target = supported_context.target,
+                                       .instruction_range = instruction_ast->range});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+
+  const auto too_old_ptx = checker::check(
+      std::get<Setmaxnreg>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 9},
+                                  .sm_version = profile->identity.architecture.number,
+                                  .identity = profile->identity},
+                       .instruction_range = ast.range});
+  EXPECT_FALSE(too_old_ptx.has_value());
+  for (const std::string_view target : {"sm_90", "sm_100a"}) {
+    SCOPED_TRACE(target);
+    const auto rejected_profile = base::find_target_profile(target);
+    ASSERT_TRUE(rejected_profile.has_value());
+    EXPECT_FALSE(checker::check(
+                     std::get<Setmaxnreg>(body.front()),
+                     checker::Context{.target = {
+                                          .ptx_version = {8, 0},
+                                          .sm_version = rejected_profile->identity.architecture.number,
+                                          .enabled_family_features = rejected_profile->enabled_family_features,
+                                          .identity = rejected_profile->identity,
+                                          .capabilities = rejected_profile->capabilities},
+                                      .instruction_range = ast.range})
+                     .has_value());
+  }
+
+  for (const auto source : {
+           ".entry kernel() { .reg .u32 %r0; setmaxnreg.inc.sync.aligned.u32 %r0; }",
+           ".entry kernel() { setmaxnreg.dec.sync.aligned.u32 192; }",
+           ".entry kernel() { setmaxnreg.inc.aligned.u32 192; }",
+           ".entry kernel() { setmaxnreg.inc.sync.u32 192; }",
+           ".entry kernel() { setmaxnreg.inc.sync.aligned.s32 192; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
   const auto ast = parseModule(R"ptx(
 .global .align 16 .b8 global_value[16];

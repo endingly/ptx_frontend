@@ -1231,6 +1231,25 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfindAvailability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, RejectsZeroImmediateMultipleDivisor) {
+  constexpr VariantDescriptor::ImmediateMultipleOfDescriptor descriptor{
+      .operand_field_id = "count",
+      .divisor = 0,
+  };
+  const OperandView operand{
+      .field_id = "count",
+      .actual_shape = OperandShape::Immediate,
+      .immediate_type = ScalarType::U32,
+      .immediate_bits = 24,
+      .immediate_is_negative = false,
+  };
+  const auto checked = check_immediate_multiple_of(
+      descriptor, std::span<const OperandView>{&operand, 1},
+      Context{.instruction_range = kInstructionRange});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, CheckDiagnosticKind::RuleViolation);
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedBfeAvailabilityAndImmediateRanges) {
   for (const auto source : {"bfe.u32 %r0, %r1, 0, 8;",
                             "bfe.u32 %r0, %r1, 255, 255;"}) {

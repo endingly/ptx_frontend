@@ -66,6 +66,13 @@ operand_patterns:
     - {name: offset, kind: imm, role: src2, access: read, type: u32}
     - {name: width, kind: imm, role: src3, access: read, type: u32}
 
+  bfi_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: insert, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: base, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: offset, kind: imm, role: src3, access: read, type: u32}
+    - {name: width, kind: imm, role: src3, access: read, type: u32}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1210,3 +1217,19 @@ instructions:
           - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
         examples:
           - {ptx: "bfe.u32 %r0, %r1, 0, 8;", valid: true}
+
+  - opcode: bfi
+    section: "9.7.1.21"
+    doc: "Frozen 32-bit bit-field insert with immediate offset and width."
+    syntax: "bfi.b32 dst, insert, base, offset, width"
+    operands: $bfi_b32
+    variants:
+      - name: bfi_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfi.b32 %r0, %r1, %r2, 0, 8;", valid: true}

@@ -1304,6 +1304,22 @@ TEST(ResolveBfe, SelectsFrozenU32VariantAndRejectsNonImmediateBounds) {
   }
 }
 
+TEST(ResolveBfi, SelectsFrozenB32VariantAndRejectsNonImmediateBounds) {
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 0, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Bfi>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ASSERT_NE(std::get_if<Bfi::B32>(&resolved->variant), nullptr);
+    EXPECT_EQ(Bfi::B32::type, ScalarType::B32);
+  }
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, %r3, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 8, %r3;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Bfi>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
   const auto left = resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;

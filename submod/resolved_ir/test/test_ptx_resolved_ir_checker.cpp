@@ -1274,6 +1274,47 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfeAvailabilityAndImmediateRanges) {
   }
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedBfiAvailabilityAndImmediateRanges) {
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 0, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto bfi = resolve<Bfi>(*ast);
+    ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
+    const auto old_ptx = check(
+        *bfi, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                                     .instruction_range = ast->range})
+                    .has_value());
+  }
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 256, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 8, 256;",
+                            "bfi.b32 %r0, %r1, %r2, -1, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 8, -1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto bfi = resolve<Bfi>(*ast);
+    ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
+    const auto checked = check(
+        *bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

@@ -126,7 +126,7 @@ gaps:
   - owner: M12-I23
     marker: m12_i23_bfi
     forms:
-      - {variant: b32, canonical_form: bfi.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: b32, canonical_form: bfi.b32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I24
     marker: m12_i24_brev
     forms:

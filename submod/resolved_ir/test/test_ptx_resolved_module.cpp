@@ -2737,6 +2737,25 @@ TEST(ResolvedModule, ChecksM12BfeTypes) {
   }
 }
 
+TEST(ResolvedModule, ChecksM12BfiTypes) {
+  const auto context = checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  const auto valid = resolveModule(parseModule(
+      ".entry kernel() { .reg .u32 %dst, %insert, %base; bfi.b32 %dst, %insert, %base, 0, 8; }"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Bfi>(valid->functions.front().body.front()), context).has_value());
+  for (const auto source : {
+           ".entry kernel() { .reg .b64 %dst, %insert, %base; bfi.b32 %dst, %insert, %base, 0, 8; }",
+           ".entry kernel() { .reg .u16 %dst, %insert, %base; bfi.b32 %dst, %insert, %base, 0, 8; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(std::get<Bfi>(wrong->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

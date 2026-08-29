@@ -69,8 +69,8 @@ gaps:
   - owner: M12-I11
     marker: m12_i11_rem
     forms:
-      - {variant: s32_zero_divisor, canonical_form: rem.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
-      - {variant: u32, canonical_form: rem.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_opcode}
+      - {variant: s32_zero_divisor, canonical_form: rem.s32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
+      - {variant: u32, canonical_form: rem.u32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I12
     marker: m12_i12_min
     forms:

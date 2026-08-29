@@ -922,6 +922,24 @@ TEST(ResolvedIrChecker, ChecksGeneratedDivU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedRemAvailability) {
+  PtxSyntaxParser parser("rem.s32 %r0, %r1, 0;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto rem = resolve<Rem>(*ast);
+  ASSERT_TRUE(rem.has_value()) << rem.error().message;
+  const auto rejected = check(
+      *rem, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*rem,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();

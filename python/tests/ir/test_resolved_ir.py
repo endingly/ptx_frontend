@@ -92,12 +92,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "div"
         )
+        rem = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "rem"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
         cls.mad_instruction = from_instruction_spec(mad)
         cls.fma_instruction = from_instruction_spec(fma)
         cls.div_instruction = from_instruction_spec(div)
+        cls.rem_instruction = from_instruction_spec(rem)
         call = next(
             instruction
             for instruction in database.instructions
@@ -418,6 +424,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
                 [ResolvedRegisterWidthPolicy.EXACT] * 3,
             )
+
+    def test_rem_has_frozen_signed_and_unsigned_binary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.rem_instruction.variants],
+            ["S32", "U32"],
+        )
+        for variant, scalar_type in zip(
+            self.rem_instruction.variants, ("S32", "U32"), strict=True
+        ):
+            self.assertEqual(
+                [field.name for field in variant.fields],
+                ["type", "dst", "src1", "src2"],
+            )
+            self.assertEqual(variant.fields[0].constant_value, scalar_type.lower())
 
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}

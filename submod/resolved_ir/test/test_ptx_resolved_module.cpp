@@ -2343,6 +2343,7 @@ TEST(ResolvedModule, ChecksM12DivS32AndRnFloatingOperandTypes) {
   div.rn.f32 %f0, %f1, %f2;
   div.rn.f64 %d0, %d1, %d2;
 }
+
 )ptx"));
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
@@ -2387,6 +2388,48 @@ TEST(ResolvedModule, ChecksM12DivS32AndRnFloatingOperandTypes) {
   EXPECT_EQ(f64_checked.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(f64_checked.error().front().range, f64_variant.src1.locs.front());
+}
+
+TEST(ResolvedModule, ChecksM12RemTypesAndZeroDivisor) {
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0, %s1;
+  .reg .u32 %u0, %u1, %u2;
+  rem.s32 %s0, %s1, 0;
+  rem.u32 %u0, %u1, %u2;
+}
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& body = valid->functions.front().body;
+  const auto& signed_rem = std::get<Rem>(body[0]);
+  const auto& unsigned_rem = std::get<Rem>(body[1]);
+  EXPECT_TRUE(std::holds_alternative<Rem::S32>(signed_rem.variant));
+  EXPECT_TRUE(std::holds_alternative<Rem::U32>(unsigned_rem.variant));
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  EXPECT_TRUE(checker::check(signed_rem, context).has_value());
+  EXPECT_TRUE(checker::check(unsigned_rem, context).has_value());
+
+  const auto wrong_type = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %dst; .reg .f32 %src; rem.u32 %dst, %src, 0; }
+)ptx"));
+  ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
+  const auto& type_instruction = std::get<Rem>(wrong_type->functions.front().body.front());
+  const auto& type_variant = std::get<Rem::U32>(type_instruction.variant);
+  const auto type_checked = checker::check(type_instruction, context);
+  ASSERT_FALSE(type_checked.has_value());
+  EXPECT_EQ(type_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(type_checked.error().front().range, type_variant.src1.locs.front());
+
+  const auto wrong_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u64 %dst, %src; rem.s32 %dst, %src, 0; }
+)ptx"));
+  ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
+  const auto& width_instruction = std::get<Rem>(wrong_width->functions.front().body.front());
+  const auto& width_variant = std::get<Rem::S32>(width_instruction.variant);
+  const auto width_checked = checker::check(width_instruction, context);
+  ASSERT_FALSE(width_checked.has_value());
+  EXPECT_EQ(width_checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(width_checked.error().front().range, width_variant.dst.locs.front());
 }
 
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {

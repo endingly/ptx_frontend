@@ -978,3 +978,23 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         examples:
           - {ptx: "div.s32 %r0, %r1, %r2;", valid: true}
+
+  - opcode: rem
+    section: "9.7.1.10"
+    doc: "Frozen signed and unsigned 32-bit integer remainder."
+    syntax: "rem.s32 | rem.u32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: rem_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "rem.s32 %r0, %r1, 0;", valid: true}
+
+      - name: rem_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "rem.u32 %r0, %r1, %r2;", valid: true}

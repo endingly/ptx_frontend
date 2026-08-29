@@ -57,6 +57,11 @@ opcodes:
   - {"id":"div-div-s32-default","section":"9.7.1.9","spec_variant":"div_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"div-div-rn-f32-default","section":"9.7.3.8","spec_variant":"div_rn_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"div-div-rn-f64-default","section":"9.7.3.8","spec_variant":"div_rn_f64","operand_layout":"default","selector":{"topology":"arithmetic","types":["f64"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: rem
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"rem-rem-s32-default","section":"9.7.1.10","spec_variant":"rem_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"rem-rem-u32-default","section":"9.7.1.10","spec_variant":"rem_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: set
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

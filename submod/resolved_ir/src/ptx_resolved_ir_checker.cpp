@@ -614,6 +614,39 @@ CheckResult check_operands(
     append_value_availability_diagnostics(*operand, context, diagnostics);
 
     if (operand->actual_shape == OperandShape::Vector &&
+        descriptor.minimum_elements != 0) {
+      if (operand->vector_arity <= kMaxOperandElements) {
+        const auto mismatched = std::ranges::find_if(
+            operand->vector_element_types.begin(),
+            operand->vector_element_types.begin() + operand->vector_arity,
+            [&](ScalarType element_type) {
+              // Standalone operands have no declaration to establish a type.
+              return element_type != ScalarType::Invalid &&
+                     !scalar_types_compatible(
+                         element_type, expected_type,
+                         descriptor.register_width_policy);
+            });
+        if (mismatched != operand->vector_element_types.begin() +
+                              operand->vector_arity) {
+          const size_t index =
+              static_cast<size_t>(mismatched - operand->vector_element_types.begin());
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message = fmt::format(
+                  "Vector operand '{}' has an element type '{}' incompatible "
+                  "with instruction type source '{}' ('{}').",
+                  descriptor.target_field_id, to_string(*mismatched),
+                  expected_type_source, to_string(expected_type)),
+          });
+        }
+      }
+      continue;
+    }
+
+    if (operand->actual_shape == OperandShape::Vector &&
         descriptor.minimum_elements == 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
       std::optional<uint8_t> required_vector_arity;

@@ -1088,10 +1088,8 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   if (element) {{
                     view.vector_element_shapes[index] =
                         {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
-                    if (index < view.vector_element_types.size()) {{
-                      view.vector_element_types[index] =
-                          element->declared_type.value_or(ScalarType::Invalid);
-                    }}
+                    view.vector_element_types[index] =
+                        element->declared_type.value_or(ScalarType::Invalid);
                   }} else {{
                     ++view.vector_sink_count;
                   }}
@@ -1113,10 +1111,19 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                      {object_name}.{field.name}.value.elements) {{
                   if (index >= view.vector_element_shapes.size())
                     break;
-                  view.vector_element_shapes[index++] =
-                      std::holds_alternative<ResolvedRegisterRef>(element)
-                          ? {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")}
-                          : {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")};
+                  if (const auto* register_ref =
+                          std::get_if<ResolvedRegisterRef>(&element)) {{
+                    view.vector_element_shapes[index] =
+                        {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
+                    view.vector_element_types[index] =
+                        register_ref->declared_type.value_or(ScalarType::Invalid);
+                  }} else {{
+                    const auto& immediate = std::get<ResolvedImmediate>(element);
+                    view.vector_element_shapes[index] =
+                        {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")};
+                    view.vector_element_types[index] = immediate.type;
+                  }}
+                  ++index;
                 }}
                 return view;
               }}()"""

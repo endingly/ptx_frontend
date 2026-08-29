@@ -300,7 +300,7 @@ struct OperandView {
   ParameterDirection parameter_direction = ParameterDirection::None;
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
-  std::array<ScalarType, 8> vector_element_types{};
+  std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   /** Per-element source shape for variable modern brace packs. */
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
   uint8_t vector_arity = 0;

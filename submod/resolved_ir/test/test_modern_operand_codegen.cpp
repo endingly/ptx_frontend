@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -15,6 +17,48 @@ syntax_ast::AstModule parseModule(std::string_view source) {
   auto module = parser.parseModule();
   EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
   return std::move(*module);
+}
+
+std::string syntheticModule(std::string_view coordinate,
+                            std::string_view fragment) {
+  std::string source = R"ptx(
+.version 9.3
+.entry kernel() {
+  .reg .u32 %r<64>;
+  .reg .f32 %f<64>;
+  synthetic_modern {)ptx";
+  source.append(coordinate);
+  source.append("}, {");
+  source.append(fragment);
+  source.append("};\n}\n");
+  return source;
+}
+
+std::string fragmentPack(size_t wrong_index = 64) {
+  std::string pack;
+  for (size_t index = 0; index < 64; ++index) {
+    if (!pack.empty())
+      pack.append(", ");
+    pack.append(index == wrong_index ? "%f" : "%r");
+    pack.append(std::to_string(index));
+  }
+  return pack;
+}
+
+const SyntheticModern& syntheticInstruction(const ResolvedModule& module) {
+  return std::get<SyntheticModern>(module.functions.front().body.front());
+}
+
+const SyntheticModern::Primitive& syntheticPrimitive(
+    const SyntheticModern& instruction) {
+  return std::get<SyntheticModern::Primitive>(instruction.variant);
+}
+
+checker::Context syntheticContext(const SyntheticModern::Primitive& primitive) {
+  return {
+      .target = {.ptx_version = {9, 3}, .sm_version = 0},
+      .instruction_range = primitive.coordinate.locs.front(),
+  };
 }
 
 TEST(ModernOperandCodegen, ResolvesAndChecksSyntheticPrimitive) {
@@ -51,6 +95,54 @@ TEST(ModernOperandCodegen, ResolvesAndChecksSyntheticPrimitive) {
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             checker::CheckDiagnosticKind::InvalidVectorOperand);
+}
+
+TEST(ModernOperandCodegen, ChecksModuleBoundCoordinateElementTypes) {
+  const auto wrong = resolveModule(
+      parseModule(syntheticModule("%f0", "%r0")));
+  ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+  const SyntheticModern& wrong_instruction = syntheticInstruction(*wrong);
+  const auto& wrong_primitive = syntheticPrimitive(wrong_instruction);
+  const auto rejected =
+      checker::check(wrong_instruction, syntheticContext(wrong_primitive));
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(rejected.error().front().range, wrong_primitive.coordinate.locs[0]);
+
+  const auto correct = resolveModule(
+      parseModule(syntheticModule("%r0, 1", "%r0")));
+  ASSERT_TRUE(correct.has_value()) << correct.error().front().message;
+  const SyntheticModern& correct_instruction = syntheticInstruction(*correct);
+  const auto& correct_primitive = syntheticPrimitive(correct_instruction);
+  EXPECT_TRUE(checker::check(correct_instruction,
+                             syntheticContext(correct_primitive))
+                  .has_value());
+}
+
+TEST(ModernOperandCodegen, ChecksAllModernFragmentElementTypes) {
+  for (const size_t wrong_index : {size_t{0}, size_t{8}, size_t{63}}) {
+    const auto wrong = resolveModule(parseModule(
+        syntheticModule("%r0", fragmentPack(wrong_index))));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const SyntheticModern& instruction = syntheticInstruction(*wrong);
+    const auto& primitive = syntheticPrimitive(instruction);
+    const auto rejected = checker::check(instruction, syntheticContext(primitive));
+    ASSERT_FALSE(rejected.has_value());
+    ASSERT_EQ(rejected.error().size(), 1u);
+    EXPECT_EQ(rejected.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+    EXPECT_EQ(rejected.error().front().range,
+              primitive.fragment.locs[wrong_index]);
+  }
+
+  const auto correct = resolveModule(
+      parseModule(syntheticModule("%r0", fragmentPack())));
+  ASSERT_TRUE(correct.has_value()) << correct.error().front().message;
+  const SyntheticModern& instruction = syntheticInstruction(*correct);
+  const auto& primitive = syntheticPrimitive(instruction);
+  EXPECT_TRUE(checker::check(instruction, syntheticContext(primitive)).has_value());
 }
 
 TEST(ModernOperandCodegen, AppliesLegacyFamiliesThroughModuleAvailability) {

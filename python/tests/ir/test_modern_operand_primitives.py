@@ -314,7 +314,9 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             syntax_source,
         )
         self.assertIn("view.vector_element_shapes[index] =", source)
-        self.assertIn("std::holds_alternative<ResolvedRegisterRef>(element)", source)
+        self.assertIn("std::get_if<ResolvedRegisterRef>(&element)", source)
+        self.assertIn("register_ref->declared_type.value_or(ScalarType::Invalid)", source)
+        self.assertIn("view.vector_element_types[index] = immediate.type;", source)
 
 
 if __name__ == "__main__":

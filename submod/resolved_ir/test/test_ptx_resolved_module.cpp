@@ -2756,6 +2756,24 @@ TEST(ResolvedModule, ChecksM12BfiTypes) {
   }
 }
 
+TEST(ResolvedModule, ChecksM12BrevTypes) {
+  const auto context = checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
+  const auto valid = resolveModule(parseModule(".entry kernel() { .reg .u32 %dst, %src; brev.b32 %dst, %src; }"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Brev>(valid->functions.front().body.front()), context).has_value());
+  for (const auto source : {
+           ".entry kernel() { .reg .u16 %dst, %src; brev.b32 %dst, %src; }",
+           ".entry kernel() { .reg .b64 %dst, %src; brev.b32 %dst, %src; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto wrong = resolveModule(parseModule(source));
+    ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
+    const auto checked = checker::check(std::get<Brev>(wrong->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ReportsRegistersMissingFromTheBoundScope) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

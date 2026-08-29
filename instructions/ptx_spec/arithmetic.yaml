@@ -73,6 +73,10 @@ operand_patterns:
     - {name: offset, kind: imm, role: src3, access: read, type: u32}
     - {name: width, kind: imm, role: src3, access: read, type: u32}
 
+  brev_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -1233,3 +1237,16 @@ instructions:
           - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
         examples:
           - {ptx: "bfi.b32 %r0, %r1, %r2, 0, 8;", valid: true}
+
+  - opcode: brev
+    section: "9.7.1.19"
+    doc: "Frozen 32-bit bit-reverse form."
+    syntax: "brev.b32 dst, src"
+    operands: $brev_b32
+    variants:
+      - name: brev_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "brev.b32 %r0, %r1;", valid: true}

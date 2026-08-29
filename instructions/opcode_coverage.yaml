@@ -247,6 +247,10 @@ opcodes:
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:
   - {"id":"bfi-bfi-b32-default","section":"9.7.1.21","spec_variant":"bfi_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: brev
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"brev-brev-b32-default","section":"9.7.1.19","spec_variant":"brev_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: shl
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   m9_issues: [M9-I10]

@@ -1320,6 +1320,14 @@ TEST(ResolveBfi, SelectsFrozenB32VariantAndRejectsNonImmediateBounds) {
   }
 }
 
+TEST(ResolveBrev, SelectsFrozenB32VariantAndRejectsB64) {
+  const auto brev = resolve<Brev>(parse_instruction("brev.b32 %r0, %r1;"));
+  ASSERT_TRUE(brev.has_value()) << brev.error().message;
+  ASSERT_NE(std::get_if<Brev::B32>(&brev->variant), nullptr);
+  EXPECT_EQ(Brev::B32::type, ScalarType::B32);
+  EXPECT_FALSE(selectVariant<Brev>(parse_instruction("brev.b64 %rd0, %rd1;")).has_value());
+}
+
 TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
   const auto left = resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;

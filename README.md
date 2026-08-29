@@ -39,8 +39,9 @@ The frontend currently provides:
   registers through 64 bits; wider `.b128` declarations remain deferred until
   declaration-type target availability is checked, and other instructions
   remain exact-width;
-- explicit PTX ISA version, SM version, and target-family availability checks
-  for modelled variants, modifiers, layouts, and operands.
+- explicit PTX ISA version, SM version, compatible `f`-feature-family, exact
+  target, and capability availability checks for modelled variants, modifiers,
+  layouts, and operands.
 - a partial M10 frozen subset for cache-hint/eviction, `ldu`/`prefetch`, memory
   ordering and scalar atomics/reductions, warp collectives, `cp.async`,
   `ldmatrix`, and one `mma` form; these forms are resolved and checked only,

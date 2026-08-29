@@ -88,7 +88,7 @@ TEST(ResolvedIrChecker, AcceptsAvailableVariant) {
   EXPECT_TRUE(is_available(kVariants[0].availability, context.target));
 }
 
-TEST(ResolvedIrChecker, UsesCatalogFamiliesForProductionAvailability) {
+TEST(ResolvedIrChecker, UsesCatalogCompatibleFamiliesForProductionAvailability) {
   const auto sm120f = base::find_target_profile("sm_120f");
   ASSERT_TRUE(sm120f.has_value());
 
@@ -96,7 +96,7 @@ TEST(ResolvedIrChecker, UsesCatalogFamiliesForProductionAvailability) {
     return TargetInfo{
         .ptx_version = {9, 2},
         .sm_version = profile.identity.architecture.number,
-        .families = profile.families,
+        .families = profile.compatible_families,
         .identity = profile.identity,
         .capabilities = profile.capabilities,
     };
@@ -107,7 +107,7 @@ TEST(ResolvedIrChecker, UsesCatalogFamiliesForProductionAvailability) {
   EXPECT_FALSE(is_available(kVariants[0].availability, without_family));
 }
 
-TEST(ResolvedIrChecker, KeepsLegacyFamilyRequirementsDistinctFromExactTargets) {
+TEST(ResolvedIrChecker, KeepsCompatibleFamilyRequirementsDistinctFromExactTargets) {
   const auto target_info = [](std::string_view spelling) {
     const auto profile = base::find_target_profile(spelling);
     EXPECT_TRUE(profile.has_value()) << spelling;
@@ -116,20 +116,10 @@ TEST(ResolvedIrChecker, KeepsLegacyFamilyRequirementsDistinctFromExactTargets) {
     return TargetInfo{
         .ptx_version = {9, 3},
         .sm_version = profile->identity.architecture.number,
-        .families = profile->families,
+        .families = profile->compatible_families,
         .identity = profile->identity,
         .capabilities = profile->capabilities,
     };
-  };
-  constexpr AvailabilityDescriptor sm90a_family{
-      .minimum_ptx_version = {8, 0},
-      .minimum_sm_version = 90,
-      .required_family = "sm_90a",
-  };
-  constexpr AvailabilityDescriptor sm100a_family{
-      .minimum_ptx_version = {8, 0},
-      .minimum_sm_version = 100,
-      .required_family = "sm_100a",
   };
   constexpr AvailabilityDescriptor sm100f_family{
       .minimum_ptx_version = {8, 0},
@@ -137,11 +127,29 @@ TEST(ResolvedIrChecker, KeepsLegacyFamilyRequirementsDistinctFromExactTargets) {
       .required_family = "sm_100f",
   };
 
-  EXPECT_TRUE(is_available(sm90a_family, target_info("sm_90a")));
-  EXPECT_FALSE(is_available(sm90a_family, target_info("sm_90")));
-  EXPECT_TRUE(is_available(sm100a_family, target_info("sm_100a")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100a")));
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100f")));
-  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_120f")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_100")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_90a")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_120f")));
+
+  constexpr AvailabilityDescriptor exact_sm100a{
+      .any_of = {{
+          {.has_exact_target = true,
+           .exact_target_architecture = {100},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
+      }},
+      .any_of_count = 1,
+  };
+  constexpr AvailabilityDescriptor cluster_capability{
+      .any_of = {{
+          {.capabilities = {"cluster"}, .capability_count = 1},
+      }},
+      .any_of_count = 1,
+  };
+  EXPECT_TRUE(is_available(exact_sm100a, target_info("sm_100a")));
+  EXPECT_FALSE(is_available(exact_sm100a, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(cluster_capability, target_info("sm_100")));
 }
 
 TEST(ResolvedIrChecker, EvaluatesBoundedAvailabilityDnf) {

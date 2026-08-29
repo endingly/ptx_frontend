@@ -313,9 +313,10 @@ struct OperandView {
 /**
  * The target properties relevant to instruction availability checks.
  *
- * ``families`` is borrowed: the caller owns the underlying strings for the
- * duration of the check.  Keeping the ABI view-only also lets one target
- * advertise more than one compatible family in the future.
+ * ``families`` is borrowed from the target profile's compatible f-feature
+ * families: the caller owns the underlying strings for the duration of the
+ * check. Keeping the ABI view-only also lets one target advertise more than
+ * one compatible family.
  */
 struct TargetInfo {
   PtxVersion ptx_version{};

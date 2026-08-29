@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -145,7 +146,7 @@ TEST(ModernOperandCodegen, ChecksAllModernFragmentElementTypes) {
   EXPECT_TRUE(checker::check(instruction, syntheticContext(primitive)).has_value());
 }
 
-TEST(ModernOperandCodegen, AppliesLegacyFamiliesThroughModuleAvailability) {
+TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {
   const auto sm90a_module = resolveModule(parseModule(R"ptx(
 .version 8.0
 .entry kernel() { synthetic_sm90a; }
@@ -168,7 +169,7 @@ TEST(ModernOperandCodegen, AppliesLegacyFamiliesThroughModuleAvailability) {
   ASSERT_FALSE(sm90.has_value());
   ASSERT_EQ(sm90.error().size(), 1u);
   EXPECT_EQ(sm90.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedTargetFamily);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
 
   const auto sm100a_module = resolveModule(parseModule(R"ptx(
 .version 8.0
@@ -183,6 +184,45 @@ TEST(ModernOperandCodegen, AppliesLegacyFamiliesThroughModuleAvailability) {
 .entry kernel() { synthetic_sm100a; }
 )ptx"), *sm100a_module);
   EXPECT_TRUE(sm100a.has_value());
+
+  const auto sm100f = checkModuleAvailability(parseModule(R"ptx(
+.version 8.0
+.target sm_100f
+.entry kernel() { synthetic_sm100a; }
+)ptx"), *sm100a_module);
+  ASSERT_FALSE(sm100f.has_value());
+  ASSERT_EQ(sm100f.error().size(), 1u);
+  EXPECT_EQ(sm100f.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+}
+
+TEST(ModernOperandCodegen, AppliesCompatibleFeatureFamiliesThroughModuleAvailability) {
+  const auto module = resolveModule(parseModule(R"ptx(
+.version 9.3
+.entry kernel() { synthetic_sm100f_feature; }
+)ptx"));
+  ASSERT_TRUE(module.has_value()) << module.error().front().message;
+
+  const auto check_for_target = [&module](std::string_view target) {
+    std::string source = ".version 9.3\n.target ";
+    source.append(target);
+    source.append("\n.entry kernel() { synthetic_sm100f_feature; }\n");
+    return checkModuleAvailability(parseModule(source), *module);
+  };
+
+  EXPECT_TRUE(check_for_target("sm_100a").has_value());
+  EXPECT_TRUE(check_for_target("sm_100f").has_value());
+  EXPECT_TRUE(check_for_target("sm_120f").has_value());
+
+  for (const std::string_view target : {"sm_100", "sm_90a"}) {
+    const auto rejected = check_for_target(target);
+    ASSERT_FALSE(rejected.has_value()) << target;
+    EXPECT_TRUE(std::ranges::any_of(
+        rejected.error(), [](const checker::CheckDiagnostic& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::UnsupportedTargetFamily;
+        })) << target;
+  }
 }
 
 }  // namespace

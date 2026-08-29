@@ -244,7 +244,7 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
         active_target = checker::TargetInfo{
             .ptx_version = *version,
             .sm_version = profile->identity.architecture.number,
-            .families = profile->families,
+            .families = profile->compatible_families,
             .identity = profile->identity,
             .capabilities = profile->capabilities,
         };

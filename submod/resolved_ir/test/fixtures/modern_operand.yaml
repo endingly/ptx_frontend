@@ -6,14 +6,20 @@ codegen_category: test
 instructions:
   - opcode: synthetic_sm90a
     variants:
-      - name: synthetic_sm90a_family
-        availability: {ptx: "8.0", sm: 90, family: sm_90a}
+      - name: synthetic_sm90a_exact
+        availability: {any_of: [{ptx: "8.0", sm: 90, target: sm_90a}]}
         operands: []
 
   - opcode: synthetic_sm100a
     variants:
-      - name: synthetic_sm100a_family
-        availability: {ptx: "8.0", sm: 100, family: sm_100a}
+      - name: synthetic_sm100a_exact
+        availability: {any_of: [{ptx: "8.0", sm: 100, target: sm_100a}]}
+        operands: []
+
+  - opcode: synthetic_sm100f_feature
+    variants:
+      - name: synthetic_sm100f_feature_default
+        availability: {ptx: "8.8", sm: 100, family: sm_100f}
         operands: []
 
   - opcode: synthetic_modern

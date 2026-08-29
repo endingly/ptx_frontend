@@ -9,10 +9,10 @@ namespace {
 
 constexpr std::array<std::string_view, 0> kNoCapabilities{};
 constexpr std::array<std::string_view, 0> kNoFamilies{};
-constexpr std::array<std::string_view, 1> kSm90aFamilies{"sm_90a"};
-constexpr std::array<std::string_view, 1> kSm100aFamilies{"sm_100a"};
-constexpr std::array<std::string_view, 1> kSm100fFamilies{"sm_100f"};
-constexpr std::array<std::string_view, 1> kSm120fFamilies{"sm_120f"};
+constexpr std::array<std::string_view, 1> kSm100fCompatibleFamilies{
+    "sm_100f"};
+constexpr std::array<std::string_view, 2> kSm120fCompatibleFamilies{
+    "sm_100f", "sm_120f"};
 constexpr std::array<std::string_view, 2> kSm80Capabilities{
     "reserved_smem",
     "graph_exec",
@@ -26,7 +26,7 @@ constexpr std::array<std::string_view, 4> kSm90AndLaterCapabilities{
 
 struct CatalogEntry {
   std::string_view spelling;
-  std::span<const std::string_view> families;
+  std::span<const std::string_view> compatible_families;
   std::span<const std::string_view> capabilities;
 };
 
@@ -36,11 +36,11 @@ constexpr CatalogEntry kTargetProfiles[]{
     {"sm_30", kNoFamilies, kNoCapabilities},
     {"sm_80", kNoFamilies, kSm80Capabilities},
     {"sm_90", kNoFamilies, kSm90AndLaterCapabilities},
-    {"sm_90a", kSm90aFamilies, kSm90AndLaterCapabilities},
+    {"sm_90a", kNoFamilies, kSm90AndLaterCapabilities},
     {"sm_100", kNoFamilies, kSm90AndLaterCapabilities},
-    {"sm_100a", kSm100aFamilies, kSm90AndLaterCapabilities},
-    {"sm_100f", kSm100fFamilies, kSm90AndLaterCapabilities},
-    {"sm_120f", kSm120fFamilies, kSm90AndLaterCapabilities},
+    {"sm_100a", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
+    {"sm_100f", kSm100fCompatibleFamilies, kSm90AndLaterCapabilities},
+    {"sm_120f", kSm120fCompatibleFamilies, kSm90AndLaterCapabilities},
 };
 
 }  // namespace
@@ -87,7 +87,7 @@ std::optional<TargetProfile> find_target_profile(std::string_view spelling) {
     if (entry.spelling == spelling) {
       return TargetProfile{
           .identity = *identity,
-          .families = entry.families,
+          .compatible_families = entry.compatible_families,
           .capabilities = entry.capabilities,
       };
     }

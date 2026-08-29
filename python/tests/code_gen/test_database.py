@@ -368,6 +368,11 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         ]}
         self.assertEqual(normalize_availability(dnf), dnf)
 
+    def test_rejects_non_feature_legacy_families(self) -> None:
+        for family in ("sm_90a", "sm_90", "sm_0f", "sm_90ff"):
+            with self.assertRaisesRegex(ValueError, "availability family"):
+                normalize_availability({"family": family})
+
     def test_rejects_invalid_dnf_availability(self) -> None:
         for availability in (
             {"any_of": []},
@@ -421,6 +426,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         for availability in ({"any_of": []}, {"any_of": [{}]},
                              {"any_of": [{"sm": 100}] * 5},
                              {"sm": 4294967296}, {"sm": True},
+                             {"family": "sm_90a"},
                              {"any_of": [{"target": 80}]}):
             self.assertTrue(list(validator.iter_errors(availability)))
 

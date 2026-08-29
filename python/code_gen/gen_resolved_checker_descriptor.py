@@ -9,6 +9,7 @@ from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from code_gen.database import CodegenDatabase
 from code_gen.normalize import (
     parse_availability_target,
+    validate_availability_family,
     validate_availability_sm_version,
 )
 from ir.resolved_ir import (
@@ -371,7 +372,7 @@ def _emit_availability(availability: dict[str, object]) -> str:
         return f'''{{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                   .minimum_sm_version = {validate_availability_sm_version(availability.get("sm", 0))},
-                  .required_family = "{str(availability.get("family", ""))}",
+                  .required_family = "{validate_availability_family(availability["family"]) if "family" in availability else ""}",
               }}'''
 
     clauses = availability["any_of"]

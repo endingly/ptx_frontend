@@ -51,6 +51,7 @@ _STATE_SPACES = frozenset(
     }
 )
 _AVAILABILITY_TARGET = re.compile(r"sm_([1-9][0-9]*)([af]?)$")
+_AVAILABILITY_FAMILY = re.compile(r"sm_[1-9][0-9]*f$")
 UINT32_MAX = (1 << 32) - 1
 
 
@@ -79,6 +80,14 @@ def parse_availability_target(target: object) -> tuple[int, str]:
     }[match.group(2)]
 
 
+def validate_availability_family(family: object) -> str:
+    """Return one legacy compatible f-feature family spelling."""
+
+    if not isinstance(family, str) or _AVAILABILITY_FAMILY.fullmatch(family) is None:
+        raise ValueError("availability family must be an sm_<number>f spelling")
+    return family
+
+
 def normalize_availability(raw: object) -> dict[str, Any]:
     """Validate the legacy availability form or its bounded DNF replacement."""
 
@@ -92,6 +101,8 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise ValueError("availability must contain a legacy requirement or any_of")
         if "sm" in raw:
             validate_availability_sm_version(raw["sm"])
+        if "family" in raw:
+            validate_availability_family(raw["family"])
         return dict(raw)
     if set(raw) != {"any_of"}:
         raise ValueError("any_of availability cannot mix with legacy fields")

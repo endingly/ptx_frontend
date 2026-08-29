@@ -68,8 +68,7 @@ TEST(TargetIdentity, RejectsMalformedSpellings) {
 TEST(TargetProfile, CatalogsExactIdentityCompatibleFamiliesAndCapabilities) {
   constexpr std::array<std::string_view, 0> none{};
   constexpr std::array<std::string_view, 1> sm100f_families{"sm_100f"};
-  constexpr std::array<std::string_view, 2> sm120f_families{"sm_100f",
-                                                              "sm_120f"};
+  constexpr std::array<std::string_view, 1> sm120f_families{"sm_120f"};
   constexpr std::array<std::string_view, 2> sm80_capabilities{"reserved_smem",
                                                               "graph_exec"};
   constexpr std::array<std::string_view, 4> sm90_capabilities{
@@ -94,6 +93,12 @@ TEST(TargetProfile, CatalogsExactIdentityCompatibleFamiliesAndCapabilities) {
       ExpectedProfile{"sm_100a", 100, TargetFlavor::ArchitectureSpecific,
                       sm100f_families, sm90_capabilities},
       ExpectedProfile{"sm_100f", 100, TargetFlavor::FamilySpecific,
+                      sm100f_families, sm90_capabilities},
+      ExpectedProfile{"sm_103", 103, TargetFlavor::Generic,
+                      sm100f_families, sm90_capabilities},
+      ExpectedProfile{"sm_103a", 103, TargetFlavor::ArchitectureSpecific,
+                      sm100f_families, sm90_capabilities},
+      ExpectedProfile{"sm_103f", 103, TargetFlavor::FamilySpecific,
                       sm100f_families, sm90_capabilities},
       ExpectedProfile{"sm_120f", 120, TargetFlavor::FamilySpecific,
                       sm120f_families, sm90_capabilities},
@@ -125,12 +130,18 @@ TEST(TargetProfile, KeepsCompatibleFamilyMembershipExplicit) {
   const auto sm100 = find_target_profile("sm_100");
   const auto sm100a = find_target_profile("sm_100a");
   const auto sm100f = find_target_profile("sm_100f");
+  const auto sm103 = find_target_profile("sm_103");
+  const auto sm103a = find_target_profile("sm_103a");
+  const auto sm103f = find_target_profile("sm_103f");
   const auto sm120f = find_target_profile("sm_120f");
   ASSERT_TRUE(sm90.has_value());
   ASSERT_TRUE(sm90a.has_value());
   ASSERT_TRUE(sm100.has_value());
   ASSERT_TRUE(sm100a.has_value());
   ASSERT_TRUE(sm100f.has_value());
+  ASSERT_TRUE(sm103.has_value());
+  ASSERT_TRUE(sm103a.has_value());
+  ASSERT_TRUE(sm103f.has_value());
   ASSERT_TRUE(sm120f.has_value());
 
   EXPECT_TRUE(sm90->compatible_families.empty());
@@ -140,9 +151,14 @@ TEST(TargetProfile, KeepsCompatibleFamilyMembershipExplicit) {
                                  std::array<std::string_view, 1>{"sm_100f"}));
   EXPECT_TRUE(std::ranges::equal(sm100f->compatible_families,
                                  std::array<std::string_view, 1>{"sm_100f"}));
+  EXPECT_TRUE(std::ranges::equal(sm103->compatible_families,
+                                 std::array<std::string_view, 1>{"sm_100f"}));
+  EXPECT_TRUE(std::ranges::equal(sm103a->compatible_families,
+                                 std::array<std::string_view, 1>{"sm_100f"}));
+  EXPECT_TRUE(std::ranges::equal(sm103f->compatible_families,
+                                 std::array<std::string_view, 1>{"sm_100f"}));
   EXPECT_TRUE(std::ranges::equal(sm120f->compatible_families,
-                                 std::array<std::string_view, 2>{"sm_100f",
-                                                                  "sm_120f"}));
+                                 std::array<std::string_view, 1>{"sm_120f"}));
 }
 
 TEST(TargetProfile, ExposesOnlyExplicitCapabilityBoundaries) {

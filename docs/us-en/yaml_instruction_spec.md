@@ -413,13 +413,13 @@ rule: integer_arith.add # optional but recommended
 
 Common checker logic interprets minimum PTX, SM, and legacy compatible
 `f`-feature-family requirements. Family membership is published only by the
-explicit target-profile catalog: generic targets publish none; `sm_100f` and
-`sm_100a` publish `sm_100f`; and the catalog explicitly makes `sm_120f`
-compatible with both `sm_100f` and `sm_120f`. Compatibility is never inferred
-from an SM number or target suffix. An `a` target is an exact identity, not a
-family spelling: use `any_of: [{target: sm_100a}]` when that exact target is
-required. Capability clauses remain independent of both exact targets and
-families. `rule` is a stable rule ID for instruction-specific checking. `examples`, `doc`, and
+explicit target-profile catalog: `sm_100f`, `sm_100a`, and the explicit
+`sm_103`/`sm_103f`/`sm_103a` successors publish `sm_100f`, while `sm_120f`
+publishes only `sm_120f`. Compatibility is never inferred from an SM number or
+target suffix. An `a` target is an exact identity, not a family spelling: use
+`any_of: [{target: sm_100a}]` when that exact target is required. Capability
+clauses remain independent of both exact targets and families. `rule` is a
+stable rule ID for instruction-specific checking. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
 
 `operand_layouts[].availability` accumulates with variant availability; it

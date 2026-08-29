@@ -129,9 +129,12 @@ TEST(ResolvedIrChecker, KeepsCompatibleFamilyRequirementsDistinctFromExactTarget
 
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100a")));
   EXPECT_TRUE(is_available(sm100f_family, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_103f")));
   EXPECT_FALSE(is_available(sm100f_family, target_info("sm_100")));
   EXPECT_FALSE(is_available(sm100f_family, target_info("sm_90a")));
-  EXPECT_TRUE(is_available(sm100f_family, target_info("sm_120f")));
+  EXPECT_FALSE(is_available(sm100f_family, target_info("sm_120f")));
 
   constexpr AvailabilityDescriptor exact_sm100a{
       .any_of = {{

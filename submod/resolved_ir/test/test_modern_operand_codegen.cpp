@@ -212,9 +212,11 @@ TEST(ModernOperandCodegen, AppliesCompatibleFeatureFamiliesThroughModuleAvailabi
 
   EXPECT_TRUE(check_for_target("sm_100a").has_value());
   EXPECT_TRUE(check_for_target("sm_100f").has_value());
-  EXPECT_TRUE(check_for_target("sm_120f").has_value());
+  EXPECT_TRUE(check_for_target("sm_103").has_value());
+  EXPECT_TRUE(check_for_target("sm_103a").has_value());
+  EXPECT_TRUE(check_for_target("sm_103f").has_value());
 
-  for (const std::string_view target : {"sm_100", "sm_90a"}) {
+  for (const std::string_view target : {"sm_100", "sm_90a", "sm_120f"}) {
     const auto rejected = check_for_target(target);
     ASSERT_FALSE(rejected.has_value()) << target;
     EXPECT_TRUE(std::ranges::any_of(

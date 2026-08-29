@@ -368,11 +368,12 @@ rule: integer_arith.add # 可选但建议提供
 ```
 
 checker 公共逻辑解释最低 PTX、SM 与 legacy 兼容 `f`-feature-family 要求。family membership
-仅由显式 target-profile catalog 发布：generic target 不发布任何 family；`sm_100f` 与
-`sm_100a` 发布 `sm_100f`；catalog 还显式使 `sm_120f` 兼容 `sm_100f` 与 `sm_120f`。
-不得由 SM 数字或 target 后缀推断 compatibility。`a` target 是 exact identity，不能作
-family spelling；需要精确 target 时使用 `any_of: [{target: sm_100a}]`。capability clause
-与 exact target、family 均相互独立。`rule` 是稳定 rule ID，供 instruction-specific checker 使用。
+仅由显式 target-profile catalog 发布：`sm_100f`、`sm_100a` 与显式
+`sm_103`/`sm_103f`/`sm_103a` 后继 target 发布 `sm_100f`，而 `sm_120f` 仅发布
+`sm_120f`。不得由 SM 数字或 target 后缀推断 compatibility。`a` target 是 exact
+identity，不能作 family spelling；需要精确 target 时使用 `any_of: [{target: sm_100a}]`。
+capability clause 与 exact target、family 均相互独立。`rule` 是稳定 rule ID，供
+instruction-specific checker 使用。
 `examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 

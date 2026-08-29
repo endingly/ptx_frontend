@@ -856,6 +856,54 @@ TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF64Availability) {
+  PtxSyntaxParser parser("fma.rn.f64 %d0, %d1, %d2, %d3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto fma = resolve<Fma>(*ast);
+  ASSERT_TRUE(fma.has_value()) << fma.error().message;
+  const auto old_ptx = check(
+      *fma, Context{.target = {.ptx_version = {1, 3}, .sm_version = 13},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *fma, Context{.target = {.ptx_version = {1, 4}, .sm_version = 12},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*fma,
+                    Context{.target = {.ptx_version = {1, 4}, .sm_version = 13},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF16Availability) {
+  PtxSyntaxParser parser("fma.rn.f16 %h0, %h1, %h2, %h3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto fma = resolve<Fma>(*ast);
+  ASSERT_TRUE(fma.has_value()) << fma.error().message;
+  const auto old_ptx = check(
+      *fma, Context{.target = {.ptx_version = {4, 1}, .sm_version = 53},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *fma, Context{.target = {.ptx_version = {4, 2}, .sm_version = 52},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*fma,
+                    Context{.target = {.ptx_version = {4, 2}, .sm_version = 53},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivU32Availability) {
   PtxSyntaxParser parser("div.u32 %r0, %r1, 0;");
   const auto ast = parser.parseInstruction();

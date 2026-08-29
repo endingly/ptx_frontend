@@ -719,8 +719,8 @@ instructions:
 
   - opcode: fma
     section: "9.7.3.6"
-    doc: "Frozen round-to-nearest single-precision fused multiply-add."
-    syntax: "fma.rn.f32 dst, src1, src2, src3"
+    doc: "Frozen round-to-nearest single- and double-precision fused multiply-add."
+    syntax: "fma.rn.f32 | fma.rn.f64 dst, src1, src2, src3"
     operands: $ternary_float_register
     variants:
       - name: fma_rn_f32
@@ -742,6 +742,29 @@ instructions:
         examples:
           - ptx: "fma.rn.f32 %f0, %f1, %f2, %f3;"
             valid: true
+
+      - name: fma_rn_f64
+        operands: $ternary_float_register_exact
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "fma.rn.f64 %d0, %d1, %d2, %d3;", valid: true}
+
+  - opcode: fma
+    section: "9.7.4.4"
+    doc: "Frozen round-to-nearest half-precision fused multiply-add."
+    syntax: "fma.rn.f16 dst, src1, src2, src3"
+    operands: $ternary_float_register_exact
+    variants:
+      - name: fma_rn_f16
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "fma.rn.f16 %h0, %h1, %h2, %h3;", valid: true}
 
   - opcode: mad
     section: "9.7.3.7"

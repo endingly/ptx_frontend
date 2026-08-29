@@ -385,10 +385,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [ResolvedRegisterWidthPolicy.EXACT] * 4,
         )
 
-    def test_fma_has_frozen_rn_f32_ternary_layout(self) -> None:
+    def test_fma_merges_frozen_rn_ternary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.fma_instruction.variants],
-            ["RnF32"],
+            ["RnF32", "RnF64", "RnF16"],
         )
         self.assertEqual(
             [field.name for field in self.fma_instruction.variants[0].fields],
@@ -398,6 +398,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.fma_instruction.variants[0].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
         )
+        for variant in self.fma_instruction.variants[1:]:
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.EXACT] * 4,
+            )
 
     def test_div_has_frozen_u32_binary_layout(self) -> None:
         self.assertEqual(
@@ -2092,6 +2097,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Mad {", source)
         self.assertIn("struct LoS32 {", source)
         self.assertIn("struct Fma {", source)
+        self.assertIn("struct RnF16 {", source)
         self.assertIn("struct Div {", source)
         self.assertIn("struct RnF32F64 {", source)
         self.assertIn("struct RnF32U32 {", source)

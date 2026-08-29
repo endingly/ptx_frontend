@@ -57,9 +57,9 @@ gaps:
   - owner: M12-I09
     marker: m12_i09_fma
     forms:
-      - {variant: rn_f16, canonical_form: fma.rn.f16, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f16, canonical_form: fma.rn.f16, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
       - {variant: rn_f32, canonical_form: fma.rn.f32, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
-      - {variant: rn_f64, canonical_form: fma.rn.f64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: unsupported_variant}
+      - {variant: rn_f64, canonical_form: fma.rn.f64, profiles: [sm_80, sm_90a, sm_100], frequency: 3, first_blocker: none}
   - owner: M12-I10
     marker: m12_i10_div
     forms:

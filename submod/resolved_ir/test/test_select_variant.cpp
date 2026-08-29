@@ -1072,10 +1072,27 @@ TEST(ResolveFma, SelectsFrozenRnF32Variant) {
   EXPECT_EQ(Fma::RnF32::type, ScalarType::F32);
 }
 
+TEST(ResolveFma, SelectsM12RnF64AndF16Variants) {
+  const auto f64 =
+      resolve<Fma>(parse_instruction("fma.rn.f64 %d0, %d1, %d2, %d3;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  ASSERT_NE(std::get_if<Fma::RnF64>(&f64->variant), nullptr);
+  EXPECT_EQ(Fma::RnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Fma::RnF64::type, ScalarType::F64);
+
+  const auto f16 =
+      resolve<Fma>(parse_instruction("fma.rn.f16 %h0, %h1, %h2, %h3;"));
+  ASSERT_TRUE(f16.has_value()) << f16.error().message;
+  ASSERT_NE(std::get_if<Fma::RnF16>(&f16->variant), nullptr);
+  EXPECT_EQ(Fma::RnF16::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Fma::RnF16::type, ScalarType::F16);
+}
+
 TEST(ResolveFma, RejectsUnfrozenVariants) {
   for (const auto source : {"fma.f32 %f0, %f1, %f2, %f3;",
                             "fma.rz.f32 %f0, %f1, %f2, %f3;",
-                            "fma.rn.f64 %fd0, %fd1, %fd2, %fd3;",
+                            "fma.rz.f64 %d0, %d1, %d2, %d3;",
+                            "fma.rz.f16 %h0, %h1, %h2, %h3;",
                             "fma.rn.ftz.f32 %f0, %f1, %f2, %f3;",
                             "fma.rn.sat.f32 %f0, %f1, %f2, %f3;"}) {
     const auto selected = selectVariant<Fma>(parse_instruction(source));
@@ -1084,9 +1101,13 @@ TEST(ResolveFma, RejectsUnfrozenVariants) {
   }
 }
 
-TEST(ResolveFma, RejectsImmediateOperand) {
-  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, 1.0, %f2, %f3;"));
-  ASSERT_FALSE(resolved.has_value());
+TEST(ResolveFma, RejectsImmediateOperands) {
+  for (const auto source : {"fma.rn.f32 %f0, 1.0, %f2, %f3;",
+                            "fma.rn.f64 %d0, 1.0, %d2, %d3;",
+                            "fma.rn.f16 %h0, 1.0, %h2, %h3;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Fma>(parse_instruction(source)).has_value());
+  }
 }
 
 TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {

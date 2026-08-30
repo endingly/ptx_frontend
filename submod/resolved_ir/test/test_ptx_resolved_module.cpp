@@ -3188,6 +3188,129 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveDropForms) {
             std::string::npos);
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMbarrierTestWaitBasicForms) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .pred %p0;
+  .reg .u32 %phase;
+  .reg .u64 %rd0;
+  .reg .b64 %state;
+  mbarrier.test_wait.b64 %p0, [%rd0], %state;
+  mbarrier.test_wait.shared.b64 %p0, [shared_value], %state;
+  mbarrier.test_wait.shared::cta.b64 %p0, [shared_value+8], %state;
+  mbarrier.test_wait.parity.b64 %p0, [shared_value], 0;
+  mbarrier.test_wait.parity.shared::cta.b64 %p0, [shared_value], %phase;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 5u);
+  const auto& token = std::get<Mbarrier::TestWaitTokenGenericOrShared>(
+      std::get<Mbarrier>(body[0]).variant);
+  const auto& parity = std::get<Mbarrier::TestWaitParityGenericOrShared>(
+      std::get<Mbarrier>(body[3]).variant);
+  EXPECT_TRUE(token.state.value.register_ref.has_value());
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(parity.phase_parity.value));
+
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Mbarrier>(instruction), supported).has_value());
+  const auto old_ptx = checker::check(
+      std::get<Mbarrier>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_parity = checker::check(
+      std::get<Mbarrier>(body[3]),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_parity.has_value());
+  EXPECT_EQ(old_parity.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_cta = checker::check(
+      std::get<Mbarrier>(body[2]),
+      checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_cta.has_value());
+  EXPECT_EQ(old_cta.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = checker::check(
+      std::get<Mbarrier>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.global .align 8 .b64 global_value[2];
+.entry kernel() { .reg .pred %p0; .reg .b64 %state;
+  mbarrier.test_wait.b64 %p0, [global_value], %state; }
+)ptx"));
+  ASSERT_TRUE(wrong_space.has_value()) << wrong_space.error().front().message;
+  const auto wrong_space_checked = checker::check(
+      std::get<Mbarrier>(wrong_space->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_space_checked.has_value());
+  EXPECT_EQ(wrong_space_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto unaligned = resolveModule(parseModule(R"ptx(
+.shared .align 4 .b64 unaligned_value[2];
+.shared .align 8 .b64 aligned_value[2];
+.entry kernel() { .reg .pred %p0; .reg .b64 %state;
+  mbarrier.test_wait.b64 %p0, [unaligned_value], %state;
+  mbarrier.test_wait.parity.b64 %p0, [aligned_value+4], 1; }
+)ptx"));
+  ASSERT_TRUE(unaligned.has_value()) << unaligned.error().front().message;
+  for (const auto& instruction : unaligned->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+
+  const auto invalid_token = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .pred %p0; .reg .u64 %rd0;
+  mbarrier.test_wait.b64 %p0, [%rd0], _; }
+)ptx"));
+  ASSERT_FALSE(invalid_token.has_value());
+  const auto immediate_token = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .pred %p0; .reg .u64 %rd0;
+  mbarrier.test_wait.b64 %p0, [%rd0], 1; }
+)ptx"));
+  ASSERT_FALSE(immediate_token.has_value());
+
+  const auto invalid_parity = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() { .reg .pred %p0;
+  mbarrier.test_wait.parity.b64 %p0, [shared_value], 2; }
+)ptx"));
+  ASSERT_TRUE(invalid_parity.has_value()) << invalid_parity.error().front().message;
+  EXPECT_FALSE(checker::check(
+      std::get<Mbarrier>(invalid_parity->functions.front().body.front()), supported).has_value());
+
+  const auto wrong_width = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() { .reg .pred %p0; .reg .b32 %state; .reg .u64 %phase;
+  mbarrier.test_wait.b64 %p0, [shared_value], %state;
+  mbarrier.test_wait.parity.b64 %p0, [shared_value], %phase; }
+)ptx"));
+  ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
+  for (const auto& instruction : wrong_width->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   const auto ast = parseModule(R"ptx(
 .shared .align 4 .u32 shared_value;

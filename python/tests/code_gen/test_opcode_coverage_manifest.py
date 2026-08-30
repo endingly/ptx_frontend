@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 244)
+        self.assertEqual(len(slices), 248)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -700,6 +700,10 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("mbarrier_arrive_drop_no_complete_shared_cta", "default"),
                 ("mbarrier_arrive_drop_no_complete_release_cta_generic_or_shared", "default"),
                 ("mbarrier_arrive_drop_no_complete_release_cta_shared_cta", "default"),
+                ("mbarrier_test_wait_token_generic_or_shared", "default"),
+                ("mbarrier_test_wait_token_shared_cta", "default"),
+                ("mbarrier_test_wait_parity_generic_or_shared", "default"),
+                ("mbarrier_test_wait_parity_shared_cta", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

@@ -33,6 +33,9 @@ from code_gen.model import (
 from ir.syntax_ast import OPERAND_SYNTAX_SHAPES
 
 
+UINT64_MAX = (1 << 64) - 1
+
+
 _MODIFIER_TYPE_EXPR = re.compile(
     r"modifier\(([A-Za-z_][A-Za-z0-9_]*)\)"
 )
@@ -1167,9 +1170,16 @@ def _normalize_immediate_value_constraint(
     _validate_immediate_constraint_operand(
         raw_variant, layouts, operand_name, "immediate_value"
     )
-    if (not isinstance(values, list) or not values or
-            any(type(value) is not int or value < 0 for value in values) or
-            len(set(values)) != len(values)):
+    if not isinstance(values, list) or not values:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: immediate_value values must "
+            "be unique non-negative integers"
+        )
+    for index, value in enumerate(values):
+        _validate_uint64(
+            raw_variant, "immediate_value", f"values[{index}]", value
+        )
+    if len(set(values)) != len(values):
         raise ValueError(
             f"variant {raw_variant['name']!r}: immediate_value values must "
             "be unique non-negative integers"
@@ -1207,9 +1217,10 @@ def _normalize_immediate_range_constraints(
         _validate_immediate_constraint_operand(
             raw_variant, layouts, operand_name, "immediate_range"
         )
-        if (type(minimum) is not int or minimum < 0 or
-                (maximum is not None and
-                 (type(maximum) is not int or maximum < minimum))):
+        _validate_uint64(raw_variant, "immediate_range", "minimum", minimum)
+        if maximum is not None:
+            _validate_uint64(raw_variant, "immediate_range", "maximum", maximum)
+        if maximum is not None and maximum < minimum:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: immediate_range bounds must "
                 "be non-negative integers with optional maximum >= minimum"
@@ -1248,7 +1259,8 @@ def _normalize_immediate_multiple_of_constraint(
     _validate_immediate_constraint_operand(
         raw_variant, layouts, operand_name, "immediate_multiple_of"
     )
-    if type(divisor) is not int or divisor <= 0:
+    _validate_uint64(raw_variant, "immediate_multiple_of", "divisor", divisor)
+    if divisor <= 0:
         raise ValueError(
             f"variant {raw_variant['name']!r}: immediate_multiple_of divisor must "
             "be a positive integer"
@@ -1283,6 +1295,24 @@ def _validate_immediate_constraint_operand(
                 f"{operand_name!r} in operand layout {layout.name!r} must have "
                 f"kind 'imm', not {non_immediate.kind!r}"
             )
+
+
+def _validate_uint64(
+    raw_variant: dict[str, Any], constraint_kind: str, field: str, value: object
+) -> None:
+    """Require one immediate constraint value to fit the generated uint64_t."""
+
+    if type(value) is int and 0 <= value <= UINT64_MAX:
+        return
+    requirement = (
+        "a positive integer representable as uint64"
+        if constraint_kind == "immediate_multiple_of" and field == "divisor"
+        else "non-negative uint64 integers"
+    )
+    raise ValueError(
+        f"variant {raw_variant['name']!r}: {constraint_kind} constraint field "
+        f"{field!r} value {value!r} must be {requirement}"
+    )
 
 
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:

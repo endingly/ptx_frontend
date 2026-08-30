@@ -1102,7 +1102,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         for constraint, message, kind in (
             ({"kind": "immediate_value", "operand": "missing", "values": [4]}, "kind 'imm'", "imm"),
             ({"kind": "immediate_value", "operand": "size", "values": [4, 4]}, "unique", "imm"),
-            ({"kind": "immediate_value", "operand": "size", "values": [4.0]}, "integers", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4.0]}, "uint64 integer", "imm"),
             ({"kind": "immediate_value", "operand": "size", "values": [4]}, "kind 'imm'", "reg"),
         ):
             with self.subTest(message=message):
@@ -1151,6 +1151,60 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(ValueError, message):
                     normalize_constraint(constraint, operand_kind=kind)
+
+    def test_immediate_constraints_enforce_uint64_bounds(self) -> None:
+        def normalize_constraints(constraints: list[dict[str, object]]) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [{"opcode": "sample", "variants": [{
+                        "name": "sample_immediate",
+                        "availability": {"ptx": "1.0"},
+                        "operands": [{
+                            "name": "count", "kind": "imm", "role": "src",
+                            "access": "read", "type": "u64",
+                        }],
+                        "constraints": constraints,
+                    }]}],
+                }
+            )
+
+        uint64_max = 2**64 - 1
+        normalize_constraints([
+            {"kind": "immediate_value", "operand": "count",
+             "values": [2**63, uint64_max]},
+            {"kind": "immediate_range", "operand": "count",
+             "minimum": 2**63, "maximum": uint64_max},
+            {"kind": "immediate_multiple_of", "operand": "count",
+             "divisor": uint64_max},
+        ])
+
+        for constraint, field in (
+            ({"kind": "immediate_value", "operand": "count",
+              "values": [2**64]}, "values[0]"),
+            ({"kind": "immediate_range", "operand": "count",
+              "minimum": 2**64}, "minimum"),
+            ({"kind": "immediate_range", "operand": "count",
+              "minimum": 0, "maximum": 2**64}, "maximum"),
+            ({"kind": "immediate_multiple_of", "operand": "count",
+              "divisor": 2**64}, "divisor"),
+        ):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(
+                    ValueError, rf"constraint field '{re.escape(field)}'.*{2**64}"
+                ):
+                    normalize_constraints([constraint])
+
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            normalize_constraints([{
+                "kind": "immediate_multiple_of", "operand": "count", "divisor": 0,
+            }])
+        with self.assertRaisesRegex(ValueError, "maximum >= minimum"):
+            normalize_constraints([{
+                "kind": "immediate_range", "operand": "count",
+                "minimum": 1, "maximum": 0,
+            }])
 
     def _normalize_multilayout_immediate_constraint(
         self,

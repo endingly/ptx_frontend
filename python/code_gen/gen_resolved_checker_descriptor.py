@@ -173,7 +173,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
         immediate_multiple_of = f'''
               .immediate_multiple_of = {{
                   .operand_field_id = "{variant.immediate_multiple_of.operand_field_id}",
-                  .divisor = {variant.immediate_multiple_of.divisor},
+                  .divisor = {_cpp_uint64(variant.immediate_multiple_of.divisor)},
               }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
@@ -196,7 +196,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
 def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
     constraint = variant.immediate_value
     assert constraint is not None
-    values = ", ".join(str(value) for value in constraint.values)
+    values = ", ".join(_cpp_uint64(value) for value in constraint.values)
     return f"""  static constexpr std::array<uint64_t, {len(constraint.values)}>
       {variant.cpp_name}_immediate_value_values = {{{{{values}}}}};"""
 
@@ -205,9 +205,9 @@ def _emit_variant_immediate_range_descriptors(variant: ResolvedVariant) -> str:
     entries = ",\n".join(
         f'''          checker::VariantDescriptor::ImmediateRangeDescriptor{{
               .operand_field_id = "{constraint.operand_field_id}",
-              .minimum = {constraint.minimum},
+              .minimum = {_cpp_uint64(constraint.minimum)},
               .has_maximum = {str(constraint.maximum is not None).lower()},
-              .maximum = {constraint.maximum if constraint.maximum is not None else "~uint64_t{0}"},
+              .maximum = {_cpp_uint64(constraint.maximum) if constraint.maximum is not None else "~uint64_t{0}"},
           }}'''
         for constraint in variant.immediate_ranges
     )
@@ -215,6 +215,12 @@ def _emit_variant_immediate_range_descriptors(variant: ResolvedVariant) -> str:
       {variant.cpp_name}_immediate_ranges = {{{{
 {entries}
       }}}};"""
+
+
+def _cpp_uint64(value: int) -> str:
+    """Emit one portable exact uint64_t initializer from normalized metadata."""
+
+    return f"uint64_t{{{value}ULL}}"
 
 
 def _emit_address_alignment_descriptor(variant: ResolvedVariant) -> str:

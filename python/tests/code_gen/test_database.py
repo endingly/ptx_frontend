@@ -157,6 +157,37 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         cast(list[dict[str, object]], variant["constraints"])[0]["divisor"] = 0
         self.assertTrue(list(validator.iter_errors(spec)))
 
+    def test_schema_caps_immediate_constraint_fields_at_uint64(self) -> None:
+        spec = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_integer",
+            type_value="u32",
+        )
+        instruction = cast(list[dict[str, object]], spec["instructions"])[0]
+        variant = cast(list[dict[str, object]], instruction["variants"])[0]
+        variant["operands"] = [{
+            "name": "count", "kind": "imm", "role": "src", "access": "read",
+            "type": "u64",
+        }]
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        uint64_max = 2**64 - 1
+        for constraint, field, too_large in (
+            ({"kind": "immediate_value", "operand": "count", "values": [uint64_max]},
+             "values", [2**64]),
+            ({"kind": "immediate_range", "operand": "count", "minimum": uint64_max},
+             "minimum", 2**64),
+            ({"kind": "immediate_range", "operand": "count", "minimum": 0,
+              "maximum": uint64_max}, "maximum", 2**64),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": uint64_max},
+             "divisor", 2**64),
+        ):
+            with self.subTest(field=field):
+                variant["constraints"] = [constraint]
+                self.assertEqual(list(validator.iter_errors(spec)), [])
+                constraint[field] = too_large
+                self.assertTrue(list(validator.iter_errors(spec)))
+
     def test_database_rejects_immediate_constraint_missing_from_a_layout(self) -> None:
         for kind, constraint in (
             ("immediate_value", {

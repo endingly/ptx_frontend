@@ -1883,7 +1883,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_immediate_multiple_of(", source)
         self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
         self.assertIn('.operand_field_id = "count",', descriptor)
-        self.assertIn(".divisor = 8,", descriptor)
+        self.assertIn(".divisor = uint64_t{8ULL},", descriptor)
 
     def test_cp_async_ca_shared_global_model(self) -> None:
         database = load_codegen_database(
@@ -2107,13 +2107,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("AsyncCommitGroup", source)
         self.assertIn("AsyncWaitGroup", source)
         self.assertIn("AsyncWaitAll", source)
-        self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
+        self.assertIn(
+            "AsyncCaSharedGlobal_immediate_value_values = "
+            "{{uint64_t{4ULL}, uint64_t{8ULL}, uint64_t{16ULL}}};",
+            descriptor,
+        )
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
         self.assertIn('AsyncCaSharedGlobal_address_alignment_address_fields = {{"dst", "src"}};', descriptor)
         self.assertIn('.immediate_operand_field_id = "cp_size",', descriptor)
         self.assertIn('.operand_field_id = "n",', descriptor)
-        self.assertIn('.minimum = 0,', descriptor)
+        self.assertIn('.minimum = uint64_t{0ULL},', descriptor)
         self.assertIn('.has_maximum = false,', descriptor)
+        self.assertIn('.maximum = ~uint64_t{0},', descriptor)
 
     def test_membar_cta_model(self) -> None:
         database = load_codegen_database(

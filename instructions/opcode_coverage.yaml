@@ -187,6 +187,11 @@ opcodes:
   slices:
   - {"id":"mapa-mapa-shared-cluster-default","section":"9.7.9.24","spec_variant":"mapa_shared_cluster","operand_layout":"default","selector":{"topology":"cluster_address_mapping","types":["u32","u64"],"shape":"register_or_shared_symbol_address","modifiers":["shared_cluster"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"mapa-mapa-generic-default","section":"9.7.9.24","spec_variant":"mapa_generic","operand_layout":"default","selector":{"topology":"generic_address_mapping","types":["u32","u64"],"shape":"register"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: getctarank
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"getctarank-getctarank-shared-cluster-default","section":"9.7.9.25","spec_variant":"getctarank_shared_cluster","operand_layout":"default","selector":{"topology":"cluster_rank_query","types":["u32","u64"],"shape":"register_or_shared_symbol_address","modifiers":["shared_cluster"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"getctarank-getctarank-generic-default","section":"9.7.9.25","spec_variant":"getctarank_generic","operand_layout":"default","selector":{"topology":"generic_rank_query","types":["u32","u64"],"shape":"register"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: ld
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

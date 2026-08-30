@@ -1493,6 +1493,64 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [None, None, "u32"],
         )
 
+    def test_getctarank_uses_cluster_address_and_u32_rank_destination(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        getctarank = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "getctarank"
+        )
+        instruction = from_instruction_spec(getctarank)
+
+        self.assertEqual(instruction.cpp_name, "Getctarank")
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            ["SharedCluster", "Generic"],
+        )
+        shared, generic = instruction.variants
+        self.assertEqual(
+            dict(shared.availability),
+            {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in shared.fields],
+            [
+                ("shared_cluster", "bool"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedMovSource>"),
+            ],
+        )
+        dst, shared_source = shared.operand_layouts[0].bindings
+        self.assertEqual(dst.type_expression.scalar_type, "u32")
+        self.assertEqual(
+            dst.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
+        )
+        self.assertEqual(
+            shared_source.allowed_shapes,
+            (
+                ResolvedOperandShape.REGISTER,
+                ResolvedOperandShape.SYMBOL,
+                ResolvedOperandShape.ADDRESS,
+            ),
+        )
+        self.assertFalse(shared_source.allow_function_symbol)
+        self.assertEqual(
+            [value.value for value in shared_source.allowed_address_state_spaces],
+            ["shared"],
+        )
+        generic_dst, generic_source = generic.operand_layouts[0].bindings
+        self.assertEqual(generic_dst.type_expression.scalar_type, "u32")
+        self.assertEqual(
+            generic_dst.register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+        self.assertEqual(
+            generic_source.type_expression.modifier_field_id, "type"
+        )
+
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2805,11 +2863,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Ldu {", source)
         self.assertIn("struct Prefetch {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
-        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 2)
+        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 3)
         mov = source[source.index("struct Mov {"):source.index("struct Mapa {")]
-        mapa = source[source.index("struct Mapa {"):source.index("struct Ld {")]
+        mapa = source[
+            source.index("struct Mapa {"):source.index("struct Getctarank {")
+        ]
+        getctarank = source[
+            source.index("struct Getctarank {"):source.index("struct Ld {")
+        ]
         self.assertIn("WithLocs<ResolvedMovSource> src;", mov)
         self.assertIn("WithLocs<ResolvedMovSource> src;", mapa)
+        self.assertIn("WithLocs<ResolvedMovSource> src;", getctarank)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",

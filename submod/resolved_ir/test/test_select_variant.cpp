@@ -881,6 +881,56 @@ TEST(SelectVariantMbarrier, SelectsInvalSpaces) {
       parse_instruction("mbarrier.inval.b64;")).has_value());
 }
 
+TEST(SelectVariantMbarrier, SelectsExpectTxSemanticsAndSpaces) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mbarrier.expect_tx.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxGenericOrShared);
+  expect_variant("mbarrier.expect_tx.shared.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxGenericOrShared);
+  expect_variant("mbarrier.expect_tx.shared::cta.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxSharedCta);
+  expect_variant("mbarrier.expect_tx.shared::cluster.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxSharedCluster);
+  expect_variant("mbarrier.expect_tx.relaxed.cta.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedCtaGenericOrShared);
+  expect_variant("mbarrier.expect_tx.relaxed.cta.shared.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedCtaGenericOrShared);
+  expect_variant("mbarrier.expect_tx.relaxed.cta.shared::cta.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedCtaSharedCta);
+  expect_variant("mbarrier.expect_tx.relaxed.cta.shared::cluster.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedCtaSharedCluster);
+  expect_variant("mbarrier.expect_tx.relaxed.cluster.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedClusterGenericOrShared);
+  expect_variant("mbarrier.expect_tx.relaxed.cluster.shared.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedClusterGenericOrShared);
+  expect_variant("mbarrier.expect_tx.relaxed.cluster.shared::cta.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedClusterSharedCta);
+  expect_variant("mbarrier.expect_tx.relaxed.cluster.shared::cluster.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::ExpectTxRelaxedClusterSharedCluster);
+
+  for (const std::string_view source : {
+           "mbarrier.expect_tx.relaxed.b64 [%rd0], 1;",
+           "mbarrier.expect_tx.cta.b64 [%rd0], 1;",
+           "mbarrier.expect_tx.relaxed.gpu.b64 [%rd0], 1;",
+           "mbarrier.expect_tx.relaxed.cta.global.b64 [%rd0], 1;",
+           "mbarrier.expect_tx.shared.relaxed.cta.b64 [%rd0], 1;",
+           "mbarrier.expect_tx.shared [%rd0], 1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Mbarrier>(
+      parse_instruction("mbarrier.expect_tx.b64 [%rd0];")).has_value());
+  EXPECT_FALSE(resolve<Mbarrier>(
+      parse_instruction("mbarrier.expect_tx.b64 [%rd0], %tid.x;")).has_value());
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

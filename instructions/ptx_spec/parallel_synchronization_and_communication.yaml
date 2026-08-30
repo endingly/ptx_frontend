@@ -245,6 +245,19 @@ operand_patterns:
       role: addr
       access: read
       state_space: [shared]
+
+  mbarrier_expect_tx:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: tx_count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -1104,10 +1117,14 @@ instructions:
   - opcode: mbarrier
     section: "9.7.14.16.12"
     doc: >
-      Initialize or invalidate a shared-memory barrier object. The frontend
-      validates local address, count, alignment, and target constraints only;
-      it does not model barrier lifecycle or runtime phase behavior.
-    syntax: "mbarrier.{init{.layout::{v0|v1}}|inval}{.shared{::cta}}.b64 operands"
+      Initialize, invalidate, or record an expected transaction count for a
+      shared-memory barrier object. The frontend validates local address,
+      operand, alignment, and target constraints only; it does not model
+      barrier lifecycle or runtime phase behavior.
+    syntax: >-
+      mbarrier.init{.layout::{v0|v1}}{.shared{::cta}}.b64 |
+      mbarrier.inval{.shared{::cta}}.b64 |
+      mbarrier.expect_tx{.relaxed.{cta|cluster}}{.shared|.shared::cta|.shared::cluster}.b64 operands
 
     variants:
       - name: mbarrier_init_generic_v0
@@ -1230,5 +1247,116 @@ instructions:
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_generic_or_shared
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_shared_cta
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_shared_cluster
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cta_generic_or_shared
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cta_shared_cta
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cta_shared_cluster
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cluster_generic_or_shared
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cluster_shared_cta
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cluster_shared_cluster
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_expect_tx
         constraints:
           - {kind: address_alignment, address_operand: address, alignment: 8}

@@ -7,7 +7,7 @@ import stat
 import tempfile
 import unittest
 
-from scripts.regenerate_m12_corpus import VERSION, main
+from scripts.regenerate_m12_corpus import VERSION, json_bytes, main
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -65,6 +65,16 @@ class RegenerateM12CorpusTests(unittest.TestCase):
             self.assertEqual(main(["--nvcc", str(nvcc)], root), 0)
             manifest = json.loads((root / "corpus/m12/natural_manifest.json").read_text())
             self.assertEqual(manifest["generator"], "nvcc V13.3.33")
+            self.assertEqual(
+                (root / "corpus/m12/natural_manifest.json").read_bytes(),
+                json_bytes(manifest),
+            )
+            self.assertEqual(
+                (root / "corpus/provenance.json").read_bytes(),
+                json_bytes(
+                    json.loads((root / "corpus/provenance.json").read_text())
+                ),
+            )
             before = {relative: (root / relative).read_bytes() for relative in M12_OUTPUTS}
             self.assertEqual(main(["--check", "--nvcc", str(nvcc)], root), 0)
             self.assertEqual(

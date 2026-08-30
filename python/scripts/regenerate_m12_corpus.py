@@ -10,7 +10,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
@@ -76,49 +75,8 @@ def json_bytes(value: object) -> bytes:
     return (json.dumps(value, indent=2) + "\n").encode("utf-8")
 
 
-def preserved_json_bytes(path: Path, value: object) -> bytes:
-    current = path.read_bytes()
-    return current if json.loads(current) == value else json_bytes(value)
-
-
-def fixture_json(record: dict[str, object], newline: str) -> str:
-    return newline.join(
-        (
-            "    {",
-            f'      "path": {json.dumps(record["path"])},',
-            f'      "kind": {json.dumps(record["kind"])},',
-            f'      "sha256": {json.dumps(record["sha256"])},',
-            f'      "generator": {json.dumps(record["generator"])},',
-            f'      "toolkit": {json.dumps(record["toolkit"])},',
-            f'      "targets": {json.dumps(record["targets"])},',
-            f'      "source_path": {json.dumps(record["source_path"])},',
-            f'      "notes": {json.dumps(record["notes"])},',
-            f'      "license": {json.dumps(record["license"])}',
-            "    }",
-        )
-    )
-
-
-def source_json(records: list[dict[str, str]], newline: str) -> str:
-    entries = []
-    for record in records:
-        entries.append(
-            newline.join(
-                (
-                    "    {",
-                    f'      "path": {json.dumps(record["path"])},',
-                    f'      "sha256": {json.dumps(record["sha256"])}',
-                    "    }",
-                )
-            )
-        )
-    return "  \"sources\": [" + newline + ("," + newline).join(entries) + newline + "  ],"
-
-
 def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
-    path = root / "corpus/provenance.json"
-    current = path.read_bytes()
-    document = json.loads(current)
+    document = json.loads((root / "corpus/provenance.json").read_bytes())
     sources = [
         {
             "path": f"corpus/m12/{lane}.cu",
@@ -162,33 +120,7 @@ def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
         "sources": sources,
         "fixtures": fixtures,
     }
-    if desired == document:
-        return current
-    text = current.decode("utf-8")
-    text = re.sub(
-        r'(?m)^  "schema": "ptx_frontend\.corpus_provenance/v[0-9]+",',
-        f'  "schema": {json.dumps(PROVENANCE_VERSION)},',
-        text,
-        count=1,
-    )
-    for relative, record in wanted.items():
-        pattern = re.compile(
-            rf'(?ms)^    \{{\r?\n      "path": {re.escape(json.dumps(relative))},\r?\n.*?^    \}}'
-        )
-        match = pattern.search(text)
-        if match is None:
-            return json_bytes(desired)
-        newline = "\r\n" if "\r\n" in match.group(0) else "\n"
-        text = text[: match.start()] + fixture_json(record, newline) + text[match.end() :]
-    sources_pattern = re.compile(r'(?ms)^  "sources": \[\r?\n.*?^  \],')
-    match = sources_pattern.search(text)
-    newline = "\r\n" if "\r\n" in text else "\n"
-    rendered_sources = source_json(sources, newline)
-    if match is None:
-        text = text.replace('  "fixtures":', rendered_sources + newline + '  "fixtures":', 1)
-    else:
-        text = text[: match.start()] + rendered_sources + text[match.end() :]
-    return text.encode("utf-8")
+    return json_bytes(desired)
 
 
 def compile_outputs(root: Path, nvcc: str) -> tuple[dict[str, bytes], dict[str, object]]:
@@ -259,9 +191,7 @@ def regenerate(root: Path, nvcc: str, check: bool) -> int:
     generated, natural = compile_outputs(root, nvcc)
     desired = {
         **generated,
-        "corpus/m12/natural_manifest.json": preserved_json_bytes(
-            root / "corpus/m12/natural_manifest.json", natural
-        ),
+        "corpus/m12/natural_manifest.json": json_bytes(natural),
     }
     desired["corpus/provenance.json"] = desired_provenance(root, generated)
     changed = []

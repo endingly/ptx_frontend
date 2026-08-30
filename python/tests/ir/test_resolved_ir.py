@@ -1863,6 +1863,53 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(complete_tx_count.type_expression.scalar_type, "u32")
         self.assertEqual(complete_tx_count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
 
+    def test_mbarrier_operand_domains_are_uniform_across_variants(self) -> None:
+        mbarrier = from_instruction_spec(next(
+            instruction for instruction in self.database.instructions
+            if instruction.opcode == "mbarrier"
+        ))
+        self.assertTrue(mbarrier.variants)
+        for prefix in (
+            "Init", "Arrive", "TestWait", "TryWait", "ExpectTx", "CompleteTx",
+            "PendingCount", "CheckLayout",
+        ):
+            self.assertTrue(any(variant.cpp_name.startswith(prefix)
+                                for variant in mbarrier.variants), prefix)
+
+        fields = [field for variant in mbarrier.variants for field in variant.fields]
+        for name, cpp_type in (
+            ("state", "ResolvedMbarrierStateToken"),
+            ("phase_type", "MbarrierPhaseType"),
+            ("layout", "MbarrierLayout"),
+            ("address", "ResolvedAddress"),
+        ):
+            matching = [field for field in fields if field.name == name]
+            self.assertTrue(matching, name)
+            self.assertEqual({field.value_cpp_type for field in matching}, {cpp_type})
+
+        inputs = [
+            binding
+            for variant in mbarrier.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.target_field_id in {"phase_parity", "tx_count", "count"}
+            and binding.role == ResolvedOperandRole.SOURCE
+            and binding.access == ResolvedOperandAccess.READ
+        ]
+        self.assertTrue(inputs)
+        self.assertEqual(
+            {binding.target_field_id for binding in inputs},
+            {"phase_parity", "tx_count", "count"},
+        )
+        for binding in inputs:
+            self.assertEqual(
+                binding.allowed_shapes,
+                (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+            )
+            self.assertEqual(binding.type_expression.scalar_type, "u32")
+            self.assertEqual(binding.register_width_policy,
+                             ResolvedRegisterWidthPolicy.EXACT)
+
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

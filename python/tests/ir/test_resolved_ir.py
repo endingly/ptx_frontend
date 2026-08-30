@@ -2434,7 +2434,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Cp")
         self.assertEqual(
             [candidate.cpp_name for candidate in resolved.variants],
-            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll"],
+            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll",
+             "AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
+             "AsyncMbarrierArriveNoincGenericOrShared",
+             "AsyncMbarrierArriveNoincSharedCta"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
@@ -2462,6 +2465,43 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
             ["global"],
         )
+
+    def test_cp_async_mbarrier_arrive_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        variants = from_instruction_spec(cp).variants[4:8]
+
+        self.assertEqual(
+            [variant.cpp_name for variant in variants],
+            ["AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
+             "AsyncMbarrierArriveNoincGenericOrShared",
+             "AsyncMbarrierArriveNoincSharedCta"],
+        )
+        self.assertEqual(
+            [dict(variant.availability) for variant in variants],
+            [{"ptx": "7.0", "sm": 80}, {"ptx": "7.8", "sm": 80},
+             {"ptx": "7.0", "sm": 80}, {"ptx": "7.8", "sm": 80}],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[0].fields],
+            [("async", "bool"), ("mbarrier", "bool"), ("arrive", "bool"),
+             ("state_space", "WithLocs<MemoryStateSpace>"),
+             ("type", "ScalarType"), ("address", "WithLocs<ResolvedAddress>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[2].fields[:4]],
+            [("async", "bool"), ("mbarrier", "bool"), ("arrive", "bool"),
+             ("noinc", "bool")],
+        )
+        for variant in variants:
+            address = variant.operand_layouts[0].bindings[0]
+            self.assertEqual(address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+            self.assertEqual(
+                [value.value for value in address.allowed_address_state_spaces], ["shared"]
+            )
+            self.assertEqual(variant.address_alignment.alignment, 8)
 
     def test_cp_async_commit_group_model(self) -> None:
         database = load_codegen_database(

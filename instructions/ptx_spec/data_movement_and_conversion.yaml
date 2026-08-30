@@ -377,6 +377,13 @@ operand_patterns:
       access: read
       type: u32
 
+  cp_async_mbarrier_arrive_address:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+
   isspacep_global_u64:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     - {name: src, kind: reg, role: src, access: read, type: u64, register_width: exact}
@@ -1622,6 +1629,58 @@ instructions:
         examples:
           - ptx: "cp.async.wait_all;"
             valid: true
+
+  - opcode: cp
+    section: "9.7.14.16.18"
+    doc: "Asynchronous-copy mbarrier arrival; frontend validates only the shared aligned barrier address."
+    syntax: "cp.async.mbarrier.arrive{.noinc}{.shared{::cta}}.b64 [address]"
+    variants:
+      - name: cp_async_mbarrier_arrive_generic_or_shared
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: cp_async_mbarrier_arrive_shared_cta
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: cp_async_mbarrier_arrive_noinc_generic_or_shared
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: noinc, kind: flag, presence: fixed, value: true, token: .noinc}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: cp_async_mbarrier_arrive_noinc_shared_cta
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: noinc, kind: flag, presence: fixed, value: true, token: .noinc}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
 
   - opcode: st
     section: "9.7.9.11"

@@ -1250,6 +1250,88 @@ TEST(ResolvedModule, ChecksCpAsyncDynamicAddressAlignment) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncMbarrierArriveSlice) {
+  const auto ast = parseModule(R"ptx(
+.global .align 8 .b64 global_value[2];
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .u64 %rd0;
+  cp.async.mbarrier.arrive.b64 [%rd0];
+  cp.async.mbarrier.arrive.shared.b64 [shared_value];
+  cp.async.mbarrier.arrive.shared::cta.b64 [shared_value+8];
+  cp.async.mbarrier.arrive.noinc.b64 [%rd0];
+  cp.async.mbarrier.arrive.noinc.shared::cta.b64 [shared_value];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 5u);
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncMbarrierArriveGenericOrShared>(
+      std::get<Cp>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncMbarrierArriveSharedCta>(
+      std::get<Cp>(body[2]).variant));
+  const auto& noinc = std::get<Cp::AsyncMbarrierArriveNoincGenericOrShared>(
+      std::get<Cp>(body[3]).variant);
+  EXPECT_TRUE(noinc.noinc);
+  EXPECT_EQ(noinc.type, ScalarType::B64);
+
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+  const auto old_ptx = checker::check(
+      std::get<Cp>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = checker::check(
+      std::get<Cp>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto old_cta = checker::check(
+      std::get<Cp>(body[2]),
+      checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_cta.has_value());
+  EXPECT_EQ(old_cta.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.global .align 8 .b64 global_value[2];
+.entry kernel() { cp.async.mbarrier.arrive.b64 [global_value]; }
+)ptx"));
+  ASSERT_TRUE(wrong_space.has_value()) << wrong_space.error().front().message;
+  const auto wrong_space_checked = checker::check(
+      std::get<Cp>(wrong_space->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_space_checked.has_value());
+  EXPECT_EQ(wrong_space_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto unaligned = resolveModule(parseModule(R"ptx(
+.shared .align 4 .b64 unaligned_value[2];
+.shared .align 8 .b64 aligned_value[2];
+.entry kernel() {
+  cp.async.mbarrier.arrive.b64 [unaligned_value];
+  cp.async.mbarrier.arrive.shared.b64 [aligned_value+4];
+}
+)ptx"));
+  ASSERT_TRUE(unaligned.has_value()) << unaligned.error().front().message;
+  for (const auto& instruction : unaligned->functions.front().body) {
+    const auto checked = checker::check(std::get<Cp>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCommitGroupSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() { cp.async.commit_group; }

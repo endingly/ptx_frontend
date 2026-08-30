@@ -54,7 +54,7 @@ EXPECTED_SECTIONS = {
         "mov": {"9.7.9"}, "mapa": {"9.7.9.24"}, "getctarank": {"9.7.9.25"}, "shfl": {"9.7.9.6"}, "ld": {"9.7.9.8", "9.7.9.9"},
         "ldu": {"9.7.9.10"}, "st": {"9.7.9.11"}, "prefetch": {"9.7.9.16"}, "prefetchu": {"9.7.9.16"}, "applypriority": {"9.7.9.17"}, "discard": {"9.7.9.18"}, "createpolicy": {"9.7.9.19"},
         "prmt": {"9.7.9.7"}, "isspacep": {"9.7.9.20"}, "cvta": {"9.7.9.21"}, "cvt": {"9.7.9.22", "9.7.9.23"},
-        "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3"},
+        "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3", "9.7.14.16.18"},
     },
     "control_flow.yaml": {
         "bra": {"9.7.13.3"}, "brx": {"9.7.13.4"}, "call": {"9.7.13.5"},
@@ -94,7 +94,11 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
                     actual[instruction["opcode"]].add(
                         variant.get("section", instruction["section"])
                     )
-                self.assertTrue(instruction["section"].startswith(section or "9.7."))
+                self.assertTrue(
+                    instruction["section"].startswith(section or "9.7.")
+                    or instruction["section"]
+                    in EXPECTED_SECTIONS[name].get(instruction["opcode"], set())
+                )
             self.assertEqual(actual, EXPECTED_SECTIONS[name])
 
 

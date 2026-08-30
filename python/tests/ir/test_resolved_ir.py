@@ -2875,15 +2875,55 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Fence")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["AcqRelCta"]
+            [variant.cpp_name for variant in resolved.variants],
+            [
+                "AcqRelCta",
+                "ProxyAsync",
+                "ProxyAsyncSharedCluster",
+                "ProxyTensormapGenericRelease",
+                "ProxyTensormapGenericReleaseCluster",
+                "ProxyTensormapGenericAcquire",
+                "ProxyTensormapGenericAcquireCluster",
+                "ProxyAsyncGenericAcquireSyncRestrictSharedCluster",
+                "ProxyAsyncGenericReleaseSyncRestrictSharedCta",
+            ],
         )
-        variant = resolved.variants[0]
+        variant, async_proxy, async_cluster, release, _, acquire, _, acquire_sync, release_sync = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in async_proxy.fields],
+            [("proxy", "bool"), ("proxy_kind", "WithLocs<AsyncProxyKind>")],
+        )
+        self.assertEqual(
+            dict(async_cluster.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in release.fields],
+            [
+                ("proxy", "bool"),
+                ("proxy_pair", "WithLocs<ProxyKindPair>"),
+                ("semantics", "MemoryConsistency"),
+                ("scope", "WithLocs<MemoryScope>"),
+            ],
+        )
+        self.assertEqual(len(acquire.operand_layouts[0].bindings), 2)
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in acquire_sync.fields],
+            [
+                ("proxy", "bool"),
+                ("proxy_pair", "WithLocs<ProxyKindPair>"),
+                ("semantics", "MemoryConsistency"),
+                ("sync_restrict_shared_cluster", "bool"),
+                ("scope", "MemoryScope"),
+            ],
+        )
+        self.assertEqual(release_sync.operand_layouts[0].bindings, ())
 
     def test_atom_global_relaxed_cta_add_u32_model(self) -> None:
         database = load_codegen_database(

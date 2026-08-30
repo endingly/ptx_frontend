@@ -253,6 +253,18 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierLayout")},
                   .mbarrier_layout = {value},
               }}"""
+    if default.value_cpp_type == "AsyncProxyKind" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.ASYNC_PROXY_KINDS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "AsyncProxyKind")},
+                  .async_proxy_kind = {value},
+              }}"""
+    if default.value_cpp_type == "ProxyKindPair" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.PROXY_KIND_PAIRS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "ProxyKindPair")},
+                  .proxy_kind_pair = {value},
+              }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "
         f"{default.value_cpp_type}"

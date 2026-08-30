@@ -1755,6 +1755,118 @@ TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
   ASSERT_FALSE(extra_operand.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {
+  const auto ast = parseModule(R"ptx(
+.global .align 16 .b8 global_value[128];
+.entry kernel() {
+  fence.proxy.async;
+  fence.proxy.async.global;
+  fence.proxy.async.shared::cta;
+  fence.proxy.async.shared::cluster;
+  fence.proxy.tensormap::generic.release.cta;
+  fence.proxy.tensormap::generic.release.gpu;
+  fence.proxy.tensormap::generic.release.sys;
+  fence.proxy.tensormap::generic.release.cluster;
+  fence.proxy.tensormap::generic.acquire.cta [global_value], 128;
+  fence.proxy.tensormap::generic.acquire.gpu [global_value], 128;
+  fence.proxy.tensormap::generic.acquire.sys [global_value], 128;
+  fence.proxy.tensormap::generic.acquire.cluster [global_value], 128;
+  fence.proxy.async::generic.acquire.sync_restrict::shared::cluster.cluster;
+  fence.proxy.async::generic.release.sync_restrict::shared::cta.cluster;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 14u);
+  const auto& async = std::get<Fence::ProxyAsync>(std::get<Fence>(body[0]).variant);
+  EXPECT_EQ(async.proxy_kind.value, AsyncProxyKind::Async);
+  EXPECT_EQ(std::get<Fence::ProxyAsync>(std::get<Fence>(body[2]).variant)
+                .proxy_kind.value,
+            AsyncProxyKind::AsyncSharedCta);
+  EXPECT_EQ(std::get<Fence::ProxyAsyncSharedCluster>(
+                std::get<Fence>(body[3]).variant)
+                .proxy_kind.value,
+            AsyncProxyKind::AsyncSharedCluster);
+  const auto& acquire = std::get<Fence::ProxyTensormapGenericAcquire>(
+      std::get<Fence>(body[9]).variant);
+  EXPECT_EQ(acquire.proxy_pair.value, ProxyKindPair::TensormapToGeneric);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedSymbolRef>(acquire.address.value.base));
+  const auto& restricted =
+      std::get<Fence::ProxyAsyncGenericAcquireSyncRestrictSharedCluster>(
+          std::get<Fence>(body[12]).variant);
+  EXPECT_EQ(restricted.proxy_pair.value, ProxyKindPair::AsyncToGeneric);
+
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  const checker::Context supported{
+      .target = {.ptx_version = {8, 6},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Fence>(instruction), supported).has_value());
+
+  const auto old_pair = checker::check(
+      std::get<Fence>(body[4]),
+      checker::Context{.target = {.ptx_version = {8, 2}, .sm_version = 90},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_pair.has_value());
+  EXPECT_EQ(old_pair.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sync_restrict = checker::check(
+      std::get<Fence>(body[12]),
+      checker::Context{.target = {.ptx_version = {8, 5},
+                                  .sm_version = 90,
+                                  .capabilities = cluster_capabilities},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_sync_restrict.has_value());
+  EXPECT_EQ(old_sync_restrict.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = checker::check(
+      std::get<Fence>(body[0]),
+      checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 89},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto no_cluster = checker::check(
+      std::get<Fence>(body[3]),
+      checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(no_cluster.has_value());
+  EXPECT_EQ(no_cluster.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+
+  const auto wrong_address = resolveModule(parseModule(R"ptx(
+.shared .align 16 .b8 shared_value[128];
+.entry kernel() { fence.proxy.tensormap::generic.acquire.gpu [shared_value], 128; }
+)ptx"));
+  ASSERT_TRUE(wrong_address.has_value());
+  const auto wrong_address_checked = checker::check(
+      std::get<Fence>(wrong_address->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_address_checked.has_value());
+  EXPECT_EQ(wrong_address_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto wrong_size = resolveModule(parseModule(R"ptx(
+.global .align 16 .b8 global_value[128];
+.entry kernel() { fence.proxy.tensormap::generic.acquire.gpu [global_value], 64; }
+)ptx"));
+  ASSERT_TRUE(wrong_size.has_value());
+  const auto wrong_size_checked = checker::check(
+      std::get<Fence>(wrong_size->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_size_checked.has_value());
+  EXPECT_EQ(wrong_size_checked.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b64 %rd0; fence.proxy.tensormap::generic.release.gpu [%rd0], 128; }
+)ptx"));
+  EXPECT_FALSE(extra_operand.has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   const auto ast = parseModule(R"ptx(
 .global .align 4 .u32 global_value;

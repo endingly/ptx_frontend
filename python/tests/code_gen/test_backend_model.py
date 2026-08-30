@@ -172,6 +172,22 @@ class BackendModelTests(unittest.TestCase):
             "MemoryScope::None",
         )
         self.assertEqual(
+            unit.domains[CppDomain.ASYNC_PROXY_KINDS.value].values,
+            {
+                "async": "AsyncProxyKind::Async",
+                "async.global": "AsyncProxyKind::AsyncGlobal",
+                "async.shared::cta": "AsyncProxyKind::AsyncSharedCta",
+                "async.shared::cluster": "AsyncProxyKind::AsyncSharedCluster",
+            },
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.PROXY_KIND_PAIRS.value].values,
+            {
+                "tensormap::generic": "ProxyKindPair::TensormapToGeneric",
+                "async::generic": "ProxyKindPair::AsyncToGeneric",
+            },
+        )
+        self.assertEqual(
             unit.domains[CppDomain.VECTOR_ARITIES.value].values["v8"],
             "VectorArity::V8",
         )

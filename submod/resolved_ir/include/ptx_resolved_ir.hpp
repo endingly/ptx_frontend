@@ -34,6 +34,8 @@ using base::MemoryConsistency;
 using base::MemoryScope;
 using base::MbarrierLayout;
 using base::MbarrierPhaseType;
+using base::AsyncProxyKind;
+using base::ProxyKindPair;
 namespace check_end {
 
 using OperandShape = checker::OperandShape;
@@ -86,6 +88,8 @@ enum class ResolvedValueKind : uint8_t {
   MemoryStateSpace,
   MbarrierPhaseType,
   MbarrierLayout,
+  AsyncProxyKind,
+  ProxyKindPair,
   Register,
   Predicate,
   PredicateSource,
@@ -177,6 +181,8 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   MemoryStateSpace,
   MbarrierPhaseType,
   MbarrierLayout,
+  AsyncProxyKind,
+  ProxyKindPair,
 };
 
 struct ResolvedModifierDefaultDescriptor {
@@ -188,6 +194,8 @@ struct ResolvedModifierDefaultDescriptor {
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
   MemoryScope memory_scope = MemoryScope::None;
 };
@@ -462,6 +470,7 @@ using ResolvedFieldValue =
                  WithLocs<MemoryScope>, WithLocs<VectorArity>,
                  WithLocs<MemoryStateSpace>,
                  WithLocs<MbarrierPhaseType>, WithLocs<MbarrierLayout>,
+                 WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>,
                  WithLocs<ResolvedRegisterRef>,
                  WithLocs<ResolvedMbarrierStateToken>,
                  WithLocs<ResolvedImmediate>,

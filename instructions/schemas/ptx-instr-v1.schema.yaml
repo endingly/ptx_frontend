@@ -289,7 +289,7 @@ $defs:
       It must not begin with '$'; '$name' is reserved for references to
       type_sets or value_sets.
     type: string
-    pattern: "^[A-Za-z_][A-Za-z0-9_:<>-]*$"
+    pattern: "^[A-Za-z_][A-Za-z0-9_.:<>-]*$"
 
   # ---------------------------------------------------------------------------
   # PTX state spaces and memory-related domains
@@ -357,6 +357,16 @@ $defs:
       - tensormap
       - alias
 
+  async_proxy_kind:
+    description: "PTX fence.proxy.async qualifier without leading dot."
+    type: string
+    enum: [async, async.global, async.shared::cta, async.shared::cluster]
+
+  proxy_kind_pair:
+    description: "Ordered PTX fence proxy to::from qualifier without leading dot."
+    type: string
+    enum: [tensormap::generic, async::generic]
+
   cache_operator:
     description: "PTX cache operator without leading dot."
     type: string
@@ -416,6 +426,7 @@ $defs:
       - mbarrier_layout
       - memory_order
       - proxy
+      - proxy_pair
       - tensor_map
       - matrix
       - custom
@@ -601,6 +612,7 @@ $defs:
                 - mbarrier_layout
                 - memory_order
                 - proxy
+                - proxy_pair
                 - tensor_map
                 - matrix
                 - custom

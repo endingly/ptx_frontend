@@ -66,6 +66,8 @@ class ResolvedValueKind(Enum):
     MEMORY_STATE_SPACE = "MemoryStateSpace"
     MBARRIER_PHASE_TYPE = "MbarrierPhaseType"
     MBARRIER_LAYOUT = "MbarrierLayout"
+    ASYNC_PROXY_KIND = "AsyncProxyKind"
+    PROXY_KIND_PAIR = "ProxyKindPair"
     REGISTER = "Register"
     PREDICATE = "Predicate"
     PREDICATE_SOURCE = "PredicateSource"
@@ -330,6 +332,14 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.MBARRIER_LAYOUTS, self.constant_value)
+        if self.value_cpp_type == "AsyncProxyKind" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.ASYNC_PROXY_KINDS, self.constant_value)
+        if self.value_cpp_type == "ProxyKindPair" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.PROXY_KIND_PAIRS, self.constant_value)
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"
@@ -813,6 +823,22 @@ def _build_modifier_default(
                 f"optional mbarrier-layout modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
+    if value_cpp_type == "AsyncProxyKind":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.ASYNC_PROXY_KINDS
+        ).values:
+            raise ValueError(
+                f"optional async-proxy modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "ProxyKindPair":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.PROXY_KIND_PAIRS
+        ).values:
+            raise ValueError(
+                f"optional proxy-pair modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
     return ResolvedModifierDefault(
         value_cpp_type=value_cpp_type,
         value=modifier.default,
@@ -941,6 +967,22 @@ def _build_modifier_value_availability(
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported mbarrier layout "
                 f"value {value.value!r}"
+            )
+    if value_cpp_type == "AsyncProxyKind":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.ASYNC_PROXY_KINDS
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported async proxy value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "ProxyKindPair":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.PROXY_KIND_PAIRS
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported proxy pair value "
+                f"{value.value!r}"
             )
     return ResolvedModifierValueAvailability(
         source_kind_id=modifier.name,

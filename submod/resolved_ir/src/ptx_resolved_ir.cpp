@@ -555,6 +555,32 @@ resolve_mbarrier_layout(const syntax_ast::AstModifier& modifier) {
   return WithLocs<MbarrierLayout>{*value, modifier.syntax.range};
 }
 
+std::expected<WithLocs<AsyncProxyKind>, ResolveDiagnostic>
+resolve_async_proxy_kind(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kAsyncProxyKinds,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown async proxy kind '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<AsyncProxyKind>{*value, modifier.syntax.range};
+}
+
+std::expected<WithLocs<ProxyKindPair>, ResolveDiagnostic>
+resolve_proxy_kind_pair(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kProxyKindPairs,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown proxy kind pair '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<ProxyKindPair>{*value, modifier.syntax.range};
+}
+
 std::optional<VectorArity> vector_arity_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kVectorArities, spelling);
@@ -2584,6 +2610,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MemoryStateSpace:
     case ResolvedValueKind::MbarrierPhaseType:
     case ResolvedValueKind::MbarrierLayout:
+    case ResolvedValueKind::AsyncProxyKind:
+    case ResolvedValueKind::ProxyKindPair:
       throw ResolveException(fmt::format(
           "Operand slot '{}' has a non-operand resolved value kind.",
           field.field_id));
@@ -2691,6 +2719,22 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{WithLocs<MbarrierLayout>{
           default_value.mbarrier_layout}};
+    case ResolvedValueKind::AsyncProxyKind:
+      if (default_value.kind != ResolvedModifierDefaultKind::AsyncProxyKind) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires an async proxy default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<AsyncProxyKind>{
+          default_value.async_proxy_kind}};
+    case ResolvedValueKind::ProxyKindPair:
+      if (default_value.kind != ResolvedModifierDefaultKind::ProxyKindPair) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a proxy pair default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<ProxyKindPair>{
+          default_value.proxy_kind_pair}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::PredicateSource:
@@ -3008,6 +3052,18 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       } break;
       case ResolvedValueKind::MbarrierLayout: {
         auto value = resolve_mbarrier_layout(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::AsyncProxyKind: {
+        auto value = resolve_async_proxy_kind(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::ProxyKindPair: {
+        auto value = resolve_proxy_kind_pair(*actual->second);
         if (!value)
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));

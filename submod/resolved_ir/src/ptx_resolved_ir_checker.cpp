@@ -141,6 +141,10 @@ bool matches_modifier_value(
       return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
     case ModifierValueKind::MbarrierLayout:
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
+    case ModifierValueKind::AsyncProxyKind:
+      return descriptor.async_proxy_kind == actual.async_proxy_kind;
+    case ModifierValueKind::ProxyKindPair:
+      return descriptor.proxy_kind_pair == actual.proxy_kind_pair;
   }
   return false;
 }

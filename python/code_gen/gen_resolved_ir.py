@@ -715,6 +715,14 @@ def _emit_check_modifier_view(
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "MbarrierLayout" else "std::nullopt"
         )
+        async_proxy_kind = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "AsyncProxyKind" else "std::nullopt"
+        )
+        proxy_kind_pair = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "ProxyKindPair" else "std::nullopt"
+        )
         cache_operator = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "CacheOperator" else "std::nullopt"
@@ -768,6 +776,14 @@ def _emit_check_modifier_view(
             f"selected.{field.name}.value"
             if field.value_cpp_type == "MbarrierLayout" else "std::nullopt"
         )
+        async_proxy_kind = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "AsyncProxyKind" else "std::nullopt"
+        )
+        proxy_kind_pair = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "ProxyKindPair" else "std::nullopt"
+        )
         cache_operator = (
             f"selected.{field.name}.value"
             if field.value_cpp_type == "CacheOperator" else "std::nullopt"
@@ -791,6 +807,8 @@ def _emit_check_modifier_view(
                   .memory_scope = {memory_scope},
                   .mbarrier_phase_type = {mbarrier_phase_type},
                   .mbarrier_layout = {mbarrier_layout},
+                  .async_proxy_kind = {async_proxy_kind},
+                  .proxy_kind_pair = {proxy_kind_pair},
                   .locations = {locations},
               }}"""
 
@@ -985,6 +1003,36 @@ def _emit_check_modifier_value_view(
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
         )
+    elif field.value_cpp_type == "AsyncProxyKind":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "AsyncProxyKind"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        async_proxy_kind = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "ProxyKindPair":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "ProxyKindPair"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        proxy_kind_pair = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
     else:
         raise ValueError(
             f"modifier field {field.name!r}: unsupported availability view type "
@@ -1022,6 +1070,10 @@ def _emit_check_modifier_value_view(
         mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
     if field.value_cpp_type != "MbarrierLayout":
         mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
+    if field.value_cpp_type != "AsyncProxyKind":
+        async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
+    if field.value_cpp_type != "ProxyKindPair":
+        proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
@@ -1038,6 +1090,8 @@ def _emit_check_modifier_value_view(
                   .memory_scope = {memory_scope},
                   .mbarrier_phase_type = {mbarrier_phase_type},
                   .mbarrier_layout = {mbarrier_layout},
+                  .async_proxy_kind = {async_proxy_kind},
+                  .proxy_kind_pair = {proxy_kind_pair},
                   .is_present = {is_present},
                   .locations = {locations},
               }}"""

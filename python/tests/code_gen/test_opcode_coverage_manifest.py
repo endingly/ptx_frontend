@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 303)
+        self.assertEqual(len(slices), 311)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -538,6 +538,31 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             {
                 "topology": "warp_election", "types": ["u32", "pred"],
                 "shape": "optional_data_predicate_pair", "modifiers": ["sync"],
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "fence-fence-proxy-async-default",
+                    "fence-fence-proxy-async-shared-cluster-default",
+                    "fence-fence-proxy-tensormap-generic-release-default",
+                    "fence-fence-proxy-tensormap-generic-release-cluster-default",
+                    "fence-fence-proxy-tensormap-generic-acquire-default",
+                    "fence-fence-proxy-tensormap-generic-acquire-cluster-default",
+                    "fence-fence-proxy-async-generic-acquire-sync-restrict-shared-cluster-default",
+                    "fence-fence-proxy-async-generic-release-sync-restrict-shared-cta-default",
+                )
+            },
+            {
+                "fence-fence-proxy-async-default": {"topology": "proxy_fence_bidirectional", "types": [], "shape": "none", "modifiers": ["proxy", "async"]},
+                "fence-fence-proxy-async-shared-cluster-default": {"topology": "proxy_fence_bidirectional", "types": [], "shape": "none", "modifiers": ["proxy", "async_shared_cluster"]},
+                "fence-fence-proxy-tensormap-generic-release-default": {"topology": "proxy_fence_to_from_release", "types": [], "shape": "none", "modifiers": ["proxy", "tensormap_to_generic", "release", "scope_cta_gpu_sys"]},
+                "fence-fence-proxy-tensormap-generic-release-cluster-default": {"topology": "proxy_fence_to_from_release", "types": [], "shape": "none", "modifiers": ["proxy", "tensormap_to_generic", "release", "cluster"]},
+                "fence-fence-proxy-tensormap-generic-acquire-default": {"topology": "proxy_fence_to_from_acquire", "types": ["u32"], "shape": "global_address_size", "modifiers": ["proxy", "tensormap_to_generic", "acquire", "scope_cta_gpu_sys"]},
+                "fence-fence-proxy-tensormap-generic-acquire-cluster-default": {"topology": "proxy_fence_to_from_acquire", "types": ["u32"], "shape": "global_address_size", "modifiers": ["proxy", "tensormap_to_generic", "acquire", "cluster"]},
+                "fence-fence-proxy-async-generic-acquire-sync-restrict-shared-cluster-default": {"topology": "proxy_fence_to_from_sync_restrict", "types": [], "shape": "none", "modifiers": ["proxy", "async_to_generic", "acquire", "sync_restrict_shared_cluster", "cluster"]},
+                "fence-fence-proxy-async-generic-release-sync-restrict-shared-cta-default": {"topology": "proxy_fence_to_from_sync_restrict", "types": [], "shape": "none", "modifiers": ["proxy", "async_to_generic", "release", "sync_restrict_shared_cta", "cluster"]},
             },
         )
         self.assertEqual(

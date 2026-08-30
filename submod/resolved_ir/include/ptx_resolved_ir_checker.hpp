@@ -87,6 +87,8 @@ using base::MemoryConsistency;
 using base::MemoryScope;
 using base::MbarrierLayout;
 using base::MbarrierPhaseType;
+using base::AsyncProxyKind;
+using base::ProxyKindPair;
 namespace detail {
 
 /** Combine variant-specific lambdas into the visitor accepted by std::visit. */
@@ -285,6 +287,8 @@ struct FieldView {
   std::optional<MemoryScope> memory_scope;
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
+  std::optional<AsyncProxyKind> async_proxy_kind;
+  std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
 };
 
@@ -367,6 +371,8 @@ enum class ModifierValueKind : uint8_t {
   MemoryScope,
   MbarrierPhaseType,
   MbarrierLayout,
+  AsyncProxyKind,
+  ProxyKindPair,
 };
 
 /** Target requirement attached to one legal semantic modifier value. */
@@ -386,6 +392,8 @@ struct ModifierValueAvailabilityDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
 };
 
@@ -406,6 +414,8 @@ struct ModifierValueView {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
   std::span<const SourceRange> locations;
 };

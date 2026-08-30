@@ -457,6 +457,9 @@ operand_patterns:
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
     - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  fence_proxy_acquire:
+    - {name: address, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: imm, role: src, access: read, type: u32}
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -957,8 +960,11 @@ instructions:
 
   - opcode: fence
     section: "9.7.14.4"
-    doc: "Memory fence, limited to acquire-release CTA scope."
-    syntax: "fence.acq_rel.cta"
+    doc: "Memory fence slices for acquire-release CTA and modern async/tensormap proxy ordering."
+    syntax: >-
+      fence.acq_rel.cta | fence.proxy.async{.global|.shared::cta|.shared::cluster} |
+      fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
+      fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
 
     variants:
       - name: fence_acq_rel_cta
@@ -980,6 +986,95 @@ instructions:
         examples:
           - ptx: "fence.acq_rel.cta;"
             valid: true
+
+      - name: fence_proxy_async
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async, async.global, async.shared::cta]}
+        operands: []
+
+      - name: fence_proxy_async_shared_cluster
+        availability:
+          any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async.shared::cluster]}
+        operands: []
+
+      - name: fence_proxy_tensormap_generic_release
+        availability: {ptx: "8.3", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, gpu, sys]}
+        operands: []
+
+      - name: fence_proxy_tensormap_generic_release_cluster
+        availability:
+          any_of: [{ptx: "8.3", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+
+      - name: fence_proxy_tensormap_generic_acquire
+        availability: {ptx: "8.3", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, gpu, sys]}
+        operands: $fence_proxy_acquire
+        constraints: [{kind: immediate_value, operand: size, values: [128]}]
+
+      - name: fence_proxy_tensormap_generic_acquire_cluster
+        availability:
+          any_of: [{ptx: "8.3", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: $fence_proxy_acquire
+        constraints: [{kind: immediate_value, operand: size, values: [128]}]
+
+      - name: fence_proxy_async_generic_acquire_sync_restrict_shared_cluster
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - name: proxy_pair
+            kind: proxy_pair
+            domain: proxy_kind_pairs
+            presence: required
+            values:
+              - value: async::generic
+                availability:
+                  any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: sync_restrict_shared_cluster, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cluster}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+
+      - name: fence_proxy_async_generic_release_sync_restrict_shared_cta
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - name: proxy_pair
+            kind: proxy_pair
+            domain: proxy_kind_pairs
+            presence: required
+            values:
+              - value: async::generic
+                availability:
+                  any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: sync_restrict_shared_cta, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cta}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
 
   - opcode: atom
     section: "9.7.14.5"

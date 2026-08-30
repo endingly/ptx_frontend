@@ -2842,6 +2842,118 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierExpectTxSemanticsAndSpaces) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMbarrierCompleteTxSemanticsAndSpaces) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .u32 %r0;
+  .reg .u64 %rd0;
+  mbarrier.complete_tx.b64 [%rd0], %r0;
+  mbarrier.complete_tx.shared.b64 [shared_value], 1;
+  mbarrier.complete_tx.shared::cta.b64 [shared_value+8], 2;
+  mbarrier.complete_tx.shared::cluster.b64 [shared_value], 3;
+  mbarrier.complete_tx.relaxed.cta.shared.b64 [shared_value], 4;
+  mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64 [shared_value+8], %r0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const auto& generic = std::get<Mbarrier::CompleteTxGenericOrShared>(
+      std::get<Mbarrier>(body[0]).variant);
+  const auto& shared = std::get<Mbarrier::CompleteTxGenericOrShared>(
+      std::get<Mbarrier>(body[1]).variant);
+  const auto& shared_cta = std::get<Mbarrier::CompleteTxSharedCta>(
+      std::get<Mbarrier>(body[2]).variant);
+  const auto& shared_cluster = std::get<Mbarrier::CompleteTxSharedCluster>(
+      std::get<Mbarrier>(body[3]).variant);
+  const auto& relaxed_cta = std::get<Mbarrier::CompleteTxRelaxedCtaGenericOrShared>(
+      std::get<Mbarrier>(body[4]).variant);
+  const auto& relaxed_cluster = std::get<Mbarrier::CompleteTxRelaxedClusterSharedCluster>(
+      std::get<Mbarrier>(body[5]).variant);
+  EXPECT_EQ(generic.state_space.value, MemoryStateSpace::Generic);
+  EXPECT_TRUE(generic.state_space.locs.empty());
+  EXPECT_EQ(shared.state_space.value, MemoryStateSpace::Shared);
+  EXPECT_FALSE(shared.state_space.locs.empty());
+  EXPECT_TRUE(shared_cta.shared_cta);
+  EXPECT_TRUE(shared_cluster.shared_cluster);
+  EXPECT_EQ(relaxed_cta.semantics, MemoryConsistency::Relaxed);
+  EXPECT_EQ(relaxed_cta.scope, MemoryScope::Cta);
+  EXPECT_EQ(relaxed_cluster.scope, MemoryScope::Cluster);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(generic.tx_count.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shared.tx_count.value));
+
+  const checker::Context supported{
+      .target = {.ptx_version = {8, 0}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
+  }
+  const checker::Context old_ptx{
+      .target = {.ptx_version = {7, 9}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  const auto old_ptx_generic = checker::check(std::get<Mbarrier>(body[0]), old_ptx);
+  ASSERT_FALSE(old_ptx_generic.has_value());
+  EXPECT_EQ(old_ptx_generic.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const checker::Context old_sm{
+      .target = {.ptx_version = {8, 0}, .sm_version = 89},
+      .instruction_range = ast.range,
+  };
+  const auto old_sm_generic = checker::check(std::get<Mbarrier>(body[0]), old_sm);
+  ASSERT_FALSE(old_sm_generic.has_value());
+  EXPECT_EQ(old_sm_generic.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_count = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0, %count;
+  mbarrier.complete_tx.b64 [%rd0], %count;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_count.has_value()) << wrong_count.error().front().message;
+  const auto wrong_count_checked = checker::check(
+      std::get<Mbarrier>(wrong_count->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_count_checked.has_value());
+  EXPECT_EQ(wrong_count_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.global .align 8 .b64 global_value[2];
+.entry kernel() {
+  mbarrier.complete_tx.b64 [global_value], 1;
+  mbarrier.complete_tx.shared.b64 [global_value+8], 2;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_space.has_value()) << wrong_space.error().front().message;
+  for (const auto& instruction : wrong_space->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  }
+
+  const auto unaligned = resolveModule(parseModule(R"ptx(
+.shared .align 4 .b64 unaligned_value[2];
+.shared .align 8 .b64 aligned_value[2];
+.entry kernel() {
+  mbarrier.complete_tx.b64 [unaligned_value], 1;
+  mbarrier.complete_tx.shared.b64 [aligned_value+4], 2;
+}
+)ptx"));
+  ASSERT_TRUE(unaligned.has_value()) << unaligned.error().front().message;
+  for (const auto& instruction : unaligned->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   const auto ast = parseModule(R"ptx(
 .shared .align 4 .u32 shared_value;

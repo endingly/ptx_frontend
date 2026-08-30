@@ -66,7 +66,7 @@ EXPECTED_SECTIONS = {
         "match": {"9.7.14.11"}, "activemask": {"9.7.14.12"}, "redux": {"9.7.14.13"},
         "griddepcontrol": {"9.7.14.14"},
         "elect": {"9.7.14.15"},
-        "mbarrier": {"9.7.14.16.12", "9.7.14.16.13", "9.7.14.16.14"},
+        "mbarrier": {"9.7.14.16.12", "9.7.14.16.13", "9.7.14.16.14", "9.7.14.16.15"},
     },
     "warp_level_matrix_multiply_accumulate.yaml": {
         "mma": {"9.7.15.5.14"}, "ldmatrix": {"9.7.15.5.15"},

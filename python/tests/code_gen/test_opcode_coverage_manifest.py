@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 187)
+        self.assertEqual(len(slices), 196)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -307,6 +307,15 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                     "mbarrier-mbarrier-expect-tx-relaxed-cluster-generic-or-shared-default",
                     "mbarrier-mbarrier-expect-tx-relaxed-cluster-shared-cta-default",
                     "mbarrier-mbarrier-expect-tx-relaxed-cluster-shared-cluster-default",
+                    "mbarrier-mbarrier-complete-tx-generic-or-shared-default",
+                    "mbarrier-mbarrier-complete-tx-shared-cta-default",
+                    "mbarrier-mbarrier-complete-tx-shared-cluster-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cta-generic-or-shared-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cta-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cluster-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cluster-generic-or-shared-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cta-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cluster-default",
                 )
             },
             {
@@ -397,6 +406,51 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                     "topology": "mbarrier_expect_tx_relaxed_cluster",
                     "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
                     "modifiers": ["expect_tx", "relaxed", "cluster", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-complete-tx-generic-or-shared-default": {
+                    "topology": "mbarrier_complete_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-complete-tx-shared-cta-default": {
+                    "topology": "mbarrier_complete_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "shared_cta"],
+                },
+                "mbarrier-mbarrier-complete-tx-shared-cluster-default": {
+                    "topology": "mbarrier_complete_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cta-generic-or-shared-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cta", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cta-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cta", "shared_cta"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cluster-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cta", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cluster-generic-or-shared-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cluster", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cta-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cluster", "shared_cta"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cluster-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cluster", "shared_cluster"],
                 },
             },
         )
@@ -593,6 +647,15 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("mbarrier_expect_tx_relaxed_cluster_generic_or_shared", "default"),
                 ("mbarrier_expect_tx_relaxed_cluster_shared_cta", "default"),
                 ("mbarrier_expect_tx_relaxed_cluster_shared_cluster", "default"),
+                ("mbarrier_complete_tx_generic_or_shared", "default"),
+                ("mbarrier_complete_tx_shared_cta", "default"),
+                ("mbarrier_complete_tx_shared_cluster", "default"),
+                ("mbarrier_complete_tx_relaxed_cta_generic_or_shared", "default"),
+                ("mbarrier_complete_tx_relaxed_cta_shared_cta", "default"),
+                ("mbarrier_complete_tx_relaxed_cta_shared_cluster", "default"),
+                ("mbarrier_complete_tx_relaxed_cluster_generic_or_shared", "default"),
+                ("mbarrier_complete_tx_relaxed_cluster_shared_cta", "default"),
+                ("mbarrier_complete_tx_relaxed_cluster_shared_cluster", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

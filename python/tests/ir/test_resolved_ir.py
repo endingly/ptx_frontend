@@ -1568,10 +1568,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "ExpectTxGenericOrShared", "ExpectTxSharedCta", "ExpectTxSharedCluster",
              "ExpectTxRelaxedCtaGenericOrShared", "ExpectTxRelaxedCtaSharedCta",
              "ExpectTxRelaxedCtaSharedCluster", "ExpectTxRelaxedClusterGenericOrShared",
-             "ExpectTxRelaxedClusterSharedCta", "ExpectTxRelaxedClusterSharedCluster"],
+             "ExpectTxRelaxedClusterSharedCta", "ExpectTxRelaxedClusterSharedCluster",
+             "CompleteTxGenericOrShared", "CompleteTxSharedCta", "CompleteTxSharedCluster",
+             "CompleteTxRelaxedCtaGenericOrShared", "CompleteTxRelaxedCtaSharedCta",
+             "CompleteTxRelaxedCtaSharedCluster", "CompleteTxRelaxedClusterGenericOrShared",
+             "CompleteTxRelaxedClusterSharedCta", "CompleteTxRelaxedClusterSharedCluster"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
-        expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:]
+        expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
+        complete_tx_generic, _, _, complete_tx_relaxed_cta, _, _, complete_tx_relaxed_cluster, _, _ = instruction.variants[18:]
         self.assertEqual(dict(generic_v0.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(shared_cta_v0.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(generic_v1.availability), {"ptx": "9.3", "sm": 90})
@@ -1580,6 +1585,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(expect_tx_generic.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(expect_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(expect_tx_relaxed_cluster.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(complete_tx_generic.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(complete_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(complete_tx_relaxed_cluster.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(
             [(field.name, field.cpp_type) for field in generic_v0.fields],
             [
@@ -1648,7 +1656,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
         expect_tx_address, tx_count = expect_tx_generic.operand_layouts[0].bindings
         self.assertEqual(expect_tx_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
         self.assertEqual(tx_count.type_expression.scalar_type, "u32")
-        self.assertEqual(tx_count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in complete_tx_generic.fields],
+            [
+                ("complete_tx", "bool"),
+                ("state_space", "WithLocs<MemoryStateSpace>"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("tx_count", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in complete_tx_relaxed_cta.fields[:3]],
+            [("complete_tx", "bool"), ("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
+        )
+        complete_tx_address, complete_tx_count = complete_tx_generic.operand_layouts[0].bindings
+        self.assertEqual(complete_tx_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(complete_tx_count.type_expression.scalar_type, "u32")
+        self.assertEqual(complete_tx_count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
 
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(

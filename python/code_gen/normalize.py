@@ -142,6 +142,11 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
+    allow_destination_sink = raw.get("allow_destination_sink", False)
+    if not isinstance(allow_destination_sink, bool):
+        raise TypeError("allow_destination_sink must be a boolean when supplied.")
+    if "allow_destination_sink" in raw and raw["kind"] != "shfl_dest":
+        raise ValueError("allow_destination_sink is only valid for kind 'shfl_dest'")
     type_tag = raw.get("type_tag")
     if raw["kind"] in {"descriptor", "typed_token"}:
         if (not isinstance(type_tag, str) or
@@ -269,6 +274,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_arity_expression=vector_arity_expression,
         vector_type_policy=vector_type_policy,
         vector_allow_sink=vector_allow_sink,
+        allow_destination_sink=allow_destination_sink,
         type_tag=type_tag,
         minimum_elements=minimum_elements,
         maximum_elements=maximum_elements,

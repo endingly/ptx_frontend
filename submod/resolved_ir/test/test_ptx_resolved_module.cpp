@@ -2242,7 +2242,8 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
       Match::AllSync::WithoutPredicateOperands>(all_plain.operands));
   const auto& paired = std::get<Match::AllSync::WithPredicateOperands>(
       all_pair.operands);
-  EXPECT_EQ(paired.dst.value.data.declared_type, ScalarType::B32);
+  ASSERT_TRUE(paired.dst.value.data.has_value());
+  EXPECT_EQ(paired.dst.value.data->declared_type, ScalarType::B32);
   EXPECT_EQ(paired.dst.value.predicate.register_ref.declared_type,
             ScalarType::Pred);
   EXPECT_TRUE(
@@ -2286,6 +2287,7 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
   }
   for (const std::string_view source : {
            ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.any.sync.b32 %b0|%p0, %b1, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.all.sync.b32 _|%p0, %b1, 0; }",
            ".entry kernel() { .reg .b32 %b<2>; .reg .u32 %u0; match.all.sync.b32 %b0|%u0, %b1, 0; }",
            ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.all.sync.b32 %b0|%p0, %b1; }",
        }) {
@@ -2420,6 +2422,90 @@ TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
                    .has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksElectSyncSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u0;
+  .reg .b32 %b0;
+  .reg .s32 %s0;
+  .reg .u32 %mask;
+  .reg .pred %p<4>;
+  elect.sync %u0|%p0, 0xffffffff;
+  elect.sync %b0|%p1, %mask;
+  elect.sync %s0|%p2, 0xffffffff;
+  elect.sync _|%p3, %mask;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  const auto& u32 = std::get<Elect::Sync>(std::get<Elect>(body[0]).variant);
+  const auto& b32 = std::get<Elect::Sync>(std::get<Elect>(body[1]).variant);
+  const auto& s32 = std::get<Elect::Sync>(std::get<Elect>(body[2]).variant);
+  const auto& sink = std::get<Elect::Sync>(std::get<Elect>(body[3]).variant);
+  ASSERT_TRUE(u32.result.value.data.has_value());
+  EXPECT_EQ(u32.result.value.data->declared_type, ScalarType::U32);
+  EXPECT_EQ(u32.result.value.predicate.register_ref.declared_type,
+            ScalarType::Pred);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(u32.membermask.value));
+  ASSERT_TRUE(b32.result.value.data.has_value());
+  EXPECT_EQ(b32.result.value.data->declared_type, ScalarType::B32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(b32.membermask.value));
+  ASSERT_TRUE(s32.result.value.data.has_value());
+  EXPECT_EQ(s32.result.value.data->declared_type, ScalarType::S32);
+  EXPECT_FALSE(sink.result.value.data.has_value());
+
+  const checker::Context context{
+      .target = {.ptx_version = {8, 0}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(checker::check(std::get<Elect>(instruction), context).has_value());
+  }
+  const auto too_old_ptx = checker::check(
+      std::get<Elect>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 9}, .sm_version = 90},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Elect>(body.front()),
+      checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 89},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto bad_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b64 %d0; .reg .pred %p0; elect.sync %d0|%p0, 0; }
+)ptx"));
+  ASSERT_TRUE(bad_width.has_value()) << bad_width.error().front().message;
+  const auto bad_check = checker::check(
+      std::get<Elect>(bad_width->functions.front().body.front()), context);
+  ASSERT_FALSE(bad_check.has_value());
+  EXPECT_EQ(bad_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  const auto bad_mask = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %u0; .reg .pred %p0; .reg .b64 %d0; elect.sync %u0|%p0, %d0; }
+)ptx"));
+  ASSERT_TRUE(bad_mask.has_value()) << bad_mask.error().front().message;
+  const auto bad_mask_check = checker::check(
+      std::get<Elect>(bad_mask->functions.front().body.front()), context);
+  ASSERT_FALSE(bad_mask_check.has_value());
+  EXPECT_EQ(bad_mask_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .u32 %u0; elect.sync %u0|%u0, 0; }",
+           ".entry kernel() { .reg .u32 %u0; .reg .pred %p0; elect.sync %u0, 0; }",
+           ".entry kernel() { .reg .u32 %u0; .reg .pred %p0; elect.sync %u0|%p0; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {
@@ -2441,7 +2527,8 @@ TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   EXPECT_TRUE(immediate.sync);
   EXPECT_TRUE(immediate.idx);
   EXPECT_EQ(immediate.type, ScalarType::B32);
-  EXPECT_EQ(immediate.dst.value.data.declared_type, ScalarType::B32);
+  ASSERT_TRUE(immediate.dst.value.data.has_value());
+  EXPECT_EQ(immediate.dst.value.data->declared_type, ScalarType::B32);
   EXPECT_EQ(immediate.dst.value.predicate.register_ref.declared_type,
             ScalarType::Pred);
   EXPECT_FALSE(immediate.dst.locs.empty());

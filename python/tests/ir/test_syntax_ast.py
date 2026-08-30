@@ -1432,6 +1432,47 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 }
             )
 
+    def test_destination_sink_is_shfl_dest_specific(self) -> None:
+        def normalize_operand(kind: str, **extra: object):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": kind,
+                                            "role": "dst",
+                                            "access": "write",
+                                            "type": "u32",
+                                            **extra,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0].variants[0].operand_layouts[0].operands[0]
+
+        self.assertFalse(normalize_operand("shfl_dest").allow_destination_sink)
+        self.assertTrue(
+            normalize_operand("shfl_dest", allow_destination_sink=True)
+            .allow_destination_sink
+        )
+        with self.assertRaisesRegex(ValueError, "allow_destination_sink.*shfl_dest"):
+            normalize_operand("reg", allow_destination_sink=False)
+        with self.assertRaisesRegex(TypeError, "allow_destination_sink"):
+            normalize_operand("shfl_dest", allow_destination_sink=1)
+
     def test_optional_modifier_requires_typed_default(self) -> None:
         def normalize_modifier_entry(modifier: dict[str, object]) -> None:
             normalize_instruction_spec(

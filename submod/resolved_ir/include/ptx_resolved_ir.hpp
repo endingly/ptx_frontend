@@ -421,7 +421,7 @@ struct ResolvedTensorCoordinate {
 };
 
 struct ResolvedShflSyncDestination {
-  ResolvedRegisterRef data;
+  std::optional<ResolvedRegisterRef> data;
   ResolvedPredicate predicate;
   bool operator==(const ResolvedShflSyncDestination&) const = default;
 };

@@ -743,7 +743,8 @@ struct SymbolTableBuilder {
           } else if constexpr (std::same_as<
                                    Value,
                                    syntax_ast::AstRegisterPredicatePair>) {
-            addReference(scope, ReferenceKind::InstructionOperand, value.dst);
+            if (value.dst.syntax.text != "_")
+              addReference(scope, ReferenceKind::InstructionOperand, value.dst);
             addReference(scope, ReferenceKind::Predicate, value.predicate);
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstPredicateOperand>) {

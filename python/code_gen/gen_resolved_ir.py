@@ -1117,7 +1117,9 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "ShflDestination")},
                   .immediate_type = std::nullopt,
-                  .register_type = {object_name}.{field.name}.value.data.declared_type,
+                  .register_type = {object_name}.{field.name}.value.data
+                      ? {object_name}.{field.name}.value.data->declared_type
+                      : std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicatePair":

@@ -243,6 +243,7 @@ struct OperandDescriptor {
   std::string_view vector_arity_modifier_field_id{};
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
+  bool allow_destination_sink = false;
   /** Stable descriptor/token domain tag; empty for ordinary operands. */
   std::string_view type_tag{};
   /** Inclusive brace-pack bounds; zero means this is not a variable pack. */

@@ -850,6 +850,7 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
 
 std::expected<WithLocs<ResolvedShflSyncDestination>, ResolveDiagnostic>
 resolve_shfl_destination(const syntax_ast::AstOperand& operand,
+                         bool allow_destination_sink,
                          const ResolveContext* context) {
   const auto* pair =
       std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
@@ -857,15 +858,27 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
     return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
                                                .message = "Expected d|p destination."});
   }
-  auto data = resolve_register(syntax_ast::AstOperand{pair->dst}, context);
-  if (!data)
-    return std::unexpected(data.error());
+  std::optional<ResolvedRegisterRef> data;
+  if (pair->dst.syntax.text == "_") {
+    if (!allow_destination_sink) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = pair->dst.syntax.range,
+          .message = "The '_' sink is not allowed in this d|p destination.",
+      });
+    }
+  } else {
+    auto resolved_data =
+        resolve_register(syntax_ast::AstOperand{pair->dst}, context);
+    if (!resolved_data)
+      return std::unexpected(resolved_data.error());
+    data = std::move(resolved_data->value);
+  }
   auto predicate = resolve_predicate_identifier(
       pair->predicate, false, pair->predicate.syntax.range, context);
   if (!predicate)
     return std::unexpected(predicate.error());
   return WithLocs<ResolvedShflSyncDestination>{
-      ResolvedShflSyncDestination{.data = std::move(data->value),
+      ResolvedShflSyncDestination{.data = std::move(data),
                                   .predicate = std::move(predicate->value)},
       pair->range};
 }
@@ -2378,7 +2391,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::ShflDestination: {
-      auto value = resolve_shfl_destination(operand, context);
+      auto value = resolve_shfl_destination(
+          operand, binding.allow_destination_sink, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

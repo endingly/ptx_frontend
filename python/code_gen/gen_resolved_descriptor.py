@@ -342,6 +342,11 @@ def _emit_operand_binding_descriptor(
         or binding.vector_arity_modifier_field_id is not None
         else ""
     )
+    allow_destination_sink = (
+        "\n              .allow_destination_sink = true,"
+        if binding.allow_destination_sink
+        else ""
+    )
     type_tag = (
         f'\n              .type_tag = "{binding.type_tag}",'
         if binding.type_tag is not None
@@ -395,7 +400,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{allow_destination_sink}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

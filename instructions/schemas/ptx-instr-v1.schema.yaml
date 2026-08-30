@@ -751,6 +751,11 @@ $defs:
           - equal_or_wider
         default: same_width
 
+      allow_destination_sink:
+        description: "Whether '_' is accepted as the data half of a shfl_dest pair."
+        type: boolean
+        default: false
+
       state_space:
         description: >
           Allowed operand state space, state spaces, or an expression derived

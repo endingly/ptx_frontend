@@ -672,6 +672,9 @@ TEST(SelectVariantMatch, SelectsMatchSyncFormsAndRejectsInvalidOnes) {
   EXPECT_FALSE(resolve<Match>(parse_instruction(
       "match.any.sync.b32 %b0|%p0, %b1, 0xffffffff;"))
                    .has_value());
+  EXPECT_FALSE(resolve<Match>(parse_instruction(
+      "match.all.sync.b32 _|%p0, %b1, 0xffffffff;"))
+                   .has_value());
 }
 
 TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
@@ -714,6 +717,25 @@ TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
        }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Redux>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
+  for (const std::string_view source : {
+           "elect.sync %lane|%p, 0xffffffff;",
+           "elect.sync _|%p, 0xffffffff;",
+       }) {
+    SCOPED_TRACE(source);
+    const auto selected = selectVariant<Elect>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, Elect::VariantType::Sync);
+  }
+  for (const std::string_view source : {
+           "elect %lane|%p, 0xffffffff;",
+           "elect.sync.abs %lane|%p, 0xffffffff;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Elect>(parse_instruction(source)).has_value());
   }
 }
 

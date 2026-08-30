@@ -1031,3 +1031,31 @@ instructions:
           - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         operands: $redux_sync
+
+  - opcode: elect
+    section: "9.7.14.15"
+    doc: >
+      Warp leader election. The frontend validates local operand forms and
+      target availability only; it does not prove runtime membermask
+      participation or election behavior.
+    syntax: "elect.sync d|p, membermask"
+
+    variants:
+      - name: elect_sync
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        operands:
+          - name: result
+            kind: shfl_dest
+            role: dst
+            access: write
+            type: u32
+            register_width: same_width
+            allow_destination_sink: true
+          - name: membermask
+            kind: reg_or_imm
+            role: src
+            access: read
+            type: u32
+            register_width: exact

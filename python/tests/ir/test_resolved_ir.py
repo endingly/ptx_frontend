@@ -1024,6 +1024,40 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 [ResolvedRegisterWidthPolicy.EXACT] * 3,
             )
 
+    def test_elect_sync_model_allows_only_its_destination_sink(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        elect = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "elect"
+        )
+        resolved = from_instruction_spec(elect)
+        self.assertEqual(resolved.cpp_name, "Elect")
+        self.assertEqual([variant.cpp_name for variant in resolved.variants], ["Sync"])
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("result", "WithLocs<ResolvedShflSyncDestination>"),
+                ("membermask", "WithLocs<RegOrImm>"),
+            ],
+        )
+        result, membermask = variant.operand_layouts[0].bindings
+        self.assertEqual(result.allowed_shapes, (ResolvedOperandShape.SHFL_DESTINATION,))
+        self.assertEqual(result.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+        self.assertTrue(result.allow_destination_sink)
+        self.assertEqual(membermask.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertFalse(membermask.allow_destination_sink)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_descriptor.gen.cpp"
+            generate_resolved_descriptor_source(database, output_path=output_path)
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn('.allow_destination_sink = true,', source)
+
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2552,7 +2586,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::ShflDestination,", source
         )
-        self.assertIn("selected.dst.value.data.declared_type", source)
+        self.assertIn("selected.dst.value.data\n                      ?", source)
 
     def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
         database = load_codegen_database(

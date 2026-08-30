@@ -414,6 +414,7 @@ class ResolvedOperandBinding:
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
+    allow_destination_sink: bool = False
     type_tag: str | None = None
     minimum_elements: int | None = None
     maximum_elements: int | None = None
@@ -968,6 +969,7 @@ def _build_operand_layout(
                     operand.vector_type_policy.value.capitalize()
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
+                allow_destination_sink=operand.allow_destination_sink,
                 type_tag=operand.type_tag,
                 minimum_elements=operand.minimum_elements,
                 maximum_elements=operand.maximum_elements,

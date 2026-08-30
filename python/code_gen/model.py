@@ -200,6 +200,7 @@ class OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink: bool = False
+    allow_destination_sink: bool = False
     type_tag: str | None = None
     minimum_elements: int | None = None
     maximum_elements: int | None = None

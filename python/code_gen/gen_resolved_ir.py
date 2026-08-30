@@ -466,9 +466,7 @@ def _emit_check_operand_dispatch(
     checker_variant_expr = (
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
-    cross_rule_checks = _emit_cross_rule_checks(
-        variant, checker_variant_expr, range_before_multiple=False
-    )
+    cross_rule_checks = _emit_cross_rule_checks(variant, checker_variant_expr)
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -557,7 +555,6 @@ def _emit_check_multi_layout_lambda(
     cross_rule_checks = _emit_cross_rule_checks(
         variant,
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
-        range_before_multiple=True,
     )
     if cross_rule_checks:
         cross_rule_return = f"""
@@ -599,10 +596,8 @@ def _emit_check_multi_layout_lambda(
 def _emit_cross_rule_checks(
     variant: ResolvedVariant,
     checker_variant_expr: str,
-    *,
-    range_before_multiple: bool,
 ) -> str:
-    """Emit a variant's cross-rule checks in the caller's established order."""
+    """Emit a variant's cross-rule checks in a fixed order."""
 
     checks = ""
     if variant.memory_consistency is not None:
@@ -637,12 +632,8 @@ def _emit_cross_rule_checks(
                                  immediate_value_check.error().end());
             }}
 """
-    immediate_checks = (
-        ("range", "multiple") if range_before_multiple else ("multiple", "range")
-    )
-    for kind in immediate_checks:
-        if kind == "range" and variant.immediate_ranges:
-            checks += f"""            for (const auto& immediate_range : {checker_variant_expr}.immediate_ranges) {{
+    if variant.immediate_ranges:
+        checks += f"""            for (const auto& immediate_range : {checker_variant_expr}.immediate_ranges) {{
               const auto immediate_range_check = check_immediate_range(
                   immediate_range, operands, context);
               if (!immediate_range_check) {{
@@ -651,8 +642,8 @@ def _emit_cross_rule_checks(
               }}
             }}
 """
-        if kind == "multiple" and variant.immediate_multiple_of is not None:
-            checks += f"""            const auto immediate_multiple_of_check = check_immediate_multiple_of(
+    if variant.immediate_multiple_of is not None:
+        checks += f"""            const auto immediate_multiple_of_check = check_immediate_multiple_of(
                 {checker_variant_expr}.immediate_multiple_of, operands, context);
             if (!immediate_multiple_of_check) {{
               diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),

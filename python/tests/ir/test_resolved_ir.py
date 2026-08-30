@@ -1900,10 +1900,6 @@ class ResolvedIrBuildTest(unittest.TestCase):
         setmaxnreg_check = source[start:source.index("static_assert", start)]
         self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
         self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
-        self.assertLess(
-            setmaxnreg_check.index("check_immediate_multiple_of("),
-            setmaxnreg_check.index("check_immediate_range("),
-        )
         self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
         self.assertIn(".any_of_count = 4", descriptor)
         self.assertIn('.required_family = "sm_100f",', descriptor)

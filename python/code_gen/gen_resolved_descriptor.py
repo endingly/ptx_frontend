@@ -347,6 +347,11 @@ def _emit_operand_binding_descriptor(
         if binding.allow_destination_sink
         else ""
     )
+    allow_function_symbol = (
+        "\n              .allow_function_symbol = true,"
+        if binding.allow_function_symbol
+        else ""
+    )
     type_tag = (
         f'\n              .type_tag = "{binding.type_tag}",'
         if binding.type_tag is not None
@@ -400,7 +405,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{allow_destination_sink}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{allow_destination_sink}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

@@ -141,6 +141,9 @@ OPERAND_SYNTAX_SHAPES = {
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
     ),
+    "cluster_address": (
+        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS
+    ),
     "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
     "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred": OperandSyntaxShape.IDENTIFIER_REF,

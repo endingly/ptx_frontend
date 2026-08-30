@@ -1317,6 +1317,27 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
               }}()"""
     if field.value_cpp_type == "ResolvedMovSource":
         return f"""              [&]() -> OperandView {{
+                const auto state_space_from_symbol =
+                    [](const ResolvedSymbolRef* symbol)
+                        -> std::optional<MemoryStateSpace> {{
+                  if (symbol == nullptr || !symbol->address_state_space)
+                    return std::nullopt;
+                  switch (*symbol->address_state_space) {{
+                    case syntax_ast::AstStateSpace::Global:
+                      return MemoryStateSpace::Global;
+                    case syntax_ast::AstStateSpace::Shared:
+                      return MemoryStateSpace::Shared;
+                    case syntax_ast::AstStateSpace::Local:
+                      return MemoryStateSpace::Local;
+                    case syntax_ast::AstStateSpace::Parameter:
+                      return MemoryStateSpace::Parameter;
+                    case syntax_ast::AstStateSpace::Constant:
+                      return MemoryStateSpace::Constant;
+                    case syntax_ast::AstStateSpace::Register:
+                      return std::nullopt;
+                  }}
+                  return std::nullopt;
+                }};
                 if (const auto* immediate =
                         std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
                   return OperandView{{
@@ -1375,6 +1396,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
                       .immediate_type = std::nullopt,
                       .register_type = std::nullopt,
+                      .address_state_space = state_space_from_symbol(symbol),
                       .value_availability = symbol->address_availability,
                       .value_name = symbol->spelling,
                       .locations = {object_name}.{field.name}.locs,
@@ -1392,6 +1414,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
                     .immediate_type = std::nullopt,
                     .register_type = std::nullopt,
+                    .address_state_space = state_space_from_symbol(symbol),
                     .value_availability =
                         symbol == nullptr ? std::nullopt
                                           : symbol->address_availability,

@@ -42,6 +42,51 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  mapa_shared_cluster:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: src
+      kind: cluster_address
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+      state_space: [shared]
+    - name: rank
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mapa_generic:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: rank
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
   mov_pred:
     - name: dst
       kind: pred
@@ -861,6 +906,32 @@ instructions:
         examples:
           - ptx: "mov.pred %p0, %p1;"
             valid: true
+
+  - opcode: mapa
+    section: "9.7.9.24"
+    doc: >
+      Map a shared or generic shared address to a cluster CTA rank. The frontend
+      validates local forms and target availability only; it does not model
+      cluster address validity or runtime mapping behavior.
+    syntax: "mapa{.shared::cluster}.{u32|u64} d, a, b"
+
+    variants:
+      - name: mapa_shared_cluster
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: ".shared::cluster"}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64]}
+        operands: $mapa_shared_cluster
+
+      - name: mapa_generic
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64]}
+        operands: $mapa_generic
 
   - opcode: ld
     section: "9.7.9.8"

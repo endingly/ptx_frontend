@@ -1962,6 +1962,7 @@ resolve_tensor_coordinate(
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
+                   bool allow_function_symbol,
                    const ResolveContext* context) {
   if (type == ScalarType::B128) {
     return std::unexpected(ResolveDiagnostic{
@@ -2096,6 +2097,12 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
     if (lookup) {
       const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
       if (symbol.kind == binding::SymbolKind::Function) {
+        if (!allow_function_symbol) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = identifier->syntax.range,
+              .message = "This operand does not accept a function symbol.",
+          });
+        }
         if (auto rejected = reject_shape(checker::OperandShape::Symbol,
                                          identifier->syntax.range)) {
           return std::unexpected(std::move(*rejected));
@@ -2409,7 +2416,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!type)
         return std::unexpected(type.error());
       auto value =
-          resolve_mov_source(operand, *type, binding.allowed_shapes, context);
+          resolve_mov_source(operand, *type, binding.allowed_shapes,
+                             binding.allow_function_symbol, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

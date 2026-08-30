@@ -641,6 +641,7 @@ $defs:
       - shfl_dest
       - pred_pair
       - mov_scalar_src
+      - cluster_address
       - vector_reg
       - vector_sreg
       - reg_vector

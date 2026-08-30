@@ -194,6 +194,7 @@ domains:
       shfl_dest: ResolvedShflSyncDestination
       pred_pair: ResolvedPredicatePair
       mov_scalar_src: ResolvedMovSource
+      cluster_address: ResolvedMovSource
       vector_reg: ResolvedVectorRegisterRef
       vector_sreg: ResolvedVectorSpecialRegisterRef
       pred: ResolvedPredicate

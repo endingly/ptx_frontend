@@ -1370,6 +1370,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 modifier_field_id="type",
             ),
         )
+        self.assertTrue(source_binding.allow_function_symbol)
         self.assertEqual(
             variant.operand_layouts[1].bindings[1].allowed_vector_arities,
             (2, 4),
@@ -1440,6 +1441,57 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     scalar_type="pred",
                 ),
             )
+
+    def test_mapa_uses_cluster_address_without_function_symbols(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mapa = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mapa"
+        )
+        instruction = from_instruction_spec(mapa)
+
+        self.assertEqual(instruction.cpp_name, "Mapa")
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            ["SharedCluster", "Generic"],
+        )
+        shared, generic = instruction.variants
+        self.assertEqual(
+            dict(shared.availability),
+            {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in shared.fields],
+            [
+                ("shared_cluster", "bool"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedMovSource>"),
+                ("rank", "WithLocs<RegOrImm>"),
+            ],
+        )
+        shared_source = shared.operand_layouts[0].bindings[1]
+        self.assertEqual(
+            shared_source.allowed_shapes,
+            (
+                ResolvedOperandShape.REGISTER,
+                ResolvedOperandShape.SYMBOL,
+                ResolvedOperandShape.ADDRESS,
+            ),
+        )
+        self.assertFalse(shared_source.allow_function_symbol)
+        self.assertEqual(
+            [value.value for value in shared_source.allowed_address_state_spaces],
+            ["shared"],
+        )
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in generic.operand_layouts[0].bindings],
+            [None, None, "u32"],
+        )
 
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(
@@ -2748,11 +2800,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("WithLocs<ComparisonOperator> comparison;", source)
         self.assertIn("WithLocs<BooleanOperator> boolean;", source)
         self.assertIn("struct Mov {", source)
+        self.assertIn("struct Mapa {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("struct Ldu {", source)
         self.assertIn("struct Prefetch {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
-        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 1)
+        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 2)
+        mov = source[source.index("struct Mov {"):source.index("struct Mapa {")]
+        mapa = source[source.index("struct Mapa {"):source.index("struct Ld {")]
+        self.assertIn("WithLocs<ResolvedMovSource> src;", mov)
+        self.assertIn("WithLocs<ResolvedMovSource> src;", mapa)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",
@@ -2966,6 +3023,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".value_availability = function->address_availability", source
         )
+        self.assertIn("state_space_from_symbol(symbol)", source)
         self.assertIn("CheckResult check<Mov>(", source)
         self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
         self.assertIn("std::expected<Ldu, ResolveDiagnostic>", source)

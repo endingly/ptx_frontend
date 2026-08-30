@@ -297,6 +297,36 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [OperandSyntaxShape.IDENTIFIER_REF, OperandSyntaxShape.IDENTIFIER_REF],
         )
 
+    def test_mapa_cluster_source_layout_allows_register_symbol_or_address_forms(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mapa = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mapa"
+        )
+        descriptor = from_InstructionSpec(mapa)
+
+        shared_layout = descriptor.variants[0].operand_layouts[0]
+        self.assertEqual(
+            [slot.allowed_syntax_shapes for slot in shared_layout.slots],
+            [
+                OperandSyntaxShape.IDENTIFIER_REF,
+                OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS,
+                OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+            ],
+        )
+        generic_layout = descriptor.variants[1].operand_layouts[0]
+        self.assertEqual(
+            [slot.allowed_syntax_shapes for slot in generic_layout.slots],
+            [
+                OperandSyntaxShape.IDENTIFIER_REF,
+                OperandSyntaxShape.IDENTIFIER_REF,
+                OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+            ],
+        )
+
     def test_ld_layout_requires_address_syntax(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -798,6 +828,13 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [("global", {})],
         )
         self.assertIsNone(scalar.state_space_expression)
+
+        cluster_address = normalize_state_space("shared", kind="cluster_address")
+        self.assertEqual(
+            [(entry.value, entry.availability)
+             for entry in cluster_address.state_space_values],
+            [("shared", {})],
+        )
 
         values = normalize_state_space(
             [

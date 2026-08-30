@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 65)
+        self.assertEqual(len(opcodes), 66)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 165)
+        self.assertEqual(len(slices), 167)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -289,6 +289,26 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             {
                 slice_id: selectors[slice_id]
                 for slice_id in (
+                    "mapa-mapa-shared-cluster-default",
+                    "mapa-mapa-generic-default",
+                )
+            },
+            {
+                "mapa-mapa-shared-cluster-default": {
+                    "topology": "cluster_address_mapping", "types": ["u32", "u64"],
+                    "shape": "register_or_shared_symbol_address",
+                    "modifiers": ["shared_cluster"],
+                },
+                "mapa-mapa-generic-default": {
+                    "topology": "generic_address_mapping", "types": ["u32", "u64"],
+                    "shape": "register",
+                },
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
                     "redux-redux-sync-add-default",
                     "redux-redux-sync-min-default",
                     "redux-redux-sync-max-default",
@@ -366,6 +386,10 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("mov_scalar", "unpack"),
                 ("mov_v4_u32", "default"),
                 ("mov_pred", "default"),
+            },
+            "mapa": {
+                ("mapa_shared_cluster", "default"),
+                ("mapa_generic", "default"),
             },
             "bar": {
                 ("bar_sync", "immediate_barrier"),

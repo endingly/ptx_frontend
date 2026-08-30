@@ -182,6 +182,11 @@ opcodes:
   - {"id":"mov-mov-scalar-unpack","section":"9.7.9","spec_variant":"mov_scalar","operand_layout":"unpack","selector":{"topology":"move","types":["b16","u16","s16","b32","u32","s32","f32","b64","u64","s64","f64","b128"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"mov-mov-v4-u32-default","section":"9.7.9","spec_variant":"mov_v4_u32","operand_layout":"default","selector":{"topology":"move","types":["u32"],"shape":"vector","modifiers":["v4"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"mov-mov-pred-default","section":"9.7.9","spec_variant":"mov_pred","operand_layout":"default","selector":{"topology":"move","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: mapa
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"mapa-mapa-shared-cluster-default","section":"9.7.9.24","spec_variant":"mapa_shared_cluster","operand_layout":"default","selector":{"topology":"cluster_address_mapping","types":["u32","u64"],"shape":"register_or_shared_symbol_address","modifiers":["shared_cluster"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mapa-mapa-generic-default","section":"9.7.9.24","spec_variant":"mapa_generic","operand_layout":"default","selector":{"topology":"generic_address_mapping","types":["u32","u64"],"shape":"register"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: ld
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

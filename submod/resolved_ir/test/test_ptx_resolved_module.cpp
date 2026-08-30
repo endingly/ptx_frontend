@@ -2466,6 +2466,110 @@ TEST(ResolvedModule, ResolvesAndChecksGriddepcontrolActions) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 4 .u32 shared_value;
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<5>;
+  .reg .u64 %rd<3>;
+  mapa.shared::cluster.u32 %r0, %r1, 0;
+  mapa.shared::cluster.u32 %r0, shared_value, %r2;
+  mapa.shared::cluster.u32 %r0, shared_value+4, 0;
+  mapa.shared::cluster.u64 %rd0, %rd1, %r2;
+  mapa.u32 %r3, %r4, 0;
+  mapa.u64 %rd0, %rd1, %r2;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const auto& shared_register =
+      std::get<Mapa::SharedCluster>(std::get<Mapa>(body[0]).variant);
+  const auto& shared_symbol =
+      std::get<Mapa::SharedCluster>(std::get<Mapa>(body[1]).variant);
+  const auto& shared_address =
+      std::get<Mapa::SharedCluster>(std::get<Mapa>(body[2]).variant);
+  const auto& generic = std::get<Mapa::Generic>(std::get<Mapa>(body[4]).variant);
+  EXPECT_TRUE(shared_register.shared_cluster);
+  EXPECT_EQ(shared_register.type.value, ScalarType::U32);
+  EXPECT_EQ(shared_register.dst.value.declared_type, ScalarType::U32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(shared_register.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedSymbolRef>(shared_symbol.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedAddress>(shared_address.src.value));
+  EXPECT_EQ(generic.type.value, ScalarType::U32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shared_register.rank.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(shared_symbol.rank.value));
+
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(checker::check(std::get<Mapa>(instruction), supported).has_value());
+  }
+  for (const checker::Context unavailable : {
+           checker::Context{.target = {.ptx_version = {7, 7},
+                                      .sm_version = 90,
+                                      .capabilities = cluster_capabilities},
+                            .instruction_range = ast.range},
+           checker::Context{.target = {.ptx_version = {7, 8},
+                                      .sm_version = 89,
+                                      .capabilities = cluster_capabilities},
+                            .instruction_range = ast.range},
+           checker::Context{.target = {.ptx_version = {7, 8}, .sm_version = 90},
+                            .instruction_range = ast.range},
+       }) {
+    EXPECT_FALSE(
+        checker::check(std::get<Mapa>(body.front()), unavailable).has_value());
+  }
+
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  mapa.shared::cluster.u32 %r0, global_value, 0;
+  mapa.shared::cluster.u32 %r0, global_value+4, 0;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_space.has_value()) << wrong_space.error().front().message;
+  for (const auto& instruction : wrong_space->functions.front().body) {
+    const auto checked = checker::check(std::get<Mapa>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  }
+
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .u32 %r<2>; mapa.shared::cluster.u32 %r0, 0, 0; }",
+           ".entry kernel() { .reg .u32 %r<2>; mapa.shared::cluster.u32 %r0, %tid.x, 0; }",
+           ".global .u32 value; .entry kernel() { .reg .u32 %r<2>; mapa.u32 %r0, value, 0; }",
+           ".entry kernel() { .reg .u32 %r<2>; mapa.u32 %r0, %r1+4, 0; }",
+           ".func device() {} .entry kernel() { .reg .u32 %r<2>; mapa.shared::cluster.u32 %r0, device, 0; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+
+  const auto bad_widths = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r<2>;
+  .reg .u64 %rd<3>;
+  mapa.u32 %rd0, %r0, %rd1;
+}
+)ptx"));
+  ASSERT_TRUE(bad_widths.has_value()) << bad_widths.error().front().message;
+  const auto bad_check = checker::check(
+      std::get<Mapa>(bad_widths->functions.front().body.front()), supported);
+  ASSERT_FALSE(bad_check.has_value());
+  EXPECT_EQ(bad_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
 TEST(ResolvedModule, ResolvesAndChecksElectSyncSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

@@ -250,10 +250,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         or state_space_expression is not None
         or parameter_constraint is not None
     )
-    if has_address_constraint and raw["kind"] != "addr":
+    if has_address_constraint and raw["kind"] not in {"addr", "cluster_address"}:
         raise ValueError(
             f"operand {raw['name']!r}: address constraints are only valid for "
-            "kind 'addr'"
+            "kind 'addr' or 'cluster_address'"
         )
     if parameter_constraint is not None and state_space_expression is None:
         raise ValueError(

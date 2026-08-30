@@ -744,6 +744,33 @@ TEST(SelectVariantGriddepcontrol, SelectsActionsAndRejectsInvalidForms) {
       parse_instruction("griddepcontrol.wait %r0;")).has_value());
 }
 
+TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mapa::VariantType expected) {
+    const auto selected = selectVariant<Mapa>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mapa.shared::cluster.u32 %r0, %r1, 0;",
+                 Mapa::VariantType::SharedCluster);
+  expect_variant("mapa.shared::cluster.u64 %rd0, shared_value+4, %r0;",
+                 Mapa::VariantType::SharedCluster);
+  expect_variant("mapa.u32 %r0, %r1, 0;", Mapa::VariantType::Generic);
+  expect_variant("mapa.u64 %rd0, %rd1, %r0;", Mapa::VariantType::Generic);
+
+  for (const std::string_view source : {
+           "mapa.shared::cluster %r0, %r1, 0;",
+           "mapa.u32.shared::cluster %r0, %r1, 0;",
+           "mapa.shared::cluster.u32.u64 %r0, %r1, 0;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Mapa>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Mapa>(
+      parse_instruction("mapa.shared::cluster.u32 %r0, %r1;")).has_value());
+}
+
 TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
   for (const std::string_view source : {
            "elect.sync %lane|%p, 0xffffffff;",

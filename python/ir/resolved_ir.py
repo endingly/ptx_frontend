@@ -415,6 +415,7 @@ class ResolvedOperandBinding:
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
     allow_destination_sink: bool = False
+    allow_function_symbol: bool = False
     type_tag: str | None = None
     minimum_elements: int | None = None
     maximum_elements: int | None = None
@@ -454,6 +455,11 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
         ResolvedOperandShape.SPECIAL_REGISTER,
+        ResolvedOperandShape.SYMBOL,
+        ResolvedOperandShape.ADDRESS,
+    ),
+    "cluster_address": (
+        ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.SYMBOL,
         ResolvedOperandShape.ADDRESS,
     ),
@@ -970,6 +976,7 @@ def _build_operand_layout(
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
                 allow_destination_sink=operand.allow_destination_sink,
+                allow_function_symbol=operand.kind == "mov_scalar_src",
                 type_tag=operand.type_tag,
                 minimum_elements=operand.minimum_elements,
                 maximum_elements=operand.maximum_elements,

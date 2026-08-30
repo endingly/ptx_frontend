@@ -319,6 +319,66 @@ layout name 是稳定语义 ID，不是 C++ layout directive。它按声明顺�
 `.sync` variant 内使用两个 layout；而 `bar.sync` 与 `bar.cta.sync` 的 modifier 组合
 不同，应使用两个 variant。
 
+## Immediate operand constraint
+
+variant-level `constraints` 可以对具名 `kind: imm` operand 声明可执行的整数规则：
+
+```yaml
+constraints:
+  - {kind: immediate_value, operand: mode, values: [4, 8, 16]}
+  - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+  - {kind: immediate_multiple_of, operand: count, divisor: 8}
+```
+
+每个 variant 最多一个 `immediate_value`，它是非空且无重复的 allowlist。每个 operand
+最多一个 `immediate_range`；`minimum` 为 inclusive，下界可选的 `maximum` 也为
+inclusive，省略 `maximum` 表示没有上界。每个 variant 最多一个
+`immediate_multiple_of` divisor rule。当具名 operand 的语义合理时，这些 descriptor
+可以组合使用。
+
+所有配置值使用生成代码的 `uint64_t` 域：YAML 中实际的整数必须落在
+`0..18446744073709551615`（`2^64 - 1`）。负数、Boolean、float 或其他非整数，以及
+超出该上限的值都会被拒绝。normalizer 会在去重前验证每个
+`immediate_value.values[index]`，并以同一规则验证 `minimum`、出现时的 `maximum` 和
+`divisor`；还会拒绝 `maximum < minimum`，并要求 `divisor > 0`。
+
+operand 引用刻意是 variant-wide，而不是 layout-local。对三种 constraint kind 中的每一种，
+该具名 operand 都必须存在于此 variant 的**每一个** operand layout，且在每个 layout 中
+都必须是 `kind: imm`。哪怕只有一个具名 layout 缺少该 operand，或写成
+`reg`/`reg_or_imm`，normalization 也会报错，并指明 variant、constraint kind、operand 与
+layout。不得用 layout-local constraint DSL 或“runtime 缺 operand 就跳过”的规则绕过它。
+未来 instruction 若确实需要 layout-specific rule，必须新增经过明确设计的 contract；不能
+放宽这个不变量。
+
+当前冻结的 `setmaxnreg.inc.sync.aligned.u32` form 展示了 range 与 divisibility rule 的组合：
+
+```yaml
+operands:
+  - {name: count, kind: imm, role: src, access: read, type: u32}
+constraints:
+  - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+  - {kind: immediate_multiple_of, operand: count, divisor: 8}
+```
+
+因此 `192` 合法，`23`、`257` 和 `25` 会被拒绝。`bfe.u32` 与 `bfi.b32` 都使用两个
+独立的 inclusive range：`offset` 和 `width` 均为 `0..255`；两个 operand 在各自唯一的
+layout 中都是 immediate operand。
+
+resolver 中，integer immediate 携带 scalar type、受 operand width 限制的 raw bits，以及
+源端 signed marker。例如 signed `-1` 的 raw bits 是该 operand width 下的 two's-complement，
+同时保留 `is_negative`；checker rule 运行前不会把它转换成抽象 signed integer。range 和
+multiple-of 会先拒绝 negative marker，再比较或取余。exact-value 则有意比较 raw bits，
+所以 allowlist 是 bit-value contract。floating immediate 解析为 IEEE raw bits：decimal form
+要求 `f32` 或 `f64`，`0f...`/`0d...` 分别是 unsigned 32-/64-bit bit-pattern literal，
+必须恰好使用 `f32`/`f64`，且不能带符号。因此这些 constraint 是 integer-domain rule；不要
+用看似数值的 bounds 表达 floating-point ordering。
+
+normalization diagnostics 会给出 variant、constraint kind、精确 field（包括
+`values[index]`）以及非法 value。runtime 中 value/range/divisibility 不满足会产生定位到
+immediate operand 的 `ImmediateValueMismatch`；若生成后的 descriptor 不可能地引用了缺失或
+非-immediate operand，则产生定位到整条 instruction 的 `RuleViolation`。这样可以区分
+configuration error 与 source-program error。
+
 ## 完整示例：bar
 
 ```yaml

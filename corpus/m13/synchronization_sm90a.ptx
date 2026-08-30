@@ -1,0 +1,38 @@
+.version 9.3
+.target sm_90a
+.address_size 64
+
+.shared .align 8 .b64 barrier[2];
+
+.entry m13_synchronization_sm90a() {
+  .reg .pred %p<2>;
+  .reg .b8 %report;
+  .reg .b32 %b<2>;
+  .reg .u32 %r<2>;
+  .reg .b64 %state;
+
+  bar.warp.sync 0xffffffff;
+  barrier.cluster.arrive.release.aligned;
+  barrier.cluster.wait.acquire.aligned;
+  match.all.sync.b32 %b0|%p0, %b1, 0xffffffff;
+  redux.sync.add.u32 %r0, %r1, 0xffffffff;
+  elect.sync %r0|%p1, 0xffffffff;
+  mapa.shared::cluster.u32 %r0, %r1, 0;
+  getctarank.shared::cluster.u32 %r0, %r1;
+  griddepcontrol.launch_dependents;
+  mbarrier.init.b64 [barrier], 1;
+  mbarrier.inval.shared::cta.b64 [barrier];
+  mbarrier.expect_tx.shared::cluster.b64 [barrier], 1;
+  mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64 [barrier], 1;
+  mbarrier.arrive.shared::cluster.b64 _, [barrier], 1;
+  mbarrier.arrive_drop.expect_tx.release.cluster.shared::cluster.b64 _, [barrier], 1;
+  cp.async.mbarrier.arrive.shared::cta.b64 [barrier];
+  mbarrier.test_wait.b64 %p0, [barrier], %state;
+  mbarrier.try_wait.parity.shared::cta.b64 %p0, [barrier], 0, 1;
+  mbarrier.test_wait.phase_type::primary.b64 %p0|%p1, %report, [barrier], %state;
+  mbarrier.pending_count.layout::v0.b64 %r0, %state;
+  mbarrier.check_layout.layout::v1.shared::cta.b64 %p0, [barrier];
+  fence.proxy.async.shared::cluster;
+  fence.proxy.async::generic.acquire.sync_restrict::shared::cluster.cluster;
+  ret;
+}

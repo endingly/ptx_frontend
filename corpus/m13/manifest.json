@@ -1,0 +1,68 @@
+{
+  "schema": "ptx_frontend.m13_synchronization/v1",
+  "status": {
+    "frontend": "resolved/checked",
+    "simulator": "not-run; runtime synchronization semantics are excluded"
+  },
+  "cases": [
+    {
+      "file": "synchronization_sm90a.ptx",
+      "target": "sm_90a",
+      "entry": "m13_synchronization_sm90a",
+      "required_forms": [
+        "bar.warp.sync", "barrier.cluster.arrive", "barrier.cluster.wait",
+        "match.all.sync.b32", "redux.sync.add.u32", "elect.sync",
+        "mapa.shared::cluster.u32", "getctarank.shared::cluster.u32",
+        "griddepcontrol.launch_dependents", "mbarrier.init.b64",
+        "mbarrier.inval.shared::cta.b64", "mbarrier.expect_tx.shared::cluster.b64",
+        "mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64",
+        "mbarrier.arrive.shared::cluster.b64", "mbarrier.arrive_drop.expect_tx.release.cluster.shared::cluster.b64",
+        "cp.async.mbarrier.arrive.shared::cta.b64", "mbarrier.test_wait.b64",
+        "mbarrier.try_wait.parity.shared::cta.b64", "mbarrier.test_wait.phase_type::primary.b64",
+        "mbarrier.pending_count.layout::v0.b64", "mbarrier.check_layout.layout::v1.shared::cta.b64",
+        "fence.proxy.async.shared::cluster", "fence.proxy.async::generic.acquire.sync_restrict::shared::cluster.cluster"
+      ],
+      "simulator_status": "not-run"
+    },
+    {
+      "file": "synchronization_sm100.ptx",
+      "target": "sm_100",
+      "entry": "m13_synchronization_sm100",
+      "required_forms": [
+        "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128",
+        "clusterlaunchcontrol.query_cancel.is_canceled.pred.b128",
+        "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128",
+        "clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128",
+        "clusterlaunchcontrol.query_cancel.get_first_ctaid::y.b32.b128",
+        "clusterlaunchcontrol.query_cancel.get_first_ctaid::z.b32.b128"
+      ],
+      "simulator_status": "not-run"
+    }
+  ],
+  "required_slices": {
+    "M13-I01": {"forms": ["bar.warp.sync"], "excludes": ["runtime convergence proof"]},
+    "M13-I02": {"forms": ["barrier.cluster.arrive", "barrier.cluster.wait"], "excludes": ["cluster barrier runtime state"]},
+    "M13-I03": {"forms": ["match.all.sync.b32"], "excludes": ["runtime membermask participation"]},
+    "M13-I04": {"forms": ["redux.sync.add.u32"], "excludes": ["runtime reduction"]},
+    "M13-I05": {"forms": ["elect.sync"], "excludes": ["runtime election"]},
+    "M13-I06": {"forms": ["mapa.shared::cluster.u32"], "excludes": ["remote-address runtime use"]},
+    "M13-I07": {"forms": ["getctarank.shared::cluster.u32"], "excludes": ["cluster topology runtime query"]},
+    "M13-I08": {"forms": ["griddepcontrol.launch_dependents"], "excludes": ["grid dependency runtime protocol"]},
+    "M13-I09": {"forms": ["mbarrier.test_wait.b64"], "excludes": ["barrier lifecycle provenance"]},
+    "M13-I10": {"forms": ["mbarrier.init.b64"], "excludes": ["barrier lifecycle"]},
+    "M13-I11": {"forms": ["mbarrier.inval.shared::cta.b64"], "excludes": ["barrier lifecycle"]},
+    "M13-I12": {"forms": ["mbarrier.expect_tx.shared::cluster.b64"], "excludes": ["transaction runtime accounting"]},
+    "M13-I13": {"forms": ["mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64"], "excludes": ["transaction runtime accounting"]},
+    "M13-I14": {"forms": ["mbarrier.arrive.shared::cluster.b64"], "excludes": ["arrival lifecycle"]},
+    "M13-I15": {"forms": ["mbarrier.arrive_drop.expect_tx.release.cluster.shared::cluster.b64"], "excludes": ["arrival lifecycle"]},
+    "M13-I16": {"forms": ["cp.async.mbarrier.arrive.shared::cta.b64"], "excludes": ["async completion runtime"]},
+    "M13-I17": {"forms": ["mbarrier.test_wait.b64"], "excludes": ["wait lifecycle"]},
+    "M13-I18": {"forms": ["mbarrier.try_wait.parity.shared::cta.b64"], "excludes": ["wait lifecycle"]},
+    "M13-I19": {"forms": ["mbarrier.test_wait.phase_type::primary.b64"], "excludes": ["report runtime values"]},
+    "M13-I20": {"forms": ["mbarrier.pending_count.layout::v0.b64"], "excludes": ["pending-count runtime value"]},
+    "M13-I21": {"forms": ["mbarrier.check_layout.layout::v1.shared::cta.b64"], "excludes": ["layout runtime predicate"]},
+    "M13-I22": {"forms": ["fence.proxy.async.shared::cluster", "fence.proxy.async::generic.acquire.sync_restrict::shared::cluster.cluster"], "excludes": ["runtime ordering"]},
+    "M13-I23": {"forms": ["clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128"], "excludes": ["runtime cancellation"]},
+    "M13-I24": {"forms": ["clusterlaunchcontrol.query_cancel.is_canceled.pred.b128", "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128", "clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128", "clusterlaunchcontrol.query_cancel.get_first_ctaid::y.b32.b128", "clusterlaunchcontrol.query_cancel.get_first_ctaid::z.b32.b128"], "excludes": ["runtime cancellation response contents"]}
+  }
+}

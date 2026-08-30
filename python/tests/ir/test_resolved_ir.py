@@ -391,7 +391,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_mul_merges_frozen_integer_and_floating_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.mul_instruction.variants],
-            ["RnF32", "LoU32", "HiU32", "WideU32"],
+            ["RnF32", "LoU32", "HiU32", "WideU32", "WideS32"],
         )
         self.assertEqual(
             [field.name for field in self.mul_instruction.variants[0].fields],
@@ -403,6 +403,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for binding in self.mul_instruction.variants[3].operand_layouts[0].bindings
             ],
             [ResolvedRegisterWidthPolicy.EXACT] * 3,
+        )
+        self.assertEqual(
+            [
+                binding.register_width_policy
+                for binding in self.mul_instruction.variants[4].operand_layouts[0].bindings
+            ],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
         )
 
     def test_mad_merges_frozen_integer_and_floating_ternary_layouts(self) -> None:
@@ -2468,6 +2475,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct RnF32 {", source)
         self.assertIn("struct HiU32 {", source)
         self.assertIn("struct WideU32 {", source)
+        self.assertIn("struct WideS32 {", source)
         self.assertIn("struct Mad {", source)
         self.assertIn("struct LoS32 {", source)
         self.assertIn("struct Fma {", source)

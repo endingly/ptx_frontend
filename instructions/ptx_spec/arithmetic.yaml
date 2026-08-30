@@ -82,6 +82,11 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: exact}
 
+  binary_wide_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s64}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32}
+
   ternary_arith:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
@@ -940,8 +945,8 @@ instructions:
 
   - opcode: mul
     section: "9.7.1.3"
-    doc: "Frozen low, high, and wide 32-bit unsigned integer multiply."
-    syntax: "mul.lo.u32 | mul.hi.u32 | mul.wide.u32 dst, src1, src2"
+    doc: "Frozen low, high, and wide 32-bit integer multiply."
+    syntax: "mul.lo.u32 | mul.hi.u32 | mul.wide.u32 | mul.wide.s32 dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: mul_lo_u32
@@ -968,6 +973,15 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "mul.wide.u32 %rd0, %r1, %r2;", valid: true}
+
+      - name: mul_wide_s32
+        operands: $binary_wide_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "mul.wide.s32 %rd0, %r1, %r2;", valid: true}
 
   - opcode: mad
     section: "9.7.1.4"

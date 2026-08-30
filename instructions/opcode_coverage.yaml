@@ -34,6 +34,7 @@ opcodes:
   - {"id":"mul-mul-lo-u32-default","section":"9.7.1.3","spec_variant":"mul_lo_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar","modifiers":["lo"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"mul-mul-hi-u32-default","section":"9.7.1.3","spec_variant":"mul_hi_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar","modifiers":["hi"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"mul-mul-wide-u32-default","section":"9.7.1.3","spec_variant":"mul_wide_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u64","u32"],"shape":"scalar","modifiers":["wide"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mul-mul-wide-s32-default","section":"9.7.1.3","spec_variant":"mul_wide_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s64","s32"],"shape":"scalar","modifiers":["wide"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: fma
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   m9_issues: [M9-I23]

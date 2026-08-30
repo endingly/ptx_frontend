@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 148)
+        self.assertEqual(len(slices), 149)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -155,7 +155,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(
             {slice_id: selectors[f"{slice_id}-default"] for slice_id in (
                 "mul-mul-hi-u32", "mul-mul-lo-u32", "mul-mul-rn-f32",
-                "mul-mul-wide-u32", "mad-mad-lo-s32", "mad-mad-rn-f32",
+                "mul-mul-wide-u32", "mul-mul-wide-s32", "mad-mad-lo-s32", "mad-mad-rn-f32",
                 "mad-mad-wide-u32", "fma-fma-rn-f16", "fma-fma-rn-f64",
                 "div-div-rn-f32", "div-div-rn-f64", "div-div-s32",
                 "rem-rem-s32", "rem-rem-u32",
@@ -195,6 +195,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "mul-mul-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
                 "mul-mul-hi-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar", "modifiers": ["hi"]},
                 "mul-mul-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},
+                "mul-mul-wide-s32": {"topology": "arithmetic", "types": ["s64", "s32"], "shape": "scalar", "modifiers": ["wide"]},
                 "mad-mad-lo-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar", "modifiers": ["lo"]},
                 "mad-mad-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
                 "mad-mad-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},

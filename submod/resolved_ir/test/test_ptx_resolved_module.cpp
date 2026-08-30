@@ -2817,6 +2817,29 @@ TEST(ResolvedModule, ChecksMulHiAndWideU32OperandTypes) {
   EXPECT_EQ(dst_checked.error().front().range, dst_variant.dst.locs.front());
 }
 
+TEST(ResolvedModule, ChecksMulWideS32OperandTypes) {
+  const checker::Context context{.target = {.ptx_version = {1, 0}, .sm_version = 0}};
+  const auto valid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b64 %rd0; .reg .b32 %r0, %r1; mul.wide.s32 %rd0, %r0, %r1; }
+)ptx"));
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+  const auto& instruction = std::get<Mul>(valid->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Mul::WideS32>(instruction.variant));
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  const auto invalid = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b64 %rd0; .reg .b64 %rd1; .reg .b32 %r1; mul.wide.s32 %rd0, %rd1, %r1; }
+)ptx"));
+  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+  const auto& invalid_instruction = std::get<Mul>(invalid->functions.front().body.front());
+  const auto& variant = std::get<Mul::WideS32>(invalid_instruction.variant);
+  const auto checked = checker::check(invalid_instruction, context);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+}
+
 TEST(ResolvedModule, ChecksMulRnF32OperandTypes) {
   const auto valid = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .f32 %dst, %src1, %src2; mul.rn.f32 %dst, %src1, %src2; }

@@ -49,18 +49,15 @@ class M12NaturalManifestTests(unittest.TestCase):
         self.assertIn("__global__ void natural_kernel", source)
         self.assertNotIn("asm", source)
 
-    def test_manifest_keeps_unsupported_compiler_spellings(self) -> None:
-        unsupported = [
-            instruction
-            for fixture in self.manifest["fixtures"]
-            for instruction in fixture["instructions"]
-            if instruction["outcome"] == "unsupported"
-        ]
-        self.assertTrue(unsupported)
-        self.assertTrue(
-            all(
-                instruction["first_blocker"] != "none" for instruction in unsupported
-            )
+    def test_manifest_keeps_only_the_setp_ge_s32_residual(self) -> None:
+        self.assertEqual(
+            {
+                (fixture["profile"], instruction["spelling"], instruction["first_blocker"])
+                for fixture in self.manifest["fixtures"]
+                for instruction in fixture["instructions"]
+                if instruction["outcome"] == "unsupported"
+            },
+            {(profile, "setp.ge.s32", "unsupported_variant") for profile in FIXTURES},
         )
 
 

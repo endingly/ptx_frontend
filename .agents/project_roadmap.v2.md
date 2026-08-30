@@ -45,7 +45,7 @@
 
 ```text
 M11  PTX 9.3 基线、完整 coverage ledger 和 target capability
-M12  common scalar/data-movement 的确定性 inline slice 与真实 compiler-emission evidence
+M12  真实 compiler kernel 的 common scalar/data-movement 闭环
 M13  cluster、proxy 与 mbarrier
 M14  tensor map、TMA 与 bulk/tensor async copy
 M15  warp-level matrix、sparse MMA 与 WMMA compatibility
@@ -503,7 +503,7 @@ evidence links
 | M9 | ✅ | simulator MVP frontend opcode coverage；C03 暂停 |
 | M10 | ✅ | modern instruction seed slices |
 | M11 | ✅ | PTX 9.3 基线、exhaustive ledger 与 target capability |
-| M12 | ✅ | deterministic common slice 与 compiler-emission evidence |
+| M12 | ✅ | common compiler-generated scalar/data-movement closure |
 | M13 | ⬜ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
 | M15 | ⬜ | warp-level matrix、sparse MMA 与 WMMA compatibility |
@@ -799,15 +799,15 @@ exhaustive machine-readable ledger
 
 ---
 
-# 10. M12：Common scalar/data-movement deterministic slice 与 compiler-emission evidence
+# 10. M12：Common compiler-generated scalar/data-movement closure
 
 ## 目标
 
 M12 已完成。现代 matrix kernel 仍依赖大量普通 scalar/control/address 指令。确定性 inline-PTX
 slice 在固定 SM80/SM90a/SM100 上验证 60 个 common forms，避免“能识别 WGMMA，却在前一条
-`lop3` 或 `prmt` 上失败”。另有同一组 profile 的普通 CUDA `natural_kernel` 编译输出作为真实
-compiler-emission evidence；它完整记录 emitted spelling、频率和 first blocker，而不把当前未支持
-的 ordinary scaffolding 误报为闭环。
+`lop3` 或 `prmt` 上失败”。同一组 profile 的普通 CUDA `natural_kernel` 编译输出是独立的真实
+compiler-emission evidence；其每个 module 均完整 parse/resolve/check，同时 manifest 记录 emitted
+spelling、频率和 first blocker。
 
 每个 opcode issue 只实现固定 corpus 所需的明确 slice；不追求完整 historical cross-product。
 
@@ -847,14 +847,14 @@ compiler-emission evidence；它完整记录 emitted spelling、频率和 first 
 | M12-I32 | ✅ | 独立 | 支持 `discard` common slice | address/size/target constraints |
 | M12-I33 | ✅ | 独立 | 支持 `setmaxnreg` common slice | action、immediate、warpgroup/target rule |
 | M12-C01 | ✅ | 耦合 | 统一 common scalar domain | compare/rounding/saturation/width/type diagnostic 无重复实现 |
-| M12-C02 | ✅ | 耦合 | 打通 deterministic common-kernel corpus | 三个 target profile 的 60 个 inline-PTX forms 均可 parse/resolve/check；natural lane 保留真实输出，不筛除未支持 forms |
-| M12-C03 | ✅ | 耦合 | 回写 exhaustive ledger | deterministic corpus frequency/support status 与 natural compiler-emission spelling/frequency/first blocker 同步；当前 natural residual blockers 为每个 profile 的 `mul.wide.s32` 与 `setp.ge.s32`（`unsupported_variant`） |
+| M12-C02 | ✅ | 耦合 | 打通 common compiler-kernel corpus | 三个 target profile 的 60 个 deterministic inline-PTX forms 与 ordinary CUDA scaffolding 均可 parse/resolve/check |
+| M12-C03 | ✅ | 耦合 | 回写 exhaustive ledger | deterministic corpus frequency/support status 与 natural compiler-emission spelling/frequency/first blocker 同步；三个 profile 的当前 first blocker 均为 `none` |
 
 ### 出口
 
-M12 已结束；deterministic common slice 不应阻断 Hopper/Blackwell kernel。自然 compiler-emission
-evidence 中仍有 `mul.wide.s32` 与 `setp.ge.s32` 的 `unsupported_variant` blocker，后续工作应以该
-manifest 为准而非将其视为已支持。
+M12 已结束；deterministic common slice 与 ordinary compiler scaffolding 不应阻断 Hopper/Blackwell
+kernel。其 coverage ledger 仍是 partial，simulator execution 仍不支持；后续工作继续以 manifest
+和 ledger 的明确边界为准。
 
 ---
 

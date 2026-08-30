@@ -85,6 +85,8 @@ using base::CacheOperator;
 using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
+using base::MbarrierLayout;
+using base::MbarrierPhaseType;
 namespace detail {
 
 /** Combine variant-specific lambdas into the visitor accepted by std::visit. */
@@ -272,6 +274,8 @@ struct FieldView {
   std::optional<MemoryStateSpace> memory_state_space;
   std::optional<MemoryConsistency> memory_consistency;
   std::optional<MemoryScope> memory_scope;
+  std::optional<MbarrierPhaseType> mbarrier_phase_type;
+  std::optional<MbarrierLayout> mbarrier_layout;
   std::span<const SourceRange> locations;
 };
 
@@ -351,6 +355,8 @@ enum class ModifierValueKind : uint8_t {
   MemoryStateSpace,
   MemoryConsistency,
   MemoryScope,
+  MbarrierPhaseType,
+  MbarrierLayout,
 };
 
 /** Target requirement attached to one legal semantic modifier value. */
@@ -368,6 +374,8 @@ struct ModifierValueAvailabilityDescriptor {
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
   MemoryScope memory_scope = MemoryScope::None;
+  MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
+  MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   AvailabilityDescriptor availability;
 };
 
@@ -386,6 +394,8 @@ struct ModifierValueView {
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
   MemoryScope memory_scope = MemoryScope::None;
+  MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
+  MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   bool is_present = false;
   std::span<const SourceRange> locations;
 };

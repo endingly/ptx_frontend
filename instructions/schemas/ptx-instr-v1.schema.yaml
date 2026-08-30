@@ -412,6 +412,8 @@ $defs:
       - boolean_op
       - shape
       - layout
+      - phase_type
+      - mbarrier_layout
       - memory_order
       - proxy
       - tensor_map
@@ -595,6 +597,8 @@ $defs:
                 - boolean_op
                 - shape
                 - layout
+                - phase_type
+                - mbarrier_layout
                 - memory_order
                 - proxy
                 - tensor_map
@@ -661,6 +665,7 @@ $defs:
       - matrix_fragment
       - descriptor
       - typed_token
+      - mbarrier_state_token
 
       - optional_reg
       - optional_pred

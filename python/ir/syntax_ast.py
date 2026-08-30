@@ -156,6 +156,7 @@ OPERAND_SYNTAX_SHAPES = {
     "reg_vector": OperandSyntaxShape.VECTOR_PACK,
     "descriptor": OperandSyntaxShape.IDENTIFIER_REF,
     "typed_token": OperandSyntaxShape.IDENTIFIER_REF,
+    "mbarrier_state_token": OperandSyntaxShape.IDENTIFIER_REF,
     "tensor_coordinate": OperandSyntaxShape.VECTOR_PACK,
     "matrix_fragment": OperandSyntaxShape.VECTOR_PACK,
     "direct_call_target": OperandSyntaxShape.CALL_TARGET,

@@ -137,6 +137,10 @@ bool matches_modifier_value(
       return descriptor.memory_consistency == actual.memory_consistency;
     case ModifierValueKind::MemoryScope:
       return descriptor.memory_scope == actual.memory_scope;
+    case ModifierValueKind::MbarrierPhaseType:
+      return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
+    case ModifierValueKind::MbarrierLayout:
+      return descriptor.mbarrier_layout == actual.mbarrier_layout;
   }
   return false;
 }

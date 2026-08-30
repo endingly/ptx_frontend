@@ -338,6 +338,22 @@ def _emit_modifier_value_descriptor(
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "MbarrierPhaseType":
+        mbarrier_phase_type = cpp_value(
+            CppDomain.MBARRIER_PHASE_TYPES, str(entry.value)
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "MbarrierLayout":
+        mbarrier_layout = cpp_value(CppDomain.MBARRIER_LAYOUTS, str(entry.value))
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     else:
         raise ValueError(
             f"unsupported modifier availability value type {entry.value_cpp_type!r}"
@@ -356,6 +372,8 @@ def _emit_modifier_value_descriptor(
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
               .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},
               .memory_scope = {memory_scope if entry.value_cpp_type == "MemoryScope" else cpp_default(CppDomain.MEMORY_SCOPES)},
+              .mbarrier_phase_type = {mbarrier_phase_type if entry.value_cpp_type == "MbarrierPhaseType" else cpp_default(CppDomain.MBARRIER_PHASE_TYPES)},
+              .mbarrier_layout = {mbarrier_layout if entry.value_cpp_type == "MbarrierLayout" else cpp_default(CppDomain.MBARRIER_LAYOUTS)},
               .availability = {_emit_availability(dict(entry.availability))},
           }}"""
 

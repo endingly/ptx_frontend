@@ -98,3 +98,34 @@ instructions:
           - kind: immediate_multiple_of
             operand: count
             divisor: 18446744073709551615
+
+  - opcode: synthetic_mbarrier_domain
+    variants:
+      - name: synthetic_mbarrier_domain_defaults
+        availability: {ptx: "7.0", sm: 0}
+        modifiers:
+          - name: phase_type
+            kind: phase_type
+            domain: mbarrier_phase_types
+            presence: optional
+            default: phase_type::primary
+            values:
+              - value: phase_type::primary
+              - value: phase_type::conditional
+                availability: {ptx: "9.3"}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+              - value: layout::v1
+                availability: {ptx: "9.3"}
+        operands:
+          - name: state
+            kind: mbarrier_state_token
+            role: src
+            access: read
+            type: b64
+            register_width: exact

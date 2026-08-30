@@ -707,6 +707,14 @@ def _emit_check_modifier_view(
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "MemoryScope" else "std::nullopt"
         )
+        mbarrier_phase_type = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MbarrierPhaseType" else "std::nullopt"
+        )
+        mbarrier_layout = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MbarrierLayout" else "std::nullopt"
+        )
         cache_operator = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "CacheOperator" else "std::nullopt"
@@ -752,6 +760,14 @@ def _emit_check_modifier_view(
             f"selected.{field.name}.value"
             if field.value_cpp_type == "MemoryScope" else "std::nullopt"
         )
+        mbarrier_phase_type = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MbarrierPhaseType" else "std::nullopt"
+        )
+        mbarrier_layout = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MbarrierLayout" else "std::nullopt"
+        )
         cache_operator = (
             f"selected.{field.name}.value"
             if field.value_cpp_type == "CacheOperator" else "std::nullopt"
@@ -773,6 +789,8 @@ def _emit_check_modifier_view(
                   .memory_state_space = {memory_state_space},
                   .memory_consistency = {memory_consistency},
                   .memory_scope = {memory_scope},
+                  .mbarrier_phase_type = {mbarrier_phase_type},
+                  .mbarrier_layout = {mbarrier_layout},
                   .locations = {locations},
               }}"""
 
@@ -937,6 +955,36 @@ def _emit_check_modifier_value_view(
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
         )
+    elif field.value_cpp_type == "MbarrierPhaseType":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MbarrierPhaseType"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        mbarrier_phase_type = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "MbarrierLayout":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MbarrierLayout"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        mbarrier_layout = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
     else:
         raise ValueError(
             f"modifier field {field.name!r}: unsupported availability view type "
@@ -970,6 +1018,10 @@ def _emit_check_modifier_value_view(
         memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
     if field.value_cpp_type != "MemoryScope":
         memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
+    if field.value_cpp_type != "MbarrierPhaseType":
+        mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
+    if field.value_cpp_type != "MbarrierLayout":
+        mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
@@ -984,6 +1036,8 @@ def _emit_check_modifier_value_view(
                   .memory_state_space = {memory_state_space},
                   .memory_consistency = {memory_consistency},
                   .memory_scope = {memory_scope},
+                  .mbarrier_phase_type = {mbarrier_phase_type},
+                  .mbarrier_layout = {mbarrier_layout},
                   .is_present = {is_present},
                   .locations = {locations},
               }}"""
@@ -1110,6 +1164,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedMbarrierStateToken":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                  .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedShflSyncDestination":

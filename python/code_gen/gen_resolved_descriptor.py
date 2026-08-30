@@ -241,6 +241,18 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryScope")},
                   .memory_scope = {value},
               }}"""
+    if default.value_cpp_type == "MbarrierPhaseType" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.MBARRIER_PHASE_TYPES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierPhaseType")},
+                  .mbarrier_phase_type = {value},
+              }}"""
+    if default.value_cpp_type == "MbarrierLayout" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.MBARRIER_LAYOUTS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierLayout")},
+                  .mbarrier_layout = {value},
+              }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "
         f"{default.value_cpp_type}"

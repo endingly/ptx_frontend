@@ -63,6 +63,8 @@ class ResolvedValueKind(Enum):
     MEMORY_SCOPE = "MemoryScope"
     VECTOR_ARITY = "VectorArity"
     MEMORY_STATE_SPACE = "MemoryStateSpace"
+    MBARRIER_PHASE_TYPE = "MbarrierPhaseType"
+    MBARRIER_LAYOUT = "MbarrierLayout"
     REGISTER = "Register"
     PREDICATE = "Predicate"
     PREDICATE_SOURCE = "PredicateSource"
@@ -84,6 +86,7 @@ class ResolvedValueKind(Enum):
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
     PREDICATE_PAIR = "PredicatePair"
+    MBARRIER_STATE_TOKEN = "MbarrierStateToken"
 
 
 class ResolvedFieldStorage(Enum):
@@ -478,6 +481,7 @@ _OPERAND_ALLOWED_SHAPES = {
     "reg_vector": (ResolvedOperandShape.VECTOR,),
     "descriptor": (ResolvedOperandShape.REGISTER,),
     "typed_token": (ResolvedOperandShape.REGISTER,),
+    "mbarrier_state_token": (ResolvedOperandShape.REGISTER,),
     "tensor_coordinate": (ResolvedOperandShape.VECTOR,),
     "matrix_fragment": (ResolvedOperandShape.VECTOR,),
     "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
@@ -782,6 +786,22 @@ def _build_modifier_default(
                 f"optional scope modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
+    if value_cpp_type == "MbarrierPhaseType":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.MBARRIER_PHASE_TYPES
+        ).values:
+            raise ValueError(
+                f"optional phase-type modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "MbarrierLayout":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.MBARRIER_LAYOUTS
+        ).values:
+            raise ValueError(
+                f"optional mbarrier-layout modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
     return ResolvedModifierDefault(
         value_cpp_type=value_cpp_type,
         value=modifier.default,
@@ -894,6 +914,22 @@ def _build_modifier_value_availability(
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported memory scope value "
                 f"{value.value!r}"
+            )
+    if value_cpp_type == "MbarrierPhaseType":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.MBARRIER_PHASE_TYPES
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported mbarrier phase-type "
+                f"value {value.value!r}"
+            )
+    if value_cpp_type == "MbarrierLayout":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.MBARRIER_LAYOUTS
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported mbarrier layout "
+                f"value {value.value!r}"
             )
     return ResolvedModifierValueAvailability(
         source_kind_id=modifier.name,

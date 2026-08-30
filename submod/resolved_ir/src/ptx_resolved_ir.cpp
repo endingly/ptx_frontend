@@ -529,6 +529,32 @@ std::expected<WithLocs<MemoryScope>, ResolveDiagnostic> resolve_memory_scope(
   return WithLocs<MemoryScope>{*value, modifier.syntax.range};
 }
 
+std::expected<WithLocs<MbarrierPhaseType>, ResolveDiagnostic>
+resolve_mbarrier_phase_type(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(
+      generated_detail::kMbarrierPhaseTypes, modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown mbarrier phase type '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<MbarrierPhaseType>{*value, modifier.syntax.range};
+}
+
+std::expected<WithLocs<MbarrierLayout>, ResolveDiagnostic>
+resolve_mbarrier_layout(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kMbarrierLayouts,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown mbarrier layout '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<MbarrierLayout>{*value, modifier.syntax.range};
+}
+
 std::optional<VectorArity> vector_arity_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kVectorArities, spelling);
@@ -2357,6 +2383,15 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::MbarrierStateToken: {
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<ResolvedMbarrierStateToken> token{
+          ResolvedMbarrierStateToken{.register_ref = std::move(value->value)}};
+      token.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(token)};
+    }
     case ResolvedValueKind::Predicate: {
       auto value = resolve_predicate(operand, context);
       if (!value)
@@ -2531,6 +2566,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MemoryScope:
     case ResolvedValueKind::VectorArity:
     case ResolvedValueKind::MemoryStateSpace:
+    case ResolvedValueKind::MbarrierPhaseType:
+    case ResolvedValueKind::MbarrierLayout:
       throw ResolveException(fmt::format(
           "Operand slot '{}' has a non-operand resolved value kind.",
           field.field_id));
@@ -2621,6 +2658,23 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{WithLocs<MemoryStateSpace>{
           default_value.memory_state_space}};
+    case ResolvedValueKind::MbarrierPhaseType:
+      if (default_value.kind !=
+          ResolvedModifierDefaultKind::MbarrierPhaseType) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires an mbarrier phase-type default "
+            "for resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MbarrierPhaseType>{
+          default_value.mbarrier_phase_type}};
+    case ResolvedValueKind::MbarrierLayout:
+      if (default_value.kind != ResolvedModifierDefaultKind::MbarrierLayout) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires an mbarrier layout default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MbarrierLayout>{
+          default_value.mbarrier_layout}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::PredicateSource:
@@ -2636,6 +2690,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
+    case ResolvedValueKind::MbarrierStateToken:
     case ResolvedValueKind::RegisterVector:
     case ResolvedValueKind::TensorCoordinate:
     case ResolvedValueKind::DirectCallTarget:
@@ -2929,6 +2984,18 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));
       } break;
+      case ResolvedValueKind::MbarrierPhaseType: {
+        auto value = resolve_mbarrier_phase_type(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MbarrierLayout: {
+        auto value = resolve_mbarrier_layout(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
       case ResolvedValueKind::Register:
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::PredicateSource:
@@ -2949,6 +3016,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::IndirectCallee:
       case ResolvedValueKind::CallReturnParameter:
       case ResolvedValueKind::CallArguments:
+      case ResolvedValueKind::MbarrierStateToken:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

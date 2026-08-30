@@ -151,9 +151,6 @@ def build_natural_manifest(
                 {
                     "spelling": spelling,
                     "occurrences": occurrences,
-                    "outcome": "supported"
-                    if first_blocker == "none"
-                    else "unsupported",
                     "first_blocker": first_blocker,
                 }
             )

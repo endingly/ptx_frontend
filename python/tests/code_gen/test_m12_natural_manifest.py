@@ -59,7 +59,7 @@ class M12NaturalManifestTests(unittest.TestCase):
         self.assertTrue(
             all(instruction["first_blocker"] == "none" for instruction in instructions)
         )
-        self.assertTrue(all(instruction["outcome"] == "supported" for instruction in instructions))
+        self.assertTrue(all("outcome" not in instruction for instruction in instructions))
 
 
 if __name__ == "__main__":

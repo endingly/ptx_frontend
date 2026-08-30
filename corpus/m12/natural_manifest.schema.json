@@ -41,29 +41,14 @@
     "instruction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["spelling", "occurrences", "outcome", "first_blocker"],
+      "required": ["spelling", "occurrences", "first_blocker"],
       "properties": {
         "spelling": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:]*$"},
         "occurrences": {"type": "integer", "minimum": 1},
-        "outcome": {"enum": ["supported", "unsupported"]},
         "first_blocker": {
           "enum": ["none", "unsupported_opcode", "unsupported_variant"]
         }
-      },
-      "allOf": [
-        {
-          "if": {"properties": {"outcome": {"const": "supported"}}},
-          "then": {"properties": {"first_blocker": {"const": "none"}}}
-        },
-        {
-          "if": {"properties": {"outcome": {"const": "unsupported"}}},
-          "then": {
-            "properties": {
-              "first_blocker": {"enum": ["unsupported_opcode", "unsupported_variant"]}
-            }
-          }
-        }
-      ]
+      }
     }
   }
 }

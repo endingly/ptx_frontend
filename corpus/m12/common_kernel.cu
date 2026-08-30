@@ -2,11 +2,8 @@
 //
 // Project-authored M12 common-kernel fixture. Each named kernel pins one
 // minimal inline-PTX form for its roadmap issue; it is not natural compiler emission.
-// Reproduce with nvcc V13.3.33: nvcc -ptx -arch=sm_{80,90a,100} common_kernel.cu.
-// After each command, normalize its PTX with the standard command:
-// awk '{ sub(/[[:space:]]+$/, ""); if ($0 == "") { ++blank; next } while
-// (blank > 0) { print ""; --blank } print }' input.ptx > output.ptx
-// This removes trailing whitespace and final blank lines, retaining one final LF.
+// Regenerate this and the natural-emission lane with:
+// python3 python/scripts/regenerate_m12_corpus.py --nvcc /path/to/nvcc
 
 #define M12_ASM(...) asm volatile("{" __VA_ARGS__ "}")
 

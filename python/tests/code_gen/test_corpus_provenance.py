@@ -7,49 +7,20 @@ import unittest
 
 from jsonschema import Draft202012Validator
 
+from code_gen.m12_natural_corpus import (
+    canonical_bytes,
+    fixture_targets,
+    target_directive_architectures,
+)
+
 
 ROOT = Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "corpus"
 MANIFEST = CORPUS / "provenance.json"
 SCHEMA = CORPUS / "provenance.schema.json"
 VERSION = "ptx_frontend.corpus_provenance/v2"
-TARGET = re.compile(
-    r"^\s*\.target\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*$"
-)
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PLACEHOLDERS = {"", "unknown", "todo", "tbd"}
-
-
-def target_directive_architectures(source: str) -> list[str]:
-    """Return each directive's first architecture operand in source order."""
-
-    return [
-        match.group(1)
-        for line in source.splitlines()
-        if (match := TARGET.match(line)) is not None
-    ]
-
-
-def fixture_targets(path: Path) -> list[str]:
-    """Return ordered target directives; comma-separated operands are options."""
-
-    targets = target_directive_architectures(path.read_text(encoding="utf-8"))
-    if not targets:
-        raise AssertionError(f"{path.relative_to(ROOT)}: missing .target directive")
-    return targets
-
-
-def canonical_bytes(data: bytes, label: str) -> bytes:
-    """Return UTF-8 bytes with CRLF normalized to LF."""
-
-    canonical = data.replace(b"\r\n", b"\n")
-    if b"\r" in canonical:
-        raise AssertionError(f"{label}: bare CR is not canonical")
-    try:
-        canonical.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise AssertionError(f"{label}: fixture is not UTF-8") from error
-    return canonical
 
 
 def canonical_fixture_bytes(path: Path) -> bytes:

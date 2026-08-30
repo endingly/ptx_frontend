@@ -114,7 +114,7 @@
     {
       "path": "corpus/m12/natural_kernel_sm80.ptx",
       "kind": "natural_compiler_emission",
-      "sha256": "05be30bcdaa762fa5940dcf85831c6272f88bb0e9946b610dd764a90190c5449",
+      "sha256": "8cf6275c17c6d6a7c483c3566ec8300da2d1da69fbc53e3366a287c70c07d5a8",
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_80"],
@@ -124,7 +124,7 @@
     {
       "path": "corpus/m12/natural_kernel_sm90a.ptx",
       "kind": "natural_compiler_emission",
-      "sha256": "38b0e54523c42a669ad3e76c9febb4a02d5bab91b38ab2cc4f75d05797db561a",
+      "sha256": "45dd3a38aaf57fb1eeed8f05c5ebc25a46f0f02384f25aa98e74d785d781b044",
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_90a"],

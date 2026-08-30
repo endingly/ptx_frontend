@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 67)
+        self.assertEqual(len(opcodes), 68)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 169)
+        self.assertEqual(len(slices), 175)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -289,6 +289,51 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             {
                 slice_id: selectors[slice_id]
                 for slice_id in (
+                    "mbarrier-mbarrier-init-generic-v0-default",
+                    "mbarrier-mbarrier-init-shared-v0-default",
+                    "mbarrier-mbarrier-init-shared-cta-v0-default",
+                    "mbarrier-mbarrier-init-generic-v1-default",
+                    "mbarrier-mbarrier-init-shared-v1-default",
+                    "mbarrier-mbarrier-init-shared-cta-v1-default",
+                )
+            },
+            {
+                "mbarrier-mbarrier-init-generic-v0-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v0"],
+                },
+                "mbarrier-mbarrier-init-shared-v0-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v0", "shared"],
+                },
+                "mbarrier-mbarrier-init-shared-cta-v0-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v0", "shared_cta"],
+                },
+                "mbarrier-mbarrier-init-generic-v1-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v1"],
+                },
+                "mbarrier-mbarrier-init-shared-v1-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v1", "shared"],
+                },
+                "mbarrier-mbarrier-init-shared-cta-v1-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v1", "shared_cta"],
+                },
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
                     "getctarank-getctarank-shared-cluster-default",
                     "getctarank-getctarank-generic-default",
                 )
@@ -458,6 +503,14 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             "griddepcontrol": {
                 ("griddepcontrol_launch_dependents", "default"),
                 ("griddepcontrol_wait", "default"),
+            },
+            "mbarrier": {
+                ("mbarrier_init_generic_v0", "default"),
+                ("mbarrier_init_shared_v0", "default"),
+                ("mbarrier_init_shared_cta_v0", "default"),
+                ("mbarrier_init_generic_v1", "default"),
+                ("mbarrier_init_shared_v1", "default"),
+                ("mbarrier_init_shared_cta_v1", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

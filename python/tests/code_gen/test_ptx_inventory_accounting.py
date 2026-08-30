@@ -27,6 +27,7 @@ PARTIAL_OPCODE_STATUS = {
 }
 COVERAGE_SECTION_ALIASES = {
     ("mov", "9.7.9"): frozenset({"9.7.9.3", "9.7.9.4"}),
+    ("mbarrier", "9.7.14.16.12"): frozenset({"9.7.14.16"}),
 }
 
 

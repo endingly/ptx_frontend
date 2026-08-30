@@ -1551,6 +1551,61 @@ class ResolvedIrBuildTest(unittest.TestCase):
             generic_source.type_expression.modifier_field_id, "type"
         )
 
+    def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
+        mbarrier = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "mbarrier"
+        )
+        instruction = from_instruction_spec(mbarrier)
+
+        self.assertEqual(instruction.cpp_name, "Mbarrier")
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            ["InitGenericV0", "InitSharedV0", "InitSharedCtaV0",
+             "InitGenericV1", "InitSharedV1", "InitSharedCtaV1"],
+        )
+        generic_v0, _, shared_cta_v0, generic_v1, _, _ = instruction.variants
+        self.assertEqual(dict(generic_v0.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(shared_cta_v0.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(dict(generic_v1.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in generic_v0.fields],
+            [
+                ("init", "bool"),
+                ("layout", "WithLocs<MbarrierLayout>"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("count", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            generic_v0.modifier_bindings[1].default_value.value, "layout::v0"
+        )
+        self.assertEqual(
+            [entry.value for entry in generic_v0.modifier_value_availabilities],
+            ["layout::v0"],
+        )
+        self.assertEqual(
+            [entry.minimum for entry in generic_v0.immediate_ranges], [1]
+        )
+        self.assertEqual(
+            [entry.maximum for entry in generic_v0.immediate_ranges], [1048575]
+        )
+        self.assertEqual(
+            [entry.minimum for entry in generic_v1.immediate_ranges], [1]
+        )
+        self.assertEqual(
+            [entry.maximum for entry in generic_v1.immediate_ranges], [511]
+        )
+        address, count = generic_v0.operand_layouts[0].bindings
+        self.assertEqual(address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(
+            [value.value for value in address.allowed_address_state_spaces], ["shared"]
+        )
+        self.assertEqual(count.type_expression.scalar_type, "u32")
+        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

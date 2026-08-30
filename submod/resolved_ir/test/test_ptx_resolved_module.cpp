@@ -2466,6 +2466,169 @@ TEST(ResolvedModule, ResolvesAndChecksGriddepcontrolActions) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMbarrierInitLayouts) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .u32 %r0;
+  .reg .u64 %rd0;
+  mbarrier.init.b64 [%rd0], %r0;
+  mbarrier.init.shared.b64 [shared_value], 1;
+  mbarrier.init.shared::cta.b64 [shared_value+8], 511;
+  mbarrier.init.layout::v1.b64 [%rd0], 1;
+  mbarrier.init.layout::v1.shared.b64 [shared_value], 511;
+  mbarrier.init.layout::v1.shared::cta.b64 [shared_value], 1;
+  mbarrier.init.layout::v0.b64 [shared_value], 1048575;
+  mbarrier.init.b64 [shared_value], 512;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  const auto& generic_v0 =
+      std::get<Mbarrier::InitGenericV0>(std::get<Mbarrier>(body[0]).variant);
+  const auto& generic_v1 =
+      std::get<Mbarrier::InitGenericV1>(std::get<Mbarrier>(body[3]).variant);
+  const auto& explicit_v0 =
+      std::get<Mbarrier::InitGenericV0>(std::get<Mbarrier>(body[6]).variant);
+  EXPECT_TRUE(generic_v0.init);
+  EXPECT_EQ(generic_v0.layout.value, MbarrierLayout::V0);
+  EXPECT_EQ(generic_v1.layout.value, MbarrierLayout::V1);
+  EXPECT_EQ(generic_v0.type, ScalarType::B64);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      generic_v0.count.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
+      explicit_v0.count.value));
+
+  const checker::Context supported{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
+  }
+  const checker::Context baseline{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  const auto baseline_generic = checker::check(std::get<Mbarrier>(body[0]), baseline);
+  ASSERT_TRUE(baseline_generic.has_value()) << baseline_generic.error().front().message;
+  EXPECT_TRUE(checker::check(std::get<Mbarrier>(body[1]), baseline).has_value());
+  EXPECT_FALSE(checker::check(std::get<Mbarrier>(body[2]), baseline).has_value());
+  EXPECT_FALSE(checker::check(std::get<Mbarrier>(body[3]), baseline).has_value());
+  EXPECT_FALSE(checker::check(std::get<Mbarrier>(body[6]), baseline).has_value());
+  const checker::Context shared_cta_target{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(
+      checker::check(std::get<Mbarrier>(body[2]), shared_cta_target).has_value());
+  const checker::Context old_layout_target{
+      .target = {.ptx_version = {9, 2}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  EXPECT_FALSE(
+      checker::check(std::get<Mbarrier>(body[3]), old_layout_target).has_value());
+  const auto old_explicit_v0 =
+      checker::check(std::get<Mbarrier>(body[6]), old_layout_target);
+  ASSERT_FALSE(old_explicit_v0.has_value());
+  ASSERT_EQ(old_explicit_v0.error().size(), 1u);
+  EXPECT_EQ(old_explicit_v0.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const checker::Context narrow_layout_target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 89},
+      .instruction_range = ast.range,
+  };
+  EXPECT_FALSE(
+      checker::check(std::get<Mbarrier>(body[3]), narrow_layout_target).has_value());
+  const auto narrow_explicit_v0 =
+      checker::check(std::get<Mbarrier>(body[6]), narrow_layout_target);
+  ASSERT_FALSE(narrow_explicit_v0.has_value());
+  ASSERT_EQ(narrow_explicit_v0.error().size(), 1u);
+  EXPECT_EQ(narrow_explicit_v0.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const checker::Context old_sm_target{
+      .target = {.ptx_version = {7, 0}, .sm_version = 79},
+      .instruction_range = ast.range,
+  };
+  const auto old_sm_generic =
+      checker::check(std::get<Mbarrier>(body[0]), old_sm_target);
+  ASSERT_FALSE(old_sm_generic.has_value());
+  ASSERT_EQ(old_sm_generic.error().size(), 1u);
+  EXPECT_EQ(old_sm_generic.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto check_range = [&supported](std::string_view source) {
+    const auto invalid = resolveModule(parseModule(source));
+    ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+    const auto checked = checker::check(
+        std::get<Mbarrier>(invalid->functions.front().body.front()), supported);
+    ASSERT_FALSE(checked.has_value());
+    ASSERT_EQ(checked.error().size(), 1u);
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  };
+  check_range(R"ptx(
+.entry kernel() { .reg .u64 %rd0; mbarrier.init.b64 [%rd0], 0; }
+)ptx");
+  check_range(R"ptx(
+.entry kernel() { .reg .u64 %rd0; mbarrier.init.b64 [%rd0], 1048576; }
+)ptx");
+  check_range(R"ptx(
+.entry kernel() { .reg .u64 %rd0; mbarrier.init.layout::v1.b64 [%rd0], 0; }
+)ptx");
+  check_range(R"ptx(
+.entry kernel() { .reg .u64 %rd0; mbarrier.init.layout::v1.b64 [%rd0], 512; }
+)ptx");
+
+  const auto wrong_width = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u64 %count;
+  mbarrier.init.b64 [%rd0], %count;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
+  const auto wrong_width_checked = checker::check(
+      std::get<Mbarrier>(wrong_width->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_width_checked.has_value());
+  EXPECT_EQ(wrong_width_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.global .align 8 .b64 global_value[2];
+.entry kernel() {
+  mbarrier.init.b64 [global_value], 1;
+  mbarrier.init.shared.b64 [global_value+8], 1;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_space.has_value()) << wrong_space.error().front().message;
+  for (const auto& instruction : wrong_space->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  }
+
+  const auto unaligned = resolveModule(parseModule(R"ptx(
+.shared .align 4 .b64 unaligned_value[2];
+.shared .align 8 .b64 aligned_value[2];
+.entry kernel() {
+  mbarrier.init.b64 [unaligned_value], 1;
+  mbarrier.init.shared.b64 [aligned_value+4], 1;
+}
+)ptx"));
+  ASSERT_TRUE(unaligned.has_value()) << unaligned.error().front().message;
+  for (const auto& instruction : unaligned->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   const auto ast = parseModule(R"ptx(
 .shared .align 4 .u32 shared_value;

@@ -817,6 +817,41 @@ TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
   }
 }
 
+TEST(SelectVariantMbarrier, SelectsInitLayoutsAndSpaces) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mbarrier.init.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::InitGenericV0);
+  expect_variant("mbarrier.init.shared.b64 [%rd0], %r0;",
+                 Mbarrier::VariantType::InitSharedV0);
+  expect_variant("mbarrier.init.shared::cta.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::InitSharedCtaV0);
+  expect_variant("mbarrier.init.layout::v1.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::InitGenericV1);
+  expect_variant("mbarrier.init.layout::v1.shared.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::InitSharedV1);
+  expect_variant("mbarrier.init.layout::v1.shared::cta.b64 [%rd0], 1;",
+                 Mbarrier::VariantType::InitSharedCtaV1);
+
+  for (const std::string_view source : {
+           "mbarrier.init.b64.shared [%rd0], 1;",
+           "mbarrier.init.shared.layout::v1.b64 [%rd0], 1;",
+           "mbarrier.init.shared.shared::cta.b64 [%rd0], 1;",
+           "mbarrier.init.layout::v0.layout::v1.b64 [%rd0], 1;",
+           "mbarrier.shared.b64 [%rd0], 1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Mbarrier>(
+      parse_instruction("mbarrier.init.b64 [%rd0];")).has_value());
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

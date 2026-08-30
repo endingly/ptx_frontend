@@ -1343,6 +1343,34 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     ],
                 )
 
+    def test_immediate_range_alone_accepts_reg_or_imm(self) -> None:
+        def normalize_constraint(constraint: dict[str, object]) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [{"opcode": "sample", "variants": [{
+                        "name": "sample_count",
+                        "availability": {"ptx": "1.0"},
+                        "operands": [{
+                            "name": "count", "kind": "reg_or_imm",
+                            "role": "src", "access": "read", "type": "u32",
+                        }],
+                        "constraints": [constraint],
+                    }]}],
+                }
+            )
+
+        normalize_constraint(
+            {"kind": "immediate_range", "operand": "count", "minimum": 1}
+        )
+        for constraint in (
+            {"kind": "immediate_value", "operand": "count", "values": [1]},
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 1},
+        ):
+            with self.assertRaisesRegex(ValueError, r"kind 'imm'.*'reg_or_imm'"):
+                normalize_constraint(constraint)
+
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(
             {

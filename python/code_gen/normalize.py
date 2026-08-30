@@ -1223,7 +1223,8 @@ def _normalize_immediate_range_constraints(
             )
         operands.add(operand_name)
         _validate_immediate_constraint_operand(
-            raw_variant, layouts, operand_name, "immediate_range"
+            raw_variant, layouts, operand_name, "immediate_range",
+            allowed_kinds=("imm", "reg_or_imm"),
         )
         _validate_uint64(raw_variant, "immediate_range", "minimum", minimum)
         if maximum is not None:
@@ -1281,8 +1282,10 @@ def _validate_immediate_constraint_operand(
     layouts: tuple[OperandLayoutSpec, ...],
     operand_name: str,
     constraint_kind: str,
+    *,
+    allowed_kinds: tuple[str, ...] = ("imm",),
 ) -> None:
-    """Require an immediate constraint operand in every operand layout."""
+    """Require a constrained immediate operand in every operand layout."""
 
     for layout in layouts:
         matching = tuple(
@@ -1292,16 +1295,17 @@ def _validate_immediate_constraint_operand(
             raise ValueError(
                 f"variant {raw_variant['name']!r}: {constraint_kind} operand "
                 f"{operand_name!r} must exist in operand layout {layout.name!r} "
-                "as kind 'imm'"
+                f"as kind {' or '.join(repr(kind) for kind in allowed_kinds)}"
             )
-        non_immediate = next(
-            (operand for operand in matching if operand.kind != "imm"), None
+        disallowed = next(
+            (operand for operand in matching if operand.kind not in allowed_kinds), None
         )
-        if non_immediate is not None:
+        if disallowed is not None:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: {constraint_kind} operand "
                 f"{operand_name!r} in operand layout {layout.name!r} must have "
-                f"kind 'imm', not {non_immediate.kind!r}"
+                f"kind {' or '.join(repr(kind) for kind in allowed_kinds)}, not "
+                f"{disallowed.kind!r}"
             )
 
 

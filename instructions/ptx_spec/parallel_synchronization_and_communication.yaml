@@ -225,6 +225,19 @@ operand_patterns:
       access: read
       type: u32
       register_width: exact
+
+  mbarrier_init:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -1080,3 +1093,103 @@ instructions:
             access: read
             type: u32
             register_width: exact
+
+  - opcode: mbarrier
+    section: "9.7.14.16.12"
+    doc: >
+      Initialize a shared-memory barrier object. The frontend validates local
+      address, count, alignment, and target constraints only; it does not model
+      barrier lifecycle or runtime phase behavior.
+    syntax: "mbarrier.init{.layout::{v0|v1}}{.shared{::cta}}.b64 [address], count"
+
+    variants:
+      - name: mbarrier_init_generic_v0
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+                availability: {ptx: "9.3", sm: 90}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 1048575}
+
+      - name: mbarrier_init_shared_v0
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+                availability: {ptx: "9.3", sm: 90}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 1048575}
+
+      - name: mbarrier_init_shared_cta_v0
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+                availability: {ptx: "9.3", sm: 90}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 1048575}
+
+      - name: mbarrier_init_generic_v1
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: required, values: [layout::v1]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}
+
+      - name: mbarrier_init_shared_v1
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: required, values: [layout::v1]}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}
+
+      - name: mbarrier_init_shared_cta_v1
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: required, values: [layout::v1]}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}

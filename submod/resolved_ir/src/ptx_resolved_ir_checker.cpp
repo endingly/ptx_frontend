@@ -1394,7 +1394,20 @@ CheckResult check_immediate_range(
     return {};
   const OperandView* operand =
       find_operand(operands, descriptor.operand_field_id);
-  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+  if (operand == nullptr) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-range constraint references missing "
+                               "immediate operand '{}'.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  // A register operand is dynamically unknown; the generated range applies
+  // only when it resolves to an immediate.
+  if (operand->actual_shape == OperandShape::Register)
+    return {};
+  if (operand->actual_shape != OperandShape::Immediate ||
       !operand->immediate_bits) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,

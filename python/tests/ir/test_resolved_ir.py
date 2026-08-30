@@ -973,6 +973,57 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 binding.register_width_policy, ResolvedRegisterWidthPolicy.EXACT
             )
 
+    def test_redux_sync_model_variants_and_availability(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        redux = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "redux"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(redux).variants
+        }
+        self.assertEqual(
+            set(variants),
+            {"SyncAdd", "SyncMin", "SyncMax", "SyncBoolean", "SyncMinF32", "SyncMaxF32"},
+        )
+        for name in ("SyncAdd", "SyncMin", "SyncMax"):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [("sync", "bool"), (name.removeprefix("Sync").lower(), "bool"),
+                 ("type", "WithLocs<ScalarType>")],
+            )
+        boolean = variants["SyncBoolean"]
+        self.assertEqual(dict(boolean.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in boolean.modifier_fields],
+            [("sync", "bool"), ("operation", "WithLocs<BooleanOperator>"),
+             ("type", "ScalarType")],
+        )
+        availability = {"any_of": [
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        ]}
+        for name, operation in (("SyncMinF32", "min"), ("SyncMaxF32", "max")):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), availability)
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [("sync", "bool"), (operation, "bool"), ("abs", "WithLocs<bool>"),
+                 ("nan", "WithLocs<bool>"), ("type", "ScalarType")],
+            )
+        for variant in variants.values():
+            self.assertEqual(len(variant.operand_layouts), 1)
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            )
+
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

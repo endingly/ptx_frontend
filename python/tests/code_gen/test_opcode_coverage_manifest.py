@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 62)
+        self.assertEqual(len(opcodes), 63)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 156)
+        self.assertEqual(len(slices), 162)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -285,6 +285,45 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 },
             },
         )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "redux-redux-sync-add-default",
+                    "redux-redux-sync-min-default",
+                    "redux-redux-sync-max-default",
+                    "redux-redux-sync-boolean-default",
+                    "redux-redux-sync-min-f32-default",
+                    "redux-redux-sync-max-f32-default",
+                )
+            },
+            {
+                "redux-redux-sync-add-default": {
+                    "topology": "warp_reduce", "types": ["u32", "s32"],
+                    "shape": "scalar", "modifiers": ["sync", "add"],
+                },
+                "redux-redux-sync-min-default": {
+                    "topology": "warp_reduce", "types": ["u32", "s32"],
+                    "shape": "scalar", "modifiers": ["sync", "min"],
+                },
+                "redux-redux-sync-max-default": {
+                    "topology": "warp_reduce", "types": ["u32", "s32"],
+                    "shape": "scalar", "modifiers": ["sync", "max"],
+                },
+                "redux-redux-sync-boolean-default": {
+                    "topology": "warp_reduce", "types": ["b32"],
+                    "shape": "scalar", "modifiers": ["sync", "and", "or", "xor"],
+                },
+                "redux-redux-sync-min-f32-default": {
+                    "topology": "warp_reduce", "types": ["f32"],
+                    "shape": "scalar", "modifiers": ["sync", "min", "abs", "nan"],
+                },
+                "redux-redux-sync-max-f32-default": {
+                    "topology": "warp_reduce", "types": ["f32"],
+                    "shape": "scalar", "modifiers": ["sync", "max", "abs", "nan"],
+                },
+            },
+        )
 
         expected_layouts = {
             "call": {
@@ -332,6 +371,14 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("match_any_sync", "default"),
                 ("match_all_sync", "without_predicate"),
                 ("match_all_sync", "with_predicate"),
+            },
+            "redux": {
+                ("redux_sync_add", "default"),
+                ("redux_sync_min", "default"),
+                ("redux_sync_max", "default"),
+                ("redux_sync_boolean", "default"),
+                ("redux_sync_min_f32", "default"),
+                ("redux_sync_max_f32", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

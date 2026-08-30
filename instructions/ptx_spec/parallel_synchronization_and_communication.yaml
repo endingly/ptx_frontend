@@ -203,6 +203,28 @@ operand_patterns:
       access: read
       type: u32
       register_width: exact
+
+  redux_sync:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -939,3 +961,73 @@ instructions:
             valid: true
           - ptx: "match.all.sync.b32 %b0|%p0, %b1, 0xffffffff;"
             valid: true
+
+  - opcode: redux
+    section: "9.7.14.13"
+    doc: >
+      Warp reduction. The frontend validates local operand forms and target
+      availability only; it does not prove runtime membermask participation or
+      convergence.
+    syntax: >-
+      redux.sync.{add|min|max}.{u32|s32} d, a, membermask |
+      redux.sync.{and|or|xor}.b32 d, a, membermask |
+      redux.sync.{min|max}{.abs}{.NaN}.f32 d, a, membermask
+
+    variants:
+      - name: redux_sync_add
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: add, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $redux_sync
+
+      - name: redux_sync_min
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $redux_sync
+
+      - name: redux_sync_max
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $redux_sync
+
+      - name: redux_sync_boolean
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: operation, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands: $redux_sync
+
+      - name: redux_sync_min_f32
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: abs, kind: flag, presence: optional, default: false, token: .abs}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operands: $redux_sync
+
+      - name: redux_sync_max_f32
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: abs, kind: flag, presence: optional, default: false, token: .abs}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operands: $redux_sync

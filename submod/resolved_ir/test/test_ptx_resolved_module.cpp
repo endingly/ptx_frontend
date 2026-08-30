@@ -2294,6 +2294,132 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %u<4>;
+  .reg .s32 %s<2>;
+  .reg .b32 %b<2>;
+  .reg .f32 %f<4>;
+  .reg .u32 %mask;
+  redux.sync.add.u32 %u0, %u1, 0xffffffff;
+  redux.sync.min.s32 %s0, %s1, %mask;
+  redux.sync.max.u32 %u2, %u3, %mask;
+  redux.sync.xor.b32 %b0, %b1, 0xffffffff;
+  redux.sync.min.abs.NaN.f32 %f0, %f1, %mask;
+  redux.sync.max.f32 %f2, %f3, 0xffffffff;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const auto& add = std::get<Redux::SyncAdd>(std::get<Redux>(body[0]).variant);
+  const auto& min = std::get<Redux::SyncMin>(std::get<Redux>(body[1]).variant);
+  const auto& boolean =
+      std::get<Redux::SyncBoolean>(std::get<Redux>(body[3]).variant);
+  const auto& min_f32 =
+      std::get<Redux::SyncMinF32>(std::get<Redux>(body[4]).variant);
+  EXPECT_EQ(add.type.value, ScalarType::U32);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(add.membermask.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(min.membermask.value));
+  EXPECT_EQ(boolean.operation.value, BooleanOperator::Xor);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
+      boolean.membermask.value));
+  EXPECT_TRUE(min_f32.abs.value);
+  EXPECT_TRUE(min_f32.nan.value);
+  EXPECT_FALSE(min_f32.abs.locs.empty());
+  EXPECT_FALSE(min_f32.nan.locs.empty());
+
+  const checker::Context baseline_context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto index : {0u, 1u, 2u, 3u}) {
+    EXPECT_TRUE(checker::check(std::get<Redux>(body[index]), baseline_context)
+                    .has_value());
+  }
+  const auto too_old_ptx = checker::check(
+      std::get<Redux>(body.front()),
+      checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Redux>(body.front()),
+      checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .b64 %d0; .reg .u32 %u0; redux.sync.add.u32 %d0, %u0, 0; }",
+           ".entry kernel() { .reg .u32 %u0; .reg .b64 %d0; redux.sync.add.u32 %u0, %d0, 0; }",
+           ".entry kernel() { .reg .u32 %u<2>; .reg .b64 %d0; redux.sync.add.u32 %u0, %u1, %d0; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto invalid = resolveModule(parseModule(source));
+    ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+    const auto checked = checker::check(
+        std::get<Redux>(invalid->functions.front().body.front()), baseline_context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  const auto float_ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .f32 %f<2>;
+  redux.sync.min.f32 %f0, %f1, 0xffffffff;
+}
+)ptx");
+  const auto float_resolved = resolveModule(float_ast);
+  ASSERT_TRUE(float_resolved.has_value()) << float_resolved.error().front().message;
+  const auto availability = [&float_resolved](std::string_view source) {
+    return checkModuleAvailability(parseModule(source), *float_resolved);
+  };
+  EXPECT_TRUE(availability(R"ptx(
+.version 8.6
+.target sm_100a
+.entry kernel() {
+  .reg .f32 %f<2>;
+  redux.sync.min.f32 %f0, %f1, 0xffffffff;
+}
+)ptx")
+                  .has_value());
+  EXPECT_FALSE(availability(R"ptx(
+.version 8.6
+.target sm_100f
+.entry kernel() {
+  .reg .f32 %f<2>;
+  redux.sync.min.f32 %f0, %f1, 0xffffffff;
+}
+)ptx")
+                   .has_value());
+  EXPECT_TRUE(availability(R"ptx(
+.version 8.8
+.target sm_100f
+.entry kernel() {
+  .reg .f32 %f<2>;
+  redux.sync.min.f32 %f0, %f1, 0xffffffff;
+}
+)ptx")
+                  .has_value());
+  EXPECT_FALSE(availability(R"ptx(
+.version 8.8
+.target sm_100
+.entry kernel() {
+  .reg .f32 %f<2>;
+  redux.sync.min.f32 %f0, %f1, 0xffffffff;
+}
+)ptx")
+                   .has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

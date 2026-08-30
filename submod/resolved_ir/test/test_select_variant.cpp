@@ -674,6 +674,49 @@ TEST(SelectVariantMatch, SelectsMatchSyncFormsAndRejectsInvalidOnes) {
                    .has_value());
 }
 
+TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
+  const auto expect_variant = [](std::string_view source,
+                                 Redux::VariantType expected) {
+    const auto selected = selectVariant<Redux>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("redux.sync.add.u32 %r0, %r1, 0xffffffff;",
+                 Redux::VariantType::SyncAdd);
+  expect_variant("redux.sync.min.s32 %r0, %r1, %r2;",
+                 Redux::VariantType::SyncMin);
+  expect_variant("redux.sync.max.u32 %r0, %r1, %r2;",
+                 Redux::VariantType::SyncMax);
+  for (const std::string_view source : {
+           "redux.sync.and.b32 %r0, %r1, 0xffffffff;",
+           "redux.sync.or.b32 %r0, %r1, 0xffffffff;",
+           "redux.sync.xor.b32 %r0, %r1, 0xffffffff;",
+       }) {
+    expect_variant(source, Redux::VariantType::SyncBoolean);
+  }
+  for (const std::string_view source : {
+           "redux.sync.min.f32 %f0, %f1, 0xffffffff;",
+           "redux.sync.min.abs.f32 %f0, %f1, 0xffffffff;",
+           "redux.sync.min.NaN.f32 %f0, %f1, 0xffffffff;",
+           "redux.sync.min.abs.NaN.f32 %f0, %f1, 0xffffffff;",
+       }) {
+    expect_variant(source, Redux::VariantType::SyncMinF32);
+  }
+  expect_variant("redux.sync.max.abs.NaN.f32 %f0, %f1, 0xffffffff;",
+                 Redux::VariantType::SyncMaxF32);
+
+  for (const std::string_view source : {
+           "redux.sync.add.b32 %r0, %r1, 0xffffffff;",
+           "redux.sync.and.u32 %r0, %r1, 0xffffffff;",
+           "redux.sync.min.NaN.abs.f32 %f0, %f1, 0xffffffff;",
+           "redux.sync.add.abs.u32 %r0, %r1, 0xffffffff;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Redux>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

@@ -2502,6 +2502,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("struct LtU32 {", source)
         self.assertIn("struct LtAndU32 {", source)
+        self.assertIn("struct GeS32 {", source)
         self.assertIn("WithLocs<ComparisonOperator> comparison;", source)
         self.assertIn("WithLocs<BooleanOperator> boolean;", source)
         self.assertIn("struct Mov {", source)

@@ -120,7 +120,11 @@ class BackendModelTests(unittest.TestCase):
         )
         self.assertEqual(
             unit.domains[CppDomain.COMPARISON_OPERATORS.value].values,
-            {"eq": "ComparisonOperator::Eq", "lt": "ComparisonOperator::Lt"},
+            {
+                "eq": "ComparisonOperator::Eq",
+                "lt": "ComparisonOperator::Lt",
+                "ge": "ComparisonOperator::Ge",
+            },
         )
         self.assertIs(
             unit.domains[CppDomain.COMPARISON_OPERATORS.value].runtime_lookup,

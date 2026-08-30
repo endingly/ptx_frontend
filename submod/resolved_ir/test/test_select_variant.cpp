@@ -861,6 +861,16 @@ TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
   EXPECT_TRUE(lt_and->combine.value.negated);
 }
 
+TEST(ResolveSetp, SelectsM12GeS32Variant) {
+  const auto resolved =
+      resolve<Setp>(parse_instruction("setp.ge.s32 %p0, %r0, -1;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* ge = std::get_if<Setp::GeS32>(&resolved->variant);
+  ASSERT_NE(ge, nullptr);
+  EXPECT_EQ(ge->comparison.value, ComparisonOperator::Ge);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(ge->src2.value));
+}
+
 TEST(ResolveSetp, SelectsFrozenDualPredicateVariants) {
   const auto equality_ast =
       parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
@@ -897,6 +907,19 @@ TEST(ResolveSetp, RejectsUnfrozenDualPredicateForms) {
   const auto non_predicate =
       resolve<Setp>(parse_instruction("setp.eq.u32 %r0|%p1, %r0, %r1;"));
   EXPECT_FALSE(non_predicate.has_value());
+}
+
+TEST(ResolveSetp, RejectsUnfrozenGeS32Forms) {
+  for (const auto source : {
+           "setp.ge.u32 %p0, %r0, %r1;",
+           "setp.ge.and.s32 %p0, %r0, %r1, %p1;",
+           "setp.ge.s32 %p0|%p1, %r0, %r1;",
+           "setp.ge.s32 %r0, %r1, %r2;",
+       }) {
+    const auto selected = resolve<Setp>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
 }
 
 TEST(ResolveSelp, SelectsFrozenU32Variant) {

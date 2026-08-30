@@ -64,6 +64,7 @@ enum class ComparisonOperator : uint8_t {
   Invalid = 0,
   Eq,
   Lt,
+  Ge,
 };
 
 /** Semantic value of a PTX predicate-combine operator modifier. */

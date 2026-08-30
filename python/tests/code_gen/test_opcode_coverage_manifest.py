@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 149)
+        self.assertEqual(len(slices), 150)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -182,6 +182,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "discard-discard-global-l2",
                 "setmaxnreg-setmaxnreg-inc-sync-aligned-u32",
                 "set-set-eq-u32-u32", "set-set-lt-and-f32-s32",
+                "setp-setp-ge-s32",
                 "ld-ld-generic-scalar", "ld-ld-generic-vector", "ld-ld-global-u32-l1-evict",
                 "ld-ld-explicit-vector", "st-st-generic-scalar", "st-st-generic-vector",
                 "st-st-global-u32-l2-cache-hint", "st-st-explicit-vector",
@@ -196,6 +197,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "mul-mul-hi-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar", "modifiers": ["hi"]},
                 "mul-mul-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},
                 "mul-mul-wide-s32": {"topology": "arithmetic", "types": ["s64", "s32"], "shape": "scalar", "modifiers": ["wide"]},
+                "setp-setp-ge-s32": {"topology": "comparison", "types": ["s32"], "shape": "scalar", "modifiers": ["ge"]},
                 "mad-mad-lo-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar", "modifiers": ["lo"]},
                 "mad-mad-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
                 "mad-mad-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},

@@ -73,6 +73,7 @@ domains:
     values:
       eq: ComparisonOperator::Eq
       lt: ComparisonOperator::Lt
+      ge: ComparisonOperator::Ge
 
   boolean_operators:
     cpp_type: BooleanOperator

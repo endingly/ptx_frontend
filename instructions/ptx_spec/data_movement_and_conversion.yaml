@@ -265,7 +265,6 @@ operand_patterns:
       role: dst
       access: write
       type: b64
-      register_width: exact
     - name: fraction
       kind: imm
       role: src

@@ -745,18 +745,31 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
               checker::CheckDiagnosticKind::ImmediateValueMismatch);
   }
 
-  const auto wrong_dst = resolveModule(parseModule(R"ptx(
+  const auto compatible_dst = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .u64 %rd0;
   createpolicy.fractional.L2::evict_last.b64 %rd0, 0.5;
 }
 )ptx"));
-  ASSERT_TRUE(wrong_dst.has_value()) << wrong_dst.error().front().message;
-  const auto dst_checked = checker::check(
-      std::get<Createpolicy>(wrong_dst->functions.front().body.front()),
+  ASSERT_TRUE(compatible_dst.has_value())
+      << compatible_dst.error().front().message;
+  EXPECT_TRUE(checker::check(
+      std::get<Createpolicy>(compatible_dst->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}})
+                  .has_value());
+
+  const auto narrow_dst = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0;
+  createpolicy.fractional.L2::evict_last.b64 %r0, 0.5;
+}
+)ptx"));
+  ASSERT_TRUE(narrow_dst.has_value()) << narrow_dst.error().front().message;
+  const auto narrow_dst_checked = checker::check(
+      std::get<Createpolicy>(narrow_dst->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
-  ASSERT_FALSE(dst_checked.has_value());
-  EXPECT_EQ(dst_checked.error().front().kind,
+  ASSERT_FALSE(narrow_dst_checked.has_value());
+  EXPECT_EQ(narrow_dst_checked.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 
   // This is ISA-legal without .fractional, but intentionally unfrozen here.

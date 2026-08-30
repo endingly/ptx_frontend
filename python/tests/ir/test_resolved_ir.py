@@ -1767,6 +1767,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(variant.immediate_value.values, (1056964608,))
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
 
     def test_applypriority_global_l2_evict_normal_model(self) -> None:
         database = load_codegen_database(

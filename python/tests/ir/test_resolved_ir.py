@@ -44,6 +44,9 @@ from ir.resolved_ir import (
     from_instruction_spec,
 )
 from code_gen.model import (
+    ImmediateMultipleOfConstraint,
+    ImmediateRangeConstraint,
+    ImmediateValueConstraint,
     InstructionSpec,
     ModifierSpec,
     ModifierValueSpec,
@@ -1893,6 +1896,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
         self.assertIn("check_immediate_multiple_of(", source)
+        start = source.index("check_inc_sync_aligned_u32")
+        setmaxnreg_check = source[start:source.index("static_assert", start)]
+        self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
+        self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
+        self.assertLess(
+            setmaxnreg_check.index("check_immediate_multiple_of("),
+            setmaxnreg_check.index("check_immediate_range("),
+        )
         self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
         self.assertIn(".any_of_count = 4", descriptor)
         self.assertIn('.required_family = "sm_100f",', descriptor)
@@ -2117,6 +2128,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_immediate_value(", source)
         self.assertIn("check_immediate_range(", source)
         self.assertIn("check_address_alignment(", source)
+        start = source.index("check_async_ca_shared_global")
+        cp_check = source[start:source.index("static_assert", start)]
+        self.assertEqual(cp_check.count("check_address_alignment("), 1)
+        self.assertEqual(cp_check.count("check_immediate_value("), 1)
+        self.assertLess(
+            cp_check.index("check_address_alignment("),
+            cp_check.index("check_immediate_value("),
+        )
+        start = source.index("check_async_wait_group")
+        wait_group_check = source[start:source.index("static_assert", start)]
+        self.assertEqual(wait_group_check.count("check_immediate_range("), 1)
         self.assertIn("selected.cp_size.value.bits", source)
         self.assertIn("std::expected<Cp, ResolveDiagnostic>", source)
         self.assertIn("AsyncCommitGroup", source)
@@ -3360,7 +3382,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                     ),
                                 ),
                                 OperandSpec(
-                                    name="src1",
+                                    name="src",
                                     kind="reg_or_imm",
                                     role="src1",
                                     access="read",
@@ -3382,6 +3404,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                             ),
                         ),
                     ),
+                    immediate_value=ImmediateValueConstraint("src", (4,)),
+                    immediate_ranges=(ImmediateRangeConstraint("src", 1, 8),),
+                    immediate_multiple_of=ImmediateMultipleOfConstraint("src", 2),
                     rule="sample.typed",
                 ),
             ),
@@ -3410,6 +3435,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("check_sample_typed_binary_operands", header)
         self.assertIn("check_sample_typed_binary_operands", source)
         self.assertIn("check_sample_typed_ternary_operands", source)
+        for layout in ("binary", "ternary"):
+            start = source.index(f"check_sample_typed_{layout}_operands")
+            payload_check = source[start:source.index("static_assert", start)]
+            calls = (
+                "check_immediate_value(",
+                "check_immediate_range(",
+                "check_immediate_multiple_of(",
+            )
+            self.assertEqual([payload_check.count(call) for call in calls], [1, 1, 1])
+            self.assertEqual(
+                [payload_check.index(call) for call in calls],
+                sorted(payload_check.index(call) for call in calls),
+            )
 
 
 if __name__ == "__main__":

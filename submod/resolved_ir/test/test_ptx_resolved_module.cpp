@@ -3487,6 +3487,58 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierWaitPhaseAndReportForms) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMbarrierPendingCount) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %r0;
+  .reg .b64 %state;
+  mbarrier.pending_count.b64 %r0, %state;
+  mbarrier.pending_count.layout::v0.b64 %r0, %state;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& pending = std::get<Mbarrier::PendingCount>(
+      std::get<Mbarrier>(body[0]).variant);
+  EXPECT_EQ(pending.layout.value, MbarrierLayout::V0);
+  EXPECT_TRUE(pending.state.value.register_ref.has_value());
+
+  const checker::Context baseline{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Mbarrier>(body[0]), baseline).has_value());
+  const auto explicit_old_ptx = checker::check(
+      std::get<Mbarrier>(body[1]),
+      checker::Context{.target = {.ptx_version = {9, 2}, .sm_version = 90},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(explicit_old_ptx.has_value());
+  EXPECT_EQ(explicit_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto explicit_old_sm = checker::check(
+      std::get<Mbarrier>(body[1]),
+      checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 89},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(explicit_old_sm.has_value());
+  EXPECT_EQ(explicit_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto wrong_width = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .u32 %r0; .reg .u64 %rd0; .reg .b32 %state32; .reg .b64 %state64;
+  mbarrier.pending_count.b64 %rd0, %state64;
+  mbarrier.pending_count.b64 %r0, %state32; }
+)ptx"));
+  ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
+  for (const auto& instruction : wrong_width->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), baseline);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   const auto ast = parseModule(R"ptx(
 .shared .align 4 .u32 shared_value;

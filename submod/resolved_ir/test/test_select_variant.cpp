@@ -877,6 +877,35 @@ TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
   }
 }
 
+TEST(SelectVariantMbarrier, SelectsPendingCount) {
+  const auto expect_variant = [](std::string_view source) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, Mbarrier::VariantType::PendingCount);
+  };
+  expect_variant("mbarrier.pending_count.b64 %r0, %state;");
+  expect_variant("mbarrier.pending_count.layout::v0.b64 %r0, %state;");
+
+  for (const std::string_view source : {
+           "mbarrier.pending_count.layout::v1.b64 %r0, %state;",
+           "mbarrier.pending_count.b32 %r0, %state;",
+           "mbarrier.pending_count.b64 %r0, %state, 1;",
+           "mbarrier.pending_count.shared.b64 %r0, %state;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());
+  }
+  for (const std::string_view source : {
+           "mbarrier.pending_count.b64 _, %state;",
+           "mbarrier.pending_count.b64 1, %state;",
+           "mbarrier.pending_count.b64 %r0, _;",
+           "mbarrier.pending_count.b64 %r0, 1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mapa::VariantType expected) {

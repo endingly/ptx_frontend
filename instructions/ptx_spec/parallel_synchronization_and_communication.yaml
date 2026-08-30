@@ -1316,7 +1316,7 @@ instructions:
   - opcode: mbarrier
     section: "9.7.14.16.12"
     doc: >
-      Initialize, invalidate, arrive at, test or try completion, or record expected or completed transaction counts for a
+      Initialize, invalidate, arrive at, test or try completion, query pending arrivals, or record expected or completed transaction counts for a
       shared-memory barrier object. The frontend validates local address,
       operand, alignment, and target constraints only; it does not model
       barrier lifecycle or runtime phase behavior.
@@ -1340,7 +1340,8 @@ instructions:
       mbarrier.test_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
       mbarrier.try_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
       mbarrier.try_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
-      mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint}
+      mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
+      mbarrier.pending_count{.layout::v0}.b64 count, state
 
     variants:
       - name: mbarrier_init_generic_v0
@@ -2238,3 +2239,13 @@ instructions:
         modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_pending_count
+        section: "9.7.14.16.20"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: pending_count, kind: flag, presence: fixed, value: true, token: .pending_count}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: optional, values: [{value: layout::v0, availability: {ptx: "9.3", sm: 90}}], default: layout::v0}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: count, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+          - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}

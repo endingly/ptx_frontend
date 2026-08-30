@@ -1600,7 +1600,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "TestWaitParityConditionalGenericOrShared", "TestWaitParityConditionalSharedCta",
              "TryWaitTokenPrimaryGenericOrShared", "TryWaitTokenPrimarySharedCta",
              "TryWaitParityPrimaryGenericOrShared", "TryWaitParityPrimarySharedCta",
-             "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta"],
+             "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta",
+             "PendingCount"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
         expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
@@ -1622,6 +1623,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta = instruction.variants[63:67]
         test_wait_primary_token, _, test_wait_primary_parity, _, test_wait_conditional, _ = instruction.variants[67:73]
         try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
+        pending_count = instruction.variants[79]
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
@@ -1714,6 +1716,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [layout.layout_id for layout in try_wait_conditional.operand_layouts],
             ["no_hint", "with_hint"],
         )
+        self.assertEqual(dict(pending_count.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in pending_count.fields],
+            [("pending_count", "bool"), ("layout", "WithLocs<MbarrierLayout>"),
+             ("type", "ScalarType"), ("count", "WithLocs<ResolvedRegisterRef>"),
+             ("state", "WithLocs<ResolvedMbarrierStateToken>")],
+        )
+        self.assertEqual(
+            pending_count.modifier_bindings[1].default_value.value, "layout::v0"
+        )
+        self.assertEqual(
+            dict(pending_count.modifier_value_availabilities[0].availability),
+            {"ptx": "9.3", "sm": 90},
+        )
+        count, state = pending_count.operand_layouts[0].bindings
+        self.assertEqual(count.type_expression.scalar_type, "u32")
+        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(state.mbarrier_state_token_form.value, "register")
         self.assertEqual(
             [layout.layout_id for layout in arrive_drop_generic.operand_layouts],
             ["no_count", "with_count"],

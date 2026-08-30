@@ -1991,6 +1991,93 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
 )ptx")).has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolQueryCancelSlices) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .pred %p0;
+  .reg .b32 %r<8>;
+  .reg .b128 %q0;
+  clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, %r1, %r2, %r3}, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r4, _, _, _}, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 %r5, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid::y.b32.b128 %r6, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid::z.b32.b128 %r7, %q0;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelIsCanceledPred>(
+      std::get<Clusterlaunchcontrol>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidV4>(
+      std::get<Clusterlaunchcontrol>(body[1]).variant));
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidV4>(
+      std::get<Clusterlaunchcontrol>(body[2]).variant));
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidX>(
+      std::get<Clusterlaunchcontrol>(body[3]).variant));
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidY>(
+      std::get<Clusterlaunchcontrol>(body[4]).variant));
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidZ>(
+      std::get<Clusterlaunchcontrol>(body[5]).variant));
+
+  const auto context_for = [&ast](std::string_view target,
+                                  checker::PtxVersion ptx_version) {
+    const auto profile = base::find_target_profile(target);
+    EXPECT_TRUE(profile.has_value()) << target;
+    return checker::Context{
+        .target = {.ptx_version = ptx_version,
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+        .instruction_range = ast.range,
+    };
+  };
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(instruction),
+                               context_for("sm_100a", {8, 6}))
+                    .has_value());
+  }
+
+  const auto too_old = checker::check(
+      std::get<Clusterlaunchcontrol>(body[0]), context_for("sm_100a", {8, 5}));
+  ASSERT_FALSE(too_old.has_value());
+  EXPECT_EQ(too_old.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+  const auto too_small = checker::check(
+      std::get<Clusterlaunchcontrol>(body[0]), context_for("sm_90", {8, 6}));
+  ASSERT_FALSE(too_small.has_value());
+  EXPECT_EQ(too_small.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+  const auto no_cluster = checker::check(
+      std::get<Clusterlaunchcontrol>(body[0]),
+      checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 100},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(no_cluster.has_value());
+  EXPECT_EQ(no_cluster.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .pred %p0; clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, 1; }",
+           ".entry kernel() { .reg .b32 %r<3>; .reg .b128 %q0; clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, %r1, %r2}, %q0; }",
+           ".entry kernel() { .reg .b32 %r0; .reg .b128 %q0; clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 _, %q0; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+
+  const auto wrong_status = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %r0;
+  .reg .b128 %q0;
+  clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %r0, %q0;
+}
+)ptx"));
+  EXPECT_FALSE(wrong_status.has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   const auto ast = parseModule(R"ptx(
 .global .align 4 .u32 global_value;
@@ -6673,7 +6760,7 @@ TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
   const auto sink = resolve_source("st.v2.u32 [%rd0], {%r0, _};");
   ASSERT_FALSE(sink.has_value());
   EXPECT_EQ(sink.error().front().message,
-            "The '_' sink is allowed only in a 256-bit memory vector.");
+            "The '_' sink requires an exact 256-bit vector payload.");
 
   EXPECT_TRUE(resolve_source("ld.v2.u16 {%r0, %r1}, [%rd0];").has_value());
 

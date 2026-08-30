@@ -441,6 +441,7 @@ class ResolvedOperandBinding:
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
+    vector_sink_payload_bits: int = 0
     allow_destination_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
     sink_availability: tuple[tuple[str, Any], ...] = ()
@@ -1072,6 +1073,7 @@ def _build_operand_layout(
                     operand.vector_type_policy.value.capitalize()
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
+                vector_sink_payload_bits=operand.vector_sink_payload_bits,
                 allow_destination_sink=operand.allow_destination_sink,
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,
                 sink_availability=tuple(operand.sink_availability.items()),

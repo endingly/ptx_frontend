@@ -366,6 +366,11 @@ def _emit_operand_binding_descriptor(
         or binding.vector_arity_modifier_field_id is not None
         else ""
     )
+    vector_sink_payload_bits = (
+        "\n              .vector_sink_payload_bits = "
+        f"{binding.vector_sink_payload_bits},"
+        if binding.vector_sink_payload_bits else ""
+    )
     allow_destination_sink = (
         "\n              .allow_destination_sink = true,"
         if binding.allow_destination_sink
@@ -441,7 +446,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{allow_destination_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allow_destination_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

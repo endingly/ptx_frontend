@@ -1770,6 +1770,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    checker::VectorTypePolicy vector_type_policy,
                    base::ScalarTypeSizePolicy register_width_policy,
                    bool allow_sink,
+                   size_t sink_payload_bits,
                    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
@@ -1853,11 +1854,12 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
             .message = "The '_' sink is allowed only in a destination vector.",
         });
       }
-      if (vector_type_policy == checker::VectorTypePolicy::Element &&
-          vector_payload_bits != 256) {
+      if (sink_payload_bits != 0 && vector_payload_bits != sink_payload_bits) {
         return std::unexpected(ResolveDiagnostic{
             .range = identifier->syntax.range,
-            .message = "The '_' sink is allowed only in a 256-bit memory vector.",
+            .message = fmt::format(
+                "The '_' sink requires an exact {}-bit vector payload.",
+                sink_payload_bits),
         });
       }
       ++sink_count;
@@ -2562,7 +2564,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
                              *arity,
                              binding.vector_type_policy,
                              binding.register_width_policy,
-                             binding.allow_vector_sink, context);
+                             binding.allow_vector_sink,
+                             binding.vector_sink_payload_bits, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

@@ -1015,6 +1015,15 @@ $defs:
         type: boolean
         default: false
 
+      sink_payload_bits:
+        description: >
+          Exact vector payload width required when a vector element is ``_``;
+          omission imposes no sink-specific payload requirement.
+        type: integer
+        minimum: 8
+        maximum: 256
+        multipleOf: 8
+
       components:
         description: "Allowed component names, for example x/y/z/w or 0..f."
         type: array

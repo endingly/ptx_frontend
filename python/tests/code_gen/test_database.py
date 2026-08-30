@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 from code_gen.database import load_codegen_database
 from code_gen.load_yaml import load_yaml
 from code_gen.gen_resolved_checker_descriptor import _emit_availability
-from code_gen.normalize import normalize_availability
+from code_gen.normalize import normalize_availability, normalize_operand
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -457,6 +457,47 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
 
 
 class AvailabilityNormalizationTests(unittest.TestCase):
+    def test_vector_sink_payload_requires_an_enabled_sink(self) -> None:
+        operand = normalize_operand({
+            "name": "dst",
+            "kind": "reg_vector",
+            "role": "dst",
+            "access": "write",
+            "type": "b32",
+            "vector": {
+                "kind": "vector",
+                "arity": [4],
+                "allow_sink": True,
+                "sink_payload_bits": 128,
+            },
+        })
+        self.assertEqual(operand.vector_sink_payload_bits, 128)
+        for payload_bits in (0, 7, 9, 264, True):
+            with self.subTest(payload_bits=payload_bits):
+                with self.assertRaisesRegex(ValueError, "8..256"):
+                    normalize_operand({
+                        "name": "dst",
+                        "kind": "reg_vector",
+                        "role": "dst",
+                        "access": "write",
+                        "type": "b32",
+                        "vector": {
+                            "kind": "vector",
+                            "arity": [4],
+                            "allow_sink": True,
+                            "sink_payload_bits": payload_bits,
+                        },
+                    })
+        with self.assertRaisesRegex(ValueError, "requires vector.allow_sink"):
+            normalize_operand({
+                "name": "dst",
+                "kind": "reg_vector",
+                "role": "dst",
+                "access": "write",
+                "type": "b32",
+                "vector": {"kind": "vector", "arity": [4], "sink_payload_bits": 128},
+            })
+
     def test_legacy_and_dnf_availability(self) -> None:
         legacy = {"ptx": "9.0", "sm": 90, "family": "sm_120f"}
         self.assertEqual(normalize_availability(legacy), legacy)

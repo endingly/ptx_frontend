@@ -854,6 +854,40 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
   }
 }
 
+TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Clusterlaunchcontrol::VariantType expected) {
+    const auto selected = selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+  expect_variant(
+      "clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %q0;",
+      Clusterlaunchcontrol::VariantType::QueryCancelIsCanceledPred);
+  expect_variant(
+      "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, %r1, %r2, _}, %q0;",
+      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidV4);
+  expect_variant(
+      "clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 %r0, %q0;",
+      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidX);
+  expect_variant(
+      "clusterlaunchcontrol.query_cancel.get_first_ctaid::y.b32.b128 %r0, %q0;",
+      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidY);
+  expect_variant(
+      "clusterlaunchcontrol.query_cancel.get_first_ctaid::z.b32.b128 %r0, %q0;",
+      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidZ);
+
+  for (const std::string_view source : {
+           "clusterlaunchcontrol.query_cancel.is_canceled.b128 %p0, %q0;",
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid::w.b32.b128 %r0, %q0;",
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid.b32.v4.b128 {%r0, %r1, %r2, _}, %q0;",
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b64.b128 {%r0, %r1, %r2, _}, %q0;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantMbarrier, SelectsBasicTestWaitForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mbarrier::VariantType expected) {

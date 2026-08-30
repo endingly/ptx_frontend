@@ -208,6 +208,7 @@ class OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink: bool = False
+    vector_sink_payload_bits: int = 0
     allow_destination_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
     sink_availability: dict[str, Any] = field(default_factory=dict)

@@ -770,6 +770,19 @@ CheckResult check_operands(
         });
         continue;
       }
+      if (operand->vector_sink_count != 0 &&
+          descriptor.vector_sink_payload_bits != 0 &&
+          vector_payload_bits != descriptor.vector_sink_payload_bits) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::InvalidVectorOperand,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' uses the '_' sink with {} bits; {} bits are required.",
+                descriptor.target_field_id, vector_payload_bits,
+                descriptor.vector_sink_payload_bits),
+        });
+        continue;
+      }
 
       if (descriptor.vector_type_policy == VectorTypePolicy::Aggregate) {
         const uint8_t instruction_bytes = scalar_size_of(expected_type);

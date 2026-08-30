@@ -429,6 +429,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
     - name: address
       kind: addr
       role: addr
@@ -455,6 +456,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
     - name: address
       kind: addr
       role: addr
@@ -500,6 +502,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
 
   st_explicit_vector:
     - name: address
@@ -526,6 +529,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
 
   st_explicit_scalar:
     - name: address

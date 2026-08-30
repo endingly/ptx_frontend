@@ -143,6 +143,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
+    vector_sink_payload_bits = 0
     allow_destination_sink = raw.get("allow_destination_sink", False)
     if not isinstance(allow_destination_sink, bool):
         raise TypeError("allow_destination_sink must be a boolean when supplied.")
@@ -238,6 +239,19 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
             )
+        if "sink_payload_bits" in vector:
+            vector_sink_payload_bits = vector["sink_payload_bits"]
+            if (type(vector_sink_payload_bits) is not int or
+                    not 8 <= vector_sink_payload_bits <= 256 or
+                    vector_sink_payload_bits % 8 != 0):
+                raise ValueError(
+                    f"{raw['kind']} vector.sink_payload_bits must be an 8..256 "
+                    "multiple of eight."
+                )
+            if not vector_allow_sink:
+                raise ValueError(
+                    f"{raw['kind']} vector.sink_payload_bits requires vector.allow_sink."
+                )
 
     type_expression = _normalize_operand_type_expression(raw.get("type"))
     try:
@@ -296,6 +310,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_arity_expression=vector_arity_expression,
         vector_type_policy=vector_type_policy,
         vector_allow_sink=vector_allow_sink,
+        vector_sink_payload_bits=vector_sink_payload_bits,
         allow_destination_sink=allow_destination_sink,
         mbarrier_state_token_form=mbarrier_state_token_form,
         sink_availability=sink_availability,

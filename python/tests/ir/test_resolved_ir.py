@@ -2141,6 +2141,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedVectorTypePolicy.ELEMENT,
         )
         self.assertTrue(vector_binding.allow_vector_sink)
+        self.assertEqual(vector_binding.vector_sink_payload_bits, 256)
         self.assertEqual(vector_variant.memory_vector.type_field_id, "type")
         self.assertEqual(vector_variant.memory_vector.vector_field_id, "dst")
         self.assertEqual(
@@ -2294,6 +2295,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedVectorTypePolicy.ELEMENT,
         )
         self.assertTrue(store_vector_binding.allow_vector_sink)
+        self.assertEqual(store_vector_binding.vector_sink_payload_bits, 256)
         self.assertEqual(store_vector.memory_vector.vector_field_id, "src")
         store_vector_parameter = (
             store.variants[5].operand_layouts[0].bindings[0].parameter_constraint
@@ -2648,6 +2650,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "TryCancelAsyncSharedCta",
                 "TryCancelAsyncMulticastGeneric",
                 "TryCancelAsyncMulticastSharedCta",
+                "QueryCancelIsCanceledPred",
+                "QueryCancelGetFirstCtaidV4",
+                "QueryCancelGetFirstCtaidX",
+                "QueryCancelGetFirstCtaidY",
+                "QueryCancelGetFirstCtaidZ",
             ],
         )
         self.assertEqual(
@@ -2690,6 +2697,28 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [constraint.address_field_ids for constraint in variants[0].address_alignments],
             [("response",), ("mbarrier",)],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[4].fields],
+            [
+                ("query_cancel", "bool"),
+                ("is_canceled", "bool"),
+                ("result_type", "ScalarType"),
+                ("response_type", "ScalarType"),
+                ("status", "WithLocs<ResolvedPredicate>"),
+                ("response", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
+        self.assertEqual(
+            variants[5].operand_layouts[0].bindings[0].allowed_vector_arities, (4,)
+        )
+        self.assertTrue(variants[5].operand_layouts[0].bindings[0].allow_vector_sink)
+        self.assertEqual(
+            variants[5].operand_layouts[0].bindings[0].vector_sink_payload_bits, 0
+        )
+        self.assertEqual(
+            dict(variants[8].availability),
+            {"any_of": [{"ptx": "8.6", "sm": 100, "capabilities": ["cluster"]}]},
         )
 
     def test_cp_async_commit_group_model(self) -> None:
@@ -3690,6 +3719,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_end::ResolvedModifierBindingDescriptor", source)
         self.assertIn("check_end::ResolvedOperandBindingDescriptor", source)
         self.assertIn("checker::AddressStateSpaceDescriptor", source)
+        self.assertIn(".vector_sink_payload_bits = 256,", source)
         self.assertIn(".allowed_address_state_spaces =", source)
         self.assertIn(".parameter_constraint = {", source)
         self.assertIn(

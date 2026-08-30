@@ -463,6 +463,21 @@ operand_patterns:
   clusterlaunchcontrol_try_cancel:
     - {name: response, kind: addr, role: addr, access: write, state_space: [shared]}
     - {name: mbarrier, kind: addr, role: addr, access: read, state_space: [shared]}
+  clusterlaunchcontrol_query_cancel_status:
+    - {name: status, kind: pred, role: dst, access: write, type: pred}
+    - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
+  clusterlaunchcontrol_query_cancel_vector:
+    - name: ctaid
+      kind: reg_vector
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+      vector: {kind: vector, arity: [4], type_policy: element, allow_sink: true}
+    - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
+  clusterlaunchcontrol_query_cancel_scalar:
+    - {name: ctaid, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -2376,13 +2391,14 @@ instructions:
   - opcode: clusterlaunchcontrol
     section: "9.7.14.18"
     doc: >
-      Starts an asynchronous cancellation attempt using a shared response and
-      mbarrier object. The frontend validates local operands, alignment, and
-      target availability only; it does not decode responses or model runtime
-      cancellation.
-    syntax: >-
-      clusterlaunchcontrol.try_cancel.async{.shared::cta}.mbarrier::complete_tx::bytes
-      {.multicast::cluster::all}.b128 [response], [mbarrier]
+      Starts an asynchronous cancellation attempt or queries its response. The
+      frontend validates local operands and target availability only; it does
+      not model response contents or runtime cancellation.
+    syntax: |-
+      clusterlaunchcontrol.try_cancel.async{.shared::cta}.mbarrier::complete_tx::bytes{.multicast::cluster::all}.b128 [response], [mbarrier]
+      clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 pred, response
+      clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {x, y, z, _}, response
+      clusterlaunchcontrol.query_cancel.get_first_ctaid::{x|y|z}.b32.b128 reg, response
     variants:
       - name: clusterlaunchcontrol_try_cancel_async_generic
         availability:
@@ -2436,3 +2452,54 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
         operands: $clusterlaunchcontrol_try_cancel
         constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_query_cancel_is_canceled_pred
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: is_canceled, kind: flag, presence: fixed, value: true, token: .is_canceled}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_status
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_v4
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid, kind: flag, presence: fixed, value: true, token: .get_first_ctaid}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v4]}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_vector
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_x
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid_x, kind: flag, presence: fixed, value: true, token: .get_first_ctaid::x}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_scalar
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_y
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid_y, kind: flag, presence: fixed, value: true, token: .get_first_ctaid::y}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_scalar
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_z
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid_z, kind: flag, presence: fixed, value: true, token: .get_first_ctaid::z}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_scalar

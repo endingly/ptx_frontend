@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 315)
+        self.assertEqual(len(slices), 320)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -658,6 +658,11 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("clusterlaunchcontrol_try_cancel_async_shared_cta", "default"),
                 ("clusterlaunchcontrol_try_cancel_async_multicast_generic", "default"),
                 ("clusterlaunchcontrol_try_cancel_async_multicast_shared_cta", "default"),
+                ("clusterlaunchcontrol_query_cancel_is_canceled_pred", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_v4", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_x", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_y", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_z", "default"),
             },
             "mbarrier": {
                 ("mbarrier_init_generic_v0", "default"),

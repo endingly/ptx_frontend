@@ -253,6 +253,7 @@ struct OperandDescriptor {
   std::string_view vector_arity_modifier_field_id{};
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
+  size_t vector_sink_payload_bits = 0;
   bool allow_destination_sink = false;
   MbarrierStateTokenForm mbarrier_state_token_form =
       MbarrierStateTokenForm::Register;

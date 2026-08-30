@@ -75,6 +75,13 @@ TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
   ASSERT_EQ(indexed_branch->operands.size(), 2u);
   EXPECT_EQ(check_end::get_operand_syntax_shape(indexed_branch->operands[1]),
             check_end::OperandSyntaxShape::BranchTargetSet);
+
+  PtxSyntaxParser predicate_pair_parser("setp.eq.u32 %p0|%p1, %r0, %r1;");
+  const auto predicate_pair = predicate_pair_parser.parseInstruction();
+  ASSERT_TRUE(predicate_pair.has_value())
+      << predicate_pair.diagnostics.front().message;
+  EXPECT_EQ(check_end::get_operand_syntax_shape(predicate_pair->operands[0]),
+            check_end::OperandSyntaxShape::RegisterPredicatePair);
 }
 
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {
@@ -804,6 +811,36 @@ TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
 }
 
+TEST(ResolveSet, SelectsFrozenCommonScalarVariants) {
+  const auto eq = resolve<Set>(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
+  ASSERT_TRUE(eq.has_value()) << eq.error().message;
+  const auto* eq_u32_u32 = std::get_if<Set::EqU32U32>(&eq->variant);
+  ASSERT_NE(eq_u32_u32, nullptr);
+  EXPECT_EQ(eq_u32_u32->comparison.value, ComparisonOperator::Eq);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(eq_u32_u32->src2.value));
+
+  const auto lt_and = resolve<Set>(
+      parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
+  ASSERT_TRUE(lt_and.has_value()) << lt_and.error().message;
+  const auto* lt_and_f32_s32 = std::get_if<Set::LtAndF32S32>(&lt_and->variant);
+  ASSERT_NE(lt_and_f32_s32, nullptr);
+  EXPECT_EQ(lt_and_f32_s32->comparison.value, ComparisonOperator::Lt);
+  EXPECT_EQ(lt_and_f32_s32->boolean.value, BooleanOperator::And);
+  EXPECT_TRUE(lt_and_f32_s32->combine.value.negated);
+}
+
+TEST(ResolveSet, RejectsUnfrozenDtypeStypeAndBooleanForms) {
+  for (const auto source : {
+           "set.eq.f32.u32 %f0, %r0, %r1;",
+           "set.eq.and.u32.u32 %r0, %r1, %r2, %p0;",
+           "set.lt.and.f32.u32 %f0, %r0, %r1, %p0;",
+       }) {
+    const auto selected = selectVariant<Set>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
   const auto simple_ast = parse_instruction("setp.lt.u32 %p0, %r0, 16;");
   const auto simple = resolve<Setp>(simple_ast);
@@ -824,6 +861,67 @@ TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
   EXPECT_TRUE(lt_and->combine.value.negated);
 }
 
+TEST(ResolveSetp, SelectsM12GeS32Variant) {
+  const auto resolved =
+      resolve<Setp>(parse_instruction("setp.ge.s32 %p0, %r0, -1;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* ge = std::get_if<Setp::GeS32>(&resolved->variant);
+  ASSERT_NE(ge, nullptr);
+  EXPECT_EQ(ge->comparison.value, ComparisonOperator::Ge);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(ge->src2.value));
+}
+
+TEST(ResolveSetp, SelectsFrozenDualPredicateVariants) {
+  const auto equality_ast =
+      parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
+  const auto equality = resolve<Setp>(equality_ast);
+  ASSERT_TRUE(equality.has_value()) << equality.error().message;
+  const auto* eq = std::get_if<Setp::EqU32Pair>(&equality->variant);
+  ASSERT_NE(eq, nullptr);
+  EXPECT_EQ(eq->comparison.value, ComparisonOperator::Eq);
+  EXPECT_EQ(eq->dst.value.first.register_ref.spelling, "%p0");
+  EXPECT_EQ(eq->dst.value.second.register_ref.spelling, "%p1");
+
+  const auto combined_ast =
+      parse_instruction("setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;");
+  const auto combined = resolve<Setp>(combined_ast);
+  ASSERT_TRUE(combined.has_value()) << combined.error().message;
+  const auto* lt_and = std::get_if<Setp::LtAndS32Pair>(&combined->variant);
+  ASSERT_NE(lt_and, nullptr);
+  EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
+  EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
+  EXPECT_FALSE(lt_and->combine.value.negated);
+  EXPECT_EQ(lt_and->combine.value.register_ref.spelling, "%p2");
+}
+
+TEST(ResolveSetp, RejectsUnfrozenDualPredicateForms) {
+  for (const auto source : {
+           "setp.eq.u32 %p0|_, %r0, %r1;",
+           "setp.lt.and.s32 %p0|%p1, %s0, %s1, !%p2;",
+       }) {
+    const auto selected = resolve<Setp>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+
+  const auto non_predicate =
+      resolve<Setp>(parse_instruction("setp.eq.u32 %r0|%p1, %r0, %r1;"));
+  EXPECT_FALSE(non_predicate.has_value());
+}
+
+TEST(ResolveSetp, RejectsUnfrozenGeS32Forms) {
+  for (const auto source : {
+           "setp.ge.u32 %p0, %r0, %r1;",
+           "setp.ge.and.s32 %p0, %r0, %r1, %p1;",
+           "setp.ge.s32 %p0|%p1, %r0, %r1;",
+           "setp.ge.s32 %r0, %r1, %r2;",
+       }) {
+    const auto selected = resolve<Setp>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(ResolveSelp, SelectsFrozenU32Variant) {
   const auto ast = parse_instruction("selp.u32 %r0, %r1, 0, %p0;");
   const auto resolved = resolve<Selp>(ast);
@@ -832,6 +930,33 @@ TEST(ResolveSelp, SelectsFrozenU32Variant) {
   ASSERT_NE(selp, nullptr);
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(selp->src_false.value));
   EXPECT_FALSE(selp->predicate.value.negated);
+}
+
+TEST(ResolveSlct, SelectsFrozenNumericSelectorVariants) {
+  const auto integer =
+      resolve<Slct>(parse_instruction("slct.u32.s32 %r0, %r1, %r2, %r3;"));
+  ASSERT_TRUE(integer.has_value()) << integer.error().message;
+  const auto* u32_s32 = std::get_if<Slct::U32S32>(&integer->variant);
+  ASSERT_NE(u32_s32, nullptr);
+  EXPECT_EQ(u32_s32->selector.value.register_class,
+            ResolvedRegisterClass::General);
+
+  const auto floating = resolve<Slct>(
+      parse_instruction("slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;"));
+  ASSERT_TRUE(floating.has_value()) << floating.error().message;
+  EXPECT_NE(std::get_if<Slct::FtzU64F32>(&floating->variant), nullptr);
+  EXPECT_TRUE(Slct::FtzU64F32::ftz);
+}
+
+TEST(ResolveSlct, RejectsUnfrozenModifierForms) {
+  for (const auto source : {
+           "slct.ftz.u32.s32 %r0, %r1, %r2, %r3;",
+           "slct.u64.f32 %rd0, %rd1, %rd2, %f0;",
+           "slct.ftz.u64.s32 %rd0, %rd1, %rd2, %r0;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Slct>(parse_instruction(source)).has_value());
+  }
 }
 
 TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
@@ -869,10 +994,38 @@ TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src2.value));
 }
 
+TEST(ResolveMul, SelectsM12HiAndWideU32Variants) {
+  const auto hi = resolve<Mul>(parse_instruction("mul.hi.u32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(hi.has_value()) << hi.error().message;
+  const auto* hi_variant = std::get_if<Mul::HiU32>(&hi->variant);
+  ASSERT_NE(hi_variant, nullptr);
+  EXPECT_TRUE(Mul::HiU32::hi);
+  EXPECT_EQ(Mul::HiU32::type, ScalarType::U32);
+
+  const auto wide =
+      resolve<Mul>(parse_instruction("mul.wide.u32 %rd0, %r1, %r2;"));
+  ASSERT_TRUE(wide.has_value()) << wide.error().message;
+  const auto* wide_variant = std::get_if<Mul::WideU32>(&wide->variant);
+  ASSERT_NE(wide_variant, nullptr);
+  EXPECT_TRUE(Mul::WideU32::wide);
+  EXPECT_EQ(Mul::WideU32::type, ScalarType::U32);
+}
+
+TEST(ResolveMul, SelectsM12WideS32Variant) {
+  const auto resolved =
+      resolve<Mul>(parse_instruction("mul.wide.s32 %rd0, %r1, -7;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* wide = std::get_if<Mul::WideS32>(&resolved->variant);
+  ASSERT_NE(wide, nullptr);
+  EXPECT_TRUE(Mul::WideS32::wide);
+  EXPECT_EQ(Mul::WideS32::type, ScalarType::S32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(wide->src2.value));
+}
+
 TEST(ResolveMul, RejectsUnfrozenVariants) {
   for (const auto source : {"mul.u32 %r0, %r1, %r2;",
-                            "mul.hi.u32 %r0, %r1, %r2;",
-                            "mul.lo.s32 %r0, %r1, %r2;"}) {
+                            "mul.lo.s32 %r0, %r1, %r2;",
+                            "mul.wide.s64 %rd0, %r1, %r2;"}) {
     const auto selected = selectVariant<Mul>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -910,10 +1063,34 @@ TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
 }
 
+TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
+  const auto lo =
+      resolve<Mad>(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
+  ASSERT_TRUE(lo.has_value()) << lo.error().message;
+  ASSERT_NE(std::get_if<Mad::LoS32>(&lo->variant), nullptr);
+  EXPECT_TRUE(Mad::LoS32::lo);
+  EXPECT_EQ(Mad::LoS32::type, ScalarType::S32);
+
+  const auto wide = resolve<Mad>(
+      parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
+  ASSERT_TRUE(wide.has_value()) << wide.error().message;
+  ASSERT_NE(std::get_if<Mad::WideU32>(&wide->variant), nullptr);
+  EXPECT_TRUE(Mad::WideU32::wide);
+  EXPECT_EQ(Mad::WideU32::type, ScalarType::U32);
+
+  const auto rn =
+      resolve<Mad>(parse_instruction("mad.rn.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(rn.has_value()) << rn.error().message;
+  ASSERT_NE(std::get_if<Mad::RnF32>(&rn->variant), nullptr);
+  EXPECT_EQ(Mad::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
+}
+
 TEST(ResolveMad, RejectsUnfrozenVariants) {
   for (const auto source : {"mad.u32 %r0, %r1, %r2, %r3;",
                             "mad.hi.u32 %r0, %r1, %r2, %r3;",
-                            "mad.lo.s32 %r0, %r1, %r2, %r3;",
+                            "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
+                            "mad.rz.f32 %f0, %f1, %f2, %f3;",
                             "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);
@@ -929,10 +1106,27 @@ TEST(ResolveFma, SelectsFrozenRnF32Variant) {
   EXPECT_EQ(Fma::RnF32::type, ScalarType::F32);
 }
 
+TEST(ResolveFma, SelectsM12RnF64AndF16Variants) {
+  const auto f64 =
+      resolve<Fma>(parse_instruction("fma.rn.f64 %d0, %d1, %d2, %d3;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  ASSERT_NE(std::get_if<Fma::RnF64>(&f64->variant), nullptr);
+  EXPECT_EQ(Fma::RnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Fma::RnF64::type, ScalarType::F64);
+
+  const auto f16 =
+      resolve<Fma>(parse_instruction("fma.rn.f16 %h0, %h1, %h2, %h3;"));
+  ASSERT_TRUE(f16.has_value()) << f16.error().message;
+  ASSERT_NE(std::get_if<Fma::RnF16>(&f16->variant), nullptr);
+  EXPECT_EQ(Fma::RnF16::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Fma::RnF16::type, ScalarType::F16);
+}
+
 TEST(ResolveFma, RejectsUnfrozenVariants) {
   for (const auto source : {"fma.f32 %f0, %f1, %f2, %f3;",
                             "fma.rz.f32 %f0, %f1, %f2, %f3;",
-                            "fma.rn.f64 %fd0, %fd1, %fd2, %fd3;",
+                            "fma.rz.f64 %d0, %d1, %d2, %d3;",
+                            "fma.rz.f16 %h0, %h1, %h2, %h3;",
                             "fma.rn.ftz.f32 %f0, %f1, %f2, %f3;",
                             "fma.rn.sat.f32 %f0, %f1, %f2, %f3;"}) {
     const auto selected = selectVariant<Fma>(parse_instruction(source));
@@ -941,9 +1135,13 @@ TEST(ResolveFma, RejectsUnfrozenVariants) {
   }
 }
 
-TEST(ResolveFma, RejectsImmediateOperand) {
-  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, 1.0, %f2, %f3;"));
-  ASSERT_FALSE(resolved.has_value());
+TEST(ResolveFma, RejectsImmediateOperands) {
+  for (const auto source : {"fma.rn.f32 %f0, 1.0, %f2, %f3;",
+                            "fma.rn.f64 %d0, 1.0, %d2, %d3;",
+                            "fma.rn.f16 %h0, 1.0, %h2, %h3;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Fma>(parse_instruction(source)).has_value());
+  }
 }
 
 TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
@@ -954,13 +1152,287 @@ TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(div->src2.value));
 }
 
+TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
+  const auto s32 = resolve<Div>(parse_instruction("div.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Div::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Div::S32::type, ScalarType::S32);
+
+  const auto f32 =
+      resolve<Div>(parse_instruction("div.rn.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Div::RnF32>(&f32->variant), nullptr);
+  EXPECT_EQ(Div::RnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Div::RnF32::type, ScalarType::F32);
+
+  const auto f64 =
+      resolve<Div>(parse_instruction("div.rn.f64 %d0, %d1, %d2;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  ASSERT_NE(std::get_if<Div::RnF64>(&f64->variant), nullptr);
+  EXPECT_EQ(Div::RnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Div::RnF64::type, ScalarType::F64);
+}
+
 TEST(ResolveDiv, RejectsUnfrozenVariants) {
-  for (const auto source : {"div.s32 %r0, %r1, %r2;",
-                            "div.f32 %f0, %f1, %f2;",
+  for (const auto source : {"div.rz.f32 %f0, %f1, %f2;",
+                            "div.approx.f32 %f0, %f1, %f2;",
+                            "div.full.f64 %d0, %d1, %d2;",
+                            "div.rn.f16 %h0, %h1, %h2;",
                             "div.sat.u32 %r0, %r1, %r2;"}) {
     const auto selected = selectVariant<Div>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
+  }
+}
+
+TEST(ResolveRem, SelectsFrozenVariantsAndAcceptsZeroDivisor) {
+  const auto s32 = resolve<Rem>(parse_instruction("rem.s32 %r0, %r1, 0;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  const auto* signed_rem = std::get_if<Rem::S32>(&s32->variant);
+  ASSERT_NE(signed_rem, nullptr);
+  EXPECT_EQ(Rem::S32::type, ScalarType::S32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(signed_rem->src2.value));
+
+  const auto u32 = resolve<Rem>(parse_instruction("rem.u32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(u32.has_value()) << u32.error().message;
+  ASSERT_NE(std::get_if<Rem::U32>(&u32->variant), nullptr);
+  EXPECT_EQ(Rem::U32::type, ScalarType::U32);
+}
+
+TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
+  const auto s32 = resolve<Min>(parse_instruction("min.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Min::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Min::S32::type, ScalarType::S32);
+
+  const auto nan =
+      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(nan.has_value()) << nan.error().message;
+  ASSERT_NE(std::get_if<Min::NanF32>(&nan->variant), nullptr);
+  EXPECT_TRUE(Min::NanF32::nan);
+  EXPECT_EQ(Min::NanF32::type, ScalarType::F32);
+}
+
+TEST(ResolveMin, RejectsUnfrozenVariants) {
+  for (const auto source : {"min.relu.s32 %r0, %r1, %r2;",
+                            "min.f32 %f0, %f1, %f2;",
+                            "min.ftz.f32 %f0, %f1, %f2;",
+                            "min.xorsign.abs.f32 %f0, %f1, %f2;",
+                            "min.abs.f32 %f0, %f1, %f2;",
+                            "min.nan.f32 %f0, %f1, %f2;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Min>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(
+      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
+}
+
+TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
+  const auto s32 = resolve<Max>(parse_instruction("max.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Max::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Max::S32::type, ScalarType::S32);
+
+  const auto nan =
+      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2;"));
+  ASSERT_TRUE(nan.has_value()) << nan.error().message;
+  ASSERT_NE(std::get_if<Max::NanF32>(&nan->variant), nullptr);
+  EXPECT_TRUE(Max::NanF32::nan);
+  EXPECT_EQ(Max::NanF32::type, ScalarType::F32);
+}
+
+TEST(ResolveMax, RejectsUnfrozenVariants) {
+  for (const auto source : {"max.relu.s32 %r0, %r1, %r2;",
+                            "max.f32 %f0, %f1, %f2;",
+                            "max.ftz.f32 %f0, %f1, %f2;",
+                            "max.xorsign.abs.f32 %f0, %f1, %f2;",
+                            "max.abs.f32 %f0, %f1, %f2;",
+                            "max.nan.f32 %f0, %f1, %f2;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Max>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(
+      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
+}
+
+TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
+  const auto s32 = resolve<Abs>(parse_instruction("abs.s32 %r0, %r1;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Abs::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Abs::S32::type, ScalarType::S32);
+
+  const auto f32 = resolve<Abs>(parse_instruction("abs.f32 %f0, %f1;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Abs::F32>(&f32->variant), nullptr);
+  EXPECT_EQ(Abs::F32::type, ScalarType::F32);
+}
+
+TEST(ResolveAbs, RejectsUnfrozenAndInvalidForms) {
+  for (const auto source : {"abs.sat.s32 %r0, %r1;",
+                            "abs.ftz.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Abs>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.s32 %r0;")).has_value());
+  EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
+}
+
+TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
+  const auto s32 = resolve<Neg>(parse_instruction("neg.s32 %r0, %r1;"));
+  ASSERT_TRUE(s32.has_value()) << s32.error().message;
+  ASSERT_NE(std::get_if<Neg::S32>(&s32->variant), nullptr);
+  EXPECT_EQ(Neg::S32::type, ScalarType::S32);
+
+  const auto f32 = resolve<Neg>(parse_instruction("neg.f32 %f0, %f1;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Neg::F32>(&f32->variant), nullptr);
+  EXPECT_EQ(Neg::F32::type, ScalarType::F32);
+
+  const auto f16x2 = resolve<Neg>(parse_instruction("neg.f16x2 %r0, %r1;"));
+  ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
+  ASSERT_NE(std::get_if<Neg::F16x2>(&f16x2->variant), nullptr);
+  EXPECT_EQ(Neg::F16x2::type, ScalarType::F16x2);
+}
+
+TEST(ResolveNeg, RejectsUnfrozenForms) {
+  for (const auto source : {"neg.ftz.f32 %f0, %f1;",
+                            "neg.bf16x2 %r0, %r1;",
+                            "neg.sat.s32 %r0, %r1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Neg>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
+  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 0x1a;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, 0;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Lop3>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ASSERT_NE(std::get_if<Lop3::B32>(&resolved->variant), nullptr);
+    EXPECT_EQ(Lop3::B32::type, ScalarType::B32);
+  }
+}
+
+TEST(ResolveLop3, RejectsUnfrozenPredicateExtensionAndNonImmediateLut) {
+  EXPECT_FALSE(selectVariant<Lop3>(parse_instruction(
+      "lop3.and.b32 %r0, %r1, %r2, %r3, 0x1a, %p0;")).has_value());
+  EXPECT_FALSE(resolve<Lop3>(parse_instruction(
+      "lop3.b32 %r0, %r1, %r2, %r3, %r4;")).has_value());
+}
+
+TEST(ResolveBfe, SelectsFrozenU32VariantAndRejectsNonImmediateBounds) {
+  for (const auto source : {"bfe.u32 %r0, %r1, 0, 8;",
+                            "bfe.u32 %r0, %r1, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Bfe>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ASSERT_NE(std::get_if<Bfe::U32>(&resolved->variant), nullptr);
+    EXPECT_EQ(Bfe::U32::type, ScalarType::U32);
+  }
+  for (const auto source : {"bfe.u32 %r0, %r1, %r2, 8;",
+                            "bfe.u32 %r0, %r1, 8, %r2;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Bfe>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveBfi, SelectsFrozenB32VariantAndRejectsNonImmediateBounds) {
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 0, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Bfi>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ASSERT_NE(std::get_if<Bfi::B32>(&resolved->variant), nullptr);
+    EXPECT_EQ(Bfi::B32::type, ScalarType::B32);
+  }
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, %r3, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 8, %r3;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Bfi>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveBrev, SelectsFrozenB32VariantAndRejectsB64) {
+  const auto brev = resolve<Brev>(parse_instruction("brev.b32 %r0, %r1;"));
+  ASSERT_TRUE(brev.has_value()) << brev.error().message;
+  ASSERT_NE(std::get_if<Brev::B32>(&brev->variant), nullptr);
+  EXPECT_EQ(Brev::B32::type, ScalarType::B32);
+  EXPECT_FALSE(selectVariant<Brev>(parse_instruction("brev.b64 %rd0, %rd1;")).has_value());
+}
+
+TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
+  const auto left = resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
+  ASSERT_TRUE(left.has_value()) << left.error().message;
+  ASSERT_NE(std::get_if<Shf::LClampB32>(&left->variant), nullptr);
+  const auto right = resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
+  ASSERT_TRUE(right.has_value()) << right.error().message;
+  ASSERT_NE(std::get_if<Shf::RWrapB32>(&right->variant), nullptr);
+}
+
+TEST(ResolveShf, RejectsUnfrozenDirectionAndModeVariants) {
+  for (const auto source : {"shf.l.wrap.b32 %r0, %r1, %r2, 8;",
+                            "shf.r.clamp.b32 %r0, %r1, %r2, 8;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Shf>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolvePrmt, SelectsFrozenGenericAndF4eVariants) {
+  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 0x5410;", "prmt.b32 %r0, %r1, %r2, 0;", "prmt.b32 %r0, %r1, %r2, 65535;"})
+    EXPECT_TRUE(resolve<Prmt>(parse_instruction(source)).has_value()) << source;
+  EXPECT_TRUE(resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, %r3;")).has_value());
+}
+
+TEST(ResolvePrmt, RejectsWrongSelectorFormsAndModes) {
+  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32 %r0, %r1, %r2, %r3;")).has_value());
+  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, 0;")).has_value());
+  EXPECT_FALSE(selectVariant<Prmt>(parse_instruction("prmt.b32.b4e %r0, %r1, %r2, %r3;")).has_value());
+}
+
+TEST(ResolvePopc, SelectsFrozenB32VariantAndRejectsB64) {
+  const auto popc = resolve<Popc>(parse_instruction("popc.b32 %r0, %r1;"));
+  ASSERT_TRUE(popc.has_value()) << popc.error().message;
+  ASSERT_NE(std::get_if<Popc::B32>(&popc->variant), nullptr);
+  EXPECT_EQ(Popc::B32::type, ScalarType::B32);
+  EXPECT_FALSE(selectVariant<Popc>(parse_instruction("popc.b64 %rd0, %rd1;")).has_value());
+}
+
+TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
+  const auto b32 = resolve<Clz>(parse_instruction("clz.b32 %r0, %r1;"));
+  ASSERT_TRUE(b32.has_value()) << b32.error().message;
+  EXPECT_NE(std::get_if<Clz::B32>(&b32->variant), nullptr);
+  const auto b64 = resolve<Clz>(parse_instruction("clz.b64 %r0, %rd1;"));
+  ASSERT_TRUE(b64.has_value()) << b64.error().message;
+  EXPECT_NE(std::get_if<Clz::B64>(&b64->variant), nullptr);
+  EXPECT_FALSE(selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
+}
+
+TEST(ResolveBfind, SelectsFrozenShiftamtU32AndRejectsPlainForm) {
+  const auto bfind = resolve<Bfind>(parse_instruction("bfind.shiftamt.u32 %r0, %r1;"));
+  ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
+  ASSERT_NE(std::get_if<Bfind::ShiftamtU32>(&bfind->variant), nullptr);
+  EXPECT_TRUE(Bfind::ShiftamtU32::shiftamt);
+  const auto plain = parse_instruction("bfind.u32 %r0, %r1;");
+  EXPECT_FALSE(selectVariant<Bfind>(plain).has_value());
+}
+
+TEST(ResolveIsspacep, SelectsFrozenGlobalU64AndRejectsOtherForms) {
+  const auto ast = parse_instruction("isspacep.global %p0, %rd0;");
+  const auto resolved = resolve<Isspacep>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* global = std::get_if<Isspacep::GlobalU64>(&resolved->variant);
+  ASSERT_NE(global, nullptr);
+  EXPECT_EQ(Isspacep::GlobalU64::state_space, MemoryStateSpace::Global);
+  EXPECT_EQ(global->src.value.register_class, ResolvedRegisterClass::General);
+
+  for (const auto source : {"isspacep %p0, %rd0;",
+                            "isspacep.shared %p0, %rd0;",
+                            "isspacep.global %r0, %rd0;",
+                            "isspacep.global %p0, [%rd0];"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Isspacep>(parse_instruction(source)).has_value());
   }
 }
 
@@ -998,6 +1470,88 @@ TEST(ResolveCvt, SelectsFrozenMixedVariants) {
   EXPECT_EQ(Cvt::RziU32F32::rounding, RoundingMode::Rzi);
   EXPECT_EQ(Cvt::RziU32F32::dst_type, ScalarType::U32);
   EXPECT_EQ(Cvt::RziU32F32::src_type, ScalarType::F32);
+}
+
+TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
+  const auto scalar = resolve<Cvt>(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
+  ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
+  ASSERT_NE(std::get_if<Cvt::RnF32S32>(&scalar->variant), nullptr);
+
+  const auto packed =
+      resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0, %f1;"));
+  ASSERT_TRUE(packed.has_value()) << packed.error().message;
+  ASSERT_NE(std::get_if<Cvt::RnF16x2F32>(&packed->variant), nullptr);
+  EXPECT_EQ(Cvt::RnF16x2F32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(Cvt::RnF16x2F32::dst_type, ScalarType::F16x2);
+  EXPECT_EQ(Cvt::RnF16x2F32::src_type, ScalarType::F32);
+}
+
+TEST(ResolveCvt, RejectsM12UnfrozenAndPackedTwoOperandForms) {
+  for (const auto source : {"cvt.rz.f32.s32 %f0, %r0;",
+                            "cvt.rn.f32.s16 %f0, %r0;",
+                            "cvt.rz.f16x2.f32 %r0, %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(
+      resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;")).has_value());
+}
+
+TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
+  const auto ast =
+      parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
+  const auto resolved = resolve<Cvt>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Cvt::PackSatU8S32B32>(&resolved->variant), nullptr);
+  EXPECT_TRUE(Cvt::PackSatU8S32B32::pack);
+  EXPECT_TRUE(Cvt::PackSatU8S32B32::saturate);
+  EXPECT_EQ(Cvt::PackSatU8S32B32::dst_type, ScalarType::U8);
+  EXPECT_EQ(Cvt::PackSatU8S32B32::src_type, ScalarType::S32);
+  EXPECT_EQ(Cvt::PackSatU8S32B32::carry_type, ScalarType::B32);
+
+  const auto dispatched = resolveInstruction(ast);
+  ASSERT_TRUE(dispatched.has_value()) << dispatched.error().message;
+  EXPECT_TRUE(std::holds_alternative<Cvt>(*dispatched));
+
+  for (const auto source : {"cvt.sat.u8.s32.b32 %r0, %r1, %r2, %r3;",
+                            "cvt.pack.u8.s32.b32 %r0, %r1, %r2, %r3;",
+                            "cvt.pack.sat.u16.s32.b32 %r0, %r1, %r2, %r3;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Cvt>(
+                   parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2;"))
+                   .has_value());
+}
+
+TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
+  const auto ast =
+      parse_instruction("ld.global.nc.L1::no_allocate.u32 %r0, [%rd0];");
+  const auto resolved = resolve<Ld>(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant),
+            nullptr);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::state_space,
+            MemoryStateSpace::Global);
+  EXPECT_TRUE(Ld::GlobalNcL1NoAllocateU32::nc);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::eviction_priority,
+            EvictionPriority::NoAllocate);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::type, ScalarType::U32);
+
+  const auto dispatched = resolveInstruction(ast);
+  ASSERT_TRUE(dispatched.has_value()) << dispatched.error().message;
+  EXPECT_TRUE(std::holds_alternative<Ld>(*dispatched));
+
+  for (const auto source : {
+           "ld.global.L1::no_allocate.u32 %r0, [%rd0];",
+           "ld.global.nc.L2::evict_first.u32 %r0, [%rd0];",
+           "ld.global.nc.L1::evict_first.u32 %r0, [%rd0];",
+           "ld.global.nc.L1::no_allocate.b32 %r0, [%rd0];",
+           "ld.global.ca.nc.L1::no_allocate.u32 %r0, [%rd0];",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Ld>(parse_instruction(source)).has_value());
+  }
 }
 
 TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {

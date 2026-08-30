@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 38)
+        self.assertEqual(len(opcodes), 60)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 99)
+        self.assertEqual(len(slices), 150)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -154,8 +154,35 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         selectors = {slice_["id"]: slice_["selector"] for slice_ in slices}
         self.assertEqual(
             {slice_id: selectors[f"{slice_id}-default"] for slice_id in (
-                "mul-mul-lo-u32", "mul-mul-rn-f32", "cvt-cvt-s32-u32",
-                "cvt-cvt-rn-f32-f64", "cvt-cvt-rn-f32-u32", "cvt-cvt-rzi-u32-f32",
+                "mul-mul-hi-u32", "mul-mul-lo-u32", "mul-mul-rn-f32",
+                "mul-mul-wide-u32", "mul-mul-wide-s32", "mad-mad-lo-s32", "mad-mad-rn-f32",
+                "mad-mad-wide-u32", "fma-fma-rn-f16", "fma-fma-rn-f64",
+                "div-div-rn-f32", "div-div-rn-f64", "div-div-s32",
+                "rem-rem-s32", "rem-rem-u32",
+                "min-min-s32", "min-min-nan-f32",
+                "max-max-s32", "max-max-nan-f32",
+                "abs-abs-s32", "abs-abs-f32",
+                "neg-neg-s32", "neg-neg-f32", "neg-neg-f16x2",
+                "lop3-lop3-b32",
+                "shf-shf-l-clamp-b32", "shf-shf-r-wrap-b32",
+                "prmt-prmt-generic-b32", "prmt-prmt-f4e-b32",
+                "popc-popc-b32",
+                "clz-clz-b32", "clz-clz-b64",
+                "bfind-bfind-shiftamt-u32",
+                "bfe-bfe-u32",
+                "bfi-bfi-b32",
+                "brev-brev-b32",
+                "cvt-cvt-s32-u32",
+                "cvt-cvt-rn-f32-f64", "cvt-cvt-rn-f32-u32", "cvt-cvt-rn-f32-s32", "cvt-cvt-rzi-u32-f32", "cvt-cvt-rn-f16x2-f32", "cvt-cvt-pack-sat-u8-s32-b32",
+                "isspacep-isspacep-global-u64",
+                "ld-ld-global-nc-l1-no-allocate-u32",
+                "prefetchu-prefetchu-l1",
+                "createpolicy-createpolicy-fractional-l2-evict-last-b64",
+                "applypriority-applypriority-global-l2-evict-normal",
+                "discard-discard-global-l2",
+                "setmaxnreg-setmaxnreg-inc-sync-aligned-u32",
+                "set-set-eq-u32-u32", "set-set-lt-and-f32-s32",
+                "setp-setp-ge-s32",
                 "ld-ld-generic-scalar", "ld-ld-generic-vector", "ld-ld-global-u32-l1-evict",
                 "ld-ld-explicit-vector", "st-st-generic-scalar", "st-st-generic-vector",
                 "st-st-global-u32-l2-cache-hint", "st-st-explicit-vector",
@@ -167,10 +194,57 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             {
                 "mul-mul-lo-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar", "modifiers": ["lo"]},
                 "mul-mul-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
+                "mul-mul-hi-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar", "modifiers": ["hi"]},
+                "mul-mul-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},
+                "mul-mul-wide-s32": {"topology": "arithmetic", "types": ["s64", "s32"], "shape": "scalar", "modifiers": ["wide"]},
+                "setp-setp-ge-s32": {"topology": "comparison", "types": ["s32"], "shape": "scalar", "modifiers": ["ge"]},
+                "mad-mad-lo-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar", "modifiers": ["lo"]},
+                "mad-mad-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
+                "mad-mad-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},
+                "fma-fma-rn-f16": {"topology": "arithmetic", "types": ["f16"], "shape": "scalar", "modifiers": ["rn"]},
+                "fma-fma-rn-f64": {"topology": "arithmetic", "types": ["f64"], "shape": "scalar", "modifiers": ["rn"]},
+                "div-div-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
+                "div-div-rn-f64": {"topology": "arithmetic", "types": ["f64"], "shape": "scalar", "modifiers": ["rn"]},
+                "div-div-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar"},
+                "rem-rem-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar"},
+                "rem-rem-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar"},
+                "min-min-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar"},
+                "min-min-nan-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["nan"]},
+                "max-max-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar"},
+                "max-max-nan-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["nan"]},
+                "abs-abs-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar"},
+                "abs-abs-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar"},
+                "neg-neg-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar"},
+                "neg-neg-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar"},
+                "neg-neg-f16x2": {"topology": "arithmetic", "types": ["f16x2"], "shape": "scalar"},
+                "lop3-lop3-b32": {"topology": "logic", "types": ["b32"], "shape": "scalar"},
+                "shf-shf-l-clamp-b32": {"topology": "logic", "types": ["b32"], "shape": "scalar", "modifiers": ["l", "clamp"]},
+                "shf-shf-r-wrap-b32": {"topology": "logic", "types": ["b32"], "shape": "scalar", "modifiers": ["r", "wrap"]},
+                "prmt-prmt-generic-b32": {"topology": "data_movement", "types": ["b32"], "shape": "scalar"},
+                "prmt-prmt-f4e-b32": {"topology": "data_movement", "types": ["b32"], "shape": "scalar", "modifiers": ["f4e"]},
+                "popc-popc-b32": {"topology": "arithmetic", "types": ["u32", "b32"], "shape": "scalar"},
+                "clz-clz-b32": {"topology": "arithmetic", "types": ["u32", "b32"], "shape": "scalar"},
+                "clz-clz-b64": {"topology": "arithmetic", "types": ["u32", "b64"], "shape": "scalar"},
+                "bfind-bfind-shiftamt-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar", "modifiers": ["shiftamt"]},
+                "bfe-bfe-u32": {"topology": "arithmetic", "types": ["u32"], "shape": "scalar"},
+                "bfi-bfi-b32": {"topology": "arithmetic", "types": ["b32"], "shape": "scalar"},
+                "brev-brev-b32": {"topology": "arithmetic", "types": ["b32"], "shape": "scalar"},
                 "cvt-cvt-s32-u32": {"topology": "conversion", "types": ["s32", "u32"], "shape": "scalar"},
                 "cvt-cvt-rn-f32-f64": {"topology": "conversion", "types": ["f32", "f64"], "shape": "scalar", "modifiers": ["rn"]},
                 "cvt-cvt-rn-f32-u32": {"topology": "conversion", "types": ["f32", "u32"], "shape": "scalar", "modifiers": ["rn"]},
+                "cvt-cvt-rn-f32-s32": {"topology": "conversion", "types": ["f32", "s32"], "shape": "scalar", "modifiers": ["rn"]},
                 "cvt-cvt-rzi-u32-f32": {"topology": "conversion", "types": ["u32", "f32"], "shape": "scalar", "modifiers": ["rzi"]},
+                "cvt-cvt-rn-f16x2-f32": {"topology": "conversion", "types": ["f16x2", "f32"], "shape": "scalar", "modifiers": ["rn"]},
+                "cvt-cvt-pack-sat-u8-s32-b32": {"topology": "conversion", "types": ["u8", "s32", "b32"], "shape": "scalar", "modifiers": ["pack", "sat"]},
+                "isspacep-isspacep-global-u64": {"topology": "data_movement", "types": ["pred", "u64"], "shape": "scalar", "state_space": ["global"]},
+                "ld-ld-global-nc-l1-no-allocate-u32": {"topology": "memory", "types": ["u32"], "shape": "scalar", "modifiers": ["nc", "l1_no_allocate"], "state_space": ["global"]},
+                "prefetchu-prefetchu-l1": {"topology": "memory", "types": [], "shape": "address", "modifiers": ["l1"], "state_space": ["generic"]},
+                "createpolicy-createpolicy-fractional-l2-evict-last-b64": {"topology": "data_movement", "types": ["b64", "f32"], "shape": "scalar", "modifiers": ["fractional", "l2_evict_last"]},
+                "applypriority-applypriority-global-l2-evict-normal": {"topology": "data_movement", "types": ["u32"], "shape": "address", "modifiers": ["l2_evict_normal"], "state_space": ["global"]},
+                "discard-discard-global-l2": {"topology": "data_movement", "types": ["u32"], "shape": "address", "modifiers": ["l2"], "state_space": ["global"]},
+                "setmaxnreg-setmaxnreg-inc-sync-aligned-u32": {"topology": "control", "types": ["u32"], "shape": "immediate", "modifiers": ["inc", "sync", "aligned"]},
+                "set-set-eq-u32-u32": {"topology": "comparison", "types": ["u32"], "shape": "scalar", "modifiers": ["eq"]},
+                "set-set-lt-and-f32-s32": {"topology": "comparison", "types": ["f32", "s32"], "shape": "scalar", "modifiers": ["lt", "and"]},
                 "ld-ld-generic-scalar": {"topology": "memory", "types": ["b8", "b16", "b32", "b64", "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64"], "shape": "scalar", "state_space": ["const", "global", "local", "param", "shared"]},
                 "ld-ld-generic-vector": {"topology": "memory", "types": ["b8", "b16", "b32", "b64", "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64"], "shape": "vector_legacy", "state_space": ["const", "global", "local", "param", "shared"]},
                 "ld-ld-global-u32-l1-evict": {"topology": "memory", "types": ["u32"], "shape": "scalar", "modifiers": ["l1_evict"], "state_space": ["global"]},

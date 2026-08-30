@@ -44,6 +44,9 @@ from ir.resolved_ir import (
     from_instruction_spec,
 )
 from code_gen.model import (
+    ImmediateMultipleOfConstraint,
+    ImmediateRangeConstraint,
+    ImmediateValueConstraint,
     InstructionSpec,
     ModifierSpec,
     ModifierValueSpec,
@@ -92,12 +95,60 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "div"
         )
+        rem = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "rem"
+        )
+        min_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "min"
+        )
+        max_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "max"
+        )
+        abs_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "abs"
+        )
+        neg_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "neg"
+        )
+        lop3_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "lop3"
+        )
+        shf_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "shf"
+        )
+        bfe_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "bfe"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
         cls.mad_instruction = from_instruction_spec(mad)
         cls.fma_instruction = from_instruction_spec(fma)
         cls.div_instruction = from_instruction_spec(div)
+        cls.rem_instruction = from_instruction_spec(rem)
+        cls.min_instruction = from_instruction_spec(min_instruction)
+        cls.max_instruction = from_instruction_spec(max_instruction)
+        cls.abs_instruction = from_instruction_spec(abs_instruction)
+        cls.neg_instruction = from_instruction_spec(neg_instruction)
+        cls.lop3_instruction = from_instruction_spec(lop3_instruction)
+        cls.shf_instruction = from_instruction_spec(shf_instruction)
+        cls.bfe_instruction = from_instruction_spec(bfe_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -343,31 +394,59 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_mul_merges_frozen_integer_and_floating_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.mul_instruction.variants],
-            ["RnF32", "LoU32"],
+            ["RnF32", "LoU32", "HiU32", "WideU32", "WideS32"],
         )
         self.assertEqual(
             [field.name for field in self.mul_instruction.variants[0].fields],
             ["rounding", "type", "dst", "src1", "src2"],
         )
-
-    def test_mad_has_frozen_lo_u32_ternary_layout(self) -> None:
         self.assertEqual(
-            [variant.cpp_name for variant in self.mad_instruction.variants],
-            ["LoU32"],
+            [
+                binding.register_width_policy
+                for binding in self.mul_instruction.variants[3].operand_layouts[0].bindings
+            ],
+            [ResolvedRegisterWidthPolicy.EXACT] * 3,
         )
         self.assertEqual(
-            [field.name for field in self.mad_instruction.variants[0].fields],
+            [
+                binding.register_width_policy
+                for binding in self.mul_instruction.variants[4].operand_layouts[0].bindings
+            ],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
+        )
+
+    def test_mad_merges_frozen_integer_and_floating_ternary_layouts(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.mad_instruction.variants],
+            ["RnF32", "LoU32", "LoS32", "WideU32"],
+        )
+        self.assertEqual(
+            [field.name for field in self.mad_instruction.variants[1].fields],
             ["lo", "type", "dst", "src1", "src2", "src3"],
         )
         self.assertEqual(
-            self.mad_instruction.variants[0].operand_layouts[0].bindings[3].role,
+            self.mad_instruction.variants[1].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
         )
+        self.assertEqual(
+            [
+                binding.register_width_policy
+                for binding in self.mad_instruction.variants[3].operand_layouts[0].bindings
+            ],
+            [ResolvedRegisterWidthPolicy.EXACT] * 4,
+        )
+        self.assertEqual(
+            [
+                binding.register_width_policy
+                for binding in self.mad_instruction.variants[0].operand_layouts[0].bindings
+            ],
+            [ResolvedRegisterWidthPolicy.EXACT] * 4,
+        )
 
-    def test_fma_has_frozen_rn_f32_ternary_layout(self) -> None:
+    def test_fma_merges_frozen_rn_ternary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.fma_instruction.variants],
-            ["RnF32"],
+            ["RnF32", "RnF64", "RnF16"],
         )
         self.assertEqual(
             [field.name for field in self.fma_instruction.variants[0].fields],
@@ -377,16 +456,158 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.fma_instruction.variants[0].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
         )
+        for variant in self.fma_instruction.variants[1:]:
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.EXACT] * 4,
+            )
 
-    def test_div_has_frozen_u32_binary_layout(self) -> None:
+    def test_div_merges_frozen_integer_and_floating_binary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.div_instruction.variants],
-            ["U32"],
+            ["RnF32", "RnF64", "U32", "S32"],
         )
         self.assertEqual(
-            [field.name for field in self.div_instruction.variants[0].fields],
+            [field.name for field in self.div_instruction.variants[2].fields],
             ["type", "dst", "src1", "src2"],
         )
+        for variant in self.div_instruction.variants[:2]:
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            )
+
+    def test_rem_has_frozen_signed_and_unsigned_binary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.rem_instruction.variants],
+            ["S32", "U32"],
+        )
+        for variant, scalar_type in zip(
+            self.rem_instruction.variants, ("S32", "U32"), strict=True
+        ):
+            self.assertEqual(
+                [field.name for field in variant.fields],
+                ["type", "dst", "src1", "src2"],
+            )
+            self.assertEqual(variant.fields[0].constant_value, scalar_type.lower())
+
+    def test_min_has_frozen_signed_and_nan_binary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.min_instruction.variants],
+            ["S32", "NanF32"],
+        )
+        s32, nan_f32 = self.min_instruction.variants
+        self.assertEqual(
+            [field.name for field in s32.fields], ["type", "dst", "src1", "src2"]
+        )
+        self.assertEqual(s32.fields[0].constant_value, "s32")
+        self.assertEqual(
+            [field.name for field in nan_f32.fields],
+            ["nan", "type", "dst", "src1", "src2"],
+        )
+        self.assertTrue(nan_f32.fields[0].constant_value)
+        self.assertEqual(nan_f32.fields[1].constant_value, "f32")
+        self.assertEqual(
+            [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 3,
+        )
+
+    def test_max_has_frozen_signed_and_nan_binary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.max_instruction.variants],
+            ["S32", "NanF32"],
+        )
+        s32, nan_f32 = self.max_instruction.variants
+        self.assertEqual(
+            [field.name for field in s32.fields], ["type", "dst", "src1", "src2"]
+        )
+        self.assertEqual(s32.fields[0].constant_value, "s32")
+        self.assertEqual(
+            [field.name for field in nan_f32.fields],
+            ["nan", "type", "dst", "src1", "src2"],
+        )
+        self.assertTrue(nan_f32.fields[0].constant_value)
+        self.assertEqual(nan_f32.fields[1].constant_value, "f32")
+        self.assertEqual(
+            [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 3,
+        )
+
+    def test_abs_has_frozen_signed_and_float_unary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.abs_instruction.variants],
+            ["S32", "F32"],
+        )
+        for variant, scalar_type in zip(
+            self.abs_instruction.variants, ("s32", "f32"), strict=True
+        ):
+            self.assertEqual(
+                [field.name for field in variant.fields], ["type", "dst", "src"]
+            )
+            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+
+    def test_neg_has_frozen_scalar_and_packed_unary_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.neg_instruction.variants],
+            ["S32", "F32", "F16x2"],
+        )
+        for variant, scalar_type in zip(
+            self.neg_instruction.variants, ("s32", "f32", "f16x2"), strict=True
+        ):
+            self.assertEqual(
+                [field.name for field in variant.fields], ["type", "dst", "src"]
+            )
+            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 2,
+        )
+
+    def test_lop3_has_fixed_b32_variant_and_lut_range(self) -> None:
+        variant = self.lop3_instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "B32")
+        self.assertEqual(
+            [field.name for field in variant.fields],
+            ["type", "dst", "src1", "src2", "src3", "lut"],
+        )
+        self.assertEqual(variant.fields[0].constant_value, "b32")
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("lut", 0, 255)],
+        )
+
+    def test_bfe_has_two_immediate_ranges(self) -> None:
+        variant = self.bfe_instruction.variants[0]
+        self.assertEqual(variant.cpp_name, "U32")
+        self.assertEqual(
+            [field.name for field in variant.fields],
+            ["type", "dst", "src", "offset", "width"],
+        )
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("offset", 0, 255), ("width", 0, 255)],
+        )
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in variant.operand_layouts[0].bindings[:2]],
+            [ResolvedRegisterWidthPolicy.EXACT] * 2,
+        )
+
+    def test_shf_has_frozen_direction_and_mode_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.shf_instruction.variants],
+            ["LClampB32", "RWrapB32"],
+        )
+        for variant in self.shf_instruction.variants:
+            self.assertEqual(
+                [field.name for field in variant.fields],
+                ["left" if variant.cpp_name == "LClampB32" else "right",
+                 "clamp" if variant.cpp_name == "LClampB32" else "wrap",
+                 "type", "dst", "src1", "src2", "count"],
+            )
 
     def test_add_resolved_variant_fields(self) -> None:
         variants = {variant.cpp_name: variant for variant in self.instruction.variants}
@@ -1017,6 +1238,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "GlobalU32L2CacheHint",
                 "GenericVector",
                 "ExplicitVector",
+                "GlobalNcL1NoAllocateU32",
             ],
         )
         self.assertEqual(ld.variants[1].modifiers[0].presence, "required")
@@ -1501,6 +1723,190 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "state_space",
         )
 
+    def test_prefetchu_l1_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        prefetchu = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "prefetchu"
+        )
+        resolved = from_instruction_spec(prefetchu)
+
+        self.assertEqual(resolved.cpp_name, "Prefetchu")
+        self.assertEqual([variant.cpp_name for variant in resolved.variants], ["L1"])
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [("l1", "bool"), ("address", "WithLocs<ResolvedAddress>")],
+        )
+        self.assertEqual(
+            [state_space.value for state_space in variant.operand_layouts[0]
+             .bindings[0].allowed_address_state_spaces],
+            ["generic"],
+        )
+
+    def test_createpolicy_fractional_l2_evict_last_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        createpolicy = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "createpolicy"
+        )
+        resolved = from_instruction_spec(createpolicy)
+
+        self.assertEqual(resolved.cpp_name, "Createpolicy")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["FractionalL2EvictLastB64"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("fractional", "bool"),
+                ("eviction_priority", "EvictionPriority"),
+                ("type", "ScalarType"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("fraction", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.values, (1056964608,))
+        self.assertEqual(
+            variant.operand_layouts[0].bindings[0].register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+
+    def test_applypriority_global_l2_evict_normal_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        applypriority = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "applypriority"
+        )
+        resolved = from_instruction_spec(applypriority)
+
+        self.assertEqual(resolved.cpp_name, "Applypriority")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalL2EvictNormal"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("eviction_priority", "EvictionPriority"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.values, (128,))
+        self.assertEqual(variant.address_alignment.alignment, 128)
+
+    def test_discard_global_l2_model(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        discard = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "discard"
+        )
+        resolved = from_instruction_spec(discard)
+
+        self.assertEqual(resolved.cpp_name, "Discard")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants], ["GlobalL2"]
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("l2", "bool"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(variant.immediate_value.values, (128,))
+        self.assertEqual(variant.address_alignment.alignment, 128)
+
+    def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        setmaxnreg = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "setmaxnreg"
+        )
+        resolved = from_instruction_spec(setmaxnreg)
+        self.assertEqual(resolved.cpp_name, "Setmaxnreg")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["IncSyncAlignedU32"],
+        )
+        variant = resolved.variants[0]
+        self.assertEqual(
+            dict(variant.availability),
+            {"any_of": [
+                {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
+                {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+                {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+                {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
+            ]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("inc", "bool"),
+                ("sync", "bool"),
+                ("aligned", "bool"),
+                ("type", "ScalarType"),
+                ("count", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("count", 24, 256)],
+        )
+        self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count")
+        self.assertEqual(variant.immediate_multiple_of.divisor, 8)
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
+            descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_ir_source(
+                database, category="control_flow", output_path=output_path
+            )
+            generate_resolved_checker_descriptor_source(
+                database, output_path=descriptor_path
+            )
+            source = output_path.read_text(encoding="utf-8")
+            descriptor = descriptor_path.read_text(encoding="utf-8")
+        self.assertIn("check_immediate_multiple_of(", source)
+        start = source.index("check_inc_sync_aligned_u32")
+        setmaxnreg_check = source[start:source.index("static_assert", start)]
+        self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
+        self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
+        self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
+        self.assertIn(".any_of_count = 4", descriptor)
+        self.assertIn('.required_family = "sm_100f",', descriptor)
+        self.assertIn('.required_family = "sm_120f",', descriptor)
+        self.assertIn('.operand_field_id = "count",', descriptor)
+        self.assertIn(".divisor = uint64_t{8ULL},", descriptor)
+
     def test_cp_async_ca_shared_global_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -1574,8 +1980,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertIsNone(variant.immediate_value)
-        self.assertEqual(variant.immediate_range.operand_field_id, "n")
-        self.assertEqual((variant.immediate_range.minimum, variant.immediate_range.maximum), (0, None))
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in variant.immediate_ranges],
+            [("n", 0, None)],
+        )
 
     def test_cp_async_wait_all_model(self) -> None:
         database = load_codegen_database(
@@ -1715,18 +2124,34 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_immediate_value(", source)
         self.assertIn("check_immediate_range(", source)
         self.assertIn("check_address_alignment(", source)
+        start = source.index("check_async_ca_shared_global")
+        cp_check = source[start:source.index("static_assert", start)]
+        self.assertEqual(cp_check.count("check_address_alignment("), 1)
+        self.assertEqual(cp_check.count("check_immediate_value("), 1)
+        self.assertLess(
+            cp_check.index("check_address_alignment("),
+            cp_check.index("check_immediate_value("),
+        )
+        start = source.index("check_async_wait_group")
+        wait_group_check = source[start:source.index("static_assert", start)]
+        self.assertEqual(wait_group_check.count("check_immediate_range("), 1)
         self.assertIn("selected.cp_size.value.bits", source)
         self.assertIn("std::expected<Cp, ResolveDiagnostic>", source)
         self.assertIn("AsyncCommitGroup", source)
         self.assertIn("AsyncWaitGroup", source)
         self.assertIn("AsyncWaitAll", source)
-        self.assertIn("AsyncCaSharedGlobal_immediate_value_values = {{4, 8, 16}};", descriptor)
+        self.assertIn(
+            "AsyncCaSharedGlobal_immediate_value_values = "
+            "{{uint64_t{4ULL}, uint64_t{8ULL}, uint64_t{16ULL}}};",
+            descriptor,
+        )
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
         self.assertIn('AsyncCaSharedGlobal_address_alignment_address_fields = {{"dst", "src"}};', descriptor)
         self.assertIn('.immediate_operand_field_id = "cp_size",', descriptor)
         self.assertIn('.operand_field_id = "n",', descriptor)
-        self.assertIn('.minimum = 0,', descriptor)
+        self.assertIn('.minimum = uint64_t{0ULL},', descriptor)
         self.assertIn('.has_maximum = false,', descriptor)
+        self.assertIn('.maximum = ~uint64_t{0},', descriptor)
 
     def test_membar_cta_model(self) -> None:
         database = load_codegen_database(
@@ -1967,6 +2392,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("selected.dst.value.data.declared_type", source)
 
+    def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="arithmetic",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("ResolvedPredicatePair", source)
+        self.assertIn(
+            ".actual_shape = check_end::OperandShape::PredicatePair,", source
+        )
+        self.assertIn("selected.dst.value.first.register_ref.declared_type", source)
+        self.assertIn("selected.dst.value.second.register_ref.declared_type", source)
+
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2036,6 +2481,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Not {", source)
         self.assertIn("struct Shl {", source)
         self.assertIn("struct Shr {", source)
+        self.assertIn("struct Set {", source)
         self.assertIn("struct Setp {", source)
         self.assertIn("struct Selp {", source)
         self.assertIn("struct Cvta {", source)
@@ -2045,8 +2491,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Mul {", source)
         self.assertIn("struct LoU32 {", source)
         self.assertIn("struct RnF32 {", source)
+        self.assertIn("struct HiU32 {", source)
+        self.assertIn("struct WideU32 {", source)
+        self.assertIn("struct WideS32 {", source)
         self.assertIn("struct Mad {", source)
+        self.assertIn("struct LoS32 {", source)
         self.assertIn("struct Fma {", source)
+        self.assertIn("struct RnF16 {", source)
         self.assertIn("struct Div {", source)
         self.assertIn("struct RnF32F64 {", source)
         self.assertIn("struct RnF32U32 {", source)
@@ -2069,6 +2520,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("struct LtU32 {", source)
         self.assertIn("struct LtAndU32 {", source)
+        self.assertIn("struct GeS32 {", source)
         self.assertIn("WithLocs<ComparisonOperator> comparison;", source)
         self.assertIn("WithLocs<BooleanOperator> boolean;", source)
         self.assertIn("struct Mov {", source)
@@ -2189,6 +2641,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Shl>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "shr"', source)
         self.assertIn("resolve<Shr>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "set"', source)
+        self.assertIn("resolve<Set>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "setp"', source)
         self.assertIn("resolve<Setp>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "selp"', source)
@@ -2209,6 +2663,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("resolve<Fence>(ast, context)", source)
         self.assertIn('ast.opcode.syntax.text == "prefetch"', source)
         self.assertIn("resolve<Prefetch>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "prefetchu"', source)
+        self.assertIn("resolve<Prefetchu>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "createpolicy"', source)
+        self.assertIn("resolve<Createpolicy>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "applypriority"', source)
+        self.assertIn("resolve<Applypriority>(ast, context)", source)
+        self.assertIn('ast.opcode.syntax.text == "discard"', source)
+        self.assertIn("resolve<Discard>(ast, context)", source)
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:
@@ -2373,6 +2835,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("std::expected<Shr, ResolveDiagnostic>", source)
         self.assertIn("CheckResult check<Shr>(", source)
         self.assertNotIn("struct Bar {", source)
+
+    def test_common_scalar_checker_contract_uses_shared_descriptor_pipeline(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            arithmetic = root / "arithmetic.gen.cpp"
+            descriptor = root / "resolved_descriptor.gen.cpp"
+            generate_resolved_ir_source(
+                self.database, category="arithmetic", output_path=arithmetic
+            )
+            generate_resolved_descriptor_source(
+                self.database, output_path=descriptor
+            )
+            checker_source = arithmetic.read_text(encoding="utf-8")
+            descriptor_source = descriptor.read_text(encoding="utf-8")
+
+        self.assertIn("check_common(", checker_source)
+        self.assertIn("check_modifier_value_availability(", checker_source)
+        self.assertIn("check_operands(", checker_source)
+        self.assertIn("ResolvedOperandBindingDescriptor", descriptor_source)
+        self.assertIn("ScalarTypeSizePolicy", descriptor_source)
+        for opcode_wrapper in (
+            "check_comparison(",
+            "check_rounding(",
+            "check_saturation(",
+            "check_scalar_type(",
+            "check_register_width(",
+        ):
+            self.assertNotIn(opcode_wrapper, checker_source)
 
     def test_generate_private_resolved_descriptor_source(self) -> None:
         database = load_codegen_database(
@@ -2658,6 +3150,73 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".comparison_operator = ComparisonOperator::Lt,", source)
 
+    def test_eviction_priority_modifier_domain_emits_typed_availability(self) -> None:
+        spec = {
+            "category": "test",
+            "codegen_category": "test",
+            "instructions": [
+                {
+                    "opcode": "sample",
+                    "variants": [
+                        {
+                            "name": "sample_eviction_priority",
+                            "availability": {"ptx": "1.0"},
+                            "modifiers": [
+                                {
+                                    "name": "eviction_priority",
+                                    "kind": "eviction_priority",
+                                    "presence": "required",
+                                    "values": [
+                                        {
+                                            "value": "evict_last",
+                                            "availability": {
+                                                "ptx": "7.4",
+                                                "sm": 70,
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                            "operands": [],
+                        }
+                    ],
+                }
+            ],
+        }
+        specs = normalize_instruction_spec(spec)
+        resolved = from_instruction_spec(specs[0])
+        self.assertEqual(
+            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            "EvictionPriority",
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::EvictionPriority,",
+            source,
+        )
+        self.assertIn(
+            ".eviction_priority = EvictionPriority::EvictLast,",
+            source,
+        )
+        self.assertIn(".minimum_ptx_version = {7, 4},", source)
+
+        value = spec["instructions"][0]["variants"][0]["modifiers"][0][
+            "values"
+        ][0]
+        for invalid in (0, "not_a_priority"):
+            value["value"] = invalid
+            with self.assertRaisesRegex(ValueError, "eviction priority"):
+                from_instruction_spec(normalize_instruction_spec(spec)[0])
+
     def test_boolean_modifier_domain_emits_typed_availability(self) -> None:
         specs = normalize_instruction_spec(
             {
@@ -2819,7 +3378,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                     ),
                                 ),
                                 OperandSpec(
-                                    name="src1",
+                                    name="src",
                                     kind="reg_or_imm",
                                     role="src1",
                                     access="read",
@@ -2841,6 +3400,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                             ),
                         ),
                     ),
+                    immediate_value=ImmediateValueConstraint("src", (4,)),
+                    immediate_ranges=(ImmediateRangeConstraint("src", 1, 8),),
+                    immediate_multiple_of=ImmediateMultipleOfConstraint("src", 2),
                     rule="sample.typed",
                 ),
             ),
@@ -2869,6 +3431,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("check_sample_typed_binary_operands", header)
         self.assertIn("check_sample_typed_binary_operands", source)
         self.assertIn("check_sample_typed_ternary_operands", source)
+        for layout in ("binary", "ternary"):
+            start = source.index(f"check_sample_typed_{layout}_operands")
+            payload_check = source[start:source.index("static_assert", start)]
+            calls = (
+                "check_immediate_value(",
+                "check_immediate_range(",
+                "check_immediate_multiple_of(",
+            )
+            self.assertEqual([payload_check.count(call) for call in calls], [1, 1, 1])
+            self.assertEqual(
+                [payload_check.index(call) for call in calls],
+                sorted(payload_check.index(call) for call in calls),
+            )
 
 
 if __name__ == "__main__":

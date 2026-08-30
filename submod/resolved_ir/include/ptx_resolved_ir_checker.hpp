@@ -118,6 +118,7 @@ enum class OperandShape : uint16_t {
   IndirectCallee = 1 << 11,
   BranchTargetSet = 1 << 12,
   ShflDestination = 1 << 13,
+  PredicatePair = 1 << 14,
 };
 
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
@@ -168,6 +169,7 @@ struct AvailabilityClause {
   bool has_exact_target = false;
   base::TargetArchitecture exact_target_architecture{};
   base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
+  std::string_view required_family{};
   // ponytail: fixed DNF capacity; raise schema and this bound together if needed.
   std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
   uint8_t capability_count = 0;
@@ -289,6 +291,7 @@ struct OperandView {
   std::optional<uint64_t> immediate_bits;
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  std::array<ScalarType, 2> predicate_pair_types{};
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
   /** Effective address space; unknown for register/immediate/standalone bases. */
@@ -426,13 +429,19 @@ struct VariantDescriptor {
     std::string_view operand_field_id;
     std::span<const uint64_t> allowed_values;
   } immediate_value;
-  /** Empty field ID means this variant has no immediate range constraint. */
+  /** Empty field ID means this variant has no immediate divisor constraint. */
+  struct ImmediateMultipleOfDescriptor {
+    std::string_view operand_field_id;
+    uint64_t divisor = 0;
+  } immediate_multiple_of;
+  /** Empty span means this variant has no immediate range constraints. */
   struct ImmediateRangeDescriptor {
     std::string_view operand_field_id;
     uint64_t minimum = 0;
     bool has_maximum = false;
     uint64_t maximum = ~uint64_t{0};
-  } immediate_range;
+  };
+  std::span<const ImmediateRangeDescriptor> immediate_ranges;
 };
 
 /** Checker metadata for all variants of one resolved instruction. */
@@ -577,6 +586,11 @@ CheckResult check_memory_vector(
 /** Check an immediate operand against an exact generated integer allowlist. */
 CheckResult check_immediate_value(
     const VariantDescriptor::ImmediateValueDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context);
+
+/** Check an immediate operand is divisible by a generated positive divisor. */
+CheckResult check_immediate_multiple_of(
+    const VariantDescriptor::ImmediateMultipleOfDescriptor& descriptor,
     std::span<const OperandView> operands, const Context& context);
 
 /** Check an immediate operand against inclusive generated integer bounds. */

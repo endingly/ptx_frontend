@@ -36,11 +36,68 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
 
+  unary_scalar_register:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+    - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
+
+  unary_packed_b32_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
+
+  popc_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
+  clz_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
+  clz_b64:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b64, register_width: same_width}
+
+  bfind_shiftamt_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: exact}
+
+  bfe_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: src, kind: reg, role: src1, access: read, type: u32, register_width: exact}
+    - {name: offset, kind: imm, role: src2, access: read, type: u32}
+    - {name: width, kind: imm, role: src3, access: read, type: u32}
+
+  bfi_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: insert, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: base, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: offset, kind: imm, role: src3, access: read, type: u32}
+    - {name: width, kind: imm, role: src3, access: read, type: u32}
+
+  brev_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
+  binary_wide_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: exact}
+
+  binary_wide_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s64}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32}
+
   ternary_arith:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(type)"}}
+
+  ternary_wide_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: exact}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: u64, register_width: exact}
 
   binary_float_scalar:
     - name: dst
@@ -86,6 +143,11 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  binary_float_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+
   ternary_float_register:
     - name: dst
       kind: reg
@@ -114,6 +176,12 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
+
+  ternary_float_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: exact}
+    - {name: src3, kind: reg, role: src3, access: read, type: {expr: "modifier(type)"}, register_width: exact}
 
   binary_mixed_float_register:
     - name: dst
@@ -702,8 +770,8 @@ instructions:
 
   - opcode: fma
     section: "9.7.3.6"
-    doc: "Frozen round-to-nearest single-precision fused multiply-add."
-    syntax: "fma.rn.f32 dst, src1, src2, src3"
+    doc: "Frozen round-to-nearest single- and double-precision fused multiply-add."
+    syntax: "fma.rn.f32 | fma.rn.f64 dst, src1, src2, src3"
     operands: $ternary_float_register
     variants:
       - name: fma_rn_f32
@@ -725,6 +793,65 @@ instructions:
         examples:
           - ptx: "fma.rn.f32 %f0, %f1, %f2, %f3;"
             valid: true
+
+      - name: fma_rn_f64
+        operands: $ternary_float_register_exact
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "fma.rn.f64 %d0, %d1, %d2, %d3;", valid: true}
+
+  - opcode: fma
+    section: "9.7.4.4"
+    doc: "Frozen round-to-nearest half-precision fused multiply-add."
+    syntax: "fma.rn.f16 dst, src1, src2, src3"
+    operands: $ternary_float_register_exact
+    variants:
+      - name: fma_rn_f16
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "fma.rn.f16 %h0, %h1, %h2, %h3;", valid: true}
+
+  - opcode: mad
+    section: "9.7.3.7"
+    doc: "Frozen round-to-nearest single-precision multiply-add."
+    syntax: "mad.rn.f32 dst, src1, src2, src3"
+    operands: $ternary_float_register_exact
+    variants:
+      - name: mad_rn_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "mad.rn.f32 %f0, %f1, %f2, %f3;", valid: true}
+
+  - opcode: div
+    section: "9.7.3.8"
+    doc: "Frozen round-to-nearest single- and double-precision division."
+    syntax: "div.rn.f32 | div.rn.f64 dst, src1, src2"
+    operands: $binary_float_register_exact
+    variants:
+      - name: div_rn_f32
+        availability: {ptx: "1.4", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "div.rn.f32 %f0, %f1, %f2;", valid: true}
+
+      - name: div_rn_f64
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "div.rn.f64 %d0, %d1, %d2;", valid: true}
 
   - opcode: add
     section: "9.7.1.1"
@@ -818,8 +945,8 @@ instructions:
 
   - opcode: mul
     section: "9.7.1.3"
-    doc: "Frozen low 32-bit unsigned integer multiply."
-    syntax: "mul.lo.u32 dst, src1, src2"
+    doc: "Frozen low, high, and wide 32-bit integer multiply."
+    syntax: "mul.lo.u32 | mul.hi.u32 | mul.wide.u32 | mul.wide.s32 dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: mul_lo_u32
@@ -830,10 +957,36 @@ instructions:
         examples:
           - {ptx: "mul.lo.u32 %r0, %r1, 7;", valid: true}
 
+      - name: mul_hi_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "mul.hi.u32 %r0, %r1, %r2;", valid: true}
+
+      - name: mul_wide_u32
+        operands: $binary_wide_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "mul.wide.u32 %rd0, %r1, %r2;", valid: true}
+
+      - name: mul_wide_s32
+        operands: $binary_wide_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "mul.wide.s32 %rd0, %r1, %r2;", valid: true}
+
   - opcode: mad
     section: "9.7.1.4"
-    doc: "Frozen low 32-bit unsigned integer multiply-add."
-    syntax: "mad.lo.u32 dst, src1, src2, src3"
+    doc: "Frozen low and wide 32-bit integer multiply-add."
+    syntax: "mad.lo.u32 | mad.lo.s32 | mad.wide.u32 dst, src1, src2, src3"
     operands: $ternary_arith
     variants:
       - name: mad_lo_u32
@@ -844,10 +997,27 @@ instructions:
         examples:
           - {ptx: "mad.lo.u32 %r0, %r1, 7, %r2;", valid: true}
 
+      - name: mad_lo_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "mad.lo.s32 %r0, %r1, %r2, %r3;", valid: true}
+
+      - name: mad_wide_u32
+        operands: $ternary_wide_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "mad.wide.u32 %rd0, %r1, %r2, %rd3;", valid: true}
+
   - opcode: div
     section: "9.7.1.9"
-    doc: "Frozen unsigned 32-bit integer division."
-    syntax: "div.u32 dst, src1, src2"
+    doc: "Frozen signed and unsigned 32-bit integer division."
+    syntax: "div.u32 | div.s32 dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: div_u32
@@ -856,3 +1026,241 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "div.u32 %r0, %r1, 0;", valid: true}
+
+      - name: div_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "div.s32 %r0, %r1, %r2;", valid: true}
+
+  - opcode: rem
+    section: "9.7.1.10"
+    doc: "Frozen signed and unsigned 32-bit integer remainder."
+    syntax: "rem.s32 | rem.u32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: rem_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "rem.s32 %r0, %r1, 0;", valid: true}
+
+      - name: rem_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "rem.u32 %r0, %r1, %r2;", valid: true}
+
+  - opcode: min
+    section: "9.7.1.13"
+    doc: "Frozen signed 32-bit integer minimum."
+    syntax: "min.s32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: min_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "min.s32 %r0, %r1, %r2;", valid: true}
+
+  - opcode: min
+    section: "9.7.3.11"
+    doc: "Frozen NaN-propagating single-precision minimum."
+    syntax: "min.NaN.f32 dst, src1, src2"
+    operands: $binary_float_register_exact
+    variants:
+      - name: min_nan_f32
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: nan, kind: flag, presence: fixed, value: true, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "min.NaN.f32 %f0, %f1, %f2;", valid: true}
+
+  - opcode: max
+    section: "9.7.1.14"
+    doc: "Frozen signed 32-bit integer maximum."
+    syntax: "max.s32 dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: max_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "max.s32 %r0, %r1, %r2;", valid: true}
+
+  - opcode: max
+    section: "9.7.3.12"
+    doc: "Frozen NaN-propagating single-precision maximum."
+    syntax: "max.NaN.f32 dst, src1, src2"
+    operands: $binary_float_register_exact
+    variants:
+      - name: max_nan_f32
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: nan, kind: flag, presence: fixed, value: true, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "max.NaN.f32 %f0, %f1, %f2;", valid: true}
+
+  - opcode: abs
+    section: "9.7.1.11"
+    doc: "Frozen signed 32-bit integer absolute value."
+    syntax: "abs.s32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: abs_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "abs.s32 %r0, %r1;", valid: true}
+
+  - opcode: abs
+    section: "9.7.3.9"
+    doc: "Frozen single-precision floating-point absolute value."
+    syntax: "abs.f32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: abs_f32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "abs.f32 %f0, %f1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.1.12"
+    doc: "Frozen signed 32-bit integer negation."
+    syntax: "neg.s32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: neg_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "neg.s32 %r0, %r1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.3.10"
+    doc: "Frozen single-precision floating-point negation."
+    syntax: "neg.f32 dst, src"
+    operands: $unary_scalar_register
+    variants:
+      - name: neg_f32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "neg.f32 %f0, %f1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.4.5"
+    doc: "Frozen packed half-precision negation using b32 register containers."
+    syntax: "neg.f16x2 dst, src"
+    operands: $unary_packed_b32_register_exact
+    variants:
+      - name: neg_f16x2
+        availability: {ptx: "6.0", sm: 53}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "neg.f16x2 %r0, %r1;", valid: true}
+
+  - opcode: popc
+    section: "9.7.1.15"
+    doc: "Frozen 32-bit population count."
+    syntax: "popc.b32 dst, src"
+    operands: $popc_b32
+    variants:
+      - name: popc_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "popc.b32 %r0, %r1;", valid: true}
+
+  - opcode: clz
+    section: "9.7.1.16"
+    doc: "Frozen 32-bit and 64-bit count-leading-zeros forms."
+    syntax: "clz.b32 dst, src | clz.b64 dst, src"
+    variants:
+      - name: clz_b32
+        operands: $clz_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "clz.b32 %r0, %r1;", valid: true}
+      - name: clz_b64
+        operands: $clz_b64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        examples:
+          - {ptx: "clz.b64 %r0, %rd1;", valid: true}
+
+  - opcode: bfind
+    section: "9.7.1.17"
+    doc: "Frozen unsigned 32-bit bit-find shift-amount form."
+    syntax: "bfind.shiftamt.u32 dst, src"
+    operands: $bfind_shiftamt_u32
+    variants:
+      - name: bfind_shiftamt_u32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: shiftamt, kind: flag, presence: fixed, value: true, token: ".shiftamt"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "bfind.shiftamt.u32 %r0, %r1;", valid: true}
+
+  - opcode: bfe
+    section: "9.7.1.20"
+    doc: "Frozen unsigned 32-bit bit-field extract with immediate offset and width."
+    syntax: "bfe.u32 dst, src, offset, width"
+    operands: $bfe_u32
+    variants:
+      - name: bfe_u32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfe.u32 %r0, %r1, 0, 8;", valid: true}
+
+  - opcode: bfi
+    section: "9.7.1.21"
+    doc: "Frozen 32-bit bit-field insert with immediate offset and width."
+    syntax: "bfi.b32 dst, insert, base, offset, width"
+    operands: $bfi_b32
+    variants:
+      - name: bfi_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfi.b32 %r0, %r1, %r2, 0, 8;", valid: true}
+
+  - opcode: brev
+    section: "9.7.1.19"
+    doc: "Frozen 32-bit bit-reverse form."
+    syntax: "brev.b32 dst, src"
+    operands: $brev_b32
+    variants:
+      - name: brev_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "brev.b32 %r0, %r1;", valid: true}

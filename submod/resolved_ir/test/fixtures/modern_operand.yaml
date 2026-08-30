@@ -47,3 +47,54 @@ instructions:
             type: u32
             cardinality: {min: 1, max: 64}
             element_kinds: [reg]
+
+  - opcode: synthetic_immediate_layout
+    variants:
+      - name: synthetic_immediate_layout_range
+        availability: {ptx: "9.3", sm: 0}
+        operand_layouts:
+          - name: count_only
+            operands:
+              - name: count
+                kind: imm
+                role: src
+                access: read
+                type: u32
+          - name: dst_count
+            operands:
+              - name: dst
+                kind: reg
+                role: dst
+                access: write
+              - name: count
+                kind: imm
+                role: src
+                access: read
+                type: u32
+        constraints:
+          - kind: immediate_range
+            operand: count
+            minimum: 0
+            maximum: 7
+
+  - opcode: synthetic_uint64_immediate
+    variants:
+      - name: synthetic_uint64_immediate_bounds
+        availability: {ptx: "9.3", sm: 0}
+        operands:
+          - name: count
+            kind: imm
+            role: src
+            access: read
+            type: u64
+        constraints:
+          - kind: immediate_value
+            operand: count
+            values: [9223372036854775808, 18446744073709551615]
+          - kind: immediate_range
+            operand: count
+            minimum: 9223372036854775808
+            maximum: 18446744073709551615
+          - kind: immediate_multiple_of
+            operand: count
+            divisor: 18446744073709551615

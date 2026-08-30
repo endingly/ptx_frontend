@@ -62,7 +62,9 @@ enum class RoundingMode : uint8_t {
 /** Semantic value of a PTX comparison operator modifier. */
 enum class ComparisonOperator : uint8_t {
   Invalid = 0,
+  Eq,
   Lt,
+  Ge,
 };
 
 /** Semantic value of a PTX predicate-combine operator modifier. */
@@ -85,11 +87,13 @@ enum class CacheOperator : uint8_t {
   Wt,
 };
 
-/** Semantic value of the accepted PTX L1 eviction-priority modifiers. */
+/** Semantic value of the accepted PTX eviction-priority modifiers. */
 enum class EvictionPriority : uint8_t {
   Invalid = 0,
+  EvictNormal,
   EvictFirst,
   EvictLast,
+  NoAllocate,
 };
 
 /** Source-level memory-consistency qualifier for ld/st.  Omitted is kept

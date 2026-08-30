@@ -7,49 +7,24 @@ import unittest
 
 from jsonschema import Draft202012Validator
 
+from code_gen.m12_natural_corpus import (
+    canonical_bytes,
+    fixture_targets,
+    target_directive_architectures,
+)
+
 
 ROOT = Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "corpus"
 MANIFEST = CORPUS / "provenance.json"
 SCHEMA = CORPUS / "provenance.schema.json"
-VERSION = "ptx_frontend.corpus_provenance/v1"
-TARGET = re.compile(
-    r"^\s*\.target\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*$"
-)
+VERSION = "ptx_frontend.corpus_provenance/v3"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PLACEHOLDERS = {"", "unknown", "todo", "tbd"}
-
-
-def target_directive_architectures(source: str) -> list[str]:
-    """Return each directive's first architecture operand in source order."""
-
-    return [
-        match.group(1)
-        for line in source.splitlines()
-        if (match := TARGET.match(line)) is not None
-    ]
-
-
-def fixture_targets(path: Path) -> list[str]:
-    """Return ordered target directives; comma-separated operands are options."""
-
-    targets = target_directive_architectures(path.read_text(encoding="utf-8"))
-    if not targets:
-        raise AssertionError(f"{path.relative_to(ROOT)}: missing .target directive")
-    return targets
-
-
-def canonical_bytes(data: bytes, label: str) -> bytes:
-    """Return UTF-8 bytes with CRLF normalized to LF."""
-
-    canonical = data.replace(b"\r\n", b"\n")
-    if b"\r" in canonical:
-        raise AssertionError(f"{label}: bare CR is not canonical")
-    try:
-        canonical.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise AssertionError(f"{label}: fixture is not UTF-8") from error
-    return canonical
+M12_SOURCES = {
+    "corpus/m12/common_kernel.cu",
+    "corpus/m12/natural_kernel.cu",
+}
 
 
 def canonical_fixture_bytes(path: Path) -> bytes:
@@ -73,13 +48,26 @@ class CorpusProvenanceTests(unittest.TestCase):
         )
         self.assertEqual(self.manifest["schema"], VERSION)
 
+        document = deepcopy(self.manifest)
+        document.pop("sources")
+        self.assertTrue(list(self.validator.iter_errors(document)))
         for mutation in (
             lambda record: record.pop("targets"),
+            lambda record: record.pop("kind"),
             lambda record: record.__setitem__("target", "sm_80"),
             lambda record: record.__setitem__("targets", []),
         ):
             document = deepcopy(self.manifest)
             mutation(document["fixtures"][0])
+            self.assertTrue(list(self.validator.iter_errors(document)))
+        for kind, mutation in (
+            ("project_authored", lambda record: record.pop("source")),
+            ("inline_ptx_wrapper", lambda record: record.pop("notes")),
+            ("natural_compiler_emission", lambda record: record.__setitem__("source", "wrong")),
+        ):
+            document = deepcopy(self.manifest)
+            record = next(record for record in document["fixtures"] if record["kind"] == kind)
+            mutation(record)
             self.assertTrue(list(self.validator.iter_errors(document)))
 
     def test_records_exactly_match_ptx_fixtures(self) -> None:
@@ -114,11 +102,17 @@ class CorpusProvenanceTests(unittest.TestCase):
                     hashlib.sha256(canonical_fixture_bytes(path)).hexdigest(),
                 )
                 self.assertEqual(record["targets"], fixture_targets(path))
+                source_fields = (
+                    (record["source"],)
+                    if record["kind"] == "project_authored"
+                    else (record["source_path"], record["notes"])
+                )
                 for value in (
+                    record["kind"],
                     record["generator"],
                     record["toolkit"],
                     *record["targets"],
-                    record["source"],
+                    *source_fields,
                     record["license"],
                 ):
                     self.assertTrue(value.strip())
@@ -127,6 +121,66 @@ class CorpusProvenanceTests(unittest.TestCase):
                     self.assertNotIn("unknown", value.lower())
                 if record["generator"] == "project-authored":
                     self.assertEqual(record["license"], "MIT")
+
+    def test_m12_source_ledger_hashes_paths_and_fixture_references(self) -> None:
+        sources = self.manifest["sources"]
+        paths = [record["path"] for record in sources]
+        self.assertEqual(len(paths), len(set(paths)), "duplicate source path")
+        self.assertEqual(set(paths), M12_SOURCES)
+        for record in sources:
+            with self.subTest(path=record["path"]):
+                relative = PurePosixPath(record["path"])
+                self.assertFalse(relative.is_absolute(), relative)
+                self.assertNotIn("..", relative.parts, relative)
+                self.assertEqual(record["path"], relative.as_posix())
+                path = ROOT / relative
+                self.assertTrue(path.is_file())
+                self.assertTrue(path.resolve().is_relative_to(CORPUS.resolve()))
+                current = CORPUS
+                for component in path.relative_to(CORPUS).parts:
+                    current /= component
+                    self.assertFalse(current.is_symlink(), current)
+                self.assertRegex(record["sha256"], SHA256)
+                self.assertEqual(
+                    record["sha256"],
+                    hashlib.sha256(canonical_fixture_bytes(path)).hexdigest(),
+                )
+
+        source_paths = set(paths)
+        expected_by_kind = {
+            "inline_ptx_wrapper": "corpus/m12/common_kernel.cu",
+            "natural_compiler_emission": "corpus/m12/natural_kernel.cu",
+        }
+        for record in self.manifest["fixtures"]:
+            if record["kind"] in expected_by_kind:
+                self.assertIn(record["source_path"], source_paths)
+                self.assertEqual(
+                    record["source_path"], expected_by_kind[record["kind"]]
+                )
+
+    def test_m12_evidence_kinds_distinguish_inline_and_natural_ptx(self) -> None:
+        by_path = {record["path"]: record for record in self.manifest["fixtures"]}
+        inline = {
+            "corpus/m12/common_kernel_sm80.ptx",
+            "corpus/m12/common_kernel_sm90a.ptx",
+            "corpus/m12/common_kernel_sm100.ptx",
+        }
+        natural = {
+            "corpus/m12/natural_kernel_sm80.ptx",
+            "corpus/m12/natural_kernel_sm90a.ptx",
+            "corpus/m12/natural_kernel_sm100.ptx",
+        }
+        self.assertTrue(inline <= by_path.keys())
+        self.assertTrue(natural <= by_path.keys())
+        self.assertEqual({by_path[path]["kind"] for path in inline}, {"inline_ptx_wrapper"})
+        self.assertEqual(
+            {by_path[path]["kind"] for path in natural},
+            {"natural_compiler_emission"},
+        )
+        self.assertTrue(
+            all("source_path" in by_path[path] and "notes" in by_path[path]
+                for path in inline | natural)
+        )
 
     def test_multi_target_sequence_detects_any_change(self) -> None:
         record = next(

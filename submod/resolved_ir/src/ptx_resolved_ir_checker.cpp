@@ -318,7 +318,10 @@ bool is_available(const AvailabilityDescriptor& availability,
           (clause.has_exact_target &&
            (!target.identity ||
             target.identity->architecture != clause.exact_target_architecture ||
-            target.identity->flavor != clause.exact_target_flavor)))
+            target.identity->flavor != clause.exact_target_flavor)) ||
+          (!clause.required_family.empty() &&
+           !has_enabled_family_feature(target.enabled_family_features,
+                                       clause.required_family)))
         continue;
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;
@@ -618,6 +621,29 @@ CheckResult check_operands(
       }
     }
     append_value_availability_diagnostics(*operand, context, diagnostics);
+
+    if (operand->actual_shape == OperandShape::PredicatePair) {
+      for (size_t index = 0; index < operand->predicate_pair_types.size();
+           ++index) {
+        const ScalarType actual = operand->predicate_pair_types[index];
+        if (actual != ScalarType::Invalid &&
+            !scalar_types_compatible(actual, expected_type,
+                                     descriptor.register_width_policy)) {
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message = fmt::format(
+                  "Predicate-pair operand '{}' has an endpoint type '{}' "
+                  "incompatible with instruction type source '{}' ('{}').",
+                  descriptor.target_field_id, to_string(actual),
+                  expected_type_source, to_string(expected_type)),
+          });
+        }
+      }
+      continue;
+    }
 
     if (operand->actual_shape == OperandShape::Vector &&
         descriptor.minimum_elements != 0) {
@@ -1314,6 +1340,46 @@ CheckResult check_immediate_value(
       .message = fmt::format("Immediate operand '{}' has unsupported value {}.",
                              descriptor.operand_field_id,
                              *operand->immediate_bits),
+  }});
+}
+
+CheckResult check_immediate_multiple_of(
+    const VariantDescriptor::ImmediateMultipleOfDescriptor& descriptor,
+    std::span<const OperandView> operands, const Context& context) {
+  if (descriptor.operand_field_id.empty())
+    return {};
+  const OperandView* operand =
+      find_operand(operands, descriptor.operand_field_id);
+  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+      !operand->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-multiple constraint references missing "
+                               "immediate operand '{}'.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  if (descriptor.divisor == 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-multiple constraint for '{}' has zero "
+                               "divisor.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  if (!operand->immediate_is_negative.value_or(false) &&
+      *operand->immediate_bits % descriptor.divisor == 0) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand->locations, context),
+      .message = fmt::format("Immediate operand '{}' has value {} that is not a "
+                             "multiple of {}.",
+                             descriptor.operand_field_id,
+                             *operand->immediate_bits, descriptor.divisor),
   }});
 }
 

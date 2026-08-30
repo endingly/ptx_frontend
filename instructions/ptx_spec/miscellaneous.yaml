@@ -27,3 +27,31 @@ instructions:
             valid: true
           - ptx: "@%p0 trap;"
             valid: true
+
+  - opcode: setmaxnreg
+    section: "9.7.20.5"
+    doc: "Set the per-thread maximum register count."
+    syntax: "setmaxnreg.action.sync.aligned.u32 count"
+
+    variants:
+      - name: setmaxnreg_inc_sync_aligned_u32
+        description: "Frozen increasing register-count request at modeled PTX target levels."
+        availability:
+          any_of:
+            - {ptx: "8.0", sm: 90, target: sm_90a}
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+            - {ptx: "8.8", sm: 120, family: sm_120f}
+        modifiers:
+          - {name: inc, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operands:
+          - {name: count, kind: imm, role: src, access: read, type: u32}
+        constraints:
+          - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+          - {kind: immediate_multiple_of, operand: count, divisor: 8}
+        examples:
+          - ptx: "setmaxnreg.inc.sync.aligned.u32 192;"
+            valid: true

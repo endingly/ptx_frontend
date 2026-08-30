@@ -48,7 +48,7 @@ class OperandSyntaxShape(IntFlag):
     CALL_TARGET_SET = 1 << 8
     BRANCH_TARGET = 1 << 9
     BRANCH_TARGET_SET = 1 << 10
-    SHFL_DESTINATION = 1 << 11
+    REGISTER_PREDICATE_PAIR = 1 << 11
 
 
 class OperandLayoutKind(Enum):
@@ -133,7 +133,8 @@ OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
-    "shfl_dest": OperandSyntaxShape.SHFL_DESTINATION,
+    "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+    "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "mov_scalar_src": (
         OperandSyntaxShape.IDENTIFIER_REF
         | OperandSyntaxShape.IMMEDIATE

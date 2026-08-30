@@ -639,6 +639,7 @@ $defs:
       - func
       - reg_or_imm
       - shfl_dest
+      - pred_pair
       - mov_scalar_src
       - vector_reg
       - vector_sreg
@@ -1129,6 +1130,11 @@ $defs:
                 target:
                   type: string
                   pattern: "^sm_[1-9][0-9]*(a|f)?$"
+                family:
+                  description: >
+                    Minimum family-specific source feature target required from
+                    the current .target profile's enabled_family_features.
+                  $ref: "#/$defs/family_feature_target"
                 capabilities:
                   type: array
                   minItems: 1
@@ -1140,6 +1146,7 @@ $defs:
                 - required: [ptx]
                 - required: [sm]
                 - required: [target]
+                - required: [family]
                 - required: [capabilities]
 
   semantic_rule:
@@ -1188,6 +1195,7 @@ $defs:
           - memory_vector
           - immediate_value
           - immediate_range
+          - immediate_multiple_of
 
       operands:
         type: array
@@ -1256,10 +1264,17 @@ $defs:
       minimum:
         type: integer
         minimum: 0
+        maximum: 18446744073709551615
 
       maximum:
         type: integer
         minimum: 0
+        maximum: 18446744073709551615
+
+      divisor:
+        type: integer
+        minimum: 1
+        maximum: 18446744073709551615
 
       availability:
         $ref: "#/$defs/availability"
@@ -1270,6 +1285,7 @@ $defs:
         items:
           type: integer
           minimum: 0
+          maximum: 18446744073709551615
   example:
     description: "Positive or negative PTX example for an instruction or variant."
     type: object

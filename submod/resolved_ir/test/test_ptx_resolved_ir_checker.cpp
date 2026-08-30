@@ -148,6 +148,23 @@ TEST(ResolvedIrChecker, KeepsFamilyFeatureRequirementsDistinctFromExactTargets) 
   EXPECT_FALSE(is_available(sm103f_family, target_info("sm_103")));
   EXPECT_FALSE(is_available(sm103f_family, target_info("sm_120f")));
 
+  constexpr AvailabilityDescriptor sm100f_dnf_family{
+      .any_of = {{
+          {.minimum_ptx_version = {8, 8},
+           .minimum_sm_version = 100,
+           .required_family = "sm_100f"},
+      }},
+      .any_of_count = 1,
+  };
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_100a")));
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_100")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_103")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_90a")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_120f")));
+
   constexpr AvailabilityDescriptor exact_sm100a{
       .any_of = {{
           {.has_exact_target = true,
@@ -565,6 +582,30 @@ TEST(ResolvedIrChecker, ChecksGeneratedShrU32Availability) {
   EXPECT_TRUE(check(*shr, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}, .instruction_range = ast->range}).has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedSetAvailability) {
+  for (const auto source : {
+           "set.eq.u32.u32 %r0, %r1, %r2;",
+           "set.lt.and.f32.s32 %f0, %s0, %s1, !%p0;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto set = resolve<Set>(*ast);
+    ASSERT_TRUE(set.has_value()) << set.error().message;
+    const auto rejected = check(
+        *set, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(
+                    *set,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                             .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedSetpLtU32Availability) {
   PtxSyntaxParser parser("setp.lt.u32 %p0, %r0, %r1;");
   const auto ast = parser.parseInstruction();
@@ -582,6 +623,70 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetpLtU32Availability) {
                     Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
                   .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedSetpGeS32Availability) {
+  PtxSyntaxParser parser("setp.ge.s32 %p0, %r0, %r1;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto setp = resolve<Setp>(*ast);
+  ASSERT_TRUE(setp.has_value()) << setp.error().message;
+  const auto rejected = check(
+      *setp, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*setp,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedSetpDualPredicateAvailability) {
+  for (const auto source : {
+           "setp.eq.u32 %p0|%p1, %r0, %r1;",
+           "setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto setp = resolve<Setp>(*ast);
+    ASSERT_TRUE(setp.has_value()) << setp.error().message;
+    const auto rejected = check(
+        *setp, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                        .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*setp,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedSlctAvailability) {
+  for (const auto source : {
+           "slct.u32.s32 %r0, %r1, %r2, %r3;",
+           "slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto slct = resolve<Slct>(*ast);
+    ASSERT_TRUE(slct.has_value()) << slct.error().message;
+    const auto rejected = check(
+        *slct, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*slct,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
 }
 
 TEST(ResolvedIrChecker, ChecksGeneratedSelpU32Availability) {
@@ -644,6 +749,60 @@ TEST(ResolvedIrChecker, ChecksGeneratedMulLoU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedMulHiU32Availability) {
+  PtxSyntaxParser parser("mul.hi.u32 %r0, %r1, %r2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto mul = resolve<Mul>(*ast);
+  ASSERT_TRUE(mul.has_value()) << mul.error().message;
+  const auto rejected = check(
+      *mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*mul,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedMulWideU32Availability) {
+  PtxSyntaxParser parser("mul.wide.u32 %rd0, %r1, %r2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto mul = resolve<Mul>(*ast);
+  ASSERT_TRUE(mul.has_value()) << mul.error().message;
+  const auto rejected = check(
+      *mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*mul,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedMulWideS32Availability) {
+  PtxSyntaxParser parser("mul.wide.s32 %rd0, %r1, %r2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto mul = resolve<Mul>(*ast);
+  ASSERT_TRUE(mul.has_value()) << mul.error().message;
+  const auto rejected = check(
+      *mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*mul,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedMulRnF32Availability) {
   PtxSyntaxParser parser("mul.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();
@@ -680,6 +839,52 @@ TEST(ResolvedIrChecker, ChecksGeneratedMadLoU32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedMadLoS32AndWideU32Availability) {
+  for (const auto source : {"mad.lo.s32 %r0, %r1, %r2, %r3;",
+                            "mad.wide.u32 %rd0, %r1, %r2, %rd3;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto mad = resolve<Mad>(*ast);
+    ASSERT_TRUE(mad.has_value()) << mad.error().message;
+    const auto rejected = check(
+        *mad, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*mad,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedMadRnF32Availability) {
+  PtxSyntaxParser parser("mad.rn.f32 %f0, %f1, %f2, %f3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto mad = resolve<Mad>(*ast);
+  ASSERT_TRUE(mad.has_value()) << mad.error().message;
+  const auto old_ptx = check(
+      *mad, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *mad, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*mad,
+                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF32Availability) {
   PtxSyntaxParser parser("fma.rn.f32 %f0, %f1, %f2, %f3;");
   const auto ast = parser.parseInstruction();
@@ -704,6 +909,54 @@ TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF32Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF64Availability) {
+  PtxSyntaxParser parser("fma.rn.f64 %d0, %d1, %d2, %d3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto fma = resolve<Fma>(*ast);
+  ASSERT_TRUE(fma.has_value()) << fma.error().message;
+  const auto old_ptx = check(
+      *fma, Context{.target = {.ptx_version = {1, 3}, .sm_version = 13},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *fma, Context{.target = {.ptx_version = {1, 4}, .sm_version = 12},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*fma,
+                    Context{.target = {.ptx_version = {1, 4}, .sm_version = 13},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedFmaRnF16Availability) {
+  PtxSyntaxParser parser("fma.rn.f16 %h0, %h1, %h2, %h3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto fma = resolve<Fma>(*ast);
+  ASSERT_TRUE(fma.has_value()) << fma.error().message;
+  const auto old_ptx = check(
+      *fma, Context{.target = {.ptx_version = {4, 1}, .sm_version = 53},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *fma, Context{.target = {.ptx_version = {4, 2}, .sm_version = 52},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*fma,
+                    Context{.target = {.ptx_version = {4, 2}, .sm_version = 53},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedDivU32Availability) {
   PtxSyntaxParser parser("div.u32 %r0, %r1, 0;");
   const auto ast = parser.parseInstruction();
@@ -718,6 +971,487 @@ TEST(ResolvedIrChecker, ChecksGeneratedDivU32Availability) {
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(check(*div,
                     Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedRemAvailability) {
+  PtxSyntaxParser parser("rem.s32 %r0, %r1, 0;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto rem = resolve<Rem>(*ast);
+  ASSERT_TRUE(rem.has_value()) << rem.error().message;
+  const auto rejected = check(
+      *rem, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*rem,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedMinAvailability) {
+  PtxSyntaxParser integer_parser("min.s32 %r0, %r1, %r2;");
+  const auto integer_ast = integer_parser.parseInstruction();
+  ASSERT_TRUE(integer_ast.has_value()) << integer_ast.diagnostics.front().message;
+  const auto integer_min = resolve<Min>(*integer_ast);
+  ASSERT_TRUE(integer_min.has_value()) << integer_min.error().message;
+  const auto old_integer = check(
+      *integer_min, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = integer_ast->range});
+  ASSERT_FALSE(old_integer.has_value());
+  EXPECT_EQ(old_integer.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*integer_min,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = integer_ast->range})
+                  .has_value());
+
+  PtxSyntaxParser nan_parser("min.NaN.f32 %f0, %f1, %f2;");
+  const auto nan_ast = nan_parser.parseInstruction();
+  ASSERT_TRUE(nan_ast.has_value()) << nan_ast.diagnostics.front().message;
+  const auto nan_min = resolve<Min>(*nan_ast);
+  ASSERT_TRUE(nan_min.has_value()) << nan_min.error().message;
+  const auto old_ptx = check(
+      *nan_min, Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                        .instruction_range = nan_ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *nan_min, Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                        .instruction_range = nan_ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*nan_min,
+                    Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                            .instruction_range = nan_ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedMaxAvailability) {
+  PtxSyntaxParser integer_parser("max.s32 %r0, %r1, %r2;");
+  const auto integer_ast = integer_parser.parseInstruction();
+  ASSERT_TRUE(integer_ast.has_value()) << integer_ast.diagnostics.front().message;
+  const auto integer_max = resolve<Max>(*integer_ast);
+  ASSERT_TRUE(integer_max.has_value()) << integer_max.error().message;
+  const auto old_integer = check(
+      *integer_max, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = integer_ast->range});
+  ASSERT_FALSE(old_integer.has_value());
+  EXPECT_EQ(old_integer.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check(*integer_max,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = integer_ast->range})
+                  .has_value());
+
+  PtxSyntaxParser nan_parser("max.NaN.f32 %f0, %f1, %f2;");
+  const auto nan_ast = nan_parser.parseInstruction();
+  ASSERT_TRUE(nan_ast.has_value()) << nan_ast.diagnostics.front().message;
+  const auto nan_max = resolve<Max>(*nan_ast);
+  ASSERT_TRUE(nan_max.has_value()) << nan_max.error().message;
+  const auto old_ptx = check(
+      *nan_max, Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                        .instruction_range = nan_ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *nan_max, Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                        .instruction_range = nan_ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*nan_max,
+                    Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                            .instruction_range = nan_ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedAbsAvailability) {
+  for (const auto source : {"abs.s32 %r0, %r1;", "abs.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto abs = resolve<Abs>(*ast);
+    ASSERT_TRUE(abs.has_value()) << abs.error().message;
+    const auto old_ptx = check(
+        *abs, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*abs,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedNegAvailability) {
+  for (const auto source : {"neg.s32 %r0, %r1;", "neg.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto neg = resolve<Neg>(*ast);
+    ASSERT_TRUE(neg.has_value()) << neg.error().message;
+    const auto old_ptx = check(
+        *neg, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(check(*neg,
+                      Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+
+  PtxSyntaxParser packed_parser("neg.f16x2 %r0, %r1;");
+  const auto packed_ast = packed_parser.parseInstruction();
+  ASSERT_TRUE(packed_ast.has_value()) << packed_ast.diagnostics.front().message;
+  const auto packed = resolve<Neg>(*packed_ast);
+  ASSERT_TRUE(packed.has_value()) << packed.error().message;
+  const auto old_ptx = check(
+      *packed, Context{.target = {.ptx_version = {5, 9}, .sm_version = 53},
+                       .instruction_range = packed_ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *packed, Context{.target = {.ptx_version = {6, 0}, .sm_version = 52},
+                       .instruction_range = packed_ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*packed,
+                    Context{.target = {.ptx_version = {6, 0}, .sm_version = 53},
+                            .instruction_range = packed_ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedLop3AvailabilityAndLutRange) {
+  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 0;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto lop3 = resolve<Lop3>(*ast);
+    ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
+    const auto old_ptx = check(
+        *lop3, Context{.target = {.ptx_version = {4, 2}, .sm_version = 50},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *lop3, Context{.target = {.ptx_version = {4, 3}, .sm_version = 49},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*lop3,
+                      Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+
+  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 256;",
+                            "lop3.b32 %r0, %r1, %r2, %r3, -1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto lop3 = resolve<Lop3>(*ast);
+    ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
+    const auto checked = check(
+        *lop3, Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedShfAvailability) {
+  for (const auto source : {"shf.l.clamp.b32 %r0, %r1, %r2, 8;",
+                            "shf.r.wrap.b32 %r0, %r1, %r2, %r3;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto shf = resolve<Shf>(*ast);
+    ASSERT_TRUE(shf.has_value()) << shf.error().message;
+    const auto old_ptx = check(
+        *shf, Context{.target = {.ptx_version = {3, 0}, .sm_version = 32},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *shf, Context{.target = {.ptx_version = {3, 1}, .sm_version = 31},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*shf,
+                      Context{.target = {.ptx_version = {3, 1}, .sm_version = 32},
+                              .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailabilityAndSelectorRange) {
+  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 0;", "prmt.b32 %r0, %r1, %r2, 65535;"}) {
+    PtxSyntaxParser parser(source); const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()); const auto prmt = resolve<Prmt>(*ast); ASSERT_TRUE(prmt.has_value());
+    EXPECT_TRUE(check(*prmt, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}}).has_value());
+    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20}}).has_value());
+    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19}}).has_value());
+  }
+  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 65536;", "prmt.b32 %r0, %r1, %r2, -1;"}) {
+    PtxSyntaxParser parser(source); const auto ast = parser.parseInstruction(); ASSERT_TRUE(ast.has_value());
+    const auto prmt = resolve<Prmt>(*ast); ASSERT_TRUE(prmt.has_value());
+    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}}).has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedPopcAvailability) {
+  PtxSyntaxParser parser("popc.b32 %r0, %r1;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto popc = resolve<Popc>(*ast);
+  ASSERT_TRUE(popc.has_value()) << popc.error().message;
+  const auto old_ptx = check(
+      *popc, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *popc, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*popc, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                                   .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedClzAvailability) {
+  for (const auto source : {"clz.b32 %r0, %r1;", "clz.b64 %r0, %rd1;"}) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto clz = resolve<Clz>(*ast);
+    ASSERT_TRUE(clz.has_value()) << clz.error().message;
+    const auto old_ptx = check(
+        *clz, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *clz, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                       .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*clz, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                                    .instruction_range = ast->range})
+                    .has_value());
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedBfindAvailability) {
+  PtxSyntaxParser parser("bfind.shiftamt.u32 %r0, %r1;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto bfind = resolve<Bfind>(*ast);
+  ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
+  const auto old_ptx = check(
+      *bfind, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                      .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *bfind, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                      .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*bfind, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                                     .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, RejectsZeroImmediateMultipleDivisor) {
+  constexpr VariantDescriptor::ImmediateMultipleOfDescriptor descriptor{
+      .operand_field_id = "count",
+      .divisor = 0,
+  };
+  const OperandView operand{
+      .field_id = "count",
+      .actual_shape = OperandShape::Immediate,
+      .immediate_type = ScalarType::U32,
+      .immediate_bits = 24,
+      .immediate_is_negative = false,
+  };
+  const auto checked = check_immediate_multiple_of(
+      descriptor, std::span<const OperandView>{&operand, 1},
+      Context{.instruction_range = kInstructionRange});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind, CheckDiagnosticKind::RuleViolation);
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedBfeAvailabilityAndImmediateRanges) {
+  for (const auto source : {"bfe.u32 %r0, %r1, 0, 8;",
+                            "bfe.u32 %r0, %r1, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto bfe = resolve<Bfe>(*ast);
+    ASSERT_TRUE(bfe.has_value()) << bfe.error().message;
+    const auto old_ptx = check(
+        *bfe, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *bfe, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*bfe, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                             .instruction_range = ast->range})
+                    .has_value());
+  }
+
+  for (const auto source : {"bfe.u32 %r0, %r1, 256, 8;",
+                            "bfe.u32 %r0, %r1, 8, 256;",
+                            "bfe.u32 %r0, %r1, -1, 8;",
+                            "bfe.u32 %r0, %r1, 8, -1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto bfe = resolve<Bfe>(*ast);
+    ASSERT_TRUE(bfe.has_value()) << bfe.error().message;
+    const auto checked = check(
+        *bfe, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedBfiAvailabilityAndImmediateRanges) {
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 0, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto bfi = resolve<Bfi>(*ast);
+    ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
+    const auto old_ptx = check(
+        *bfi, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check(
+        *bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+    EXPECT_TRUE(check(*bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                                     .instruction_range = ast->range})
+                    .has_value());
+  }
+  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 256, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 8, 256;",
+                            "bfi.b32 %r0, %r1, %r2, -1, 8;",
+                            "bfi.b32 %r0, %r1, %r2, 8, -1;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto bfi = resolve<Bfi>(*ast);
+    ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
+    const auto checked = check(
+        *bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                      .instruction_range = ast->range});
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind, CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedBrevAvailability) {
+  PtxSyntaxParser parser("brev.b32 %r0, %r1;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto brev = resolve<Brev>(*ast);
+  ASSERT_TRUE(brev.has_value()) << brev.error().message;
+  const auto old_ptx = check(
+      *brev, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind, CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *brev, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                     .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind, CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*brev, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                                    .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
+  PtxSyntaxParser parser("div.rn.f32 %f0, %f1, %f2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto div = resolve<Div>(*ast);
+  ASSERT_TRUE(div.has_value()) << div.error().message;
+  const auto old_ptx = check(
+      *div, Context{.target = {.ptx_version = {1, 3}, .sm_version = 20},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *div, Context{.target = {.ptx_version = {1, 4}, .sm_version = 19},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*div,
+                    Context{.target = {.ptx_version = {1, 4}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedDivRnF64Availability) {
+  PtxSyntaxParser parser("div.rn.f64 %d0, %d1, %d2;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto div = resolve<Div>(*ast);
+  ASSERT_TRUE(div.has_value()) << div.error().message;
+  const auto old_ptx = check(
+      *div, Context{.target = {.ptx_version = {1, 3}, .sm_version = 13},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = check(
+      *div, Context{.target = {.ptx_version = {1, 4}, .sm_version = 12},
+                    .instruction_range = ast->range});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+  EXPECT_TRUE(check(*div,
+                    Context{.target = {.ptx_version = {1, 4}, .sm_version = 13},
                             .instruction_range = ast->range})
                   .has_value());
 }
@@ -758,6 +1492,26 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRnF32F64Availability) {
                   .has_value());
 }
 
+TEST(ResolvedIrChecker, ChecksGeneratedIsspacepGlobalU64Availability) {
+  PtxSyntaxParser parser("isspacep.global %p0, %rd0;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto isspacep = resolve<Isspacep>(*ast);
+  ASSERT_TRUE(isspacep.has_value()) << isspacep.error().message;
+  EXPECT_FALSE(check(*isspacep,
+                     Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                             .instruction_range = ast->range})
+                   .has_value());
+  EXPECT_FALSE(check(*isspacep,
+                     Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                             .instruction_range = ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*isspacep,
+                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedCvtRziU32F32Availability) {
   PtxSyntaxParser parser("cvt.rzi.u32.f32 %r0, %f0;");
   const auto ast = parser.parseInstruction();
@@ -772,6 +1526,60 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRziU32F32Availability) {
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(check(*cvt,
                     Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedM12CvtAvailability) {
+  PtxSyntaxParser scalar_parser("cvt.rn.f32.s32 %f0, %r0;");
+  const auto scalar_ast = scalar_parser.parseInstruction();
+  ASSERT_TRUE(scalar_ast.has_value()) << scalar_ast.diagnostics.front().message;
+  const auto scalar = resolve<Cvt>(*scalar_ast);
+  ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
+  EXPECT_FALSE(check(*scalar,
+                     Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                             .instruction_range = scalar_ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*scalar,
+                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = scalar_ast->range})
+                  .has_value());
+
+  PtxSyntaxParser packed_parser("cvt.rn.f16x2.f32 %r0, %f0, %f1;");
+  const auto packed_ast = packed_parser.parseInstruction();
+  ASSERT_TRUE(packed_ast.has_value()) << packed_ast.diagnostics.front().message;
+  const auto packed = resolve<Cvt>(*packed_ast);
+  ASSERT_TRUE(packed.has_value()) << packed.error().message;
+  EXPECT_FALSE(check(*packed,
+                     Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                             .instruction_range = packed_ast->range})
+                   .has_value());
+  EXPECT_FALSE(check(*packed,
+                     Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                             .instruction_range = packed_ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*packed,
+                    Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                            .instruction_range = packed_ast->range})
+                  .has_value());
+}
+
+TEST(ResolvedIrChecker, ChecksGeneratedM12CvtPackAvailability) {
+  PtxSyntaxParser parser("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  const auto cvt = resolve<Cvt>(*ast);
+  ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
+  EXPECT_FALSE(check(*cvt,
+                     Context{.target = {.ptx_version = {6, 4}, .sm_version = 72},
+                             .instruction_range = ast->range})
+                   .has_value());
+  EXPECT_FALSE(check(*cvt,
+                     Context{.target = {.ptx_version = {6, 5}, .sm_version = 71},
+                             .instruction_range = ast->range})
+                   .has_value());
+  EXPECT_TRUE(check(*cvt,
+                    Context{.target = {.ptx_version = {6, 5}, .sm_version = 72},
                             .instruction_range = ast->range})
                   .has_value());
 }
@@ -891,6 +1699,61 @@ TEST(ResolvedIrChecker, ChecksBooleanOperatorValueAvailability) {
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
+TEST(ResolvedIrChecker, ChecksEvictionPriorityValueAvailability) {
+  constexpr ModifierValueAvailabilityDescriptor descriptors[] = {{
+      .kind_id = "eviction_priority",
+      .value_kind = ModifierValueKind::EvictionPriority,
+      .eviction_priority = EvictionPriority::EvictLast,
+      .availability =
+          {
+              .minimum_ptx_version = {7, 4},
+              .minimum_sm_version = 70,
+          },
+  }};
+  constexpr std::array<ModifierValueView, 1> evict_last{{
+      {
+          .kind_id = "eviction_priority",
+          .value_kind = ModifierValueKind::EvictionPriority,
+          .eviction_priority = EvictionPriority::EvictLast,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  const Context new_context{
+      .target = {.ptx_version = {7, 4}, .sm_version = 70},
+      .instruction_range = kInstructionRange,
+  };
+  EXPECT_TRUE(
+      check_modifier_value_availability(descriptors, evict_last, new_context)
+          .has_value());
+
+  const Context old_context{
+      .target = {.ptx_version = {7, 3}, .sm_version = 60},
+      .instruction_range = kInstructionRange,
+  };
+  const auto rejected =
+      check_modifier_value_availability(descriptors, evict_last, old_context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2U);
+  EXPECT_EQ(rejected.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  constexpr std::array<ModifierValueView, 1> evict_first{{
+      {
+          .kind_id = "eviction_priority",
+          .value_kind = ModifierValueKind::EvictionPriority,
+          .eviction_priority = EvictionPriority::EvictFirst,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  EXPECT_TRUE(
+      check_modifier_value_availability(descriptors, evict_first, old_context)
+          .has_value());
 }
 
 TEST(ResolvedIrChecker, IgnoresOmittedCacheSentinelAndChecksExplicitCache) {

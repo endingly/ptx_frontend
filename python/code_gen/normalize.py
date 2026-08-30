@@ -8,6 +8,7 @@ from typing import Any
 from code_gen.load_yaml import expand_value_refs
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
     ImmediateValueConstraint,
     InstructionSpec,
@@ -30,6 +31,9 @@ from code_gen.model import (
     VariantSpec,
 )
 from ir.syntax_ast import OPERAND_SYNTAX_SHAPES
+
+
+UINT64_MAX = (1 << 64) - 1
 
 
 _MODIFIER_TYPE_EXPR = re.compile(
@@ -113,12 +117,14 @@ def normalize_availability(raw: object) -> dict[str, Any]:
     for clause in clauses:
         if not isinstance(clause, dict):
             raise TypeError("availability any_of clauses must be objects")
-        if set(clause) - {"ptx", "sm", "target", "capabilities"} or not clause:
+        if set(clause) - {"ptx", "sm", "target", "family", "capabilities"} or not clause:
             raise ValueError("availability any_of clause has invalid fields")
         if "sm" in clause:
             validate_availability_sm_version(clause["sm"])
         if "target" in clause:
             parse_availability_target(clause["target"])
+        if "family" in clause:
+            validate_availability_family(clause["family"])
         capabilities = clause.get("capabilities")
         if capabilities is not None:
             if (not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 4
@@ -1163,18 +1169,19 @@ def _normalize_immediate_value_constraint(
         )
     operand_name = raw["operand"]
     values = raw["values"]
-    matching = [
-        operand for layout in layouts for operand in layout.operands
-        if operand.name == operand_name
-    ]
-    if not matching or any(operand.kind != "imm" for operand in matching):
+    _validate_immediate_constraint_operand(
+        raw_variant, layouts, operand_name, "immediate_value"
+    )
+    if not isinstance(values, list) or not values:
         raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_value operand must "
-            "name an active kind 'imm' operand"
+            f"variant {raw_variant['name']!r}: immediate_value values must "
+            "be unique non-negative integers"
         )
-    if (not isinstance(values, list) or not values or
-            any(type(value) is not int or value < 0 for value in values) or
-            len(set(values)) != len(values)):
+    for index, value in enumerate(values):
+        _validate_uint64(
+            raw_variant, "immediate_value", f"values[{index}]", value
+        )
+    if len(set(values)) != len(values):
         raise ValueError(
             f"variant {raw_variant['name']!r}: immediate_value values must "
             "be unique non-negative integers"
@@ -1182,48 +1189,131 @@ def _normalize_immediate_value_constraint(
     return ImmediateValueConstraint(operand=operand_name, values=tuple(values))
 
 
-def _normalize_immediate_range_constraint(
+def _normalize_immediate_range_constraints(
     raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
-) -> ImmediateRangeConstraint | None:
-    """Lower one inclusive non-negative integer range for an immediate."""
+) -> tuple[ImmediateRangeConstraint, ...]:
+    """Lower inclusive non-negative ranges, one for each immediate operand."""
 
     matches = [
         item for item in raw_variant.get("constraints", ())
         if item.get("kind") == "immediate_range"
     ]
     if not matches:
+        return ()
+    ranges = []
+    operands = set()
+    for raw in matches:
+        if set(raw) not in ({"kind", "operand", "minimum"},
+                            {"kind", "operand", "minimum", "maximum"}):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: immediate_range constraint "
+                "requires operand, minimum, and optional maximum"
+            )
+        operand_name, minimum, maximum = raw["operand"], raw["minimum"], raw.get("maximum")
+        if operand_name in operands:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: duplicate immediate_range "
+                f"operand {operand_name!r}"
+            )
+        operands.add(operand_name)
+        _validate_immediate_constraint_operand(
+            raw_variant, layouts, operand_name, "immediate_range"
+        )
+        _validate_uint64(raw_variant, "immediate_range", "minimum", minimum)
+        if maximum is not None:
+            _validate_uint64(raw_variant, "immediate_range", "maximum", maximum)
+        if maximum is not None and maximum < minimum:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: immediate_range bounds must "
+                "be non-negative integers with optional maximum >= minimum"
+            )
+        ranges.append(
+            ImmediateRangeConstraint(
+                operand=operand_name, minimum=minimum, maximum=maximum
+            )
+        )
+    return tuple(ranges)
+
+
+def _normalize_immediate_multiple_of_constraint(
+    raw_variant: dict[str, Any], layouts: tuple[OperandLayoutSpec, ...]
+) -> ImmediateMultipleOfConstraint | None:
+    """Lower one positive-divisor constraint for an immediate operand."""
+
+    matches = [
+        item for item in raw_variant.get("constraints", ())
+        if item.get("kind") == "immediate_multiple_of"
+    ]
+    if not matches:
         return None
     if len(matches) != 1:
         raise ValueError(
-            f"variant {raw_variant['name']!r}: at most one immediate_range "
+            f"variant {raw_variant['name']!r}: at most one immediate_multiple_of "
             "constraint is supported"
         )
     raw = matches[0]
-    if set(raw) not in ({"kind", "operand", "minimum"},
-                        {"kind", "operand", "minimum", "maximum"}):
+    if set(raw) != {"kind", "operand", "divisor"}:
         raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_range constraint "
-            "requires operand, minimum, and optional maximum"
+            f"variant {raw_variant['name']!r}: immediate_multiple_of constraint "
+            "requires only operand and divisor"
         )
-    operand_name, minimum, maximum = raw["operand"], raw["minimum"], raw.get("maximum")
-    matching = [
-        operand for layout in layouts for operand in layout.operands
-        if operand.name == operand_name
-    ]
-    if not matching or any(operand.kind != "imm" for operand in matching):
+    operand_name, divisor = raw["operand"], raw["divisor"]
+    _validate_immediate_constraint_operand(
+        raw_variant, layouts, operand_name, "immediate_multiple_of"
+    )
+    _validate_uint64(raw_variant, "immediate_multiple_of", "divisor", divisor)
+    if divisor <= 0:
         raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_range operand must "
-            "name an active kind 'imm' operand"
+            f"variant {raw_variant['name']!r}: immediate_multiple_of divisor must "
+            "be a positive integer"
         )
-    if (type(minimum) is not int or minimum < 0 or
-            (maximum is not None and
-             (type(maximum) is not int or maximum < minimum))):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_range bounds must "
-            "be non-negative integers with optional maximum >= minimum"
+    return ImmediateMultipleOfConstraint(operand=operand_name, divisor=divisor)
+
+
+def _validate_immediate_constraint_operand(
+    raw_variant: dict[str, Any],
+    layouts: tuple[OperandLayoutSpec, ...],
+    operand_name: str,
+    constraint_kind: str,
+) -> None:
+    """Require an immediate constraint operand in every operand layout."""
+
+    for layout in layouts:
+        matching = tuple(
+            operand for operand in layout.operands if operand.name == operand_name
         )
-    return ImmediateRangeConstraint(
-        operand=operand_name, minimum=minimum, maximum=maximum
+        if not matching:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: {constraint_kind} operand "
+                f"{operand_name!r} must exist in operand layout {layout.name!r} "
+                "as kind 'imm'"
+            )
+        non_immediate = next(
+            (operand for operand in matching if operand.kind != "imm"), None
+        )
+        if non_immediate is not None:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: {constraint_kind} operand "
+                f"{operand_name!r} in operand layout {layout.name!r} must have "
+                f"kind 'imm', not {non_immediate.kind!r}"
+            )
+
+
+def _validate_uint64(
+    raw_variant: dict[str, Any], constraint_kind: str, field: str, value: object
+) -> None:
+    """Require one immediate constraint value to fit the generated uint64_t."""
+
+    if type(value) is int and 0 <= value <= UINT64_MAX:
+        return
+    requirement = (
+        "a positive integer representable as uint64"
+        if constraint_kind == "immediate_multiple_of" and field == "divisor"
+        else "non-negative uint64 integers"
+    )
+    raise ValueError(
+        f"variant {raw_variant['name']!r}: {constraint_kind} constraint field "
+        f"{field!r} value {value!r} must be {requirement}"
     )
 
 
@@ -1289,7 +1379,10 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     immediate_value=_normalize_immediate_value_constraint(
                         raw_variant, operand_layouts
                     ),
-                    immediate_range=_normalize_immediate_range_constraint(
+                    immediate_ranges=_normalize_immediate_range_constraints(
+                        raw_variant, operand_layouts
+                    ),
+                    immediate_multiple_of=_normalize_immediate_multiple_of_constraint(
                         raw_variant, operand_layouts
                     ),
                 )

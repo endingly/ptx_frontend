@@ -3,10 +3,15 @@
   "title": "PTX corpus provenance",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "fixtures"],
+  "required": ["schema", "sources", "fixtures"],
   "properties": {
     "schema": {
-      "const": "ptx_frontend.corpus_provenance/v1"
+      "const": "ptx_frontend.corpus_provenance/v3"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/source"}
     },
     "fixtures": {
       "type": "array",
@@ -20,17 +25,24 @@
       "additionalProperties": false,
       "required": [
         "path",
+        "kind",
         "sha256",
         "generator",
         "toolkit",
         "targets",
-        "source",
         "license"
       ],
       "properties": {
         "path": {
           "type": "string",
           "pattern": "^corpus/(?:[^/]+/)*[^/]+\\.ptx$"
+        },
+        "kind": {
+          "enum": [
+            "project_authored",
+            "inline_ptx_wrapper",
+            "natural_compiler_emission"
+          ]
         },
         "sha256": {
           "description": "SHA-256 of UTF-8 fixture text after CRLF is normalized to LF.",
@@ -45,7 +57,61 @@
           "items": {"type": "string", "minLength": 1}
         },
         "source": {"type": "string", "minLength": 1},
+        "source_path": {
+          "type": "string",
+          "enum": [
+            "corpus/m12/common_kernel.cu",
+            "corpus/m12/natural_kernel.cu"
+          ]
+        },
+        "notes": {"type": "string", "minLength": 1},
         "license": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "project_authored"}}},
+          "then": {
+            "required": ["source"],
+            "not": {
+              "anyOf": [
+                {"required": ["source_path"]},
+                {"required": ["notes"]}
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": ["inline_ptx_wrapper", "natural_compiler_emission"]
+              }
+            }
+          },
+          "then": {
+            "required": ["source_path", "notes"],
+            "not": {"required": ["source"]}
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "enum": [
+            "corpus/m12/common_kernel.cu",
+            "corpus/m12/natural_kernel.cu"
+          ]
+        },
+        "sha256": {
+          "description": "SHA-256 of UTF-8 source text after CRLF is normalized to LF.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     }
   }

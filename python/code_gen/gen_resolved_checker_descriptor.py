@@ -80,6 +80,11 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         for variant in instruction.variants
         if variant.immediate_value is not None
     )
+    immediate_range_definitions = "\n\n".join(
+        _emit_variant_immediate_range_descriptors(variant)
+        for variant in instruction.variants
+        if variant.immediate_ranges
+    )
     address_alignment_definitions = "\n\n".join(
         _emit_variant_address_alignment_descriptors(variant)
         for variant in instruction.variants
@@ -96,6 +101,8 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 {type_compatibility_definitions}
 
 {immediate_value_definitions}
+
+{immediate_range_definitions}
 
 {address_alignment_definitions}
 
@@ -157,17 +164,16 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .operand_field_id = "{variant.immediate_value.operand_field_id}",
                   .allowed_values = {variant.cpp_name}_immediate_value_values,
               }},'''
-    immediate_range = ""
-    if variant.immediate_range is not None:
-        maximum = (
-            f"\n                  .maximum = {variant.immediate_range.maximum},"
-            if variant.immediate_range.maximum is not None else ""
-        )
-        immediate_range = f'''
-              .immediate_range = {{
-                  .operand_field_id = "{variant.immediate_range.operand_field_id}",
-                  .minimum = {variant.immediate_range.minimum},
-                  .has_maximum = {str(variant.immediate_range.maximum is not None).lower()},{maximum}
+    immediate_ranges = ""
+    if variant.immediate_ranges:
+        immediate_ranges = f'''
+              .immediate_ranges = {variant.cpp_name}_immediate_ranges,'''
+    immediate_multiple_of = ""
+    if variant.immediate_multiple_of is not None:
+        immediate_multiple_of = f'''
+              .immediate_multiple_of = {{
+                  .operand_field_id = "{variant.immediate_multiple_of.operand_field_id}",
+                  .divisor = {_cpp_uint64(variant.immediate_multiple_of.divisor)},
               }},'''
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
@@ -182,16 +188,39 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
 {_emit_address_alignment_descriptor(variant)}
 {memory_vector}
 {immediate_value}
-{immediate_range}
+{immediate_multiple_of}
+{immediate_ranges}
           }}"""
 
 
 def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
     constraint = variant.immediate_value
     assert constraint is not None
-    values = ", ".join(str(value) for value in constraint.values)
+    values = ", ".join(_cpp_uint64(value) for value in constraint.values)
     return f"""  static constexpr std::array<uint64_t, {len(constraint.values)}>
       {variant.cpp_name}_immediate_value_values = {{{{{values}}}}};"""
+
+
+def _emit_variant_immediate_range_descriptors(variant: ResolvedVariant) -> str:
+    entries = ",\n".join(
+        f'''          checker::VariantDescriptor::ImmediateRangeDescriptor{{
+              .operand_field_id = "{constraint.operand_field_id}",
+              .minimum = {_cpp_uint64(constraint.minimum)},
+              .has_maximum = {str(constraint.maximum is not None).lower()},
+              .maximum = {_cpp_uint64(constraint.maximum) if constraint.maximum is not None else "~uint64_t{0}"},
+          }}'''
+        for constraint in variant.immediate_ranges
+    )
+    return f"""  static constexpr std::array<checker::VariantDescriptor::ImmediateRangeDescriptor, {len(variant.immediate_ranges)}>
+      {variant.cpp_name}_immediate_ranges = {{{{
+{entries}
+      }}}};"""
+
+
+def _cpp_uint64(value: int) -> str:
+    """Emit one portable exact uint64_t initializer from normalized metadata."""
+
+    return f"uint64_t{{{value}ULL}}"
 
 
 def _emit_address_alignment_descriptor(variant: ResolvedVariant) -> str:
@@ -269,6 +298,15 @@ def _emit_modifier_value_descriptor(
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "EvictionPriority":
+        eviction_priority = cpp_value(
+            CppDomain.EVICTION_PRIORITIES, str(entry.value)
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif entry.value_cpp_type == "VectorArity":
         vector_arity = cpp_value(CppDomain.VECTOR_ARITIES, str(entry.value))
         bool_value = "false"
@@ -313,6 +351,7 @@ def _emit_modifier_value_descriptor(
               .comparison_operator = {comparison_operator if entry.value_cpp_type == "ComparisonOperator" else cpp_default(CppDomain.COMPARISON_OPERATORS)},
               .boolean_operator = {boolean_operator if entry.value_cpp_type == "BooleanOperator" else cpp_default(CppDomain.BOOLEAN_OPERATORS)},
               .cache_operator = {cache_operator},
+              .eviction_priority = {eviction_priority if entry.value_cpp_type == "EvictionPriority" else cpp_default(CppDomain.EVICTION_PRIORITIES)},
               .vector_arity = {vector_arity},
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
               .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},
@@ -385,6 +424,10 @@ def _emit_availability(availability: dict[str, object]) -> str:
         number, flavor = (
             parse_availability_target(target) if target is not None else (0, "Generic")
         )
+        family = (
+            validate_availability_family(clause["family"])
+            if "family" in clause else ""
+        )
         capabilities = clause.get("capabilities", [])
         assert isinstance(capabilities, list)
         capability_values = ", ".join(f'"{value}"' for value in capabilities)
@@ -394,6 +437,7 @@ def _emit_availability(availability: dict[str, object]) -> str:
                       .has_exact_target = {str(target is not None).lower()},
                       .exact_target_architecture = {{{number}}},
                       .exact_target_flavor = base::TargetFlavor::{flavor},
+                      .required_family = "{family}",
                       .capabilities = {{{{{capability_values}}}}},
                       .capability_count = {len(capabilities)},
                   }}''')

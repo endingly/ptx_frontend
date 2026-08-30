@@ -71,7 +71,9 @@ domains:
     default: ComparisonOperator::Invalid
     runtime_lookup: ptx_suffix
     values:
+      eq: ComparisonOperator::Eq
       lt: ComparisonOperator::Lt
+      ge: ComparisonOperator::Ge
 
   boolean_operators:
     cpp_type: BooleanOperator
@@ -101,8 +103,10 @@ domains:
     default: EvictionPriority::Invalid
     runtime_lookup: ptx_suffix
     values:
+      evict_normal: EvictionPriority::EvictNormal
       evict_first: EvictionPriority::EvictFirst
       evict_last: EvictionPriority::EvictLast
+      no_allocate: EvictionPriority::NoAllocate
 
   memory_consistencies:
     cpp_type: MemoryConsistency
@@ -188,6 +192,7 @@ domains:
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
       shfl_dest: ResolvedShflSyncDestination
+      pred_pair: ResolvedPredicatePair
       mov_scalar_src: ResolvedMovSource
       vector_reg: ResolvedVectorRegisterRef
       vector_sreg: ResolvedVectorSpecialRegisterRef
@@ -230,6 +235,7 @@ domains:
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
       ShflDestination: ResolvedShflSyncDestination
+      PredicatePair: ResolvedPredicatePair
       MovSource: ResolvedMovSource
       VectorRegister: ResolvedVectorRegisterRef
       VectorSpecialRegister: ResolvedVectorSpecialRegisterRef
@@ -284,7 +290,7 @@ domains:
       CALL_TARGET_SET: check_end::OperandSyntaxShape::CallTargetSet
       BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
       BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
-      SHFL_DESTINATION: check_end::OperandSyntaxShape::ShflDestination
+      REGISTER_PREDICATE_PAIR: check_end::OperandSyntaxShape::RegisterPredicatePair
 
   resolved_value_kinds:
     cpp_type: check_end::ResolvedValueKind
@@ -306,6 +312,7 @@ domains:
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
+      PredicatePair: check_end::ResolvedValueKind::PredicatePair
       MovSource: check_end::ResolvedValueKind::MovSource
       VectorRegister: check_end::ResolvedValueKind::VectorRegister
       VectorSpecialRegister: check_end::ResolvedValueKind::VectorSpecialRegister
@@ -355,6 +362,7 @@ domains:
       IndirectCallee: check_end::OperandShape::IndirectCallee
       BranchTargetSet: check_end::OperandShape::BranchTargetSet
       ShflDestination: check_end::OperandShape::ShflDestination
+      PredicatePair: check_end::OperandShape::PredicatePair
       CallReturnParameter: check_end::OperandShape::CallReturnParameter
       CallArguments: check_end::OperandShape::CallArguments
 

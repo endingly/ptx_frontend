@@ -418,9 +418,7 @@ def _emit_check_variant_lambda(
         _emit_check_modifier_value_view(instruction, variant, field)
         for field in modifier_fields
     )
-    operand_check = _emit_check_operand_dispatch(
-        instruction, variant, variant_index, modifier_fields
-    )
+    operand_check = _emit_check_operand_dispatch(instruction, variant, variant_index)
     lambda_name = _check_lambda_name(instruction, variant)
     return f"""  const auto {lambda_name} =
       [&](const {instruction.cpp_name}::{variant.cpp_name}& selected) -> CheckResult {{
@@ -460,7 +458,6 @@ def _emit_check_operand_dispatch(
     instruction: ResolvedInstruction,
     variant: ResolvedVariant,
     variant_index: int,
-    modifier_fields: list[ResolvedField],
 ) -> str:
     layouts_expr = (
         f"{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]"
@@ -469,51 +466,7 @@ def _emit_check_operand_dispatch(
     checker_variant_expr = (
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
-    consistency_check = ""
-    if variant.memory_consistency is not None:
-        consistency_check = f"""            const auto consistency_check = check_memory_consistency(
-                {checker_variant_expr}.memory_consistency, fields, operands, context);
-            if (!consistency_check) {{
-              diagnostics.insert(diagnostics.end(), consistency_check.error().begin(),
-                                 consistency_check.error().end());
-            }}
-"""
-    alignment_check = ""
-    if variant.address_alignment is not None:
-        alignment_check = f"""            const auto alignment_check = check_address_alignment(
-                {checker_variant_expr}.address_alignment, fields, operands, context);
-            if (!alignment_check) {{
-              diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
-                                 alignment_check.error().end());
-            }}
-"""
-    memory_vector_check = ""
-    if variant.memory_vector is not None:
-        memory_vector_check = f"""            const auto memory_vector_check = check_memory_vector(
-                {checker_variant_expr}.memory_vector, fields, operands, context);
-            if (!memory_vector_check) {{
-              diagnostics.insert(diagnostics.end(), memory_vector_check.error().begin(),
-                                 memory_vector_check.error().end());
-            }}
-"""
-    immediate_value_check = ""
-    if variant.immediate_value is not None:
-        immediate_value_check = f"""            const auto immediate_value_check = check_immediate_value(
-                {checker_variant_expr}.immediate_value, operands, context);
-            if (!immediate_value_check) {{
-              diagnostics.insert(diagnostics.end(), immediate_value_check.error().begin(),
-                                 immediate_value_check.error().end());
-            }}
-"""
-    immediate_range_check = ""
-    if variant.immediate_range is not None:
-        immediate_range_check = f"""            const auto immediate_range_check = check_immediate_range(
-                {checker_variant_expr}.immediate_range, operands, context);
-            if (!immediate_range_check) {{
-              diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
-                                 immediate_range_check.error().end());
-            }}
-"""
+    cross_rule_checks = _emit_cross_rule_checks(variant, checker_variant_expr)
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             _emit_check_operand_view(field, "selected")
@@ -543,11 +496,11 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-{consistency_check}{memory_vector_check}{alignment_check}{immediate_value_check}{immediate_range_check}          }}"""
+{cross_rule_checks}          }}"""
 
     layout_lambdas = "\n\n".join(
         _emit_check_multi_layout_lambda(
-            instruction, variant, variant_index, layout_index, modifier_fields
+            instruction, variant, variant_index, layout_index
         )
         for layout_index, _ in enumerate(variant.operand_layouts)
     )
@@ -584,14 +537,13 @@ def _emit_check_multi_layout_lambda(
     variant: ResolvedVariant,
     variant_index: int,
     layout_index: int,
-    modifier_fields: list[ResolvedField],
 ) -> str:
     layout = variant.operand_layouts[layout_index]
     lambda_name = _check_layout_lambda_name(variant, layout)
     operand_views = ",\n".join(
         _emit_check_operand_view(field, "payload") for field in layout.fields
     )
-    consistency_return = f"""
+    cross_rule_return = f"""
             return check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
                     .operand_layouts[{layout_index}]
@@ -600,12 +552,12 @@ def _emit_check_multi_layout_lambda(
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                     .operand_type_compatibilities,
                 context);"""
-    if (variant.memory_consistency is not None or
-            variant.address_alignment is not None or
-            variant.memory_vector is not None or
-            variant.immediate_value is not None or
-            variant.immediate_range is not None):
-        consistency_return = f"""
+    cross_rule_checks = _emit_cross_rule_checks(
+        variant,
+        f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
+    )
+    if cross_rule_checks:
+        cross_rule_return = f"""
             const auto operand_check = check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
                     .operand_layouts[{layout_index}]
@@ -619,9 +571,7 @@ def _emit_check_multi_layout_lambda(
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
             }}
-{_emit_multi_layout_cross_rule_checks(
-    instruction, variant, variant_index
-)}            if (diagnostics.empty())
+{cross_rule_checks}            if (diagnostics.empty())
               return CheckResult{{}};
             return std::unexpected(std::move(diagnostics));"""
     return f"""          const auto {lambda_name} =
@@ -636,26 +586,23 @@ def _emit_check_multi_layout_lambda(
             }}
             const std::array<OperandView, {len(layout.fields)}> operands = {{{{
 {operand_views}
-            }}}};{consistency_return}
+            }}}};{cross_rule_return}
           }};
           static_assert(detail::VariantCheckFunction<
               decltype({lambda_name}),
               {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands>);"""
 
 
-def _emit_multi_layout_cross_rule_checks(
-    instruction: ResolvedInstruction,
+def _emit_cross_rule_checks(
     variant: ResolvedVariant,
-    variant_index: int,
+    checker_variant_expr: str,
 ) -> str:
-    """Emit cross-rule calls shared by every payload-layout lambda."""
+    """Emit a variant's cross-rule checks in a fixed order."""
 
     checks = ""
     if variant.memory_consistency is not None:
         checks += f"""            const auto consistency_check = check_memory_consistency(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .memory_consistency,
-                fields, operands, context);
+                {checker_variant_expr}.memory_consistency, fields, operands, context);
             if (!consistency_check) {{
               diagnostics.insert(diagnostics.end(), consistency_check.error().begin(),
                                  consistency_check.error().end());
@@ -663,9 +610,7 @@ def _emit_multi_layout_cross_rule_checks(
 """
     if variant.memory_vector is not None:
         checks += f"""            const auto memory_vector_check = check_memory_vector(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .memory_vector,
-                fields, operands, context);
+                {checker_variant_expr}.memory_vector, fields, operands, context);
             if (!memory_vector_check) {{
               diagnostics.insert(diagnostics.end(), memory_vector_check.error().begin(),
                                  memory_vector_check.error().end());
@@ -673,9 +618,7 @@ def _emit_multi_layout_cross_rule_checks(
 """
     if variant.address_alignment is not None:
         checks += f"""            const auto alignment_check = check_address_alignment(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .address_alignment,
-                fields, operands, context);
+                {checker_variant_expr}.address_alignment, fields, operands, context);
             if (!alignment_check) {{
               diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
                                  alignment_check.error().end());
@@ -683,22 +626,28 @@ def _emit_multi_layout_cross_rule_checks(
 """
     if variant.immediate_value is not None:
         checks += f"""            const auto immediate_value_check = check_immediate_value(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .immediate_value,
-                operands, context);
+                {checker_variant_expr}.immediate_value, operands, context);
             if (!immediate_value_check) {{
               diagnostics.insert(diagnostics.end(), immediate_value_check.error().begin(),
                                  immediate_value_check.error().end());
             }}
 """
-    if variant.immediate_range is not None:
-        checks += f"""            const auto immediate_range_check = check_immediate_range(
-                {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
-                    .immediate_range,
-                operands, context);
-            if (!immediate_range_check) {{
-              diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
-                                 immediate_range_check.error().end());
+    if variant.immediate_ranges:
+        checks += f"""            for (const auto& immediate_range : {checker_variant_expr}.immediate_ranges) {{
+              const auto immediate_range_check = check_immediate_range(
+                  immediate_range, operands, context);
+              if (!immediate_range_check) {{
+                diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
+                                   immediate_range_check.error().end());
+              }}
+            }}
+"""
+    if variant.immediate_multiple_of is not None:
+        checks += f"""            const auto immediate_multiple_of_check = check_immediate_multiple_of(
+                {checker_variant_expr}.immediate_multiple_of, operands, context);
+            if (!immediate_multiple_of_check) {{
+              diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
+                                 immediate_multiple_of_check.error().end());
             }}
 """
     return checks
@@ -1174,6 +1123,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "ShflDestination")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.data.declared_type,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedPredicatePair":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
+                  .immediate_type = std::nullopt,
+                  .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or(ScalarType::Invalid), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or(ScalarType::Invalid)}},
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedImmediate":

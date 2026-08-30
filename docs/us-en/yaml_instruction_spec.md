@@ -362,6 +362,76 @@ Do not invent variants for layout differences: `bar.sync a` and
 `bar.sync a, b` are two layouts in one `.sync` variant. `bar.sync` and
 `bar.cta.sync` have different modifier combinations and are separate variants.
 
+## Immediate operand constraints
+
+Variant-level `constraints` can impose executable integer rules on a named
+`kind: imm` operand:
+
+```yaml
+constraints:
+  - {kind: immediate_value, operand: mode, values: [4, 8, 16]}
+  - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+  - {kind: immediate_multiple_of, operand: count, divisor: 8}
+```
+
+`immediate_value` is one non-empty, duplicate-free allowlist per variant.
+`immediate_range` may occur once per operand and has an inclusive `minimum`
+and an optional inclusive `maximum`; omitting `maximum` means no upper bound.
+`immediate_multiple_of` is one divisor rule per variant. These descriptors may
+be combined when their named operands make that meaningful.
+
+All configured values use the generated `uint64_t` domain: an actual YAML
+integer in `0..18446744073709551615` (`2^64 - 1`). Negative values, Boolean
+values, floats/other non-integers, and values above that limit are rejected.
+The normalizer validates every `immediate_value.values[index]` before duplicate
+checking, validates `minimum`, present `maximum`, and `divisor` with the same
+rule, rejects `maximum < minimum`, and requires `divisor > 0`.
+
+The operand reference is deliberately variant-wide, not layout-local. For
+each of the three constraint kinds, the named operand must exist in **every**
+operand layout of the variant and must be `kind: imm` in each one. A missing
+operand or a `reg`/`reg_or_imm` occurrence in even one named layout is a
+normalization error that identifies the variant, constraint kind, operand, and
+layout. Do not work around this with a layout-local constraint DSL or a runtime
+"missing operand means skip" rule. If a future instruction genuinely needs a
+layout-specific rule, it needs a new explicitly designed contract; it must not
+weaken this invariant.
+
+The current frozen `setmaxnreg.inc.sync.aligned.u32` form illustrates a range
+plus divisibility rule:
+
+```yaml
+operands:
+  - {name: count, kind: imm, role: src, access: read, type: u32}
+constraints:
+  - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+  - {kind: immediate_multiple_of, operand: count, divisor: 8}
+```
+
+Thus `192` is valid while `23`, `257`, and `25` are rejected. `bfe.u32` and
+`bfi.b32` each use two independent inclusive ranges, `offset` and `width`,
+both `0..255`; both operands are immediate operands in their only layout.
+
+At resolution time an integer immediate carries its scalar type, raw width
+limited bits, and a signed-source marker. For example, a signed `-1` has the
+two's-complement raw bits for its operand width and keeps `is_negative`; it is
+not converted to an abstract signed integer before checker rules run. Range
+and multiple-of checks reject that negative marker before comparing or taking
+a remainder. Exact-value checks intentionally compare raw bits, so an allowlist
+is a bit-value contract. Floating immediates resolve to IEEE raw bits: decimal
+forms require `f32` or `f64`, and `0f...`/`0d...` are unsigned 32-/64-bit
+bit-pattern literals that require exactly `f32`/`f64` and cannot have a sign.
+Consequently these constraints are integer-domain rules; do not use their
+numeric-looking bounds to express floating-point ordering.
+
+Normalization diagnostics name the variant, constraint kind, precise field
+(including `values[index]`), and illegal value for malformed configuration.
+At runtime a bad value/range/divisibility result is an
+`ImmediateValueMismatch` anchored at the immediate operand; an impossible
+generated descriptor that references a missing/non-immediate operand is a
+`RuleViolation` anchored at the instruction. This makes configuration errors
+and source-program errors distinguishable.
+
 ## Complete example: bar
 
 ```yaml
@@ -423,6 +493,10 @@ modelled. An `a` target is an exact identity, not a family spelling: use
 clauses, exact target, and `family` are independent constraints. `rule` is a
 stable rule ID for instruction-specific checking. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
+
+An `any_of` clause may also contain `family`; it is an AND-term within that
+clause and uses the same `enabled_family_features` lookup, rather than requiring
+that exact target spelling.
 
 `operand_layouts[].availability` accumulates with variant availability; it
 does not override it, and only the selected layout contributes its constraint.

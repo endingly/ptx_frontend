@@ -20,6 +20,7 @@ from code_gen.cpp_backend import (
 )
 from code_gen.model import (
     AddressAlignmentConstraint,
+    ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
     ImmediateValueConstraint,
     InstructionSpec,
@@ -82,6 +83,7 @@ class ResolvedValueKind(Enum):
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
+    PREDICATE_PAIR = "PredicatePair"
 
 
 class ResolvedFieldStorage(Enum):
@@ -129,6 +131,7 @@ class ResolvedOperandShape(Enum):
     CALL_RETURN_PARAMETER = "CallReturnParameter"
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
+    PREDICATE_PAIR = "PredicatePair"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -231,6 +234,14 @@ class ResolvedImmediateRangeConstraint:
 
 
 @dataclass(frozen=True)
+class ResolvedImmediateMultipleOfConstraint:
+    """Generated field identity and positive divisor for one immediate."""
+
+    operand_field_id: str
+    divisor: int
+
+
+@dataclass(frozen=True)
 class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
 
@@ -293,6 +304,10 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.CACHE_OPERATORS, self.constant_value)
+        if self.value_cpp_type == "EvictionPriority" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.EVICTION_PRIORITIES, self.constant_value)
         if self.value_cpp_type == "MemoryStateSpace" and isinstance(
             self.constant_value, str
         ):
@@ -324,7 +339,8 @@ class ResolvedVariant:
     address_alignment: ResolvedAddressAlignmentConstraint | None
     memory_vector: ResolvedMemoryVectorConstraint | None
     immediate_value: ResolvedImmediateValueConstraint | None
-    immediate_range: ResolvedImmediateRangeConstraint | None
+    immediate_ranges: tuple[ResolvedImmediateRangeConstraint, ...]
+    immediate_multiple_of: ResolvedImmediateMultipleOfConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
 
@@ -432,6 +448,7 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.IMMEDIATE,
     ),
     "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
+    "pred_pair": (ResolvedOperandShape.PREDICATE_PAIR,),
     "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
@@ -557,8 +574,11 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
         immediate_value=_build_immediate_value_constraint(
             variant.immediate_value,
         ),
-        immediate_range=_build_immediate_range_constraint(
-            variant.immediate_range,
+        immediate_ranges=_build_immediate_range_constraints(
+            variant.immediate_ranges,
+        ),
+        immediate_multiple_of=_build_immediate_multiple_of_constraint(
+            variant.immediate_multiple_of,
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
@@ -638,15 +658,27 @@ def _build_immediate_value_constraint(
     )
 
 
-def _build_immediate_range_constraint(
-    constraint: ImmediateRangeConstraint | None,
-) -> ResolvedImmediateRangeConstraint | None:
+def _build_immediate_range_constraints(
+    constraints: tuple[ImmediateRangeConstraint, ...],
+) -> tuple[ResolvedImmediateRangeConstraint, ...]:
+    return tuple(
+        ResolvedImmediateRangeConstraint(
+            operand_field_id=constraint.operand,
+            minimum=constraint.minimum,
+            maximum=constraint.maximum,
+        )
+        for constraint in constraints
+    )
+
+
+def _build_immediate_multiple_of_constraint(
+    constraint: ImmediateMultipleOfConstraint | None,
+) -> ResolvedImmediateMultipleOfConstraint | None:
     if constraint is None:
         return None
-    return ResolvedImmediateRangeConstraint(
+    return ResolvedImmediateMultipleOfConstraint(
         operand_field_id=constraint.operand,
-        minimum=constraint.minimum,
-        maximum=constraint.maximum,
+        divisor=constraint.divisor,
     )
 
 
@@ -808,6 +840,17 @@ def _build_modifier_value_availability(
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported cache value "
                 f"{value.value!r}"
+            )
+    if value_cpp_type == "EvictionPriority":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: eviction priority value must be "
+                "a string"
+            )
+        if value.value not in cpp_domain(CppDomain.EVICTION_PRIORITIES).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported eviction priority "
+                f"value {value.value!r}"
             )
     if value_cpp_type == "VectorArity":
         if not isinstance(value.value, str):

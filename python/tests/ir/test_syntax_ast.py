@@ -260,12 +260,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
 
-    def test_shfl_destination_uses_dedicated_single_operand_shape(self) -> None:
+    def test_register_predicate_pair_uses_dedicated_single_operand_shape(self) -> None:
         variant = self.shfl_descriptor.variants[0]
         self.assertEqual(variant.variant_id, "shfl_sync_idx_b32")
         self.assertEqual(
             variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
-            OperandSyntaxShape.SHFL_DESTINATION,
+            OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
         )
 
     def test_mov_source_layout_covers_data_and_address_forms(self) -> None:
@@ -1102,12 +1102,209 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         for constraint, message, kind in (
             ({"kind": "immediate_value", "operand": "missing", "values": [4]}, "kind 'imm'", "imm"),
             ({"kind": "immediate_value", "operand": "size", "values": [4, 4]}, "unique", "imm"),
-            ({"kind": "immediate_value", "operand": "size", "values": [4.0]}, "integers", "imm"),
+            ({"kind": "immediate_value", "operand": "size", "values": [4.0]}, "uint64 integer", "imm"),
             ({"kind": "immediate_value", "operand": "size", "values": [4]}, "kind 'imm'", "reg"),
         ):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(ValueError, message):
                     normalize_constraint(constraint, operand_kind=kind)
+
+    def test_immediate_multiple_of_constraint_normalization(self) -> None:
+        def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_immediate",
+                                    "availability": {"ptx": "1.0"},
+                                    "operands": [
+                                        {
+                                            "name": "count",
+                                            "kind": operand_kind,
+                                            "role": "src",
+                                            "access": "read",
+                                            "type": "u32",
+                                        }
+                                    ],
+                                    "constraints": [constraint],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        normalize_constraint(
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 8}
+        )
+        for constraint, message, kind in (
+            ({"kind": "immediate_multiple_of", "operand": "missing", "divisor": 8}, "kind 'imm'", "imm"),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 0}, "positive integer", "imm"),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 8.0}, "positive integer", "imm"),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 8}, "kind 'imm'", "reg"),
+        ):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    normalize_constraint(constraint, operand_kind=kind)
+
+    def test_immediate_constraints_enforce_uint64_bounds(self) -> None:
+        def normalize_constraints(constraints: list[dict[str, object]]) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [{"opcode": "sample", "variants": [{
+                        "name": "sample_immediate",
+                        "availability": {"ptx": "1.0"},
+                        "operands": [{
+                            "name": "count", "kind": "imm", "role": "src",
+                            "access": "read", "type": "u64",
+                        }],
+                        "constraints": constraints,
+                    }]}],
+                }
+            )
+
+        uint64_max = 2**64 - 1
+        normalize_constraints([
+            {"kind": "immediate_value", "operand": "count",
+             "values": [2**63, uint64_max]},
+            {"kind": "immediate_range", "operand": "count",
+             "minimum": 2**63, "maximum": uint64_max},
+            {"kind": "immediate_multiple_of", "operand": "count",
+             "divisor": uint64_max},
+        ])
+
+        for constraint, field in (
+            ({"kind": "immediate_value", "operand": "count",
+              "values": [2**64]}, "values[0]"),
+            ({"kind": "immediate_range", "operand": "count",
+              "minimum": 2**64}, "minimum"),
+            ({"kind": "immediate_range", "operand": "count",
+              "minimum": 0, "maximum": 2**64}, "maximum"),
+            ({"kind": "immediate_multiple_of", "operand": "count",
+              "divisor": 2**64}, "divisor"),
+        ):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(
+                    ValueError, rf"constraint field '{re.escape(field)}'.*{2**64}"
+                ):
+                    normalize_constraints([constraint])
+
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            normalize_constraints([{
+                "kind": "immediate_multiple_of", "operand": "count", "divisor": 0,
+            }])
+        with self.assertRaisesRegex(ValueError, "maximum >= minimum"):
+            normalize_constraints([{
+                "kind": "immediate_range", "operand": "count",
+                "minimum": 1, "maximum": 0,
+            }])
+
+    def _normalize_multilayout_immediate_constraint(
+        self,
+        constraint: object,
+        operand_name: str,
+        other_layout_name: str,
+        other_operands: list[dict[str, str]],
+    ) -> None:
+        normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [{"opcode": "sample", "variants": [{
+                    "name": "sample_immediate",
+                    "availability": {"ptx": "1.0"},
+                    "operand_layouts": [
+                        {"name": "immediate", "operands": [
+                            {"name": operand_name, "kind": "imm"},
+                        ]},
+                        {"name": other_layout_name, "operands": other_operands},
+                    ],
+                    "constraints": [constraint],
+                }]}],
+            }
+        )
+
+    def test_immediate_constraints_require_an_immediate_in_every_layout(self) -> None:
+        for kind, constraint, operand_name in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }, "size"),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "count", "minimum": 1,
+            }, "count"),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
+            }, "stride"),
+        ):
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    rf"{kind} operand {operand_name!r}.*operand layout 'missing'",
+                ):
+                    self._normalize_multilayout_immediate_constraint(
+                        constraint,
+                        operand_name,
+                        "missing",
+                        [{"name": "dst", "kind": "reg"}],
+                    )
+
+    def test_immediate_constraints_name_non_immediate_layout_and_kind(self) -> None:
+        for kind, constraint, operand_name in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }, "size"),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "count", "minimum": 1,
+            }, "count"),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
+            }, "stride"),
+        ):
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    rf"{kind} operand {operand_name!r}.*operand layout "
+                    r"'register'.*kind 'imm'.*'reg'",
+                ):
+                    self._normalize_multilayout_immediate_constraint(
+                        constraint,
+                        operand_name,
+                        "register",
+                        [
+                            {"name": "dst", "kind": "reg"},
+                            {"name": operand_name, "kind": "reg"},
+                        ],
+                    )
+
+    def test_immediate_constraints_accept_immediates_in_every_layout(self) -> None:
+        for kind, constraint, operand_name in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }, "size"),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "count", "minimum": 1,
+            }, "count"),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
+            }, "stride"),
+        ):
+            with self.subTest(kind=kind):
+                self._normalize_multilayout_immediate_constraint(
+                    constraint,
+                    operand_name,
+                    "with_dst",
+                    [
+                        {"name": "dst", "kind": "reg"},
+                        {"name": operand_name, "kind": "imm"},
+                    ],
+                )
 
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(

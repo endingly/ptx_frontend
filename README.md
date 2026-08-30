@@ -48,10 +48,22 @@ The frontend currently provides:
   source-target feature requirement, not PTX-to-physical-GPU translation
   compatibility, which is not modelled. Exact identity and capability remain
   independent constraints.
-- a partial M10 frozen subset for cache-hint/eviction, `ldu`/`prefetch`, memory
-  ordering and scalar atomics/reductions, warp collectives, `cp.async`,
-  `ldmatrix`, and one `mma` form; these forms are resolved and checked only,
-  and remain unsupported by the simulator.
+- machine-readable manifests are authoritative for modelled opcode slices and
+  deferred scope. M12 has two evidence lanes: the deterministic inline-PTX
+  common-kernel corpus validates 60 frozen forms through parse, resolve, and
+  target-aware checking on `sm_80`, `sm_90a`, and `sm_100`; its
+  `setmaxnreg.inc.sync.aligned.u32` occurrence is only in the `sm_90a` corpus
+  fixture. The separate ordinary-CUDA `natural_kernel` PTX outputs are frozen
+  nvcc 13.3.33 compiler-emission evidence; their manifest preserves every
+  emitted spelling and frequency, and all three profile modules parse,
+  resolve, and target-aware check. Checker
+  availability is broader: `sm_90a` at PTX 8.0, exact
+  `sm_100a` at 8.6, the enabled `sm_100f` family at 8.8 (including modelled
+  `sm_100f` and `sm_103a`/`sm_103f`), and `sm_120f` at 8.8. Official
+  `sm_101a`/`sm_101f`, `sm_110a`/`sm_110f`, and `sm_120a` spellings are not
+  catalogued validation profiles and therefore report `UnknownTarget`;
+  translation compatibility is not inferred. Inventory rows remain partial for
+  implemented frozen slices; simulator execution remains unsupported.
 - direct `call` and metadata-backed indirect `call` forms, including:
   `call function;`, `call function, (arguments);`, and
   `call (return), function, (arguments);`. Module resolution uses the canonical

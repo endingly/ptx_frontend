@@ -1601,7 +1601,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "TryWaitTokenPrimaryGenericOrShared", "TryWaitTokenPrimarySharedCta",
              "TryWaitParityPrimaryGenericOrShared", "TryWaitParityPrimarySharedCta",
              "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta",
-             "PendingCount"],
+             "PendingCount", "CheckLayoutGenericV0", "CheckLayoutGenericV1",
+             "CheckLayoutSharedCtaV0", "CheckLayoutSharedCtaV1"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
         expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
@@ -1624,6 +1625,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         test_wait_primary_token, _, test_wait_primary_parity, _, test_wait_conditional, _ = instruction.variants[67:73]
         try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
         pending_count = instruction.variants[79]
+        check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[80:84]
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
@@ -1665,6 +1667,22 @@ class ResolvedIrBuildTest(unittest.TestCase):
         state = test_wait_token.operand_layouts[0].bindings[-1]
         parity = test_wait_parity.operand_layouts[0].bindings[-1]
         self.assertEqual(state.mbarrier_state_token_form.value, "register")
+        self.assertEqual(
+            [dict(variant.availability) for variant in
+             (check_layout_generic_v0, check_layout_generic_v1,
+              check_layout_shared_cta_v0, check_layout_shared_cta_v1)],
+            [{"ptx": "9.3", "sm": 90}] * 4,
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in check_layout_generic_v0.fields],
+            [("check_layout", "bool"), ("layout", "MbarrierLayout"),
+             ("type", "ScalarType"), ("result", "WithLocs<ResolvedPredicate>"),
+             ("address", "WithLocs<ResolvedAddress>")],
+        )
+        self.assertEqual(check_layout_generic_v0.modifier_fields[1].constant_value, "layout::v0")
+        self.assertEqual(check_layout_generic_v1.modifier_fields[1].constant_value, "layout::v1")
+        self.assertEqual(check_layout_shared_cta_v0.modifier_fields[2].constant_value, True)
+        self.assertEqual(check_layout_shared_cta_v1.modifier_fields[1].constant_value, "layout::v1")
         self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
         self.assertEqual(parity.type_expression.scalar_type, "u32")
         self.assertEqual(parity.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)

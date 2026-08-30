@@ -326,6 +326,10 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.MBARRIER_PHASE_TYPES, self.constant_value)
+        if self.value_cpp_type == "MbarrierLayout" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.MBARRIER_LAYOUTS, self.constant_value)
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"

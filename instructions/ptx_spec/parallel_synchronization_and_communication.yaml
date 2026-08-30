@@ -1341,7 +1341,8 @@ instructions:
       mbarrier.try_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
       mbarrier.try_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
       mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
-      mbarrier.pending_count{.layout::v0}.b64 count, state
+      mbarrier.pending_count{.layout::v0}.b64 count, state |
+      mbarrier.check_layout.layout::{v0|v1}{.shared::cta}.b64 p, [addr]
 
     variants:
       - name: mbarrier_init_generic_v0
@@ -2249,3 +2250,27 @@ instructions:
         operands:
           - {name: count, kind: reg, role: dst, access: write, type: u32, register_width: exact}
           - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+      - name: mbarrier_check_layout_generic_v0
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v0}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_check_layout_generic_v1
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v1}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_check_layout_shared_cta_v0
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v0}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_check_layout_shared_cta_v1
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v1}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]

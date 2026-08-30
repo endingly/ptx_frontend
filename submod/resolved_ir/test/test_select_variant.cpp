@@ -906,6 +906,41 @@ TEST(SelectVariantMbarrier, SelectsPendingCount) {
   }
 }
 
+TEST(SelectVariantMbarrier, SelectsCheckLayout) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+  expect_variant("mbarrier.check_layout.layout::v0.b64 %p0, [%rd0];",
+                 Mbarrier::VariantType::CheckLayoutGenericV0);
+  expect_variant("mbarrier.check_layout.layout::v1.b64 %p0, [%rd0];",
+                 Mbarrier::VariantType::CheckLayoutGenericV1);
+  expect_variant("mbarrier.check_layout.layout::v0.shared::cta.b64 %p0, [shared_value];",
+                 Mbarrier::VariantType::CheckLayoutSharedCtaV0);
+  expect_variant("mbarrier.check_layout.layout::v1.shared::cta.b64 %p0, [shared_value];",
+                 Mbarrier::VariantType::CheckLayoutSharedCtaV1);
+
+  for (const std::string_view source : {
+           "mbarrier.check_layout.b64 %p0, [%rd0];",
+           "mbarrier.check_layout.layout::v2.b64 %p0, [%rd0];",
+           "mbarrier.check_layout.shared.b64 %p0, [%rd0];",
+           "mbarrier.check_layout.layout::v0.b32 %p0, [%rd0];",
+           "mbarrier.check_layout.layout::v0.relaxed.b64 %p0, [%rd0];",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+  }
+  for (const std::string_view source : {
+           "mbarrier.check_layout.layout::v0.b64 _, [%rd0];",
+           "mbarrier.check_layout.layout::v0.b64 %p0, [%rd0], 1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mapa::VariantType expected) {

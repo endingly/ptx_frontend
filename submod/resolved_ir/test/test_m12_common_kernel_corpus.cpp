@@ -55,24 +55,13 @@ void expectM12CorpusModule(const CorpusCase& corpus_case) {
                                    : resolved.error().front().message);
   ASSERT_EQ(resolved->functions.size(), corpus_case.function_count);
 
-  const auto profile = base::find_target_profile(corpus_case.target);
-  ASSERT_TRUE(profile.has_value()) << corpus_case.target;
-  const checker::Context context{
-      .target = {.ptx_version = {9, 3},
-                 .sm_version = profile->identity.architecture.number,
-                 .enabled_family_features = profile->enabled_family_features,
-                 .identity = profile->identity,
-                 .capabilities = profile->capabilities},
-  };
-  for (const auto& function : resolved->functions) {
+  const auto availability = checkModuleAvailability(*parsed, *resolved);
+  ASSERT_TRUE(availability.has_value())
+      << (availability.error().empty() ? "availability check failed"
+                                       : availability.error().front().message);
+
+  for (const auto& function : resolved->functions)
     ASSERT_FALSE(function.body.empty()) << function.name << file;
-    for (const auto& instruction : function.body) {
-      const auto checked = std::visit(
-          [&](const auto& value) { return checker::check(value, context); },
-          instruction);
-      EXPECT_TRUE(checked.has_value()) << function.name << file;
-    }
-  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksEveryM12CommonKernelCorpusModule) {

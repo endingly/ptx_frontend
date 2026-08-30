@@ -2364,13 +2364,15 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   .reg .b32 %d32;
   .reg .s32 %a32;
   .reg .u32 %b32;
-  .reg .s32 %selector32;
+  .reg .u32 %selector32;
   .reg .b64 %d64;
   .reg .s64 %a64;
   .reg .u64 %b64;
   .reg .f32 %selector64;
+  .reg .b32 %selector64_bits;
   slct.u32.s32 %d32, %a32, %b32, %selector32;
   slct.ftz.u64.f32 %d64, %a64, %b64, %selector64;
+  slct.ftz.u64.f32 %d64, %a64, %b64, %selector64_bits;
 }
 )ptx"));
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
@@ -2384,7 +2386,8 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
 
   const auto wrong_selector = resolveModule(parseModule(R"ptx(
 .entry kernel() {
-  .reg .u32 %d, %a, %b, %selector;
+  .reg .u32 %d, %a, %b;
+  .reg .f32 %selector;
   slct.u32.s32 %d, %a, %b, %selector;
 }
 )ptx"));
@@ -2402,6 +2405,24 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(bad_selector.error().front().range,
             selector_variant.selector.locs.front());
+
+  const auto wide_selector = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %d, %a, %b;
+  .reg .u64 %selector;
+  slct.u32.s32 %d, %a, %b, %selector;
+}
+)ptx"));
+  ASSERT_TRUE(wide_selector.has_value())
+      << wide_selector.error().front().message;
+  const auto& wide_selector_instruction =
+      std::get<Slct>(wide_selector->functions.front().body.front());
+  const auto wide_selector_check = checker::check(
+      wide_selector_instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(wide_selector_check.has_value());
+  EXPECT_EQ(wide_selector_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
 
   const auto wrong_data = resolveModule(parseModule(R"ptx(
 .entry kernel() {
@@ -2423,6 +2444,24 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(bad_data.error().front().range,
             data_variant.src_true.locs.front());
+
+  const auto integer_float_selector = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .u64 %d, %a, %b;
+  .reg .u32 %selector;
+  slct.ftz.u64.f32 %d, %a, %b, %selector;
+}
+)ptx"));
+  ASSERT_TRUE(integer_float_selector.has_value())
+      << integer_float_selector.error().front().message;
+  const auto& integer_float_instruction =
+      std::get<Slct>(integer_float_selector->functions.front().body.front());
+  const auto integer_float_check = checker::check(
+      integer_float_instruction,
+      checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
+  ASSERT_FALSE(integer_float_check.has_value());
+  EXPECT_EQ(integer_float_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
 
   const auto predicate_selector = resolveModule(parseModule(R"ptx(
 .entry kernel() {

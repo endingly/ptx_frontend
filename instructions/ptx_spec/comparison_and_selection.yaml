@@ -170,7 +170,7 @@ operand_patterns:
       role: src3
       access: read
       type: s32
-      register_width: exact
+      register_width: same_width
 
   slct_ftz_u64_f32:
     - name: dst
@@ -196,7 +196,7 @@ operand_patterns:
       role: src3
       access: read
       type: f32
-      register_width: exact
+      register_width: same_width
 
 instructions:
   - opcode: set
@@ -392,7 +392,7 @@ instructions:
     syntax: "slct.u32.s32 dst, src_true, src_false, selector | slct.ftz.u64.f32 dst, src_true, src_false, selector"
     variants:
       - name: slct_u32_s32
-        description: "32-bit data selection with an exact signed 32-bit numeric selector."
+        description: "32-bit data selection with a signed 32-bit numeric selector."
         availability:
           ptx: "1.0"
           sm: 0

@@ -1244,7 +1244,12 @@ instructions:
       mbarrier.arrive{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr]{, count} |
       mbarrier.arrive.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
       mbarrier.arrive.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
-      mbarrier.arrive.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count
+      mbarrier.arrive.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count |
+      mbarrier.arrive_drop{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr]{, count} |
+      mbarrier.arrive_drop{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr]{, count} |
+      mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
+      mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
+      mbarrier.arrive_drop.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count
 
     variants:
       - name: mbarrier_init_generic_v0
@@ -1862,5 +1867,151 @@ instructions:
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cluster}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cluster_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_semantics_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_semantics_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_semantics_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cluster}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cluster_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_expect_tx_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_expect_tx_cluster
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_expect_tx_semantics_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_semantics_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_semantics_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cluster
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_no_complete_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_no_complete_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_no_complete_release_cta_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}, {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_no_complete_release_cta_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}, {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: $mbarrier_arrive_cta_count
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]

@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 218)
+        self.assertEqual(len(slices), 240)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -678,6 +678,28 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("mbarrier_arrive_no_complete_shared_cta", "default"),
                 ("mbarrier_arrive_no_complete_release_cta_generic_or_shared", "default"),
                 ("mbarrier_arrive_no_complete_release_cta_shared_cta", "default"),
+                ("mbarrier_arrive_drop_generic_or_shared", "no_count"),
+                ("mbarrier_arrive_drop_generic_or_shared", "with_count"),
+                ("mbarrier_arrive_drop_shared_cta", "no_count"),
+                ("mbarrier_arrive_drop_shared_cta", "with_count"),
+                ("mbarrier_arrive_drop_shared_cluster", "no_count"),
+                ("mbarrier_arrive_drop_shared_cluster", "with_count"),
+                ("mbarrier_arrive_drop_semantics_generic_or_shared", "no_count"),
+                ("mbarrier_arrive_drop_semantics_generic_or_shared", "with_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cta", "no_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cta", "with_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cluster", "no_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cluster", "with_count"),
+                ("mbarrier_arrive_drop_expect_tx_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_expect_tx_shared_cta", "default"),
+                ("mbarrier_arrive_drop_expect_tx_shared_cluster", "default"),
+                ("mbarrier_arrive_drop_expect_tx_semantics_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_expect_tx_semantics_shared_cta", "default"),
+                ("mbarrier_arrive_drop_expect_tx_semantics_shared_cluster", "default"),
+                ("mbarrier_arrive_drop_no_complete_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_no_complete_shared_cta", "default"),
+                ("mbarrier_arrive_drop_no_complete_release_cta_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_no_complete_release_cta_shared_cta", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

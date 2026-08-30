@@ -1580,7 +1580,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "ArriveExpectTxSemanticsGenericOrShared", "ArriveExpectTxSemanticsSharedCta",
              "ArriveExpectTxSemanticsSharedCluster", "ArriveNoCompleteGenericOrShared",
              "ArriveNoCompleteSharedCta", "ArriveNoCompleteReleaseCtaGenericOrShared",
-             "ArriveNoCompleteReleaseCtaSharedCta"],
+             "ArriveNoCompleteReleaseCtaSharedCta", "ArriveDropGenericOrShared",
+             "ArriveDropSharedCta", "ArriveDropSharedCluster",
+             "ArriveDropSemanticsGenericOrShared", "ArriveDropSemanticsSharedCta",
+             "ArriveDropSemanticsSharedCluster", "ArriveDropExpectTxGenericOrShared",
+             "ArriveDropExpectTxSharedCta", "ArriveDropExpectTxSharedCluster",
+             "ArriveDropExpectTxSemanticsGenericOrShared",
+             "ArriveDropExpectTxSemanticsSharedCta",
+             "ArriveDropExpectTxSemanticsSharedCluster",
+             "ArriveDropNoCompleteGenericOrShared", "ArriveDropNoCompleteSharedCta",
+             "ArriveDropNoCompleteReleaseCtaGenericOrShared",
+             "ArriveDropNoCompleteReleaseCtaSharedCta"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
         expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
@@ -1596,7 +1606,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(complete_tx_generic.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(complete_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(complete_tx_relaxed_cluster.availability), {"ptx": "8.0", "sm": 90})
-        arrive_generic, _, arrive_cluster, arrive_semantics, _, _, arrive_expect, _, _, arrive_expect_semantics, _, _, arrive_no_complete, _, arrive_no_complete_explicit, _ = instruction.variants[27:]
+        arrive_generic, _, arrive_cluster, arrive_semantics, _, _, arrive_expect, _, _, arrive_expect_semantics, _, _, arrive_no_complete, _, arrive_no_complete_explicit, _ = instruction.variants[27:43]
+        arrive_drop_generic, _, arrive_drop_cluster, arrive_drop_semantics, _, _, arrive_drop_expect, _, _, arrive_drop_expect_semantics, _, _, arrive_drop_no_complete, _, arrive_drop_no_complete_explicit, _ = instruction.variants[43:59]
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
@@ -1604,6 +1615,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(arrive_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_no_complete.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_generic.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_drop_cluster.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_expect.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_no_complete.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_drop_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(
+            [layout.layout_id for layout in arrive_drop_generic.operand_layouts],
+            ["no_count", "with_count"],
+        )
         self.assertEqual(
             [layout.layout_id for layout in arrive_generic.operand_layouts],
             ["no_count", "with_count"],

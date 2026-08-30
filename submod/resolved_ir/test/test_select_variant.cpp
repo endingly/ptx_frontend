@@ -1039,6 +1039,60 @@ TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
   }
 }
 
+TEST(SelectVariantMbarrier, SelectsArriveDropFormsAndLayouts) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mbarrier.arrive_drop.b64 %state, [%rd0];",
+                 Mbarrier::VariantType::ArriveDropGenericOrShared);
+  expect_variant("mbarrier.arrive_drop.shared::cta.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropSharedCta);
+  expect_variant("mbarrier.arrive_drop.shared::cluster.b64 _, [%rd0];",
+                 Mbarrier::VariantType::ArriveDropSharedCluster);
+  expect_variant("mbarrier.arrive_drop.release.cta.b64 %state, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropSemanticsGenericOrShared);
+  expect_variant("mbarrier.arrive_drop.release.cluster.shared::cta.b64 %state, [%rd0];",
+                 Mbarrier::VariantType::ArriveDropSemanticsSharedCta);
+  expect_variant("mbarrier.arrive_drop.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropSemanticsSharedCluster);
+  expect_variant("mbarrier.arrive_drop.expect_tx.b64 %state, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropExpectTxGenericOrShared);
+  expect_variant("mbarrier.arrive_drop.expect_tx.shared::cta.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropExpectTxSharedCta);
+  expect_variant("mbarrier.arrive_drop.expect_tx.shared::cluster.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropExpectTxSharedCluster);
+  expect_variant("mbarrier.arrive_drop.expect_tx.release.cta.b64 %state, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropExpectTxSemanticsGenericOrShared);
+  expect_variant("mbarrier.arrive_drop.expect_tx.release.cluster.shared::cta.b64 %state, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropExpectTxSemanticsSharedCta);
+  expect_variant("mbarrier.arrive_drop.expect_tx.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropExpectTxSemanticsSharedCluster);
+  expect_variant("mbarrier.arrive_drop.noComplete.b64 %state, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropNoCompleteGenericOrShared);
+  expect_variant("mbarrier.arrive_drop.noComplete.shared::cta.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropNoCompleteSharedCta);
+  expect_variant("mbarrier.arrive_drop.noComplete.release.cta.b64 %state, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropNoCompleteReleaseCtaGenericOrShared);
+  expect_variant("mbarrier.arrive_drop.noComplete.release.cta.shared::cta.b64 _, [%rd0], 1;",
+                 Mbarrier::VariantType::ArriveDropNoCompleteReleaseCtaSharedCta);
+
+  for (const std::string_view source : {
+           "mbarrier.arrive_drop.release.b64 %state, [%rd0];",
+           "mbarrier.arrive_drop.cta.b64 %state, [%rd0];",
+           "mbarrier.arrive_drop.noComplete.relaxed.cta.b64 %state, [%rd0], 1;",
+           "mbarrier.arrive_drop.expect_tx.noComplete.b64 %state, [%rd0], 1;",
+           "mbarrier.arrive_drop.b64.shared %state, [%rd0];",
+           "mbarrier.arrive_drop.noComplete.shared::cluster.b64 _, [%rd0], 1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

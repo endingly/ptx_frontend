@@ -3017,10 +3017,89 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveForms) {
   ASSERT_FALSE(old_count.has_value());
   EXPECT_EQ(old_count.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-
   const auto cluster_register = resolveModule(parseModule(R"ptx(
 .entry kernel() { .reg .b64 %state; .reg .u64 %rd0;
   mbarrier.arrive.shared::cluster.b64 %state, [%rd0]; }
+)ptx"));
+  ASSERT_FALSE(cluster_register.has_value());
+  EXPECT_NE(cluster_register.error().front().message.find("requires the '_' sink"),
+            std::string::npos);
+}
+
+TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveDropForms) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .u32 %count;
+  .reg .u64 %rd0;
+  .reg .b64 %state;
+  mbarrier.arrive_drop.b64 %state, [%rd0];
+  mbarrier.arrive_drop.b64 _, [shared_value];
+  mbarrier.arrive_drop.b64 %state, [shared_value], %count;
+  mbarrier.arrive_drop.shared::cta.b64 %state, [shared_value+8];
+  mbarrier.arrive_drop.release.cta.b64 %state, [shared_value], %count;
+  mbarrier.arrive_drop.shared::cluster.b64 _, [shared_value], 1;
+  mbarrier.arrive_drop.expect_tx.release.cluster.shared.b64 _, [shared_value], 1;
+  mbarrier.arrive_drop.noComplete.release.cta.shared::cta.b64 _, [shared_value], 1;
+  mbarrier.arrive_drop.relaxed.cluster.shared::cluster.b64 _, [shared_value], 1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 9u);
+  const auto& register_result = std::get<Mbarrier::ArriveDropGenericOrShared>(
+      std::get<Mbarrier>(body[0]).variant);
+  const auto& sink_result = std::get<Mbarrier::ArriveDropGenericOrShared>(
+      std::get<Mbarrier>(body[1]).variant);
+  const auto& cluster_result = std::get<Mbarrier::ArriveDropSharedCluster>(
+      std::get<Mbarrier>(body[5]).variant);
+  const auto& register_operands = std::get<Mbarrier::ArriveDropGenericOrShared::NoCountOperands>(
+      register_result.operands);
+  const auto& sink_operands = std::get<Mbarrier::ArriveDropGenericOrShared::NoCountOperands>(
+      sink_result.operands);
+  const auto& cluster_operands = std::get<Mbarrier::ArriveDropSharedCluster::WithCountOperands>(
+      cluster_result.operands);
+  EXPECT_TRUE(register_operands.state.value.register_ref.has_value());
+  EXPECT_FALSE(sink_operands.state.value.register_ref.has_value());
+  EXPECT_FALSE(cluster_operands.state.value.register_ref.has_value());
+
+  const checker::Context supported{
+      .target = {.ptx_version = {8, 6}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
+  }
+  const checker::Context sink_too_old{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  const auto old_sink = checker::check(std::get<Mbarrier>(body[1]), sink_too_old);
+  ASSERT_FALSE(old_sink.has_value());
+  EXPECT_EQ(old_sink.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const checker::Context count_sm_too_old{
+      .target = {.ptx_version = {8, 0}, .sm_version = 89},
+      .instruction_range = ast.range,
+  };
+  const auto old_count = checker::check(std::get<Mbarrier>(body[2]), count_sm_too_old);
+  ASSERT_FALSE(old_count.has_value());
+  EXPECT_EQ(old_count.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const checker::Context relaxed_too_old{
+      .target = {.ptx_version = {8, 5}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  const auto old_relaxed = checker::check(std::get<Mbarrier>(body[8]), relaxed_too_old);
+  ASSERT_FALSE(old_relaxed.has_value());
+  EXPECT_EQ(old_relaxed.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto cluster_register = resolveModule(parseModule(R"ptx(
+.entry kernel() { .reg .b64 %state; .reg .u64 %rd0;
+  mbarrier.arrive_drop.shared::cluster.b64 %state, [%rd0]; }
 )ptx"));
   ASSERT_FALSE(cluster_register.has_value());
   EXPECT_NE(cluster_register.error().front().message.find("requires the '_' sink"),

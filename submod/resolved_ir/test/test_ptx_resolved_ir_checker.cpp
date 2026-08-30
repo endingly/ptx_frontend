@@ -148,6 +148,23 @@ TEST(ResolvedIrChecker, KeepsFamilyFeatureRequirementsDistinctFromExactTargets) 
   EXPECT_FALSE(is_available(sm103f_family, target_info("sm_103")));
   EXPECT_FALSE(is_available(sm103f_family, target_info("sm_120f")));
 
+  constexpr AvailabilityDescriptor sm100f_dnf_family{
+      .any_of = {{
+          {.minimum_ptx_version = {8, 8},
+           .minimum_sm_version = 100,
+           .required_family = "sm_100f"},
+      }},
+      .any_of_count = 1,
+  };
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_100a")));
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_100f")));
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_103a")));
+  EXPECT_TRUE(is_available(sm100f_dnf_family, target_info("sm_103f")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_100")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_103")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_90a")));
+  EXPECT_FALSE(is_available(sm100f_dnf_family, target_info("sm_120f")));
+
   constexpr AvailabilityDescriptor exact_sm100a{
       .any_of = {{
           {.has_exact_target = true,

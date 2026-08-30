@@ -414,6 +414,10 @@ def _emit_availability(availability: dict[str, object]) -> str:
         number, flavor = (
             parse_availability_target(target) if target is not None else (0, "Generic")
         )
+        family = (
+            validate_availability_family(clause["family"])
+            if "family" in clause else ""
+        )
         capabilities = clause.get("capabilities", [])
         assert isinstance(capabilities, list)
         capability_values = ", ".join(f'"{value}"' for value in capabilities)
@@ -423,6 +427,7 @@ def _emit_availability(availability: dict[str, object]) -> str:
                       .has_exact_target = {str(target is not None).lower()},
                       .exact_target_architecture = {{{number}}},
                       .exact_target_flavor = base::TargetFlavor::{flavor},
+                      .required_family = "{family}",
                       .capabilities = {{{{{capability_values}}}}},
                       .capability_count = {len(capabilities)},
                   }}''')

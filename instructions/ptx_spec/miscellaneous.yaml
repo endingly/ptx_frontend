@@ -35,8 +35,13 @@ instructions:
 
     variants:
       - name: setmaxnreg_inc_sync_aligned_u32
-        description: "Frozen increasing register-count request for sm_90a."
-        availability: {any_of: [{ptx: "8.0", sm: 90, target: sm_90a}]}
+        description: "Frozen increasing register-count request at modeled PTX target levels."
+        availability:
+          any_of:
+            - {ptx: "8.0", sm: 90, target: sm_90a}
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+            - {ptx: "8.8", sm: 120, family: sm_120f}
         modifiers:
           - {name: inc, kind: flag, presence: fixed, value: true, token: .inc}
           - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}

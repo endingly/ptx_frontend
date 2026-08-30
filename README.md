@@ -51,9 +51,15 @@ The frontend currently provides:
 - machine-readable manifests are authoritative for modelled opcode slices and
   deferred scope. The M12 common-kernel corpus validates 60 frozen forms through
   parse, resolve, and target-aware checking on `sm_80`, `sm_90a`, and `sm_100`;
-  `setmaxnreg.inc.sync.aligned.u32` is intentionally `sm_90a`-only. Inventory
-  rows remain partial for implemented frozen slices with residual variants
-  deferred after M12; simulator execution remains unsupported.
+  its `setmaxnreg.inc.sync.aligned.u32` occurrence is only in the `sm_90a`
+  corpus fixture. Checker availability is broader: `sm_90a` at PTX 8.0, exact
+  `sm_100a` at 8.6, the enabled `sm_100f` family at 8.8 (including modelled
+  `sm_100f` and `sm_103a`/`sm_103f`), and `sm_120f` at 8.8. Official
+  `sm_101a`/`sm_101f`, `sm_110a`/`sm_110f`, and `sm_120a` spellings are not
+  catalogued validation profiles and therefore report `UnknownTarget`;
+  translation compatibility is not inferred. Inventory rows remain partial for
+  implemented frozen slices with residual variants deferred after M12;
+  simulator execution remains unsupported.
 - direct `call` and metadata-backed indirect `call` forms, including:
   `call function;`, `call function, (arguments);`, and
   `call (return), function, (arguments);`. Module resolution uses the canonical

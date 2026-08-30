@@ -318,7 +318,10 @@ bool is_available(const AvailabilityDescriptor& availability,
           (clause.has_exact_target &&
            (!target.identity ||
             target.identity->architecture != clause.exact_target_architecture ||
-            target.identity->flavor != clause.exact_target_flavor)))
+            target.identity->flavor != clause.exact_target_flavor)) ||
+          (!clause.required_family.empty() &&
+           !has_enabled_family_feature(target.enabled_family_features,
+                                       clause.required_family)))
         continue;
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;

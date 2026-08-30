@@ -123,6 +123,11 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());
   EXPECT_FALSE(find_target_profile("sm_90f").has_value());
   EXPECT_FALSE(find_target_profile("sm_120").has_value());
+  for (const std::string_view target : {"sm_101a", "sm_101f", "sm_110a",
+                                        "sm_110f", "sm_120a"}) {
+    EXPECT_TRUE(parse_target_identity(target).has_value()) << target;
+    EXPECT_FALSE(find_target_profile(target).has_value()) << target;
+  }
   EXPECT_FALSE(find_target_profile("sm_123a").has_value());
 }
 

@@ -463,7 +463,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         dnf = {"any_of": [
             {"ptx": "9.0", "sm": 100, "target": "sm_100a",
              "capabilities": ["tensor", "cluster"]},
-            {"ptx": "9.2", "sm": 120},
+            {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
         ]}
         self.assertEqual(normalize_availability(dnf), dnf)
 
@@ -485,6 +485,9 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         family = schema["$defs"]["availability"]["oneOf"][0]["properties"]["family"]
         self.assertEqual(family["$ref"], "#/$defs/family_feature_target")
         self.assertIn("enabled_family_features", family["description"])
+        dnf_family = schema["$defs"]["availability"]["oneOf"][1]["properties"]["any_of"]["items"]["properties"]["family"]
+        self.assertEqual(dnf_family["$ref"], "#/$defs/family_feature_target")
+        self.assertIn("enabled_family_features", dnf_family["description"])
 
     def test_rejects_non_feature_legacy_families(self) -> None:
         for family in ("sm_90a", "sm_90", "sm_0f", "sm_90ff"):
@@ -496,6 +499,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             {"any_of": []},
             {"any_of": [{}]},
             {"any_of": [{"target": "sm_90b"}]},
+            {"any_of": [{"family": "sm_90a"}]},
             {"any_of": [{"capabilities": []}]},
             {"any_of": [{"sm": 90}] * 5},
         ):
@@ -540,11 +544,13 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             "$ref": "#/$defs/availability",
         })
         self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
+        self.assertEqual(list(validator.iter_errors({"any_of": [{"family": "sm_100f"}]})), [])
         self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
         for availability in ({"any_of": []}, {"any_of": [{}]},
                              {"any_of": [{"sm": 100}] * 5},
                              {"sm": 4294967296}, {"sm": True},
                              {"family": "sm_90a"},
+                             {"any_of": [{"family": "sm_90a"}]},
                              {"any_of": [{"target": 80}]}):
             self.assertTrue(list(validator.iter_errors(availability)))
 
@@ -552,10 +558,11 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         source = _emit_availability({"any_of": [
             {"ptx": "9.0", "sm": 100, "target": "sm_100a",
              "capabilities": ["tensor", "cluster"]},
-            {"sm": 120},
+            {"sm": 120, "family": "sm_120f"},
         ]})
         self.assertIn(".any_of_count = 2", source)
         self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn('.required_family = "sm_120f",', source)
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
 
     def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:

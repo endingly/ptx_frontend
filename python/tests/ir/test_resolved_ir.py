@@ -1849,7 +1849,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(
             dict(variant.availability),
-            {"any_of": [{"ptx": "8.0", "sm": 90, "target": "sm_90a"}]},
+            {"any_of": [
+                {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
+                {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+                {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+                {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
+            ]},
         )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
@@ -1882,6 +1887,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor = descriptor_path.read_text(encoding="utf-8")
         self.assertIn("check_immediate_multiple_of(", source)
         self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
+        self.assertIn(".any_of_count = 4", descriptor)
+        self.assertIn('.required_family = "sm_100f",', descriptor)
+        self.assertIn('.required_family = "sm_120f",', descriptor)
         self.assertIn('.operand_field_id = "count",', descriptor)
         self.assertIn(".divisor = uint64_t{8ULL},", descriptor)
 

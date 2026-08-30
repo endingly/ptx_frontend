@@ -379,6 +379,9 @@ constraint。`rule` 是稳定 rule ID，供 instruction-specific checker 使用�
 `examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 
+`any_of` 的一个 clause 也可以包含 `family`；它是该 clause 内的 AND-term，沿用同一
+`enabled_family_features` 查找，不要求该 exact target spelling。
+
 `operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：
 只有选中的 layout 会增加自己的 PTX、SM 或 family 要求。若多个 layout 都能匹配同一语法，
 resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同或不可比较的候选是 YAML

@@ -117,12 +117,14 @@ def normalize_availability(raw: object) -> dict[str, Any]:
     for clause in clauses:
         if not isinstance(clause, dict):
             raise TypeError("availability any_of clauses must be objects")
-        if set(clause) - {"ptx", "sm", "target", "capabilities"} or not clause:
+        if set(clause) - {"ptx", "sm", "target", "family", "capabilities"} or not clause:
             raise ValueError("availability any_of clause has invalid fields")
         if "sm" in clause:
             validate_availability_sm_version(clause["sm"])
         if "target" in clause:
             parse_availability_target(clause["target"])
+        if "family" in clause:
+            validate_availability_family(clause["family"])
         capabilities = clause.get("capabilities")
         if capabilities is not None:
             if (not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 4

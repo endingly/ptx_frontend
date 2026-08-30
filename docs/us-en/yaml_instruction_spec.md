@@ -424,6 +424,10 @@ clauses, exact target, and `family` are independent constraints. `rule` is a
 stable rule ID for instruction-specific checking. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
 
+An `any_of` clause may also contain `family`; it is an AND-term within that
+clause and uses the same `enabled_family_features` lookup, rather than requiring
+that exact target spelling.
+
 `operand_layouts[].availability` accumulates with variant availability; it
 does not override it, and only the selected layout contributes its constraint.
 When more than one layout matches the same syntax, the resolver accepts only a

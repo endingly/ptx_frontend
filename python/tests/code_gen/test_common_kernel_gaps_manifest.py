@@ -201,7 +201,7 @@ class CommonKernelGapManifestTests(unittest.TestCase):
         )
         self.assertTrue(all(form["first_blocker"] == "none" for _, form in forms))
 
-    def test_setmaxnreg_is_only_in_its_family_specific_profile(self) -> None:
+    def test_setmaxnreg_appears_only_in_its_corpus_profile(self) -> None:
         setmaxnreg = next(
             gap for gap in self.manifest["gaps"] if gap["owner"] == "M12-I33"
         )

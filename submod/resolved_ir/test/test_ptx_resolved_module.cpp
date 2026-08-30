@@ -998,6 +998,19 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
 
   const auto profile = base::find_target_profile("sm_90a");
   ASSERT_TRUE(profile.has_value());
+  const auto context_for = [&ast](std::string_view target,
+                                  checker::PtxVersion ptx_version) {
+    const auto target_profile = base::find_target_profile(target);
+    EXPECT_TRUE(target_profile.has_value()) << target;
+    return checker::Context{
+        .target = {.ptx_version = ptx_version,
+                   .sm_version = target_profile->identity.architecture.number,
+                   .enabled_family_features = target_profile->enabled_family_features,
+                   .identity = target_profile->identity,
+                   .capabilities = target_profile->capabilities},
+        .instruction_range = ast.range,
+    };
+  };
   const checker::Context supported_context{
       .target = {.ptx_version = {8, 0},
                  .sm_version = profile->identity.architecture.number,
@@ -1019,6 +1032,38 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
     EXPECT_EQ(setmaxnreg.count.value.type, ScalarType::U32);
     EXPECT_EQ(setmaxnreg.count.value.bits, expected_counts[index]);
     EXPECT_TRUE(checker::check(instruction, supported_context).has_value());
+  }
+
+  struct SupportedTarget {
+    std::string_view spelling;
+    checker::PtxVersion ptx_version;
+  };
+  constexpr std::array<SupportedTarget, 6> supported_targets{{
+      {"sm_90a", {8, 0}},
+      {"sm_100a", {8, 6}},
+      {"sm_100f", {8, 8}},
+      {"sm_103a", {8, 8}},
+      {"sm_103f", {8, 8}},
+      {"sm_120f", {8, 8}},
+  }};
+  for (const auto& target : supported_targets) {
+    SCOPED_TRACE(target.spelling);
+    EXPECT_TRUE(checker::check(std::get<Setmaxnreg>(body.front()),
+                               context_for(target.spelling, target.ptx_version))
+                    .has_value());
+  }
+  constexpr std::array<SupportedTarget, 5> below_threshold_targets{{
+      {"sm_100a", {8, 5}},
+      {"sm_100f", {8, 7}},
+      {"sm_103a", {8, 7}},
+      {"sm_103f", {8, 7}},
+      {"sm_120f", {8, 7}},
+  }};
+  for (const auto& target : below_threshold_targets) {
+    SCOPED_TRACE(target.spelling);
+    EXPECT_FALSE(checker::check(std::get<Setmaxnreg>(body.front()),
+                                context_for(target.spelling, target.ptx_version))
+                     .has_value());
   }
 
   for (const auto source : {
@@ -1049,19 +1094,10 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
                                   .identity = profile->identity},
                        .instruction_range = ast.range});
   EXPECT_FALSE(too_old_ptx.has_value());
-  for (const std::string_view target : {"sm_90", "sm_100a"}) {
+  for (const std::string_view target : {"sm_90", "sm_100", "sm_103"}) {
     SCOPED_TRACE(target);
-    const auto rejected_profile = base::find_target_profile(target);
-    ASSERT_TRUE(rejected_profile.has_value());
-    EXPECT_FALSE(checker::check(
-                     std::get<Setmaxnreg>(body.front()),
-                     checker::Context{.target = {
-                                          .ptx_version = {8, 0},
-                                          .sm_version = rejected_profile->identity.architecture.number,
-                                          .enabled_family_features = rejected_profile->enabled_family_features,
-                                          .identity = rejected_profile->identity,
-                                          .capabilities = rejected_profile->capabilities},
-                                      .instruction_range = ast.range})
+    EXPECT_FALSE(checker::check(std::get<Setmaxnreg>(body.front()),
+                                context_for(target, {9, 3}))
                      .has_value());
   }
 

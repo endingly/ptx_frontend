@@ -189,6 +189,18 @@ class CommonKernelGapManifestTests(unittest.TestCase):
                     else:
                         self.assertEqual(form["first_blocker"], "unsupported_opcode")
 
+    def test_all_frozen_forms_are_unblocked(self) -> None:
+        forms = [
+            (gap["owner"], form)
+            for gap in self.manifest["gaps"]
+            for form in gap["forms"]
+        ]
+        self.assertEqual(len(forms), 60)
+        self.assertEqual(
+            {(owner, form["canonical_form"]) for owner, form in forms}, KNOWN_NONE
+        )
+        self.assertTrue(all(form["first_blocker"] == "none" for _, form in forms))
+
     def test_setmaxnreg_is_only_in_its_family_specific_profile(self) -> None:
         setmaxnreg = next(
             gap for gap in self.manifest["gaps"] if gap["owner"] == "M12-I33"

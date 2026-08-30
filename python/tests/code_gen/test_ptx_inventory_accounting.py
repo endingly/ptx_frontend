@@ -153,6 +153,33 @@ class PtxInventoryAccountingTests(unittest.TestCase):
         ]
         self.assertEqual(unmapped, [])
 
+    def test_m12_lifecycle_is_closed_and_deferred(self) -> None:
+        accounting = load_yaml(ACCOUNTING)
+        dispositions = accounting["dispositions"]
+        self.assertEqual(
+            [item for item in dispositions if item.get("milestone") == "M12"], []
+        )
+        closed = [
+            item
+            for item in dispositions
+            if item.get("milestone") == "post-1.0"
+            and item["reason"].endswith("deferred after M12.")
+        ]
+        self.assertEqual(
+            Counter(item["status"] for item in closed),
+            {"partial": 56, "unsupported": 7},
+        )
+        for item in closed:
+            with self.subTest(item=key(item)):
+                self.assertEqual(item["disposition"], "deferred")
+                if item["status"] == "partial":
+                    self.assertEqual(item["support_source"], "opcode_coverage")
+                    self.assertIn("implemented", item["reason"])
+                    self.assertIn("residual variants", item["reason"])
+                else:
+                    self.assertEqual(item["status"], "unsupported")
+                    self.assertIn("No implemented frozen coverage slice", item["reason"])
+
     def test_gate_reports_missing_extra_duplicate_and_conflict_stably(self) -> None:
         accounting = load_yaml(ACCOUNTING)
         expected = {item for group in source_items() for item in group}

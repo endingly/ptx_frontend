@@ -48,10 +48,12 @@ The frontend currently provides:
   source-target feature requirement, not PTX-to-physical-GPU translation
   compatibility, which is not modelled. Exact identity and capability remain
   independent constraints.
-- a partial M10 frozen subset for cache-hint/eviction, `ldu`/`prefetch`, memory
-  ordering and scalar atomics/reductions, warp collectives, `cp.async`,
-  `ldmatrix`, and one `mma` form; these forms are resolved and checked only,
-  and remain unsupported by the simulator.
+- machine-readable manifests are authoritative for modelled opcode slices and
+  deferred scope. The M12 common-kernel corpus validates 60 frozen forms through
+  parse, resolve, and target-aware checking on `sm_80`, `sm_90a`, and `sm_100`;
+  `setmaxnreg.inc.sync.aligned.u32` is intentionally `sm_90a`-only. Inventory
+  rows remain partial for implemented frozen slices with residual variants
+  deferred after M12; simulator execution remains unsupported.
 - direct `call` and metadata-backed indirect `call` forms, including:
   `call function;`, `call function, (arguments);`, and
   `call (return), function, (arguments);`. Module resolution uses the canonical

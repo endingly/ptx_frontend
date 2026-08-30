@@ -13,7 +13,7 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11 已完成；M12～M19 尚未开始。
+> - M11、M12 已完成；M13～M19 尚未开始。
 >
 > ISA 规划基线：
 >
@@ -503,7 +503,7 @@ evidence links
 | M9 | ✅ | simulator MVP frontend opcode coverage；C03 暂停 |
 | M10 | ✅ | modern instruction seed slices |
 | M11 | ✅ | PTX 9.3 基线、exhaustive ledger 与 target capability |
-| M12 | ⬜ | common compiler-generated scalar/data-movement closure |
+| M12 | ✅ | common compiler-generated scalar/data-movement closure |
 | M13 | ⬜ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
 | M15 | ⬜ | warp-level matrix、sparse MMA 与 WMMA compatibility |
@@ -803,7 +803,7 @@ exhaustive machine-readable ledger
 
 ## 目标
 
-现代 matrix kernel 仍依赖大量普通 scalar/control/address 指令。M12 以固定的
+M12 已完成。现代 matrix kernel 仍依赖大量普通 scalar/control/address 指令。M12 以固定的
 SM80/SM90a/SM100 compiler corpus 为准，补齐常见 scaffolding，避免“能识别 WGMMA，却在
 前一条 `lop3` 或 `prmt` 上失败”。
 
@@ -811,46 +811,46 @@ SM80/SM90a/SM100 compiler corpus 为准，补齐常见 scaffolding，避免“�
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M12-I01 | ⬜ | 独立 | 建立 common-kernel gap manifest | 按 corpus 统计 opcode/variant frequency、first blocker 与 profile |
-| M12-I02 | ⬜ | 独立 | 支持 `set` common slice | integer/float result topology 与 compare/boolean modifier 冻结 |
-| M12-I03 | ⬜ | 独立 | 扩展 `setp` common slice | dual-predicate output 与 common compare operators |
-| M12-I04 | ⬜ | 独立 | 支持 `slct` common slice | predicate/value/result type 约束 |
-| M12-I05 | ⬜ | 独立 | 扩展 `add` common slice | u32/s32/u64/f32 的 corpus variants |
-| M12-I06 | ⬜ | 独立 | 扩展 `sub` common slice | u32/s32/u64/f32 的 corpus variants |
-| M12-I07 | ⬜ | 独立 | 扩展 `mul` common slice | integer high/wide 与 common float variant 中 corpus 所需部分 |
-| M12-I08 | ⬜ | 独立 | 扩展 `mad` common slice | corpus 所需 integer/float topology |
-| M12-I09 | ⬜ | 独立 | 扩展 `fma` common slice | f16/f32/f64 中 corpus 所需 variant |
-| M12-I10 | ⬜ | 独立 | 扩展 `div` common slice | integer/float rounding 与 target rule |
-| M12-I11 | ⬜ | 独立 | 支持 `rem` common slice | signed/unsigned type 与 zero-divisor boundary |
-| M12-I12 | ⬜ | 独立 | 支持 `min` common slice | integer/float type 与 NaN modifier boundary |
-| M12-I13 | ⬜ | 独立 | 支持 `max` common slice | integer/float type 与 NaN modifier boundary |
-| M12-I14 | ⬜ | 独立 | 支持 `abs` common slice | integer/float type 与 saturation boundary |
-| M12-I15 | ⬜ | 独立 | 支持 `neg` common slice | integer/float/packed boundary |
-| M12-I16 | ⬜ | 独立 | 支持 `lop3` common slice | truth-table immediate 与 type/width |
-| M12-I17 | ⬜ | 独立 | 支持 `shf` common slice | direction/mode/type/shift-count |
-| M12-I18 | ⬜ | 独立 | 支持 `prmt` common slice | selector immediate、source/result width |
-| M12-I19 | ⬜ | 独立 | 支持 `popc` common slice | source/result type |
-| M12-I20 | ⬜ | 独立 | 支持 `clz` common slice | signedness/width/result |
-| M12-I21 | ⬜ | 独立 | 支持 `bfind` common slice | shift amount、type、availability |
-| M12-I22 | ⬜ | 独立 | 支持 `bfe` common slice | offset/width operands 与 type |
-| M12-I23 | ⬜ | 独立 | 支持 `bfi` common slice | insert/base/offset/width |
-| M12-I24 | ⬜ | 独立 | 支持 `brev` common slice | fixed bit width |
-| M12-I25 | ⬜ | 独立 | 扩展 `cvt` common slice | corpus 中整数/浮点/packed/rounding variants |
-| M12-I26 | ⬜ | 独立 | 支持 `cvt.pack` common slice | pack topology、sat、destination layout |
-| M12-I27 | ⬜ | 独立 | 支持 `isspacep` common slice | address identity、state space、result predicate |
-| M12-I28 | ⬜ | 独立 | 支持 `ld.global.nc` common slice | type/cache/target rule |
-| M12-I29 | ⬜ | 独立 | 支持 `prefetchu` common slice | uniform address、level、availability |
-| M12-I30 | ⬜ | 独立 | 支持 `createpolicy` common slice | policy operand/result 与 cache domain |
-| M12-I31 | ⬜ | 独立 | 支持 `applypriority` common slice | address/range/policy semantics |
-| M12-I32 | ⬜ | 独立 | 支持 `discard` common slice | address/size/target constraints |
-| M12-I33 | ⬜ | 独立 | 支持 `setmaxnreg` common slice | action、immediate、warpgroup/target rule |
-| M12-C01 | ⬜ | 耦合 | 统一 common scalar domain | compare/rounding/saturation/width/type diagnostic 无重复实现 |
-| M12-C02 | ⬜ | 耦合 | 打通 common compiler-kernel corpus | 三个 target profile 的普通 scaffolding 均可 parse/resolve/check |
-| M12-C03 | ⬜ | 耦合 | 回写 exhaustive ledger | corpus frequency、support status 与 deferred reason 同步 |
+| M12-I01 | ✅ | 独立 | 建立 common-kernel gap manifest | 按 corpus 统计 opcode/variant frequency、first blocker 与 profile |
+| M12-I02 | ✅ | 独立 | 支持 `set` common slice | integer/float result topology 与 compare/boolean modifier 冻结 |
+| M12-I03 | ✅ | 独立 | 扩展 `setp` common slice | dual-predicate output 与 common compare operators |
+| M12-I04 | ✅ | 独立 | 支持 `slct` common slice | predicate/value/result type 约束 |
+| M12-I05 | ✅ | 独立 | 扩展 `add` common slice | u32/s32/u64/f32 的 corpus variants |
+| M12-I06 | ✅ | 独立 | 扩展 `sub` common slice | u32/s32/u64/f32 的 corpus variants |
+| M12-I07 | ✅ | 独立 | 扩展 `mul` common slice | integer high/wide 与 common float variant 中 corpus 所需部分 |
+| M12-I08 | ✅ | 独立 | 扩展 `mad` common slice | corpus 所需 integer/float topology |
+| M12-I09 | ✅ | 独立 | 扩展 `fma` common slice | f16/f32/f64 中 corpus 所需 variant |
+| M12-I10 | ✅ | 独立 | 扩展 `div` common slice | integer/float rounding 与 target rule |
+| M12-I11 | ✅ | 独立 | 支持 `rem` common slice | signed/unsigned type 与 zero-divisor boundary |
+| M12-I12 | ✅ | 独立 | 支持 `min` common slice | integer/float type 与 NaN modifier boundary |
+| M12-I13 | ✅ | 独立 | 支持 `max` common slice | integer/float type 与 NaN modifier boundary |
+| M12-I14 | ✅ | 独立 | 支持 `abs` common slice | integer/float type 与 saturation boundary |
+| M12-I15 | ✅ | 独立 | 支持 `neg` common slice | integer/float/packed boundary |
+| M12-I16 | ✅ | 独立 | 支持 `lop3` common slice | truth-table immediate 与 type/width |
+| M12-I17 | ✅ | 独立 | 支持 `shf` common slice | direction/mode/type/shift-count |
+| M12-I18 | ✅ | 独立 | 支持 `prmt` common slice | selector immediate、source/result width |
+| M12-I19 | ✅ | 独立 | 支持 `popc` common slice | source/result type |
+| M12-I20 | ✅ | 独立 | 支持 `clz` common slice | signedness/width/result |
+| M12-I21 | ✅ | 独立 | 支持 `bfind` common slice | shift amount、type、availability |
+| M12-I22 | ✅ | 独立 | 支持 `bfe` common slice | offset/width operands 与 type |
+| M12-I23 | ✅ | 独立 | 支持 `bfi` common slice | insert/base/offset/width |
+| M12-I24 | ✅ | 独立 | 支持 `brev` common slice | fixed bit width |
+| M12-I25 | ✅ | 独立 | 扩展 `cvt` common slice | corpus 中整数/浮点/packed/rounding variants |
+| M12-I26 | ✅ | 独立 | 支持 `cvt.pack` common slice | pack topology、sat、destination layout |
+| M12-I27 | ✅ | 独立 | 支持 `isspacep` common slice | address identity、state space、result predicate |
+| M12-I28 | ✅ | 独立 | 支持 `ld.global.nc` common slice | type/cache/target rule |
+| M12-I29 | ✅ | 独立 | 支持 `prefetchu` common slice | uniform address、level、availability |
+| M12-I30 | ✅ | 独立 | 支持 `createpolicy` common slice | policy operand/result 与 cache domain |
+| M12-I31 | ✅ | 独立 | 支持 `applypriority` common slice | address/range/policy semantics |
+| M12-I32 | ✅ | 独立 | 支持 `discard` common slice | address/size/target constraints |
+| M12-I33 | ✅ | 独立 | 支持 `setmaxnreg` common slice | action、immediate、warpgroup/target rule |
+| M12-C01 | ✅ | 耦合 | 统一 common scalar domain | compare/rounding/saturation/width/type diagnostic 无重复实现 |
+| M12-C02 | ✅ | 耦合 | 打通 common compiler-kernel corpus | 三个 target profile 的普通 scaffolding 均可 parse/resolve/check |
+| M12-C03 | ✅ | 耦合 | 回写 exhaustive ledger | corpus frequency、support status 与 deferred reason 同步 |
 
 ### 出口
 
-M12 结束后，Hopper/Blackwell kernel 不应在进入 modern instruction 之前被常见 scalar
+M12 已结束；Hopper/Blackwell kernel 不应在进入 modern instruction 之前被常见 scalar
 scaffolding 阻断。
 
 ---

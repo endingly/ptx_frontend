@@ -151,6 +151,15 @@ class LdStExtensionGapsManifestTests(unittest.TestCase):
         )
         self.assertTrue(errors)
 
+    def test_ld_global_nc_defers_only_residual_matrix_after_m12_i28(self) -> None:
+        manifest = load_yaml(MANIFEST)
+        gap = next(gap for gap in manifest["gaps"] if gap["id"] == "ld-global-nc")
+        self.assertEqual(gap["disposition"], "deferred")
+        self.assertIn("M12-I28", gap["boundary"])
+        self.assertIn(
+            "ld.global.nc.L1::no_allocate.u32 d, [a]", gap["boundary"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

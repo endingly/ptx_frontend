@@ -144,7 +144,7 @@ gaps:
       - "ld.global.nc{.L1::{evict_normal,evict_unchanged,evict_first,evict_last,no_allocate}}{.L2::{evict_normal,evict_first,evict_last}}{.L2::cache_hint}{.L2::{64B,128B,256B}}{.v2|.v4|.v8}.type d, [a]{, cache_policy}"
     disposition: deferred
     reason: ld.global.nc is a distinct non-coherent global-load opcode form.
-    boundary: Its cache, eviction, prefetch, vector, and type matrix is deferred as one form; M10-I02 excludes it.
+    boundary: Its residual cache, eviction, prefetch, vector, and type matrix is deferred; excludes implemented M12-I28 scalar ld.global.nc.L1::no_allocate.u32 d, [a].
 
   - id: st-async
     opcode: st

@@ -71,7 +71,11 @@ def fixture_targets(path: Path) -> list[str]:
 
 
 def classify_instruction_spelling(spelling: str, database: CodegenDatabase) -> str:
-    """Classify one complete instruction spelling against normalized variants."""
+    """Return the opcode-and-modifier catalog blocker for one spelling.
+
+    This intentionally does not inspect operands, target/profile availability, or
+    C++ checker behavior.
+    """
 
     for instruction in sorted(database.instructions, key=lambda item: -len(item.opcode)):
         opcode = instruction.opcode
@@ -137,7 +141,11 @@ def extract_natural_ptx(path: Path) -> tuple[str, tuple[str, ...], Counter[str]]
 def build_natural_manifest(
     fixtures: dict[str, Path], database: CodegenDatabase, root: Path | None = None
 ) -> dict[str, object]:
-    """Build deterministic profile-local spelling evidence from frozen PTX."""
+    """Build deterministic profile-local opcode-and-modifier catalog evidence.
+
+    ``first_blocker`` is not full frontend support evidence; the M12 C++ corpus
+    tests cover parse, resolve, and checker behavior.
+    """
 
     records: list[dict[str, object]] = []
     for profile, path in sorted(fixtures.items()):

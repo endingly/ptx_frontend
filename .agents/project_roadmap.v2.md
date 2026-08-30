@@ -807,13 +807,15 @@ M12 已完成。现代 matrix kernel 仍依赖大量普通 scalar/control/addres
 slice 在固定 SM80/SM90a/SM100 上验证 60 个 common forms，避免“能识别 WGMMA，却在前一条
 `lop3` 或 `prmt` 上失败”。同一组 profile 的普通 CUDA `natural_kernel` 编译输出是独立的真实
 compiler-emission evidence；其每个 module 均完整 parse/resolve/check，同时 manifest 记录 emitted
-spelling、频率和 first blocker。
+spelling、频率和仅针对 opcode+modifier catalog 的 first blocker；它不检查 operands、target/profile
+availability 或 C++ checker。完整 frontend support 以 M12 C++ corpus test 的
+parse/resolve/check E2E 证据为权威。
 
 每个 opcode issue 只实现固定 corpus 所需的明确 slice；不追求完整 historical cross-product。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M12-I01 | ✅ | 独立 | 建立 common-kernel gap manifest | 按 corpus 统计 opcode/variant frequency、first blocker 与 profile |
+| M12-I01 | ✅ | 独立 | 建立 common-kernel gap manifest | 按 corpus 统计 opcode+modifier catalog first blocker、frequency 与 profile；完整 frontend support 由 C++ E2E corpus 证明 |
 | M12-I02 | ✅ | 独立 | 支持 `set` common slice | integer/float result topology 与 compare/boolean modifier 冻结 |
 | M12-I03 | ✅ | 独立 | 扩展 `setp` common slice | dual-predicate output 与 common compare operators |
 | M12-I04 | ✅ | 独立 | 支持 `slct` common slice | predicate/value/result type 约束 |
@@ -848,7 +850,7 @@ spelling、频率和 first blocker。
 | M12-I33 | ✅ | 独立 | 支持 `setmaxnreg` common slice | action、immediate、warpgroup/target rule |
 | M12-C01 | ✅ | 耦合 | 统一 common scalar domain | compare/rounding/saturation/width/type diagnostic 无重复实现 |
 | M12-C02 | ✅ | 耦合 | 打通 common compiler-kernel corpus | 三个 target profile 的 60 个 deterministic inline-PTX forms 与 ordinary CUDA scaffolding 均可 parse/resolve/check |
-| M12-C03 | ✅ | 耦合 | 回写 exhaustive ledger | deterministic corpus frequency/support status 与 natural compiler-emission spelling/frequency/first blocker 同步；三个 profile 的当前 first blocker 均为 `none` |
+| M12-C03 | ✅ | 耦合 | 回写 exhaustive ledger | deterministic corpus frequency/support status 与 natural compiler-emission spelling/frequency/catalog first blocker 同步；三个 profile 的当前 catalog first blocker 均为 `none`，完整 frontend support 由 C++ E2E corpus 证明 |
 
 ### 出口
 

@@ -46,6 +46,7 @@
         "spelling": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:]*$"},
         "occurrences": {"type": "integer", "minimum": 1},
         "first_blocker": {
+          "description": "Opcode-and-modifier catalog result only; it does not validate operands, target/profile availability, or C++ checker behavior.",
           "enum": ["none", "unsupported_opcode", "unsupported_variant"]
         }
       }

@@ -832,6 +832,51 @@ TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
       parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0], %state, 1, 2;")).has_value());
 }
 
+TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mbarrier.test_wait.phase_type::primary.b64 %p0, [%rd0], %state;",
+                 Mbarrier::VariantType::TestWaitTokenPrimaryGenericOrShared);
+  expect_variant("mbarrier.test_wait.phase_type::primary.shared::cta.b64 %p0|%p1, %b0, [shared_value], %state;",
+                 Mbarrier::VariantType::TestWaitTokenPrimarySharedCta);
+  expect_variant("mbarrier.test_wait.parity.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], 1;",
+                 Mbarrier::VariantType::TestWaitParityPrimaryGenericOrShared);
+  expect_variant("mbarrier.test_wait.parity.phase_type::primary.shared::cta.b64 %p0, [shared_value], 1;",
+                 Mbarrier::VariantType::TestWaitParityPrimarySharedCta);
+  expect_variant("mbarrier.test_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1;",
+                 Mbarrier::VariantType::TestWaitParityConditionalGenericOrShared);
+  expect_variant("mbarrier.test_wait.parity.phase_type::conditional.shared::cta.b64 %p0, [shared_value], 1;",
+                 Mbarrier::VariantType::TestWaitParityConditionalSharedCta);
+  expect_variant("mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], %state, 1;",
+                 Mbarrier::VariantType::TryWaitTokenPrimaryGenericOrShared);
+  expect_variant("mbarrier.try_wait.phase_type::primary.shared::cta.b64 %p0, [shared_value], %state;",
+                 Mbarrier::VariantType::TryWaitTokenPrimarySharedCta);
+  expect_variant("mbarrier.try_wait.parity.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], 1, 2;",
+                 Mbarrier::VariantType::TryWaitParityPrimaryGenericOrShared);
+  expect_variant("mbarrier.try_wait.parity.phase_type::primary.shared::cta.b64 %p0, [shared_value], 1;",
+                 Mbarrier::VariantType::TryWaitParityPrimarySharedCta);
+  expect_variant("mbarrier.try_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1, 2;",
+                 Mbarrier::VariantType::TryWaitParityConditionalGenericOrShared);
+  expect_variant("mbarrier.try_wait.parity.phase_type::conditional.shared::cta.b64 %p0, [shared_value], 1;",
+                 Mbarrier::VariantType::TryWaitParityConditionalSharedCta);
+
+  for (const std::string_view source : {
+           "mbarrier.test_wait.phase_type::conditional.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.parity.phase_type::conditional.b64 %p0|%p1, [%rd0], 1;",
+           "mbarrier.try_wait.phase_type::primary.b64 %p0, %b0, [%rd0], %state;",
+           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, _, [%rd0], %state;",
+           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, 1, [%rd0], %state;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mapa::VariantType expected) {

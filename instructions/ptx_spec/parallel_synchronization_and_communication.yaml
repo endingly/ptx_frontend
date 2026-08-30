@@ -416,6 +416,47 @@ operand_patterns:
       type: u32
       register_width: exact
     - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+
+  mbarrier_wait_token_report_predicate:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+  mbarrier_wait_token_report_predicate_value:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+  mbarrier_wait_parity_report_predicate:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_wait_parity_report_predicate_value:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_token_report_predicate_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_token_report_predicate_value_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_parity_report_predicate_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_parity_report_predicate_value_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -1294,10 +1335,12 @@ instructions:
       mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
       mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
       mbarrier.arrive_drop.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count |
-      mbarrier.test_wait{.shared{::cta}}.b64 waitComplete, [addr], state |
-      mbarrier.test_wait.parity{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
-      mbarrier.try_wait{.shared{::cta}}.b64 waitComplete, [addr], state{, timeHint} |
-      mbarrier.try_wait.parity{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint}
+      mbarrier.test_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state |
+      mbarrier.test_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity |
+      mbarrier.test_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
+      mbarrier.try_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
+      mbarrier.try_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
+      mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint}
 
     variants:
       - name: mbarrier_init_generic_v0
@@ -2120,4 +2163,78 @@ instructions:
         operand_layouts:
           - {name: no_hint, operands: $mbarrier_test_wait_parity}
           - {name: with_hint, operands: $mbarrier_try_wait_parity_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_test_wait_token_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_try_wait_token_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_token}, {name: with_hint, operands: $mbarrier_try_wait_token_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_token_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_token_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_token_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_token_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_token}, {name: with_hint, operands: $mbarrier_try_wait_token_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_token_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_token_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_token_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_parity_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_parity_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_parity_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_conditional_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_conditional_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]

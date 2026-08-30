@@ -3417,6 +3417,76 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierTryWaitBasicForms) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMbarrierWaitPhaseAndReportForms) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .pred %p<3>;
+  .reg .b8 %b0;
+  .reg .u32 %phase, %hint;
+  .reg .u64 %rd0;
+  .reg .b64 %state;
+  mbarrier.test_wait.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], %state;
+  mbarrier.test_wait.parity.phase_type::primary.shared::cta.b64 %p0|%p1, %b0, [shared_value], 1;
+  mbarrier.test_wait.parity.phase_type::conditional.b64 %p0, [%rd0], %phase;
+  mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], %state, %hint;
+  mbarrier.try_wait.parity.phase_type::primary.shared::cta.b64 %p0|%p1, %b0, [shared_value+8], 0, 1;
+  mbarrier.try_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const auto& token = std::get<Mbarrier::TestWaitTokenPrimaryGenericOrShared>(
+      std::get<Mbarrier>(body[0]).variant);
+  const auto& token_operands = std::get<
+      Mbarrier::TestWaitTokenPrimaryGenericOrShared::ReportPredicateValueOperands>(
+      token.operands);
+  EXPECT_EQ(token_operands.wait_complete_report_predicate.value.first.register_ref.spelling,
+            "%p0");
+  EXPECT_EQ(token_operands.wait_complete_report_predicate.value.second.register_ref.spelling,
+            "%p1");
+
+  const checker::Context supported{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Mbarrier>(instruction), supported).has_value());
+  for (const auto checked : {
+           checker::check(std::get<Mbarrier>(body[0]),
+                          checker::Context{.target = {.ptx_version = {9, 2}, .sm_version = 90},
+                                           .instruction_range = ast.range}),
+           checker::check(std::get<Mbarrier>(body[0]),
+                          checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 89},
+                                           .instruction_range = ast.range}),
+       })
+    ASSERT_FALSE(checked.has_value());
+
+  const auto bad_parity = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() { .reg .pred %p0;
+  mbarrier.test_wait.parity.phase_type::primary.b64 %p0, [shared_value], 2; }
+)ptx"));
+  ASSERT_TRUE(bad_parity.has_value()) << bad_parity.error().front().message;
+  EXPECT_FALSE(checker::check(
+      std::get<Mbarrier>(bad_parity->functions.front().body.front()), supported).has_value());
+
+  const auto wrong_report_value = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() { .reg .pred %p<2>; .reg .b32 %r0; .reg .b64 %state;
+  mbarrier.test_wait.phase_type::primary.b64 %p0|%p1, %r0, [shared_value], %state; }
+)ptx"));
+  ASSERT_TRUE(wrong_report_value.has_value())
+      << wrong_report_value.error().front().message;
+  const auto wrong_report_checked = checker::check(
+      std::get<Mbarrier>(wrong_report_value->functions.front().body.front()), supported);
+  ASSERT_FALSE(wrong_report_checked.has_value());
+  EXPECT_EQ(wrong_report_checked.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   const auto ast = parseModule(R"ptx(
 .shared .align 4 .u32 shared_value;

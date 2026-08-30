@@ -1594,7 +1594,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "TestWaitTokenGenericOrShared", "TestWaitTokenSharedCta",
              "TestWaitParityGenericOrShared", "TestWaitParitySharedCta",
              "TryWaitTokenGenericOrShared", "TryWaitTokenSharedCta",
-             "TryWaitParityGenericOrShared", "TryWaitParitySharedCta"],
+             "TryWaitParityGenericOrShared", "TryWaitParitySharedCta",
+             "TestWaitTokenPrimaryGenericOrShared", "TestWaitTokenPrimarySharedCta",
+             "TestWaitParityPrimaryGenericOrShared", "TestWaitParityPrimarySharedCta",
+             "TestWaitParityConditionalGenericOrShared", "TestWaitParityConditionalSharedCta",
+             "TryWaitTokenPrimaryGenericOrShared", "TryWaitTokenPrimarySharedCta",
+             "TryWaitParityPrimaryGenericOrShared", "TryWaitParityPrimarySharedCta",
+             "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
         expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
@@ -1614,6 +1620,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         arrive_drop_generic, _, arrive_drop_cluster, arrive_drop_semantics, _, _, arrive_drop_expect, _, _, arrive_drop_expect_semantics, _, _, arrive_drop_no_complete, _, arrive_drop_no_complete_explicit, _ = instruction.variants[43:59]
         test_wait_token, test_wait_token_cta, test_wait_parity, test_wait_parity_cta = instruction.variants[59:63]
         try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta = instruction.variants[63:67]
+        test_wait_primary_token, _, test_wait_primary_parity, _, test_wait_conditional, _ = instruction.variants[67:73]
+        try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
@@ -1690,6 +1698,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [(constraint.minimum, constraint.maximum)
              for constraint in try_wait_parity.immediate_ranges],
             [(0, 1)],
+        )
+        self.assertEqual(dict(test_wait_primary_token.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(dict(test_wait_primary_parity.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(dict(test_wait_conditional.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(
+            [layout.layout_id for layout in test_wait_primary_token.operand_layouts],
+            ["default", "report_predicate", "report_predicate_value"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in try_wait_primary_token.operand_layouts],
+            ["no_hint", "with_hint", "report_predicate_no_hint", "report_predicate_with_hint", "report_predicate_value_no_hint", "report_predicate_value_with_hint"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in try_wait_conditional.operand_layouts],
+            ["no_hint", "with_hint"],
         )
         self.assertEqual(
             [layout.layout_id for layout in arrive_drop_generic.operand_layouts],

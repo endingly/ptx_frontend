@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 256)
+        self.assertEqual(len(slices), 298)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -712,6 +712,48 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("mbarrier_try_wait_parity_generic_or_shared", "with_hint"),
                 ("mbarrier_try_wait_parity_shared_cta", "no_hint"),
                 ("mbarrier_try_wait_parity_shared_cta", "with_hint"),
+                ("mbarrier_test_wait_token_primary_generic_or_shared", "default"),
+                ("mbarrier_test_wait_token_primary_generic_or_shared", "report_predicate"),
+                ("mbarrier_test_wait_token_primary_generic_or_shared", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_primary_generic_or_shared", "default"),
+                ("mbarrier_test_wait_parity_primary_generic_or_shared", "report_predicate"),
+                ("mbarrier_test_wait_parity_primary_generic_or_shared", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_conditional_generic_or_shared", "default"),
+                ("mbarrier_test_wait_token_primary_shared_cta", "default"),
+                ("mbarrier_test_wait_token_primary_shared_cta", "report_predicate"),
+                ("mbarrier_test_wait_token_primary_shared_cta", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_primary_shared_cta", "default"),
+                ("mbarrier_test_wait_parity_primary_shared_cta", "report_predicate"),
+                ("mbarrier_test_wait_parity_primary_shared_cta", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_conditional_shared_cta", "default"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_conditional_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_parity_conditional_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "with_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "with_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_conditional_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_parity_conditional_shared_cta", "with_hint"),
             },
         }
         for opcode, expected in expected_layouts.items():

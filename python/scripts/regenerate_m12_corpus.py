@@ -26,6 +26,7 @@ if str(PYTHON_ROOT) not in sys.path:
 from code_gen.database import load_codegen_database
 from code_gen.m12_natural_corpus import (
     build_natural_manifest,
+    canonical_bytes,
     fixture_targets,
     normalize_nvcc_ptx,
     target_directives,
@@ -34,16 +35,17 @@ from code_gen.m12_natural_corpus import (
 
 TARGETS = ("sm_80", "sm_90a", "sm_100")
 VERSION = "Cuda compilation tools, release 13.3, V13.3.33"
+PROVENANCE_VERSION = "ptx_frontend.corpus_provenance/v3"
 LANES = (
     (
         "common_kernel",
         "inline_ptx_wrapper",
-        "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+        "nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
     ),
     (
         "natural_kernel",
         "natural_compiler_emission",
-        "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+        "ordinary CUDA source compiled by nvcc without inline PTX",
     ),
 )
 
@@ -89,17 +91,46 @@ def fixture_json(record: dict[str, object], newline: str) -> str:
             f'      "generator": {json.dumps(record["generator"])},',
             f'      "toolkit": {json.dumps(record["toolkit"])},',
             f'      "targets": {json.dumps(record["targets"])},',
-            f'      "source": {json.dumps(record["source"])},',
+            f'      "source_path": {json.dumps(record["source_path"])},',
+            f'      "notes": {json.dumps(record["notes"])},',
             f'      "license": {json.dumps(record["license"])}',
             "    }",
         )
     )
 
 
+def source_json(records: list[dict[str, str]], newline: str) -> str:
+    entries = []
+    for record in records:
+        entries.append(
+            newline.join(
+                (
+                    "    {",
+                    f'      "path": {json.dumps(record["path"])},',
+                    f'      "sha256": {json.dumps(record["sha256"])}',
+                    "    }",
+                )
+            )
+        )
+    return "  \"sources\": [" + newline + ("," + newline).join(entries) + newline + "  ],"
+
+
 def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
     path = root / "corpus/provenance.json"
     current = path.read_bytes()
     document = json.loads(current)
+    sources = [
+        {
+            "path": f"corpus/m12/{lane}.cu",
+            "sha256": hashlib.sha256(
+                canonical_bytes(
+                    (root / f"corpus/m12/{lane}.cu").read_bytes(),
+                    f"corpus/m12/{lane}.cu",
+                )
+            ).hexdigest(),
+        }
+        for lane, _, _ in LANES
+    ]
     wanted = {
         relative: {
             "path": relative,
@@ -108,7 +139,8 @@ def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
             "generator": "nvcc V13.3.33",
             "toolkit": "CUDA Toolkit 13.3",
             "targets": [target],
-            "source": source,
+            "source_path": f"corpus/m12/{lane}.cu",
+            "notes": source,
             "license": "MIT",
         }
         for lane, kind, source in LANES
@@ -125,10 +157,20 @@ def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
         if replacement:
             seen.add(record["path"])
     fixtures.extend(wanted[path] for path in wanted if path not in seen)
-    desired = {**document, "fixtures": fixtures}
+    desired = {
+        "schema": PROVENANCE_VERSION,
+        "sources": sources,
+        "fixtures": fixtures,
+    }
     if desired == document:
         return current
     text = current.decode("utf-8")
+    text = re.sub(
+        r'(?m)^  "schema": "ptx_frontend\.corpus_provenance/v[0-9]+",',
+        f'  "schema": {json.dumps(PROVENANCE_VERSION)},',
+        text,
+        count=1,
+    )
     for relative, record in wanted.items():
         pattern = re.compile(
             rf'(?ms)^    \{{\r?\n      "path": {re.escape(json.dumps(relative))},\r?\n.*?^    \}}'
@@ -138,6 +180,14 @@ def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
             return json_bytes(desired)
         newline = "\r\n" if "\r\n" in match.group(0) else "\n"
         text = text[: match.start()] + fixture_json(record, newline) + text[match.end() :]
+    sources_pattern = re.compile(r'(?ms)^  "sources": \[\r?\n.*?^  \],')
+    match = sources_pattern.search(text)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    rendered_sources = source_json(sources, newline)
+    if match is None:
+        text = text.replace('  "fixtures":', rendered_sources + newline + '  "fixtures":', 1)
+    else:
+        text = text[: match.start()] + rendered_sources + text[match.end() :]
     return text.encode("utf-8")
 
 

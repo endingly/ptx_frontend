@@ -86,6 +86,7 @@ class RegenerateM12CorpusTests(unittest.TestCase):
             self.assertEqual(fixture.read_text(encoding="utf-8"), "tampered\n")
             fixture.write_bytes(expected_fixture)
             provenance = root / "corpus/provenance.json"
+            expected_provenance = provenance.read_bytes()
             document = json.loads(provenance.read_text(encoding="utf-8"))
             next(
                 record
@@ -98,6 +99,19 @@ class RegenerateM12CorpusTests(unittest.TestCase):
                 self.assertEqual(main(["--check", "--nvcc", str(nvcc)], root), 1)
             self.assertIn("corpus/provenance.json", output.getvalue())
             self.assertEqual(provenance.read_bytes(), tampered_provenance)
+            provenance.write_bytes(expected_provenance)
+
+            source = root / "corpus/m12/natural_kernel.cu"
+            source.write_text(
+                source.read_text(encoding="utf-8") + "// source tamper\n",
+                encoding="utf-8",
+            )
+            tampered_source = source.read_bytes()
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(["--check", "--nvcc", str(nvcc)], root), 1)
+            self.assertIn("corpus/provenance.json", output.getvalue())
+            self.assertEqual(source.read_bytes(), tampered_source)
+            self.assertEqual(provenance.read_bytes(), expected_provenance)
 
     def test_rejects_wrong_nvcc_version(self) -> None:
         temporary, root = self.make_root()

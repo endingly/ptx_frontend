@@ -1,5 +1,15 @@
 {
-  "schema": "ptx_frontend.corpus_provenance/v2",
+  "schema": "ptx_frontend.corpus_provenance/v3",
+  "sources": [
+    {
+      "path": "corpus/m12/common_kernel.cu",
+      "sha256": "63c76eb73cfec277a740648d7dcb25455810925467f7717de7c64f19f0786cbd"
+    },
+    {
+      "path": "corpus/m12/natural_kernel.cu",
+      "sha256": "f4b81ec8ce3afa6154462389a7fabe3155824908959dfa5dd82fb53252e31bc4"
+    }
+  ],
   "fixtures": [
     {
       "path": "corpus/m10/advanced_kernel.ptx",
@@ -88,7 +98,8 @@
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_80"],
-      "source": "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+      "source_path": "corpus/m12/common_kernel.cu",
+      "notes": "nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
       "license": "MIT"
     },
     {
@@ -98,7 +109,8 @@
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_90a"],
-      "source": "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+      "source_path": "corpus/m12/common_kernel.cu",
+      "notes": "nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
       "license": "MIT"
     },
     {
@@ -108,7 +120,8 @@
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_100"],
-      "source": "corpus/m12/common_kernel.cu; nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
+      "source_path": "corpus/m12/common_kernel.cu",
+      "notes": "nvcc-compiled project-authored CUDA inline-PTX fixture, not natural compiler emission",
       "license": "MIT"
     },
     {
@@ -118,7 +131,8 @@
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_80"],
-      "source": "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+      "source_path": "corpus/m12/natural_kernel.cu",
+      "notes": "ordinary CUDA source compiled by nvcc without inline PTX",
       "license": "MIT"
     },
     {
@@ -128,7 +142,8 @@
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_90a"],
-      "source": "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+      "source_path": "corpus/m12/natural_kernel.cu",
+      "notes": "ordinary CUDA source compiled by nvcc without inline PTX",
       "license": "MIT"
     },
     {
@@ -138,7 +153,8 @@
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
       "targets": ["sm_100"],
-      "source": "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+      "source_path": "corpus/m12/natural_kernel.cu",
+      "notes": "ordinary CUDA source compiled by nvcc without inline PTX",
       "license": "MIT"
     },
     {

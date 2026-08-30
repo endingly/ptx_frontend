@@ -762,6 +762,16 @@ $defs:
         type: boolean
         default: false
 
+      mbarrier_state_token_form:
+        description: "Accepted spelling form for an mbarrier state-token destination."
+        type: string
+        enum: [register, register_or_sink, sink]
+        default: register
+
+      sink_availability:
+        description: "Target requirement that applies only when an mbarrier token is '_'."
+        $ref: "#/$defs/availability"
+
       state_space:
         description: >
           Allowed operand state space, state spaces, or an expression derived

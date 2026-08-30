@@ -739,7 +739,10 @@ struct SymbolTableBuilder {
         [this, scope, function_scope](const auto& value) {
           using Value = std::remove_cvref_t<decltype(value)>;
           if constexpr (std::same_as<Value, syntax_ast::AstIdentifierRef>) {
-            addReference(scope, ReferenceKind::InstructionOperand, value);
+            // '_' is a write-only sink in selected operands, not a user-declared
+            // symbol. Instruction resolution validates whether its position permits it.
+            if (value.syntax.text != "_")
+              addReference(scope, ReferenceKind::InstructionOperand, value);
           } else if constexpr (std::same_as<
                                    Value,
                                    syntax_ast::AstRegisterPredicatePair>) {

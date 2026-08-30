@@ -200,8 +200,9 @@ TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
       default_instruction.variant);
   EXPECT_EQ(defaults.phase_type.value, MbarrierPhaseType::Primary);
   EXPECT_EQ(defaults.layout.value, MbarrierLayout::V0);
-  EXPECT_EQ(defaults.state.value.register_ref.spelling, "%state");
-  EXPECT_EQ(defaults.state.value.register_ref.declared_type, ScalarType::B64);
+  ASSERT_TRUE(defaults.state.value.register_ref.has_value());
+  EXPECT_EQ(defaults.state.value.register_ref->spelling, "%state");
+  EXPECT_EQ(defaults.state.value.register_ref->declared_type, ScalarType::B64);
   ASSERT_FALSE(defaults.state.locs.empty());
 
   const checker::Context context{
@@ -249,6 +250,13 @@ TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
   ASSERT_EQ(wrong_type_result.error().size(), 1u);
   EXPECT_EQ(wrong_type_result.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto register_only_sink = resolveModule(parseModule(R"ptx(
+.entry kernel() { synthetic_mbarrier_domain _; }
+)ptx"));
+  ASSERT_FALSE(register_only_sink.has_value());
+  EXPECT_NE(register_only_sink.error().front().message.find("not allowed"),
+            std::string::npos);
 }
 
 TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {

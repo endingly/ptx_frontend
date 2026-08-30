@@ -2384,6 +2384,22 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::MbarrierStateToken: {
+      const bool is_sink = std::get_if<syntax_ast::AstIdentifierRef>(&operand) != nullptr &&
+                           std::get<syntax_ast::AstIdentifierRef>(operand).syntax.text == "_";
+      if (is_sink) {
+        if (binding.mbarrier_state_token_form ==
+            checker::MbarrierStateTokenForm::Register) {
+          return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+              .message = "The '_' sink is not allowed for this mbarrier state token."});
+        }
+        return ResolvedFieldValue{WithLocs<ResolvedMbarrierStateToken>{
+            ResolvedMbarrierStateToken{.register_ref = std::nullopt},
+            syntax_ast::sourceRange(operand)}};
+      }
+      if (binding.mbarrier_state_token_form == checker::MbarrierStateTokenForm::Sink) {
+        return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+            .message = "This mbarrier state token requires the '_' sink."});
+      }
       auto value = resolve_register(operand, context);
       if (!value)
         return std::unexpected(value.error());

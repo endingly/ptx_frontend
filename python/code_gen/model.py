@@ -29,6 +29,14 @@ class OperandVectorTypePolicy(str, Enum):
     ELEMENT = "element"
 
 
+class MbarrierStateTokenForm(str, Enum):
+    """Whether an mbarrier state-token operand permits the ``_`` sink."""
+
+    REGISTER = "register"
+    REGISTER_OR_SINK = "register_or_sink"
+    SINK = "sink"
+
+
 class OperandLayoutKind(str, Enum):
     """Matching algorithm selected by one operand layout."""
 
@@ -201,6 +209,8 @@ class OperandSpec:
     vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink: bool = False
     allow_destination_sink: bool = False
+    mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
+    sink_availability: dict[str, Any] = field(default_factory=dict)
     type_tag: str | None = None
     minimum_elements: int | None = None
     maximum_elements: int | None = None

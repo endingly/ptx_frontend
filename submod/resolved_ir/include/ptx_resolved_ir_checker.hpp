@@ -226,6 +226,12 @@ enum class VectorTypePolicy : uint8_t {
   Element,
 };
 
+enum class MbarrierStateTokenForm : uint8_t {
+  Register,
+  RegisterOrSink,
+  Sink,
+};
+
 /** Maximum resolved register-vector payload width supported by this frontend. */
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
 /** Maximum element count accepted by schema-defined modern brace packs. */
@@ -246,6 +252,9 @@ struct OperandDescriptor {
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
   bool allow_destination_sink = false;
+  MbarrierStateTokenForm mbarrier_state_token_form =
+      MbarrierStateTokenForm::Register;
+  AvailabilityDescriptor sink_availability;
   bool allow_function_symbol = false;
   /** Stable descriptor/token domain tag; empty for ordinary operands. */
   std::string_view type_tag{};
@@ -297,6 +306,7 @@ struct OperandView {
   std::optional<uint64_t> immediate_bits;
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  bool is_sink = false;
   std::array<ScalarType, 2> predicate_pair_types{};
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;

@@ -26,6 +26,7 @@ from code_gen.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
+    MbarrierStateTokenForm,
     ModifierSpec,
     ModifierValueSpec,
     OperandParameterConstraint,
@@ -418,6 +419,8 @@ class ResolvedOperandBinding:
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
     allow_destination_sink: bool = False
+    mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
+    sink_availability: tuple[tuple[str, Any], ...] = ()
     allow_function_symbol: bool = False
     type_tag: str | None = None
     minimum_elements: int | None = None
@@ -1012,6 +1015,8 @@ def _build_operand_layout(
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
                 allow_destination_sink=operand.allow_destination_sink,
+                mbarrier_state_token_form=operand.mbarrier_state_token_form,
+                sink_availability=tuple(operand.sink_availability.items()),
                 allow_function_symbol=operand.kind == "mov_scalar_src",
                 type_tag=operand.type_tag,
                 minimum_elements=operand.minimum_elements,

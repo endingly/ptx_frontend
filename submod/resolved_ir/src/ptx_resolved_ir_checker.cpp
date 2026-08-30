@@ -462,6 +462,11 @@ CheckResult check_operands(
               descriptor.target_field_id),
       });
     }
+    if (operand->is_sink) {
+      append_address_constraint_availability_diagnostics(
+          descriptor.sink_availability, "mbarrier state-token sink", *operand,
+          context, diagnostics);
+    }
 
     if (descriptor.minimum_elements != 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);

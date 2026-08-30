@@ -260,9 +260,9 @@ struct ResolvedRegisterRef {
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
 
-/** Opaque state returned by and consumed by mbarrier instructions. */
+/** Opaque mbarrier state; a null register reference is the ``_`` sink. */
 struct ResolvedMbarrierStateToken {
-  ResolvedRegisterRef register_ref;
+  std::optional<ResolvedRegisterRef> register_ref;
   bool operator==(const ResolvedMbarrierStateToken&) const = default;
 };
 

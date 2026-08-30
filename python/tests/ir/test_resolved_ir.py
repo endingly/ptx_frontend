@@ -1572,11 +1572,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "CompleteTxGenericOrShared", "CompleteTxSharedCta", "CompleteTxSharedCluster",
              "CompleteTxRelaxedCtaGenericOrShared", "CompleteTxRelaxedCtaSharedCta",
              "CompleteTxRelaxedCtaSharedCluster", "CompleteTxRelaxedClusterGenericOrShared",
-             "CompleteTxRelaxedClusterSharedCta", "CompleteTxRelaxedClusterSharedCluster"],
+             "CompleteTxRelaxedClusterSharedCta", "CompleteTxRelaxedClusterSharedCluster",
+             "ArriveGenericOrShared", "ArriveSharedCta", "ArriveSharedCluster",
+             "ArriveSemanticsGenericOrShared", "ArriveSemanticsSharedCta",
+             "ArriveSemanticsSharedCluster", "ArriveExpectTxGenericOrShared",
+             "ArriveExpectTxSharedCta", "ArriveExpectTxSharedCluster",
+             "ArriveExpectTxSemanticsGenericOrShared", "ArriveExpectTxSemanticsSharedCta",
+             "ArriveExpectTxSemanticsSharedCluster", "ArriveNoCompleteGenericOrShared",
+             "ArriveNoCompleteSharedCta", "ArriveNoCompleteReleaseCtaGenericOrShared",
+             "ArriveNoCompleteReleaseCtaSharedCta"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
         expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
-        complete_tx_generic, _, _, complete_tx_relaxed_cta, _, _, complete_tx_relaxed_cluster, _, _ = instruction.variants[18:]
+        complete_tx_generic, _, _, complete_tx_relaxed_cta, _, _, complete_tx_relaxed_cluster, _, _ = instruction.variants[18:27]
         self.assertEqual(dict(generic_v0.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(shared_cta_v0.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(generic_v1.availability), {"ptx": "9.3", "sm": 90})
@@ -1588,6 +1596,34 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(complete_tx_generic.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(complete_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(complete_tx_relaxed_cluster.availability), {"ptx": "8.0", "sm": 90})
+        arrive_generic, _, arrive_cluster, arrive_semantics, _, _, arrive_expect, _, _, arrive_expect_semantics, _, _, arrive_no_complete, _, arrive_no_complete_explicit, _ = instruction.variants[27:]
+        self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_expect.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_no_complete.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(
+            [layout.layout_id for layout in arrive_generic.operand_layouts],
+            ["no_count", "with_count"],
+        )
+        self.assertEqual(
+            arrive_generic.operand_layouts[0].bindings[0].mbarrier_state_token_form.value,
+            "register_or_sink",
+        )
+        self.assertEqual(
+            dict(arrive_generic.operand_layouts[0].bindings[0].sink_availability),
+            {"ptx": "7.1", "sm": 80},
+        )
+        self.assertEqual(
+            arrive_cluster.operand_layouts[0].bindings[0].mbarrier_state_token_form.value,
+            "sink",
+        )
+        self.assertEqual(
+            arrive_generic.operand_layouts[1].bindings[-1].register_width_policy,
+            ResolvedRegisterWidthPolicy.EXACT,
+        )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in generic_v0.fields],
             [

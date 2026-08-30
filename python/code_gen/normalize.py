@@ -14,6 +14,7 @@ from code_gen.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
+    MbarrierStateTokenForm,
     ModifierSpec,
     ModifierValueSpec,
     OperandLayoutSpec,
@@ -147,6 +148,27 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raise TypeError("allow_destination_sink must be a boolean when supplied.")
     if "allow_destination_sink" in raw and raw["kind"] != "shfl_dest":
         raise ValueError("allow_destination_sink is only valid for kind 'shfl_dest'")
+    try:
+        mbarrier_state_token_form = MbarrierStateTokenForm(
+            raw.get("mbarrier_state_token_form", "register")
+        )
+    except ValueError as error:
+        raise ValueError("mbarrier_state_token_form must be register, "
+                         "register_or_sink, or sink") from error
+    sink_availability = normalize_availability(raw.get("sink_availability", {}))
+    if raw["kind"] != "mbarrier_state_token":
+        if "mbarrier_state_token_form" in raw or "sink_availability" in raw:
+            raise ValueError("mbarrier state-token sink settings are only valid for "
+                             "kind 'mbarrier_state_token'")
+    elif mbarrier_state_token_form is MbarrierStateTokenForm.REGISTER:
+        if sink_availability:
+            raise ValueError("register-only mbarrier state token cannot have "
+                             "sink_availability")
+    else:
+        if raw.get("role") != "dst" or raw.get("access") != "write":
+            raise ValueError("sink-capable mbarrier state token must be a write destination")
+        if not sink_availability:
+            raise ValueError("sink-capable mbarrier state token requires sink_availability")
     type_tag = raw.get("type_tag")
     if raw["kind"] in {"descriptor", "typed_token"}:
         if (not isinstance(type_tag, str) or
@@ -275,6 +297,8 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_type_policy=vector_type_policy,
         vector_allow_sink=vector_allow_sink,
         allow_destination_sink=allow_destination_sink,
+        mbarrier_state_token_form=mbarrier_state_token_form,
+        sink_availability=sink_availability,
         type_tag=type_tag,
         minimum_elements=minimum_elements,
         maximum_elements=maximum_elements,
@@ -1036,11 +1060,15 @@ def _normalize_address_alignment_constraint(
                 f"must name a {expected_kind!r} modifier"
             )
     matching_operands = [
-        operand for layout in layouts for operand in layout.operands
-        if operand.name in address_operands
+        [operand for operand in layout.operands if operand.name in address_operands]
+        for layout in layouts
     ]
-    if (len(matching_operands) != len(address_operands) or
-            any(operand.kind != "addr" for operand in matching_operands)):
+    if any(
+        len(operands) != len(address_operands) or
+        {operand.name for operand in operands} != set(address_operands) or
+        any(operand.kind != "addr" for operand in operands)
+        for operands in matching_operands
+    ):
         raise ValueError(
             f"variant {raw_variant['name']!r}: address_alignment address "
             "operand must name an active kind 'addr' operand"

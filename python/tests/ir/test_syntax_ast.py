@@ -21,7 +21,11 @@ from code_gen.gen_syntax_ast_arch import (
     generate_syntax_descriptor_source,
 )
 from code_gen.load_yaml import expand_value_refs
-from code_gen.model import OperandRegisterWidthPolicy, OperandVectorTypePolicy
+from code_gen.model import (
+    MbarrierStateTokenForm,
+    OperandRegisterWidthPolicy,
+    OperandVectorTypePolicy,
+)
 from code_gen.normalize import normalize_instruction_spec
 from ir.syntax_ast import from_InstructionSpec
 from ir.syntax_ast import (
@@ -1103,6 +1107,50 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         operand_kind="reg" if message == "kind 'addr'" else "addr",
                     )
 
+    def test_address_alignment_requires_one_address_in_each_layout(self) -> None:
+        def normalize_layouts(layouts: list[list[dict[str, object]]]) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_alignment_layouts",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operand_layouts": [
+                                        {"name": f"layout_{index}", "operands": operands}
+                                        for index, operands in enumerate(layouts)
+                                    ],
+                                    "constraints": [
+                                        {
+                                            "kind": "address_alignment",
+                                            "address_operand": "address",
+                                            "alignment": 8,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        address = {"name": "address", "kind": "addr", "role": "addr", "access": "read"}
+        count = {"name": "count", "kind": "imm", "role": "src", "access": "read", "type": "u32"}
+        normalize_layouts([[address], [address, count]])
+        for invalid_layouts in (
+            [[address], [count]],
+            [[address], [address, address]],
+            [[address], [{**address, "kind": "reg"}, count]],
+        ):
+            with self.subTest(layouts=invalid_layouts):
+                with self.assertRaisesRegex(ValueError, "kind 'addr' operand"):
+                    normalize_layouts(invalid_layouts)
+
     def test_immediate_value_constraint_normalization(self) -> None:
         def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
             normalize_instruction_spec(
@@ -1537,6 +1585,83 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_operand("reg", allow_destination_sink=False)
         with self.assertRaisesRegex(TypeError, "allow_destination_sink"):
             normalize_operand("shfl_dest", allow_destination_sink=1)
+
+    def test_mbarrier_state_token_sink_policy_is_destination_specific_and_gated(self) -> None:
+        def normalize_token(**extra: object):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "state",
+                                            "kind": "mbarrier_state_token",
+                                            "role": "dst",
+                                            "access": "write",
+                                            "type": "b64",
+                                            **extra,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0].variants[0].operand_layouts[0].operands[0]
+
+        self.assertEqual(
+            normalize_token().mbarrier_state_token_form,
+            MbarrierStateTokenForm.REGISTER,
+        )
+        self.assertEqual(
+            normalize_token(
+                mbarrier_state_token_form="register_or_sink",
+                sink_availability={"ptx": "7.1"},
+            ).mbarrier_state_token_form,
+            MbarrierStateTokenForm.REGISTER_OR_SINK,
+        )
+        with self.assertRaisesRegex(ValueError, "requires sink_availability"):
+            normalize_token(mbarrier_state_token_form="sink")
+        with self.assertRaisesRegex(ValueError, "register-only.*sink_availability"):
+            normalize_token(sink_availability={"ptx": "7.1"})
+        with self.assertRaisesRegex(ValueError, "only valid"):
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": "reg",
+                                            "role": "dst",
+                                            "access": "write",
+                                            "type": "b64",
+                                            "mbarrier_state_token_form": "sink",
+                                            "sink_availability": {"ptx": "7.1"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
 
     def test_optional_modifier_requires_typed_default(self) -> None:
         def normalize_modifier_entry(modifier: dict[str, object]) -> None:

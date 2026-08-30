@@ -359,6 +359,18 @@ def _emit_operand_binding_descriptor(
         if binding.allow_destination_sink
         else ""
     )
+    mbarrier_state_token_form = (
+        "\n              .mbarrier_state_token_form = "
+        f"checker::MbarrierStateTokenForm::{''.join(part.capitalize() for part in binding.mbarrier_state_token_form.value.split('_'))},"
+        if binding.mbarrier_state_token_form.value != "register"
+        else ""
+    )
+    sink_availability = (
+        "\n              .sink_availability = "
+        f"{_emit_availability(dict(binding.sink_availability))},"
+        if binding.sink_availability
+        else ""
+    )
     allow_function_symbol = (
         "\n              .allow_function_symbol = true,"
         if binding.allow_function_symbol
@@ -417,7 +429,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{allow_destination_sink}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{allow_destination_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

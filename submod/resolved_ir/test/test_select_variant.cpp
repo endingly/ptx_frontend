@@ -807,6 +807,31 @@ TEST(SelectVariantMbarrier, SelectsBasicTestWaitForms) {
       parse_instruction("mbarrier.test_wait.b64 %p0, [%rd0], %state, 1;")).has_value());
 }
 
+TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mbarrier.try_wait.b64 %p0, [%rd0], %state;",
+                 Mbarrier::VariantType::TryWaitTokenGenericOrShared);
+  expect_variant("mbarrier.try_wait.shared::cta.b64 %p0, [shared_value], %state, 1;",
+                 Mbarrier::VariantType::TryWaitTokenSharedCta);
+  expect_variant("mbarrier.try_wait.parity.b64 %p0, [%rd0], 1;",
+                 Mbarrier::VariantType::TryWaitParityGenericOrShared);
+  expect_variant("mbarrier.try_wait.parity.shared::cta.b64 %p0, [shared_value], %r0, %r1;",
+                 Mbarrier::VariantType::TryWaitParitySharedCta);
+
+  EXPECT_FALSE(selectVariant<Mbarrier>(
+      parse_instruction("mbarrier.try_wait.b32 %p0, [%rd0], %state;")).has_value());
+  EXPECT_FALSE(resolve<Mbarrier>(
+      parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0];")).has_value());
+  EXPECT_FALSE(resolve<Mbarrier>(
+      parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0], %state, 1, 2;")).has_value());
+}
+
 TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mapa::VariantType expected) {

@@ -1592,7 +1592,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "ArriveDropNoCompleteReleaseCtaGenericOrShared",
              "ArriveDropNoCompleteReleaseCtaSharedCta",
              "TestWaitTokenGenericOrShared", "TestWaitTokenSharedCta",
-             "TestWaitParityGenericOrShared", "TestWaitParitySharedCta"],
+             "TestWaitParityGenericOrShared", "TestWaitParitySharedCta",
+             "TryWaitTokenGenericOrShared", "TryWaitTokenSharedCta",
+             "TryWaitParityGenericOrShared", "TryWaitParitySharedCta"],
         )
         generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
         expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
@@ -1611,6 +1613,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         arrive_generic, _, arrive_cluster, arrive_semantics, _, _, arrive_expect, _, _, arrive_expect_semantics, _, _, arrive_no_complete, _, arrive_no_complete_explicit, _ = instruction.variants[27:43]
         arrive_drop_generic, _, arrive_drop_cluster, arrive_drop_semantics, _, _, arrive_drop_expect, _, _, arrive_drop_expect_semantics, _, _, arrive_drop_no_complete, _, arrive_drop_no_complete_explicit, _ = instruction.variants[43:59]
         test_wait_token, test_wait_token_cta, test_wait_parity, test_wait_parity_cta = instruction.variants[59:63]
+        try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta = instruction.variants[63:67]
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
@@ -1629,6 +1632,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(test_wait_token_cta.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(test_wait_parity.availability), {"ptx": "7.1", "sm": 80})
         self.assertEqual(dict(test_wait_parity_cta.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(
+            [dict(variant.availability) for variant in
+             (try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta)],
+            [{"ptx": "7.8", "sm": 90}] * 4,
+        )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in test_wait_token.fields],
             [("test_wait", "bool"), ("state_space", "WithLocs<MemoryStateSpace>"),
@@ -1653,6 +1661,34 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [(constraint.minimum, constraint.maximum)
              for constraint in test_wait_parity.immediate_ranges],
+            [(0, 1)],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in try_wait_token.operand_layouts],
+            ["no_hint", "with_hint"],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type)
+             for field in try_wait_token.operand_layouts[0].fields],
+            [("wait_complete", "WithLocs<ResolvedPredicate>"),
+             ("address", "WithLocs<ResolvedAddress>"),
+             ("state", "WithLocs<ResolvedMbarrierStateToken>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type)
+             for field in try_wait_token.operand_layouts[1].fields[-2:]],
+            [("state", "WithLocs<ResolvedMbarrierStateToken>"),
+             ("time_hint", "WithLocs<RegOrImm>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type)
+             for field in try_wait_parity.operand_layouts[1].fields[-2:]],
+            [("phase_parity", "WithLocs<RegOrImm>"),
+             ("time_hint", "WithLocs<RegOrImm>")],
+        )
+        self.assertEqual(
+            [(constraint.minimum, constraint.maximum)
+             for constraint in try_wait_parity.immediate_ranges],
             [(0, 1)],
         )
         self.assertEqual(

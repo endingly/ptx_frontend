@@ -298,6 +298,15 @@ def _emit_modifier_value_descriptor(
         scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "EvictionPriority":
+        eviction_priority = cpp_value(
+            CppDomain.EVICTION_PRIORITIES, str(entry.value)
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif entry.value_cpp_type == "VectorArity":
         vector_arity = cpp_value(CppDomain.VECTOR_ARITIES, str(entry.value))
         bool_value = "false"
@@ -342,6 +351,7 @@ def _emit_modifier_value_descriptor(
               .comparison_operator = {comparison_operator if entry.value_cpp_type == "ComparisonOperator" else cpp_default(CppDomain.COMPARISON_OPERATORS)},
               .boolean_operator = {boolean_operator if entry.value_cpp_type == "BooleanOperator" else cpp_default(CppDomain.BOOLEAN_OPERATORS)},
               .cache_operator = {cache_operator},
+              .eviction_priority = {eviction_priority if entry.value_cpp_type == "EvictionPriority" else cpp_default(CppDomain.EVICTION_PRIORITIES)},
               .vector_arity = {vector_arity},
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
               .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},

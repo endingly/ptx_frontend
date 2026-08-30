@@ -3132,6 +3132,73 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(".comparison_operator = ComparisonOperator::Lt,", source)
 
+    def test_eviction_priority_modifier_domain_emits_typed_availability(self) -> None:
+        spec = {
+            "category": "test",
+            "codegen_category": "test",
+            "instructions": [
+                {
+                    "opcode": "sample",
+                    "variants": [
+                        {
+                            "name": "sample_eviction_priority",
+                            "availability": {"ptx": "1.0"},
+                            "modifiers": [
+                                {
+                                    "name": "eviction_priority",
+                                    "kind": "eviction_priority",
+                                    "presence": "required",
+                                    "values": [
+                                        {
+                                            "value": "evict_last",
+                                            "availability": {
+                                                "ptx": "7.4",
+                                                "sm": 70,
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                            "operands": [],
+                        }
+                    ],
+                }
+            ],
+        }
+        specs = normalize_instruction_spec(spec)
+        resolved = from_instruction_spec(specs[0])
+        self.assertEqual(
+            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            "EvictionPriority",
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::EvictionPriority,",
+            source,
+        )
+        self.assertIn(
+            ".eviction_priority = EvictionPriority::EvictLast,",
+            source,
+        )
+        self.assertIn(".minimum_ptx_version = {7, 4},", source)
+
+        value = spec["instructions"][0]["variants"][0]["modifiers"][0][
+            "values"
+        ][0]
+        for invalid in (0, "not_a_priority"):
+            value["value"] = invalid
+            with self.assertRaisesRegex(ValueError, "eviction priority"):
+                from_instruction_spec(normalize_instruction_spec(spec)[0])
+
     def test_boolean_modifier_domain_emits_typed_availability(self) -> None:
         specs = normalize_instruction_spec(
             {

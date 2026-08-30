@@ -841,6 +841,17 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported cache value "
                 f"{value.value!r}"
             )
+    if value_cpp_type == "EvictionPriority":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: eviction priority value must be "
+                "a string"
+            )
+        if value.value not in cpp_domain(CppDomain.EVICTION_PRIORITIES).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported eviction priority "
+                f"value {value.value!r}"
+            )
     if value_cpp_type == "VectorArity":
         if not isinstance(value.value, str):
             raise ValueError(

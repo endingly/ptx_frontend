@@ -1701,6 +1701,61 @@ TEST(ResolvedIrChecker, ChecksBooleanOperatorValueAvailability) {
   EXPECT_EQ(result.error().front().range, kInstructionRange);
 }
 
+TEST(ResolvedIrChecker, ChecksEvictionPriorityValueAvailability) {
+  constexpr ModifierValueAvailabilityDescriptor descriptors[] = {{
+      .kind_id = "eviction_priority",
+      .value_kind = ModifierValueKind::EvictionPriority,
+      .eviction_priority = EvictionPriority::EvictLast,
+      .availability =
+          {
+              .minimum_ptx_version = {7, 4},
+              .minimum_sm_version = 70,
+          },
+  }};
+  constexpr std::array<ModifierValueView, 1> evict_last{{
+      {
+          .kind_id = "eviction_priority",
+          .value_kind = ModifierValueKind::EvictionPriority,
+          .eviction_priority = EvictionPriority::EvictLast,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  const Context new_context{
+      .target = {.ptx_version = {7, 4}, .sm_version = 70},
+      .instruction_range = kInstructionRange,
+  };
+  EXPECT_TRUE(
+      check_modifier_value_availability(descriptors, evict_last, new_context)
+          .has_value());
+
+  const Context old_context{
+      .target = {.ptx_version = {7, 3}, .sm_version = 60},
+      .instruction_range = kInstructionRange,
+  };
+  const auto rejected =
+      check_modifier_value_availability(descriptors, evict_last, old_context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 2U);
+  EXPECT_EQ(rejected.error()[0].kind,
+            CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_EQ(rejected.error()[1].kind,
+            CheckDiagnosticKind::UnsupportedSmVersion);
+
+  constexpr std::array<ModifierValueView, 1> evict_first{{
+      {
+          .kind_id = "eviction_priority",
+          .value_kind = ModifierValueKind::EvictionPriority,
+          .eviction_priority = EvictionPriority::EvictFirst,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      },
+  }};
+  EXPECT_TRUE(
+      check_modifier_value_availability(descriptors, evict_first, old_context)
+          .has_value());
+}
+
 TEST(ResolvedIrChecker, IgnoresOmittedCacheSentinelAndChecksExplicitCache) {
   constexpr ModifierValueAvailabilityDescriptor descriptors[] = {{
       .kind_id = "cache",

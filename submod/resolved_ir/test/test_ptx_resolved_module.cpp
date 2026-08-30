@@ -1867,6 +1867,130 @@ TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {
   EXPECT_FALSE(extra_operand.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 16 .b8 response[16];
+.shared .align 8 .b8 barrier[8];
+.entry kernel() {
+  clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [response], [barrier];
+  clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx::bytes.b128 [response], [barrier];
+  clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [response], [barrier];
+  clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [response], [barrier];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::TryCancelAsyncGeneric>(
+      std::get<Clusterlaunchcontrol>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::TryCancelAsyncSharedCta>(
+      std::get<Clusterlaunchcontrol>(body[1]).variant));
+  EXPECT_TRUE(std::holds_alternative<
+      Clusterlaunchcontrol::TryCancelAsyncMulticastGeneric>(
+      std::get<Clusterlaunchcontrol>(body[2]).variant));
+  EXPECT_TRUE(std::holds_alternative<
+      Clusterlaunchcontrol::TryCancelAsyncMulticastSharedCta>(
+      std::get<Clusterlaunchcontrol>(body[3]).variant));
+
+  const auto context_for = [&ast](std::string_view target,
+                                  checker::PtxVersion ptx_version) {
+    const auto profile = base::find_target_profile(target);
+    EXPECT_TRUE(profile.has_value()) << target;
+    return checker::Context{
+        .target = {.ptx_version = ptx_version,
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+        .instruction_range = ast.range,
+    };
+  };
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(instruction),
+                               context_for("sm_100a", {8, 6}))
+                    .has_value());
+  }
+  EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(body[2]),
+                             context_for("sm_100f", {8, 8}))
+                  .has_value());
+  EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(body[2]),
+                             context_for("sm_120a", {8, 6}))
+                  .has_value());
+  EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(body[2]),
+                             context_for("sm_120f", {8, 8}))
+                  .has_value());
+  EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(body[2]),
+                             context_for("sm_110a", {9, 0}))
+                  .has_value());
+  EXPECT_TRUE(checker::check(std::get<Clusterlaunchcontrol>(body[2]),
+                             context_for("sm_110f", {9, 0}))
+                  .has_value());
+
+  for (const auto target : {"sm_100", "sm_110", "sm_120"}) {
+    SCOPED_TRACE(target);
+    EXPECT_FALSE(checker::check(std::get<Clusterlaunchcontrol>(body[2]),
+                                context_for(target, {9, 0}))
+                     .has_value());
+  }
+  EXPECT_FALSE(checker::check(std::get<Clusterlaunchcontrol>(body[0]),
+                              context_for("sm_90", {9, 0}))
+                   .has_value());
+  EXPECT_FALSE(checker::check(std::get<Clusterlaunchcontrol>(body[0]),
+                              context_for("sm_100", {8, 5}))
+                   .has_value());
+  const auto no_cluster = checker::check(
+      std::get<Clusterlaunchcontrol>(body[0]),
+      checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 100},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(no_cluster.has_value());
+  EXPECT_EQ(no_cluster.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+
+  const auto wrong_address = resolveModule(parseModule(R"ptx(
+.global .align 16 .b8 response[16];
+.shared .align 8 .b8 barrier[8];
+.entry kernel() { clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [response], [barrier]; }
+)ptx"));
+  ASSERT_TRUE(wrong_address.has_value());
+  const auto wrong_address_checked = checker::check(
+      std::get<Clusterlaunchcontrol>(wrong_address->functions.front().body.front()),
+      context_for("sm_100a", {8, 6}));
+  ASSERT_FALSE(wrong_address_checked.has_value());
+  EXPECT_EQ(wrong_address_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+
+  const auto wrong_response_alignment = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b8 response[16];
+.shared .align 8 .b8 barrier[8];
+.entry kernel() { clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [response], [barrier]; }
+)ptx"));
+  ASSERT_TRUE(wrong_response_alignment.has_value());
+  const auto response_alignment_checked = checker::check(
+      std::get<Clusterlaunchcontrol>(wrong_response_alignment->functions.front().body.front()),
+      context_for("sm_100a", {8, 6}));
+  ASSERT_FALSE(response_alignment_checked.has_value());
+  EXPECT_EQ(response_alignment_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const auto wrong_mbarrier_alignment = resolveModule(parseModule(R"ptx(
+.shared .align 16 .b8 response[16];
+.shared .align 4 .b8 barrier[8];
+.entry kernel() { clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [response], [barrier]; }
+)ptx"));
+  ASSERT_TRUE(wrong_mbarrier_alignment.has_value());
+  const auto mbarrier_alignment_checked = checker::check(
+      std::get<Clusterlaunchcontrol>(wrong_mbarrier_alignment->functions.front().body.front()),
+      context_for("sm_100a", {8, 6}));
+  ASSERT_FALSE(mbarrier_alignment_checked.has_value());
+  EXPECT_EQ(mbarrier_alignment_checked.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  EXPECT_FALSE(resolveModule(parseModule(R"ptx(
+.entry kernel() { clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [%rd0]; }
+)ptx")).has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   const auto ast = parseModule(R"ptx(
 .global .align 4 .u32 global_value;

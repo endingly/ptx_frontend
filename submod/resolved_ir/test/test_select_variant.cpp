@@ -823,6 +823,37 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   }
 }
 
+TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Clusterlaunchcontrol::VariantType expected) {
+    const auto selected = selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+  expect_variant(
+      "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
+      Clusterlaunchcontrol::VariantType::TryCancelAsyncGeneric);
+  expect_variant(
+      "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
+      Clusterlaunchcontrol::VariantType::TryCancelAsyncSharedCta);
+  expect_variant(
+      "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [%rd0], [%rd1];",
+      Clusterlaunchcontrol::VariantType::TryCancelAsyncMulticastGeneric);
+  expect_variant(
+      "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [%rd0], [%rd1];",
+      Clusterlaunchcontrol::VariantType::TryCancelAsyncMulticastSharedCta);
+
+  for (const std::string_view source : {
+           "clusterlaunchcontrol.try_cancel.async.b128 [%rd0], [%rd1];",
+           "clusterlaunchcontrol.try_cancel.mbarrier::complete_tx::bytes.async.b128 [%rd0], [%rd1];",
+           "clusterlaunchcontrol.try_cancel.async.shared::cta.multicast::cluster::all.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
+           "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b32 [%rd0], [%rd1];",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source)).has_value());
+  }
+}
+
 TEST(SelectVariantMbarrier, SelectsBasicTestWaitForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mbarrier::VariantType expected) {

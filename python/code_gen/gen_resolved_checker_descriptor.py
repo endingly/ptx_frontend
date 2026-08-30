@@ -88,7 +88,7 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
     address_alignment_definitions = "\n\n".join(
         _emit_variant_address_alignment_descriptors(variant)
         for variant in instruction.variants
-        if variant.address_alignment is not None
+        if variant.address_alignments
     )
     variants = ",\n".join(
         _emit_variant_descriptor(variant) for variant in instruction.variants
@@ -134,7 +134,6 @@ const checker::InstructionDescriptor&
 def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
     rule_id = variant.rule or ""
     consistency = variant.memory_consistency
-    alignment = variant.address_alignment
     memory_consistency = ""
     if consistency is not None:
         memory_consistency = f'''
@@ -224,24 +223,32 @@ def _cpp_uint64(value: int) -> str:
 
 
 def _emit_address_alignment_descriptor(variant: ResolvedVariant) -> str:
-    alignment = variant.address_alignment
-    if alignment is None:
+    if not variant.address_alignments:
         return ""
-    return f'''              .address_alignment = {{
-                  .address_field_ids = {variant.cpp_name}_address_alignment_address_fields,
-                  .type_field_id = "{alignment.type_field_id or ""}",
-                  .vector_field_id = "{alignment.vector_field_id or ""}",
-                  .immediate_operand_field_id = "{alignment.immediate_operand_field_id or ""}",
-                  .alignment = {alignment.alignment or 0},
-              }},'''
+    return f'''              .address_alignments = {variant.cpp_name}_address_alignments,'''
 
 
 def _emit_variant_address_alignment_descriptors(variant: ResolvedVariant) -> str:
-    alignment = variant.address_alignment
-    assert alignment is not None
-    addresses = ", ".join(f'"{address}"' for address in alignment.address_field_ids)
-    return f"""  static constexpr std::array<std::string_view, {len(alignment.address_field_ids)}>
-      {variant.cpp_name}_address_alignment_address_fields = {{{{{addresses}}}}};"""
+    fields = "\n".join(
+        f'''  static constexpr std::array<std::string_view, {len(alignment.address_field_ids)}>
+      {variant.cpp_name}_address_alignment_{index}_address_fields = {{{{{", ".join(f'\"{address}\"' for address in alignment.address_field_ids)}}}}};'''
+        for index, alignment in enumerate(variant.address_alignments)
+    )
+    entries = ",\n".join(
+        f'''          checker::AddressAlignmentConstraint{{
+              .address_field_ids = {variant.cpp_name}_address_alignment_{index}_address_fields,
+              .type_field_id = "{alignment.type_field_id or ""}",
+              .vector_field_id = "{alignment.vector_field_id or ""}",
+              .immediate_operand_field_id = "{alignment.immediate_operand_field_id or ""}",
+              .alignment = {alignment.alignment or 0},
+          }}'''
+        for index, alignment in enumerate(variant.address_alignments)
+    )
+    return f"""{fields}
+  static constexpr std::array<checker::AddressAlignmentConstraint, {len(variant.address_alignments)}>
+      {variant.cpp_name}_address_alignments = {{{{
+{entries}
+      }}}};"""
 
 
 def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:

@@ -163,7 +163,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 
-inline constexpr size_t kMaxAvailabilityClauses = 4;
+inline constexpr size_t kMaxAvailabilityClauses = 5;
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 
 /** One AND-clause in a bounded generated availability expression. */
@@ -446,8 +446,8 @@ struct VariantDescriptor {
     std::string_view address_field_id;
     std::string_view state_space_field_id;
   } memory_consistency;
-  /** Empty address fields mean this variant has no static alignment rule. */
-  AddressAlignmentConstraint address_alignment;
+  /** Empty span means this variant has no static alignment rules. */
+  std::span<const AddressAlignmentConstraint> address_alignments;
   /** Empty field IDs mean this variant has no modern memory-vector rule. */
   struct MemoryVectorDescriptor {
     std::string_view type_field_id;

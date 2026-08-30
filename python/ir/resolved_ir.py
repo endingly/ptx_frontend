@@ -358,7 +358,7 @@ class ResolvedVariant:
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
-    address_alignment: ResolvedAddressAlignmentConstraint | None
+    address_alignments: tuple[ResolvedAddressAlignmentConstraint, ...]
     memory_vector: ResolvedMemoryVectorConstraint | None
     immediate_value: ResolvedImmediateValueConstraint | None
     immediate_ranges: tuple[ResolvedImmediateRangeConstraint, ...]
@@ -379,6 +379,11 @@ class ResolvedVariant:
             for field in layout.fields:
                 fields.append(field)
         return tuple(fields)
+
+    @property
+    def address_alignment(self) -> ResolvedAddressAlignmentConstraint | None:
+        """Compatibility view for existing single-alignment users."""
+        return self.address_alignments[0] if self.address_alignments else None
 
 
 @dataclass(frozen=True)
@@ -595,9 +600,12 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_consistency,
             {field.source_name: field.name for field in modifier_fields},
         ),
-        address_alignment=_build_address_alignment_constraint(
-            variant.address_alignment,
-            {field.source_name: field.name for field in modifier_fields},
+        address_alignments=tuple(
+            _build_address_alignment_constraint(
+                constraint,
+                {field.source_name: field.name for field in modifier_fields},
+            )
+            for constraint in variant.address_alignments
         ),
         memory_vector=_build_memory_vector_constraint(
             variant.memory_vector,

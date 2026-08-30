@@ -616,12 +616,14 @@ def _emit_cross_rule_checks(
                                  memory_vector_check.error().end());
             }}
 """
-    if variant.address_alignment is not None:
-        checks += f"""            const auto alignment_check = check_address_alignment(
-                {checker_variant_expr}.address_alignment, fields, operands, context);
-            if (!alignment_check) {{
-              diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
-                                 alignment_check.error().end());
+    if variant.address_alignments:
+        checks += f"""            for (const auto& alignment : {checker_variant_expr}.address_alignments) {{
+              const auto alignment_check = check_address_alignment(
+                  alignment, fields, operands, context);
+              if (!alignment_check) {{
+                diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
+                                   alignment_check.error().end());
+              }}
             }}
 """
     if variant.immediate_value is not None:

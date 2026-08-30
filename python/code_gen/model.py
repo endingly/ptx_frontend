@@ -252,7 +252,7 @@ class VariantSpec:
     rule: str | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None
-    address_alignment: AddressAlignmentConstraint | None = None
+    address_alignments: tuple[AddressAlignmentConstraint, ...] = ()
     memory_vector: MemoryVectorConstraint | None = None
     immediate_value: ImmediateValueConstraint | None = None
     immediate_ranges: tuple[ImmediateRangeConstraint, ...] = ()

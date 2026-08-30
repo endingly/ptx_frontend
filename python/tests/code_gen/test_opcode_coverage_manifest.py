@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 68)
+        self.assertEqual(len(opcodes), 69)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 311)
+        self.assertEqual(len(slices), 315)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -652,6 +652,12 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             "griddepcontrol": {
                 ("griddepcontrol_launch_dependents", "default"),
                 ("griddepcontrol_wait", "default"),
+            },
+            "clusterlaunchcontrol": {
+                ("clusterlaunchcontrol_try_cancel_async_generic", "default"),
+                ("clusterlaunchcontrol_try_cancel_async_shared_cta", "default"),
+                ("clusterlaunchcontrol_try_cancel_async_multicast_generic", "default"),
+                ("clusterlaunchcontrol_try_cancel_async_multicast_shared_cta", "default"),
             },
             "mbarrier": {
                 ("mbarrier_init_generic_v0", "default"),

@@ -501,7 +501,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             {"any_of": [{"target": "sm_90b"}]},
             {"any_of": [{"family": "sm_90a"}]},
             {"any_of": [{"capabilities": []}]},
-            {"any_of": [{"sm": 90}] * 5},
+            {"any_of": [{"sm": 90}] * 6},
         ):
             with self.assertRaises((TypeError, ValueError)):
                 normalize_availability(availability)
@@ -544,10 +544,13 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             "$ref": "#/$defs/availability",
         })
         self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
+        self.assertEqual(
+            list(validator.iter_errors({"any_of": [{"sm": 100}] * 5})), []
+        )
         self.assertEqual(list(validator.iter_errors({"any_of": [{"family": "sm_100f"}]})), [])
         self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
         for availability in ({"any_of": []}, {"any_of": [{}]},
-                             {"any_of": [{"sm": 100}] * 5},
+                             {"any_of": [{"sm": 100}] * 6},
                              {"sm": 4294967296}, {"sm": True},
                              {"family": "sm_90a"},
                              {"any_of": [{"family": "sm_90a"}]},

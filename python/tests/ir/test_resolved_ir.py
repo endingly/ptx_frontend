@@ -2633,6 +2633,65 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
             self.assertEqual(variant.address_alignment.alignment, 8)
 
+    def test_clusterlaunchcontrol_try_cancel_model(self) -> None:
+        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "clusterlaunchcontrol"
+        )
+        variants = from_instruction_spec(instruction).variants
+        self.assertEqual(
+            [variant.cpp_name for variant in variants],
+            [
+                "TryCancelAsyncGeneric",
+                "TryCancelAsyncSharedCta",
+                "TryCancelAsyncMulticastGeneric",
+                "TryCancelAsyncMulticastSharedCta",
+            ],
+        )
+        self.assertEqual(
+            dict(variants[0].availability),
+            {"any_of": [{"ptx": "8.6", "sm": 100, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            dict(variants[2].availability),
+            {"any_of": [
+                {"ptx": "8.6", "sm": 100, "target": "sm_100a", "capabilities": ["cluster"]},
+                {"ptx": "8.6", "sm": 120, "target": "sm_120a", "capabilities": ["cluster"]},
+                {"ptx": "8.8", "sm": 100, "family": "sm_100f", "capabilities": ["cluster"]},
+                {"ptx": "8.8", "sm": 120, "family": "sm_120f", "capabilities": ["cluster"]},
+                {"ptx": "9.0", "sm": 110, "family": "sm_110f", "capabilities": ["cluster"]},
+            ]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[0].fields],
+            [
+                ("try_cancel", "bool"),
+                ("async", "bool"),
+                ("mbarrier_complete_tx_bytes", "bool"),
+                ("type", "ScalarType"),
+                ("response", "WithLocs<ResolvedAddress>"),
+                ("mbarrier", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[1].fields[:3]],
+            [
+                ("try_cancel", "bool"),
+                ("async_shared_cta", "bool"),
+                ("mbarrier_complete_tx_bytes", "bool"),
+            ],
+        )
+        self.assertEqual(
+            [constraint.alignment for constraint in variants[0].address_alignments],
+            [16, 8],
+        )
+        self.assertEqual(
+            [constraint.address_field_ids for constraint in variants[0].address_alignments],
+            [("response",), ("mbarrier",)],
+        )
+
     def test_cp_async_commit_group_model(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
@@ -2832,7 +2891,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor,
         )
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
-        self.assertIn('AsyncCaSharedGlobal_address_alignment_address_fields = {{"dst", "src"}};', descriptor)
+        self.assertIn('AsyncCaSharedGlobal_address_alignment_0_address_fields = {{"dst", "src"}};', descriptor)
         self.assertIn('.immediate_operand_field_id = "cp_size",', descriptor)
         self.assertIn('.operand_field_id = "n",', descriptor)
         self.assertIn('.minimum = uint64_t{0ULL},', descriptor)
@@ -3745,7 +3804,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("checker::OperandLayoutDescriptor", source)
         self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
         self.assertIn(".memory_consistency = {", source)
-        self.assertIn(".address_alignment = {", source)
+        self.assertIn(".address_alignments =", source)
         self.assertIn('.vector_field_id = "vector",', source)
         self.assertIn(".memory_vector = {", source)
         self.assertIn('.vector_field_id = "dst",', source)

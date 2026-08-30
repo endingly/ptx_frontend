@@ -71,6 +71,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   constexpr std::array<std::string_view, 2> sm103f_features{"sm_100f",
                                                             "sm_103f"};
   constexpr std::array<std::string_view, 1> sm120f_features{"sm_120f"};
+  constexpr std::array<std::string_view, 1> sm110f_features{"sm_110f"};
   constexpr std::array<std::string_view, 2> sm80_capabilities{"reserved_smem",
                                                               "graph_exec"};
   constexpr std::array<std::string_view, 4> sm90_capabilities{
@@ -102,6 +103,16 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
                       sm103f_features, sm90_capabilities},
       ExpectedProfile{"sm_103f", 103, TargetFlavor::FamilySpecific,
                       sm103f_features, sm90_capabilities},
+      ExpectedProfile{"sm_110", 110, TargetFlavor::Generic, none,
+                      sm90_capabilities},
+      ExpectedProfile{"sm_110a", 110, TargetFlavor::ArchitectureSpecific,
+                      sm110f_features, sm90_capabilities},
+      ExpectedProfile{"sm_110f", 110, TargetFlavor::FamilySpecific,
+                      sm110f_features, sm90_capabilities},
+      ExpectedProfile{"sm_120", 120, TargetFlavor::Generic, none,
+                      sm90_capabilities},
+      ExpectedProfile{"sm_120a", 120, TargetFlavor::ArchitectureSpecific,
+                      sm120f_features, sm90_capabilities},
       ExpectedProfile{"sm_120f", 120, TargetFlavor::FamilySpecific,
                       sm120f_features, sm90_capabilities},
   };
@@ -122,9 +133,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());
   EXPECT_FALSE(find_target_profile("sm_90f").has_value());
-  EXPECT_FALSE(find_target_profile("sm_120").has_value());
-  for (const std::string_view target : {"sm_101a", "sm_101f", "sm_110a",
-                                        "sm_110f", "sm_120a"}) {
+  for (const std::string_view target : {"sm_101a", "sm_101f"}) {
     EXPECT_TRUE(parse_target_identity(target).has_value()) << target;
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   }
@@ -140,6 +149,11 @@ TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {
   const auto sm103 = find_target_profile("sm_103");
   const auto sm103a = find_target_profile("sm_103a");
   const auto sm103f = find_target_profile("sm_103f");
+  const auto sm110 = find_target_profile("sm_110");
+  const auto sm110a = find_target_profile("sm_110a");
+  const auto sm110f = find_target_profile("sm_110f");
+  const auto sm120 = find_target_profile("sm_120");
+  const auto sm120a = find_target_profile("sm_120a");
   const auto sm120f = find_target_profile("sm_120f");
   ASSERT_TRUE(sm90.has_value());
   ASSERT_TRUE(sm90a.has_value());
@@ -149,6 +163,11 @@ TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {
   ASSERT_TRUE(sm103.has_value());
   ASSERT_TRUE(sm103a.has_value());
   ASSERT_TRUE(sm103f.has_value());
+  ASSERT_TRUE(sm110.has_value());
+  ASSERT_TRUE(sm110a.has_value());
+  ASSERT_TRUE(sm110f.has_value());
+  ASSERT_TRUE(sm120.has_value());
+  ASSERT_TRUE(sm120a.has_value());
   ASSERT_TRUE(sm120f.has_value());
 
   EXPECT_TRUE(sm90->enabled_family_features.empty());
@@ -165,6 +184,14 @@ TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {
   EXPECT_TRUE(std::ranges::equal(
       sm103f->enabled_family_features,
       std::array<std::string_view, 2>{"sm_100f", "sm_103f"}));
+  EXPECT_TRUE(sm110->enabled_family_features.empty());
+  EXPECT_TRUE(std::ranges::equal(sm110a->enabled_family_features,
+                                 std::array<std::string_view, 1>{"sm_110f"}));
+  EXPECT_TRUE(std::ranges::equal(sm110f->enabled_family_features,
+                                 std::array<std::string_view, 1>{"sm_110f"}));
+  EXPECT_TRUE(sm120->enabled_family_features.empty());
+  EXPECT_TRUE(std::ranges::equal(sm120a->enabled_family_features,
+                                 std::array<std::string_view, 1>{"sm_120f"}));
   EXPECT_TRUE(std::ranges::equal(sm120f->enabled_family_features,
                                  std::array<std::string_view, 1>{"sm_120f"}));
 }

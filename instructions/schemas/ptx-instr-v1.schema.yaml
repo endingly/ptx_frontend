@@ -464,7 +464,7 @@ $defs:
               - type: integer
           token:
             type: string
-            pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+            pattern: "^\\.[A-Za-z0-9_.:$<>-]+$"
           availability:
             $ref: "#/$defs/availability"
           doc:
@@ -527,7 +527,7 @@ $defs:
           Concrete token for flag-like modifiers, for example .sat or .relu.
           For type-like values, token is usually derived from value.
         type: string
-        pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+        pattern: "^\\.[A-Za-z0-9_.:$<>-]+$"
 
       default:
         description: >
@@ -1151,7 +1151,7 @@ $defs:
           any_of:
             type: array
             minItems: 1
-            maxItems: 4
+            maxItems: 5
             items:
               type: object
               additionalProperties: false

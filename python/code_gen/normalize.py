@@ -112,8 +112,8 @@ def normalize_availability(raw: object) -> dict[str, Any]:
     if set(raw) != {"any_of"}:
         raise ValueError("any_of availability cannot mix with legacy fields")
     clauses = raw["any_of"]
-    if not isinstance(clauses, list) or not 1 <= len(clauses) <= 4:
-        raise ValueError("availability any_of must contain one to four clauses")
+    if not isinstance(clauses, list) or not 1 <= len(clauses) <= 5:
+        raise ValueError("availability any_of must contain one to five clauses")
     normalized: list[dict[str, Any]] = []
     for clause in clauses:
         if not isinstance(clause, dict):
@@ -1002,102 +1002,108 @@ def _normalize_memory_consistency_constraint(
     )
 
 
-def _normalize_address_alignment_constraint(
+def _normalize_address_alignment_constraints(
     raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...],
     layouts: tuple[OperandLayoutSpec, ...]
-) -> AddressAlignmentConstraint | None:
-    """Lower one data-driven natural-address-alignment rule."""
+) -> tuple[AddressAlignmentConstraint, ...]:
+    """Lower data-driven natural-address-alignment rules."""
 
     matches = [
         item for item in raw_variant.get("constraints", ())
         if item.get("kind") == "address_alignment"
     ]
     if not matches:
-        return None
-    if len(matches) != 1:
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: at most one address_alignment "
-            "constraint is supported"
-        )
-    raw = matches[0]
-    has_singular = "address_operand" in raw
-    has_plural = "address_operands" in raw
-    if has_singular == has_plural:
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: address_alignment constraint "
-            "requires exactly one of address_operand or address_operands"
-        )
-    address_operands = ((raw["address_operand"],) if has_singular
-                        else tuple(raw["address_operands"]))
-    if (not address_operands or any(not isinstance(operand, str)
-                                   for operand in address_operands) or
-            len(set(address_operands)) != len(address_operands)):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: address_alignment address "
-            "operands must be unique non-empty identifiers"
-        )
-    source_count = sum(key in raw for key in
-                       ("type_modifier", "immediate_operand", "alignment"))
-    if source_count != 1:
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: address_alignment requires "
-            "exactly one of type_modifier, immediate_operand, or alignment"
-        )
-    modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
-    for key, expected_kind in (("type_modifier", "type"),
-                               ("vector_modifier", "vector")):
-        value = raw.get(key)
-        if value is None:
-            continue
-        if value not in modifiers_by_name:
+        return ()
+    normalized: list[AddressAlignmentConstraint] = []
+    for raw in matches:
+        has_singular = "address_operand" in raw
+        has_plural = "address_operands" in raw
+        if has_singular == has_plural:
             raise ValueError(
-                f"variant {raw_variant['name']!r}: address_alignment {key} "
-                f"references inactive modifier {value!r}"
+                f"variant {raw_variant['name']!r}: address_alignment constraint "
+                "requires exactly one of address_operand or address_operands"
             )
-        if modifiers_by_name[value].kind != expected_kind:
+        address_operands = ((raw["address_operand"],) if has_singular
+                            else tuple(raw["address_operands"]))
+        if (not address_operands or any(not isinstance(operand, str)
+                                       for operand in address_operands) or
+                len(set(address_operands)) != len(address_operands)):
             raise ValueError(
-                f"variant {raw_variant['name']!r}: address_alignment {key} "
-                f"must name a {expected_kind!r} modifier"
+                f"variant {raw_variant['name']!r}: address_alignment address "
+                "operands must be unique non-empty identifiers"
             )
-    matching_operands = [
-        [operand for operand in layout.operands if operand.name in address_operands]
-        for layout in layouts
-    ]
-    if any(
-        len(operands) != len(address_operands) or
-        {operand.name for operand in operands} != set(address_operands) or
-        any(operand.kind != "addr" for operand in operands)
-        for operands in matching_operands
-    ):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: address_alignment address "
-            "operand must name an active kind 'addr' operand"
-        )
-    immediate_operand = raw.get("immediate_operand")
-    if immediate_operand is not None:
-        matching_immediates = [
-            operand for layout in layouts for operand in layout.operands
-            if operand.name == immediate_operand
+        source_count = sum(key in raw for key in
+                           ("type_modifier", "immediate_operand", "alignment"))
+        if source_count != 1:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: address_alignment requires "
+                "exactly one of type_modifier, immediate_operand, or alignment"
+            )
+        modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
+        for key, expected_kind in (("type_modifier", "type"),
+                                   ("vector_modifier", "vector")):
+            value = raw.get(key)
+            if value is None:
+                continue
+            if value not in modifiers_by_name:
+                raise ValueError(
+                    f"variant {raw_variant['name']!r}: address_alignment {key} "
+                    f"references inactive modifier {value!r}"
+                )
+            if modifiers_by_name[value].kind != expected_kind:
+                raise ValueError(
+                    f"variant {raw_variant['name']!r}: address_alignment {key} "
+                    f"must name a {expected_kind!r} modifier"
+                )
+        matching_operands = [
+            [operand for operand in layout.operands if operand.name in address_operands]
+            for layout in layouts
         ]
-        if (not matching_immediates or
-                any(operand.kind != "imm" for operand in matching_immediates)):
+        if any(
+            len(operands) != len(address_operands) or
+            {operand.name for operand in operands} != set(address_operands) or
+            any(operand.kind != "addr" for operand in operands)
+            for operands in matching_operands
+        ):
             raise ValueError(
-                f"variant {raw_variant['name']!r}: address_alignment "
-                "immediate_operand must name an active kind 'imm' operand"
+                f"variant {raw_variant['name']!r}: address_alignment address "
+                "operand must name an active kind 'addr' operand"
             )
-    alignment = raw.get("alignment")
-    if alignment is not None and (type(alignment) is not int or alignment <= 0):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: address_alignment alignment "
-            "must be a positive integer"
-        )
-    return AddressAlignmentConstraint(
-        address_operands=address_operands,
-        type_modifier=raw.get("type_modifier"),
-        vector_modifier=raw.get("vector_modifier"),
-        immediate_operand=immediate_operand,
-        alignment=alignment,
-    )
+        immediate_operand = raw.get("immediate_operand")
+        if immediate_operand is not None:
+            matching_immediates = [
+                operand for layout in layouts for operand in layout.operands
+                if operand.name == immediate_operand
+            ]
+            if (not matching_immediates or
+                    any(operand.kind != "imm" for operand in matching_immediates)):
+                raise ValueError(
+                    f"variant {raw_variant['name']!r}: address_alignment "
+                    "immediate_operand must name an active kind 'imm' operand"
+                )
+        alignment = raw.get("alignment")
+        if alignment is not None and (type(alignment) is not int or alignment <= 0):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: address_alignment alignment "
+                "must be a positive integer"
+            )
+        normalized.append(AddressAlignmentConstraint(
+            address_operands=address_operands,
+            type_modifier=raw.get("type_modifier"),
+            vector_modifier=raw.get("vector_modifier"),
+            immediate_operand=immediate_operand,
+            alignment=alignment,
+        ))
+    seen_address_operands: set[str] = set()
+    for constraint in normalized:
+        overlap = seen_address_operands.intersection(constraint.address_operands)
+        if overlap:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: address_alignment address "
+                "operand may appear in at most one constraint"
+            )
+        seen_address_operands.update(constraint.address_operands)
+    return tuple(normalized)
 
 
 def _normalize_memory_vector_constraint(
@@ -1408,7 +1414,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     memory_consistency=_normalize_memory_consistency_constraint(
                         raw_variant, modifiers, operand_layouts
                     ),
-                    address_alignment=_normalize_address_alignment_constraint(
+                    address_alignments=_normalize_address_alignment_constraints(
                         raw_variant, modifiers, operand_layouts
                     ),
                     memory_vector=_normalize_memory_vector_constraint(

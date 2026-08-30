@@ -460,6 +460,9 @@ operand_patterns:
   fence_proxy_acquire:
     - {name: address, kind: addr, role: addr, access: read, state_space: [global]}
     - {name: size, kind: imm, role: src, access: read, type: u32}
+  clusterlaunchcontrol_try_cancel:
+    - {name: response, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: mbarrier, kind: addr, role: addr, access: read, state_space: [shared]}
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -2369,3 +2372,67 @@ instructions:
         modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v1}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+  - opcode: clusterlaunchcontrol
+    section: "9.7.14.18"
+    doc: >
+      Starts an asynchronous cancellation attempt using a shared response and
+      mbarrier object. The frontend validates local operands, alignment, and
+      target availability only; it does not decode responses or model runtime
+      cancellation.
+    syntax: >-
+      clusterlaunchcontrol.try_cancel.async{.shared::cta}.mbarrier::complete_tx::bytes
+      {.multicast::cluster::all}.b128 [response], [mbarrier]
+    variants:
+      - name: clusterlaunchcontrol_try_cancel_async_generic
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_try_cancel_async_shared_cta
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async_shared_cta, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_try_cancel_async_multicast_generic
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a, capabilities: [cluster]}
+            - {ptx: "8.6", sm: 120, target: sm_120a, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 100, family: sm_100f, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 120, family: sm_120f, capabilities: [cluster]}
+            - {ptx: "9.0", sm: 110, family: sm_110f, capabilities: [cluster]}
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast_cluster_all, kind: flag, presence: fixed, value: true, token: .multicast::cluster::all}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_try_cancel_async_multicast_shared_cta
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a, capabilities: [cluster]}
+            - {ptx: "8.6", sm: 120, target: sm_120a, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 100, family: sm_100f, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 120, family: sm_120f, capabilities: [cluster]}
+            - {ptx: "9.0", sm: 110, family: sm_110f, capabilities: [cluster]}
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async_shared_cta, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast_cluster_all, kind: flag, presence: fixed, value: true, token: .multicast::cluster::all}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]

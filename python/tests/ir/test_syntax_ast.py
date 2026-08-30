@@ -1097,7 +1097,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ({**valid, "type_modifier": "missing"}, "inactive modifier"),
             ({**valid, "type_modifier": "vector"}, "must name a 'type'"),
             (valid, "kind 'addr'"),
-            ([valid, valid], "at most one address_alignment"),
+            ([valid, valid], "at most one constraint"),
         )
         for constraint, message in cases:
             with self.subTest(message=message):

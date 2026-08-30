@@ -21,6 +21,12 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+  bar_warp_sync_membermask:
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
   bar_sync_barrier_and_thread_count:
     - name: barrier
       kind: reg_or_imm
@@ -518,6 +524,34 @@ instructions:
 
         examples:
           - ptx: "bar.cta.red.or.pred %p0, 1, !%p1;"
+            valid: true
+
+      - name: bar_warp_sync
+        section: "9.7.14.2"
+        description: >
+          Warp barrier with participating-thread memory ordering. The frontend
+          validates the membermask and target availability but does not
+          simulate or statically prove runtime membership or convergence.
+        availability:
+          ptx: "6.0"
+          sm: 30
+        modifiers:
+          - name: warp
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".warp"
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".sync"
+        operands: $bar_warp_sync_membermask
+
+        examples:
+          - ptx: "bar.warp.sync 0xffffffff;"
+            valid: true
+          - ptx: "bar.warp.sync %mask;"
             valid: true
 
   - opcode: membar

@@ -793,6 +793,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "CtaRedAndPred",
                 "RedOrPred",
                 "CtaRedOrPred",
+                "WarpSync",
             },
         )
         self.assertEqual(
@@ -860,6 +861,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             variants["RedAndPred"].operand_layouts[1].fields[0].value_cpp_type,
             "ResolvedPredicate",
+        )
+        self.assertEqual(
+            [field.name for field in variants["WarpSync"].modifier_fields],
+            ["warp", "sync"],
+        )
+        self.assertEqual(
+            [(field.name, field.value_cpp_type)
+             for field in variants["WarpSync"].operand_layouts[0].fields],
+            [("membermask", "RegOrImm")],
+        )
+        self.assertEqual(
+            dict(variants["WarpSync"].availability),
+            {"ptx": "6.0", "sm": 30},
         )
 
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:

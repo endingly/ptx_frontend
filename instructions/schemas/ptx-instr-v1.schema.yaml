@@ -1408,6 +1408,10 @@ $defs:
         description: "Optional syntax override for this variant."
         type: string
 
+      section:
+        description: "Optional PTX document section override for this variant."
+        $ref: "#/$defs/doc_section"
+
       availability:
         $ref: "#/$defs/availability"
 

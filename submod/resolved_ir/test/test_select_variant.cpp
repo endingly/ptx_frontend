@@ -601,6 +601,13 @@ TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
   expect_variant("bar.red.or.pred %p0, 1, %p1;", Bar::VariantType::RedOrPred);
   expect_variant("bar.cta.red.or.pred %p0, 1, !%p1;",
                  Bar::VariantType::CtaRedOrPred);
+  expect_variant("bar.warp.sync 0xffffffff;", Bar::VariantType::WarpSync);
+
+  for (const std::string_view source : {"bar.warp 0xffffffff;",
+                                        "bar.warp.arrive 0xffffffff;"}) {
+    const auto selected = selectVariant<Bar>(parse_instruction(source));
+    EXPECT_FALSE(selected.has_value());
+  }
 }
 
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {

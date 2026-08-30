@@ -40,9 +40,9 @@ def source_variant_sections() -> dict[tuple[str, str], str]:
         source = load_yaml(path)
         for instruction in source["instructions"]:
             for variant in instruction["variants"]:
-                sections[(instruction["opcode"], variant["name"])] = instruction[
-                    "section"
-                ]
+                sections[(instruction["opcode"], variant["name"])] = variant.get(
+                    "section", instruction["section"]
+                )
     return sections
 
 
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 150)
+        self.assertEqual(len(slices), 151)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -298,6 +298,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("bar_red_or_pred", "with_thread_count"),
                 ("bar_cta_red_or_pred", "without_thread_count"),
                 ("bar_cta_red_or_pred", "with_thread_count"),
+                ("bar_warp_sync", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

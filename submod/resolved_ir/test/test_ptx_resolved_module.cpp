@@ -2048,6 +2048,69 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   ASSERT_FALSE(missing_mask.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksBarWarpSyncSlice) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .u32 %mask;
+  bar.warp.sync 0xffffffff;
+  bar.warp.sync %mask;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& immediate =
+      std::get<Bar::WarpSync>(std::get<Bar>(body[0]).variant);
+  const auto& register_mask =
+      std::get<Bar::WarpSync>(std::get<Bar>(body[1]).variant);
+  EXPECT_TRUE(immediate.warp);
+  EXPECT_TRUE(immediate.sync);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(immediate.membermask.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      register_mask.membermask.value));
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Bar>(body[0]), context).has_value());
+  EXPECT_TRUE(checker::check(std::get<Bar>(body[1]), context).has_value());
+
+  const auto too_old_ptx = checker::check(
+      std::get<Bar>(body[0]),
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 30},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Bar>(body[0]),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 29},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  const auto bad_width = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .b64 %wide;
+  bar.warp.sync %wide;
+}
+)ptx"));
+  ASSERT_TRUE(bad_width.has_value()) << bad_width.error().front().message;
+  const auto bad_check = checker::check(
+      std::get<Bar>(bad_width->functions.front().body.front()), context);
+  ASSERT_FALSE(bad_check.has_value());
+  EXPECT_EQ(bad_check.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto extra_operand = resolveModule(parseModule(R"ptx(
+.entry kernel() { bar.warp.sync 1, 2; }
+)ptx"));
+  ASSERT_FALSE(extra_operand.has_value());
+}
+
 TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

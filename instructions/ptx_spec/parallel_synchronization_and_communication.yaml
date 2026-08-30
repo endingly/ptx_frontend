@@ -1605,7 +1605,7 @@ instructions:
 
       - name: mbarrier_expect_tx_shared_cluster
         section: "9.7.14.16.14"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
@@ -1642,7 +1642,7 @@ instructions:
 
       - name: mbarrier_expect_tx_relaxed_cta_shared_cluster
         section: "9.7.14.16.14"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1655,7 +1655,7 @@ instructions:
 
       - name: mbarrier_expect_tx_relaxed_cluster_generic_or_shared
         section: "9.7.14.16.14"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1668,7 +1668,7 @@ instructions:
 
       - name: mbarrier_expect_tx_relaxed_cluster_shared_cta
         section: "9.7.14.16.14"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1681,7 +1681,7 @@ instructions:
 
       - name: mbarrier_expect_tx_relaxed_cluster_shared_cluster
         section: "9.7.14.16.14"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1714,7 +1714,7 @@ instructions:
 
       - name: mbarrier_complete_tx_shared_cluster
         section: "9.7.14.16.15"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
@@ -1748,7 +1748,7 @@ instructions:
 
       - name: mbarrier_complete_tx_relaxed_cta_shared_cluster
         section: "9.7.14.16.15"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1760,7 +1760,7 @@ instructions:
 
       - name: mbarrier_complete_tx_relaxed_cluster_generic_or_shared
         section: "9.7.14.16.15"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1772,7 +1772,7 @@ instructions:
 
       - name: mbarrier_complete_tx_relaxed_cluster_shared_cta
         section: "9.7.14.16.15"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1784,7 +1784,7 @@ instructions:
 
       - name: mbarrier_complete_tx_relaxed_cluster_shared_cluster
         section: "9.7.14.16.15"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
@@ -1824,7 +1824,7 @@ instructions:
 
       - name: mbarrier_arrive_shared_cluster
         section: "9.7.14.16.16"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
@@ -1854,7 +1854,7 @@ instructions:
             presence: required
             values:
               - {value: cta, availability: {ptx: "8.0", sm: 90}}
-              - {value: cluster, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operand_layouts:
@@ -1882,7 +1882,7 @@ instructions:
             presence: required
             values:
               - {value: cta, availability: {ptx: "8.0", sm: 90}}
-              - {value: cluster, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operand_layouts:
@@ -1894,7 +1894,7 @@ instructions:
 
       - name: mbarrier_arrive_semantics_shared_cluster
         section: "9.7.14.16.16"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
           - name: semantics
@@ -1910,7 +1910,7 @@ instructions:
             presence: required
             values:
               - {value: cta, availability: {ptx: "8.0", sm: 90}}
-              - {value: cluster, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operand_layouts:
@@ -1944,7 +1944,7 @@ instructions:
 
       - name: mbarrier_arrive_expect_tx_shared_cluster
         section: "9.7.14.16.16"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
@@ -1972,7 +1972,7 @@ instructions:
             presence: required
             values:
               - {value: cta, availability: {ptx: "8.0", sm: 90}}
-              - {value: cluster, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_expect_tx_cta
@@ -1997,7 +1997,7 @@ instructions:
             presence: required
             values:
               - {value: cta, availability: {ptx: "8.0", sm: 90}}
-              - {value: cluster, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_expect_tx_cta
@@ -2005,7 +2005,7 @@ instructions:
 
       - name: mbarrier_arrive_expect_tx_semantics_shared_cluster
         section: "9.7.14.16.16"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
@@ -2022,7 +2022,7 @@ instructions:
             presence: required
             values:
               - {value: cta, availability: {ptx: "8.0", sm: 90}}
-              - {value: cluster, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_expect_tx_cluster
@@ -2094,7 +2094,7 @@ instructions:
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
       - name: mbarrier_arrive_drop_shared_cluster
         section: "9.7.14.16.17"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cluster}
@@ -2107,7 +2107,7 @@ instructions:
         modifiers:
           - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
-          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operand_layouts:
@@ -2120,7 +2120,7 @@ instructions:
         modifiers:
           - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
-          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operand_layouts:
@@ -2129,11 +2129,11 @@ instructions:
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
       - name: mbarrier_arrive_drop_semantics_shared_cluster
         section: "9.7.14.16.17"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
-          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operand_layouts:
@@ -2155,7 +2155,7 @@ instructions:
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
       - name: mbarrier_arrive_drop_expect_tx_shared_cluster
         section: "9.7.14.16.17"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: $mbarrier_arrive_expect_tx_cluster
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
@@ -2167,7 +2167,7 @@ instructions:
           - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
-          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_expect_tx_cta
@@ -2179,19 +2179,19 @@ instructions:
           - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
-          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_expect_tx_cta
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
       - name: mbarrier_arrive_drop_expect_tx_semantics_shared_cluster
         section: "9.7.14.16.17"
-        availability: {ptx: "8.0", sm: 90}
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
         modifiers:
           - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
           - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
-          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {ptx: "8.0", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
           - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_expect_tx_cluster

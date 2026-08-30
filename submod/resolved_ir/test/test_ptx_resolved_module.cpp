@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -1933,6 +1934,11 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
                                 context_for(target, {9, 0}))
                      .has_value());
   }
+  const auto generic_sm100_multicast = checker::check(
+      std::get<Clusterlaunchcontrol>(body[2]), context_for("sm_100", {8, 6}));
+  ASSERT_FALSE(generic_sm100_multicast.has_value());
+  EXPECT_EQ(generic_sm100_multicast.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   EXPECT_FALSE(checker::check(std::get<Clusterlaunchcontrol>(body[0]),
                               context_for("sm_90", {9, 0}))
                    .has_value());
@@ -3177,8 +3183,11 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierExpectTxSemanticsAndSpaces) {
   EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(generic.tx_count.value));
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shared.tx_count.value));
 
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
-      .target = {.ptx_version = {8, 0}, .sm_version = 90},
+      .target = {.ptx_version = {8, 0},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
@@ -3290,8 +3299,11 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierCompleteTxSemanticsAndSpaces) {
   EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(generic.tx_count.value));
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shared.tx_count.value));
 
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
-      .target = {.ptx_version = {8, 0}, .sm_version = 90},
+      .target = {.ptx_version = {8, 0},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
@@ -3398,8 +3410,11 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveForms) {
   EXPECT_FALSE(sink_operands.state.value.register_ref.has_value());
   EXPECT_FALSE(cluster_operands.state.value.register_ref.has_value());
 
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
-      .target = {.ptx_version = {8, 6}, .sm_version = 90},
+      .target = {.ptx_version = {8, 6},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
@@ -3469,8 +3484,11 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveDropForms) {
   EXPECT_FALSE(sink_operands.state.value.register_ref.has_value());
   EXPECT_FALSE(cluster_operands.state.value.register_ref.has_value());
 
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
-      .target = {.ptx_version = {8, 6}, .sm_version = 90},
+      .target = {.ptx_version = {8, 6},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
@@ -3494,7 +3512,9 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveDropForms) {
   EXPECT_EQ(old_count.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
   const checker::Context relaxed_too_old{
-      .target = {.ptx_version = {8, 5}, .sm_version = 90},
+      .target = {.ptx_version = {8, 5},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
   const auto old_relaxed = checker::check(std::get<Mbarrier>(body[8]), relaxed_too_old);
@@ -9110,6 +9130,107 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
   ASSERT_EQ(pipeline_unknown.error().size(), 1u);
   EXPECT_EQ(pipeline_unknown.error().front().message,
             "Unknown validation target 'sm_123a'.");
+}
+
+TEST(ResolvedModule, KeepsClusterModuleMetadataBoundToSm90AndCapability) {
+  constexpr std::string_view body = R"ptx(
+.entry required() .reqnctapercluster 2, 1 .explicitcluster { ret; }
+.entry maximum() .maxclusterrank 8 { ret; }
+.entry clustered() .reqntid 1 .reqnctapercluster 1 .blocksareclusters { ret; }
+)ptx";
+  const auto resolved = resolveModule(parseModule(
+      std::string(".version 9.0\n") + std::string(body)));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto for_target = [body](std::string_view target) {
+    return parseModule(std::string(".version 9.0\n.target ") +
+                       std::string(target) + "\n" + std::string(body));
+  };
+
+  EXPECT_TRUE(checkModuleAvailability(for_target("sm_90a"), *resolved)
+                  .has_value());
+  EXPECT_TRUE(checkModuleAvailability(for_target("sm_90"), *resolved)
+                  .has_value());
+  const auto checked = checkModuleAvailability(for_target("sm_80"), *resolved);
+  ASSERT_FALSE(checked.has_value());
+  ASSERT_EQ(checked.error().size(), 5u);
+  for (const auto& diagnostic : checked.error())
+    EXPECT_EQ(diagnostic.kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+}
+
+TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 16 .b8 response[16];
+.shared .align 8 .b64 barrier[2];
+.global .align 4 .u32 global_value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  mov.u32 %r0, %cluster_ctarank;
+  barrier.cluster.arrive.release;
+  mapa.shared::cluster.u32 %r0, %r1, 0;
+  getctarank.shared::cluster.u32 %r0, %r1;
+  mbarrier.expect_tx.shared::cluster.b64 [barrier], 1;
+  mbarrier.arrive.release.cluster.shared::cluster.b64 _, [barrier], 1;
+  ld.global.relaxed.cluster.u32 %r0, [global_value];
+  st.global.relaxed.cluster.u32 [global_value], %r0;
+  fence.proxy.async.shared::cluster;
+  clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [response], [barrier];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 10u);
+  const auto check = [&ast](const ResolvedInstruction& instruction,
+                            const checker::TargetInfo& target) {
+    return std::visit(
+        [&target, &ast](const auto& resolved_instruction) {
+          return checker::check(
+              resolved_instruction,
+              checker::Context{.target = target, .instruction_range = ast.range});
+        },
+        instruction);
+  };
+  const auto sm100a = base::find_target_profile("sm_100a");
+  ASSERT_TRUE(sm100a.has_value());
+  const checker::TargetInfo supported{
+      .ptx_version = {8, 6},
+      .sm_version = 100,
+      .enabled_family_features = sm100a->enabled_family_features,
+      .identity = sm100a->identity,
+      .capabilities = sm100a->capabilities,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(check(instruction, supported).has_value());
+
+  const checker::TargetInfo no_cluster{.ptx_version = {8, 6}, .sm_version = 100};
+  for (const auto& instruction : body) {
+    const auto checked = check(instruction, no_cluster);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  const checker::TargetInfo synthetic_sm80{
+      .ptx_version = {8, 6}, .sm_version = 80, .capabilities = cluster_capabilities};
+  for (const auto& instruction : body) {
+    const auto checked = check(instruction, synthetic_sm80);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_TRUE(checked.error().front().kind ==
+                    checker::CheckDiagnosticKind::UnsupportedSmVersion ||
+                checked.error().front().kind ==
+                    checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+
+  const auto cta = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 barrier[2];
+.entry kernel() { mbarrier.arrive.release.cta.shared.b64 _, [barrier]; }
+)ptx"));
+  ASSERT_TRUE(cta.has_value()) << cta.error().front().message;
+  EXPECT_TRUE(checker::check(
+                  std::get<Mbarrier>(cta->functions.front().body.front()),
+                  checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}})
+                  .has_value());
 }
 
 TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {

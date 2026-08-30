@@ -1039,7 +1039,8 @@ instructions:
               - value: cta
                 availability: {ptx: "6.0", sm: 70}
               - value: cluster
-                availability: {ptx: "7.8", sm: 90}
+                availability:
+                  any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]
               - value: gpu
                 availability: {ptx: "6.0", sm: 70}
               - value: sys

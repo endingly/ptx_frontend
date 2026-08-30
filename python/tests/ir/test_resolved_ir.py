@@ -1614,10 +1614,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(inval_shared_cta.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(expect_tx_generic.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(expect_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
-        self.assertEqual(dict(expect_tx_relaxed_cluster.availability), {"ptx": "8.0", "sm": 90})
+        cluster_availability = {
+            "any_of": [{"ptx": "8.0", "sm": 90, "capabilities": ["cluster"]}],
+        }
+        cluster_only_variants = [
+            variant for variant in instruction.variants
+            if "SharedCluster" in variant.cpp_name or "RelaxedCluster" in variant.cpp_name
+        ]
+        self.assertEqual(len(cluster_only_variants), 18)
+        self.assertTrue(all(dict(variant.availability) == cluster_availability
+                            for variant in cluster_only_variants))
+        self.assertEqual(dict(expect_tx_relaxed_cluster.availability), cluster_availability)
         self.assertEqual(dict(complete_tx_generic.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(complete_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
-        self.assertEqual(dict(complete_tx_relaxed_cluster.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(complete_tx_relaxed_cluster.availability), cluster_availability)
         arrive_generic, _, arrive_cluster, arrive_semantics, _, _, arrive_expect, _, _, arrive_expect_semantics, _, _, arrive_no_complete, _, arrive_no_complete_explicit, _ = instruction.variants[27:43]
         arrive_drop_generic, _, arrive_drop_cluster, arrive_drop_semantics, _, _, arrive_drop_expect, _, _, arrive_drop_expect_semantics, _, _, arrive_drop_no_complete, _, arrive_drop_no_complete_explicit, _ = instruction.variants[43:59]
         test_wait_token, test_wait_token_cta, test_wait_parity, test_wait_parity_cta = instruction.variants[59:63]
@@ -1627,19 +1637,28 @@ class ResolvedIrBuildTest(unittest.TestCase):
         pending_count = instruction.variants[79]
         check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[80:84]
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
-        self.assertEqual(dict(arrive_cluster.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_cluster.availability), cluster_availability)
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_expect.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_no_complete.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_drop_generic.availability), {"ptx": "7.0", "sm": 80})
-        self.assertEqual(dict(arrive_drop_cluster.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_cluster.availability), cluster_availability)
         self.assertEqual(dict(arrive_drop_semantics.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_drop_expect.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_drop_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(dict(arrive_drop_no_complete.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_drop_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
+        cluster_scope_values = [
+            entry
+            for variant in instruction.variants
+            for entry in variant.modifier_value_availabilities
+            if entry.source_kind_id == "scope" and entry.value == "cluster"
+        ]
+        self.assertEqual(len(cluster_scope_values), 12)
+        self.assertTrue(all(dict(entry.availability) == cluster_availability
+                            for entry in cluster_scope_values))
         self.assertEqual(dict(test_wait_token.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(test_wait_token_cta.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(test_wait_parity.availability), {"ptx": "7.1", "sm": 80})
@@ -2029,6 +2048,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
             next(binding for binding in variant.modifier_bindings
                  if binding.source_kind_id == "scope").default_value.value,
             "none",
+        )
+        self.assertEqual(
+            dict(next(entry.availability
+                      for entry in variant.modifier_value_availabilities
+                      if entry.source_kind_id == "scope" and entry.value == "cluster")),
+            {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
         )
         self.assertEqual(
             [

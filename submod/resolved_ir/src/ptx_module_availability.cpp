@@ -103,7 +103,7 @@ checker::AvailabilityDescriptor resource_availability(
     case Kind::ReqNctaPerCluster:
     case Kind::ExplicitCluster:
     case Kind::MaxClusterRank:
-      return availability({7, 8}, 0, "cluster");
+      return availability({7, 8}, 90, "cluster");
   }
   return {};
 }
@@ -269,7 +269,7 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
           function->noreturn_directive, function->abi_preserve,
           function->abi_preserve_control, *active_target, diagnostics);
       if (function->blocks_are_clusters)
-        append_requirement(diagnostics, availability({9, 0}, 0, "cluster"),
+        append_requirement(diagnostics, availability({9, 0}, 90, "cluster"),
                            *active_target, function->blocks_are_clusters->range,
                            ".blocksareclusters");
       if (function->language)

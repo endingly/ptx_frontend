@@ -1563,12 +1563,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [variant.cpp_name for variant in instruction.variants],
             ["InitGenericV0", "InitSharedV0", "InitSharedCtaV0",
-             "InitGenericV1", "InitSharedV1", "InitSharedCtaV1"],
+             "InitGenericV1", "InitSharedV1", "InitSharedCtaV1",
+             "InvalGeneric", "InvalShared", "InvalSharedCta"],
         )
-        generic_v0, _, shared_cta_v0, generic_v1, _, _ = instruction.variants
+        generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = (
+            instruction.variants
+        )
         self.assertEqual(dict(generic_v0.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(shared_cta_v0.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(generic_v1.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(dict(inval_generic.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(inval_shared_cta.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(
             [(field.name, field.cpp_type) for field in generic_v0.fields],
             [
@@ -1605,6 +1610,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(count.type_expression.scalar_type, "u32")
         self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in inval_generic.fields],
+            [
+                ("inval", "bool"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        inval_address = inval_generic.operand_layouts[0].bindings[0]
+        self.assertEqual(inval_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(
+            [value.value for value in inval_address.allowed_address_state_spaces],
+            ["shared"],
+        )
 
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = load_codegen_database(

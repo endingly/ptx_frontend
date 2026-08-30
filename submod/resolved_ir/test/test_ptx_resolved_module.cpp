@@ -2629,6 +2629,107 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierInitLayouts) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMbarrierInvalSpaces) {
+  const auto ast = parseModule(R"ptx(
+.shared .align 8 .b64 shared_value[2];
+.entry kernel() {
+  .reg .u64 %rd0;
+  mbarrier.inval.b64 [%rd0];
+  mbarrier.inval.shared.b64 [shared_value];
+  mbarrier.inval.shared::cta.b64 [shared_value+8];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& generic =
+      std::get<Mbarrier::InvalGeneric>(std::get<Mbarrier>(body[0]).variant);
+  const auto& shared =
+      std::get<Mbarrier::InvalShared>(std::get<Mbarrier>(body[1]).variant);
+  const auto& shared_cta =
+      std::get<Mbarrier::InvalSharedCta>(std::get<Mbarrier>(body[2]).variant);
+  EXPECT_TRUE(generic.inval);
+  EXPECT_TRUE(shared.shared);
+  EXPECT_TRUE(shared_cta.shared_cta);
+  EXPECT_EQ(generic.type, ScalarType::B64);
+
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
+  }
+  const checker::Context base{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  EXPECT_TRUE(checker::check(std::get<Mbarrier>(body[0]), base).has_value());
+  EXPECT_TRUE(checker::check(std::get<Mbarrier>(body[1]), base).has_value());
+  const auto old_cta = checker::check(std::get<Mbarrier>(body[2]), base);
+  ASSERT_FALSE(old_cta.has_value());
+  EXPECT_EQ(old_cta.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const checker::Context old_ptx{
+      .target = {.ptx_version = {6, 9}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  const auto old_ptx_generic = checker::check(std::get<Mbarrier>(body[0]), old_ptx);
+  ASSERT_FALSE(old_ptx_generic.has_value());
+  EXPECT_EQ(old_ptx_generic.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const checker::Context old_sm{
+      .target = {.ptx_version = {7, 0}, .sm_version = 79},
+      .instruction_range = ast.range,
+  };
+  const auto old_sm_generic = checker::check(std::get<Mbarrier>(body[0]), old_sm);
+  ASSERT_FALSE(old_sm_generic.has_value());
+  EXPECT_EQ(old_sm_generic.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const checker::Context old_cta_ptx{
+      .target = {.ptx_version = {7, 7}, .sm_version = 80},
+      .instruction_range = ast.range,
+  };
+  const auto old_cta_version =
+      checker::check(std::get<Mbarrier>(body[2]), old_cta_ptx);
+  ASSERT_FALSE(old_cta_version.has_value());
+  EXPECT_EQ(old_cta_version.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto wrong_space = resolveModule(parseModule(R"ptx(
+.global .align 8 .b64 global_value[2];
+.entry kernel() {
+  mbarrier.inval.b64 [global_value];
+  mbarrier.inval.shared.b64 [global_value+8];
+}
+)ptx"));
+  ASSERT_TRUE(wrong_space.has_value()) << wrong_space.error().front().message;
+  for (const auto& instruction : wrong_space->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  }
+
+  const auto unaligned = resolveModule(parseModule(R"ptx(
+.shared .align 4 .b64 unaligned_value[2];
+.shared .align 8 .b64 aligned_value[2];
+.entry kernel() {
+  mbarrier.inval.b64 [unaligned_value];
+  mbarrier.inval.shared.b64 [aligned_value+4];
+}
+)ptx"));
+  ASSERT_TRUE(unaligned.has_value()) << unaligned.error().front().message;
+  for (const auto& instruction : unaligned->functions.front().body) {
+    const auto checked = checker::check(std::get<Mbarrier>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   const auto ast = parseModule(R"ptx(
 .shared .align 4 .u32 shared_value;

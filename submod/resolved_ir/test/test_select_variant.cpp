@@ -852,6 +852,35 @@ TEST(SelectVariantMbarrier, SelectsInitLayoutsAndSpaces) {
       parse_instruction("mbarrier.init.b64 [%rd0];")).has_value());
 }
 
+TEST(SelectVariantMbarrier, SelectsInvalSpaces) {
+  const auto expect_variant = [](std::string_view source,
+                                 Mbarrier::VariantType expected) {
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("mbarrier.inval.b64 [%rd0];",
+                 Mbarrier::VariantType::InvalGeneric);
+  expect_variant("mbarrier.inval.shared.b64 [%rd0];",
+                 Mbarrier::VariantType::InvalShared);
+  expect_variant("mbarrier.inval.shared::cta.b64 [%rd0];",
+                 Mbarrier::VariantType::InvalSharedCta);
+
+  for (const std::string_view source : {
+           "mbarrier.inval [%rd0];",
+           "mbarrier.inval.b64.shared [%rd0];",
+           "mbarrier.inval.shared.shared::cta.b64 [%rd0];",
+           "mbarrier.inval.shared::cta.shared.b64 [%rd0];",
+           "mbarrier.inval.layout::v0.b64 [%rd0];",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Mbarrier>(
+      parse_instruction("mbarrier.inval.b64;")).has_value());
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

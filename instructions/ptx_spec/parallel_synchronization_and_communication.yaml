@@ -238,6 +238,13 @@ operand_patterns:
       access: read
       type: u32
       register_width: exact
+
+  mbarrier_inval:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -1097,10 +1104,10 @@ instructions:
   - opcode: mbarrier
     section: "9.7.14.16.12"
     doc: >
-      Initialize a shared-memory barrier object. The frontend validates local
-      address, count, alignment, and target constraints only; it does not model
-      barrier lifecycle or runtime phase behavior.
-    syntax: "mbarrier.init{.layout::{v0|v1}}{.shared{::cta}}.b64 [address], count"
+      Initialize or invalidate a shared-memory barrier object. The frontend
+      validates local address, count, alignment, and target constraints only;
+      it does not model barrier lifecycle or runtime phase behavior.
+    syntax: "mbarrier.{init{.layout::{v0|v1}}|inval}{.shared{::cta}}.b64 operands"
 
     variants:
       - name: mbarrier_init_generic_v0
@@ -1193,3 +1200,35 @@ instructions:
         constraints:
           - {kind: address_alignment, address_operand: address, alignment: 8}
           - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}
+
+      - name: mbarrier_inval_generic
+        section: "9.7.14.16.13"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: inval, kind: flag, presence: fixed, value: true, token: .inval}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_inval_shared
+        section: "9.7.14.16.13"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: inval, kind: flag, presence: fixed, value: true, token: .inval}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_inval_shared_cta
+        section: "9.7.14.16.13"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: inval, kind: flag, presence: fixed, value: true, token: .inval}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}

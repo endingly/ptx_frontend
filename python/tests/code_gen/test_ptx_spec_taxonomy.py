@@ -61,12 +61,12 @@ EXPECTED_SECTIONS = {
         "ret": {"9.7.13.6"}, "exit": {"9.7.13.7"},
     },
     "parallel_synchronization_and_communication.yaml": {
-        "bar": {"9.7.14.1"}, "barrier": {"9.7.14.3"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
+        "bar": {"9.7.14.1", "9.7.14.2"}, "barrier": {"9.7.14.3"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
         "atom": {"9.7.14.5"}, "red": {"9.7.14.6"}, "vote": {"9.7.14.10"},
         "match": {"9.7.14.11"}, "activemask": {"9.7.14.12"}, "redux": {"9.7.14.13"},
         "griddepcontrol": {"9.7.14.14"},
         "elect": {"9.7.14.15"},
-        "mbarrier": {"9.7.14.16.12"},
+        "mbarrier": {"9.7.14.16.12", "9.7.14.16.13"},
     },
     "warp_level_matrix_multiply_accumulate.yaml": {
         "mma": {"9.7.15.5.14"}, "ldmatrix": {"9.7.15.5.15"},
@@ -90,6 +90,10 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             actual: dict[str, set[str]] = {}
             for instruction in spec["instructions"]:
                 actual.setdefault(instruction["opcode"], set()).add(instruction["section"])
+                for variant in instruction["variants"]:
+                    actual[instruction["opcode"]].add(
+                        variant.get("section", instruction["section"])
+                    )
                 self.assertTrue(instruction["section"].startswith(section or "9.7."))
             self.assertEqual(actual, EXPECTED_SECTIONS[name])
 

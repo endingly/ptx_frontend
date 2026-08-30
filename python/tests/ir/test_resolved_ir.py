@@ -922,6 +922,57 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
             self.assertEqual(variant.operand_layouts[0].fields, ())
 
+    def test_match_sync_model_layouts_and_availability(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        match = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "match"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(match).variants
+        }
+        self.assertEqual(set(variants), {"AnySync", "AllSync"})
+        for variant in variants.values():
+            self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [
+                    ("any" if variant.cpp_name == "AnySync" else "all", "bool"),
+                    ("sync", "bool"),
+                    ("type", "WithLocs<ScalarType>"),
+                ],
+            )
+        self.assertEqual(
+            [layout.layout_id for layout in variants["AnySync"].operand_layouts],
+            ["default"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in variants["AllSync"].operand_layouts],
+            ["without_predicate", "with_predicate"],
+        )
+        plain = variants["AllSync"].operand_layouts[0].bindings
+        paired = variants["AllSync"].operand_layouts[1].bindings
+        self.assertEqual(
+            [binding.allowed_shapes for binding in plain],
+            [
+                (ResolvedOperandShape.REGISTER,),
+                (ResolvedOperandShape.REGISTER,),
+                (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+            ],
+        )
+        self.assertEqual(
+            paired[0].allowed_shapes,
+            (ResolvedOperandShape.SHFL_DESTINATION,),
+        )
+        for binding in (*plain, *paired):
+            self.assertEqual(
+                binding.register_width_policy, ResolvedRegisterWidthPolicy.EXACT
+            )
+
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

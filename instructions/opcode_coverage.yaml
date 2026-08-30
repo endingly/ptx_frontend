@@ -324,6 +324,12 @@ opcodes:
   slices:
   - {"id":"barrier-barrier-cluster-arrive-default","section":"9.7.14.3","spec_variant":"barrier_cluster_arrive","operand_layout":"default","selector":{"topology":"cluster_barrier","types":[],"shape":"none","modifiers":["cluster","arrive","memory_order","aligned"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"barrier-barrier-cluster-wait-default","section":"9.7.14.3","spec_variant":"barrier_cluster_wait","operand_layout":"default","selector":{"topology":"cluster_barrier","types":[],"shape":"none","modifiers":["cluster","wait","memory_order","aligned"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: match
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"match-match-any-sync-default","section":"9.7.14.11","spec_variant":"match_any_sync","operand_layout":"default","selector":{"topology":"warp_match","types":["b32","b64"],"shape":"scalar","modifiers":["any","sync"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"match-match-all-sync-without-predicate","section":"9.7.14.11","spec_variant":"match_all_sync","operand_layout":"without_predicate","selector":{"topology":"warp_match","types":["b32","b64"],"shape":"scalar","modifiers":["all","sync"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"match-match-all-sync-with-predicate","section":"9.7.14.11","spec_variant":"match_all_sync","operand_layout":"with_predicate","selector":{"topology":"warp_match","types":["b32","b64"],"shape":"predicate_pair","modifiers":["all","sync"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: membar
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

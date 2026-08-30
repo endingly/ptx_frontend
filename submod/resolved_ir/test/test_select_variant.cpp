@@ -644,6 +644,36 @@ TEST(SelectVariantBarrier, SelectsClusterArriveAndWaitForms) {
   }
 }
 
+TEST(SelectVariantMatch, SelectsMatchSyncFormsAndRejectsInvalidOnes) {
+  const auto expect_variant = [](std::string_view source,
+                                 Match::VariantType expected) {
+    const auto selected = selectVariant<Match>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("match.any.sync.b32 %b0, %b1, 0xffffffff;",
+                 Match::VariantType::AnySync);
+  expect_variant("match.any.sync.b64 %b0, %d0, %r0;",
+                 Match::VariantType::AnySync);
+  expect_variant("match.all.sync.b32 %b0, %b1, 0xffffffff;",
+                 Match::VariantType::AllSync);
+  expect_variant("match.all.sync.b64 %b0|%p0, %d0, %r0;",
+                 Match::VariantType::AllSync);
+
+  for (const std::string_view source : {
+           "match.any.b32 %b0, %b1, 0xffffffff;",
+           "match.sync.any.b32 %b0, %b1, 0xffffffff;",
+           "match.all.sync.u32 %b0, %b1, 0xffffffff;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Match>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Match>(parse_instruction(
+      "match.any.sync.b32 %b0|%p0, %b1, 0xffffffff;"))
+                   .has_value());
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

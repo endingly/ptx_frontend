@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 61)
+        self.assertEqual(len(opcodes), 62)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 153)
+        self.assertEqual(len(slices), 156)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -261,6 +261,30 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "mma-mma-sync-aligned-m16n8k8-row-col-f32-f16-f16-f32": {"topology": "matrix_mma", "types": ["f32", "f16", "f16x2"], "shape": "m16n8k8", "modifiers": ["sync", "aligned", "row", "col"]},
             },
         )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "match-match-any-sync-default",
+                    "match-match-all-sync-without-predicate",
+                    "match-match-all-sync-with-predicate",
+                )
+            },
+            {
+                "match-match-any-sync-default": {
+                    "topology": "warp_match", "types": ["b32", "b64"],
+                    "shape": "scalar", "modifiers": ["any", "sync"],
+                },
+                "match-match-all-sync-without-predicate": {
+                    "topology": "warp_match", "types": ["b32", "b64"],
+                    "shape": "scalar", "modifiers": ["all", "sync"],
+                },
+                "match-match-all-sync-with-predicate": {
+                    "topology": "warp_match", "types": ["b32", "b64"],
+                    "shape": "predicate_pair", "modifiers": ["all", "sync"],
+                },
+            },
+        )
 
         expected_layouts = {
             "call": {
@@ -303,6 +327,11 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
             "barrier": {
                 ("barrier_cluster_arrive", "default"),
                 ("barrier_cluster_wait", "default"),
+            },
+            "match": {
+                ("match_any_sync", "default"),
+                ("match_all_sync", "without_predicate"),
+                ("match_all_sync", "with_predicate"),
             },
         }
         for opcode, expected in expected_layouts.items():

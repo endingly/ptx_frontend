@@ -161,6 +161,48 @@ operand_patterns:
       role: src
       access: read
       type: u32
+
+  match_sync_without_predicate:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  match_sync_with_predicate:
+    - name: dst
+      kind: shfl_dest
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -831,4 +873,69 @@ instructions:
 
         examples:
           - ptx: "vote.sync.ballot.b32 %b0, %p0, 0xffffffff;"
+            valid: true
+
+  - opcode: match
+    section: "9.7.14.11"
+    doc: >
+      Warp match returns a 32-bit mask and optionally a predicate for all.
+      The frontend validates local operand forms and target availability only;
+      it does not prove runtime membermask participation or convergence.
+    syntax: >-
+      match.any.sync.{b32|b64} d, a, membermask |
+      match.all.sync.{b32|b64} d[|p], a, membermask
+
+    variants:
+      - name: match_any_sync
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: any
+            kind: flag
+            presence: fixed
+            value: true
+            token: .any
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values: [b32, b64]
+        operands: $match_sync_without_predicate
+
+        examples:
+          - ptx: "match.any.sync.b32 %b0, %b1, 0xffffffff;"
+            valid: true
+
+      - name: match_all_sync
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: all
+            kind: flag
+            presence: fixed
+            value: true
+            token: .all
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values: [b32, b64]
+        operand_layouts:
+          - name: without_predicate
+            operands: $match_sync_without_predicate
+          - name: with_predicate
+            operands: $match_sync_with_predicate
+
+        examples:
+          - ptx: "match.all.sync.b64 %b0, %d0, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 %b0|%p0, %b1, 0xffffffff;"
             valid: true

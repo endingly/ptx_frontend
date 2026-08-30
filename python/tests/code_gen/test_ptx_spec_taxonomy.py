@@ -63,7 +63,7 @@ EXPECTED_SECTIONS = {
     "parallel_synchronization_and_communication.yaml": {
         "bar": {"9.7.14.1"}, "barrier": {"9.7.14.3"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
         "atom": {"9.7.14.5"}, "red": {"9.7.14.6"}, "vote": {"9.7.14.10"},
-        "activemask": {"9.7.14.12"},
+        "match": {"9.7.14.11"}, "activemask": {"9.7.14.12"},
     },
     "warp_level_matrix_multiply_accumulate.yaml": {
         "mma": {"9.7.15.5.14"}, "ldmatrix": {"9.7.15.5.15"},

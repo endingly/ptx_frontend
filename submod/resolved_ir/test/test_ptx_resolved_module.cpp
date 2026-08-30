@@ -2207,6 +2207,93 @@ TEST(ResolvedModule, ResolvesAndChecksBarrierClusterSlices) {
   }
 }
 
+TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<5>;
+  .reg .b64 %d<2>;
+  .reg .u32 %mask;
+  .reg .pred %p0;
+  match.any.sync.b32 %b0, %b1, 0xffffffff;
+  match.any.sync.b64 %b2, %d0, %mask;
+  match.all.sync.b32 %b3, %b4, %mask;
+  match.all.sync.b64 %b4|%p0, %d1, 0xffffffff;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  const auto& any_immediate =
+      std::get<Match::AnySync>(std::get<Match>(body[0]).variant);
+  const auto& any_register =
+      std::get<Match::AnySync>(std::get<Match>(body[1]).variant);
+  const auto& all_plain =
+      std::get<Match::AllSync>(std::get<Match>(body[2]).variant);
+  const auto& all_pair =
+      std::get<Match::AllSync>(std::get<Match>(body[3]).variant);
+  EXPECT_EQ(any_immediate.type.value, ScalarType::B32);
+  EXPECT_EQ(any_register.type.value, ScalarType::B64);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
+      any_immediate.membermask.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      any_register.membermask.value));
+  EXPECT_TRUE(std::holds_alternative<
+      Match::AllSync::WithoutPredicateOperands>(all_plain.operands));
+  const auto& paired = std::get<Match::AllSync::WithPredicateOperands>(
+      all_pair.operands);
+  EXPECT_EQ(paired.dst.value.data.declared_type, ScalarType::B32);
+  EXPECT_EQ(paired.dst.value.predicate.register_ref.declared_type,
+            ScalarType::Pred);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(paired.membermask.value));
+
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(checker::check(std::get<Match>(instruction), context).has_value());
+  }
+  const auto too_old_ptx = checker::check(
+      std::get<Match>(body.front()),
+      checker::Context{.target = {.ptx_version = {5, 9}, .sm_version = 70},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_ptx.has_value());
+  EXPECT_EQ(too_old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto too_old_sm = checker::check(
+      std::get<Match>(body.front()),
+      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 69},
+                       .instruction_range = ast.range});
+  ASSERT_FALSE(too_old_sm.has_value());
+  EXPECT_EQ(too_old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .b64 %d0; .reg .b32 %b0; match.any.sync.b32 %d0, %b0, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; match.any.sync.b64 %b0, %b1, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .b64 %d0; match.any.sync.b32 %b0, %b1, %d0; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto invalid = resolveModule(parseModule(source));
+    ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+    const auto checked = checker::check(
+        std::get<Match>(invalid->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.any.sync.b32 %b0|%p0, %b1, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .u32 %u0; match.all.sync.b32 %b0|%u0, %b1, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.all.sync.b32 %b0|%p0, %b1; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

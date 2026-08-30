@@ -876,6 +876,52 @@ class ResolvedIrBuildTest(unittest.TestCase):
             {"ptx": "6.0", "sm": 30},
         )
 
+    def test_barrier_cluster_model_defaults_and_availability(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        barrier = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "barrier"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(barrier).variants
+        }
+        self.assertEqual(set(variants), {"ClusterArrive", "ClusterWait"})
+        expected_availability = {
+            "any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}],
+        }
+        for name, default, values in (
+            ("ClusterArrive", "release", ("release", "relaxed")),
+            ("ClusterWait", "acquire", ("acquire",)),
+        ):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), expected_availability)
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [
+                    ("scope", "MemoryScope"),
+                    ("arrive" if name == "ClusterArrive" else "wait", "bool"),
+                    ("semantics", "WithLocs<MemoryConsistency>"),
+                    ("aligned", "WithLocs<bool>"),
+                ],
+            )
+            self.assertEqual(
+                variant.modifier_bindings[2].default_value.value,
+                default,
+            )
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities],
+                list(values),
+            )
+            self.assertTrue(
+                all(dict(entry.availability) == {"ptx": "8.0"}
+                    for entry in variant.modifier_value_availabilities)
+            )
+            self.assertEqual(variant.operand_layouts[0].fields, ())
+
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

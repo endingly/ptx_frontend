@@ -319,6 +319,11 @@ opcodes:
   - {"id":"bar-bar-cta-red-or-pred-without-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_or_pred","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"bar-bar-cta-red-or-pred-with-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_or_pred","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
   - {"id":"bar-bar-warp-sync-default","section":"9.7.14.2","spec_variant":"bar_warp_sync","operand_layout":"default","selector":{"topology":"barrier","types":["u32"],"shape":"scalar","modifiers":["warp","sync"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: barrier
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"barrier-barrier-cluster-arrive-default","section":"9.7.14.3","spec_variant":"barrier_cluster_arrive","operand_layout":"default","selector":{"topology":"cluster_barrier","types":[],"shape":"none","modifiers":["cluster","arrive","memory_order","aligned"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"barrier-barrier-cluster-wait-default","section":"9.7.14.3","spec_variant":"barrier_cluster_wait","operand_layout":"default","selector":{"topology":"cluster_barrier","types":[],"shape":"none","modifiers":["cluster","wait","memory_order","aligned"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
 - opcode: membar
   status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
   slices:

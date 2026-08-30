@@ -950,13 +950,8 @@ def _emit_check_modifier_value_view(
     )
     if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
         is_present = "true"
-    elif field.value_cpp_type == "CacheOperator":
-        is_present = (
-            f"selected.{field.name}.value != "
-            f"{cpp_default(CppDomain.CACHE_OPERATORS)}"
-        )
     else:
-        is_present = "true"
+        is_present = f"!selected.{field.name}.locs.empty()"
     if field.value_cpp_type != "RoundingMode":
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
     if field.value_cpp_type != "ComparisonOperator":

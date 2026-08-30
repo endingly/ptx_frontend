@@ -610,6 +610,40 @@ TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
   }
 }
 
+TEST(SelectVariantBarrier, SelectsClusterArriveAndWaitForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Barrier::VariantType expected) {
+    const auto selected = selectVariant<Barrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  for (const std::string_view source : {
+           "barrier.cluster.arrive;",
+           "barrier.cluster.arrive.aligned;",
+           "barrier.cluster.arrive.release.aligned;",
+           "barrier.cluster.arrive.relaxed;",
+       }) {
+    expect_variant(source, Barrier::VariantType::ClusterArrive);
+  }
+  for (const std::string_view source : {
+           "barrier.cluster.wait;",
+           "barrier.cluster.wait.aligned;",
+           "barrier.cluster.wait.acquire.aligned;",
+       }) {
+    expect_variant(source, Barrier::VariantType::ClusterWait);
+  }
+
+  for (const std::string_view source : {
+           "barrier.cluster.arrive.acquire;",
+           "barrier.cluster.wait.release;",
+           "barrier.cluster.arrive.aligned.release;",
+       }) {
+    const auto selected = selectVariant<Barrier>(parse_instruction(source));
+    EXPECT_FALSE(selected.has_value());
+  }
+}
+
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
   const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
     const auto ast = parse_instruction(source);

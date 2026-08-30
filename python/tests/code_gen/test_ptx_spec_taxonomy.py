@@ -61,7 +61,7 @@ EXPECTED_SECTIONS = {
         "ret": {"9.7.13.6"}, "exit": {"9.7.13.7"},
     },
     "parallel_synchronization_and_communication.yaml": {
-        "bar": {"9.7.14.1"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
+        "bar": {"9.7.14.1"}, "barrier": {"9.7.14.3"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
         "atom": {"9.7.14.5"}, "red": {"9.7.14.6"}, "vote": {"9.7.14.10"},
         "activemask": {"9.7.14.12"},
     },

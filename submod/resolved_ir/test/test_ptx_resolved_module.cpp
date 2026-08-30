@@ -2111,6 +2111,102 @@ TEST(ResolvedModule, ResolvesAndChecksBarWarpSyncSlice) {
   ASSERT_FALSE(extra_operand.has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksBarrierClusterSlices) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  barrier.cluster.arrive;
+  barrier.cluster.arrive.aligned;
+  barrier.cluster.arrive.release.aligned;
+  barrier.cluster.arrive.relaxed;
+  barrier.cluster.wait;
+  barrier.cluster.wait.aligned;
+  barrier.cluster.wait.acquire.aligned;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 7u);
+  const auto& arrive =
+      std::get<Barrier::ClusterArrive>(std::get<Barrier>(body[0]).variant);
+  const auto& wait =
+      std::get<Barrier::ClusterWait>(std::get<Barrier>(body[4]).variant);
+  EXPECT_EQ(Barrier::ClusterArrive::scope, MemoryScope::Cluster);
+  EXPECT_TRUE(Barrier::ClusterArrive::arrive);
+  EXPECT_EQ(arrive.semantics.value, MemoryConsistency::Release);
+  EXPECT_TRUE(arrive.semantics.locs.empty());
+  EXPECT_FALSE(arrive.aligned.value);
+  EXPECT_EQ(Barrier::ClusterWait::scope, MemoryScope::Cluster);
+  EXPECT_TRUE(Barrier::ClusterWait::wait);
+  EXPECT_EQ(wait.semantics.value, MemoryConsistency::Acquire);
+  EXPECT_TRUE(wait.semantics.locs.empty());
+  EXPECT_FALSE(wait.aligned.value);
+  EXPECT_FALSE(std::get<Barrier::ClusterArrive>(
+                   std::get<Barrier>(body[2]).variant)
+                   .semantics.locs.empty());
+  EXPECT_FALSE(std::get<Barrier::ClusterWait>(
+                   std::get<Barrier>(body[6]).variant)
+                   .semantics.locs.empty());
+
+  const auto context_for = [&ast](std::string_view target,
+                                  checker::PtxVersion ptx_version) {
+    const auto profile = base::find_target_profile(target);
+    EXPECT_TRUE(profile.has_value()) << target;
+    return checker::Context{
+        .target = {.ptx_version = ptx_version,
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+        .instruction_range = ast.range,
+    };
+  };
+  for (const std::string_view target : {"sm_90a", "sm_100"}) {
+    SCOPED_TRACE(target);
+    for (const auto& instruction : body) {
+      EXPECT_TRUE(checker::check(std::get<Barrier>(instruction),
+                                 context_for(target, {8, 0}))
+                      .has_value());
+    }
+  }
+
+  for (const auto index : {0u, 1u, 4u, 5u}) {
+    SCOPED_TRACE(index);
+    EXPECT_TRUE(checker::check(std::get<Barrier>(body[index]),
+                               context_for("sm_90a", {7, 8}))
+                    .has_value());
+  }
+  EXPECT_FALSE(checker::check(std::get<Barrier>(body.front()),
+                              context_for("sm_80", {8, 0}))
+                   .has_value());
+  const checker::Context missing_cluster{
+      .target = {.ptx_version = {8, 0}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  EXPECT_FALSE(checker::check(std::get<Barrier>(body.front()), missing_cluster)
+                   .has_value());
+  const auto too_old = checker::check(
+      std::get<Barrier>(body.front()), context_for("sm_90a", {7, 7}));
+  ASSERT_FALSE(too_old.has_value());
+  for (const auto index : {2u, 3u, 6u}) {
+    SCOPED_TRACE(index);
+    const auto explicit_semantics = checker::check(
+        std::get<Barrier>(body[index]), context_for("sm_90a", {7, 8}));
+    ASSERT_FALSE(explicit_semantics.has_value());
+    EXPECT_EQ(explicit_semantics.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  }
+
+  for (const std::string_view source : {
+           ".entry kernel() { barrier.cluster.arrive 1; }",
+           ".entry kernel() { barrier.cluster.wait.release; }",
+           ".entry kernel() { barrier.cluster.arrive.aligned.release; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

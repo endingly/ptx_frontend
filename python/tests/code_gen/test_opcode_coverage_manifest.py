@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 60)
+        self.assertEqual(len(opcodes), 61)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 151)
+        self.assertEqual(len(slices), 153)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -299,6 +299,10 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("bar_cta_red_or_pred", "without_thread_count"),
                 ("bar_cta_red_or_pred", "with_thread_count"),
                 ("bar_warp_sync", "default"),
+            },
+            "barrier": {
+                ("barrier_cluster_arrive", "default"),
+                ("barrier_cluster_wait", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

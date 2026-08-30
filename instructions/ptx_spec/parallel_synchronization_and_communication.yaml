@@ -554,6 +554,90 @@ instructions:
           - ptx: "bar.warp.sync %mask;"
             valid: true
 
+  - opcode: barrier
+    section: "9.7.14.3"
+    doc: >
+      Cluster barrier arrival and wait. Aligned records the convergence
+      contract only; the frontend does not simulate runtime cluster barriers.
+    syntax: >-
+      barrier.cluster.arrive{.release|.relaxed}{.aligned} |
+      barrier.cluster.wait{.acquire}{.aligned}
+
+    variants:
+      - name: barrier_cluster_arrive
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cluster
+          - name: arrive
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".arrive"
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: release
+            values:
+              - value: release
+                availability: {ptx: "8.0"}
+              - value: relaxed
+                availability: {ptx: "8.0"}
+          - name: aligned
+            kind: flag
+            presence: optional
+            default: false
+            token: ".aligned"
+        operands: []
+
+        examples:
+          - ptx: "barrier.cluster.arrive;"
+            valid: true
+          - ptx: "barrier.cluster.arrive.release.aligned;"
+            valid: true
+
+      - name: barrier_cluster_wait
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cluster
+          - name: wait
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".wait"
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: acquire
+            values:
+              - value: acquire
+                availability: {ptx: "8.0"}
+          - name: aligned
+            kind: flag
+            presence: optional
+            default: false
+            token: ".aligned"
+        operands: []
+
+        examples:
+          - ptx: "barrier.cluster.wait;"
+            valid: true
+          - ptx: "barrier.cluster.wait.acquire.aligned;"
+            valid: true
+
   - opcode: membar
     section: "9.7.14.4"
     doc: "Memory barrier, limited to CTA scope."

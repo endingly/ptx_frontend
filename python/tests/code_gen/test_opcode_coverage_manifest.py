@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 64)
+        self.assertEqual(len(opcodes), 65)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 163)
+        self.assertEqual(len(slices), 165)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -331,6 +331,25 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "shape": "optional_data_predicate_pair", "modifiers": ["sync"],
             },
         )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "griddepcontrol-griddepcontrol-launch-dependents-default",
+                    "griddepcontrol-griddepcontrol-wait-default",
+                )
+            },
+            {
+                "griddepcontrol-griddepcontrol-launch-dependents-default": {
+                    "topology": "grid_dependency_control", "types": [],
+                    "shape": "none", "modifiers": ["launch_dependents"],
+                },
+                "griddepcontrol-griddepcontrol-wait-default": {
+                    "topology": "grid_dependency_control", "types": [],
+                    "shape": "none", "modifiers": ["wait"],
+                },
+            },
+        )
 
         expected_layouts = {
             "call": {
@@ -388,6 +407,10 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("redux_sync_max_f32", "default"),
             },
             "elect": {("elect_sync", "default")},
+            "griddepcontrol": {
+                ("griddepcontrol_launch_dependents", "default"),
+                ("griddepcontrol_wait", "default"),
+            },
         }
         for opcode, expected in expected_layouts.items():
             layout_slices = by_opcode[opcode]["slices"]

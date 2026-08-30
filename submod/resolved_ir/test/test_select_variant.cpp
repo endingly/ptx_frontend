@@ -720,6 +720,30 @@ TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
   }
 }
 
+TEST(SelectVariantGriddepcontrol, SelectsActionsAndRejectsInvalidForms) {
+  const auto expect_variant = [](std::string_view source,
+                                 Griddepcontrol::VariantType expected) {
+    const auto selected = selectVariant<Griddepcontrol>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  };
+
+  expect_variant("griddepcontrol.launch_dependents;",
+                 Griddepcontrol::VariantType::LaunchDependents);
+  expect_variant("griddepcontrol.wait;", Griddepcontrol::VariantType::Wait);
+
+  for (const std::string_view source : {
+           "griddepcontrol;",
+           "griddepcontrol.launch_dependents.wait;",
+           "griddepcontrol.wait.sync;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Griddepcontrol>(parse_instruction(source)).has_value());
+  }
+  EXPECT_FALSE(resolve<Griddepcontrol>(
+      parse_instruction("griddepcontrol.wait %r0;")).has_value());
+}
+
 TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
   for (const std::string_view source : {
            "elect.sync %lane|%p, 0xffffffff;",

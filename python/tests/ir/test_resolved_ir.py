@@ -1024,6 +1024,34 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 [ResolvedRegisterWidthPolicy.EXACT] * 3,
             )
 
+    def test_griddepcontrol_model_has_two_zero_operand_actions(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        griddepcontrol = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "griddepcontrol"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(griddepcontrol).variants
+        }
+        self.assertEqual(set(variants), {"LaunchDependents", "Wait"})
+        for name, action in (("LaunchDependents", "launch_dependents"),
+                             ("Wait", "wait")):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), {"ptx": "7.8", "sm": 90})
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.fields],
+                [(action, "bool")],
+            )
+            self.assertEqual(
+                [(layout.layout_id, layout.bindings)
+                 for layout in variant.operand_layouts],
+                [("default", ())],
+            )
+
     def test_elect_sync_model_allows_only_its_destination_sink(self) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",

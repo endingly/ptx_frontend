@@ -1032,6 +1032,27 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         operands: $redux_sync
 
+  - opcode: griddepcontrol
+    section: "9.7.14.14"
+    doc: >
+      Grid dependency control. The frontend validates instruction identity and
+      target availability only; it does not model grid runtime dependencies or
+      protocol behavior.
+    syntax: "griddepcontrol.{launch_dependents|wait};"
+
+    variants:
+      - name: griddepcontrol_launch_dependents
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: launch_dependents, kind: flag, presence: fixed, value: true, token: .launch_dependents}
+        operands: []
+
+      - name: griddepcontrol_wait
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: wait, kind: flag, presence: fixed, value: true, token: .wait}
+        operands: []
+
   - opcode: elect
     section: "9.7.14.15"
     doc: >

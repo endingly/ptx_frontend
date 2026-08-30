@@ -2422,6 +2422,50 @@ TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
                    .has_value());
 }
 
+TEST(ResolvedModule, ResolvesAndChecksGriddepcontrolActions) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  griddepcontrol.launch_dependents;
+  griddepcontrol.wait;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  EXPECT_TRUE(std::holds_alternative<Griddepcontrol::LaunchDependents>(
+      std::get<Griddepcontrol>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Griddepcontrol::Wait>(
+      std::get<Griddepcontrol>(body[1]).variant));
+
+  const checker::Context context{
+      .target = {.ptx_version = {7, 8}, .sm_version = 90},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(
+        checker::check(std::get<Griddepcontrol>(instruction), context).has_value());
+  }
+  for (const checker::Context unavailable : {
+           checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 90},
+                            .instruction_range = ast.range},
+           checker::Context{.target = {.ptx_version = {7, 8}, .sm_version = 89},
+                            .instruction_range = ast.range},
+       }) {
+    SCOPED_TRACE(unavailable.target.ptx_version.minor);
+    EXPECT_FALSE(
+        checker::check(std::get<Griddepcontrol>(body.front()), unavailable).has_value());
+  }
+  for (const std::string_view source : {
+           ".entry kernel() { griddepcontrol; }",
+           ".entry kernel() { griddepcontrol.wait.launch_dependents; }",
+           ".entry kernel() { griddepcontrol.wait 0; }",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksElectSyncSlice) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

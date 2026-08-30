@@ -146,6 +146,44 @@ TEST(ModernOperandCodegen, ChecksAllModernFragmentElementTypes) {
   EXPECT_TRUE(checker::check(instruction, syntheticContext(primitive)).has_value());
 }
 
+TEST(ModernOperandCodegen, ChecksImmediateRangeInEachOperandLayout) {
+  for (const std::string_view source : {
+           "synthetic_immediate_layout 7;",
+           "synthetic_immediate_layout %r0, 7;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto instruction = resolve<SyntheticImmediateLayout>(*ast);
+    ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 0},
+        .instruction_range = ast->range,
+    };
+    EXPECT_TRUE(checker::check(*instruction, context).has_value()) << source;
+  }
+
+  for (const std::string_view source : {
+           "synthetic_immediate_layout 8;",
+           "synthetic_immediate_layout %r0, 8;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto instruction = resolve<SyntheticImmediateLayout>(*ast);
+    ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 0},
+        .instruction_range = ast->range,
+    };
+    const auto rejected = checker::check(*instruction, context);
+    ASSERT_FALSE(rejected.has_value()) << source;
+    ASSERT_EQ(rejected.error().size(), 1u);
+    EXPECT_EQ(rejected.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
 TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {
   const auto sm90a_module = resolveModule(parseModule(R"ptx(
 .version 8.0

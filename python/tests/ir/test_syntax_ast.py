@@ -1152,6 +1152,106 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     normalize_constraint(constraint, operand_kind=kind)
 
+    def _normalize_multilayout_immediate_constraint(
+        self,
+        constraint: object,
+        operand_name: str,
+        other_layout_name: str,
+        other_operands: list[dict[str, str]],
+    ) -> None:
+        normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [{"opcode": "sample", "variants": [{
+                    "name": "sample_immediate",
+                    "availability": {"ptx": "1.0"},
+                    "operand_layouts": [
+                        {"name": "immediate", "operands": [
+                            {"name": operand_name, "kind": "imm"},
+                        ]},
+                        {"name": other_layout_name, "operands": other_operands},
+                    ],
+                    "constraints": [constraint],
+                }]}],
+            }
+        )
+
+    def test_immediate_constraints_require_an_immediate_in_every_layout(self) -> None:
+        for kind, constraint, operand_name in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }, "size"),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "count", "minimum": 1,
+            }, "count"),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
+            }, "stride"),
+        ):
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    rf"{kind} operand {operand_name!r}.*operand layout 'missing'",
+                ):
+                    self._normalize_multilayout_immediate_constraint(
+                        constraint,
+                        operand_name,
+                        "missing",
+                        [{"name": "dst", "kind": "reg"}],
+                    )
+
+    def test_immediate_constraints_name_non_immediate_layout_and_kind(self) -> None:
+        for kind, constraint, operand_name in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }, "size"),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "count", "minimum": 1,
+            }, "count"),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
+            }, "stride"),
+        ):
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    rf"{kind} operand {operand_name!r}.*operand layout "
+                    r"'register'.*kind 'imm'.*'reg'",
+                ):
+                    self._normalize_multilayout_immediate_constraint(
+                        constraint,
+                        operand_name,
+                        "register",
+                        [
+                            {"name": "dst", "kind": "reg"},
+                            {"name": operand_name, "kind": "reg"},
+                        ],
+                    )
+
+    def test_immediate_constraints_accept_immediates_in_every_layout(self) -> None:
+        for kind, constraint, operand_name in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }, "size"),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "count", "minimum": 1,
+            }, "count"),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
+            }, "stride"),
+        ):
+            with self.subTest(kind=kind):
+                self._normalize_multilayout_immediate_constraint(
+                    constraint,
+                    operand_name,
+                    "with_dst",
+                    [
+                        {"name": "dst", "kind": "reg"},
+                        {"name": operand_name, "kind": "imm"},
+                    ],
+                )
+
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(
             {

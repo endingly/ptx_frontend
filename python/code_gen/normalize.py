@@ -1164,15 +1164,9 @@ def _normalize_immediate_value_constraint(
         )
     operand_name = raw["operand"]
     values = raw["values"]
-    matching = [
-        operand for layout in layouts for operand in layout.operands
-        if operand.name == operand_name
-    ]
-    if not matching or any(operand.kind != "imm" for operand in matching):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_value operand must "
-            "name an active kind 'imm' operand"
-        )
+    _validate_immediate_constraint_operand(
+        raw_variant, layouts, operand_name, "immediate_value"
+    )
     if (not isinstance(values, list) or not values or
             any(type(value) is not int or value < 0 for value in values) or
             len(set(values)) != len(values)):
@@ -1210,15 +1204,9 @@ def _normalize_immediate_range_constraints(
                 f"operand {operand_name!r}"
             )
         operands.add(operand_name)
-        matching = [
-            operand for layout in layouts for operand in layout.operands
-            if operand.name == operand_name
-        ]
-        if not matching or any(operand.kind != "imm" for operand in matching):
-            raise ValueError(
-                f"variant {raw_variant['name']!r}: immediate_range operand must "
-                "name an active kind 'imm' operand"
-            )
+        _validate_immediate_constraint_operand(
+            raw_variant, layouts, operand_name, "immediate_range"
+        )
         if (type(minimum) is not int or minimum < 0 or
                 (maximum is not None and
                  (type(maximum) is not int or maximum < minimum))):
@@ -1257,21 +1245,44 @@ def _normalize_immediate_multiple_of_constraint(
             "requires only operand and divisor"
         )
     operand_name, divisor = raw["operand"], raw["divisor"]
-    matching = [
-        operand for layout in layouts for operand in layout.operands
-        if operand.name == operand_name
-    ]
-    if not matching or any(operand.kind != "imm" for operand in matching):
-        raise ValueError(
-            f"variant {raw_variant['name']!r}: immediate_multiple_of operand must "
-            "name an active kind 'imm' operand"
-        )
+    _validate_immediate_constraint_operand(
+        raw_variant, layouts, operand_name, "immediate_multiple_of"
+    )
     if type(divisor) is not int or divisor <= 0:
         raise ValueError(
             f"variant {raw_variant['name']!r}: immediate_multiple_of divisor must "
             "be a positive integer"
         )
     return ImmediateMultipleOfConstraint(operand=operand_name, divisor=divisor)
+
+
+def _validate_immediate_constraint_operand(
+    raw_variant: dict[str, Any],
+    layouts: tuple[OperandLayoutSpec, ...],
+    operand_name: str,
+    constraint_kind: str,
+) -> None:
+    """Require an immediate constraint operand in every operand layout."""
+
+    for layout in layouts:
+        matching = tuple(
+            operand for operand in layout.operands if operand.name == operand_name
+        )
+        if not matching:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: {constraint_kind} operand "
+                f"{operand_name!r} must exist in operand layout {layout.name!r} "
+                "as kind 'imm'"
+            )
+        non_immediate = next(
+            (operand for operand in matching if operand.kind != "imm"), None
+        )
+        if non_immediate is not None:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: {constraint_kind} operand "
+                f"{operand_name!r} in operand layout {layout.name!r} must have "
+                f"kind 'imm', not {non_immediate.kind!r}"
+            )
 
 
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:

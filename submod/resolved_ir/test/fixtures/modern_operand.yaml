@@ -47,3 +47,32 @@ instructions:
             type: u32
             cardinality: {min: 1, max: 64}
             element_kinds: [reg]
+
+  - opcode: synthetic_immediate_layout
+    variants:
+      - name: synthetic_immediate_layout_range
+        availability: {ptx: "9.3", sm: 0}
+        operand_layouts:
+          - name: count_only
+            operands:
+              - name: count
+                kind: imm
+                role: src
+                access: read
+                type: u32
+          - name: dst_count
+            operands:
+              - name: dst
+                kind: reg
+                role: dst
+                access: write
+              - name: count
+                kind: imm
+                role: src
+                access: read
+                type: u32
+        constraints:
+          - kind: immediate_range
+            operand: count
+            minimum: 0
+            maximum: 7

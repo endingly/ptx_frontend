@@ -157,6 +157,48 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         cast(list[dict[str, object]], variant["constraints"])[0]["divisor"] = 0
         self.assertTrue(list(validator.iter_errors(spec)))
 
+    def test_database_rejects_immediate_constraint_missing_from_a_layout(self) -> None:
+        for kind, constraint in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "size", "minimum": 1,
+            }),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "size", "divisor": 4,
+            }),
+        ):
+            with self.subTest(kind=kind):
+                spec = _spec(
+                    category="integer_arithmetic",
+                    codegen_category="arithmetic",
+                    variant_name="add_integer",
+                    type_value="u32",
+                )
+                instruction = cast(
+                    list[dict[str, object]], spec["instructions"]
+                )[0]
+                variant = cast(
+                    list[dict[str, object]], instruction["variants"]
+                )[0]
+                variant.pop("operands")
+                variant["operand_layouts"] = [
+                    {"name": "immediate", "operands": [{
+                        "name": "size", "kind": "imm", "role": "src",
+                        "access": "read",
+                    }]},
+                    {"name": "missing", "operands": [{
+                        "name": "dst", "kind": "reg", "role": "dst",
+                        "access": "write",
+                    }]},
+                ]
+                variant["constraints"] = [constraint]
+                with self.assertRaisesRegex(
+                    ValueError, rf"{kind} operand 'size'.*operand layout 'missing'"
+                ):
+                    self._load(spec)
+
     def test_rejects_codegen_category_disagreement(self) -> None:
         with self.assertRaisesRegex(ValueError, "disagree on codegen_category"):
             self._load(

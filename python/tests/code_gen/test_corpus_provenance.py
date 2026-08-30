@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "corpus"
 MANIFEST = CORPUS / "provenance.json"
 SCHEMA = CORPUS / "provenance.schema.json"
-VERSION = "ptx_frontend.corpus_provenance/v1"
+VERSION = "ptx_frontend.corpus_provenance/v2"
 TARGET = re.compile(
     r"^\s*\.target\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*$"
 )
@@ -75,6 +75,7 @@ class CorpusProvenanceTests(unittest.TestCase):
 
         for mutation in (
             lambda record: record.pop("targets"),
+            lambda record: record.pop("kind"),
             lambda record: record.__setitem__("target", "sm_80"),
             lambda record: record.__setitem__("targets", []),
         ):
@@ -115,6 +116,7 @@ class CorpusProvenanceTests(unittest.TestCase):
                 )
                 self.assertEqual(record["targets"], fixture_targets(path))
                 for value in (
+                    record["kind"],
                     record["generator"],
                     record["toolkit"],
                     *record["targets"],
@@ -127,6 +129,26 @@ class CorpusProvenanceTests(unittest.TestCase):
                     self.assertNotIn("unknown", value.lower())
                 if record["generator"] == "project-authored":
                     self.assertEqual(record["license"], "MIT")
+
+    def test_m12_evidence_kinds_distinguish_inline_and_natural_ptx(self) -> None:
+        by_path = {record["path"]: record for record in self.manifest["fixtures"]}
+        inline = {
+            "corpus/m12/common_kernel_sm80.ptx",
+            "corpus/m12/common_kernel_sm90a.ptx",
+            "corpus/m12/common_kernel_sm100.ptx",
+        }
+        natural = {
+            "corpus/m12/natural_kernel_sm80.ptx",
+            "corpus/m12/natural_kernel_sm90a.ptx",
+            "corpus/m12/natural_kernel_sm100.ptx",
+        }
+        self.assertTrue(inline <= by_path.keys())
+        self.assertTrue(natural <= by_path.keys())
+        self.assertEqual({by_path[path]["kind"] for path in inline}, {"inline_ptx_wrapper"})
+        self.assertEqual(
+            {by_path[path]["kind"] for path in natural},
+            {"natural_compiler_emission"},
+        )
 
     def test_multi_target_sequence_detects_any_change(self) -> None:
         record = next(

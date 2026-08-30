@@ -6,7 +6,7 @@
   "required": ["schema", "fixtures"],
   "properties": {
     "schema": {
-      "const": "ptx_frontend.corpus_provenance/v1"
+      "const": "ptx_frontend.corpus_provenance/v2"
     },
     "fixtures": {
       "type": "array",
@@ -20,6 +20,7 @@
       "additionalProperties": false,
       "required": [
         "path",
+        "kind",
         "sha256",
         "generator",
         "toolkit",
@@ -31,6 +32,13 @@
         "path": {
           "type": "string",
           "pattern": "^corpus/(?:[^/]+/)*[^/]+\\.ptx$"
+        },
+        "kind": {
+          "enum": [
+            "project_authored",
+            "inline_ptx_wrapper",
+            "natural_compiler_emission"
+          ]
         },
         "sha256": {
           "description": "SHA-256 of UTF-8 fixture text after CRLF is normalized to LF.",

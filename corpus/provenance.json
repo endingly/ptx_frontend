@@ -1,8 +1,9 @@
 {
-  "schema": "ptx_frontend.corpus_provenance/v1",
+  "schema": "ptx_frontend.corpus_provenance/v2",
   "fixtures": [
     {
       "path": "corpus/m10/advanced_kernel.ptx",
+      "kind": "project_authored",
       "sha256": "d8f84c86c78859b147801ca73393ea3019cf95afce03135b25e37c55f652b0ad",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -12,6 +13,7 @@
     },
     {
       "path": "corpus/m11/complex_modifiers.ptx",
+      "kind": "project_authored",
       "sha256": "46e55ea5516cf0deca5ab0fdf8bbc7ebd7d8d2b9e2099c1bfa212434679ec40b",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -21,6 +23,7 @@
     },
     {
       "path": "corpus/m11/multi_target_profiles.ptx",
+      "kind": "project_authored",
       "sha256": "7361393ac33da767b285c1093554eb8d2f8d8b7f6e35a9965f3c99c7e9cf5efa",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -30,6 +33,7 @@
     },
     {
       "path": "corpus/m11/sm100_supported.ptx",
+      "kind": "project_authored",
       "sha256": "5c1b5bc95fb56e74d0b7ce38c0acbc128de29169b54d04da9977d8b1dd1dae4c",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -39,6 +43,7 @@
     },
     {
       "path": "corpus/m11/sm80_cluster_unsupported.ptx",
+      "kind": "project_authored",
       "sha256": "d8178be54b1127ebedb101498bb2238e4ac0a06f3e6c6acb2edd2fb0396175df",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -48,6 +53,7 @@
     },
     {
       "path": "corpus/m11/sm80_supported.ptx",
+      "kind": "project_authored",
       "sha256": "dcbb1d47d9acb83d22055a5da9db8653204ca47c81a9b2269f08e2a71ab85f30",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -57,6 +63,7 @@
     },
     {
       "path": "corpus/m11/sm90a_supported.ptx",
+      "kind": "project_authored",
       "sha256": "f3e9a262266a4a951057200968ae26624b386707c4af27b41249db93ca109a6b",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -66,6 +73,7 @@
     },
     {
       "path": "corpus/m11/unknown_target_unsupported.ptx",
+      "kind": "project_authored",
       "sha256": "054833477d5e074e00266f9a4d320fb45aa480b8ab13e4457974af58865ca832",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -75,6 +83,7 @@
     },
     {
       "path": "corpus/m12/common_kernel_sm80.ptx",
+      "kind": "inline_ptx_wrapper",
       "sha256": "2e7fe5c580a0b20bba50dd52b04c7b03e8eecafa5e2aaa1356f6bc3b7c83cce9",
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
@@ -84,6 +93,7 @@
     },
     {
       "path": "corpus/m12/common_kernel_sm90a.ptx",
+      "kind": "inline_ptx_wrapper",
       "sha256": "c2a9d0ab447173e8de8714c4408aabc538a1524d67b043c89ef55e3174e9f572",
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
@@ -93,6 +103,7 @@
     },
     {
       "path": "corpus/m12/common_kernel_sm100.ptx",
+      "kind": "inline_ptx_wrapper",
       "sha256": "a8cf784d6293f3cbf9ebbc5bd93e5f924dcbd7c6dd25c3eadc14aa25cbe11798",
       "generator": "nvcc V13.3.33",
       "toolkit": "CUDA Toolkit 13.3",
@@ -101,7 +112,38 @@
       "license": "MIT"
     },
     {
+      "path": "corpus/m12/natural_kernel_sm80.ptx",
+      "kind": "natural_compiler_emission",
+      "sha256": "05be30bcdaa762fa5940dcf85831c6272f88bb0e9946b610dd764a90190c5449",
+      "generator": "nvcc V13.3.33",
+      "toolkit": "CUDA Toolkit 13.3",
+      "targets": ["sm_80"],
+      "source": "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m12/natural_kernel_sm90a.ptx",
+      "kind": "natural_compiler_emission",
+      "sha256": "38b0e54523c42a669ad3e76c9febb4a02d5bab91b38ab2cc4f75d05797db561a",
+      "generator": "nvcc V13.3.33",
+      "toolkit": "CUDA Toolkit 13.3",
+      "targets": ["sm_90a"],
+      "source": "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m12/natural_kernel_sm100.ptx",
+      "kind": "natural_compiler_emission",
+      "sha256": "d2ead9c8efa34ced06db54ce0660212e0a9bf1e3c7f98567d5c47b42cbd56b77",
+      "generator": "nvcc V13.3.33",
+      "toolkit": "CUDA Toolkit 13.3",
+      "targets": ["sm_100"],
+      "source": "corpus/m12/natural_kernel.cu; ordinary CUDA source compiled by nvcc without inline PTX",
+      "license": "MIT"
+    },
+    {
       "path": "corpus/m9/address_conversion.ptx",
+      "kind": "project_authored",
       "sha256": "82519eb1a4fa228fecc0331a53bee3cdda192b40326946526db9fb1c0b619799",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -111,6 +153,7 @@
     },
     {
       "path": "corpus/m9/exit.ptx",
+      "kind": "project_authored",
       "sha256": "4666914bc965516da764251dcf205a8ee71b68fc26c28785b8691e2afc72c27b",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -120,6 +163,7 @@
     },
     {
       "path": "corpus/m9/ret.ptx",
+      "kind": "project_authored",
       "sha256": "5d4e218023b8ff08f149f46a833981c54c9e02f1ef1a8bada986bc8dd0874009",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -129,6 +173,7 @@
     },
     {
       "path": "corpus/m9/scalar_float.ptx",
+      "kind": "project_authored",
       "sha256": "c5953a2f157937363ad8d09921d8eff42c3fd9ca662981c21615d6f40d1abc71",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -138,6 +183,7 @@
     },
     {
       "path": "corpus/m9/scalar_integer.ptx",
+      "kind": "project_authored",
       "sha256": "13a19391d5d3891c3999e8324c14d99c2cdf46a5e79aed1f15b57ee294d1be2d",
       "generator": "project-authored",
       "toolkit": "not-applicable",
@@ -147,6 +193,7 @@
     },
     {
       "path": "corpus/m9/trap.ptx",
+      "kind": "project_authored",
       "sha256": "1abb2be807bb56bb1187427ccf08be6cd2c83448666da5f130cf7fe182221822",
       "generator": "project-authored",
       "toolkit": "not-applicable",

@@ -1,0 +1,68 @@
+{
+  "schema": "ptx_frontend.m12_natural_manifest/v1",
+  "source": "corpus/m12/natural_kernel.cu",
+  "generator": "nvcc V13.3.33",
+  "frequency": "instruction occurrences per target profile",
+  "fixtures": [
+    {
+      "profile": "sm_100",
+      "path": "corpus/m12/natural_kernel_sm100.ptx",
+      "target": "sm_100",
+      "entries": ["natural_kernel"],
+      "instructions": [
+        {"spelling": "add.s64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "bra", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "cvta.to.global.u64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.global.b32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.param.b32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.param.b64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mad.lo.s32", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mov.u32", "occurrences": 3, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mul.wide.s32", "occurrences": 1, "outcome": "unsupported", "first_blocker": "unsupported_variant"},
+        {"spelling": "ret", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "setp.ge.s32", "occurrences": 1, "outcome": "unsupported", "first_blocker": "unsupported_variant"},
+        {"spelling": "st.global.b32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"}
+      ]
+    },
+    {
+      "profile": "sm_80",
+      "path": "corpus/m12/natural_kernel_sm80.ptx",
+      "target": "sm_80",
+      "entries": ["natural_kernel"],
+      "instructions": [
+        {"spelling": "add.s64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "bra", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "cvta.to.global.u64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.global.u32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.param.u32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.param.u64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mad.lo.s32", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mov.u32", "occurrences": 3, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mul.wide.s32", "occurrences": 1, "outcome": "unsupported", "first_blocker": "unsupported_variant"},
+        {"spelling": "ret", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "setp.ge.s32", "occurrences": 1, "outcome": "unsupported", "first_blocker": "unsupported_variant"},
+        {"spelling": "st.global.u32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"}
+      ]
+    },
+    {
+      "profile": "sm_90a",
+      "path": "corpus/m12/natural_kernel_sm90a.ptx",
+      "target": "sm_90a",
+      "entries": ["natural_kernel"],
+      "instructions": [
+        {"spelling": "add.s64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "bra", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "cvta.to.global.u64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.global.u32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.param.u32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "ld.param.u64", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mad.lo.s32", "occurrences": 2, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mov.u32", "occurrences": 3, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "mul.wide.s32", "occurrences": 1, "outcome": "unsupported", "first_blocker": "unsupported_variant"},
+        {"spelling": "ret", "occurrences": 1, "outcome": "supported", "first_blocker": "none"},
+        {"spelling": "setp.ge.s32", "occurrences": 1, "outcome": "unsupported", "first_blocker": "unsupported_variant"},
+        {"spelling": "st.global.u32", "occurrences": 1, "outcome": "supported", "first_blocker": "none"}
+      ]
+    }
+  ]
+}

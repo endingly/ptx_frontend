@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "M12 natural nvcc PTX spelling manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source", "generator", "frequency", "fixtures"],
+  "properties": {
+    "schema": {"const": "ptx_frontend.m12_natural_manifest/v1"},
+    "source": {"const": "corpus/m12/natural_kernel.cu"},
+    "generator": {"const": "nvcc V13.3.33"},
+    "frequency": {"const": "instruction occurrences per target profile"},
+    "fixtures": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"$ref": "#/$defs/fixture"}
+    }
+  },
+  "$defs": {
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "path", "target", "entries", "instructions"],
+      "properties": {
+        "profile": {"type": "string", "enum": ["sm_80", "sm_90a", "sm_100"]},
+        "path": {"type": "string", "pattern": "^corpus/m12/natural_kernel_sm(?:80|90a|100)\\.ptx$"},
+        "target": {"type": "string", "enum": ["sm_80", "sm_90a", "sm_100"]},
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+        },
+        "instructions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/instruction"}
+        }
+      }
+    },
+    "instruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spelling", "occurrences", "outcome", "first_blocker"],
+      "properties": {
+        "spelling": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:]*$"},
+        "occurrences": {"type": "integer", "minimum": 1},
+        "outcome": {"enum": ["supported", "unsupported"]},
+        "first_blocker": {
+          "enum": ["none", "unsupported_opcode", "unsupported_variant"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"outcome": {"const": "supported"}}},
+          "then": {"properties": {"first_blocker": {"const": "none"}}}
+        },
+        {
+          "if": {"properties": {"outcome": {"const": "unsupported"}}},
+          "then": {
+            "properties": {
+              "first_blocker": {"enum": ["unsupported_opcode", "unsupported_variant"]}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

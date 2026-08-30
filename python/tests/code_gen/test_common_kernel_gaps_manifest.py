@@ -5,6 +5,9 @@ import unittest
 import yaml
 from jsonschema import Draft202012Validator
 
+from code_gen.database import load_codegen_database
+from code_gen.m12_natural_corpus import classify_instruction_spelling
+
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_PATH = ROOT / "instructions/common_kernel_gaps.yaml"
@@ -12,73 +15,6 @@ SCHEMA_PATH = ROOT / "instructions/schemas/common-kernel-gaps-v1.schema.yaml"
 SPEC_ROOT = ROOT / "instructions/ptx_spec"
 EXPECTED_OWNERS = {f"M12-I{issue:02d}" for issue in range(2, 34)}
 TARGET = re.compile(r"^\.target\s+(sm_[A-Za-z0-9]+)\s*$", re.MULTILINE)
-KNOWN_NONE = {
-    ("M12-I02", "set.eq.u32.u32"),
-    ("M12-I02", "set.lt.and.f32.s32"),
-    ("M12-I04", "slct.u32.s32"),
-    ("M12-I04", "slct.ftz.u64.f32"),
-} | {
-    ("M12-I03", form)
-    for form in ("setp.eq.u32", "setp.lt.and.s32")
-} | {
-    ("M12-I05", form) for form in ("add.u32", "add.s32", "add.u64", "add.f32")
-} | {
-    ("M12-I06", form) for form in ("sub.u32", "sub.s32", "sub.u64", "sub.f32")
-} | {
-    ("M12-I07", form) for form in ("mul.hi.u32", "mul.wide.u32", "mul.rn.f32")
-} | {
-    ("M12-I08", form)
-    for form in ("mad.lo.s32", "mad.wide.u32", "mad.rn.f32")
-} | {
-    ("M12-I09", form) for form in ("fma.rn.f16", "fma.rn.f32", "fma.rn.f64")
-} | {
-    ("M12-I10", form) for form in ("div.s32", "div.rn.f32", "div.rn.f64")
-} | {
-    ("M12-I11", form) for form in ("rem.s32", "rem.u32")
-} | {
-    ("M12-I12", form) for form in ("min.s32", "min.NaN.f32")
-} | {
-    ("M12-I13", form) for form in ("max.s32", "max.NaN.f32")
-} | {
-    ("M12-I14", form) for form in ("abs.s32", "abs.f32")
-} | {
-    ("M12-I15", form) for form in ("neg.s32", "neg.f32", "neg.f16x2")
-} | {
-    ("M12-I16", "lop3.b32"),
-} | {
-    ("M12-I17", form) for form in ("shf.l.clamp.b32", "shf.r.wrap.b32")
-} | {
-    ("M12-I18", form) for form in ("prmt.b32", "prmt.b32.f4e")
-} | {
-    ("M12-I19", "popc.b32"),
-} | {
-    ("M12-I20", form) for form in ("clz.b32", "clz.b64")
-} | {
-    ("M12-I21", "bfind.shiftamt.u32"),
-} | {
-    ("M12-I22", "bfe.u32"),
-} | {
-    ("M12-I23", "bfi.b32"),
-} | {
-    ("M12-I24", "brev.b32"),
-} | {
-    ("M12-I25", form) for form in ("cvt.rn.f32.s32", "cvt.rzi.u32.f32", "cvt.rn.f16x2.f32")
-} | {
-    ("M12-I26", "cvt.pack.sat.u8.s32.b32"),
-} | {
-    ("M12-I27", "isspacep.global"),
-} | {
-    ("M12-I28", "ld.global.nc.L1::no_allocate.u32"),
-} | {
-    ("M12-I29", "prefetchu.L1"),
-} | {
-    ("M12-I30", "createpolicy.fractional.L2::evict_last.b64"),
-} | {
-    ("M12-I31", "applypriority.global.L2::evict_normal"),
-} | {
-    ("M12-I32", "discard.global.L2"),
-    ("M12-I33", "setmaxnreg.inc.sync.aligned.u32"),
-}
 
 
 def entry_body(ptx: str, marker: str) -> str | None:
@@ -99,25 +35,6 @@ def entry_body(ptx: str, marker: str) -> str | None:
     raise AssertionError(f"unterminated entry marker: {marker}")
 
 
-def declared_opcodes() -> set[str]:
-    result = set()
-
-    def visit(value: object) -> None:
-        if isinstance(value, dict):
-            opcode = value.get("opcode")
-            if isinstance(opcode, str):
-                result.add(opcode)
-            for child in value.values():
-                visit(child)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child)
-
-    for path in SPEC_ROOT.glob("*.yaml"):
-        visit(yaml.safe_load(path.read_text(encoding="utf-8")))
-    return result
-
-
 class CommonKernelGapManifestTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -127,6 +44,7 @@ class CommonKernelGapManifestTests(unittest.TestCase):
             fixture["profile"]: (ROOT / fixture["path"]).read_text(encoding="utf-8")
             for fixture in cls.manifest["fixtures"]
         }
+        cls.database = load_codegen_database(spec_dir=SPEC_ROOT)
 
     def test_schema_fixture_profiles_and_exact_owner_set(self) -> None:
         errors = sorted(Draft202012Validator(self.schema).iter_errors(self.manifest), key=str)
@@ -175,19 +93,15 @@ class CommonKernelGapManifestTests(unittest.TestCase):
                     self.assertEqual(count, form["frequency"])
 
     def test_blockers_follow_current_opcode_database(self) -> None:
-        opcodes = declared_opcodes()
         for gap in self.manifest["gaps"]:
             for form in gap["forms"]:
                 with self.subTest(owner=gap["owner"], form=form["canonical_form"]):
-                    opcode = form["canonical_form"].split(".", 1)[0]
-                    key = (gap["owner"], form["canonical_form"])
-                    if form["first_blocker"] == "none":
-                        self.assertIn(key, KNOWN_NONE)
-                        self.assertIn(opcode, opcodes)
-                    elif opcode in opcodes:
-                        self.assertEqual(form["first_blocker"], "unsupported_variant")
-                    else:
-                        self.assertEqual(form["first_blocker"], "unsupported_opcode")
+                    self.assertEqual(
+                        form["first_blocker"],
+                        classify_instruction_spelling(
+                            form["canonical_form"], self.database
+                        ),
+                    )
 
     def test_all_frozen_forms_are_unblocked(self) -> None:
         forms = [
@@ -196,9 +110,6 @@ class CommonKernelGapManifestTests(unittest.TestCase):
             for form in gap["forms"]
         ]
         self.assertEqual(len(forms), 60)
-        self.assertEqual(
-            {(owner, form["canonical_form"]) for owner, form in forms}, KNOWN_NONE
-        )
         self.assertTrue(all(form["first_blocker"] == "none" for _, form in forms))
 
     def test_setmaxnreg_appears_only_in_its_corpus_profile(self) -> None:

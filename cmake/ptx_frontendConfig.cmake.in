@@ -7,6 +7,9 @@ set(_@PACKAGE_NAME@_target_components
 
 set(_@PACKAGE_NAME@_unsupported_components "")
 set(_@PACKAGE_NAME@_needs_targets FALSE)
+if(NOT @PACKAGE_NAME@_FIND_COMPONENTS)
+    set(_@PACKAGE_NAME@_needs_targets TRUE)
+endif()
 foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
     if(NOT _@PACKAGE_NAME@_component IN_LIST @PACKAGE_NAME@_SUPPORTED_COMPONENTS)
         set(@PACKAGE_NAME@_${_@PACKAGE_NAME@_component}_FOUND FALSE)

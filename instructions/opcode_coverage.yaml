@@ -1,0 +1,352 @@
+# yaml-language-server: $schema=schemas/opcode-coverage-v2.schema.yaml
+
+schema: ptx-opcode-coverage/v2
+version: 2
+opcodes:
+- opcode: add
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"add-add-float-f32-default","section":"9.7.3.3","spec_variant":"add_float_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-float-f32x2-default","section":"9.7.3.3","spec_variant":"add_float_f32x2","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32x2"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-float-f64-default","section":"9.7.3.3","spec_variant":"add_float_f64","operand_layout":"default","selector":{"topology":"arithmetic","types":["f64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-half-default","section":"9.7.4.1","spec_variant":"add_half","operand_layout":"default","selector":{"topology":"arithmetic","types":["f16","f16x2"],"shape":"scalar_or_packed","modifiers":["rounding","ftz","sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-bfloat-default","section":"9.7.4.1","spec_variant":"add_bfloat","operand_layout":"default","selector":{"topology":"arithmetic","types":["bf16","bf16x2"],"shape":"scalar_or_packed","modifiers":["rounding","ftz","sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-mixed-f32-default","section":"9.7.5.1","spec_variant":"add_mixed_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-integer-no-sat-default","section":"9.7.1.1","spec_variant":"add_integer_no_sat","operand_layout":"default","selector":{"topology":"arithmetic","types":["s16","s32","s64","u16","u32","u64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-sat-default","section":"9.7.1.1","spec_variant":"add_sat","operand_layout":"default","selector":{"topology":"arithmetic","types":["s16","s32","s64","u16","u32","u64"],"shape":"scalar","modifiers":["sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"add-add-packed-optional-sat-default","section":"9.7.1.1","spec_variant":"add_packed_optional_sat","operand_layout":"default","selector":{"topology":"arithmetic","types":["u8","s8"],"shape":"packed","modifiers":["sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: sub
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"sub-sub-float-f32-default","section":"9.7.3.4","spec_variant":"sub_float_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-float-f32x2-default","section":"9.7.3.4","spec_variant":"sub_float_f32x2","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32x2"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-float-f64-default","section":"9.7.3.4","spec_variant":"sub_float_f64","operand_layout":"default","selector":{"topology":"arithmetic","types":["f64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-half-default","section":"9.7.4.2","spec_variant":"sub_half","operand_layout":"default","selector":{"topology":"arithmetic","types":["f16","f16x2"],"shape":"scalar_or_packed","modifiers":["rounding","ftz","sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-bfloat-default","section":"9.7.4.2","spec_variant":"sub_bfloat","operand_layout":"default","selector":{"topology":"arithmetic","types":["bf16","bf16x2"],"shape":"scalar_or_packed","modifiers":["rounding","ftz","sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-mixed-f32-default","section":"9.7.5.2","spec_variant":"sub_mixed_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-integer-no-sat-default","section":"9.7.1.2","spec_variant":"sub_integer_no_sat","operand_layout":"default","selector":{"topology":"arithmetic","types":["s16","s32","s64","u16","u32","u64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"sub-sub-optional-sat-default","section":"9.7.1.2","spec_variant":"sub_optional_sat","operand_layout":"default","selector":{"topology":"arithmetic","types":["s16","s32","s64","u16","u32","u64"],"shape":"scalar","modifiers":["sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: mul
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I20, M9-I21]
+  slices:
+  - {"id":"mul-mul-rn-f32-default","section":"9.7.3.5","spec_variant":"mul_rn_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mul-mul-lo-u32-default","section":"9.7.1.3","spec_variant":"mul_lo_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar","modifiers":["lo"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mul-mul-hi-u32-default","section":"9.7.1.3","spec_variant":"mul_hi_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar","modifiers":["hi"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mul-mul-wide-u32-default","section":"9.7.1.3","spec_variant":"mul_wide_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u64","u32"],"shape":"scalar","modifiers":["wide"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mul-mul-wide-s32-default","section":"9.7.1.3","spec_variant":"mul_wide_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s64","s32"],"shape":"scalar","modifiers":["wide"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: fma
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I23]
+  slices:
+  - {"id":"fma-fma-rn-f32-default","section":"9.7.3.6","spec_variant":"fma_rn_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"fma-fma-rn-f64-default","section":"9.7.3.6","spec_variant":"fma_rn_f64","operand_layout":"default","selector":{"topology":"arithmetic","types":["f64"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"fma-fma-rn-f16-default","section":"9.7.4.4","spec_variant":"fma_rn_f16","operand_layout":"default","selector":{"topology":"arithmetic","types":["f16"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: mad
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I22]
+  slices:
+  - {"id":"mad-mad-lo-u32-default","section":"9.7.1.4","spec_variant":"mad_lo_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mad-mad-lo-s32-default","section":"9.7.1.4","spec_variant":"mad_lo_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar","modifiers":["lo"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mad-mad-wide-u32-default","section":"9.7.1.4","spec_variant":"mad_wide_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u64","u32"],"shape":"scalar","modifiers":["wide"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mad-mad-rn-f32-default","section":"9.7.3.7","spec_variant":"mad_rn_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: div
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I24]
+  slices:
+  - {"id":"div-div-u32-default","section":"9.7.1.9","spec_variant":"div_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"div-div-s32-default","section":"9.7.1.9","spec_variant":"div_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"div-div-rn-f32-default","section":"9.7.3.8","spec_variant":"div_rn_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"div-div-rn-f64-default","section":"9.7.3.8","spec_variant":"div_rn_f64","operand_layout":"default","selector":{"topology":"arithmetic","types":["f64"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: rem
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"rem-rem-s32-default","section":"9.7.1.10","spec_variant":"rem_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"rem-rem-u32-default","section":"9.7.1.10","spec_variant":"rem_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: min
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"min-min-s32-default","section":"9.7.1.13","spec_variant":"min_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"min-min-nan-f32-default","section":"9.7.3.11","spec_variant":"min_nan_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["nan"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: max
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"max-max-s32-default","section":"9.7.1.14","spec_variant":"max_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"max-max-nan-f32-default","section":"9.7.3.12","spec_variant":"max_nan_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar","modifiers":["nan"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: abs
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"abs-abs-s32-default","section":"9.7.1.11","spec_variant":"abs_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"abs-abs-f32-default","section":"9.7.3.9","spec_variant":"abs_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: neg
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"neg-neg-s32-default","section":"9.7.1.12","spec_variant":"neg_s32","operand_layout":"default","selector":{"topology":"arithmetic","types":["s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"neg-neg-f32-default","section":"9.7.3.10","spec_variant":"neg_f32","operand_layout":"default","selector":{"topology":"arithmetic","types":["f32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"neg-neg-f16x2-default","section":"9.7.4.5","spec_variant":"neg_f16x2","operand_layout":"default","selector":{"topology":"arithmetic","types":["f16x2"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: set
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"set-set-eq-u32-u32-default","section":"9.7.6.1","spec_variant":"set_eq_u32_u32","operand_layout":"default","selector":{"topology":"comparison","types":["u32"],"shape":"scalar","modifiers":["eq"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"set-set-lt-and-f32-s32-default","section":"9.7.6.1","spec_variant":"set_lt_and_f32_s32","operand_layout":"default","selector":{"topology":"comparison","types":["f32","s32"],"shape":"scalar","modifiers":["lt","and"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: setp
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I14]
+  slices:
+  - {"id":"setp-setp-lt-u32-default","section":"9.7.6.2","spec_variant":"setp_lt_u32","operand_layout":"default","selector":{"topology":"comparison","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"setp-setp-ge-s32-default","section":"9.7.6.2","spec_variant":"setp_ge_s32","operand_layout":"default","selector":{"topology":"comparison","types":["s32"],"shape":"scalar","modifiers":["ge"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"setp-setp-lt-and-u32-default","section":"9.7.6.2","spec_variant":"setp_lt_and_u32","operand_layout":"default","selector":{"topology":"comparison","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"setp-setp-eq-u32-pair-default","section":"9.7.6.2","spec_variant":"setp_eq_u32_pair","operand_layout":"default","selector":{"topology":"comparison","types":["u32"],"shape":"dual-predicate","modifiers":["eq"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"setp-setp-lt-and-s32-pair-default","section":"9.7.6.2","spec_variant":"setp_lt_and_s32_pair","operand_layout":"default","selector":{"topology":"comparison","types":["s32"],"shape":"dual-predicate","modifiers":["lt","and"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: selp
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I15]
+  slices:
+  - {"id":"selp-selp-u32-default","section":"9.7.6.3","spec_variant":"selp_u32","operand_layout":"default","selector":{"topology":"selection","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: slct
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"slct-slct-u32-s32-default","section":"9.7.6.4","spec_variant":"slct_u32_s32","operand_layout":"default","selector":{"topology":"selection_by_sign","types":["u32","s32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"slct-slct-ftz-u64-f32-default","section":"9.7.6.4","spec_variant":"slct_ftz_u64_f32","operand_layout":"default","selector":{"topology":"selection_by_sign","types":["u64","f32"],"shape":"scalar","modifiers":["ftz"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: call
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"call-call-direct-target","section":"9.7.13.5","spec_variant":"call_direct","operand_layout":"target","selector":{"topology":"call","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"call-call-direct-target-input","section":"9.7.13.5","spec_variant":"call_direct","operand_layout":"target_input","selector":{"topology":"call","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"call-call-direct-return-target-input","section":"9.7.13.5","spec_variant":"call_direct","operand_layout":"return_target_input","selector":{"topology":"call","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"call-call-direct-target-metadata","section":"9.7.13.5","spec_variant":"call_direct","operand_layout":"target_metadata","selector":{"topology":"call","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"call-call-direct-target-input-metadata","section":"9.7.13.5","spec_variant":"call_direct","operand_layout":"target_input_metadata","selector":{"topology":"call","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"call-call-direct-return-target-input-metadata","section":"9.7.13.5","spec_variant":"call_direct","operand_layout":"return_target_input_metadata","selector":{"topology":"call","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: bra
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"bra-bra-direct-default","section":"9.7.13.3","spec_variant":"bra_direct","operand_layout":"default","selector":{"topology":"branch","types":[],"shape":"direct"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: brx
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"brx-brx-idx-default","section":"9.7.13.4","spec_variant":"brx_idx","operand_layout":"default","selector":{"topology":"branch","types":[],"shape":"indexed"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: ret
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I03]
+  slices:
+  - {"id":"ret-ret-bare-default","section":"9.7.13.6","spec_variant":"ret_bare","operand_layout":"default","selector":{"topology":"control","types":[],"shape":"none"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: exit
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I04]
+  slices:
+  - {"id":"exit-exit-bare-default","section":"9.7.13.7","spec_variant":"exit_bare","operand_layout":"default","selector":{"topology":"control","types":[],"shape":"none"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: cvta
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I19]
+  slices:
+  - {"id":"cvta-cvta-global-u64-default","section":"9.7.9.21","spec_variant":"cvta_global_u64","operand_layout":"default","selector":{"topology":"address_conversion","types":["u64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvta-cvta-to-global-u64-default","section":"9.7.9.21","spec_variant":"cvta_to_global_u64","operand_layout":"default","selector":{"topology":"address_conversion","types":["u64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: prmt
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"prmt-prmt-generic-b32-default","section":"9.7.9.7","spec_variant":"prmt_generic_b32","operand_layout":"default","selector":{"topology":"data_movement","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"prmt-prmt-f4e-b32-default","section":"9.7.9.7","spec_variant":"prmt_f4e_b32","operand_layout":"default","selector":{"topology":"data_movement","types":["b32"],"shape":"scalar","modifiers":["f4e"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: popc
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"popc-popc-b32-default","section":"9.7.1.15","spec_variant":"popc_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32","b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: clz
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"clz-clz-b32-default","section":"9.7.1.16","spec_variant":"clz_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32","b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"clz-clz-b64-default","section":"9.7.1.16","spec_variant":"clz_b64","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32","b64"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: bfind
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"bfind-bfind-shiftamt-u32-default","section":"9.7.1.17","spec_variant":"bfind_shiftamt_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar","modifiers":["shiftamt"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: cvt
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I16, M9-I17, M9-I18]
+  slices:
+  - {"id":"cvt-cvt-s32-u32-default","section":"9.7.9.22","spec_variant":"cvt_s32_u32","operand_layout":"default","selector":{"topology":"conversion","types":["s32","u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvt-cvt-rn-f32-f64-default","section":"9.7.9.22","spec_variant":"cvt_rn_f32_f64","operand_layout":"default","selector":{"topology":"conversion","types":["f32","f64"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvt-cvt-rn-f32-u32-default","section":"9.7.9.22","spec_variant":"cvt_rn_f32_u32","operand_layout":"default","selector":{"topology":"conversion","types":["f32","u32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvt-cvt-rn-f32-s32-default","section":"9.7.9.22","spec_variant":"cvt_rn_f32_s32","operand_layout":"default","selector":{"topology":"conversion","types":["f32","s32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvt-cvt-rzi-u32-f32-default","section":"9.7.9.22","spec_variant":"cvt_rzi_u32_f32","operand_layout":"default","selector":{"topology":"conversion","types":["u32","f32"],"shape":"scalar","modifiers":["rzi"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvt-cvt-rn-f16x2-f32-default","section":"9.7.9.22","spec_variant":"cvt_rn_f16x2_f32","operand_layout":"default","selector":{"topology":"conversion","types":["f16x2","f32"],"shape":"scalar","modifiers":["rn"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cvt-cvt-pack-sat-u8-s32-b32-default","section":"9.7.9.23","spec_variant":"cvt_pack_sat_u8_s32_b32","operand_layout":"default","selector":{"topology":"conversion","types":["u8","s32","b32"],"shape":"scalar","modifiers":["pack","sat"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: isspacep
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"isspacep-isspacep-global-u64-default","section":"9.7.9.20","spec_variant":"isspacep_global_u64","operand_layout":"default","selector":{"topology":"data_movement","types":["pred","u64"],"shape":"scalar","state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: mov
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"mov-mov-scalar-scalar","section":"9.7.9","spec_variant":"mov_scalar","operand_layout":"scalar","selector":{"topology":"move","types":["b16","u16","s16","b32","u32","s32","f32","b64","u64","s64","f64","b128"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mov-mov-scalar-pack","section":"9.7.9","spec_variant":"mov_scalar","operand_layout":"pack","selector":{"topology":"move","types":["b16","u16","s16","b32","u32","s32","f32","b64","u64","s64","f64","b128"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mov-mov-scalar-unpack","section":"9.7.9","spec_variant":"mov_scalar","operand_layout":"unpack","selector":{"topology":"move","types":["b16","u16","s16","b32","u32","s32","f32","b64","u64","s64","f64","b128"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mov-mov-v4-u32-default","section":"9.7.9","spec_variant":"mov_v4_u32","operand_layout":"default","selector":{"topology":"move","types":["u32"],"shape":"vector","modifiers":["v4"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"mov-mov-pred-default","section":"9.7.9","spec_variant":"mov_pred","operand_layout":"default","selector":{"topology":"move","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: ld
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"ld-ld-generic-scalar-default","section":"9.7.9.8","spec_variant":"ld_generic_scalar","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"scalar","state_space":["const","global","local","param","shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"ld-ld-explicit-scalar-default","section":"9.7.9.8","spec_variant":"ld_explicit_scalar","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"scalar","modifiers":["memory_order"],"state_space":["const","global","local","param","shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"ld-ld-global-u32-l1-evict-default","section":"9.7.9.8","spec_variant":"ld_global_u32_l1_evict","operand_layout":"default","selector":{"topology":"memory","types":["u32"],"shape":"scalar","modifiers":["l1_evict"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"ld-ld-global-u32-l2-cache-hint-default","section":"9.7.9.8","spec_variant":"ld_global_u32_l2_cache_hint","operand_layout":"default","selector":{"topology":"memory","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"ld-ld-generic-vector-default","section":"9.7.9.8","spec_variant":"ld_generic_vector","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"vector_legacy","state_space":["const","global","local","param","shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"ld-ld-explicit-vector-default","section":"9.7.9.8","spec_variant":"ld_explicit_vector","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"vector_256","modifiers":["memory_order"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"ld-ld-global-nc-l1-no-allocate-u32-default","section":"9.7.9.9","spec_variant":"ld_global_nc_l1_no_allocate_u32","operand_layout":"default","selector":{"topology":"memory","types":["u32"],"shape":"scalar","modifiers":["nc","l1_no_allocate"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: ldu
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"ldu-ldu-global-u32-default","section":"9.7.9.10","spec_variant":"ldu_global_u32","operand_layout":"default","selector":{"topology":"memory","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: shfl
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"shfl-shfl-sync-idx-b32-default","section":"9.7.9.6","spec_variant":"shfl_sync_idx_b32","operand_layout":"default","selector":{"topology":"shuffle","types":["b32"],"shape":"indexed"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: prefetch
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"prefetch-prefetch-global-l1-default","section":"9.7.9.16","spec_variant":"prefetch_global_l1","operand_layout":"default","selector":{"topology":"memory","types":[],"shape":"address","modifiers":["l1"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: prefetchu
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"prefetchu-prefetchu-l1-default","section":"9.7.9.16","spec_variant":"prefetchu_l1","operand_layout":"default","selector":{"topology":"memory","types":[],"shape":"address","modifiers":["l1"],"state_space":["generic"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: createpolicy
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"createpolicy-createpolicy-fractional-l2-evict-last-b64-default","section":"9.7.9.19","spec_variant":"createpolicy_fractional_l2_evict_last_b64","operand_layout":"default","selector":{"topology":"data_movement","types":["b64","f32"],"shape":"scalar","modifiers":["fractional","l2_evict_last"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: applypriority
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"applypriority-applypriority-global-l2-evict-normal-default","section":"9.7.9.17","spec_variant":"applypriority_global_l2_evict_normal","operand_layout":"default","selector":{"topology":"data_movement","types":["u32"],"shape":"address","modifiers":["l2_evict_normal"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: discard
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"discard-discard-global-l2-default","section":"9.7.9.18","spec_variant":"discard_global_l2","operand_layout":"default","selector":{"topology":"data_movement","types":["u32"],"shape":"address","modifiers":["l2"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: cp
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"cp-cp-async-ca-shared-global-default","section":"9.7.9.26.3.1","spec_variant":"cp_async_ca_shared_global","operand_layout":"default","selector":{"topology":"async_copy","types":["b32"],"shape":"scalar","modifiers":["async","ca"],"state_space":["shared","global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cp-cp-async-commit-group-default","section":"9.7.9.26.3.2","spec_variant":"cp_async_commit_group","operand_layout":"default","selector":{"topology":"async_group","types":[],"shape":"none","modifiers":["commit_group"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cp-cp-async-wait-group-default","section":"9.7.9.26.3.3","spec_variant":"cp_async_wait_group","operand_layout":"default","selector":{"topology":"async_group","types":["u32"],"shape":"immediate","modifiers":["wait_group"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"cp-cp-async-wait-all-default","section":"9.7.9.26.3.3","spec_variant":"cp_async_wait_all","operand_layout":"default","selector":{"topology":"async_group","types":[],"shape":"none","modifiers":["wait_all"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: st
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"st-st-generic-scalar-default","section":"9.7.9.11","spec_variant":"st_generic_scalar","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"scalar","state_space":["global","local","param","shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"st-st-explicit-scalar-default","section":"9.7.9.11","spec_variant":"st_explicit_scalar","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"scalar","modifiers":["memory_order"],"state_space":["global","local","param","shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"st-st-global-u32-l1-evict-default","section":"9.7.9.11","spec_variant":"st_global_u32_l1_evict","operand_layout":"default","selector":{"topology":"memory","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"st-st-global-u32-l2-cache-hint-default","section":"9.7.9.11","spec_variant":"st_global_u32_l2_cache_hint","operand_layout":"default","selector":{"topology":"memory","types":["u32"],"shape":"scalar","modifiers":["l2_cache_hint"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"st-st-generic-vector-default","section":"9.7.9.11","spec_variant":"st_generic_vector","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"vector_legacy","state_space":["global","local","param","shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"st-st-explicit-vector-default","section":"9.7.9.11","spec_variant":"st_explicit_vector","operand_layout":"default","selector":{"topology":"memory","types":["b8","b16","b32","b64","u8","u16","u32","u64","s8","s16","s32","s64","f32","f64"],"shape":"vector_256","modifiers":["memory_order"],"state_space":["global"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: and
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I06]
+  slices:
+  - {"id":"and-and-b32-default","section":"9.7.8.1","spec_variant":"and_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: or
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I07]
+  slices:
+  - {"id":"or-or-b32-default","section":"9.7.8.2","spec_variant":"or_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: xor
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I08]
+  slices:
+  - {"id":"xor-xor-b32-default","section":"9.7.8.3","spec_variant":"xor_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: not
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I09]
+  slices:
+  - {"id":"not-not-b32-default","section":"9.7.8.4","spec_variant":"not_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: lop3
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"lop3-lop3-b32-default","section":"9.7.8.6","spec_variant":"lop3_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: shf
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"shf-shf-l-clamp-b32-default","section":"9.7.8.7","spec_variant":"shf_l_clamp_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar","modifiers":["l","clamp"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"shf-shf-r-wrap-b32-default","section":"9.7.8.7","spec_variant":"shf_r_wrap_b32","operand_layout":"default","selector":{"topology":"logic","types":["b32"],"shape":"scalar","modifiers":["r","wrap"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: bfe
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"bfe-bfe-u32-default","section":"9.7.1.20","spec_variant":"bfe_u32","operand_layout":"default","selector":{"topology":"arithmetic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: bfi
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"bfi-bfi-b32-default","section":"9.7.1.21","spec_variant":"bfi_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: brev
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"brev-brev-b32-default","section":"9.7.1.19","spec_variant":"brev_b32","operand_layout":"default","selector":{"topology":"arithmetic","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: shl
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I10]
+  slices:
+  - {"id":"shl-shl-b32-default","section":"9.7.8.8","spec_variant":"shl_b32","operand_layout":"default","selector":{"topology":"shift","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: shr
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I11]
+  slices:
+  - {"id":"shr-shr-u32-default","section":"9.7.8.9","spec_variant":"shr_u32","operand_layout":"default","selector":{"topology":"shift","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: trap
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  m9_issues: [M9-I05]
+  slices:
+  - {"id":"trap-trap-bare-default","section":"9.7.20.4","spec_variant":"trap_bare","operand_layout":"default","selector":{"topology":"control","types":[],"shape":"none"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: setmaxnreg
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"setmaxnreg-setmaxnreg-inc-sync-aligned-u32-default","section":"9.7.20.5","spec_variant":"setmaxnreg_inc_sync_aligned_u32","operand_layout":"default","selector":{"topology":"control","types":["u32"],"shape":"immediate","modifiers":["inc","sync","aligned"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: bar
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"bar-bar-sync-immediate-barrier","section":"9.7.14.1","spec_variant":"bar_sync","operand_layout":"immediate_barrier","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-sync-barrier","section":"9.7.14.1","spec_variant":"bar_sync","operand_layout":"barrier","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-sync-barrier-and-thread-count","section":"9.7.14.1","spec_variant":"bar_sync","operand_layout":"barrier_and_thread_count","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-sync-barrier","section":"9.7.14.1","spec_variant":"bar_cta_sync","operand_layout":"barrier","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-sync-barrier-and-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_sync","operand_layout":"barrier_and_thread_count","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-arrive-default","section":"9.7.14.1","spec_variant":"bar_arrive","operand_layout":"default","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-arrive-default","section":"9.7.14.1","spec_variant":"bar_cta_arrive","operand_layout":"default","selector":{"topology":"barrier","types":[],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-red-popc-u32-without-thread-count","section":"9.7.14.1","spec_variant":"bar_red_popc_u32","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-red-popc-u32-with-thread-count","section":"9.7.14.1","spec_variant":"bar_red_popc_u32","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-red-popc-u32-without-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_popc_u32","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-red-popc-u32-with-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_popc_u32","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-red-and-pred-without-thread-count","section":"9.7.14.1","spec_variant":"bar_red_and_pred","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-red-and-pred-with-thread-count","section":"9.7.14.1","spec_variant":"bar_red_and_pred","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-red-and-pred-without-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_and_pred","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-red-and-pred-with-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_and_pred","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-red-or-pred-without-thread-count","section":"9.7.14.1","spec_variant":"bar_red_or_pred","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-red-or-pred-with-thread-count","section":"9.7.14.1","spec_variant":"bar_red_or_pred","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-red-or-pred-without-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_or_pred","operand_layout":"without_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+  - {"id":"bar-bar-cta-red-or-pred-with-thread-count","section":"9.7.14.1","spec_variant":"bar_cta_red_or_pred","operand_layout":"with_thread_count","selector":{"topology":"barrier","types":["pred"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: membar
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"membar-membar-cta-default","section":"9.7.14.4","spec_variant":"membar_cta","operand_layout":"default","selector":{"topology":"memory_order","types":[],"shape":"none"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: fence
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"fence-fence-acq-rel-cta-default","section":"9.7.14.4","spec_variant":"fence_acq_rel_cta","operand_layout":"default","selector":{"topology":"memory_order","types":[],"shape":"none"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: atom
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"atom-atom-global-relaxed-cta-add-u32-default","section":"9.7.14.5","spec_variant":"atom_global_relaxed_cta_add_u32","operand_layout":"default","selector":{"topology":"atomic","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: red
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"red-red-global-relaxed-cta-add-u32-default","section":"9.7.14.6","spec_variant":"red_global_relaxed_cta_add_u32","operand_layout":"default","selector":{"topology":"reduction","types":["u32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: activemask
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"activemask-activemask-b32-default","section":"9.7.14.12","spec_variant":"activemask_b32","operand_layout":"default","selector":{"topology":"warp_query","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: vote
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"vote-vote-sync-ballot-b32-default","section":"9.7.14.10","spec_variant":"vote_sync_ballot_b32","operand_layout":"default","selector":{"topology":"vote","types":["b32"],"shape":"scalar"},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: mma
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"mma-mma-sync-aligned-m16n8k8-row-col-f32-f16-f16-f32-default","section":"9.7.15.5.14","spec_variant":"mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32","operand_layout":"default","selector":{"topology":"matrix_mma","types":["f32","f16","f16x2"],"shape":"m16n8k8","modifiers":["sync","aligned","row","col"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}
+- opcode: ldmatrix
+  status: {"syntax":"partial","resolved":"partial","checker":"partial","simulator":"unsupported"}
+  slices:
+  - {"id":"ldmatrix-ldmatrix-sync-aligned-m8n8-x2-shared-b16-default","section":"9.7.15.5.15","spec_variant":"ldmatrix_sync_aligned_m8n8_x2_shared_b16","operand_layout":"default","selector":{"topology":"matrix_load","types":["b16","b32"],"shape":"m8n8_x2","modifiers":["sync","aligned"],"state_space":["shared"]},"disposition":"implemented","status":{"syntax":"supported","resolved":"supported","checker":"supported","simulator":"unsupported"}}

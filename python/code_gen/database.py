@@ -16,8 +16,7 @@ from jsonschema import Draft202012Validator
 
 
 PTX_INSTRUCTION_SCHEMA = (
-    Path(__file__).resolve().parents[2]
-    / "instructions/schemas/ptx-instr-v1.schema.yaml"
+    Path(__file__).resolve().parent / "resources/ptx-instr-v1.schema.yaml"
 )
 
 
@@ -190,18 +189,18 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
 
 def _variant_modifier_language(
     opcode: str, variant: VariantSpec
-) -> set[frozenset[str]]:
-    """Return every unordered source-modifier set accepted by one variant.
+) -> set[tuple[str, ...]]:
+    """Return every ordered source-modifier sequence accepted by one variant.
 
-    Modifier slot names are local to the variant. A spelling may belong to a
-    differently named slot in another variant, but it must have exactly one
-    active owner inside this variant so the C++ matcher can bind greedily and
-    uniquely.
+    A spelling may bind to multiple required/fixed variant-local slots when
+    source order makes that binding unambiguous. Optional slots may not share
+    a spelling: generated descriptors rely on this invariant to bind greedily
+    without backtracking.
     """
 
     slot_names: set[str] = set()
-    owner_by_spelling: dict[str, str] = {}
-    language: set[frozenset[str]] = {frozenset()}
+    owners_by_spelling: dict[str, list[tuple[str, str]]] = {}
+    language: set[tuple[str, ...]] = {()}
     for modifier in variant.modifiers:
         if modifier.name in slot_names:
             raise ValueError(
@@ -230,18 +229,22 @@ def _variant_modifier_language(
 
         if modifier.presence != "absent":
             for spelling in spellings:
-                previous = owner_by_spelling.setdefault(spelling, modifier.name)
-                if previous != modifier.name:
+                owners = owners_by_spelling.setdefault(spelling, [])
+                if owners and (
+                    modifier.presence == "optional"
+                    or any(presence == "optional" for _, presence in owners)
+                ):
                     raise ValueError(
                         f"opcode {opcode!r} variant {variant.name!r} maps "
-                        f"modifier spelling {spelling!r} to both active slots "
-                        f"{previous!r} and {modifier.name!r}"
+                        f"modifier spelling {spelling!r} to an optional slot; "
+                        "repeated spellings require only required/fixed slots"
                     )
+                owners.append((modifier.name, modifier.presence))
 
         language = {
             combination
             if choice is None
-            else combination | frozenset((choice,))
+            else (*combination, choice)
             for combination in language
             for choice in choices
         }

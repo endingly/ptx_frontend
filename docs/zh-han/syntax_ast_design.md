@@ -15,7 +15,7 @@ source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved 
 
 ## CST 的所有权与表示
 
-公共 CST 头文件位于 `include/ptx_ir/cst`。`syntax_cst::CstFile` 持有完整
+公共 CST 头文件位于 `submod/cst/include`。`syntax_cst::CstFile` 持有完整
 `PtxToken` buffer；其 `CstRoot` 区分独立 instruction fragment 与 `CstModule`。节点通过
 `TokenId` 引用 file buffer，组合节点另外保存半开区间 `CstTokenRange`。
 
@@ -30,12 +30,16 @@ body 中的 instruction 由现有 instruction parser 处理。variable declarati
 array dimension 与 scalar initializer 使用结构化 constant-expression tree；brace
 initializer 则递归保留每一层花括号、元素和逗号。CST 同时保留受支持 function grammar
 的 qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
-尚未结构化建模的 function header token（例如 `.maxntid`）会在 CST 边界直接报错，不会
-作为 opaque token 被接受后再由 AST lowering 静默丢弃。
+entry header 还会结构化保留 `.maxnreg`、`.maxntid`、`.reqntid`、
+`.minnctapersm`、`.reqnctapercluster`、`.explicitcluster` 与
+`.maxclusterrank`：CST 保留 directive、整数 value 与 comma，AST 保留 kind、value 与
+range；`.explicitcluster` 没有 value。
 
 CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
 token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此
-`CstFile::sourceText()` 可以逐字节还原已解析输入：
+`CstFile::sourceText()` 就是 token-buffer round-trip serializer：对未修改的 CST
+可逐字节还原已解析输入。它输出 token buffer 而不是 CST node，recovery marker 不会
+额外输出源码，改变 node 并不等于 pretty print；内部 EOF sentinel 的数量不是公开契约：
 
 ```cpp
 PtxCstParser parser(source);
@@ -45,10 +49,44 @@ if (cst)
 ```
 
 `parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
-module root。当前 module grammar 尚不接受 debug directive、kernel-tuning directive、
-嵌套 statement scope、错误恢复节点、missing-token 插入或 token edit API。initializer
+module root。outermost module scope 的 `.file` 只接受
+`file_index "filename"` 或 `file_index "filename", timestamp, file_size`；
+两个 optional numeric field 必须成对，省略时保留 PTX 默认零而不伪造 source location。function body 现在可含 nested block；CST 保留其 brace、有序 body item 与
+完整 source range，Syntax AST 则保留有序 body item 与完整 source range。binding 会加入 lexical
+scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序平铺的 body；不会引入
+`ResolvedBlock`。function body（含 nested block）也接受 `.loc`：basic
+`file line column` triple，或成对的 PTX 7.2 `function_name label {+ integer}` /
+`inlined_at file line column` payload；CST 保留标点，AST 保留 field 与 range。`.file`
+index 与 `.debug_str` section/raw-label identity 会在独立的 debug-metadata binding namespace
+中建立，`.loc` 也会验证这些 reference；向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
+也在 outermost scope 接受 `.section name { ... }`，CST/AST 保留匹配 brace 和 raw DWARF
+payload token spelling；section name 只是 syntax，不是普通可绑定 identifier。DWARF payload type、
+private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar
+会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
+comma-separated string list；它不进入 binding 或 Resolved IR。entry header 中 pragma 可与四个
+已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。
+`CstRecoveryNode` 是当前带 tag 的纯 CST recovery 模型：`Inserted` 持有 expected
+`TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token
+span；`Error` 则持有这种 span 或 EOF 的 zero-width range。它可作为 module 或
+function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`。`parseModule()` 会附加有序
+diagnostic 并返回 recovered CST：它在 `;`、`}`、EOF、下一 function（含 qualifier）或受支持的
+module-only directive 处同步，保留这些 anchor，只在 zero-width 处插入缺失的 `;`/`}` marker，其余被丢弃
+的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。recovered CST 只 lower 其合法相邻 node：
+recovery marker 保持 CST-only，`PtxSyntaxParser` 返回过滤后的 AST，并且只一次、按 source order 返回原 parser diagnostic。
+round-trip serialization 使用原始 token buffer 而非 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
+但没有 `right_brace` token。可选的 Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzz raw lexer/CST input；同一 entry point 也有小型
+GTest seed smoke。尚未加入 ASan/UBSan 或 CI matrix。它必须单独 configure：
+从 source root 运行
+`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`，
+`cmake --build out/fuzz --target fuzz_lexer_cst`，再运行
+`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`。当前仍不接受其他 kernel-tuning directive 或 token edit API。initializer
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
+
+公开 parser/lowering root 返回 `ResultWithDiagnostics<T, D>`：optional value 加有序
+`DiagnosticCollection<D>`。这样后续 recovery 可在不再改变 API 的情况下，同时返回 CST 与
+diagnostic。module recovery 可同时返回 value 与 diagnostic；standalone instruction fragment
+仍为 fail-fast，错误时没有 value。
 
 ## CST 到 Syntax AST lowering
 
@@ -63,11 +101,14 @@ auto module = lowerSyntaxModule(module_cst);
 的 leaf spelling 会连同 `SourceRange` 一起复制到 AST。
 
 `PtxSyntaxParser` 继续作为便利 facade；`parseInstruction()` 与 `parseModule()` 分别为
-fragment client 与 module client 执行 source→CST→AST。
+fragment client 与 module client 执行 source→CST→AST，并按顺序映射 CST/lowering diagnostic。
 
 `AstFile` 采用相同的 root 区分方式，`AstModule` 则为 module directive 与 function
 提供 typed container。`AstFunction` 当前包含 function 类别、qualifier、名称，以及由
-`AstVariableDeclaration`、`AstLabel` 和 `AstInstruction` 组成的有序 body variant；
+`AstVariableDeclaration`、`AstLabel`、`AstCallPrototype`、`AstCallTargets`、
+`AstBranchTargets`、`AstLocDirective`、`AstPragma`、`AstBlock` 与 `AstInstruction`
+组成的有序 body variant；`AstBlock` 保留有序 body item 与完整 source range。`AstCallPrototype` 保留 label、sink、formal return/input payload，以及带
+range 的 PTX 9.3 `.noreturn` / ABI-preservation suffix；
 返回与输入 parameter 会保留 state space、alignment、type、pointer attribute、array
 形式、名称与 range。`AstConstantExpression` 结构化表示 literal/symbol、括号、cast、
 一元/二元/三元表达式和 initializer operator；`AstInitializer` 则区分 scalar expression
@@ -85,6 +126,9 @@ Syntax AST 不再保存 trivia、标点 token 或组合 operand 的重建文本�
 - vector member/vector pack 结构；
 - call return/input parameter group、callee、target-set/prototype symbol；
 - direct branch label target；
+- function-local `.callprototype` label、signature payload 和 PTX 9.3 suffix payload；
+- function-local `.calltargets` label 和有序 target identifier；
+- function-local `.branchtargets` label 和未展开的 compact target entry；
 - declaration array dimension、constant expression 与递归 initializer 结构；
 - diagnostic 所需的 source range；
 - generated layout descriptor 需要的 operand grammar alternative。

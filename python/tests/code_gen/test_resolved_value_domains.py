@@ -4,15 +4,21 @@ import unittest
 
 import yaml
 
-from code_gen.cpp_backend import DEFAULT_CPP_BACKEND_SPEC, load_cpp_backend
+from code_gen.cpp_backend import load_cpp_backend
 from code_gen.gen_resolved_value_domains import (
     generate_resolved_value_domain_header,
 )
 
 
+REPOSITORY_CPP_BACKEND_SPEC = (
+    Path(__file__).resolve().parents[3]
+    / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
+
+
 class ResolvedValueDomainGenerationTests(unittest.TestCase):
     def test_generates_marked_backend_domains_as_constexpr_tables(self) -> None:
-        raw = yaml.safe_load(DEFAULT_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
         raw["domains"]["scalar_types"]["values"]["f32"] = (
             "TestScalarType::F32"
         )
@@ -37,9 +43,20 @@ class ResolvedValueDomainGenerationTests(unittest.TestCase):
         self.assertIn("std::array<PtxSuffixEntry<ScalarType>, 30>", source)
         self.assertIn("kScalarTypes", source)
         self.assertIn('{"f32", TestScalarType::F32}', source)
-        self.assertIn("std::array<PtxSuffixEntry<RoundingMode>, 4>", source)
+        self.assertIn("std::array<PtxSuffixEntry<RoundingMode>, 5>", source)
         self.assertIn("kRoundingModes", source)
         self.assertIn('{"rn", RoundingMode::Rn}', source)
+        self.assertIn('{"rzi", RoundingMode::Rzi}', source)
+        self.assertIn("std::array<PtxSuffixEntry<ComparisonOperator>, 3>", source)
+        self.assertIn("kComparisonOperators", source)
+        self.assertIn('{"eq", ComparisonOperator::Eq}', source)
+        self.assertIn('{"lt", ComparisonOperator::Lt}', source)
+        self.assertIn('{"ge", ComparisonOperator::Ge}', source)
+        self.assertIn("std::array<PtxSuffixEntry<BooleanOperator>, 3>", source)
+        self.assertIn("kBooleanOperators", source)
+        self.assertIn('{"xor", BooleanOperator::Xor}', source)
+        self.assertIn('{"acq_rel", MemoryConsistency::AcqRel}', source)
+        self.assertIn('{"v8", VectorArity::V8}', source)
         self.assertNotIn("resolved_value_kinds =", source)
 
 

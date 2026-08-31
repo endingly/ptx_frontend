@@ -4,8 +4,16 @@ from typing import Any, cast
 import unittest
 
 import yaml
+from jsonschema import Draft202012Validator
 
 from code_gen.database import load_codegen_database
+from code_gen.load_yaml import load_yaml
+from code_gen.gen_resolved_checker_descriptor import _emit_availability
+from code_gen.normalize import normalize_availability
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCHEMA = REPO_ROOT / "instructions/schemas/ptx-instr-v1.schema.yaml"
 
 
 def _variant(name: str, type_value: str) -> dict[str, object]:
@@ -123,6 +131,105 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected"):
             self._load(invalid)
 
+    def test_schema_requires_positive_immediate_multiple_divisor(self) -> None:
+        spec = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_integer",
+            type_value="u32",
+        )
+        instruction = cast(list[dict[str, object]], spec["instructions"])[0]
+        variant = cast(list[dict[str, object]], instruction["variants"])[0]
+        variant["operands"] = [{
+            "name": "count",
+            "kind": "imm",
+            "role": "src",
+            "access": "read",
+            "type": "u32",
+        }]
+        variant["constraints"] = [{
+            "kind": "immediate_multiple_of",
+            "operand": "count",
+            "divisor": 8,
+        }]
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        self.assertEqual(list(validator.iter_errors(spec)), [])
+        cast(list[dict[str, object]], variant["constraints"])[0]["divisor"] = 0
+        self.assertTrue(list(validator.iter_errors(spec)))
+
+    def test_schema_caps_immediate_constraint_fields_at_uint64(self) -> None:
+        spec = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_integer",
+            type_value="u32",
+        )
+        instruction = cast(list[dict[str, object]], spec["instructions"])[0]
+        variant = cast(list[dict[str, object]], instruction["variants"])[0]
+        variant["operands"] = [{
+            "name": "count", "kind": "imm", "role": "src", "access": "read",
+            "type": "u64",
+        }]
+        validator = Draft202012Validator(load_yaml(SCHEMA))
+        uint64_max = 2**64 - 1
+        for constraint, field, too_large in (
+            ({"kind": "immediate_value", "operand": "count", "values": [uint64_max]},
+             "values", [2**64]),
+            ({"kind": "immediate_range", "operand": "count", "minimum": uint64_max},
+             "minimum", 2**64),
+            ({"kind": "immediate_range", "operand": "count", "minimum": 0,
+              "maximum": uint64_max}, "maximum", 2**64),
+            ({"kind": "immediate_multiple_of", "operand": "count", "divisor": uint64_max},
+             "divisor", 2**64),
+        ):
+            with self.subTest(field=field):
+                variant["constraints"] = [constraint]
+                self.assertEqual(list(validator.iter_errors(spec)), [])
+                constraint[field] = too_large
+                self.assertTrue(list(validator.iter_errors(spec)))
+
+    def test_database_rejects_immediate_constraint_missing_from_a_layout(self) -> None:
+        for kind, constraint in (
+            ("immediate_value", {
+                "kind": "immediate_value", "operand": "size", "values": [4],
+            }),
+            ("immediate_range", {
+                "kind": "immediate_range", "operand": "size", "minimum": 1,
+            }),
+            ("immediate_multiple_of", {
+                "kind": "immediate_multiple_of", "operand": "size", "divisor": 4,
+            }),
+        ):
+            with self.subTest(kind=kind):
+                spec = _spec(
+                    category="integer_arithmetic",
+                    codegen_category="arithmetic",
+                    variant_name="add_integer",
+                    type_value="u32",
+                )
+                instruction = cast(
+                    list[dict[str, object]], spec["instructions"]
+                )[0]
+                variant = cast(
+                    list[dict[str, object]], instruction["variants"]
+                )[0]
+                variant.pop("operands")
+                variant["operand_layouts"] = [
+                    {"name": "immediate", "operands": [{
+                        "name": "size", "kind": "imm", "role": "src",
+                        "access": "read",
+                    }]},
+                    {"name": "missing", "operands": [{
+                        "name": "dst", "kind": "reg", "role": "dst",
+                        "access": "write",
+                    }]},
+                ]
+                variant["constraints"] = [constraint]
+                with self.assertRaisesRegex(
+                    ValueError, rf"{kind} operand 'size'.*operand layout 'missing'"
+                ):
+                    self._load(spec)
+
     def test_rejects_codegen_category_disagreement(self) -> None:
         with self.assertRaisesRegex(ValueError, "disagree on codegen_category"):
             self._load(
@@ -236,7 +343,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         self.assertEqual(len(database.instructions), 1)
         self.assertEqual(len(database.instructions[0].variants), 2)
 
-    def test_rejects_one_spelling_owned_by_two_slots_in_one_variant(self) -> None:
+    def test_allows_one_spelling_to_bind_ordered_slots_in_one_variant(self) -> None:
         spec = _spec(
             category="floating_point",
             codegen_category="arithmetic",
@@ -257,8 +364,229 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             }
         )
 
-        with self.assertRaisesRegex(ValueError, "both active slots"):
+        database = self._load(spec)
+
+        self.assertEqual(len(database.instructions), 1)
+        self.assertEqual(len(database.instructions[0].variants), 1)
+
+    def test_rejects_optional_slot_with_repeated_spelling(self) -> None:
+        spec = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_mixed",
+            type_value="f16",
+        )
+        instructions = cast(list[dict[str, Any]], spec["instructions"])
+        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+        variants[0]["modifiers"] = [
+            {
+                "name": "optional_type",
+                "kind": "type",
+                "presence": "optional",
+                "domain": "scalar_types",
+                "default": "f16",
+                "values": ["f16"],
+            },
+            {
+                "name": "required_type",
+                "kind": "type",
+                "presence": "fixed",
+                "domain": "scalar_types",
+                "value": "f16",
+            },
+        ]
+
+        with self.assertRaisesRegex(ValueError, "optional slot"):
             self._load(spec)
+
+    def test_does_not_treat_different_modifier_orders_as_overlap(self) -> None:
+        spec = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_first",
+            type_value="f32",
+        )
+        instructions = cast(list[dict[str, Any]], spec["instructions"])
+        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+        variants[0]["modifiers"] = [
+            {
+                "name": "first_type",
+                "kind": "type",
+                "presence": "fixed",
+                "domain": "scalar_types",
+                "value": "f32",
+            },
+            {
+                "name": "second_type",
+                "kind": "type",
+                "presence": "fixed",
+                "domain": "scalar_types",
+                "value": "f16",
+            },
+        ]
+        variants.append(
+            {
+                "name": "add_second",
+                "availability": {"ptx": "1.0", "sm": 0},
+                "modifiers": [
+                    {
+                        "name": "first_type",
+                        "kind": "type",
+                        "presence": "fixed",
+                        "domain": "scalar_types",
+                        "value": "f16",
+                    },
+                    {
+                        "name": "second_type",
+                        "kind": "type",
+                        "presence": "fixed",
+                        "domain": "scalar_types",
+                        "value": "f32",
+                    },
+                ],
+                "operands": [],
+            }
+        )
+
+        database = self._load(spec)
+
+        self.assertEqual(
+            [variant.name for variant in database.instructions[0].variants],
+            ["add_first", "add_second"],
+        )
+
+
+class AvailabilityNormalizationTests(unittest.TestCase):
+    def test_legacy_and_dnf_availability(self) -> None:
+        legacy = {"ptx": "9.0", "sm": 90, "family": "sm_120f"}
+        self.assertEqual(normalize_availability(legacy), legacy)
+        dnf = {"any_of": [
+            {"ptx": "9.0", "sm": 100, "target": "sm_100a",
+             "capabilities": ["tensor", "cluster"]},
+            {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
+        ]}
+        self.assertEqual(normalize_availability(dnf), dnf)
+
+    def test_emits_sm103f_minimum_family_feature(self) -> None:
+        availability = {"ptx": "9.3", "sm": 103, "family": "sm_103f"}
+        self.assertEqual(normalize_availability(availability), availability)
+        self.assertIn(
+            '.required_family = "sm_103f",',
+            _emit_availability(normalize_availability(availability)),
+        )
+
+    def test_schema_defines_family_as_source_feature_target(self) -> None:
+        schema = load_yaml(SCHEMA)
+        family_feature = schema["$defs"]["family_feature_target"]
+        self.assertNotIn("arch_family", schema["$defs"])
+        self.assertIn("source feature target", family_feature["description"])
+        self.assertIn("translation compatibility", family_feature["description"])
+        self.assertIn("sm_103f", family_feature["examples"])
+        family = schema["$defs"]["availability"]["oneOf"][0]["properties"]["family"]
+        self.assertEqual(family["$ref"], "#/$defs/family_feature_target")
+        self.assertIn("enabled_family_features", family["description"])
+        dnf_family = schema["$defs"]["availability"]["oneOf"][1]["properties"]["any_of"]["items"]["properties"]["family"]
+        self.assertEqual(dnf_family["$ref"], "#/$defs/family_feature_target")
+        self.assertIn("enabled_family_features", dnf_family["description"])
+
+    def test_rejects_non_feature_legacy_families(self) -> None:
+        for family in ("sm_90a", "sm_90", "sm_0f", "sm_90ff"):
+            with self.assertRaisesRegex(ValueError, "availability family"):
+                normalize_availability({"family": family})
+
+    def test_rejects_invalid_dnf_availability(self) -> None:
+        for availability in (
+            {"any_of": []},
+            {"any_of": [{}]},
+            {"any_of": [{"target": "sm_90b"}]},
+            {"any_of": [{"family": "sm_90a"}]},
+            {"any_of": [{"capabilities": []}]},
+            {"any_of": [{"sm": 90}] * 5},
+        ):
+            with self.assertRaises((TypeError, ValueError)):
+                normalize_availability(availability)
+
+    def test_rejects_malformed_exact_targets_during_normalization(self) -> None:
+        for target in ("sm_0", "sm_80b", "sm_80aa", "sm_4294967296", "", 80):
+            with self.assertRaisesRegex(ValueError, "availability target"):
+                normalize_availability({"any_of": [{"target": target}]})
+
+    def test_accepts_maximum_exact_target_during_normalization(self) -> None:
+        availability = {"any_of": [{"target": "sm_4294967295"}]}
+        self.assertEqual(normalize_availability(availability), availability)
+        source = _emit_availability(normalize_availability(availability))
+        self.assertIn(".exact_target_architecture = {4294967295}", source)
+        self.assertIn("TargetFlavor::Generic", source)
+
+    def test_rejects_non_uint32_sm_during_normalization(self) -> None:
+        for availability in (
+            {"sm": 4294967296},
+            {"sm": True},
+            {"any_of": [{"sm": 4294967296}]},
+            {"any_of": [{"sm": True}]},
+        ):
+            with self.assertRaisesRegex(ValueError, "availability SM version"):
+                normalize_availability(availability)
+
+    def test_accepts_uint32_sm_boundaries_during_normalization(self) -> None:
+        for availability in (
+            {"sm": 0},
+            {"sm": 4294967295},
+            {"any_of": [{"sm": 4294967295}]},
+        ):
+            self.assertEqual(normalize_availability(availability), availability)
+
+    def test_availability_schema_dnf_boundaries(self) -> None:
+        schema = load_yaml(SCHEMA)
+        validator = Draft202012Validator({
+            "$schema": schema["$schema"],
+            "$defs": schema["$defs"],
+            "$ref": "#/$defs/availability",
+        })
+        self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
+        self.assertEqual(list(validator.iter_errors({"any_of": [{"family": "sm_100f"}]})), [])
+        self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
+        for availability in ({"any_of": []}, {"any_of": [{}]},
+                             {"any_of": [{"sm": 100}] * 5},
+                             {"sm": 4294967296}, {"sm": True},
+                             {"family": "sm_90a"},
+                             {"any_of": [{"family": "sm_90a"}]},
+                             {"any_of": [{"target": 80}]}):
+            self.assertTrue(list(validator.iter_errors(availability)))
+
+    def test_dnf_generator_keeps_or_clauses_and_and_terms(self) -> None:
+        source = _emit_availability({"any_of": [
+            {"ptx": "9.0", "sm": 100, "target": "sm_100a",
+             "capabilities": ["tensor", "cluster"]},
+            {"sm": 120, "family": "sm_120f"},
+        ]})
+        self.assertIn(".any_of_count = 2", source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn('.required_family = "sm_120f",', source)
+        self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
+        source = _emit_availability(normalize_availability({"any_of": [
+            {"target": "sm_80", "capabilities": ["tensor", "cluster"]},
+            {"target": "sm_90a"},
+            {"target": "sm_100f"},
+        ]}))
+        self.assertIn(".any_of_count = 3", source)
+        self.assertIn(".has_exact_target = true", source)
+        self.assertIn(".exact_target_architecture = {80}", source)
+        self.assertIn("TargetFlavor::Generic", source)
+        self.assertIn(".exact_target_architecture = {90}", source)
+        self.assertIn("TargetFlavor::ArchitectureSpecific", source)
+        self.assertIn(".exact_target_architecture = {100}", source)
+        self.assertIn("TargetFlavor::FamilySpecific", source)
+        self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_emitter_rejects_unvalidated_sm(self) -> None:
+        for availability in ({"sm": 4294967296}, {"any_of": [{"sm": True}]}):
+            with self.assertRaisesRegex(ValueError, "availability SM version"):
+                _emit_availability(availability)
+        with self.assertRaisesRegex(ValueError, "availability target"):
+            _emit_availability({"any_of": [{"target": "sm_4294967296"}]})
 
 
 if __name__ == "__main__":

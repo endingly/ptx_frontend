@@ -40,18 +40,50 @@
             "name": "ci-linux-gcc-release",
             "configurePreset": "ci-linux-gcc-release",
             "configuration": "Release"
+        },
+        {
+            "name": "ci-python-and-package-consumer",
+            "configurePreset": "ci-linux-gcc-debug",
+            "configuration": "Debug",
+            "targets": ["resolved_ir"]
         }
     ],
     "testPresets": [
         {
             "name": "ci-linux-gcc-debug",
             "configurePreset": "ci-linux-gcc-debug",
-            "configuration": "Debug"
+            "configuration": "Debug",
+            "filter": {
+                "exclude": {
+                    "name": "^(python_test|ptx_frontend\\.package_consumer)$"
+                }
+            }
         },
         {
             "name": "ci-linux-gcc-release",
             "configurePreset": "ci-linux-gcc-release",
-            "configuration": "Release"
+            "configuration": "Release",
+            "filter": {
+                "exclude": {
+                    "name": "^(python_test|ptx_frontend\\.package_consumer)$"
+                }
+            }
+        },
+        {
+            "name": "ci-python-and-package-consumer",
+            "configurePreset": "ci-linux-gcc-debug",
+            "configuration": "Debug",
+            "filter": {
+                "include": {
+                    "name": "^(python_test|ptx_frontend\\.package_consumer)$"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "jobs": 2
+            }
         }
     ],
     "workflowPresets": [
@@ -89,6 +121,25 @@
                 },
                 {
                     "name": "ci-linux-gcc-release",
+                    "type": "test"
+                }
+            ]
+        },
+        {
+            "name": "ci-python-and-package-consumer",
+            "displayName": "CI Python and package consumer",
+            "description": "Build resolved IR and run Python and package-consumer tests",
+            "steps": [
+                {
+                    "name": "ci-linux-gcc-debug",
+                    "type": "configure"
+                },
+                {
+                    "name": "ci-python-and-package-consumer",
+                    "type": "build"
+                },
+                {
+                    "name": "ci-python-and-package-consumer",
                     "type": "test"
                 }
             ]

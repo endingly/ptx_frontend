@@ -1,5 +1,6 @@
-# Direct dependencies for the Python code generators and spec validator.
+# Direct dependencies for the Python code generators, spec validator, and tests.
 # Transitive dependencies are resolved by pip; use a lock file when fully
 # reproducible dependency resolution is required.
 -e ./python
 jsonschema>=4.26,<5
+unittest-parallel>=1.8.6,<2

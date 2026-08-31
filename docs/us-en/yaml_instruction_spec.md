@@ -2,20 +2,23 @@
 
 ## Purpose
 
-YAML files under `instructions/ptx_spec/` are the declarative source of PTX
+YAML files under `python/code_gen/resources/ptx_spec/` are the canonical
+declarative source of PTX
 instruction facts. They describe legal source forms, variants, operand layouts,
 availability, and rule identifiers. The Python generator derives Syntax,
 Resolved, and checker descriptors plus C++ instruction structures from them.
 They are neither C++ templates nor backend-layout configuration.
 
-Every file uses `instructions/schemas/ptx-instr-v1.schema.yaml`:
+Every file uses the packaged sibling schema
+`python/code_gen/resources/ptx-instr-v1.schema.yaml` (and its local comment
+references `../ptx-instr-v1.schema.yaml`). `instructions/ptx_spec/` remains a
+source-tree compatibility symlink:
 
 ```yaml
 schema: ptx-instr/v1
-ptx_isa: "9.2"
-category: integer_arithmetic
+ptx_isa: "9.3"
+category: arithmetic
 codegen_category: arithmetic
-section: "9.7.1"
 ```
 
 The schema validates field shape and primitive enums. The normalizer enforces
@@ -49,9 +52,10 @@ An instruction requires `opcode` and `variants`; it may also have instruction-
 level `syntax`, `operands`, `section`, and `doc`. Both `category` and
 `codegen_category` are required file-level fields and must not be repeated on
 an instruction. An opcode may naturally occur in several category YAML files,
-but all its definitions must use the same `codegen_category`. Floating-point
-and integer `add` can therefore remain in their respective spec files while
-producing one C++ `Add`.
+but all its definitions must use the same `codegen_category`. One YAML may
+also split one opcode into several instruction definitions when its variants
+belong to distinct PTX document sections. `arithmetic.yaml` is the deliberate
+exception that combines PTX 9.7.1 through 9.7.5 under one category.
 
 Merging follows sorted spec-path and in-file declaration order. The file path is
 already the definition source, so no separate `fragment` ID is needed. Before
@@ -88,8 +92,9 @@ Core modifier fields are:
 
 An `optional` modifier must explicitly define its semantic `default` when it is
 omitted. The default type must agree with the modifier kind: `flag` uses a
-Boolean, `type` uses one scalar type from `values`, and `rounding` uses a
-rounding-mode value such as `rn`. For example:
+Boolean, `type` uses one scalar type from `values`, `rounding` uses a
+rounding-mode value such as `rn`, and legacy `cache` uses the semantic
+source-absence sentinel `unspecified`. For example:
 
 ```yaml
 - name: sat
@@ -110,6 +115,15 @@ rounding-mode value such as `rn`. For example:
   presence: optional
   values: [$rounding_modes]
   default: rn
+
+- name: cache
+  kind: cache
+  domain: cache_operators
+  presence: optional
+  values:
+    - value: [ca, cg, cs, lu, cv]
+      availability: {ptx: "2.0", sm: 20}
+  default: unspecified
 ```
 
 When the modifier is omitted, the resolver stores this default in the resolved
@@ -117,7 +131,16 @@ field with empty `locs`. An explicit modifier overrides it and retains its
 source location. `absent`, `required`, and `fixed` modifiers must not define
 `default`. A default remains an active semantic value, so the checker still
 applies its value availability. Because no modifier source range exists, such
-a diagnostic falls back to the whole instruction range.
+a diagnostic falls back to the whole instruction range. Legacy `cache` is the
+exception: `unspecified` is a source-absence sentinel rather than a spellable
+PTX value, so it never triggers modifier-value availability.
+
+`constraints` may carry the typed `memory_consistency` descriptor. It names
+the generated semantics, scope, cache, and address fields (and optionally
+mmio/state-space fields); normalization rejects inactive or
+unknown references. This keeps memory qualifiers independent in syntax while
+the descriptor-backed checker owns their cross rules. `omitted` and `none` are
+source-absence defaults, not spellable modifier values.
 
 `flag` normally provides `token: ".sat"`; a type token is normally derived
 from `value` or `values`. `name` is the modifier-slot ID local to one variant,
@@ -164,15 +187,157 @@ optional `type`:
 ```
 
 The full generated resolve path currently supports `reg`, `imm`, `reg_or_imm`,
-`pred`, and `pred_or_not`. `pred_or_not` accepts `%pN` or `!%pN` and preserves
-the complement bit in resolved IR. The schema can describe many more PTX
-kinds. Adding a schema enum does not implement it: Python Syntax/Resolved
-models, the C++ resolver, and the checker must all be extended. `type` may
-reference a modifier (`modifier(type)`) or name a fixed scalar type such as
-`u32`. The only supported type-expression function today is `modifier(name)`,
-which reads an active `kind: type` modifier of the current variant. The schema
-retains `same_as(...)`, `one_of(...)`, and `same_size_as(...)` as future syntax,
-but the normalizer explicitly rejects them as unsupported.
+`pred`, `pred_or_not`, `addr`, and `reg_vector`. `pred_or_not` accepts `%pN`
+or `!%pN` and preserves the complement bit in resolved IR. The schema can
+describe many more PTX kinds. Adding a schema enum does not implement it:
+Python Syntax/Resolved models, the C++ resolver, and the checker must all be
+extended. `type` may reference a modifier (`modifier(type)`) or name a fixed
+scalar type such as `u32`. The only supported type-expression function today is
+`modifier(name)`, which reads an active `kind: type` modifier of the current
+variant. The schema retains `same_as(...)`, `one_of(...)`, and
+`same_size_as(...)` as future syntax, but the normalizer explicitly rejects
+them as unsupported.
+
+An address operand may similarly derive its required state space from an
+active `kind: state_space` modifier:
+
+```yaml
+- name: address
+  kind: addr
+  role: addr
+  access: read
+  state_space: {expr: modifier(state_space)}
+```
+
+The normalizer preserves the reference and the resolved descriptor stores the
+modifier field ID. The checker compares it only when the address has a known
+declaration-derived effective state space; register, immediate, and standalone
+addresses remain unknown rather than being inferred from spelling.
+The current scalar/vector `ld/st` explicit forms use one runtime modifier field per
+opcode rather than duplicating a variant for each state-space value.
+
+An explicit `.param` address may add a narrow direction and function-context
+constraint:
+
+```yaml
+- name: address
+  kind: addr
+  role: addr
+  access: read
+  state_space: {expr: modifier(state_space)}
+  parameter:
+    direction: input
+    function_availability: {ptx: "2.0", sm: 20}
+```
+
+`parameter` is valid only on `kind: addr`. It must accompany a state-space
+modifier expression whose active modifier permits (or is fixed to) `param`;
+the normalizer rejects a detached or ineffective constraint. The resolved
+descriptor stores a typed input/return direction and availability. When the
+selected runtime state space is `.param`, the common checker first rejects a
+known wrong parameter direction. Otherwise it applies the function
+availability for a return constraint or a device-function address. Thus the
+current load constraint lets an entry input parameter use the explicit-form
+baseline but requires PTX 2.0 / SM 20 in a device function, while the store
+return constraint requires that target in every context. Unknown identity is
+not assigned a direction, and a known non-`.param` symbol is handled only by
+the ordinary exact state-space mismatch.
+
+A scalar string or list defines a static effective-address allowlist. List
+items may be plain state-space strings or `value`/`availability` objects:
+
+```yaml
+- name: address
+  kind: addr
+  role: addr
+  access: read
+  state_space:
+    - value: const
+      availability: {ptx: "3.1"}
+    - global
+    - local
+    - shared
+```
+
+The scalar form is equivalent to a one-entry list without an additional target
+requirement. Static values and `expr: modifier(...)` are mutually exclusive.
+The resolved descriptor maps every static value to `MemoryStateSpace` and keeps
+its availability. The common checker rejects a known effective space outside
+the list and checks availability on the matching entry; an unknown register,
+immediate, or standalone address remains accepted. Current generic scalar/vector
+loads use the example policy above, while generic scalar/vector stores allow only
+`.global/.local/.shared`.
+
+The current scalar/vector `ld/st` variants reuse one type set containing
+`.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32`,
+then append `.f64` at the variant. Legacy loads additionally model
+`.ca/.cg/.cs/.lu/.cv`, legacy stores model `.wb/.cg/.cs/.wt`, and all explicit
+cache spellings attach PTX 2.0 / SM 20 availability while omission resolves to the
+non-spellable `unspecified` sentinel. PTX's effective hardware defaults still
+follow the ISA (`ld` behaves as `.ca`, `st` behaves as `.wb` when the modifier
+is omitted), but Resolved IR intentionally preserves `Unspecified` so source
+provenance and modifier-value availability stay distinguishable. Explicit `.f64` attaches SM 13
+availability; generic `.f64` does not duplicate it because the generic variant
+already requires SM 20. Data operands use `type: {expr: modifier(type)}`, so
+the runtime modifier and its location drive the common fundamental-type check.
+Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
+types through 64 bits and `.v4` through 32 bits. A generated `memory_vector`
+constraint additionally permits only 256-bit `.v8` × 32-bit and `.v4` × 64-bit
+forms at PTX 8.8/SM 100, with global space when known.
+A register operand may also select an explicit width policy:
+
+```yaml
+- name: dst
+  kind: reg
+  role: dst
+  access: write
+  type: {expr: modifier(type)}
+  register_width: equal_or_wider
+```
+
+`register_width` defaults to `same_width`. The normalizer rejects the non-default
+`equal_or_wider` value on a non-register operand or an operand without a type
+expression, preventing a silent no-op. `reg_vector` operands may also use this
+policy, applying it to each vector element. The resolved operand descriptor
+stores the policy; no runtime Resolved IR field is generated. Current scalar
+`ld` destinations, scalar `st` sources, and legacy `.v2/.v4` memory vector
+elements use `equal_or_wider`: the declared register size must be at least the
+instruction size, after which either-side bit types and signed/unsigned integer
+pairs are compatible, floats require exact type/size, and integer/float pairs
+remain incompatible. Immediate and special-register checks stay same-width.
+Wider actual registers are currently limited to 64 bits; `.b128` remains
+rejected until declaration-type target availability is checked. Scalar `.b128`
+instruction types remain outside this set.
+
+A `reg_vector` operand must declare legal element counts through
+`vector.arity`. Static forms use an integer or list:
+
+```yaml
+vector: {arity: [2, 4], type_policy: aggregate, allow_sink: true}
+```
+For memory vectors, the generated cross rule permits partial sinks only for an
+exact 256-bit modern payload; legacy vectors and all-sink forms remain invalid.
+
+Legacy memory vectors instead link arity to the required runtime vector
+modifier:
+
+```yaml
+- name: dst
+  kind: reg_vector
+  role: dst
+  access: write
+  type: {expr: modifier(type)}
+  register_width: equal_or_wider
+  vector: {arity: {expr: modifier(vector)}, type_policy: element}
+```
+
+`type_policy: aggregate` checks a vector payload against the whole instruction
+bit width and is used by `mov` pack/unpack. `type_policy: element` checks each
+element against the instruction type and is used by legacy memory vectors.
+Those memory vectors retain their 128-bit legacy forms (`.v2` through 64-bit
+types and `.v4` through 32-bit types) and add only the PTX 8.8 256-bit forms
+described above.
+`VectorArity` is a required modifier domain; it has no optional/default form.
 
 Use semantic roles such as `dst`, `src1`, `barrier`, and `thread_count` rather
 than inventing `srcN` names merely for reuse. Role and access are carried into
@@ -200,6 +365,76 @@ the layouts of one variant must be uniquely selected by operand arity/shape.
 Do not invent variants for layout differences: `bar.sync a` and
 `bar.sync a, b` are two layouts in one `.sync` variant. `bar.sync` and
 `bar.cta.sync` have different modifier combinations and are separate variants.
+
+## Immediate operand constraints
+
+Variant-level `constraints` can impose executable integer rules on a named
+`kind: imm` operand:
+
+```yaml
+constraints:
+  - {kind: immediate_value, operand: mode, values: [4, 8, 16]}
+  - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+  - {kind: immediate_multiple_of, operand: count, divisor: 8}
+```
+
+`immediate_value` is one non-empty, duplicate-free allowlist per variant.
+`immediate_range` may occur once per operand and has an inclusive `minimum`
+and an optional inclusive `maximum`; omitting `maximum` means no upper bound.
+`immediate_multiple_of` is one divisor rule per variant. These descriptors may
+be combined when their named operands make that meaningful.
+
+All configured values use the generated `uint64_t` domain: an actual YAML
+integer in `0..18446744073709551615` (`2^64 - 1`). Negative values, Boolean
+values, floats/other non-integers, and values above that limit are rejected.
+The normalizer validates every `immediate_value.values[index]` before duplicate
+checking, validates `minimum`, present `maximum`, and `divisor` with the same
+rule, rejects `maximum < minimum`, and requires `divisor > 0`.
+
+The operand reference is deliberately variant-wide, not layout-local. For
+each of the three constraint kinds, the named operand must exist in **every**
+operand layout of the variant and must be `kind: imm` in each one. A missing
+operand or a `reg`/`reg_or_imm` occurrence in even one named layout is a
+normalization error that identifies the variant, constraint kind, operand, and
+layout. Do not work around this with a layout-local constraint DSL or a runtime
+"missing operand means skip" rule. If a future instruction genuinely needs a
+layout-specific rule, it needs a new explicitly designed contract; it must not
+weaken this invariant.
+
+The current frozen `setmaxnreg.inc.sync.aligned.u32` form illustrates a range
+plus divisibility rule:
+
+```yaml
+operands:
+  - {name: count, kind: imm, role: src, access: read, type: u32}
+constraints:
+  - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+  - {kind: immediate_multiple_of, operand: count, divisor: 8}
+```
+
+Thus `192` is valid while `23`, `257`, and `25` are rejected. `bfe.u32` and
+`bfi.b32` each use two independent inclusive ranges, `offset` and `width`,
+both `0..255`; both operands are immediate operands in their only layout.
+
+At resolution time an integer immediate carries its scalar type, raw width
+limited bits, and a signed-source marker. For example, a signed `-1` has the
+two's-complement raw bits for its operand width and keeps `is_negative`; it is
+not converted to an abstract signed integer before checker rules run. Range
+and multiple-of checks reject that negative marker before comparing or taking
+a remainder. Exact-value checks intentionally compare raw bits, so an allowlist
+is a bit-value contract. Floating immediates resolve to IEEE raw bits: decimal
+forms require `f32` or `f64`, and `0f...`/`0d...` are unsigned 32-/64-bit
+bit-pattern literals that require exactly `f32`/`f64` and cannot have a sign.
+Consequently these constraints are integer-domain rules; do not use their
+numeric-looking bounds to express floating-point ordering.
+
+Normalization diagnostics name the variant, constraint kind, precise field
+(including `values[index]`), and illegal value for malformed configuration.
+At runtime a bad value/range/divisibility result is an
+`ImmediateValueMismatch` anchored at the immediate operand; an impossible
+generated descriptor that references a missing/non-immediate operand is a
+`RuleViolation` anchored at the instruction. This makes configuration errors
+and source-program errors distinguishable.
 
 ## Complete example: bar
 
@@ -245,14 +480,27 @@ Every variant must declare:
 ```yaml
 availability:
   ptx: "8.0"
-  sm: 90
-  family: sm_90a       # optional
+  sm: 100
+  family: sm_100f      # optional minimum family-specific source-feature target
 rule: integer_arith.add # optional but recommended
 ```
 
-Common checker logic interprets minimum PTX, SM, and family. `rule` is a stable
-rule ID for instruction-specific checking. `examples`, `doc`, and
+Common checker logic interprets minimum PTX, SM, and `family` requirements.
+`family` is the minimum family-specific source-feature target: the checker
+looks only in the source target profile's `enabled_family_features`. The
+explicit catalog is: `sm_100` → none; `sm_100f`/`sm_100a` → `sm_100f`;
+`sm_103` → none; `sm_103f`/`sm_103a` → `sm_100f`, `sm_103f`; `sm_120f` →
+`sm_120f` only. Do not infer this set from the SM number or target suffix. It
+is distinct from PTX-to-physical-GPU translation compatibility, which is not
+modelled. An `a` target is an exact identity, not a family spelling: use
+`any_of: [{target: sm_100a}]` when that exact target is required. Capability
+clauses, exact target, and `family` are independent constraints. `rule` is a
+stable rule ID for instruction-specific checking. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
+
+An `any_of` clause may also contain `family`; it is an AND-term within that
+clause and uses the same `enabled_family_features` lookup, rather than requiring
+that exact target spelling.
 
 `operand_layouts[].availability` accumulates with variant availability; it
 does not override it, and only the selected layout contributes its constraint.
@@ -261,17 +509,19 @@ unique layout with strictly more specific operand shapes. Equal or incomparable
 candidates are a YAML modeling error; availability cannot resolve the syntax
 ambiguity.
 
-An operand with `kind: mov_vector` must declare legal element counts through
-`vector.arity`; the current mov-specific Resolved IR supports at most four
-elements. This data is generated into resolved/checker descriptors for vector-payload validation and
-does not participate in modifier-variant selection. For example, scalar, pack,
-and unpack `mov` are three layouts of one modifier variant rather than copied
-variants with overlapping `.b16/.b32/.b64` forms.
+An operand with `kind: reg_vector` generates a `ResolvedRegisterVector` payload.
+Static `vector.arity` values are descriptor checks only; dynamic
+`vector.arity: {expr: modifier(vector)}` also records a link to the selected
+runtime modifier field. This data does not participate in modifier-variant
+selection. For example, scalar, pack, and unpack `mov` are three layouts of one
+modifier variant rather than copied variants with overlapping `.b16/.b32/.b64`
+forms, while `ld.v2` and `ld.v4` are one vector variant selected by a required
+runtime `vector` modifier.
 
-## Current floating Add coverage
+## Current Add coverage
 
-The `add` definitions in `floating_point.yaml` and `integer_arith.yaml` merge
-automatically. They cover the standard `.f32/.f32x2/.f64` forms,
+The section-specific `add` definitions in `arithmetic.yaml` merge automatically.
+They cover the standard `.f32/.f32x2/.f64` forms,
 mixed-precision `.f32.{f16,bf16}`, and the half-precision
 `.f16/.f16x2/.bf16/.bf16x2` forms. Rounding resolves to `RoundingMode`, and
 value availability expresses the `sm_20` requirement of `.rm/.rp.f32`.

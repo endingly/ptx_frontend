@@ -1,0 +1,18 @@
+.version 9.3
+.target sm_80
+
+.visible .entry m11_multi_sm80() {
+  ret;
+}
+
+.target sm_90
+.visible .entry m11_multi_sm90() {
+  .reg .u32 %r;
+  { mov.u32 %r, %cluster_ctarank; }
+}
+
+.target sm_120f
+.visible .entry m11_multi_sm120f() {
+  .reg .u8x4 %r<3>;
+  add.sat.u8x4 %r0, %r1, %r2;
+}

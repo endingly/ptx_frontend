@@ -9,13 +9,13 @@ Lexer 有意只负责词法分类。它识别标点、字面量、标识符、�
 空白和注释，但不会穷举所有 PTX 指令、指令后缀、类型、shape、cache operator
 或 scope。
 
-主要实现文件如下：
+lexer 源码树为 `submod/lexer/`，主要实现文件如下：
 
-- `src/ptx_lexer.l`：Flex 规则、scanner 配置和位置跟踪。
-- `src/ptx_lexer.cpp`：管理生成 scanner 的 C++ 所有权封装。
-- `include/ptx_lexer.hpp`：公开 lexer 接口和 token 表示。
-- `include/ptx_token.hpp`：token kind 和 Flex 语义值类型。
-- `test/test_ptx_lexer.cpp`：lexer 行为测试。
+- `submod/lexer/src/ptx_lexer.l`：Flex 规则、scanner 配置和位置跟踪。
+- `submod/lexer/src/ptx_lexer.cpp`：管理生成 scanner 的 C++ 所有权封装。
+- `submod/lexer/include/ptx_lexer.hpp`：公开 lexer 接口和 token 表示。
+- `submod/lexer/include/ptx_token.hpp`：token kind 和 Flex 语义值类型。
+- `submod/lexer/test/test_ptx_lexer.cpp`：lexer 行为测试。
 
 ## 设计目标
 
@@ -207,7 +207,8 @@ Ident("add") DotIdent(".sat") DotIdent(".s32")
 
 - `.version`、`.target` 和 `.file` 等 module/debug directive。
 - `.visible` 和 `.extern` 等 visibility/linking directive。
-- `.entry` 和 `.func` 等 function directive。
+- `.entry`、`.func` 以及具有重要 function-local 结构意义的 `.callprototype`、
+  `.calltargets`、`.branchtargets` metadata directive。
 - `.maxnreg` 和 `.reqntid` 等 kernel tuning directive。
 - `.reg`、`.global` 和 `.param` 等 declaration directive。
 
@@ -277,14 +278,14 @@ EOF 被输出为 `TokenKind::Eof`，文本为空，范围是当前位置上的�
 ## 构建集成
 
 CMake 使用 `FLEX_TARGET`，在私有生成目录中生成 scanner 实现和头文件。生成的
-source 与 `src/ptx_lexer.cpp` 一同编译到 `ptx_frontend` library 中。
+source 与 `submod/lexer/src/ptx_lexer.cpp` 一同编译到 `lexer` target 中。
 
-修改 `src/ptx_lexer.l` 后，正常构建流程会重新生成 scanner。
+修改 `submod/lexer/src/ptx_lexer.l` 后，正常构建流程会重新生成 scanner。
 
 ## 测试策略
 
-Lexer 测试构建为独立的 `ptx_lexer_test` 可执行程序，不与更高层组件共享测试
-可执行程序。
+启用 `BUILD_TESTING` 时，CMake 将 lexer 测试构建为独立的 `test_lexer` 可执行程序，
+不与更高层组件共享测试可执行程序。
 
 当前测试覆盖：
 
@@ -300,10 +301,10 @@ Lexer 测试构建为独立的 `ptx_lexer_test` 可执行程序，不与更高�
 - 未终止块注释错误。
 - `peek()` 和 `consume()` 行为。
 
-可以直接运行 lexer 测试：
+可以构建 lexer 测试 target：
 
 ```sh
-./out/build/ci-linux-gcc-debug/ptx_lexer_test
+cmake --build out/build/ci-linux-gcc-debug --target test_lexer
 ```
 
 也可以通过 CTest 运行：

@@ -47,6 +47,35 @@ function prototype 与 definition 各自仍拥有 lexical scope。function symbo
 `owned_scope` 优先指向 definition scope，从而使后续 module resolution 使用 definition
 中的 parameter/local declaration。
 
+## Control-flow metadata
+
+同一 pass 还检查 function-local 的 indirect-control metadata。`.calltargets` member 必须是
+此前已声明的 device `.func`；重复 member 会以两个 member range 诊断，所有有效 member 必须有
+相同的 canonical `FunctionSignature`。`.branchtargets` member 必须是所属 function 中的 label，
+允许 forward label。`N<5>` 这样的 compact entry 会基于已有 local label 检查，不创建 synthetic
+symbol；缺失或 overlap label 使用 compact-entry range 诊断。
+
+`.callprototype` 拒绝同时出现 return parameter 与 `.noreturn`，对 formal 使用既有
+alignment/array-extent 检查，并要求 array formal 使用 `.param`。duplicate declaration label 仍由
+binding 负责。module resolution 会把有效 prototype 转为与 function 相同的 canonical signature，
+并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
+availability 仍留给后续工作。
+
+## Entry resource constraint
+
+对已支持的 entry-header `.maxnreg`、`.maxntid`、`.reqntid` 与 `.minnctapersm`，本 pass
+以已声明的 module `.version` 检查最低 PTX 版本（依次为 1.3、1.3、2.1 与 2.0）。四者均支持所有 SM，
+故此处不额外检查 `.target`。同一 entry 中 `.reqntid` 与 `.maxntid` 互斥；诊断指向后出现的
+directive，并以先出现的 range 为上下文。单独的 `.minnctapersm` 在 PTX 中是 warning 而非 error；
+warning severity、backend resource feasibility 与数值上限仍不属于本 pass。
+
+## Debug metadata 边界
+
+`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复 file index 幂等，
+`.loc` file reference 必须解析，`function_name` 只能标识 `.debug_str` 自身或其中 raw label。
+本 declaration pass 不增加 DWARF payload expression、source attachment 或 resource
+feasibility semantic。
+
 ## 当前边界
 
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module

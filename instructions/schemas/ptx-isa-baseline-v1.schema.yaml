@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PTX ISA baseline
+type: object
+additionalProperties: false
+required:
+  - schema
+  - version
+  - ptx_isa
+  - toolkit_release
+  - document_revision
+  - published
+  - retrieved_at
+  - content_digest
+  - sources
+  - update_policy
+properties:
+  schema:
+    const: ptx-isa-baseline/v1
+  version:
+    const: 1
+  ptx_isa:
+    const: "9.3"
+  toolkit_release:
+    const: "13.3.0"
+  document_revision:
+    const: "PTX ISA 9.3"
+  published:
+    const: "2026-06-25"
+  retrieved_at:
+    const: "2026-08-29"
+  content_digest:
+    type: object
+    additionalProperties: false
+    required: [algorithm, subject, canonicalization, value]
+    properties:
+      algorithm:
+        const: sha256
+      subject:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
+      canonicalization:
+        const: raw_response_body
+      value:
+        const: 14f6af4c0aefa9aadd257f85c5bcb577c27b8fcd16c4954af4e281409cd1ebcc
+  sources:
+    type: object
+    additionalProperties: false
+    required:
+      - root
+      - contents
+      - instruction_set
+      - instructions_9_7
+      - special_registers_10
+      - directives_11
+      - pragma_strings_12
+    properties:
+      root:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/
+      contents:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html
+      instruction_set:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/#instruction-set
+      instructions_9_7:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/#instructions
+      special_registers_10:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/#special-registers
+      directives_11:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/#directives
+      pragma_strings_12:
+        const: https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/#descriptions-pragma-strings
+  update_policy:
+    type: object
+    additionalProperties: false
+    required:
+      - automatic_latest_tracking
+      - upgrade_requires_review
+      - required_artifact_diffs
+    properties:
+      automatic_latest_tracking:
+        const: false
+      upgrade_requires_review:
+        const: true
+      required_artifact_diffs:
+        const: [registry, coverage]

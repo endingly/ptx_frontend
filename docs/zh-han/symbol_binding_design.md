@@ -8,7 +8,7 @@ symbol binding 位于 Syntax AST 与 Resolved IR/checker 之间：
 source -> CST -> Syntax AST -> symbol binding -> Resolved IR/checker
 ```
 
-`include/ptx_ir/bind/ptx_symbol_table.hpp` 提供公开 API：
+`submod/binding/include/ptx_symbol_table.hpp` 提供公开 API：
 
 ```cpp
 auto binding = binding::bindSymbols(module);
@@ -20,12 +20,13 @@ auto binding = binding::bindSymbols(module);
 ## Scope 与 symbol
 
 每个 module 有一个根 scope，每个 `.entry/.func` item 有一个以 module scope 为 parent 的
-function scope。当前收集：
+function scope，每个 nested `AstBlock` 则有按 source range 识别的 child block scope。当前收集：
 
 - module/function variable declaration；
 - function input 与 return parameter；
 - function symbol；
-- label。
+- label，以及 function-local `.callprototype`、`.calltargets` 与
+  `.branchtargets` declaration；即使写在 nested block 内，也放入所属的 function scope。
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
 parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
@@ -34,7 +35,17 @@ function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 
 同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
-因此 function-local declaration 可以遮蔽 module symbol。
+因此 block declaration 可以遮蔽 outer/module symbol，sibling block 彼此不可见；label 和
+control-flow metadata 则有意保持 function-local，而非 block-local。
+
+debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
+`uint64_t`（decimal/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
+有意复用第一个 `SymbolId`。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
+`DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
+program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
+`DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为
+`.debug_str` section 自身或其中 label。这些 metadata identity 会诊断 unresolved reference，
+但绝不作为 PTX operand。
 
 ## Parameterized variable name
 
@@ -84,8 +95,11 @@ linkage 明确标记为 external。
 mask operator 的 callee 是 literal，同样只绑定其 argument。
 
 call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 callee 是 function 或
-`.reg` function pointer、call parameter 属于 `.reg/.param`，以及 direct branch target 是
-当前 function 的 label。详见 `control_flow_syntax_design.md`。
+`.reg` function pointer、call parameter 属于 `.reg/.param`、direct branch target 是当前
+function 的 label，且 indirect target-set operand 是 `.callprototype` 或 `.calltargets`
+symbol。三种 metadata declaration 都拥有稳定的 function-scope `SymbolId`。member validation、
+duplicate policy 与 prototype/signature semantics 由 declaration semantics 检查；binding 不
+resolve metadata member 或 instruction use。详见 `control_flow_syntax_design.md`。
 
 ## 当前诊断与边界
 
@@ -107,8 +121,8 @@ parameterized member、declaration kind、声明 state space 与实际 address s
 parameter memory address 与 kernel formal parameter 的 `mov` 地址属于 `.param`，
 device-function formal parameter 的 `mov` 地址属于 `.local`，且 return parameter 取址由
 checker 在所有 device parameter 上要求 PTX 2.0 / SM 20 baseline，并将 return parameter 的
-最低 PTX 提升至 6.0。function-local `.param` variable 仍拒绝取址；
-standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
+最低 PTX 提升至 6.0。function-local `.param` call-argument variable 与 formal parameter 分开绑定；
+direct `ld.param`/`st.param` 可取址，`mov` 仍拒绝取址。standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
 同一稳定 `SymbolId` 与 `.func/.entry` 类别；kernel function 地址由 checker 要求 PTX 3.1 /
 SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
 后续语义阶段仍需完成：

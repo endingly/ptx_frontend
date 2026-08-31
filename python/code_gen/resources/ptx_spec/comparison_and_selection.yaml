@@ -1,0 +1,481 @@
+# PTX comparison and selection instructions.
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: comparison_and_selection
+codegen_category: arithmetic
+section: "9.7.6"
+
+operand_patterns:
+  set_eq_u32_u32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+  set_lt_and_f32_s32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: f32
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: s32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: s32
+    - name: combine
+      kind: pred_or_not
+      role: predicate
+      access: read
+      type: pred
+
+  setp_lt_u32:
+    - name: dst
+      kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+  setp_lt_and_u32:
+    - name: dst
+      kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+    - name: combine
+      kind: pred_or_not
+      role: predicate
+      access: read
+      type: pred
+
+  setp_ge_s32:
+    - name: dst
+      kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: s32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: s32
+  setp_eq_u32_pair:
+    - name: dst
+      kind: pred_pair
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+
+  setp_lt_and_s32_pair:
+    - name: dst
+      kind: pred_pair
+      role: dst
+      access: write
+      type: pred
+    - name: src1
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: s32
+    - name: src2
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: s32
+    - name: combine
+      kind: pred
+      role: predicate
+      access: read
+      type: pred
+  selp_u32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+    - name: src_true
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: u32
+    - name: src_false
+      kind: reg_or_imm
+      role: src2
+      access: read
+      type: u32
+    - name: predicate
+      kind: pred
+      role: predicate
+      access: read
+      type: pred
+
+  slct_u32_s32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+      register_width: same_width
+    - name: src_true
+      kind: reg
+      role: src1
+      access: read
+      type: u32
+      register_width: same_width
+    - name: src_false
+      kind: reg
+      role: src2
+      access: read
+      type: u32
+      register_width: same_width
+    - name: selector
+      kind: reg
+      role: src3
+      access: read
+      type: s32
+      register_width: same_width
+
+  slct_ftz_u64_f32:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u64
+      register_width: same_width
+    - name: src_true
+      kind: reg
+      role: src1
+      access: read
+      type: u64
+      register_width: same_width
+    - name: src_false
+      kind: reg
+      role: src2
+      access: read
+      type: u64
+      register_width: same_width
+    - name: selector
+      kind: reg
+      role: src3
+      access: read
+      type: f32
+      register_width: same_width
+
+instructions:
+  - opcode: set
+    section: "9.7.6.1"
+    doc: "Frozen scalar comparison results for one unsigned equality and one signed predicate-combined comparison."
+    syntax: "set.eq.u32.u32 dst, src1, src2 | set.lt.and.f32.s32 dst, src1, src2, combine"
+    variants:
+      - name: set_eq_u32_u32
+        description: "Unsigned equality with a .u32 result."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [eq]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $set_eq_u32_u32
+        examples:
+          - ptx: "set.eq.u32.u32 %r0, %r1, 16;"
+            valid: true
+      - name: set_lt_and_f32_s32
+        description: "Signed less-than combined with one predicate and materialized as .f32."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: required
+            values: [and]
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $set_lt_and_f32_s32
+        examples:
+          - ptx: "set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"
+            valid: true
+  - opcode: setp
+    section: "9.7.6.2"
+    doc: "Frozen predicate comparison forms, including two dual-predicate destinations."
+    syntax: "setp.lt.u32 dst, src1, src2 | setp.ge.s32 dst, src1, src2 | setp.lt.and.u32 dst, src1, src2, combine | setp.eq.u32 dst0|dst1, src1, src2 | setp.lt.and.s32 dst0|dst1, src1, src2, combine"
+    variants:
+      - name: setp_lt_u32
+        description: "Single-destination unsigned less-than predicate comparison."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $setp_lt_u32
+        examples:
+          - ptx: "setp.lt.u32 %p0, %r0, 16;"
+            valid: true
+      - name: setp_ge_s32
+        description: "Single-destination signed greater-or-equal predicate comparison."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [ge]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $setp_ge_s32
+        examples:
+          - ptx: "setp.ge.s32 %p0, %r0, -1;"
+            valid: true
+      - name: setp_lt_and_u32
+        description: "Single-destination unsigned less-than comparison combined with a predicate."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: required
+            values: [and]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $setp_lt_and_u32
+        examples:
+          - ptx: "setp.lt.and.u32 %p0, %r0, 16, !%p1;"
+            valid: true
+      - name: setp_eq_u32_pair
+        description: "Unsigned equality with two predicate destinations."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [eq]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: absent
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $setp_eq_u32_pair
+        examples:
+          - ptx: "setp.eq.u32 %p0|%p1, %r0, %r1;"
+            valid: true
+      - name: setp_lt_and_s32_pair
+        description: "Signed less-than combined with one non-negated predicate and two predicate destinations."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: comparison
+            kind: comparison
+            domain: comparison_operators
+            presence: required
+            values: [lt]
+          - name: boolean
+            kind: boolean_op
+            domain: boolean_operators
+            presence: required
+            values: [and]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $setp_lt_and_s32_pair
+        examples:
+          - ptx: "setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;"
+            valid: true
+  - opcode: selp
+    section: "9.7.6.3"
+    doc: "Select between two .u32 values using one predicate."
+    syntax: "selp.u32 dst, src_true, src_false, predicate"
+    operands: $selp_u32
+    variants:
+      - name: selp_u32
+        description: "32-bit unsigned predicate selection."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "selp.u32 %r0, %r1, 0, %p0;"
+            valid: true
+  - opcode: slct
+    section: "9.7.6.4"
+    doc: "Select one same-width data operand by the sign of a numeric selector."
+    syntax: "slct.u32.s32 dst, src_true, src_false, selector | slct.ftz.u64.f32 dst, src_true, src_false, selector"
+    variants:
+      - name: slct_u32_s32
+        description: "32-bit data selection with a signed 32-bit numeric selector."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: ftz
+            kind: flag
+            presence: absent
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+        operands: $slct_u32_s32
+        examples:
+          - ptx: "slct.u32.s32 %r0, %r1, %r2, %r3;"
+            valid: true
+      - name: slct_ftz_u64_f32
+        description: "64-bit data selection with an .ftz single-precision numeric selector."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: ftz
+            kind: flag
+            presence: fixed
+            value: true
+            token: .ftz
+          - name: dtype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+          - name: stype
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        operands: $slct_ftz_u64_f32
+        examples:
+          - ptx: "slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;"
+            valid: true

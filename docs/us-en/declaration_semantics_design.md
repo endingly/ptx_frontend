@@ -55,6 +55,42 @@ Every function prototype and definition still owns a lexical scope. The
 function symbol's `owned_scope` prefers the definition scope, so module
 resolution uses the parameters and locals belonging to the body it resolves.
 
+## Control-flow metadata
+
+The same pass checks function-local indirect-control metadata. A
+`.calltargets` member must be a previously declared device `.func`, duplicate
+members are rejected with both member ranges, and every valid member must have
+the same canonical `FunctionSignature`. `.branchtargets` members must be labels
+in the owning function; forward labels are valid. Compact entries such as
+`N<5>` are checked against the existing local labels without creating synthetic
+symbols, and report the compact-entry range for missing or overlapping labels.
+
+`.callprototype` rejects `.noreturn` with return parameters, applies existing
+alignment/array-extent checks to its formals, and requires an array formal to
+use `.param`. Binding remains the owner of duplicate declaration labels.
+Module resolution converts a valid prototype to the same canonical signature
+as a function and reuses the validated first `.calltargets` member signature
+for indirect-call ABI checking. ABI suffix availability remains later work.
+
+## Entry resource constraints
+
+For the supported entry-header `.maxnreg`, `.maxntid`, `.reqntid`, and
+`.minnctapersm` directives, this pass compares a declared module `.version`
+with their PTX minima (1.3, 1.3, 2.1, and 2.0 respectively). All four are
+supported on every SM, so `.target` does not add a check here. `.reqntid` and `.maxntid`
+are mutually exclusive within one entry and diagnose the later directive with
+the earlier range as context. A lone `.minnctapersm` is a PTX warning rather
+than an error; warning severity, backend resource feasibility, and numerical
+limits remain outside this pass.
+
+## Debug metadata boundary
+
+Binding owns the `.file`/`.loc` and `.debug_str` identity table: duplicate file
+indices are idempotent, `.loc` file references must bind, and
+`function_name` must identify `.debug_str` itself or one of its raw labels.
+This declaration pass intentionally adds no DWARF payload-expression, source
+attachment, or resource-feasibility semantics.
+
 ## Current boundary
 
 This pass does not perform opcode-specific instruction type checking or

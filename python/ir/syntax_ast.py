@@ -12,6 +12,7 @@ from enum import Enum, IntFlag
 from code_gen.model import (
     InstructionSpec,
     ModifierSpec,
+    OperandLayoutKind as ModelOperandLayoutKind,
     OperandSpec,
     VariantSpec,
     modifier_spellings,
@@ -46,12 +47,16 @@ class OperandSyntaxShape(IntFlag):
     CALL_TARGET = 1 << 7
     CALL_TARGET_SET = 1 << 8
     BRANCH_TARGET = 1 << 9
+    BRANCH_TARGET_SET = 1 << 10
+    REGISTER_PREDICATE_PAIR = 1 << 11
 
 
 class OperandLayoutKind(Enum):
     """Generic algorithm used to match an operand layout."""
 
     FLAT = "Flat"
+    CALL = "Call"
+    INDIRECT_CALL = "IndirectCall"
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,10 @@ class SyntaxOperandSlotDescriptor:
 
     allowed_syntax_shapes: OperandSyntaxShape
     presence: OperandPresence
+    type_tag: str | None = None
+    minimum_elements: int | None = None
+    maximum_elements: int | None = None
+    allowed_element_shapes: OperandSyntaxShape = OperandSyntaxShape(0)
 
     def allows(self, actual_shape: OperandSyntaxShape) -> bool:
         return bool(self.allowed_syntax_shapes & actual_shape)
@@ -120,23 +129,38 @@ _PRESENCE_MAP = {
     "fixed": ModifierPresence.REQUIRED,
 }
 
-_OPERAND_SYNTAX_SHAPES = {
+OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+    "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "mov_scalar_src": (
         OperandSyntaxShape.IDENTIFIER_REF
         | OperandSyntaxShape.IMMEDIATE
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
     ),
+    "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
+    "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
+    "pred_or_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
     "label": OperandSyntaxShape.BRANCH_TARGET,
     "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
     "symbol": OperandSyntaxShape.IDENTIFIER_REF,
     "addr": OperandSyntaxShape.ADDRESS,
-    "mov_vector": OperandSyntaxShape.VECTOR_PACK,
+    "reg_vector": OperandSyntaxShape.VECTOR_PACK,
+    "descriptor": OperandSyntaxShape.IDENTIFIER_REF,
+    "typed_token": OperandSyntaxShape.IDENTIFIER_REF,
+    "tensor_coordinate": OperandSyntaxShape.VECTOR_PACK,
+    "matrix_fragment": OperandSyntaxShape.VECTOR_PACK,
+    "direct_call_target": OperandSyntaxShape.CALL_TARGET,
+    "indirect_call_target": OperandSyntaxShape.CALL_TARGET,
+    "indirect_call_metadata": OperandSyntaxShape.CALL_TARGET_SET,
+    "branch_target_set": OperandSyntaxShape.BRANCH_TARGET_SET,
+    "call_return_param": OperandSyntaxShape.CALL_PARAMETER_LIST,
+    "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
 }
 
 def _build_variant_descriptor_view(
@@ -150,7 +174,13 @@ def _build_variant_descriptor_view(
         operand_layouts=tuple(
             SyntaxOperandLayoutDescriptor(
                 layout_id=layout.name,
-                kind=OperandLayoutKind.FLAT,  # TODO: support other layout kinds
+                kind=OperandLayoutKind(
+                    "Call"
+                    if layout.kind is ModelOperandLayoutKind.CALL
+                    else "IndirectCall"
+                    if layout.kind is ModelOperandLayoutKind.INDIRECT_CALL
+                    else "Flat"
+                ),
                 slots=tuple(
                     _build_operand_slot_descriptor_view(operand)
                     for operand in layout.operands
@@ -185,7 +215,7 @@ def _build_operand_slot_descriptor_view(
 ) -> SyntaxOperandSlotDescriptor:
     """Return the AST operand slot descriptor for one normalized PTX operand spec."""
     try:
-        shapes = _OPERAND_SYNTAX_SHAPES[operand.kind]
+        shapes = OPERAND_SYNTAX_SHAPES[operand.kind]
     except KeyError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported syntax operand kind "
@@ -195,6 +225,18 @@ def _build_operand_slot_descriptor_view(
     return SyntaxOperandSlotDescriptor(
         allowed_syntax_shapes=shapes,
         presence=OperandPresence.REQUIRED,
+        type_tag=operand.type_tag,
+        minimum_elements=operand.minimum_elements,
+        maximum_elements=operand.maximum_elements,
+        allowed_element_shapes=sum(
+            (
+                OperandSyntaxShape.IDENTIFIER_REF
+                if kind == "reg"
+                else OperandSyntaxShape.IMMEDIATE
+                for kind in operand.element_kinds
+            ),
+            OperandSyntaxShape(0),
+        ),
     )
 
 

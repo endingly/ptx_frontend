@@ -1,0 +1,1809 @@
+# PTX data movement and conversion instructions.
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: data_movement_and_conversion
+codegen_category: data_movement
+section: "9.7.9"
+
+type_sets:
+  ld_st_scalar_types:
+    - b8
+    - b16
+    - b32
+    - b64
+    - u8
+    - u16
+    - u32
+    - u64
+    - s8
+    - s16
+    - s32
+    - s64
+    - f32
+
+value_sets:
+  ld_cache_operators: [ca, cg, cs, lu, cv]
+  st_cache_operators: [wb, cg, cs, wt]
+
+operand_patterns:
+  mov_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+    - name: src
+      kind: mov_scalar_src
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+
+  mov_pred:
+    - name: dst
+      kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: src
+      kind: pred_or_sreg
+      role: src
+      access: read
+      type: pred
+
+  mov_v4_u32:
+    - name: dst
+      kind: vector_reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+    - name: src
+      kind: vector_sreg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+
+  cvt_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(dst_type)
+      register_width: equal_or_wider
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(src_type)
+      register_width: equal_or_wider
+
+  cvt_rn_f32_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: f32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: s32, register_width: equal_or_wider}
+
+  cvt_rn_f16x2_f32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: f32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: f32, register_width: exact}
+
+  cvt_pack_sat_u8_s32_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: equal_or_wider}
+    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: equal_or_wider}
+    - {name: carry, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+
+  cvta_register:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+
+  prmt_generic_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: selector, kind: imm, role: src, access: read, type: u32}
+
+  prmt_f4e_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: selector, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+
+  mov_pack:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      vector:
+        kind: vector
+        arity: [2, 4]
+
+  mov_unpack:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      vector:
+        kind: vector
+        arity: [2, 4]
+        allow_sink: true
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+  ld_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        - value: const
+          availability:
+            ptx: "3.1"
+        - global
+        - local
+        - shared
+
+  ld_explicit_scalar:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: input
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+
+  ld_explicit_scalar_cache_policy:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  ld_explicit_scalar_global:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+
+  prefetch_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+
+  prefetchu_generic:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [generic]
+
+  createpolicy_fractional_l2_evict_last:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b64
+    - name: fraction
+      kind: imm
+      role: src
+      access: read
+      type: f32
+
+  applypriority_global_l2_evict_normal:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: size
+      kind: imm
+      role: src
+      access: read
+      type: u32
+
+  cp_async_shared_global:
+    - name: dst
+      kind: addr
+      role: addr
+      access: write
+      state_space: [shared]
+    - name: src
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global]
+    - name: cp_size
+      kind: imm
+      role: src
+      access: read
+      type: u32
+
+  isspacep_global_u64:
+    - {name: dst, kind: pred, role: dst, access: write, type: pred}
+    - {name: src, kind: reg, role: src, access: read, type: u64, register_width: exact}
+
+  shfl_sync_idx:
+    - name: dst
+      kind: shfl_dest
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type: b32
+    - name: lane
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+    - name: clamp
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+
+  ld_vector:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        - value: const
+          availability:
+            ptx: "3.1"
+        - global
+        - local
+        - shared
+
+  ld_explicit_vector:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: input
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+
+  st_scalar:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global, local, shared]
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+
+  st_vector:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global, local, shared]
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+
+  st_explicit_vector:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: return
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+
+  st_explicit_scalar:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+      parameter:
+        direction: return
+        function_availability:
+          ptx: "2.0"
+          sm: 20
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+
+  st_explicit_scalar_cache_policy:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  st_explicit_scalar_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+
+instructions:
+  - opcode: isspacep
+    section: "9.7.9.20"
+    doc: "Test whether a bare u64 general register belongs to global address space."
+    syntax: "isspacep.global dst, src"
+    operands: $isspacep_global_u64
+    variants:
+      - name: isspacep_global_u64
+        description: "Register-only global address-space predicate test."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: global}
+        examples:
+          - {ptx: "isspacep.global %p0, %rd0;", valid: true}
+
+  - opcode: cvta
+    section: "9.7.9.21"
+    doc: "Convert register-only global and generic u64 addresses."
+    syntax: "cvta.global.u64 dst, src | cvta.to.global.u64 dst, src"
+    operands: $cvta_register
+    variants:
+      - name: cvta_global_u64
+        description: "Register-only global-to-generic u64 address conversion."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: to
+            kind: flag
+            presence: absent
+            token: ".to"
+          - name: state_space
+            kind: state_space
+            domain: memory_state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        examples:
+          - ptx: "cvta.global.u64 %rd0, %rd1;"
+            valid: true
+      - name: cvta_to_global_u64
+        description: "Register-only generic-to-global u64 address conversion."
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - name: to
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".to"
+          - name: state_space
+            kind: state_space
+            domain: memory_state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u64
+        examples:
+          - ptx: "cvta.to.global.u64 %rd0, %rd1;"
+            valid: true
+
+  - opcode: cvt
+    section: "9.7.9.22"
+    doc: "Convert frozen register-only integer and floating-point forms, including one packed f16x2 result."
+    syntax: "cvt.s32.u32 dst, src | cvt.rn.f32.f64 dst, src | cvt.rn.f32.u32 dst, src | cvt.rn.f32.s32 dst, src | cvt.rzi.u32.f32 dst, src | cvt.rn.f16x2.f32 dst, src1, src2"
+    operands: $cvt_scalar
+    variants:
+      - name: cvt_s32_u32
+        description: "Register-only unsigned 32-bit to signed 32-bit conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: s32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "cvt.s32.u32 %s0, %r0;"
+            valid: true
+      - name: cvt_rn_f32_f64
+        description: "Register-only round-to-nearest f64 to f32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 13
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f64
+        examples:
+          - ptx: "cvt.rn.f32.f64 %f0, %fd0;"
+            valid: true
+      - name: cvt_rn_f32_u32
+        description: "Register-only round-to-nearest u32 to f32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rn
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        examples:
+          - ptx: "cvt.rn.f32.u32 %f0, %r0;"
+            valid: true
+      - name: cvt_rn_f32_s32
+        description: "Register-only round-to-nearest signed 32-bit to f32 conversion."
+        operands: $cvt_rn_f32_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "cvt.rn.f32.s32 %f0, %r0;", valid: true}
+      - name: cvt_rzi_u32_f32
+        description: "Register-only round-toward-zero f32 to u32 conversion."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: rounding
+            kind: rounding
+            domain: rounding_modes
+            presence: fixed
+            value: rzi
+          - name: dst_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+          - name: src_type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: f32
+        examples:
+          - ptx: "cvt.rzi.u32.f32 %r0, %f0;"
+            valid: true
+      - name: cvt_rn_f16x2_f32
+        description: "Register-only round-to-nearest packed f16x2 conversion from two f32 sources."
+        operands: $cvt_rn_f16x2_f32
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "cvt.rn.f16x2.f32 %r0, %f0, %f1;", valid: true}
+
+  - opcode: cvt
+    section: "9.7.9.23"
+    doc: "Pack two saturated s32 values into a u8 pair with a b32 carry container."
+    syntax: "cvt.pack.sat.u8.s32.b32 dst, src1, src2, carry"
+    operands: $cvt_pack_sat_u8_s32_b32
+    variants:
+      - name: cvt_pack_sat_u8_s32_b32
+        description: "Register-only saturated packed u8 conversion."
+        availability: {ptx: "6.5", sm: 72}
+        modifiers:
+          - {name: pack, kind: flag, presence: fixed, value: true, token: ".pack"}
+          - {name: sat, kind: flag, presence: fixed, value: true, token: ".sat"}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: u8}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+          - {name: carry_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        examples:
+          - {ptx: "cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;", valid: true}
+
+  - opcode: mov
+    section: "9.7.9"
+    doc: >
+      Move a scalar register, immediate, or compatible special register into
+      a 16/32/64-bit register. Integer/bit-size 32/64-bit forms also accept a data-variable
+      or formal-parameter address, with an optional constant byte offset, or a
+      bare device/kernel function address. Predicate register moves are also
+      supported. Bit-size forms pack or unpack two/four scalar register elements;
+      .b128 is available only for these vector forms (9.7.9.4).
+    syntax: "mov{.v4.u32|.pred|.b16|.u16|.s16|.b32|.u32|.s32|.f32|.b64|.u64|.s64|.f64|.b128} dst, src"
+
+    variants:
+      - name: mov_scalar
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - b16
+              - u16
+              - s16
+              - b32
+              - u32
+              - s32
+              - f32
+              - b64
+              - u64
+              - s64
+              - value: b128
+                availability:
+                  ptx: "8.3"
+                  sm: 70
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operand_layouts:
+          - name: scalar
+            operands: $mov_scalar
+          - name: pack
+            operands: $mov_pack
+          - name: unpack
+            operands: $mov_unpack
+        rule: data_movement.mov
+        operand_type_compatibilities:
+          - operand: src
+            value_kind: special_register
+            values:
+              - tid
+              - ntid
+              - ctaid
+              - nctaid
+            instruction_width: 16
+            effective_type: u16
+            availability:
+              ptx: "1.0"
+              sm: 0
+          - operand: src
+            value_kind: special_register
+            values:
+              - gridid
+            instruction_width: 16
+            effective_type: u16
+            availability:
+              ptx: "1.0"
+              sm: 0
+          - operand: src
+            value_kind: special_register
+            values:
+              - gridid
+            instruction_width: 32
+            effective_type: u32
+            availability:
+              ptx: "1.3"
+              sm: 0
+
+        examples:
+          - ptx: "mov.u16 %h0, %h1;"
+            valid: true
+          - ptx: "mov.u16 %h0, %tid.x;"
+            valid: true
+          - ptx: "mov.u32 %r0, %laneid;"
+            valid: true
+          - ptx: "mov.u32 %r0, %tid.x;"
+            valid: true
+          - ptx: "mov.u32 %r0, %r1;"
+            valid: true
+          - ptx: "mov.u32 %r0, 42;"
+            valid: true
+          - ptx: "mov.u32 %r0, kernel_parameter;"
+            valid: true
+          - ptx: "mov.u32 %r0, device_function;"
+            valid: true
+          - ptx: "mov.b32 %r0, %laneid;"
+            valid: true
+          - ptx: "mov.f32 %f0, 0f3f800000;"
+            valid: true
+          - ptx: "mov.u64 %rd0, global_value;"
+            valid: true
+          - ptx: "mov.u64 %rd0, global_value+8;"
+            valid: true
+          - ptx: "mov.u64 %rd0, %rd1;"
+            valid: true
+          - ptx: "mov.u64 %rd0, 0;"
+            valid: true
+          - ptx: "mov.u64 %rd0, kernel_function;"
+            valid: true
+          - ptx: "mov.f64 %fd0, 0d3ff0000000000000;"
+            valid: true
+          - ptx: "mov.b32 %r0, {%h0, %h1};"
+            valid: true
+          - ptx: "mov.b64 {%r0, _}, %rd0;"
+            valid: true
+          - ptx: "mov.b128 %b0, {%rd0, %rd1};"
+            valid: true
+
+      - name: mov_v4_u32
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values: [v4]
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values: [u32]
+        operands: $mov_v4_u32
+        rule: data_movement.mov
+        examples:
+          - ptx: "mov.v4.u32 %r0, %clusterid;"
+            valid: false
+
+      - name: mov_pred
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: pred
+        operands: $mov_pred
+        rule: data_movement.mov
+
+        examples:
+          - ptx: "mov.pred %p0, %p1;"
+            valid: true
+
+  - opcode: ld
+    section: "9.7.9.8"
+    doc: >
+      Scalar and legacy v2/v4 forms, plus PTX 8.8 256-bit v8 32-bit and v4
+      64-bit vector loads through a generic address or explicit global space.
+      Alignment and other qualifiers remain separate coverage.
+    syntax: "ld{.const|.global|.local|.param|.param::entry|.param::func|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} dst, [address]"
+
+    variants:
+      - name: ld_generic_scalar
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - &ld_semantics
+            name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            values:
+              - value: weak
+                availability: {ptx: "6.0", sm: 70}
+              - value: volatile
+                availability: {ptx: "1.1"}
+              - value: relaxed
+                availability: {ptx: "6.0", sm: 70}
+              - value: acquire
+                availability: {ptx: "6.0", sm: 70}
+            default: omitted
+          - &memory_scope
+            name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: optional
+            values:
+              - value: cta
+                availability: {ptx: "6.0", sm: 70}
+              - value: cluster
+                availability: {ptx: "7.8", sm: 90}
+              - value: gpu
+                availability: {ptx: "6.0", sm: 70}
+              - value: sys
+                availability: {ptx: "6.0", sm: 70}
+            default: none
+          - &memory_mmio
+            name: mmio
+            kind: flag
+            presence: optional
+            values:
+              - value: true
+                token: .mmio
+                availability: {ptx: "8.2", sm: 70}
+            default: false
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $ld_scalar
+        rule: data_movement.ld_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ld.u32 %r0, [%rd0+4];"
+            valid: true
+          - ptx: "ld.u32 %r0, [global_value];"
+            valid: true
+
+      - name: ld_explicit_scalar
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [const, global, local, param, param::entry, param::func, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - *ld_semantics
+          - *memory_scope
+          - *memory_mmio
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $ld_explicit_scalar
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ld.global.u32 %r0, [global_value];"
+            valid: true
+          - ptx: "ld.shared.u32 %r0, [shared_value];"
+            valid: true
+
+      - name: ld_global_u32_l1_evict
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: eviction_priority
+            kind: eviction_priority
+            domain: eviction_priorities
+            presence: required
+            values:
+              - value: evict_first
+                token: .L1::evict_first
+              - value: evict_last
+                token: .L1::evict_last
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ld.global.L1::evict_first.u32 %r0, [global_value];"
+            valid: true
+          - ptx: "ld.global.L1::evict_last.u32 %r0, [global_value];"
+            valid: true
+
+      - name: ld_global_u32_l2_cache_hint
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: cache_hint
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L2::cache_hint
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_explicit_scalar_cache_policy
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ld.global.L2::cache_hint.u32 %r0, [global_value], %rd0;"
+            valid: true
+
+      - name: ld_generic_vector
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - *ld_semantics
+          - *memory_scope
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values:
+              - v2
+              - v4
+              - v8
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $ld_vector
+        rule: data_movement.ld_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: dst
+            address_operand: address
+            availability: {ptx: "8.8", sm: 100}
+
+        examples:
+          - ptx: "ld.v2.u32 {%r0, %r1}, [%rd0];"
+            valid: true
+          - ptx: "ld.v4.u16 {%h0, %h1, %h2, %h3}, [%rd0];"
+            valid: true
+          - ptx: "ld.v8.u32 {%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];"
+            valid: true
+
+      - name: ld_explicit_vector
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [const, global, local, param, param::entry, param::func, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $ld_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - *ld_semantics
+          - *memory_scope
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values:
+              - v2
+              - v4
+              - v8
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $ld_explicit_vector
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: dst
+            address_operand: address
+            state_space_modifier: state_space
+            availability: {ptx: "8.8", sm: 100}
+
+        examples:
+          - ptx: "ld.global.v2.u32 {%r0, %r1}, [global_value];"
+            valid: true
+          - ptx: "ld.shared.v4.u16 {%h0, %h1, %h2, %h3}, [shared_value];"
+            valid: true
+
+  - opcode: ld
+    section: "9.7.9.9"
+    doc: "Frozen non-coherent global u32 load with L1 no-allocate priority."
+    syntax: "ld.global.nc.L1::no_allocate.u32 dst, [address]"
+    operands: $ld_explicit_scalar_global
+    variants:
+      - name: ld_global_nc_l1_no_allocate_u32
+        description: "Register-only global non-coherent u32 load with L1 no-allocate."
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: nc, kind: flag, presence: fixed, value: true, token: .nc}
+          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: no_allocate, token: .L1::no_allocate}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        rule: data_movement.ld_explicit
+        constraints:
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
+        examples:
+          - {ptx: "ld.global.nc.L1::no_allocate.u32 %r0, [global_value];", valid: true}
+
+  - opcode: ldu
+    section: "9.7.9.10"
+    doc: "Uniform load, limited to the scalar explicit-global .u32 form."
+    syntax: "ldu.global.u32 dst, [address]"
+
+    variants:
+      - name: ldu_global_u32
+        availability: {ptx: "2.0", sm: 0}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "ldu.global.u32 %r0, [global_value];"
+            valid: true
+
+  - opcode: shfl
+    section: "9.7.9.6"
+    doc: "Synchronized shuffle, limited to idx.b32 with d|p output."
+    syntax: "shfl.sync.idx.b32 dst|predicate, src, lane, clamp, membermask"
+    variants:
+      - name: shfl_sync_idx_b32
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: idx
+            kind: flag
+            presence: fixed
+            value: true
+            token: .idx
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b32
+        operands: $shfl_sync_idx
+        rule: parallel_sync_and_communication.shfl
+        examples:
+          - ptx: "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
+            valid: true
+
+  - opcode: prefetch
+    section: "9.7.9.16"
+    doc: "Prefetch, limited to the explicit-global .L1 form."
+    syntax: "prefetch.global.L1 [address]"
+
+    variants:
+      - name: prefetch_global_l1
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: l1
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L1
+        operands: $prefetch_global
+        rule: data_movement.prefetch
+
+        examples:
+          - ptx: "prefetch.global.L1 [global_value];"
+            valid: true
+
+  - opcode: prefetchu
+    section: "9.7.9.16"
+    doc: "Uniform prefetch, limited to the generic-address .L1 form."
+    syntax: "prefetchu.L1 [address]"
+
+    variants:
+      - name: prefetchu_l1
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - name: l1
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L1
+        operands: $prefetchu_generic
+        rule: data_movement.prefetch
+
+        examples:
+          - ptx: "prefetchu.L1 [%rd0];"
+            valid: true
+
+  - opcode: createpolicy
+    section: "9.7.9.19"
+    doc: "Frozen fractional L2 evict-last policy creation with fraction 0.5."
+    syntax: "createpolicy.fractional.L2::evict_last.b64 dst, fraction"
+
+    variants:
+      - name: createpolicy_fractional_l2_evict_last_b64
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: fractional, kind: flag, presence: fixed, value: true, token: .fractional}
+          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: evict_last, token: .L2::evict_last}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $createpolicy_fractional_l2_evict_last
+        rule: data_movement.createpolicy
+        constraints:
+          - {kind: immediate_value, operand: fraction, values: [1056964608]}
+
+        examples:
+          - ptx: "createpolicy.fractional.L2::evict_last.b64 %rd0, 0.5;"
+            valid: true
+
+  - opcode: applypriority
+    section: "9.7.9.17"
+    doc: "Frozen global L2 normal-eviction priority for one 128-byte range."
+    syntax: "applypriority.global.L2::evict_normal [address], size"
+
+    variants:
+      - name: applypriority_global_l2_evict_normal
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: evict_normal, token: .L2::evict_normal}
+        operands: $applypriority_global_l2_evict_normal
+        rule: data_movement.applypriority
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 128}
+          - {kind: immediate_value, operand: size, values: [128]}
+
+        examples:
+          - ptx: "applypriority.global.L2::evict_normal [global_value], 128;"
+            valid: true
+
+  - opcode: discard
+    section: "9.7.9.18"
+    doc: "Frozen global L2 discard for one 128-byte range."
+    syntax: "discard.global.L2 [address], size"
+
+    variants:
+      - name: discard_global_l2
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: l2, kind: flag, presence: fixed, value: true, token: .L2}
+        operands: $applypriority_global_l2_evict_normal
+        rule: data_movement.discard
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 128}
+          - {kind: immediate_value, operand: size, values: [128]}
+
+        examples:
+          - ptx: "discard.global.L2 [global_value], 128;"
+            valid: true
+
+  - opcode: cp
+    section: "9.7.9.26.3.1"
+    doc: "Asynchronous copy, limited to cached shared-from-global fixed sizes."
+    syntax: "cp.async.ca.shared.global [dst], [src], cp_size"
+
+    variants:
+      - name: cp_async_ca_shared_global
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: ca
+            kind: flag
+            presence: fixed
+            value: true
+            token: .ca
+          - name: shared
+            kind: flag
+            presence: fixed
+            value: true
+            token: .shared
+          - name: global
+            kind: flag
+            presence: fixed
+            value: true
+            token: .global
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - kind: immediate_value
+            operand: cp_size
+            values: [4, 8, 16]
+          - kind: address_alignment
+            address_operands: [dst, src]
+            immediate_operand: cp_size
+
+        examples:
+          - ptx: "cp.async.ca.shared.global [shared_value], [global_value], 16;"
+            valid: true
+
+  - opcode: cp
+    section: "9.7.9.26.3.2"
+    doc: "Asynchronous-copy group completion."
+    syntax: "cp.async.commit_group"
+    variants:
+      - name: cp_async_commit_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: commit_group
+            kind: flag
+            presence: fixed
+            value: true
+            token: .commit_group
+        operands: []
+        rule: data_movement.cp_async_commit_group
+
+        examples:
+          - ptx: "cp.async.commit_group;"
+            valid: true
+
+  - opcode: cp
+    section: "9.7.9.26.3.3"
+    doc: "Asynchronous-copy group wait operations."
+    syntax: "cp.async.wait_group n | cp.async.wait_all"
+    variants:
+      - name: cp_async_wait_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: wait_group
+            kind: flag
+            presence: fixed
+            value: true
+            token: .wait_group
+        operands:
+          - name: n
+            kind: imm
+            role: src
+            access: read
+            type: u32
+        rule: data_movement.cp_async_wait_group
+        constraints:
+          - kind: immediate_range
+            operand: n
+            minimum: 0
+
+        examples:
+          - ptx: "cp.async.wait_group 0;"
+            valid: true
+
+      - name: cp_async_wait_all
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - name: async
+            kind: flag
+            presence: fixed
+            value: true
+            token: .async
+          - name: wait_all
+            kind: flag
+            presence: fixed
+            value: true
+            token: .wait_all
+        operands: []
+        rule: data_movement.cp_async_wait_all
+
+        examples:
+          - ptx: "cp.async.wait_all;"
+            valid: true
+
+  - opcode: st
+    section: "9.7.9.11"
+    doc: >
+      Scalar and legacy v2/v4 forms, plus PTX 8.8 256-bit v8 32-bit and v4
+      64-bit vector stores through a generic address or explicit global space.
+      Alignment and other qualifiers remain separate coverage.
+    syntax: "st{.global|.local|.param|.param::func|.shared}{.v2|.v4|.v8}.{b8|b16|b32|b64|u8|u16|u32|u64|s8|s16|s32|s64|f32|f64} [address], src"
+
+    variants:
+      - name: st_generic_scalar
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - &st_semantics
+            name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            values: [{value: weak, availability: {ptx: "6.0", sm: 70}}, {value: volatile, availability: {ptx: "1.1"}}, {value: relaxed, availability: {ptx: "6.0", sm: 70}}, {value: release, availability: {ptx: "6.0", sm: 70}}]
+            default: omitted
+          - *memory_scope
+          - *memory_mmio
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $st_scalar
+        rule: data_movement.st_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "st.u32 [%rd0+4], %r0;"
+            valid: true
+
+      - name: st_explicit_scalar
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [global, local, param, param::func, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - *st_semantics
+          - *memory_scope
+          - *memory_mmio
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $st_explicit_scalar
+        rule: data_movement.st_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            mmio_modifier: mmio
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "st.global.u32 [global_value], %r0;"
+            valid: true
+          - ptx: "st.local.u32 [local_value], %r0;"
+            valid: true
+
+      - name: st_global_u32_l1_evict
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: eviction_priority
+            kind: eviction_priority
+            domain: eviction_priorities
+            presence: required
+            values:
+              - value: evict_first
+                token: .L1::evict_first
+              - value: evict_last
+                token: .L1::evict_last
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $st_explicit_scalar_global
+        rule: data_movement.st_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "st.global.L1::evict_first.u32 [global_value], %r0;"
+            valid: true
+          - ptx: "st.global.L1::evict_last.u32 [global_value], %r0;"
+            valid: true
+
+      - name: st_global_u32_l2_cache_hint
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: fixed
+            value: global
+          - name: cache_hint
+            kind: flag
+            presence: fixed
+            value: true
+            token: .L2::cache_hint
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: u32
+        operands: $st_explicit_scalar_cache_policy
+        rule: data_movement.st_explicit
+        constraints:
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+
+        examples:
+          - ptx: "st.global.L2::cache_hint.u32 [global_value], %r0, %rd0;"
+            valid: true
+
+      - name: st_generic_vector
+        availability:
+          ptx: "2.0"
+          sm: 20
+        modifiers:
+          - *st_semantics
+          - *memory_scope
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values:
+              - v2
+              - v4
+              - v8
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - f64
+        operands: $st_vector
+        rule: data_movement.st_generic
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: src
+            address_operand: address
+            availability: {ptx: "8.8", sm: 100}
+
+        examples:
+          - ptx: "st.v2.u32 [%rd0], {%r0, %r1};"
+            valid: true
+          - ptx: "st.v4.u16 [%rd0], {%h0, %h1, %h2, %h3};"
+            valid: true
+          - ptx: "st.v4.u64 [%rd0], {%rd0, %rd1, %rd2, %rd3};"
+            valid: true
+
+      - name: st_explicit_vector
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: state_space
+            kind: state_space
+            domain: state_spaces
+            presence: required
+            values: [global, local, param, param::func, shared]
+          - name: cache
+            kind: cache
+            domain: cache_operators
+            presence: optional
+            values:
+              - value: $st_cache_operators
+                availability: {ptx: "2.0", sm: 20}
+            default: unspecified
+          - *st_semantics
+          - *memory_scope
+          - name: vector
+            kind: vector
+            domain: vector_arities
+            presence: required
+            values:
+              - v2
+              - v4
+              - v8
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - $ld_st_scalar_types
+              - value: f64
+                availability:
+                  ptx: "1.0"
+                  sm: 13
+        operands: $st_explicit_vector
+        rule: data_movement.st_explicit
+        constraints:
+          - kind: memory_consistency
+            semantics_modifier: semantics
+            scope_modifier: scope
+            cache_modifier: cache
+            address_operand: address
+            state_space_modifier: state_space
+          - kind: address_alignment
+            address_operand: address
+            type_modifier: type
+            vector_modifier: vector
+          - kind: memory_vector
+            type_modifier: type
+            vector_operand: src
+            address_operand: address
+            state_space_modifier: state_space
+            availability: {ptx: "8.8", sm: 100}
+
+        examples:
+          - ptx: "st.global.v2.u32 [global_value], {%r0, %r1};"
+            valid: true
+          - ptx: "st.shared.v4.u16 [shared_value], {%h0, %h1, %h2, %h3};"
+            valid: true
+
+  - opcode: prmt
+    section: "9.7.9.7"
+    doc: "Frozen byte-permute generic and f4e forms."
+    syntax: "prmt.b32 dst, src1, src2, selector | prmt.b32.f4e dst, src1, src2, selector"
+    variants:
+      - name: prmt_generic_b32
+        operands: $prmt_generic_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        constraints:
+          - {kind: immediate_range, operand: selector, minimum: 0, maximum: 65535}
+        examples:
+          - {ptx: "prmt.b32 %r0, %r1, %r2, 0x5410;", valid: true}
+      - name: prmt_f4e_b32
+        operands: $prmt_f4e_b32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: f4e, kind: flag, presence: fixed, value: true, token: ".f4e"}
+        examples:
+          - {ptx: "prmt.b32.f4e %r0, %r1, %r2, %r3;", valid: true}

@@ -2,12 +2,13 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
+from code_gen import cpp_backend
 from code_gen.cpp_backend import (
     CppDomain,
-    DEFAULT_CPP_BACKEND_SPEC,
     configure_cpp_backend,
     cpp_value,
     load_cpp_backend,
@@ -25,9 +26,15 @@ from code_gen.model import (
 from ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage
 
 
+REPOSITORY_CPP_BACKEND_SPEC = (
+    Path(__file__).resolve().parents[3]
+    / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
+
+
 class BackendModelTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        configure_cpp_backend(DEFAULT_CPP_BACKEND_SPEC)
+    def setUp(self) -> None:
+        configure_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC)
 
     def test_constructs_detached_cpp_backend_model(self) -> None:
         scalar_types = DomainBackend(
@@ -87,7 +94,7 @@ class BackendModelTests(unittest.TestCase):
             emit.kind = "sub_struct"  # type: ignore[misc]
 
     def test_loads_repository_cpp_emit_domains(self) -> None:
-        unit = load_cpp_backend(DEFAULT_CPP_BACKEND_SPEC)
+        unit = load_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC)
 
         self.assertEqual(unit.backend_schema, "ptx-cpp-backend/v1")
         self.assertEqual(unit.spec_schema, "ptx-instr/v1")
@@ -102,6 +109,97 @@ class BackendModelTests(unittest.TestCase):
             ],
             "check_end::OperandRole::Source",
         )
+        self.assertEqual(
+            unit.domains[CppDomain.CACHE_OPERATORS.value].values["ca"],
+            "CacheOperator::Ca",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.CACHE_OPERATORS.value].default,
+            "CacheOperator::Unspecified",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.EVICTION_PRIORITIES.value].values["no_allocate"],
+            "EvictionPriority::NoAllocate",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.EVICTION_PRIORITIES.value].values["evict_normal"],
+            "EvictionPriority::EvictNormal",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.COMPARISON_OPERATORS.value].values,
+            {
+                "eq": "ComparisonOperator::Eq",
+                "lt": "ComparisonOperator::Lt",
+                "ge": "ComparisonOperator::Ge",
+            },
+        )
+        self.assertIs(
+            unit.domains[CppDomain.COMPARISON_OPERATORS.value].runtime_lookup,
+            RuntimeLookupKind.PTX_SUFFIX,
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.ROUNDING_MODES.value].values,
+            {
+                "rn": "RoundingMode::Rn",
+                "rz": "RoundingMode::Rz",
+                "rm": "RoundingMode::Rm",
+                "rp": "RoundingMode::Rp",
+                "rzi": "RoundingMode::Rzi",
+            },
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.BOOLEAN_OPERATORS.value].values["xor"],
+            "BooleanOperator::Xor",
+        )
+        modifier_types = unit.domains[
+            CppDomain.MODIFIER_VALUE_CPP_TYPES.value
+        ].values
+        self.assertEqual(
+            {
+                kind: modifier_types[kind]
+                for kind in ("type", "rounding", "comparison", "boolean_op")
+            },
+            {
+                "type": "ScalarType",
+                "rounding": "RoundingMode",
+                "comparison": "ComparisonOperator",
+                "boolean_op": "BooleanOperator",
+            },
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
+            "MemoryConsistency::Weak",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["acq_rel"],
+            "MemoryConsistency::AcqRel",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.MEMORY_SCOPES.value].default,
+            "MemoryScope::None",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.VECTOR_ARITIES.value].values["v8"],
+            "VectorArity::V8",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
+                "MemoryConsistency"
+            ],
+            "MemoryConsistency",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.RESOLVED_VALUE_CPP_TYPES.value].values[
+                "MemoryScope"
+            ],
+            "MemoryScope",
+        )
+        self.assertEqual(
+            unit.domains[CppDomain.REGISTER_WIDTH_POLICIES.value].values[
+                "equal_or_wider"
+            ],
+            "base::ScalarTypeSizePolicy::EqualOrWider",
+        )
         self.assertIs(
             unit.domains[CppDomain.SCALAR_TYPES.value].runtime_lookup,
             RuntimeLookupKind.PTX_SUFFIX,
@@ -114,7 +212,7 @@ class BackendModelTests(unittest.TestCase):
         )
 
     def test_model_emission_reads_cpp_spelling_from_backend_yaml(self) -> None:
-        raw = yaml.safe_load(DEFAULT_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
         raw["domains"][CppDomain.SCALAR_TYPES.value]["values"]["f32"] = (
             "CustomType::F32"
         )
@@ -140,12 +238,17 @@ class BackendModelTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "has no value 'missing'"):
             cpp_value(CppDomain.SCALAR_TYPES, "missing")
 
+    def test_requires_explicit_cpp_backend_configuration(self) -> None:
+        with patch.object(cpp_backend, "_active_backend_spec", None):
+            with self.assertRaisesRegex(RuntimeError, "C\\+\\+ backend is not configured"):
+                cpp_backend.get_cpp_backend()
+
     def test_cpp_lookup_rejects_string_domain_identifiers(self) -> None:
         with self.assertRaisesRegex(TypeError, "CppDomain member"):
             cpp_value("scalar_types", "f32")  # type: ignore[arg-type]
 
     def test_rejects_missing_required_cpp_domain(self) -> None:
-        raw = yaml.safe_load(DEFAULT_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
         del raw["domains"][CppDomain.SYNTAX_OPERAND_SHAPES.value]
 
         with tempfile.TemporaryDirectory() as directory:

@@ -8,7 +8,7 @@ Symbol binding sits between Syntax AST and Resolved IR/checking:
 source -> CST -> Syntax AST -> symbol binding -> Resolved IR/checker
 ```
 
-`include/ptx_ir/bind/ptx_symbol_table.hpp` exposes the public entry point:
+`submod/binding/include/ptx_symbol_table.hpp` exposes the public entry point:
 
 ```cpp
 auto binding = binding::bindSymbols(module);
@@ -21,12 +21,15 @@ lifetime.
 ## Scopes and symbols
 
 Each module has one root scope. Every `.entry`/`.func` item has a function
-scope whose parent is the module scope. The initial pass collects:
+scope whose parent is the module scope, and every nested `AstBlock` has a
+range-identified child block scope. The initial pass collects:
 
 - module and function variable declarations;
 - function input and return parameters;
 - function symbols;
-- labels.
+- labels and function-local `.callprototype`, `.calltargets`, and
+  `.branchtargets` declarations into the owning function scope, even when
+  written inside a nested block.
 
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
@@ -37,8 +40,20 @@ prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.
 
 Lookup checks exact names first, parameterized names second, and then walks to
-the parent scope. A function-local declaration therefore shadows a module
-symbol.
+the parent scope. A block declaration can therefore shadow an outer or module
+symbol, while sibling blocks remain invisible to each other. Labels and
+control-flow metadata are deliberately function-local rather than block-local.
+
+Debug identities use a separate module metadata namespace. `.file` indices are
+normalized to `uint64_t` (decimal/hex and an optional `u`/`U` suffix) and bind
+as `DebugFile` symbols; repeated indices intentionally reuse the first
+`SymbolId`. A `.debug_str` section binds its name and each raw `name:` payload
+label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
+both debug kinds, so a program declaration may use the same spelling. `.loc`
+creates `DebugFile` references for its basic and `inlined_at` file fields, plus
+a `DebugFunctionName` reference for `function_name`; the latter can resolve
+only the `.debug_str` section itself or one of its labels. These metadata
+identities diagnose unresolved references but never behave as PTX operands.
 
 ## Parameterized variable names
 
@@ -98,8 +113,13 @@ its argument contributes references as well.
 
 Dedicated call/branch AST nodes produce distinct reference kinds. Binding now
 checks that a callee is a function or `.reg` function pointer, call parameters
-belong to `.reg`/`.param`, and a direct branch target is a label in the current
-function. See `control_flow_syntax_design.md`.
+belong to `.reg`/`.param`, a direct branch target is a label in the current
+function, and an indirect target-set operand is a `.callprototype` or
+`.calltargets` symbol. The three metadata declaration kinds have stable
+function-scope `SymbolId` values. Member validation, duplicate policy, and
+prototype/signature semantics are checked by declaration semantics; binding
+does not resolve metadata members or instruction use. See
+`control_flow_syntax_design.md`.
 
 ## Current diagnostics and boundary
 
@@ -128,8 +148,9 @@ addresses and kernel formal-parameter `mov` addresses remain in `.param`;
 device-function formal-parameter `mov` addresses are in `.local`, and the
 checker applies a PTX 2.0 / SM 20 baseline to all such addresses and raises
 the PTX minimum to 6.0 for a return-parameter address.
-Function-local `.param` variables remain non-addressable, while
-standalone resolution keeps spelling only. A bare function name binds to a
+Function-local `.param` call-argument variables are bound separately from
+formal parameters; direct `ld.param`/`st.param` addresses are valid, while
+`mov` remains non-addressable. Standalone resolution keeps spelling only. A bare function name binds to a
 `ResolvedFunctionRef` with the same stable `SymbolId` and its `.func`/`.entry`
 classification. The checker requires PTX 3.1 / SM 35 for a kernel-function
 address; a device-function address uses the base PTX 1.0 availability of

@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PTX inventory support accounting
+type: object
+additionalProperties: false
+required: [schema, version, ptx_isa, sources, dispositions]
+properties:
+  schema:
+    const: ptx-inventory-accounting/v2
+  version:
+    const: 2
+  ptx_isa:
+    const: "9.3"
+  sources:
+    type: object
+    additionalProperties: false
+    required: [instruction, directive, special_register]
+    properties:
+      instruction:
+        const: ptx_instruction_registry.yaml
+      directive:
+        const: ptx_directive_registry.yaml
+      special_register:
+        const: ptx_special_register_registry.yaml
+  dispositions:
+    type: array
+    minItems: 1
+    items:
+      allOf:
+        - $ref: "#/$defs/key"
+        - type: object
+          additionalProperties: false
+          required: [kind, source_record_id, spelling, status, disposition]
+          properties:
+            kind: {}
+            source_record_id: {}
+            spelling: {}
+            status:
+              enum: [complete, partial, syntax_only, unsupported]
+            support_source:
+              enum: [opcode_coverage, directive_syntax_coverage, special_register_runtime]
+            disposition:
+              enum: [implemented, planned, deferred, out_of_scope, paused]
+            reason:
+              type: string
+              pattern: \S
+            milestone:
+              type: string
+              pattern: \S
+          allOf:
+            - if:
+                properties:
+                  status:
+                    const: complete
+              then:
+                required: [support_source]
+                properties:
+                  disposition:
+                    const: implemented
+                not:
+                  anyOf:
+                    - required: [reason]
+                    - required: [milestone]
+            - if:
+                properties:
+                  status:
+                    const: partial
+              then:
+                required: [support_source, reason, milestone]
+                properties:
+                  disposition:
+                    enum: [planned, deferred, out_of_scope, paused]
+            - if:
+                properties:
+                  status:
+                    const: syntax_only
+              then:
+                required: [support_source, reason, milestone]
+                properties:
+                  disposition:
+                    enum: [planned, deferred, out_of_scope, paused]
+            - if:
+                properties:
+                  status:
+                    const: unsupported
+              then:
+                required: [reason, milestone]
+                properties:
+                  disposition:
+                    enum: [planned, deferred, out_of_scope, paused]
+$defs:
+  key:
+    type: object
+    required: [kind, source_record_id, spelling]
+    properties:
+      kind:
+        enum: [instruction, directive, special_register]
+      source_record_id:
+        type: string
+        minLength: 1
+      spelling:
+        type: string
+        minLength: 1

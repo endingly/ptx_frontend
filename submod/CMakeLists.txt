@@ -1,0 +1,10 @@
+include(register_headers)
+
+add_subdirectory(common)
+add_subdirectory(base)
+add_subdirectory(lexer)
+add_subdirectory(cst)
+add_subdirectory(syntax)
+add_subdirectory(binding)
+add_subdirectory(semantic)
+add_subdirectory(resolved_ir)

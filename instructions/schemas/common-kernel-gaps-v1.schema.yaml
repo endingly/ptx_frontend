@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+
+$schema: https://json-schema.org/draft/2020-12/schema
+title: M12 common-kernel gap manifest
+type: object
+additionalProperties: false
+required: [schema, version, basis, fixtures, gaps]
+properties:
+  schema:
+    const: ptx-common-kernel-gaps/v1
+  version:
+    const: 1
+  basis:
+    type: object
+    additionalProperties: false
+    required: [ptx_isa, source]
+    properties:
+      ptx_isa:
+        const: "9.3"
+      source:
+        const: project-authored nvcc-compiled inline-PTX fixture
+  fixtures:
+    type: array
+    minItems: 3
+    maxItems: 3
+    uniqueItems: true
+    items:
+      type: object
+      additionalProperties: false
+      required: [profile, path]
+      properties:
+        profile:
+          enum: [sm_80, sm_90a, sm_100]
+        path:
+          type: string
+          pattern: "^corpus/m12/common_kernel_sm(80|90a|100)\\.ptx$"
+  gaps:
+    type: array
+    minItems: 32
+    maxItems: 32
+    items:
+      type: object
+      additionalProperties: false
+      required: [owner, marker, forms]
+      properties:
+        owner:
+          type: string
+          pattern: "^M12-I(0[2-9]|[12][0-9]|3[0-3])$"
+        marker:
+          type: string
+          pattern: "^m12_i(0[2-9]|[12][0-9]|3[0-3])_[a-z0-9_]+$"
+        forms:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [variant, canonical_form, profiles, frequency, first_blocker]
+            properties:
+              variant:
+                type: string
+                pattern: "^[a-z0-9_]+$"
+              canonical_form:
+                type: string
+                pattern: "^[A-Za-z][A-Za-z0-9_.:]*$"
+              profiles:
+                type: array
+                minItems: 1
+                uniqueItems: true
+                items:
+                  enum: [sm_80, sm_90a, sm_100]
+              frequency:
+                type: integer
+                minimum: 1
+              first_blocker:
+                enum: [none, unsupported_opcode, unsupported_variant]

@@ -1,0 +1,220 @@
+# PTX control-flow instructions.
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
+
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: control_flow
+codegen_category: control_flow
+section: "9.7.13"
+
+operand_patterns:
+  direct_branch:
+    - name: target
+      kind: label
+      role: label
+      access: control
+  indexed_branch:
+    - name: index
+      kind: reg
+      role: src
+      access: read
+      type: u32
+    - name: tlist
+      kind: branch_target_set
+      role: label
+      access: control
+
+instructions:
+  - opcode: call
+    section: "9.7.13.5"
+    doc: "Direct call to a named function or indirect call through a register with function-local metadata."
+    syntax: "call{.uni} [(return),] target [(arguments)] [, metadata]"
+    variants:
+      - name: call_direct
+        description: "Direct and metadata-backed indirect call layouts with optional return and input groups."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: uni
+            kind: flag
+            presence: optional
+            default: false
+            token: ".uni"
+        operand_layouts:
+          - name: target
+            kind: call
+            operands:
+              - name: target
+                kind: direct_call_target
+                role: label
+                access: control
+          - name: target_input
+            kind: call
+            operands:
+              - name: target
+                kind: direct_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+          - name: return_target_input
+            kind: call
+            operands:
+              - name: return_value
+                kind: call_return_param
+                role: dst
+                access: write
+              - name: target
+                kind: direct_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+          - name: target_metadata
+            kind: indirect_call
+            availability:
+              ptx: "2.1"
+              sm: 20
+            operands:
+              - name: target
+                kind: indirect_call_target
+                role: label
+                access: control
+              - name: metadata
+                kind: indirect_call_metadata
+                role: label
+                access: control
+          - name: target_input_metadata
+            kind: indirect_call
+            availability:
+              ptx: "2.1"
+              sm: 20
+            operands:
+              - name: target
+                kind: indirect_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+              - name: metadata
+                kind: indirect_call_metadata
+                role: label
+                access: control
+          - name: return_target_input_metadata
+            kind: indirect_call
+            availability:
+              ptx: "2.1"
+              sm: 20
+            operands:
+              - name: return_value
+                kind: call_return_param
+                role: dst
+                access: write
+              - name: target
+                kind: indirect_call_target
+                role: label
+                access: control
+              - name: arguments
+                kind: call_arguments
+                role: src
+                access: read
+              - name: metadata
+                kind: indirect_call_metadata
+                role: label
+                access: control
+  - opcode: bra
+    section: "9.7.13.3"
+    doc: "Branch to a direct function-local label, optionally marked uniform."
+    syntax: "bra{.uni} target"
+    operands: $direct_branch
+
+    variants:
+      - name: bra_direct
+        description: "Direct branch to a label in the current function."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers:
+          - name: uni
+            kind: flag
+            presence: optional
+            default: false
+            token: ".uni"
+        rule: control_flow.bra
+
+        examples:
+          - ptx: "bra done;"
+            valid: true
+          - ptx: "@%p0 bra.uni done;"
+            valid: true
+  - opcode: brx
+    section: "9.7.13.4"
+    doc: "Indexed branch through a function-local .branchtargets declaration."
+    syntax: "brx.idx{.uni} index, tlist"
+    operands: $indexed_branch
+
+    variants:
+      - name: brx_idx
+        description: "Indexed branch using a .u32 register and current-function target list."
+        availability:
+          ptx: "6.0"
+          sm: 30
+        modifiers:
+          - name: idx
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".idx"
+          - name: uni
+            kind: flag
+            presence: optional
+            default: false
+            token: ".uni"
+        rule: control_flow.brx_idx
+
+        examples:
+          - ptx: "brx.idx %r0, targets;"
+            valid: true
+  - opcode: ret
+    section: "9.7.13.6"
+    doc: "Return from a device function or terminate a top-level entry thread."
+    syntax: "ret"
+
+    variants:
+      - name: ret_bare
+        description: "Bare return with no modifiers or operands."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers: []
+        operands: []
+
+        examples:
+          - ptx: "ret;"
+            valid: true
+  - opcode: exit
+    section: "9.7.13.7"
+    doc: "Terminate the current thread."
+    syntax: "exit"
+
+    variants:
+      - name: exit_bare
+        description: "Thread exit with no modifiers or operands."
+        availability:
+          ptx: "1.0"
+          sm: 0
+        modifiers: []
+        operands: []
+
+        examples:
+          - ptx: "exit;"
+            valid: true
+          - ptx: "@%p0 exit;"
+            valid: true

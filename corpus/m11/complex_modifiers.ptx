@@ -1,0 +1,11 @@
+.version 9.3
+.target sm_100a
+.address_size 64
+
+.visible .entry m11_complex_modifiers() {
+  tcgen05.ld.sync.aligned.16x64b.x1.b32 {%r0}, [%rd0];
+  tcgen05.ld.sync.aligned.16x128b.x1.b32 {%r0, %r1}, [%rd0];
+  tcgen05.cp.cta_group::1.4x256b [taddr0], sdesc0;
+  mbarrier.check_layout.layout::v0.shared::cta.b64 %p0, [mbarrier];
+  tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X.collector::a::fill [taddr2], [taddr1], bdesc, idesc, [tmem_scaleA], [tmem_scaleB], p;
+}

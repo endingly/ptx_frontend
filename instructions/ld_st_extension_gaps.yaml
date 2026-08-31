@@ -1,0 +1,157 @@
+# yaml-language-server: $schema=schemas/ld-st-extension-gaps-v1.schema.yaml
+
+# PTX 9.3 forms outside the currently modeled ld/st YAML slice.  This file is
+# inventory only: it neither enables parsing nor changes checker behavior.
+schema: ptx-ld-st-extension-gaps/v1
+version: 1
+basis:
+  ptx_isa: "9.3"
+  sections: ["9.7.9.8", "9.7.9.9", "9.7.9.11", "9.7.9.12"]
+gaps:
+  - id: ld-l1-evict-priority-m10-i02
+    opcode: ld
+    kind: cache_eviction
+    forms: [".L1::evict_first", ".L1::evict_last"]
+    disposition: implemented
+    implemented_contexts:
+      - {state_space: global, vector: scalar}
+    deferred_contexts: [generic, vector, global_nc]
+    reason: Accepted cache-hint/eviction slice.
+    boundary: Scalar explicit-global ld only; excludes generic, vector, and ld.global.nc forms.
+
+  - id: st-l1-evict-priority-m10-i02
+    opcode: st
+    kind: cache_eviction
+    forms: [".L1::evict_first", ".L1::evict_last"]
+    disposition: implemented
+    implemented_contexts:
+      - {state_space: global, vector: scalar}
+    deferred_contexts: [generic, vector, async]
+    reason: Accepted cache-hint/eviction slice.
+    boundary: Scalar explicit-global st only; excludes generic, vector, and st.async forms.
+
+  - id: ld-l2-cache-hint-policy-m10-i02
+    opcode: ld
+    kind: cache_policy
+    forms: ["ld.global.L2::cache_hint.type d, [a], cache_policy"]
+    disposition: implemented
+    implemented_contexts:
+      - state_space: global
+        vector: scalar
+        cache_policy_operand: {required: true, width_bits: 64}
+    deferred_contexts: [generic, vector, global_nc]
+    reason: Accepted cache-policy operand slice.
+    boundary: Scalar explicit-global ld only; cache_policy is the required 64-bit operand.
+
+  - id: st-l2-cache-hint-policy-m10-i02
+    opcode: st
+    kind: cache_policy
+    forms: ["st.global.L2::cache_hint.type [a], b, cache_policy"]
+    disposition: implemented
+    implemented_contexts:
+      - state_space: global
+        vector: scalar
+        cache_policy_operand: {required: true, width_bits: 64}
+    deferred_contexts: [generic, vector, async]
+    reason: Accepted cache-policy operand slice.
+    boundary: Scalar explicit-global st only; cache_policy is the required 64-bit operand.
+
+  - id: ld-l1-evict-priority-deferred
+    opcode: ld
+    kind: cache_eviction
+    forms: [".L1::evict_normal", ".L1::evict_unchanged", ".L1::no_allocate"]
+    disposition: deferred
+    reason: PTX L1 eviction values outside the accepted M10-I02 slice.
+    boundary: Retain the existing legacy cache operators; this is only eviction priority.
+
+  - id: st-l1-evict-priority-deferred
+    opcode: st
+    kind: cache_eviction
+    forms: [".L1::evict_normal", ".L1::evict_unchanged", ".L1::no_allocate"]
+    disposition: deferred
+    reason: PTX L1 eviction values outside the accepted M10-I02 slice.
+    boundary: Retain the existing legacy cache operators; this is only eviction priority.
+
+  - id: ld-l2-evict-priority-deferred
+    opcode: ld
+    kind: cache_eviction
+    forms: [".L2::evict_normal", ".L2::evict_first", ".L2::evict_last"]
+    disposition: deferred
+    reason: PTX L2 eviction priorities are not part of M10-I02.
+    boundary: Distinct from .L2::cache_hint and its cache-policy operand.
+
+  - id: st-l2-evict-priority-deferred
+    opcode: st
+    kind: cache_eviction
+    forms: [".L2::evict_normal", ".L2::evict_first", ".L2::evict_last"]
+    disposition: deferred
+    reason: PTX L2 eviction priorities are not part of M10-I02.
+    boundary: Distinct from .L2::cache_hint and its cache-policy operand.
+
+  - id: ld-l2-prefetch-size
+    opcode: ld
+    kind: prefetch
+    forms: [".L2::64B", ".L2::128B", ".L2::256B"]
+    disposition: deferred
+    reason: PTX load prefetch-size hints remain unmodeled.
+    boundary: Applies to global or generic addresses that resolve to global; not st.
+
+  - id: ld-unified-address
+    opcode: ld
+    kind: address_qualifier
+    forms: ["ld{.ss}.type d, [a].unified"]
+    disposition: deferred
+    reason: The .unified suffix belongs to the load address operand.
+    boundary: Required for addresses of variables declared with the .unified attribute; no store form exists.
+
+  - id: ld-shared-subspace
+    opcode: ld
+    kind: state_space_subqualifier
+    forms: [".shared::cta", ".shared::cluster"]
+    disposition: deferred
+    reason: Current YAML models .shared but not its PTX subspaces.
+    boundary: This records only the state-space refinement, not new vector or type support.
+
+  - id: st-shared-subspace
+    opcode: st
+    kind: state_space_subqualifier
+    forms: [".shared::cta", ".shared::cluster"]
+    disposition: deferred
+    reason: Current YAML models .shared but not its PTX subspaces.
+    boundary: This records only the state-space refinement, not new vector or type support.
+
+  - id: ld-scalar-b128
+    opcode: ld
+    kind: scalar_type
+    forms: ["ld{.ss}.b128 d, [a]"]
+    disposition: deferred
+    reason: Scalar .b128 is listed by PTX but is absent from the ld scalar type set.
+    boundary: Does not include vector .b128 forms.
+
+  - id: st-scalar-b128
+    opcode: st
+    kind: scalar_type
+    forms: ["st{.ss}.b128 [a], b"]
+    disposition: deferred
+    reason: Scalar .b128 is listed by PTX but is absent from the st scalar type set.
+    boundary: Does not include vector .b128 forms.
+
+  - id: ld-global-nc
+    opcode: ld
+    kind: opcode_form
+    forms:
+      - "ld.global{.ca|.cg|.cs}.nc{.L2::cache_hint}{.L2::{64B,128B,256B}}{.v2|.v4|.v8}.type d, [a]{, cache_policy}"
+      - "ld.global.nc{.L1::{evict_normal,evict_unchanged,evict_first,evict_last,no_allocate}}{.L2::{evict_normal,evict_first,evict_last}}{.L2::cache_hint}{.L2::{64B,128B,256B}}{.v2|.v4|.v8}.type d, [a]{, cache_policy}"
+    disposition: deferred
+    reason: ld.global.nc is a distinct non-coherent global-load opcode form.
+    boundary: Its residual cache, eviction, prefetch, vector, and type matrix is deferred; excludes implemented M12-I28 scalar ld.global.nc.L1::no_allocate.u32 d, [a].
+
+  - id: st-async
+    opcode: st
+    kind: opcode_form
+    forms:
+      - "st.async.shared::cluster.mbarrier::complete_tx::bytes{.v2|.v4}.type [a], b, [mbar]"
+      - "st.async{.mmio}.release.{gpu|sys}.global.type [a], b"
+    disposition: deferred
+    reason: st.async adds asynchronous completion and proxy semantics beyond st.
+    boundary: Defer its mbarrier, vector, release/global, and mmio rules as one opcode form.

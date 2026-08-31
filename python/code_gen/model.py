@@ -14,6 +14,118 @@ class OperandTypeExpressionKind(Enum):
     MODIFIER = "modifier"
 
 
+class OperandRegisterWidthPolicy(str, Enum):
+    """Register-width relation accepted by an operand type constraint."""
+
+    EXACT = "exact"
+    SAME_WIDTH = "same_width"
+    EQUAL_OR_WIDER = "equal_or_wider"
+
+
+class OperandVectorTypePolicy(str, Enum):
+    """How an instruction type maps onto a register-vector operand."""
+
+    AGGREGATE = "aggregate"
+    ELEMENT = "element"
+
+
+class OperandLayoutKind(str, Enum):
+    """Matching algorithm selected by one operand layout."""
+
+    FLAT = "flat"
+    CALL = "call"
+    INDIRECT_CALL = "indirect_call"
+
+
+@dataclass(frozen=True)
+class OperandVectorArityExpression:
+    """A parsed register-vector arity expression from the YAML specification."""
+
+    modifier_name: str
+
+
+@dataclass(frozen=True)
+class OperandStateSpaceExpression:
+    """A parsed operand state-space expression from the YAML specification."""
+
+    modifier_name: str
+
+
+@dataclass(frozen=True)
+class OperandStateSpaceValue:
+    """One statically allowed operand state space and its target requirement."""
+
+    value: str
+    availability: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OperandParameterConstraint:
+    """Direction and function-specific availability for a .param address."""
+
+    direction: str
+    function_availability: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MemoryConsistencyConstraint:
+    """Typed cross-modifier rule for a family of ld/st variants."""
+
+    semantics_modifier: str
+    scope_modifier: str
+    cache_modifier: str
+    address_operand: str
+    mmio_modifier: str | None = None
+    state_space_modifier: str | None = None
+
+
+@dataclass(frozen=True)
+class AddressAlignmentConstraint:
+    """Typed static alignment rule for one or more address operands."""
+
+    address_operands: tuple[str, ...]
+    type_modifier: str | None = None
+    vector_modifier: str | None = None
+    immediate_operand: str | None = None
+    alignment: int | None = None
+
+
+@dataclass(frozen=True)
+class MemoryVectorConstraint:
+    """Typed PTX 8.8 256-bit ld/st vector cross-rule."""
+
+    type_modifier: str
+    vector_operand: str
+    address_operand: str
+    availability: dict[str, Any] = field(default_factory=dict)
+    state_space_modifier: str | None = None
+
+
+@dataclass(frozen=True)
+class ImmediateValueConstraint:
+    """Restrict one immediate operand to an explicit integer allowlist."""
+
+    operand: str
+    values: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class ImmediateRangeConstraint:
+    """Restrict one immediate operand to an inclusive integer range."""
+
+    operand: str
+    minimum: int
+    maximum: int | None = None
+
+
+@dataclass(frozen=True)
+class ImmediateMultipleOfConstraint:
+    """Require one immediate operand to be divisible by a positive integer."""
+
+    operand: str
+    divisor: int
+
+
 class RuntimeLookupKind(str, Enum):
     """Runtime C++ lookup forms emitted for backend value domains."""
 
@@ -78,7 +190,20 @@ class OperandSpec:
     role: str | None = None
     access: str | None = None
     type_expression: OperandTypeExpression | None = None
+    register_width_policy: OperandRegisterWidthPolicy = (
+        OperandRegisterWidthPolicy.SAME_WIDTH
+    )
+    state_space_values: tuple[OperandStateSpaceValue, ...] = ()
+    state_space_expression: OperandStateSpaceExpression | None = None
+    parameter_constraint: OperandParameterConstraint | None = None
     vector_arities: tuple[int, ...] = ()
+    vector_arity_expression: OperandVectorArityExpression | None = None
+    vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
+    vector_allow_sink: bool = False
+    type_tag: str | None = None
+    minimum_elements: int | None = None
+    maximum_elements: int | None = None
+    element_kinds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -87,6 +212,7 @@ class OperandLayoutSpec:
 
     name: str
     operands: tuple[OperandSpec, ...]
+    kind: OperandLayoutKind = OperandLayoutKind.FLAT
     # Empty means that this layout introduces no target requirement beyond its
     # containing variant's availability.
     availability: dict[str, Any] = field(default_factory=dict)
@@ -114,6 +240,12 @@ class VariantSpec:
     operand_layouts: tuple[OperandLayoutSpec, ...]
     rule: str | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
+    memory_consistency: MemoryConsistencyConstraint | None = None
+    address_alignment: AddressAlignmentConstraint | None = None
+    memory_vector: MemoryVectorConstraint | None = None
+    immediate_value: ImmediateValueConstraint | None = None
+    immediate_ranges: tuple[ImmediateRangeConstraint, ...] = ()
+    immediate_multiple_of: ImmediateMultipleOfConstraint | None = None
 
 
 @dataclass(frozen=True)

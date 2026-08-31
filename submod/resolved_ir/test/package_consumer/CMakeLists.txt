@@ -9,6 +9,17 @@ if(PTX_FRONTEND_TEST_UNKNOWN_COMPONENT)
     return()
 endif()
 
+if(PTX_FRONTEND_TEST_PTX_SPEC_ONLY)
+    find_package(
+        ptx_frontend 0.0.1 CONFIG REQUIRED
+        COMPONENTS ptx_spec
+    )
+    if(NOT ptx_frontend_ptx_spec_FOUND)
+        message(FATAL_ERROR "ptx_spec component was not found")
+    endif()
+    return()
+endif()
+
 find_package(
     ptx_frontend 0.0.1 CONFIG REQUIRED
     COMPONENTS

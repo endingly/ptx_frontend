@@ -15,7 +15,9 @@ The package then defines:
 - `ptx_frontend_PTX_SPEC_DIR`, the installed directory containing the public PTX instruction YAML files;
 - `ptx_frontend_PTX_SPEC_SCHEMA`, the installed `ptx-instr-v1.schema.yaml` path.
 
-The repository-specific C++ backend policy is deliberately not part of `ptx_spec`.
+The canonical PTX specification lives in `python/code_gen/resources/ptx_spec` and is packaged as Python `code_gen` data. The CMake `ptx_spec` component exposes those same installed package resources rather than maintaining a second installed copy. `instructions/ptx_spec` remains only as a source-tree compatibility symlink.
+
+The repository-specific C++ backend policy remains at `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`; it is deliberately not a Python package resource and is not part of `ptx_spec`.
 
 ## `codegen`
 
@@ -25,7 +27,7 @@ Consumers that generate C++ artifacts can request:
 find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec codegen)
 ```
 
-The `codegen` component installs the Python dependency closure used by `gen_all.py`, including its validation schemas, and provides `ptx_frontend_generate()` through the package config. Generation requires the consumer to select a backend specification explicitly:
+The `codegen` component installs the Python dependency closure used by `gen_all.py`, including the PTX specification and validation schemas, and provides `ptx_frontend_generate()` through the package config. Generation requires the consumer to select a backend specification explicitly:
 
 ```cmake
 ptx_frontend_generate(

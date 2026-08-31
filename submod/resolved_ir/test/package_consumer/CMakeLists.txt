@@ -21,6 +21,8 @@ find_package(
         binding
         semantic
         resolved_ir
+        ptx_spec
+        codegen
 )
 enable_testing()
 
@@ -40,10 +42,34 @@ foreach(_component IN ITEMS
     endif()
 endforeach()
 
+if(NOT ptx_frontend_ptx_spec_FOUND)
+    message(FATAL_ERROR "ptx_spec component was not found")
+endif()
+if(NOT ptx_frontend_codegen_FOUND)
+    message(FATAL_ERROR "codegen component was not found")
+endif()
+if(NOT EXISTS "${ptx_frontend_PTX_SPEC_DIR}/arithmetic.yaml")
+    message(FATAL_ERROR "Installed PTX spec is incomplete")
+endif()
+if(NOT EXISTS "${ptx_frontend_PTX_SPEC_SCHEMA}")
+    message(FATAL_ERROR "Installed PTX schema is missing")
+endif()
+if(NOT COMMAND ptx_frontend_generate)
+    message(FATAL_ERROR "Installed codegen helper is missing")
+endif()
+
+set(_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+ptx_frontend_generate(
+    SPEC_DIR "${ptx_frontend_PTX_SPEC_DIR}"
+    BACKEND_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/backend.yaml"
+    OUTPUT_DIR "${_generated_dir}"
+)
+
 add_executable(ptx_frontend_package_consumer main.cpp)
 target_compile_features(ptx_frontend_package_consumer PRIVATE cxx_std_23)
 target_link_libraries(
     ptx_frontend_package_consumer
     PRIVATE ptx_frontend::ptx_frontend
 )
+add_dependencies(ptx_frontend_package_consumer ptx_frontend_codegen)
 add_test(NAME runs_installed_frontend COMMAND ptx_frontend_package_consumer)

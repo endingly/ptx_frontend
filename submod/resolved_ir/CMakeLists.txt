@@ -151,6 +151,8 @@ set(CMAKE_PREFIX_PATH [==[${CMAKE_PREFIX_PATH}]==] CACHE STRING \"\" FORCE)
             "-DPTX_CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
             "-DPTX_C_COMPILER=${CMAKE_C_COMPILER}"
             "-DPTX_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "-DPTX_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}"
+            "-DPTX_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}"
             "-DPTX_FMT_DIR=${fmt_DIR}"
             "-DPTX_MAGIC_ENUM_DIR=${magic_enum_DIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/package_consumer/run_test.cmake"

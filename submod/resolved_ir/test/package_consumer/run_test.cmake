@@ -94,7 +94,9 @@ foreach(_cache_spec IN ITEMS
         "CMAKE_MAKE_PROGRAM:FILEPATH"
         "CMAKE_BUILD_TYPE:STRING"
         "CMAKE_C_COMPILER:FILEPATH"
-        "CMAKE_CXX_COMPILER:FILEPATH")
+        "CMAKE_CXX_COMPILER:FILEPATH"
+        "CMAKE_C_COMPILER_LAUNCHER:STRING"
+        "CMAKE_CXX_COMPILER_LAUNCHER:STRING")
     string(REPLACE ":" ";" _cache_spec_parts "${_cache_spec}")
     list(GET _cache_spec_parts 0 _cache_var)
     list(GET _cache_spec_parts 1 _cache_type)
@@ -141,6 +143,13 @@ if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
 endif()
 execute_process(COMMAND ${_build_command} COMMAND_ERROR_IS_FATAL ANY)
 
+set(_codegen_build_command
+    "${CMAKE_COMMAND}" --build "${_build_dir}" --parallel
+    --target ptx_frontend_codegen_primary)
+if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
+    list(APPEND _codegen_build_command --config "${PTX_TEST_CONFIG}")
+endif()
+
 if(NOT EXISTS "${_build_dir}/generated/public/resolved_ir.gen.hpp")
     message(FATAL_ERROR "Installed codegen did not generate resolved_ir.gen.hpp")
 endif()
@@ -157,8 +166,20 @@ set(_relocated_configure_command
     "-DCMAKE_PREFIX_PATH=${_relocated_install_dir}"
     ${_external_consumer_dependency_args})
 execute_process(COMMAND ${_relocated_configure_command} COMMAND_ERROR_IS_FATAL ANY)
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_relocated_build_dir}" --parallel
-    COMMAND_ERROR_IS_FATAL ANY)
+set(_relocated_codegen_build_command
+    "${CMAKE_COMMAND}" --build "${_relocated_build_dir}" --parallel
+    --target ptx_frontend_codegen_primary)
+if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
+    list(APPEND _relocated_codegen_build_command --config "${PTX_TEST_CONFIG}")
+endif()
+execute_process(COMMAND ${_relocated_codegen_build_command} COMMAND_ERROR_IS_FATAL ANY)
+foreach(_generated_file IN ITEMS
+        "${_relocated_build_dir}/generated/public/resolved_ir.gen.hpp"
+        "${_relocated_build_dir}/generated/private/resolved_ir_arithmetic.gen.cpp")
+    if(NOT EXISTS "${_generated_file}")
+        message(FATAL_ERROR "Relocated codegen did not create ${_generated_file}")
+    endif()
+endforeach()
 
 # PATH_VARS must also preserve a non-default GNUInstallDirs data location.
 get_filename_component(_project_source_dir "${PTX_SOURCE_DIR}/../.." ABSOLUTE)
@@ -166,7 +187,6 @@ set(_nondefault_configure_command
     "${CMAKE_COMMAND}" -S "${_project_source_dir}" -B "${_nondefault_build_dir}"
     ${_nested_generator_args}
     "-DBUILD_TESTING=OFF"
-    "-DPTX_USE_CCACHE=OFF"
     "-DCMAKE_INSTALL_DATADIR=custom-data"
     ${_consumer_dependency_args})
 execute_process(COMMAND ${_nondefault_configure_command} COMMAND_ERROR_IS_FATAL ANY)
@@ -180,8 +200,20 @@ set(_nondefault_consumer_command
     "-DCMAKE_PREFIX_PATH=${_nondefault_install_dir}"
     ${_external_consumer_dependency_args})
 execute_process(COMMAND ${_nondefault_consumer_command} COMMAND_ERROR_IS_FATAL ANY)
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_nondefault_consumer_build_dir}"
-    --parallel COMMAND_ERROR_IS_FATAL ANY)
+set(_nondefault_codegen_build_command
+    "${CMAKE_COMMAND}" --build "${_nondefault_consumer_build_dir}" --parallel
+    --target ptx_frontend_codegen_primary)
+if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
+    list(APPEND _nondefault_codegen_build_command --config "${PTX_TEST_CONFIG}")
+endif()
+execute_process(COMMAND ${_nondefault_codegen_build_command} COMMAND_ERROR_IS_FATAL ANY)
+foreach(_generated_file IN ITEMS
+        "${_nondefault_consumer_build_dir}/generated/public/resolved_ir.gen.hpp"
+        "${_nondefault_consumer_build_dir}/generated/private/resolved_ir_arithmetic.gen.cpp")
+    if(NOT EXISTS "${_generated_file}")
+        message(FATAL_ERROR "Non-default codegen did not create ${_generated_file}")
+    endif()
+endforeach()
 
 # The installed helper must both rerun generation for a known input change and
 # reconfigure when that change adds a generated output category.
@@ -195,7 +227,7 @@ string(REPLACE "codegen_category: arithmetic"
 file(WRITE "${_install_dir}/share/ptx_frontend/ptx_spec/arithmetic.yaml"
     "${_arithmetic_spec}")
 execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 1)
-execute_process(COMMAND ${_build_command} COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND ${_codegen_build_command} COMMAND_ERROR_IS_FATAL ANY)
 if(NOT EXISTS "${_build_dir}/generated/private/resolved_ir_arithmetic_topology.gen.cpp")
     message(FATAL_ERROR "Installed codegen did not discover changed output topology")
 endif()

@@ -40,15 +40,22 @@ foreach(_header IN ITEMS
     endif()
 endforeach()
 
+set(_codegen_python_root
+    "${_install_dir}/share/ptx_frontend/codegen/python")
 foreach(_resource IN ITEMS
-        "${_install_dir}/share/ptx_frontend/spec/ptx/arithmetic.yaml"
-        "${_install_dir}/share/ptx_frontend/spec/schema/ptx-instr-v1.schema.yaml"
-        "${_install_dir}/share/ptx_frontend/codegen/python/scripts/gen_all.py"
-        "${_install_dir}/share/ptx_frontend/codegen/python/code_gen/resources/ptx-cpp-backend-v1.schema.yaml")
+        "${_codegen_python_root}/code_gen/resources/ptx_spec/arithmetic.yaml"
+        "${_codegen_python_root}/code_gen/resources/ptx-instr-v1.schema.yaml"
+        "${_codegen_python_root}/scripts/gen_all.py"
+        "${_codegen_python_root}/code_gen/resources/ptx-cpp-backend-v1.schema.yaml")
     if(NOT EXISTS "${_resource}")
         message(FATAL_ERROR "Required component resource was not installed: ${_resource}")
     endif()
 endforeach()
+
+if(EXISTS "${_install_dir}/share/ptx_frontend/spec")
+    message(FATAL_ERROR
+        "PTX spec was duplicated outside the codegen Python package resources")
+endif()
 
 file(GLOB_RECURSE _installed_backend_specs
     "${_install_dir}/*ptx_cpp_backend_spec*"
@@ -128,7 +135,8 @@ if(NOT _missing_component_output MATCHES
 endif()
 
 file(COPY "${_install_dir}/" DESTINATION "${_missing_spec_install_dir}")
-file(REMOVE_RECURSE "${_missing_spec_install_dir}/share/ptx_frontend/spec/ptx")
+file(REMOVE_RECURSE
+    "${_missing_spec_install_dir}/share/ptx_frontend/codegen/python/code_gen/resources/ptx_spec")
 set(_missing_spec_command
     "${CMAKE_COMMAND}"
     -S "${PTX_SOURCE_DIR}/test/package_consumer"

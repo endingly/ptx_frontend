@@ -8,14 +8,16 @@ set(PTX_RESOLVED_IR_GENERATED_PUBLIC_INCLUDE_DIR
 set(PTX_RESOLVED_IR_GENERATED_PRIVATE_INCLUDE_DIR
     "${PTX_RESOLVED_IR_GENERATED_DIR}/private")
 
+set(PTX_RESOLVED_IR_SPEC_DIR
+    "${PROJECT_SOURCE_DIR}/python/code_gen/resources/ptx_spec")
 file(GLOB_RECURSE PTX_RESOLVED_IR_SPEC_FILES CONFIGURE_DEPENDS
-    "${PROJECT_SOURCE_DIR}/instructions/ptx_spec/*.yaml")
+    "${PTX_RESOLVED_IR_SPEC_DIR}/*.yaml")
 set(PTX_RESOLVED_IR_INSTRUCTION_SCHEMA
-    "${PROJECT_SOURCE_DIR}/instructions/schemas/ptx-instr-v1.schema.yaml")
+    "${PROJECT_SOURCE_DIR}/python/code_gen/resources/ptx-instr-v1.schema.yaml")
 set(PTX_RESOLVED_IR_BACKEND_SPEC
     "${PROJECT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
 set(PTX_RESOLVED_IR_BACKEND_SCHEMA
-    "${PROJECT_SOURCE_DIR}/instructions/schemas/ptx-cpp-backend-v1.schema.yaml")
+    "${PROJECT_SOURCE_DIR}/python/code_gen/resources/ptx-cpp-backend-v1.schema.yaml")
 file(GLOB_RECURSE PTX_RESOLVED_IR_CODEGEN_FILES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/python/base/*.py"
     "${PROJECT_SOURCE_DIR}/python/code_gen/*.py"
@@ -51,13 +53,13 @@ endfunction()
 
 ptx_resolved_ir_list_generated_outputs(
     PTX_RESOLVED_IR_GENERATED_FILES
-    "${PROJECT_SOURCE_DIR}/instructions/ptx_spec"
+    "${PTX_RESOLVED_IR_SPEC_DIR}"
     "${PTX_RESOLVED_IR_GENERATED_DIR}")
 
 add_custom_command(
     OUTPUT ${PTX_RESOLVED_IR_GENERATED_FILES}
     COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/python/scripts/gen_all.py"
-            --spec-dir "${PROJECT_SOURCE_DIR}/instructions/ptx_spec"
+            --spec-dir "${PTX_RESOLVED_IR_SPEC_DIR}"
             --backend-spec "${PTX_RESOLVED_IR_BACKEND_SPEC}"
             --output "${PTX_RESOLVED_IR_GENERATED_DIR}"
     DEPENDS

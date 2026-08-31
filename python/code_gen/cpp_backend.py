@@ -27,7 +27,7 @@ DEFAULT_CPP_BACKEND_SPEC = (
     REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
 )
 DEFAULT_CPP_BACKEND_SCHEMA = (
-    REPO_ROOT / "instructions/schemas/ptx-cpp-backend-v1.schema.yaml"
+    Path(__file__).resolve().parent / "resources/ptx-cpp-backend-v1.schema.yaml"
 )
 
 

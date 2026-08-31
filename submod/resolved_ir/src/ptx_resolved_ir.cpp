@@ -903,6 +903,7 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
 std::expected<WithLocs<ResolvedShflSyncDestination>, ResolveDiagnostic>
 resolve_shfl_destination(const syntax_ast::AstOperand& operand,
                          bool allow_destination_sink,
+                         bool allow_predicate_sink,
                          const ResolveContext* context) {
   const auto* pair =
       std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
@@ -910,7 +911,7 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
     return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
                                                .message = "Expected d|p destination."});
   }
-  std::optional<ResolvedRegisterRef> data;
+  std::optional<WithLoc<ResolvedRegisterRef>> data;
   if (pair->dst.syntax.text == "_") {
     if (!allow_destination_sink) {
       return std::unexpected(ResolveDiagnostic{
@@ -923,16 +924,37 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
         resolve_register(syntax_ast::AstOperand{pair->dst}, context);
     if (!resolved_data)
       return std::unexpected(resolved_data.error());
-    data = std::move(resolved_data->value);
+    data = WithLoc<ResolvedRegisterRef>{std::move(resolved_data->value),
+                                        pair->dst.syntax.range};
   }
-  auto predicate = resolve_predicate_identifier(
-      pair->predicate, false, pair->predicate.syntax.range, context);
-  if (!predicate)
-    return std::unexpected(predicate.error());
-  return WithLocs<ResolvedShflSyncDestination>{
+  std::optional<WithLoc<ResolvedPredicate>> predicate;
+  if (pair->predicate.syntax.text == "_") {
+    if (!allow_predicate_sink) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = pair->predicate.syntax.range,
+          .message = "The '_' sink is not allowed as the predicate half of this d|p destination.",
+      });
+    }
+  } else {
+    auto resolved_predicate = resolve_predicate_identifier(
+        pair->predicate, false, pair->predicate.syntax.range, context);
+    if (!resolved_predicate)
+      return std::unexpected(resolved_predicate.error());
+    predicate = WithLoc<ResolvedPredicate>{
+        std::move(resolved_predicate->value), pair->predicate.syntax.range};
+  }
+  if (!data && !predicate) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = pair->range,
+        .message = "A d|p destination must retain a data or predicate output.",
+    });
+  }
+  WithLocs<ResolvedShflSyncDestination> result{
       ResolvedShflSyncDestination{.data = std::move(data),
-                                  .predicate = std::move(predicate->value)},
+                                  .predicate = std::move(predicate)},
       pair->range};
+  result.locs = {pair->dst.syntax.range, pair->predicate.syntax.range};
+  return result;
 }
 
 std::expected<WithLocs<ResolvedPredicatePair>, ResolveDiagnostic>
@@ -2436,6 +2458,22 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       token.locs = std::move(value->locs);
       return ResolvedFieldValue{std::move(token)};
     }
+    case ResolvedValueKind::RegisterOrSink: {
+      if (const auto* identifier =
+              std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+          identifier != nullptr && identifier->syntax.text == "_") {
+        return ResolvedFieldValue{WithLocs<ResolvedRegisterOrSink>{
+            ResolvedRegisterOrSink{.register_ref = std::nullopt},
+            identifier->syntax.range}};
+      }
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<ResolvedRegisterOrSink> destination{
+          ResolvedRegisterOrSink{.register_ref = std::move(value->value)}};
+      destination.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(destination)};
+    }
     case ResolvedValueKind::Predicate: {
       auto value = resolve_predicate(operand, context);
       if (!value)
@@ -2478,7 +2516,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::ShflDestination: {
       auto value = resolve_shfl_destination(
-          operand, binding.allow_destination_sink, context);
+          operand, binding.allow_destination_sink,
+          binding.allow_predicate_sink, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2754,6 +2793,7 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
     case ResolvedValueKind::MbarrierStateToken:
+    case ResolvedValueKind::RegisterOrSink:
     case ResolvedValueKind::RegisterVector:
     case ResolvedValueKind::TensorCoordinate:
     case ResolvedValueKind::DirectCallTarget:
@@ -3092,6 +3132,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::CallReturnParameter:
       case ResolvedValueKind::CallArguments:
       case ResolvedValueKind::MbarrierStateToken:
+      case ResolvedValueKind::RegisterOrSink:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

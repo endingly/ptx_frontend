@@ -1233,13 +1233,24 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .is_sink = !{object_name}.{field.name}.value.register_ref,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedRegisterOrSink":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                  .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.register_ref
+                      ? {object_name}.{field.name}.value.register_ref->declared_type
+                      : std::nullopt,
+                  .is_sink = !{object_name}.{field.name}.value.register_ref,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedShflSyncDestination":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "ShflDestination")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.data
-                      ? {object_name}.{field.name}.value.data->declared_type
+                      ? {object_name}.{field.name}.value.data->value.declared_type
                       : std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""

@@ -133,6 +133,7 @@ OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    "reg_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
     "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "mov_scalar_src": (

@@ -15,6 +15,8 @@
   barrier.cluster.arrive.release.aligned;
   barrier.cluster.wait.acquire.aligned;
   match.all.sync.b32 %b0|%p0, %b1, 0xffffffff;
+  match.all.sync.b32 _|%p0, %b1, 0xffffffff;
+  match.all.sync.b32 %b0|_, %b1, 0xffffffff;
   redux.sync.add.u32 %r0, %r1, 0xffffffff;
   elect.sync %r0|%p1, 0xffffffff;
   mapa.shared::cluster.u32 %r0, %r1, 0;
@@ -24,7 +26,7 @@
   mbarrier.inval.shared::cta.b64 [barrier];
   mbarrier.expect_tx.shared::cluster.b64 [barrier], 1;
   mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64 [barrier], 1;
-  mbarrier.arrive.shared::cluster.b64 _, [barrier], 1;
+  mbarrier.arrive.shared::cluster.b64 _, [barrier], 1048575;
   mbarrier.arrive_drop.expect_tx.release.cluster.shared::cluster.b64 _, [barrier], 1;
   cp.async.mbarrier.arrive.shared::cta.b64 [barrier];
   mbarrier.test_wait.b64 %p0, [barrier], %state;

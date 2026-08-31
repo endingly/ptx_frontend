@@ -2630,6 +2630,7 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
   match.all.sync.b32 %b3, %b4, %mask;
   match.all.sync.b64 %b4|%p0, %d1, 0xffffffff;
 }
+
 )ptx");
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
@@ -2654,8 +2655,9 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
   const auto& paired = std::get<Match::AllSync::WithPredicateOperands>(
       all_pair.operands);
   ASSERT_TRUE(paired.dst.value.data.has_value());
-  EXPECT_EQ(paired.dst.value.data->declared_type, ScalarType::B32);
-  EXPECT_EQ(paired.dst.value.predicate.register_ref.declared_type,
+  ASSERT_TRUE(paired.dst.value.predicate.has_value());
+  EXPECT_EQ(paired.dst.value.data->value.declared_type, ScalarType::B32);
+  EXPECT_EQ(paired.dst.value.predicate->value.register_ref.declared_type,
             ScalarType::Pred);
   EXPECT_TRUE(
       std::holds_alternative<ResolvedImmediate>(paired.membermask.value));
@@ -2698,13 +2700,69 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
   }
   for (const std::string_view source : {
            ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.any.sync.b32 %b0|%p0, %b1, 0; }",
-           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.all.sync.b32 _|%p0, %b1, 0; }",
            ".entry kernel() { .reg .b32 %b<2>; .reg .u32 %u0; match.all.sync.b32 %b0|%u0, %b1, 0; }",
            ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.all.sync.b32 %b0|%p0, %b1; }",
        }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolveModule(parseModule(source)).has_value());
   }
+}
+
+TEST(ResolvedModule, ResolvesMatchSyncSinksAndReportsExactRejectedRanges) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p0;
+  match.all.sync.b32 _, %b1, 0xffffffff;
+  match.all.sync.b32 _|%p0, %b1, 0xffffffff;
+  match.all.sync.b32 %b0|_, %b1, 0xffffffff;
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& all_data_sink = std::get<Match>(body[0]);
+  const auto& single_sink = std::get<Match>(body[1]);
+  const auto& shfl_predicate_sink = std::get<Match>(body[2]);
+  const auto& all_data_operands = std::get<Match::AllSync::WithoutPredicateOperands>(
+      std::get<Match::AllSync>(all_data_sink.variant).operands);
+  const auto& single_sink_operands = std::get<Match::AllSync::WithPredicateOperands>(
+      std::get<Match::AllSync>(single_sink.variant).operands);
+  const auto& shfl_predicate_operands =
+      std::get<Match::AllSync::WithPredicateOperands>(
+          std::get<Match::AllSync>(shfl_predicate_sink.variant).operands);
+  EXPECT_FALSE(all_data_operands.dst.value.register_ref.has_value());
+  EXPECT_FALSE(single_sink_operands.dst.value.data.has_value());
+  EXPECT_TRUE(single_sink_operands.dst.value.predicate.has_value());
+  EXPECT_TRUE(shfl_predicate_operands.dst.value.data.has_value());
+  EXPECT_FALSE(shfl_predicate_operands.dst.value.predicate.has_value());
+
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+      .instruction_range = ast.range,
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Match>(instruction), context).has_value());
+
+  const auto reject = [&](std::string_view source) {
+    const auto invalid_ast = parseModule(source);
+    const auto& invalid_function =
+        std::get<syntax_ast::AstFunction>(invalid_ast.items.back());
+    const auto& invalid_instruction = std::get<syntax_ast::AstInstruction>(
+        invalid_function.body.back());
+    const auto invalid = resolveModule(invalid_ast);
+    ASSERT_FALSE(invalid.has_value());
+    ASSERT_FALSE(invalid.error().empty());
+    EXPECT_EQ(invalid.error().front().range,
+              sourceRange(invalid_instruction.operands.front()));
+  };
+  reject(R"ptx(
+.entry kernel() { .reg .b32 %b<2>; match.all.sync.b32 _|_, %b1, 0xffffffff; }
+)ptx");
+  reject(R"ptx(
+.entry kernel() { .reg .b32 %b<2>; match.any.sync.b32 _, %b1, 0xffffffff; }
+)ptx");
 }
 
 TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
@@ -3531,6 +3589,66 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveDropForms) {
             std::string::npos);
 }
 
+TEST(ResolvedModule, ChecksMbarrierArrivalCountRangesInEveryCountForm) {
+  constexpr std::array forms{
+      "mbarrier.arrive.b64 _, [barrier], $count;",
+      "mbarrier.arrive.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive.shared::cluster.b64 _, [barrier], $count;",
+      "mbarrier.arrive.release.cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive.release.cta.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive.release.cluster.shared::cluster.b64 _, [barrier], $count;",
+      "mbarrier.arrive.noComplete.b64 _, [barrier], $count;",
+      "mbarrier.arrive.noComplete.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive.noComplete.release.cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive.noComplete.release.cta.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.shared::cluster.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.release.cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.release.cta.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.release.cluster.shared::cluster.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.noComplete.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.noComplete.shared::cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.noComplete.release.cta.b64 _, [barrier], $count;",
+      "mbarrier.arrive_drop.noComplete.release.cta.shared::cta.b64 _, [barrier], $count;",
+  };
+  constexpr std::array counts{"0", "1", "1048575", "%count", "1048576"};
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  for (const auto form : forms) {
+    for (const auto count : counts) {
+      SCOPED_TRACE(form);
+      SCOPED_TRACE(count);
+      auto instruction = std::string(form);
+      instruction.replace(instruction.find("$count"), 6, count);
+      const auto ast = parseModule(
+          ".shared .align 8 .b64 barrier;\n.entry kernel() { .reg .u32 %count; " +
+          instruction + " }");
+      const auto resolved = resolveModule(ast);
+      ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+      const auto& syntax_instruction = std::get<syntax_ast::AstInstruction>(
+          std::get<syntax_ast::AstFunction>(ast.items.back()).body.back());
+      const auto checked = checker::check(
+          std::get<Mbarrier>(resolved->functions.front().body.front()),
+          checker::Context{.target = {.ptx_version = {9, 3},
+                                      .sm_version = 90,
+                                      .capabilities = cluster_capabilities},
+                           .instruction_range = syntax_instruction.range});
+      if (count == "1048576") {
+        ASSERT_FALSE(checked.has_value());
+        ASSERT_FALSE(checked.error().empty());
+        EXPECT_EQ(checked.error().front().kind,
+                  checker::CheckDiagnosticKind::ImmediateValueMismatch);
+        EXPECT_EQ(checked.error().front().range,
+                  std::get<syntax_ast::AstImmediate>(
+                      syntax_instruction.operands.back())
+                      .syntax.range);
+      } else {
+        EXPECT_TRUE(checked.has_value());
+      }
+    }
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksMbarrierTestWaitBasicForms) {
   const auto ast = parseModule(R"ptx(
 .shared .align 8 .b64 shared_value[2];
@@ -4184,15 +4302,16 @@ TEST(ResolvedModule, ResolvesAndChecksElectSyncSlice) {
   const auto& s32 = std::get<Elect::Sync>(std::get<Elect>(body[2]).variant);
   const auto& sink = std::get<Elect::Sync>(std::get<Elect>(body[3]).variant);
   ASSERT_TRUE(u32.result.value.data.has_value());
-  EXPECT_EQ(u32.result.value.data->declared_type, ScalarType::U32);
-  EXPECT_EQ(u32.result.value.predicate.register_ref.declared_type,
+  ASSERT_TRUE(u32.result.value.predicate.has_value());
+  EXPECT_EQ(u32.result.value.data->value.declared_type, ScalarType::U32);
+  EXPECT_EQ(u32.result.value.predicate->value.register_ref.declared_type,
             ScalarType::Pred);
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(u32.membermask.value));
   ASSERT_TRUE(b32.result.value.data.has_value());
-  EXPECT_EQ(b32.result.value.data->declared_type, ScalarType::B32);
+  EXPECT_EQ(b32.result.value.data->value.declared_type, ScalarType::B32);
   EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(b32.membermask.value));
   ASSERT_TRUE(s32.result.value.data.has_value());
-  EXPECT_EQ(s32.result.value.data->declared_type, ScalarType::S32);
+  EXPECT_EQ(s32.result.value.data->value.declared_type, ScalarType::S32);
   EXPECT_FALSE(sink.result.value.data.has_value());
 
   const checker::Context context{
@@ -4267,8 +4386,9 @@ TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   EXPECT_TRUE(immediate.idx);
   EXPECT_EQ(immediate.type, ScalarType::B32);
   ASSERT_TRUE(immediate.dst.value.data.has_value());
-  EXPECT_EQ(immediate.dst.value.data->declared_type, ScalarType::B32);
-  EXPECT_EQ(immediate.dst.value.predicate.register_ref.declared_type,
+  ASSERT_TRUE(immediate.dst.value.predicate.has_value());
+  EXPECT_EQ(immediate.dst.value.data->value.declared_type, ScalarType::B32);
+  EXPECT_EQ(immediate.dst.value.predicate->value.register_ref.declared_type,
             ScalarType::Pred);
   EXPECT_FALSE(immediate.dst.locs.empty());
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.lane.value));
@@ -4320,6 +4440,21 @@ TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
 }
 )ptx"));
   ASSERT_FALSE(bad_pair.has_value());
+  const auto bad_predicate_ast = parseModule(R"ptx(
+.entry kernel() {
+  .reg .b32 %b0;
+  shfl.sync.idx.b32 %b0|_, %b0, 0, 31, 0xffffffff;
+}
+)ptx");
+  const auto bad_predicate = resolveModule(bad_predicate_ast);
+  ASSERT_FALSE(bad_predicate.has_value());
+  const auto& bad_predicate_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(bad_predicate_ast.items.back()).body.back());
+  EXPECT_EQ(
+      bad_predicate.error().front().range,
+      std::get<syntax_ast::AstRegisterPredicatePair>(
+          bad_predicate_instruction.operands.front())
+          .predicate.syntax.range);
   const auto wrong_mode = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .b32 %b<2>;

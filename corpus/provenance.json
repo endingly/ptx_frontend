@@ -190,7 +190,7 @@
     {
       "path": "corpus/m13/synchronization_sm90a.ptx",
       "kind": "project_authored",
-      "sha256": "95a0bd235c8e94b1e4560183594b32c3acbf1b0e71239628d622972f3244bb14",
+      "sha256": "b39f1381f0a63de9634ce1d27a45e23cb34c05be8ef03cb00b27dd56da864283",
       "generator": "project-authored",
       "toolkit": "not-applicable",
       "targets": [

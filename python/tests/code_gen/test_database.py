@@ -188,7 +188,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
                 constraint[field] = too_large
                 self.assertTrue(list(validator.iter_errors(spec)))
 
-    def test_database_rejects_immediate_constraint_missing_from_a_layout(self) -> None:
+    def test_database_allows_layout_conditional_immediate_constraints(self) -> None:
         for kind, constraint in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
@@ -225,10 +225,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
                     }]},
                 ]
                 variant["constraints"] = [constraint]
-                with self.assertRaisesRegex(
-                    ValueError, rf"{kind} operand 'size'.*operand layout 'missing'"
-                ):
-                    self._load(spec)
+                self._load(spec)
 
     def test_rejects_codegen_category_disagreement(self) -> None:
         with self.assertRaisesRegex(ValueError, "disagree on codegen_category"):

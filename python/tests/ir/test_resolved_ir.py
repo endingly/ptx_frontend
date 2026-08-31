@@ -957,6 +957,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         plain = variants["AllSync"].operand_layouts[0].bindings
         paired = variants["AllSync"].operand_layouts[1].bindings
         self.assertEqual(
+            variants["AllSync"].operand_layouts[0].fields[0].cpp_type,
+            "WithLocs<ResolvedRegisterOrSink>",
+        )
+        self.assertEqual(
             [binding.allowed_shapes for binding in plain],
             [
                 (ResolvedOperandShape.REGISTER,),
@@ -968,6 +972,25 @@ class ResolvedIrBuildTest(unittest.TestCase):
             paired[0].allowed_shapes,
             (ResolvedOperandShape.SHFL_DESTINATION,),
         )
+        self.assertTrue(paired[0].allow_destination_sink)
+        self.assertTrue(paired[0].allow_predicate_sink)
+        self.assertFalse(variants["AnySync"].operand_layouts[0].bindings[0].allow_destination_sink)
+        self.assertFalse(variants["AnySync"].operand_layouts[0].bindings[0].allow_predicate_sink)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_descriptor.gen.cpp"
+            generate_resolved_descriptor_source(database, output_path=output_path)
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn('.allow_predicate_sink = true,', source)
+        self.assertIn("ResolvedValueKind::RegisterOrSink", source)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_parallel.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="parallel_synchronization_and_communication",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn(".is_sink = !payload.dst.value.register_ref,", source)
         for binding in (*plain, *paired):
             self.assertEqual(
                 binding.register_width_policy, ResolvedRegisterWidthPolicy.EXACT
@@ -1078,8 +1101,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(result.allowed_shapes, (ResolvedOperandShape.SHFL_DESTINATION,))
         self.assertEqual(result.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertTrue(result.allow_destination_sink)
+        self.assertFalse(result.allow_predicate_sink)
         self.assertEqual(membermask.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
         self.assertFalse(membermask.allow_destination_sink)
+        self.assertFalse(membermask.allow_predicate_sink)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
             generate_resolved_descriptor_source(database, output_path=output_path)
@@ -1636,6 +1661,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
         try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
         pending_count = instruction.variants[79]
         check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[80:84]
+        arrival_count_variants = [
+            variant
+            for variant in instruction.variants[27:59]
+            if variant.immediate_ranges
+        ]
+        self.assertEqual(len(arrival_count_variants), 20)
+        self.assertTrue(
+            all(
+                [(constraint.operand_field_id, constraint.minimum,
+                  constraint.maximum) for constraint in variant.immediate_ranges]
+                == [("count", 0, 1048575)]
+                for variant in arrival_count_variants
+            )
+        )
         self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(arrive_cluster.availability), cluster_availability)
         self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
@@ -2089,9 +2128,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
         self.assertEqual(variant.memory_consistency.address_field_id, "address")
-        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
-        self.assertEqual(variant.address_alignment.type_field_id, "type")
-        self.assertIsNone(variant.address_alignment.vector_field_id)
+        (alignment,) = variant.address_alignments
+        self.assertEqual(alignment.address_field_ids, ("address",))
+        self.assertEqual(alignment.type_field_id, "type")
+        self.assertIsNone(alignment.vector_field_id)
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].type_expression,
             ResolvedOperandTypeExpression(
@@ -2200,7 +2240,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["semantics", "scope", "cache", "vector", "type", "dst", "address"],
         )
         self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
-        self.assertEqual(vector_variant.address_alignment.vector_field_id, "vector")
+        self.assertEqual(vector_variant.address_alignments[0].vector_field_id, "vector")
         self.assertEqual(
             [value.value for value in next(modifier for modifier in ld.variants[4].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
@@ -2530,7 +2570,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(variant.immediate_value.values, (128,))
-        self.assertEqual(variant.address_alignment.alignment, 128)
+        self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_discard_global_l2_model(self) -> None:
         database = load_codegen_database(
@@ -2559,7 +2599,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(variant.immediate_value.values, (128,))
-        self.assertEqual(variant.address_alignment.alignment, 128)
+        self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
         database = load_codegen_database(
@@ -2659,8 +2699,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.immediate_value.operand_field_id, "cp_size")
         self.assertEqual(variant.immediate_value.values, (4, 8, 16))
-        self.assertEqual(variant.address_alignment.address_field_ids, ("dst", "src"))
-        self.assertEqual(variant.address_alignment.immediate_operand_field_id, "cp_size")
+        (alignment,) = variant.address_alignments
+        self.assertEqual(alignment.address_field_ids, ("dst", "src"))
+        self.assertEqual(alignment.immediate_operand_field_id, "cp_size")
         self.assertEqual(
             [value.value for value in variant.operand_layouts[0].bindings[0].allowed_address_state_spaces],
             ["shared"],
@@ -2701,11 +2742,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         for variant in variants:
             address = variant.operand_layouts[0].bindings[0]
+            (alignment,) = variant.address_alignments
             self.assertEqual(address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
             self.assertEqual(
                 [value.value for value in address.allowed_address_state_spaces], ["shared"]
             )
-            self.assertEqual(variant.address_alignment.alignment, 8)
+            self.assertEqual(alignment.alignment, 8)
 
     def test_clusterlaunchcontrol_try_cancel_model(self) -> None:
         database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
@@ -2770,6 +2812,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [constraint.address_field_ids for constraint in variants[0].address_alignments],
             [("response",), ("mbarrier",)],
         )
+        self.assertFalse(hasattr(variants[0], "address_alignment"))
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variants[4].fields],
             [
@@ -2886,8 +2929,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
             ["shared"],
         )
-        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
-        self.assertEqual(variant.address_alignment.alignment, 16)
+        (alignment,) = variant.address_alignments
+        self.assertEqual(alignment.address_field_ids, ("address",))
+        self.assertEqual(alignment.alignment, 16)
 
     def test_mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32_model(self) -> None:
         database = load_codegen_database(

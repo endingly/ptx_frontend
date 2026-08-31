@@ -229,6 +229,7 @@ domains:
       reg: ResolvedRegisterRef
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
+      reg_or_sink: ResolvedRegisterOrSink
       shfl_dest: ResolvedShflSyncDestination
       pred_pair: ResolvedPredicatePair
       mov_scalar_src: ResolvedMovSource
@@ -275,6 +276,7 @@ domains:
       ProxyKindPair: ProxyKindPair
       Register: ResolvedRegisterRef
       MbarrierStateToken: ResolvedMbarrierStateToken
+      RegisterOrSink: ResolvedRegisterOrSink
       Predicate: ResolvedPredicate
       PredicateSource: ResolvedPredicateSource
       Immediate: ResolvedImmediate
@@ -361,6 +363,7 @@ domains:
       PredicateSource: check_end::ResolvedValueKind::PredicateSource
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      RegisterOrSink: check_end::ResolvedValueKind::RegisterOrSink
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
       PredicatePair: check_end::ResolvedValueKind::PredicatePair
       MovSource: check_end::ResolvedValueKind::MovSource

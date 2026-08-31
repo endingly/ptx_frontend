@@ -73,6 +73,7 @@ class ResolvedValueKind(Enum):
     PREDICATE_SOURCE = "PredicateSource"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
+    REGISTER_OR_SINK = "RegisterOrSink"
     MOV_SOURCE = "MovSource"
     VECTOR_REGISTER = "VectorRegister"
     VECTOR_SPECIAL_REGISTER = "VectorSpecialRegister"
@@ -380,12 +381,6 @@ class ResolvedVariant:
                 fields.append(field)
         return tuple(fields)
 
-    @property
-    def address_alignment(self) -> ResolvedAddressAlignmentConstraint | None:
-        """Compatibility view for existing single-alignment users."""
-        return self.address_alignments[0] if self.address_alignments else None
-
-
 @dataclass(frozen=True)
 class ResolvedModifierBinding:
     """Bind one syntax modifier kind to a resolved field."""
@@ -443,6 +438,7 @@ class ResolvedOperandBinding:
     allow_vector_sink: bool = False
     vector_sink_payload_bits: int = 0
     allow_destination_sink: bool = False
+    allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
     sink_availability: tuple[tuple[str, Any], ...] = ()
     allow_function_symbol: bool = False
@@ -479,6 +475,7 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
+    "reg_or_sink": (ResolvedOperandShape.REGISTER,),
     "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
     "pred_pair": (ResolvedOperandShape.PREDICATE_PAIR,),
     "mov_scalar_src": (
@@ -1075,6 +1072,7 @@ def _build_operand_layout(
                 allow_vector_sink=operand.vector_allow_sink,
                 vector_sink_payload_bits=operand.vector_sink_payload_bits,
                 allow_destination_sink=operand.allow_destination_sink,
+                allow_predicate_sink=operand.allow_predicate_sink,
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,
                 sink_availability=tuple(operand.sink_availability.items()),
                 allow_function_symbol=operand.kind == "mov_scalar_src",

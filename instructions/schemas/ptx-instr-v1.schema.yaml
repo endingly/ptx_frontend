@@ -654,6 +654,7 @@ $defs:
       - symbol
       - func
       - reg_or_imm
+      - reg_or_sink
       - shfl_dest
       - pred_pair
       - mov_scalar_src
@@ -771,6 +772,11 @@ $defs:
 
       allow_destination_sink:
         description: "Whether '_' is accepted as the data half of a shfl_dest pair."
+        type: boolean
+        default: false
+
+      allow_predicate_sink:
+        description: "Whether '_' is accepted as the predicate half of a shfl_dest pair."
         type: boolean
         default: false
 

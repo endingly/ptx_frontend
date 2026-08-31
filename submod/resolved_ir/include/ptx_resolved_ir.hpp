@@ -95,6 +95,7 @@ enum class ResolvedValueKind : uint8_t {
   PredicateSource,
   Immediate,
   RegOrImm,
+  RegisterOrSink,
   ShflDestination,
   PredicatePair,
   MovSource,
@@ -274,6 +275,12 @@ struct ResolvedMbarrierStateToken {
   bool operator==(const ResolvedMbarrierStateToken&) const = default;
 };
 
+/** A scalar destination register; a null reference is the ``_`` sink. */
+struct ResolvedRegisterOrSink {
+  std::optional<ResolvedRegisterRef> register_ref;
+  bool operator==(const ResolvedRegisterOrSink&) const = default;
+};
+
 struct ResolvedImmediate {
   uint64_t bits;
   ScalarType type;
@@ -444,8 +451,8 @@ struct ResolvedTensorCoordinate {
 };
 
 struct ResolvedShflSyncDestination {
-  std::optional<ResolvedRegisterRef> data;
-  ResolvedPredicate predicate;
+  std::optional<WithLoc<ResolvedRegisterRef>> data;
+  std::optional<WithLoc<ResolvedPredicate>> predicate;
   bool operator==(const ResolvedShflSyncDestination&) const = default;
 };
 
@@ -473,6 +480,7 @@ using ResolvedFieldValue =
                  WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>,
                  WithLocs<ResolvedRegisterRef>,
                  WithLocs<ResolvedMbarrierStateToken>,
+                 WithLocs<ResolvedRegisterOrSink>,
                  WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
                  WithLocs<ResolvedPredicatePair>,

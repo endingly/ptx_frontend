@@ -149,6 +149,11 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raise TypeError("allow_destination_sink must be a boolean when supplied.")
     if "allow_destination_sink" in raw and raw["kind"] != "shfl_dest":
         raise ValueError("allow_destination_sink is only valid for kind 'shfl_dest'")
+    allow_predicate_sink = raw.get("allow_predicate_sink", False)
+    if not isinstance(allow_predicate_sink, bool):
+        raise TypeError("allow_predicate_sink must be a boolean when supplied.")
+    if "allow_predicate_sink" in raw and raw["kind"] != "shfl_dest":
+        raise ValueError("allow_predicate_sink is only valid for kind 'shfl_dest'")
     try:
         mbarrier_state_token_form = MbarrierStateTokenForm(
             raw.get("mbarrier_state_token_form", "register")
@@ -170,6 +175,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
             raise ValueError("sink-capable mbarrier state token must be a write destination")
         if not sink_availability:
             raise ValueError("sink-capable mbarrier state token requires sink_availability")
+    if raw["kind"] == "reg_or_sink" and (
+        raw.get("role") != "dst" or raw.get("access") != "write"
+    ):
+        raise ValueError("reg_or_sink must be a write destination")
     type_tag = raw.get("type_tag")
     if raw["kind"] in {"descriptor", "typed_token"}:
         if (not isinstance(type_tag, str) or
@@ -312,6 +321,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_allow_sink=vector_allow_sink,
         vector_sink_payload_bits=vector_sink_payload_bits,
         allow_destination_sink=allow_destination_sink,
+        allow_predicate_sink=allow_predicate_sink,
         mbarrier_state_token_form=mbarrier_state_token_form,
         sink_availability=sink_availability,
         type_tag=type_tag,
@@ -1334,18 +1344,16 @@ def _validate_immediate_constraint_operand(
     *,
     allowed_kinds: tuple[str, ...] = ("imm",),
 ) -> None:
-    """Require a constrained immediate operand in every operand layout."""
+    """Require a constrained immediate operand in at least one layout."""
 
+    found = False
     for layout in layouts:
         matching = tuple(
             operand for operand in layout.operands if operand.name == operand_name
         )
         if not matching:
-            raise ValueError(
-                f"variant {raw_variant['name']!r}: {constraint_kind} operand "
-                f"{operand_name!r} must exist in operand layout {layout.name!r} "
-                f"as kind {' or '.join(repr(kind) for kind in allowed_kinds)}"
-            )
+            continue
+        found = True
         disallowed = next(
             (operand for operand in matching if operand.kind not in allowed_kinds), None
         )
@@ -1356,6 +1364,12 @@ def _validate_immediate_constraint_operand(
                 f"kind {' or '.join(repr(kind) for kind in allowed_kinds)}, not "
                 f"{disallowed.kind!r}"
             )
+    if not found:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: {constraint_kind} operand "
+            f"{operand_name!r} must exist in at least one operand layout as kind "
+            f"{' or '.join(repr(kind) for kind in allowed_kinds)}"
+        )
 
 
 def _validate_uint64(

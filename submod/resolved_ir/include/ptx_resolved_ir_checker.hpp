@@ -255,6 +255,7 @@ struct OperandDescriptor {
   bool allow_vector_sink = false;
   size_t vector_sink_payload_bits = 0;
   bool allow_destination_sink = false;
+  bool allow_predicate_sink = false;
   MbarrierStateTokenForm mbarrier_state_token_form =
       MbarrierStateTokenForm::Register;
   AvailabilityDescriptor sink_availability;

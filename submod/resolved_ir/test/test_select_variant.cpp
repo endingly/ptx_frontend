@@ -670,10 +670,22 @@ TEST(SelectVariantMatch, SelectsMatchSyncFormsAndRejectsInvalidOnes) {
     EXPECT_FALSE(selectVariant<Match>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(resolve<Match>(parse_instruction(
-      "match.any.sync.b32 %b0|%p0, %b1, 0xffffffff;"))
+      "match.any.sync.b32 _, %b1, 0xffffffff;"))
                    .has_value());
   EXPECT_FALSE(resolve<Match>(parse_instruction(
+      "match.any.sync.b32 _|%p0, %b1, 0xffffffff;"))
+                   .has_value());
+  EXPECT_TRUE(resolve<Match>(parse_instruction(
+      "match.all.sync.b32 _, %b1, 0xffffffff;"))
+                  .has_value());
+  EXPECT_TRUE(resolve<Match>(parse_instruction(
       "match.all.sync.b32 _|%p0, %b1, 0xffffffff;"))
+                  .has_value());
+  EXPECT_TRUE(resolve<Match>(parse_instruction(
+      "match.all.sync.b32 %b0|_, %b1, 0xffffffff;"))
+                  .has_value());
+  EXPECT_FALSE(resolve<Match>(parse_instruction(
+      "match.all.sync.b32 _|_, %b1, 0xffffffff;"))
                    .has_value());
 }
 

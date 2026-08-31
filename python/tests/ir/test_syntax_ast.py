@@ -1316,7 +1316,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             }
         )
 
-    def test_immediate_constraints_require_an_immediate_in_every_layout(self) -> None:
+    def test_immediate_constraints_allow_a_missing_layout_operand(self) -> None:
         for kind, constraint, operand_name in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
@@ -1329,16 +1329,39 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             }, "stride"),
         ):
             with self.subTest(kind=kind):
-                with self.assertRaisesRegex(
-                    ValueError,
-                    rf"{kind} operand {operand_name!r}.*operand layout 'missing'",
-                ):
-                    self._normalize_multilayout_immediate_constraint(
-                        constraint,
-                        operand_name,
-                        "missing",
-                        [{"name": "dst", "kind": "reg"}],
-                    )
+                self._normalize_multilayout_immediate_constraint(
+                    constraint,
+                    operand_name,
+                    "missing",
+                    [{"name": "dst", "kind": "reg"}],
+                )
+
+    def test_immediate_constraint_rejects_unknown_operand(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError, r"immediate_range operand 'missing'.*at least one operand layout"
+        ):
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [{"opcode": "sample", "variants": [{
+                        "name": "sample_immediate",
+                        "availability": {"ptx": "1.0"},
+                        "operand_layouts": [
+                            {"name": "first", "operands": [
+                                {"name": "count", "kind": "imm"},
+                            ]},
+                            {"name": "second", "operands": [
+                                {"name": "dst", "kind": "reg"},
+                            ]},
+                        ],
+                        "constraints": [{
+                            "kind": "immediate_range", "operand": "missing",
+                            "minimum": 0,
+                        }],
+                    }]}],
+                }
+            )
 
     def test_immediate_constraints_name_non_immediate_layout_and_kind(self) -> None:
         for kind, constraint, operand_name in (
@@ -1546,7 +1569,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             )
 
     def test_destination_sink_is_shfl_dest_specific(self) -> None:
-        def normalize_operand(kind: str, **extra: object):
+        def normalize_operand(
+            kind: str, role: str = "dst", access: str = "write", **extra: object
+        ):
             return normalize_instruction_spec(
                 {
                     "category": "test",
@@ -1563,8 +1588,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                                         {
                                             "name": "dst",
                                             "kind": kind,
-                                            "role": "dst",
-                                            "access": "write",
+                                            "role": role,
+                                            "access": access,
                                             "type": "u32",
                                             **extra,
                                         }
@@ -1581,10 +1606,24 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_operand("shfl_dest", allow_destination_sink=True)
             .allow_destination_sink
         )
+        self.assertFalse(normalize_operand("shfl_dest").allow_predicate_sink)
+        self.assertTrue(
+            normalize_operand("shfl_dest", allow_predicate_sink=True)
+            .allow_predicate_sink
+        )
         with self.assertRaisesRegex(ValueError, "allow_destination_sink.*shfl_dest"):
             normalize_operand("reg", allow_destination_sink=False)
         with self.assertRaisesRegex(TypeError, "allow_destination_sink"):
             normalize_operand("shfl_dest", allow_destination_sink=1)
+        with self.assertRaisesRegex(ValueError, "allow_predicate_sink.*shfl_dest"):
+            normalize_operand("reg", allow_predicate_sink=False)
+        with self.assertRaisesRegex(TypeError, "allow_predicate_sink"):
+            normalize_operand("shfl_dest", allow_predicate_sink=1)
+        self.assertEqual(normalize_operand("reg_or_sink").kind, "reg_or_sink")
+        with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
+            normalize_operand("reg_or_sink", role="src")
+        with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
+            normalize_operand("reg_or_sink", access="read")
 
     def test_mbarrier_state_token_sink_policy_is_destination_specific_and_gated(self) -> None:
         def normalize_token(**extra: object):

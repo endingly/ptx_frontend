@@ -183,6 +183,27 @@ operand_patterns:
       type: u32
       register_width: exact
 
+  match_all_sync_without_predicate:
+    - name: dst
+      kind: reg_or_sink
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
   match_sync_with_predicate:
     - name: dst
       kind: shfl_dest
@@ -190,6 +211,8 @@ operand_patterns:
       access: write
       type: b32
       register_width: exact
+      allow_destination_sink: true
+      allow_predicate_sink: true
     - name: src
       kind: reg
       role: src
@@ -1297,7 +1320,7 @@ instructions:
             values: [b32, b64]
         operand_layouts:
           - name: without_predicate
-            operands: $match_sync_without_predicate
+            operands: $match_all_sync_without_predicate
           - name: with_predicate
             operands: $match_sync_with_predicate
 
@@ -1305,6 +1328,12 @@ instructions:
           - ptx: "match.all.sync.b64 %b0, %d0, 0xffffffff;"
             valid: true
           - ptx: "match.all.sync.b32 %b0|%p0, %b1, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 _, %b1, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 _|%p0, %b1, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 %b0|_, %b1, 0xffffffff;"
             valid: true
 
   - opcode: redux
@@ -1806,7 +1835,7 @@ instructions:
           - name: with_count
             availability: {ptx: "7.8", sm: 90}
             operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_shared_cta
         section: "9.7.14.16.16"
@@ -1820,7 +1849,7 @@ instructions:
           - name: with_count
             availability: {ptx: "7.8", sm: 90}
             operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_shared_cluster
         section: "9.7.14.16.16"
@@ -1834,7 +1863,7 @@ instructions:
           - name: with_count
             availability: {ptx: "7.8", sm: 90}
             operands: $mbarrier_arrive_cluster_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_semantics_generic_or_shared
         section: "9.7.14.16.16"
@@ -1862,7 +1891,7 @@ instructions:
           - name: with_count
             availability: {ptx: "7.8", sm: 90}
             operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_semantics_shared_cta
         section: "9.7.14.16.16"
@@ -1890,7 +1919,7 @@ instructions:
           - name: with_count
             availability: {ptx: "7.8", sm: 90}
             operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_semantics_shared_cluster
         section: "9.7.14.16.16"
@@ -1918,7 +1947,7 @@ instructions:
           - name: with_count
             availability: {ptx: "7.8", sm: 90}
             operands: $mbarrier_arrive_cluster_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_expect_tx_generic_or_shared
         section: "9.7.14.16.16"
@@ -2037,7 +2066,7 @@ instructions:
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_no_complete_shared_cta
         section: "9.7.14.16.16"
@@ -2048,7 +2077,7 @@ instructions:
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_no_complete_release_cta_generic_or_shared
         section: "9.7.14.16.16"
@@ -2061,7 +2090,7 @@ instructions:
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_no_complete_release_cta_shared_cta
         section: "9.7.14.16.16"
@@ -2074,7 +2103,7 @@ instructions:
           - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_drop_generic_or_shared
         section: "9.7.14.16.17"
@@ -2083,7 +2112,7 @@ instructions:
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cta}
           - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_shared_cta
         section: "9.7.14.16.17"
         availability: {ptx: "7.8", sm: 80}
@@ -2091,7 +2120,7 @@ instructions:
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cta}
           - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_shared_cluster
         section: "9.7.14.16.17"
         availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
@@ -2099,7 +2128,7 @@ instructions:
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cluster}
           - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cluster_count}
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_drop_semantics_generic_or_shared
         section: "9.7.14.16.17"
@@ -2113,7 +2142,7 @@ instructions:
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cta}
           - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_semantics_shared_cta
         section: "9.7.14.16.17"
         availability: {ptx: "8.0", sm: 90}
@@ -2126,7 +2155,7 @@ instructions:
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cta}
           - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_semantics_shared_cluster
         section: "9.7.14.16.17"
         availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
@@ -2139,7 +2168,7 @@ instructions:
         operand_layouts:
           - {name: no_count, operands: $mbarrier_arrive_cluster}
           - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cluster_count}
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_arrive_drop_expect_tx_generic_or_shared
         section: "9.7.14.16.17"
@@ -2202,25 +2231,25 @@ instructions:
         availability: {ptx: "7.0", sm: 80}
         modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_no_complete_shared_cta
         section: "9.7.14.16.17"
         availability: {ptx: "7.8", sm: 80}
         modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_no_complete_release_cta_generic_or_shared
         section: "9.7.14.16.17"
         availability: {ptx: "8.0", sm: 90}
         modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}, {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
       - name: mbarrier_arrive_drop_no_complete_release_cta_shared_cta
         section: "9.7.14.16.17"
         availability: {ptx: "8.0", sm: 90}
         modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}, {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operands: $mbarrier_arrive_cta_count
-        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
 
       - name: mbarrier_test_wait_token_generic_or_shared
         section: "9.7.14.16.19"

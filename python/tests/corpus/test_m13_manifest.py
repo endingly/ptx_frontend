@@ -17,7 +17,7 @@ class M13SynchronizationManifestTests(unittest.TestCase):
     def test_cases_and_required_forms_match_exact_ptx_files(self) -> None:
         manifest = self.manifest
         self.assertEqual(
-            set(manifest), {"schema", "status", "cases", "required_slices"}
+            set(manifest), {"schema", "status", "cases", "boundaries", "required_slices"}
         )
         self.assertEqual(manifest["schema"], "ptx_frontend.m13_synchronization/v1")
         self.assertEqual(
@@ -49,6 +49,14 @@ class M13SynchronizationManifestTests(unittest.TestCase):
             self.assertTrue(requirement["forms"], issue)
             self.assertTrue(requirement["excludes"], issue)
             self.assertTrue(set(requirement["forms"]) <= forms, issue)
+
+        self.assertEqual(
+            manifest["boundaries"],
+            {
+                "M13-I03": ["match.all data sink with predicate", "match.all data with predicate sink"],
+                "M13-I14": ["mbarrier arrival count 1048575"],
+            },
+        )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,36 @@
 include_guard(GLOBAL)
 include(CMakeParseArguments)
 
+function(ptx_frontend_check_codegen result_variable)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(NOT Python3_Interpreter_FOUND)
+        set(ptx_frontend_CODEGEN_NOT_FOUND_MESSAGE
+            "A Python3 interpreter is required to import code_gen"
+            PARENT_SCOPE)
+        set(${result_variable} FALSE PARENT_SCOPE)
+        return()
+    endif()
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c
+            "from importlib.metadata import version; from pathlib import Path; import code_gen; expected = '${ptx_frontend_VERSION}'; actual = version('ptx_frontend');\nif actual != expected: raise RuntimeError(f'expected ptx_frontend {expected}, got {actual}')\nroot = Path(code_gen.__file__).resolve().parent.parent\nif not root.is_dir(): raise RuntimeError(f'invalid code_gen package root: {root}')\nprint(root)"
+        RESULT_VARIABLE _result
+        OUTPUT_VARIABLE _root
+        ERROR_VARIABLE _error
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+    )
+    if(_result EQUAL 0 AND IS_DIRECTORY "${_root}")
+        set(ptx_frontend_CODEGEN_PYTHON_EXECUTABLE "${Python3_EXECUTABLE}" PARENT_SCOPE)
+        set(ptx_frontend_CODEGEN_PYTHON_ROOT "${_root}" PARENT_SCOPE)
+        set(${result_variable} TRUE PARENT_SCOPE)
+    else()
+        set(ptx_frontend_CODEGEN_NOT_FOUND_MESSAGE
+            "Python3 ${Python3_EXECUTABLE} cannot import code_gen from ptx_frontend ${ptx_frontend_VERSION}: ${_error}"
+            PARENT_SCOPE)
+        set(${result_variable} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(ptx_frontend_generate)
     cmake_parse_arguments(
         PTX_CODEGEN
@@ -28,7 +58,13 @@ function(ptx_frontend_generate)
             "${PTX_CODEGEN_BACKEND_SPEC}")
     endif()
 
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    if(NOT DEFINED ptx_frontend_CODEGEN_PYTHON_EXECUTABLE OR
+       NOT IS_DIRECTORY "${ptx_frontend_CODEGEN_PYTHON_ROOT}")
+        ptx_frontend_check_codegen(_ptx_frontend_codegen_available)
+        if(NOT _ptx_frontend_codegen_available)
+            message(FATAL_ERROR "ptx_frontend_generate: ${ptx_frontend_CODEGEN_NOT_FOUND_MESSAGE}")
+        endif()
+    endif()
 
     if(TARGET "${PTX_CODEGEN_TARGET}")
         message(FATAL_ERROR
@@ -45,11 +81,10 @@ function(ptx_frontend_generate)
     file(GLOB_RECURSE _generator_files CONFIGURE_DEPENDS
         "${ptx_frontend_CODEGEN_PYTHON_ROOT}/base/*.py"
         "${ptx_frontend_CODEGEN_PYTHON_ROOT}/code_gen/*.py"
-        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/ir/*.py"
-        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/scripts/*.py")
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/ir/*.py")
 
-    # Output topology is discovered at configure time, so any generator input
-    # must cause CMake to rerun --list-outputs before the next build.
+    # Output topology is discovered at configure time, so changing an input
+    # must rerun --list-outputs before the next build.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${_spec_files}
         "${_instruction_schema}"
@@ -59,7 +94,7 @@ function(ptx_frontend_generate)
 
     execute_process(
         COMMAND
-            "${Python3_EXECUTABLE}" "${ptx_frontend_CODEGEN_ENTRYPOINT}"
+            "${ptx_frontend_CODEGEN_PYTHON_EXECUTABLE}" -m code_gen
             --spec-dir "${PTX_CODEGEN_SPEC_DIR}"
             --backend-spec "${PTX_CODEGEN_BACKEND_SPEC}"
             --output "${PTX_CODEGEN_OUTPUT_DIR}"
@@ -78,7 +113,7 @@ function(ptx_frontend_generate)
     add_custom_command(
         OUTPUT ${_generated_files}
         COMMAND
-            "${Python3_EXECUTABLE}" "${ptx_frontend_CODEGEN_ENTRYPOINT}"
+            "${ptx_frontend_CODEGEN_PYTHON_EXECUTABLE}" -m code_gen
             --spec-dir "${PTX_CODEGEN_SPEC_DIR}"
             --backend-spec "${PTX_CODEGEN_BACKEND_SPEC}"
             --output "${PTX_CODEGEN_OUTPUT_DIR}"

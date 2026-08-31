@@ -30,23 +30,13 @@ foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
             set(@PACKAGE_NAME@_ptx_spec_FOUND FALSE)
         endif()
     elseif(_@PACKAGE_NAME@_component STREQUAL "codegen")
-        set(@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT
-            "@PACKAGE_PTX_FRONTEND_CODEGEN_PYTHON_ROOT@")
-        set(@PACKAGE_NAME@_CODEGEN_ENTRYPOINT
-            "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/scripts/gen_all.py")
         set(_@PACKAGE_NAME@_codegen_helper
             "${CMAKE_CURRENT_LIST_DIR}/ptx_frontendCodegen.cmake")
-        if(EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/__init__.py"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/cli.py"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/__main__.py"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/base/__init__.py"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/ir/__init__.py"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/resources/ptx-instr-v1.schema.yaml"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/resources/ptx-cpp-backend-v1.schema.yaml"
-           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_ENTRYPOINT}"
-           AND EXISTS "${_@PACKAGE_NAME@_codegen_helper}")
+        if(EXISTS "${_@PACKAGE_NAME@_codegen_helper}")
             include("${_@PACKAGE_NAME@_codegen_helper}")
-            set(@PACKAGE_NAME@_codegen_FOUND TRUE)
+            ptx_frontend_check_codegen(_@PACKAGE_NAME@_codegen_available)
+            set(@PACKAGE_NAME@_codegen_FOUND
+                "${_@PACKAGE_NAME@_codegen_available}")
         else()
             set(@PACKAGE_NAME@_codegen_FOUND FALSE)
         endif()
@@ -81,3 +71,4 @@ unset(_@PACKAGE_NAME@_unsupported_components)
 unset(_@PACKAGE_NAME@_target_components)
 unset(_@PACKAGE_NAME@_needs_targets)
 unset(_@PACKAGE_NAME@_codegen_helper)
+unset(_@PACKAGE_NAME@_codegen_available)

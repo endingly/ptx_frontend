@@ -20,9 +20,9 @@ foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
 
     if(_@PACKAGE_NAME@_component STREQUAL "ptx_spec")
         set(@PACKAGE_NAME@_PTX_SPEC_DIR
-            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/spec/ptx")
+            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/codegen/python/code_gen/resources/ptx_spec")
         set(@PACKAGE_NAME@_PTX_SPEC_SCHEMA
-            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/spec/schema/ptx-instr-v1.schema.yaml")
+            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/codegen/python/code_gen/resources/ptx-instr-v1.schema.yaml")
         if(IS_DIRECTORY "${@PACKAGE_NAME@_PTX_SPEC_DIR}"
            AND EXISTS "${@PACKAGE_NAME@_PTX_SPEC_SCHEMA}")
             set(@PACKAGE_NAME@_ptx_spec_FOUND TRUE)

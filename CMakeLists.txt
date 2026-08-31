@@ -36,6 +36,46 @@ add_library(ptx_frontend INTERFACE)
 add_library(ptx_frontend::ptx_frontend ALIAS ptx_frontend)
 target_link_libraries(ptx_frontend INTERFACE ptx_frontend::resolved_ir)
 
+set(PTX_FRONTEND_DATA_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/ptx_frontend")
+set(PTX_FRONTEND_CODEGEN_INSTALL_DIR
+    "${PTX_FRONTEND_DATA_INSTALL_DIR}/codegen")
+set(PTX_FRONTEND_CMAKE_INSTALL_DIR
+    "${CMAKE_INSTALL_LIBDIR}/cmake/ptx_frontend")
+
+install(
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/instructions/ptx_spec/"
+    DESTINATION "${PTX_FRONTEND_DATA_INSTALL_DIR}/spec/ptx"
+    COMPONENT ptx_spec
+    FILES_MATCHING PATTERN "*.yaml"
+)
+install(
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/instructions/schemas/ptx-instr-v1.schema.yaml"
+    DESTINATION "${PTX_FRONTEND_DATA_INSTALL_DIR}/spec/schema"
+    COMPONENT ptx_spec
+)
+
+foreach(_python_package IN ITEMS base code_gen ir)
+    install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/python/${_python_package}/"
+        DESTINATION "${PTX_FRONTEND_CODEGEN_INSTALL_DIR}/python/${_python_package}"
+        COMPONENT codegen
+        FILES_MATCHING
+            PATTERN "*.py"
+            PATTERN "*.yaml"
+            PATTERN "__pycache__" EXCLUDE
+    )
+endforeach()
+install(
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/python/scripts/gen_all.py"
+    DESTINATION "${PTX_FRONTEND_CODEGEN_INSTALL_DIR}/python/scripts"
+    COMPONENT codegen
+)
+install(
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ptx_frontendCodegen.cmake"
+    DESTINATION "${PTX_FRONTEND_CMAKE_INSTALL_DIR}"
+    COMPONENT codegen
+)
+
 include(install_project_targets)
 install_project_targets(
     PROJECT ${PROJECT_NAME}
@@ -61,6 +101,8 @@ install_project_targets(
         binding
         semantic
         resolved_ir
+        ptx_spec
+        codegen
     INCLUDE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/common/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/base/include"

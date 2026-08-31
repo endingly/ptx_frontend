@@ -137,8 +137,8 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 Run the Python generator/model tests separately:
 
 ```sh
-PYTHONPATH=python python3 -m unittest discover \
-  -s python/tests -t python -p 'test_*.py' -v
+PYTHONPATH=python python3 -m unittest_parallel \
+  -s python/tests -t python -p 'test_*.py' --level=module -v
 ```
 
 The `ci-linux-gcc-release` preset provides an equivalent local Release

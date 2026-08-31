@@ -15,6 +15,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from base.utils import generated_at_comment
+from code_gen.cpp_backend import configure_cpp_backend
 from code_gen.database import load_codegen_database
 from code_gen.gen_syntax_ast_arch import (
     emit_check_end_instruction_descriptor_implementation,
@@ -30,6 +31,10 @@ from ir.syntax_ast import (
     OperandPresence,
     OperandSyntaxShape,
 )
+
+
+def setUpModule() -> None:
+    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
 
 
 class SyntaxAstDescriptorBuildTest(unittest.TestCase):

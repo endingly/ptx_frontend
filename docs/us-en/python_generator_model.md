@@ -16,7 +16,9 @@ YAML files
 
 ## Input database
 
-`code_gen.database` recursively discovers `instructions/ptx_spec/**/*.yaml`,
+`code_gen.database` recursively discovers the canonical
+`python/code_gen/resources/ptx_spec/**/*.yaml` (available in source trees via
+the compatibility symlink `instructions/ptx_spec`),
 loads them in path order, enforces one schema version, and then merges
 definitions of the same opcode. The minimal stable model in `code_gen.model` is:
 

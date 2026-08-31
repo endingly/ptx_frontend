@@ -31,11 +31,17 @@ The `codegen` component installs the Python dependency closure used by `gen_all.
 
 ```cmake
 ptx_frontend_generate(
+    TARGET generate_my_backend
     SPEC_DIR "${ptx_frontend_PTX_SPEC_DIR}"
     BACKEND_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/my_backend.yaml"
     OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
+add_dependencies(my_target generate_my_backend)
 ```
+
+`TARGET` is required so a project may generate more than one backend or output
+directory. The helper declares generated files, but the target is not built by
+default; attach it to the consumer target with `add_dependencies()`.
 
 Installed codegen does not fall back to `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and does not require the original repository checkout. The current Python import packages remain `base`, `code_gen`, and `ir`; namespacing them under `ptx_frontend` is tracked separately.
 

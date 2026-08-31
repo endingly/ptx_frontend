@@ -5,12 +5,12 @@ function(ptx_frontend_generate)
     cmake_parse_arguments(
         PTX_CODEGEN
         ""
-        "SPEC_DIR;BACKEND_SPEC;OUTPUT_DIR"
+        "TARGET;SPEC_DIR;BACKEND_SPEC;OUTPUT_DIR"
         ""
         ${ARGN}
     )
 
-    foreach(_required IN ITEMS SPEC_DIR BACKEND_SPEC OUTPUT_DIR)
+    foreach(_required IN ITEMS TARGET SPEC_DIR BACKEND_SPEC OUTPUT_DIR)
         if(NOT PTX_CODEGEN_${_required})
             message(FATAL_ERROR
                 "ptx_frontend_generate: ${_required} is required")
@@ -29,6 +29,33 @@ function(ptx_frontend_generate)
     endif()
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    if(TARGET "${PTX_CODEGEN_TARGET}")
+        message(FATAL_ERROR
+            "ptx_frontend_generate: TARGET already exists: "
+            "${PTX_CODEGEN_TARGET}")
+    endif()
+
+    file(GLOB_RECURSE _spec_files CONFIGURE_DEPENDS
+        "${PTX_CODEGEN_SPEC_DIR}/*.yaml")
+    set(_instruction_schema
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/code_gen/resources/ptx-instr-v1.schema.yaml")
+    set(_backend_schema
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/code_gen/resources/ptx-cpp-backend-v1.schema.yaml")
+    file(GLOB_RECURSE _generator_files CONFIGURE_DEPENDS
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/base/*.py"
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/code_gen/*.py"
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/ir/*.py"
+        "${ptx_frontend_CODEGEN_PYTHON_ROOT}/scripts/*.py")
+
+    # Output topology is discovered at configure time, so any generator input
+    # must cause CMake to rerun --list-outputs before the next build.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${_spec_files}
+        "${_instruction_schema}"
+        "${_backend_schema}"
+        "${PTX_CODEGEN_BACKEND_SPEC}"
+        ${_generator_files})
 
     execute_process(
         COMMAND
@@ -55,11 +82,16 @@ function(ptx_frontend_generate)
             --spec-dir "${PTX_CODEGEN_SPEC_DIR}"
             --backend-spec "${PTX_CODEGEN_BACKEND_SPEC}"
             --output "${PTX_CODEGEN_OUTPUT_DIR}"
-        DEPENDS "${PTX_CODEGEN_BACKEND_SPEC}"
+        DEPENDS
+            ${_spec_files}
+            "${_instruction_schema}"
+            "${_backend_schema}"
+            "${PTX_CODEGEN_BACKEND_SPEC}"
+            ${_generator_files}
         COMMENT "Generating PTX frontend artifacts"
         VERBATIM
     )
-    add_custom_target(ptx_frontend_codegen DEPENDS ${_generated_files})
+    add_custom_target("${PTX_CODEGEN_TARGET}" DEPENDS ${_generated_files})
 
     set(ptx_frontend_GENERATED_FILES
         "${_generated_files}" PARENT_SCOPE)

@@ -31,11 +31,16 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec codegen)
 
 ```cmake
 ptx_frontend_generate(
+    TARGET generate_my_backend
     SPEC_DIR "${ptx_frontend_PTX_SPEC_DIR}"
     BACKEND_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/my_backend.yaml"
     OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
+add_dependencies(my_target generate_my_backend)
 ```
+
+`TARGET` 为必填项，因此一个项目可生成多个 backend 或 output directory。helper 会声明
+生成文件，但该 target 默认不会构建；请用 `add_dependencies()` 将其连接到 consumer target。
 
 安装后的 codegen 不会回退到 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`，也不要求原始仓库仍然存在。当前 Python import package 暂时保持 `base`、`code_gen` 与 `ir`；迁移到 `ptx_frontend` namespace 的工作单独跟踪。
 

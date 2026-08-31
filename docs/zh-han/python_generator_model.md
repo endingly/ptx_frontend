@@ -15,7 +15,9 @@ YAML files
 
 ## 输入数据库
 
-`code_gen.database` 递归发现 `instructions/ptx_spec/**/*.yaml`，按路径排序加载，并
+`code_gen.database` 递归发现 canonical 的
+`python/code_gen/resources/ptx_spec/**/*.yaml`（源码树可通过兼容 symlink
+`instructions/ptx_spec` 访问），按路径排序加载，并
 保证所有文件使用相同 schema 版本；同 opcode 的定义随后合并。`InstructionSpec` 的最小稳定
 模型位于 `code_gen.model`：
 

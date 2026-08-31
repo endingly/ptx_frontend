@@ -20,9 +20,9 @@ foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
 
     if(_@PACKAGE_NAME@_component STREQUAL "ptx_spec")
         set(@PACKAGE_NAME@_PTX_SPEC_DIR
-            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/codegen/python/code_gen/resources/ptx_spec")
+            "@PACKAGE_PTX_FRONTEND_PTX_SPEC_DIR@")
         set(@PACKAGE_NAME@_PTX_SPEC_SCHEMA
-            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/codegen/python/code_gen/resources/ptx-instr-v1.schema.yaml")
+            "@PACKAGE_PTX_FRONTEND_PTX_SPEC_SCHEMA@")
         if(IS_DIRECTORY "${@PACKAGE_NAME@_PTX_SPEC_DIR}"
            AND EXISTS "${@PACKAGE_NAME@_PTX_SPEC_SCHEMA}")
             set(@PACKAGE_NAME@_ptx_spec_FOUND TRUE)
@@ -31,12 +31,19 @@ foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
         endif()
     elseif(_@PACKAGE_NAME@_component STREQUAL "codegen")
         set(@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT
-            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/ptx_frontend/codegen/python")
+            "@PACKAGE_PTX_FRONTEND_CODEGEN_PYTHON_ROOT@")
         set(@PACKAGE_NAME@_CODEGEN_ENTRYPOINT
             "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/scripts/gen_all.py")
         set(_@PACKAGE_NAME@_codegen_helper
             "${CMAKE_CURRENT_LIST_DIR}/ptx_frontendCodegen.cmake")
-        if(EXISTS "${@PACKAGE_NAME@_CODEGEN_ENTRYPOINT}"
+        if(EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/__init__.py"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/cli.py"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/__main__.py"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/base/__init__.py"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/ir/__init__.py"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/resources/ptx-instr-v1.schema.yaml"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_PYTHON_ROOT}/code_gen/resources/ptx-cpp-backend-v1.schema.yaml"
+           AND EXISTS "${@PACKAGE_NAME@_CODEGEN_ENTRYPOINT}"
            AND EXISTS "${_@PACKAGE_NAME@_codegen_helper}")
             include("${_@PACKAGE_NAME@_codegen_helper}")
             set(@PACKAGE_NAME@_codegen_FOUND TRUE)

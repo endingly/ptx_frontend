@@ -2,13 +2,17 @@
 
 ## Purpose
 
-YAML files under `instructions/ptx_spec/` are the declarative source of PTX
+YAML files under `python/code_gen/resources/ptx_spec/` are the canonical
+declarative source of PTX
 instruction facts. They describe legal source forms, variants, operand layouts,
 availability, and rule identifiers. The Python generator derives Syntax,
 Resolved, and checker descriptors plus C++ instruction structures from them.
 They are neither C++ templates nor backend-layout configuration.
 
-Every file uses `instructions/schemas/ptx-instr-v1.schema.yaml`:
+Every file uses the packaged sibling schema
+`python/code_gen/resources/ptx-instr-v1.schema.yaml` (and its local comment
+references `../ptx-instr-v1.schema.yaml`). `instructions/ptx_spec/` remains a
+source-tree compatibility symlink:
 
 ```yaml
 schema: ptx-instr/v1

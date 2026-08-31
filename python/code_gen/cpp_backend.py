@@ -22,10 +22,6 @@ from code_gen.model import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CPP_BACKEND_SPEC = (
-    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
-)
 DEFAULT_CPP_BACKEND_SCHEMA = (
     Path(__file__).resolve().parent / "resources/ptx-cpp-backend-v1.schema.yaml"
 )
@@ -99,7 +95,7 @@ class CppDomain(str, Enum):
 
 _REQUIRED_DOMAINS = frozenset(domain.value for domain in CppDomain)
 
-_active_backend_spec = DEFAULT_CPP_BACKEND_SPEC
+_active_backend_spec: Path | None = None
 
 
 def configure_cpp_backend(path: Path) -> None:
@@ -112,6 +108,11 @@ def configure_cpp_backend(path: Path) -> None:
 def get_cpp_backend() -> CodegenUnit:
     """Return the configured, immutable backend model."""
 
+    if _active_backend_spec is None:
+        raise RuntimeError(
+            "C++ backend is not configured; "
+            "call configure_cpp_backend(path) first"
+        )
     return load_cpp_backend(_active_backend_spec)
 
 

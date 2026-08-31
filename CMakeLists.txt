@@ -71,11 +71,6 @@ install(
     COMPONENT codegen
 )
 install(
-    FILES "${CMAKE_CURRENT_SOURCE_DIR}/instructions/schemas/ptx-cpp-backend-v1.schema.yaml"
-    DESTINATION "${PTX_FRONTEND_CODEGEN_INSTALL_DIR}/instructions/schemas"
-    COMPONENT codegen
-)
-install(
     FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ptx_frontendCodegen.cmake"
     DESTINATION "${PTX_FRONTEND_CMAKE_INSTALL_DIR}"
     COMPONENT codegen

@@ -15,7 +15,9 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 - `ptx_frontend_PTX_SPEC_DIR`：已安装的公共 PTX instruction YAML 目录；
 - `ptx_frontend_PTX_SPEC_SCHEMA`：已安装的 `ptx-instr-v1.schema.yaml` 路径。
 
-仓库自身的 C++ backend policy 不属于 `ptx_spec`，不会随该 component 导出。
+PTX specification 的 canonical source 位于 `python/code_gen/resources/ptx_spec`，并作为 Python `code_gen` 的 package data 一起发布。CMake 的 `ptx_spec` component 直接暴露同一份已安装 package resources，不再维护第二份安装副本。`instructions/ptx_spec` 仅保留为源码树兼容 symlink。
+
+仓库自身的 C++ backend policy 仍位于 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`；它不是 Python package resource，也不属于 `ptx_spec`，不会被导出。
 
 ## `codegen`
 
@@ -25,7 +27,7 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec codegen)
 ```
 
-`codegen` component 安装 `gen_all.py` 所需的 Python dependency closure 及 validation schema，并通过 package config 提供 `ptx_frontend_generate()`。consumer 必须显式指定自己的 backend specification：
+`codegen` component 安装 `gen_all.py` 所需的 Python dependency closure，其中包含 PTX specification 与 validation schema，并通过 package config 提供 `ptx_frontend_generate()`。consumer 必须显式指定自己的 backend specification：
 
 ```cmake
 ptx_frontend_generate(

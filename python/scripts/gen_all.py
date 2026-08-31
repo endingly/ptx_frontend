@@ -6,8 +6,8 @@ import argparse
 from pathlib import Path
 import sys
 
-# Make python/ importable when this script is directly executed from the
-# repository root.
+# Make python/ importable both from the source tree and from the installed
+# codegen component, where this script is installed beside base/code_gen/ir.
 PYTHON_ROOT = Path(__file__).resolve().parents[1]
 
 if str(PYTHON_ROOT) not in sys.path:
@@ -15,11 +15,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from code_gen.database import CodegenDatabase, load_codegen_database
-from code_gen.cpp_backend import (
-    DEFAULT_CPP_BACKEND_SPEC,
-    configure_cpp_backend,
-    get_cpp_backend,
-)
+from code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
 from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
@@ -60,9 +56,9 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument(
         "--backend-spec",
+        required=True,
         type=Path,
-        default=DEFAULT_CPP_BACKEND_SPEC,
-        help="C++ backend mapping YAML (defaults to the repository spec).",
+        help="Consumer-selected C++ backend mapping YAML.",
     )
 
     parser.add_argument(
@@ -103,10 +99,6 @@ def main() -> None:
 
     generated_files: list[Path] = []
 
-    # -------------------------------------------------------------------------
-    # Private runtime lookup tables for resolver-owned value domains
-    # -------------------------------------------------------------------------
-
     resolved_value_domains_path = (
         output_dir / "private/resolved_value_domains.gen.hpp"
     )
@@ -116,17 +108,8 @@ def main() -> None:
     )
     generated_files.append(resolved_value_domains_path)
 
-    # -------------------------------------------------------------------------
-    # Public generated Resolved IR instruction declarations
-    # -------------------------------------------------------------------------
-
     resolved_ir_path = output_dir / "public/resolved_ir.gen.hpp"
-
-    generate_resolved_ir_header(
-        database,
-        output_path=resolved_ir_path,
-    )
-
+    generate_resolved_ir_header(database, output_path=resolved_ir_path)
     generated_files.append(resolved_ir_path)
 
     resolved_dispatch_path = output_dir / "private/resolved_ir_dispatch.gen.cpp"
@@ -135,10 +118,6 @@ def main() -> None:
         output_path=resolved_dispatch_path,
     )
     generated_files.append(resolved_dispatch_path)
-
-    # -------------------------------------------------------------------------
-    # Category-partitioned Resolved IR resolve/check implementations
-    # -------------------------------------------------------------------------
 
     for category in instruction_categories(database):
         category_source_path = resolved_ir_category_source_path(
@@ -151,37 +130,27 @@ def main() -> None:
         )
         generated_files.append(category_source_path)
 
-    # -------------------------------------------------------------------------
-    # Descriptor storage and getter definitions
-    # -------------------------------------------------------------------------
-
     syntax_descriptor_path = output_dir / "private/syntax_descriptor.gen.cpp"
-
     generate_syntax_descriptor_source(
         database,
         output_path=syntax_descriptor_path,
     )
-
     generated_files.append(syntax_descriptor_path)
 
     resolved_descriptor_path = output_dir / "private/resolved_descriptor.gen.cpp"
-
     generate_resolved_descriptor_source(
         database,
         output_path=resolved_descriptor_path,
     )
-
     generated_files.append(resolved_descriptor_path)
 
     checker_descriptor_path = (
         output_dir / "private/resolved_ir_checker_descriptor.gen.cpp"
     )
-
     generate_resolved_checker_descriptor_source(
         database,
         output_path=checker_descriptor_path,
     )
-
     generated_files.append(checker_descriptor_path)
 
     format_generated_files(generated_files)
@@ -190,7 +159,6 @@ def main() -> None:
 def validate_directory(path: Path, argument_name: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"{argument_name} does not exist: {path}")
-
     if not path.is_dir():
         raise NotADirectoryError(f"{argument_name} is not a directory: {path}")
 

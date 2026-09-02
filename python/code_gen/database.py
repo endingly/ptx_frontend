@@ -16,8 +16,7 @@ from jsonschema import Draft202012Validator
 
 
 PTX_INSTRUCTION_SCHEMA = (
-    Path(__file__).resolve().parents[2]
-    / "instructions/schemas/ptx-instr-v1.schema.yaml"
+    Path(__file__).resolve().parent / "resources/ptx-instr-v1.schema.yaml"
 )
 
 

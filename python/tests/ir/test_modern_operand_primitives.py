@@ -17,6 +17,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from code_gen.database import load_codegen_database
+from code_gen.cpp_backend import configure_cpp_backend
 from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
 from code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
@@ -34,6 +35,10 @@ from ir.syntax_ast import (
     OperandSyntaxShape,
     from_InstructionSpec,
 )
+
+
+def setUpModule() -> None:
+    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
 
 
 def _operand(kind: str, name: str, **extra: object) -> dict[str, object]:

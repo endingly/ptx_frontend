@@ -4,15 +4,21 @@ import unittest
 
 import yaml
 
-from code_gen.cpp_backend import DEFAULT_CPP_BACKEND_SPEC, load_cpp_backend
+from code_gen.cpp_backend import load_cpp_backend
 from code_gen.gen_resolved_value_domains import (
     generate_resolved_value_domain_header,
 )
 
 
+REPOSITORY_CPP_BACKEND_SPEC = (
+    Path(__file__).resolve().parents[3]
+    / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
+
+
 class ResolvedValueDomainGenerationTests(unittest.TestCase):
     def test_generates_marked_backend_domains_as_constexpr_tables(self) -> None:
-        raw = yaml.safe_load(DEFAULT_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
         raw["domains"]["scalar_types"]["values"]["f32"] = (
             "TestScalarType::F32"
         )

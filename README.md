@@ -137,8 +137,8 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 Run the Python generator/model tests separately:
 
 ```sh
-PYTHONPATH=python python3 -m unittest discover \
-  -s python/tests -t python -p 'test_*.py' -v
+PYTHONPATH=python python3 -m unittest_parallel \
+  -s python/tests -t python -p 'test_*.py' --level=module -v
 ```
 
 The `ci-linux-gcc-release` preset provides an equivalent local Release
@@ -232,7 +232,7 @@ families, and instruction source range.
 
 ## Generated code
 
-The YAML files under `instructions/ptx_spec` are the source of truth for the
+The YAML files under `python/code_gen/resources/ptx_spec` are the canonical source of truth for the
 currently generated opcode variants and descriptors. CMake invokes
 `python/scripts/gen_all.py` during configuration to enumerate outputs and
 during the build to generate the Resolved IR public header, runtime lookup
@@ -244,6 +244,11 @@ layout as a stable pre-1.0 ABI. See the
 [YAML instruction specification](docs/us-en/yaml_instruction_spec.md) and
 [Python generator model](docs/us-en/python_generator_model.md) before changing
 the instruction database or generator.
+
+`instructions/ptx_spec` is a source-tree compatibility symlink. Installed
+packages also expose `ptx_spec` (the public PTX data) and `codegen` (the
+generator plus its runtime resources) CMake components; consumers supply their
+own backend mapping when generating C++.
 
 ## Repository layout
 

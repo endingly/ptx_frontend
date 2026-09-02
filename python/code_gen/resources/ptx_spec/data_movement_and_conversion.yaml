@@ -1,5 +1,5 @@
 # PTX data movement and conversion instructions.
-# yaml-language-server: $schema=../schemas/ptx-instr-v1.schema.yaml
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
 ptx_isa: "9.3"

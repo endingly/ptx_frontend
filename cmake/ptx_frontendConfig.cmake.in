@@ -2,15 +2,49 @@
 
 set(@PACKAGE_NAME@_VERSION "@PACKAGE_VERSION@")
 set(@PACKAGE_NAME@_SUPPORTED_COMPONENTS "@PACKAGE_COMPONENTS@")
+set(_@PACKAGE_NAME@_target_components
+    ptx_frontend common base lexer cst syntax binding semantic resolved_ir)
 
 set(_@PACKAGE_NAME@_unsupported_components "")
+set(_@PACKAGE_NAME@_needs_targets FALSE)
+if(NOT @PACKAGE_NAME@_FIND_COMPONENTS)
+    set(_@PACKAGE_NAME@_needs_targets TRUE)
+endif()
 foreach(_@PACKAGE_NAME@_component IN LISTS @PACKAGE_NAME@_FIND_COMPONENTS)
-    if(_@PACKAGE_NAME@_component IN_LIST @PACKAGE_NAME@_SUPPORTED_COMPONENTS)
-        set(@PACKAGE_NAME@_${_@PACKAGE_NAME@_component}_FOUND TRUE)
-    else()
+    if(NOT _@PACKAGE_NAME@_component IN_LIST @PACKAGE_NAME@_SUPPORTED_COMPONENTS)
         set(@PACKAGE_NAME@_${_@PACKAGE_NAME@_component}_FOUND FALSE)
         list(APPEND _@PACKAGE_NAME@_unsupported_components
              "${_@PACKAGE_NAME@_component}")
+        continue()
+    endif()
+
+    if(_@PACKAGE_NAME@_component STREQUAL "ptx_spec")
+        set(@PACKAGE_NAME@_PTX_SPEC_DIR
+            "@PACKAGE_PTX_FRONTEND_PTX_SPEC_DIR@")
+        set(@PACKAGE_NAME@_PTX_SPEC_SCHEMA
+            "@PACKAGE_PTX_FRONTEND_PTX_SPEC_SCHEMA@")
+        if(IS_DIRECTORY "${@PACKAGE_NAME@_PTX_SPEC_DIR}"
+           AND EXISTS "${@PACKAGE_NAME@_PTX_SPEC_SCHEMA}")
+            set(@PACKAGE_NAME@_ptx_spec_FOUND TRUE)
+        else()
+            set(@PACKAGE_NAME@_ptx_spec_FOUND FALSE)
+        endif()
+    elseif(_@PACKAGE_NAME@_component STREQUAL "codegen")
+        set(_@PACKAGE_NAME@_codegen_helper
+            "${CMAKE_CURRENT_LIST_DIR}/ptx_frontendCodegen.cmake")
+        if(EXISTS "${_@PACKAGE_NAME@_codegen_helper}")
+            include("${_@PACKAGE_NAME@_codegen_helper}")
+            ptx_frontend_check_codegen(_@PACKAGE_NAME@_codegen_available)
+            set(@PACKAGE_NAME@_codegen_FOUND
+                "${_@PACKAGE_NAME@_codegen_available}")
+        else()
+            set(@PACKAGE_NAME@_codegen_FOUND FALSE)
+        endif()
+    else()
+        set(@PACKAGE_NAME@_${_@PACKAGE_NAME@_component}_FOUND TRUE)
+        if(_@PACKAGE_NAME@_component IN_LIST _@PACKAGE_NAME@_target_components)
+            set(_@PACKAGE_NAME@_needs_targets TRUE)
+        endif()
     endif()
 endforeach()
 
@@ -21,14 +55,20 @@ if(_@PACKAGE_NAME@_unsupported_components)
         "${@PACKAGE_NAME@_SUPPORTED_COMPONENTS}")
 endif()
 
-unset(_@PACKAGE_NAME@_component)
-unset(_@PACKAGE_NAME@_unsupported_components)
 check_required_components(@PACKAGE_NAME@)
-
 if(DEFINED @PACKAGE_NAME@_FOUND AND NOT @PACKAGE_NAME@_FOUND)
     return()
 endif()
 
-include(CMakeFindDependencyMacro)
+if(_@PACKAGE_NAME@_needs_targets)
+    include(CMakeFindDependencyMacro)
 @PACKAGE_DEPENDENCY_CALLS@
-include("${CMAKE_CURRENT_LIST_DIR}/@PACKAGE_NAME@Targets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/@PACKAGE_NAME@Targets.cmake")
+endif()
+
+unset(_@PACKAGE_NAME@_component)
+unset(_@PACKAGE_NAME@_unsupported_components)
+unset(_@PACKAGE_NAME@_target_components)
+unset(_@PACKAGE_NAME@_needs_targets)
+unset(_@PACKAGE_NAME@_codegen_helper)
+unset(_@PACKAGE_NAME@_codegen_available)

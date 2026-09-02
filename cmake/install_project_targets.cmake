@@ -94,6 +94,10 @@ function(install_project_targets)
     set(PACKAGE_COMPONENTS "${INSTALL_PROJECT_COMPONENTS}")
     set(PACKAGE_NAME "${INSTALL_PROJECT_PROJECT}")
     set(PACKAGE_VERSION "${INSTALL_PROJECT_VERSION}")
+    set(PTX_FRONTEND_PTX_SPEC_DIR
+        "${CMAKE_INSTALL_DATADIR}/ptx_frontend/ptx_spec")
+    set(PTX_FRONTEND_PTX_SPEC_SCHEMA
+        "${CMAKE_INSTALL_DATADIR}/ptx_frontend/ptx-instr-v1.schema.yaml")
 
     set(_template
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${INSTALL_PROJECT_PROJECT}Config.cmake.in")
@@ -114,6 +118,9 @@ function(install_project_targets)
         "${_template}"
         "${_config_out}"
         INSTALL_DESTINATION "${_install_cmake_dir}"
+        PATH_VARS
+            PTX_FRONTEND_PTX_SPEC_DIR
+            PTX_FRONTEND_PTX_SPEC_SCHEMA
         NO_SET_AND_CHECK_MACRO
     )
     write_basic_package_version_file(

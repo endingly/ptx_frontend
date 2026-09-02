@@ -36,6 +36,9 @@ add_library(ptx_frontend INTERFACE)
 add_library(ptx_frontend::ptx_frontend ALIAS ptx_frontend)
 target_link_libraries(ptx_frontend INTERFACE ptx_frontend::resolved_ir)
 
+include(install_codegen_components)
+install_codegen_components()
+
 include(install_project_targets)
 install_project_targets(
     PROJECT ${PROJECT_NAME}
@@ -61,6 +64,8 @@ install_project_targets(
         binding
         semantic
         resolved_ir
+        ptx_spec
+        codegen
     INCLUDE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/common/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/base/include"

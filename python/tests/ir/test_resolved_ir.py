@@ -16,6 +16,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from code_gen.database import load_codegen_database
 from code_gen.database import CodegenDatabase
+from code_gen.cpp_backend import configure_cpp_backend
 from code_gen.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
@@ -56,6 +57,10 @@ from code_gen.model import (
     OperandTypeExpressionKind,
     VariantSpec,
 )
+
+
+def setUpModule() -> None:
+    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
 
 
 class ResolvedIrBuildTest(unittest.TestCase):

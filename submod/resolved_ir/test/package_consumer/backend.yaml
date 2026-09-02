@@ -1,0 +1,465 @@
+# yaml-language-server: $schema=../schemas/ptx-cpp-backend-v1.schema.yaml
+
+schema: ptx-cpp-backend/v1
+backend: cpp
+target: all
+spec_schema: ptx-instr/v1
+category: common
+namespace: ptx_frontend::resolved_ir
+
+# This file owns C++ spellings and explicitly declared runtime lookup tables.
+# PTX legality, variants, layouts, and availability remain in instructions/ptx_spec.
+domains:
+  scalar_types:
+    cpp_type: ScalarType
+    default: ScalarType::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      u8: ScalarType::U8
+      u8x4: ScalarType::U8x4
+      u16: ScalarType::U16
+      u16x2: ScalarType::U16x2
+      u32: ScalarType::U32
+      u64: ScalarType::U64
+      s8: ScalarType::S8
+      s8x4: ScalarType::S8x4
+      s16: ScalarType::S16
+      s16x2: ScalarType::S16x2
+      s32: ScalarType::S32
+      s64: ScalarType::S64
+      b8: ScalarType::B8
+      b16: ScalarType::B16
+      b32: ScalarType::B32
+      b64: ScalarType::B64
+      b128: ScalarType::B128
+      f16: ScalarType::F16
+      f16x2: ScalarType::F16x2
+      f32: ScalarType::F32
+      f32x2: ScalarType::F32x2
+      f64: ScalarType::F64
+      bf16: ScalarType::BF16
+      bf16x2: ScalarType::BF16x2
+      e4m3x2: ScalarType::E4m3x2
+      e5m2x2: ScalarType::E5m2x2
+      pred: ScalarType::Pred
+      tf32: ScalarType::TF32
+      e4m3: ScalarType::E4m3
+      e5m2: ScalarType::E5m2
+
+  special_register_kinds:
+    cpp_type: base::SpecialRegisterKind
+    values:
+      tid: base::SpecialRegisterKind::Tid
+      ntid: base::SpecialRegisterKind::NTid
+      ctaid: base::SpecialRegisterKind::CtaId
+      nctaid: base::SpecialRegisterKind::NCtaId
+      gridid: base::SpecialRegisterKind::GridId
+
+  rounding_modes:
+    cpp_type: RoundingMode
+    default: RoundingMode::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      rn: RoundingMode::Rn
+      rz: RoundingMode::Rz
+      rm: RoundingMode::Rm
+      rp: RoundingMode::Rp
+      rzi: RoundingMode::Rzi
+
+  comparison_operators:
+    cpp_type: ComparisonOperator
+    default: ComparisonOperator::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      eq: ComparisonOperator::Eq
+      lt: ComparisonOperator::Lt
+      ge: ComparisonOperator::Ge
+
+  boolean_operators:
+    cpp_type: BooleanOperator
+    default: BooleanOperator::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      and: BooleanOperator::And
+      or: BooleanOperator::Or
+      xor: BooleanOperator::Xor
+
+  cache_operators:
+    cpp_type: CacheOperator
+    default: CacheOperator::Unspecified
+    runtime_lookup: ptx_suffix
+    values:
+      unspecified: CacheOperator::Unspecified
+      ca: CacheOperator::Ca
+      cg: CacheOperator::Cg
+      cs: CacheOperator::Cs
+      lu: CacheOperator::Lu
+      cv: CacheOperator::Cv
+      wb: CacheOperator::Wb
+      wt: CacheOperator::Wt
+
+  eviction_priorities:
+    cpp_type: EvictionPriority
+    default: EvictionPriority::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      evict_normal: EvictionPriority::EvictNormal
+      evict_first: EvictionPriority::EvictFirst
+      evict_last: EvictionPriority::EvictLast
+      no_allocate: EvictionPriority::NoAllocate
+
+  memory_consistencies:
+    cpp_type: MemoryConsistency
+    default: MemoryConsistency::Omitted
+    runtime_lookup: ptx_suffix
+    values:
+      omitted: MemoryConsistency::Omitted
+      weak: MemoryConsistency::Weak
+      volatile: MemoryConsistency::Volatile
+      relaxed: MemoryConsistency::Relaxed
+      acquire: MemoryConsistency::Acquire
+      release: MemoryConsistency::Release
+      acq_rel: MemoryConsistency::AcqRel
+
+  memory_scopes:
+    cpp_type: MemoryScope
+    default: MemoryScope::None
+    runtime_lookup: ptx_suffix
+    values:
+      none: MemoryScope::None
+      cta: MemoryScope::Cta
+      cluster: MemoryScope::Cluster
+      gpu: MemoryScope::Gpu
+      sys: MemoryScope::Sys
+
+  vector_arities:
+    cpp_type: VectorArity
+    default: VectorArity::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      v2: VectorArity::V2
+      v4: VectorArity::V4
+      v8: VectorArity::V8
+
+  memory_state_spaces:
+    cpp_type: MemoryStateSpace
+    default: MemoryStateSpace::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      const: MemoryStateSpace::Constant
+      generic: MemoryStateSpace::Generic
+      global: MemoryStateSpace::Global
+      local: MemoryStateSpace::Local
+      param: MemoryStateSpace::Parameter
+      param::entry: MemoryStateSpace::Parameter
+      param::func: MemoryStateSpace::Parameter
+      shared: MemoryStateSpace::Shared
+
+  mbarrier_phase_types:
+    cpp_type: MbarrierPhaseType
+    default: MbarrierPhaseType::Primary
+    runtime_lookup: ptx_suffix
+    values:
+      phase_type::primary: MbarrierPhaseType::Primary
+      phase_type::conditional: MbarrierPhaseType::Conditional
+
+  mbarrier_layouts:
+    cpp_type: MbarrierLayout
+    default: MbarrierLayout::V0
+    runtime_lookup: ptx_suffix
+    values:
+      layout::v0: MbarrierLayout::V0
+      layout::v1: MbarrierLayout::V1
+
+  async_proxy_kinds:
+    cpp_type: AsyncProxyKind
+    default: AsyncProxyKind::Async
+    runtime_lookup: ptx_suffix
+    values:
+      async: AsyncProxyKind::Async
+      async.global: AsyncProxyKind::AsyncGlobal
+      async.shared::cta: AsyncProxyKind::AsyncSharedCta
+      async.shared::cluster: AsyncProxyKind::AsyncSharedCluster
+
+  proxy_kind_pairs:
+    cpp_type: ProxyKindPair
+    default: ProxyKindPair::TensormapToGeneric
+    runtime_lookup: ptx_suffix
+    values:
+      tensormap::generic: ProxyKindPair::TensormapToGeneric
+      async::generic: ProxyKindPair::AsyncToGeneric
+
+  parameter_directions:
+    cpp_type: ParameterDirection
+    default: ParameterDirection::None
+    values:
+      input: ParameterDirection::Input
+      return: ParameterDirection::Return
+
+  register_width_policies:
+    cpp_type: base::ScalarTypeSizePolicy
+    default: base::ScalarTypeSizePolicy::SameWidth
+    values:
+      exact: base::ScalarTypeSizePolicy::Exact
+      same_width: base::ScalarTypeSizePolicy::SameWidth
+      equal_or_wider: base::ScalarTypeSizePolicy::EqualOrWider
+
+  modifier_value_cpp_types:
+    cpp_type: CppType
+    values:
+      flag: bool
+      type: ScalarType
+      rounding: RoundingMode
+      comparison: ComparisonOperator
+      boolean_op: BooleanOperator
+      cache: CacheOperator
+      eviction_priority: EvictionPriority
+      semantics: MemoryConsistency
+      scope: MemoryScope
+      vector: VectorArity
+      state_space: MemoryStateSpace
+      phase_type: MbarrierPhaseType
+      mbarrier_layout: MbarrierLayout
+      proxy: AsyncProxyKind
+      proxy_pair: ProxyKindPair
+
+  operand_value_cpp_types:
+    cpp_type: CppType
+    values:
+      reg: ResolvedRegisterRef
+      imm: ResolvedImmediate
+      reg_or_imm: RegOrImm
+      reg_or_sink: ResolvedRegisterOrSink
+      shfl_dest: ResolvedShflSyncDestination
+      pred_pair: ResolvedPredicatePair
+      mov_scalar_src: ResolvedMovSource
+      cluster_address: ResolvedMovSource
+      vector_reg: ResolvedVectorRegisterRef
+      vector_sreg: ResolvedVectorSpecialRegisterRef
+      pred: ResolvedPredicate
+      pred_or_sreg: ResolvedPredicateSource
+      pred_or_not: ResolvedPredicate
+      label: ResolvedBranchTarget
+      sreg: ResolvedSpecialRegisterRef
+      symbol: ResolvedSymbolRef
+      addr: ResolvedAddress
+      reg_vector: ResolvedRegisterVector
+      descriptor: ResolvedRegisterRef
+      typed_token: ResolvedRegisterRef
+      mbarrier_state_token: ResolvedMbarrierStateToken
+      tensor_coordinate: ResolvedTensorCoordinate
+      matrix_fragment: ResolvedRegisterVector
+      direct_call_target: ResolvedFunctionRef
+      indirect_call_target: ResolvedIndirectCallee
+      indirect_call_metadata: ResolvedIndirectCallee
+      branch_target_set: ResolvedBranchTargetSet
+      call_return_param: ResolvedCallParameterRef
+      call_arguments: ResolvedCallArguments
+
+  resolved_value_cpp_types:
+    cpp_type: CppType
+    values:
+      Bool: bool
+      ScalarType: ScalarType
+      RoundingMode: RoundingMode
+      ComparisonOperator: ComparisonOperator
+      BooleanOperator: BooleanOperator
+      CacheOperator: CacheOperator
+      EvictionPriority: EvictionPriority
+      MemoryConsistency: MemoryConsistency
+      MemoryScope: MemoryScope
+      VectorArity: VectorArity
+      MemoryStateSpace: MemoryStateSpace
+      MbarrierPhaseType: MbarrierPhaseType
+      MbarrierLayout: MbarrierLayout
+      AsyncProxyKind: AsyncProxyKind
+      ProxyKindPair: ProxyKindPair
+      Register: ResolvedRegisterRef
+      MbarrierStateToken: ResolvedMbarrierStateToken
+      RegisterOrSink: ResolvedRegisterOrSink
+      Predicate: ResolvedPredicate
+      PredicateSource: ResolvedPredicateSource
+      Immediate: ResolvedImmediate
+      RegOrImm: RegOrImm
+      ShflDestination: ResolvedShflSyncDestination
+      PredicatePair: ResolvedPredicatePair
+      MovSource: ResolvedMovSource
+      VectorRegister: ResolvedVectorRegisterRef
+      VectorSpecialRegister: ResolvedVectorSpecialRegisterRef
+      BranchTarget: ResolvedBranchTarget
+      SpecialRegister: ResolvedSpecialRegisterRef
+      Symbol: ResolvedSymbolRef
+      Address: ResolvedAddress
+      RegisterVector: ResolvedRegisterVector
+      TensorCoordinate: ResolvedTensorCoordinate
+      DirectCallTarget: ResolvedFunctionRef
+      IndirectCallee: ResolvedIndirectCallee
+      BranchTargetSet: ResolvedBranchTargetSet
+      CallReturnParameter: ResolvedCallParameterRef
+      CallArguments: ResolvedCallArguments
+
+  modifier_field_names:
+    cpp_type: CppIdentifier
+    values:
+      sat: saturate
+
+  syntax_modifier_presence:
+    cpp_type: check_end::PresenceRequirement
+    values:
+      Absent: check_end::PresenceRequirement::Absent
+      Optional: check_end::PresenceRequirement::Optional
+      Required: check_end::PresenceRequirement::Required
+
+  syntax_operand_presence:
+    cpp_type: check_end::OperandPresence
+    values:
+      Required: check_end::OperandPresence::Required
+      Optional: check_end::OperandPresence::Optional
+
+  syntax_operand_layout_kinds:
+    cpp_type: check_end::OperandLayoutKind
+    values:
+      Flat: check_end::OperandLayoutKind::Flat
+      Call: check_end::OperandLayoutKind::Call
+      IndirectCall: check_end::OperandLayoutKind::IndirectCall
+
+  syntax_operand_shapes:
+    cpp_type: check_end::OperandSyntaxShape
+    values:
+      IDENTIFIER_REF: check_end::OperandSyntaxShape::Identifier
+      IMMEDIATE: check_end::OperandSyntaxShape::Immediate
+      ADDRESS: check_end::OperandSyntaxShape::Address
+      VECTOR_MEMBER: check_end::OperandSyntaxShape::VectorMember
+      VECTOR_PACK: check_end::OperandSyntaxShape::VectorPack
+      PREDICATE: check_end::OperandSyntaxShape::Predicate
+      CALL_PARAMETER_LIST: check_end::OperandSyntaxShape::Group
+      CALL_TARGET: check_end::OperandSyntaxShape::CallTarget
+      CALL_TARGET_SET: check_end::OperandSyntaxShape::CallTargetSet
+      BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
+      BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
+      REGISTER_PREDICATE_PAIR: check_end::OperandSyntaxShape::RegisterPredicatePair
+
+  resolved_value_kinds:
+    cpp_type: check_end::ResolvedValueKind
+    values:
+      Bool: check_end::ResolvedValueKind::Bool
+      ScalarType: check_end::ResolvedValueKind::ScalarType
+      RoundingMode: check_end::ResolvedValueKind::RoundingMode
+      ComparisonOperator: check_end::ResolvedValueKind::ComparisonOperator
+      BooleanOperator: check_end::ResolvedValueKind::BooleanOperator
+      CacheOperator: check_end::ResolvedValueKind::CacheOperator
+      EvictionPriority: check_end::ResolvedValueKind::EvictionPriority
+      MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
+      MemoryScope: check_end::ResolvedValueKind::MemoryScope
+      VectorArity: check_end::ResolvedValueKind::VectorArity
+      MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
+      MbarrierPhaseType: check_end::ResolvedValueKind::MbarrierPhaseType
+      MbarrierLayout: check_end::ResolvedValueKind::MbarrierLayout
+      AsyncProxyKind: check_end::ResolvedValueKind::AsyncProxyKind
+      ProxyKindPair: check_end::ResolvedValueKind::ProxyKindPair
+      MbarrierStateToken: check_end::ResolvedValueKind::MbarrierStateToken
+      Register: check_end::ResolvedValueKind::Register
+      Predicate: check_end::ResolvedValueKind::Predicate
+      PredicateSource: check_end::ResolvedValueKind::PredicateSource
+      Immediate: check_end::ResolvedValueKind::Immediate
+      RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      RegisterOrSink: check_end::ResolvedValueKind::RegisterOrSink
+      ShflDestination: check_end::ResolvedValueKind::ShflDestination
+      PredicatePair: check_end::ResolvedValueKind::PredicatePair
+      MovSource: check_end::ResolvedValueKind::MovSource
+      VectorRegister: check_end::ResolvedValueKind::VectorRegister
+      VectorSpecialRegister: check_end::ResolvedValueKind::VectorSpecialRegister
+      BranchTarget: check_end::ResolvedValueKind::BranchTarget
+      SpecialRegister: check_end::ResolvedValueKind::SpecialRegister
+      Symbol: check_end::ResolvedValueKind::Symbol
+      Address: check_end::ResolvedValueKind::Address
+      RegisterVector: check_end::ResolvedValueKind::RegisterVector
+      TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
+      DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
+      IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
+      BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet
+      CallReturnParameter: check_end::ResolvedValueKind::CallReturnParameter
+      CallArguments: check_end::ResolvedValueKind::CallArguments
+
+  resolved_operand_roles:
+    cpp_type: check_end::OperandRole
+    values:
+      Destination: check_end::OperandRole::Destination
+      Source: check_end::OperandRole::Source
+      Address: check_end::OperandRole::Address
+      Predicate: check_end::OperandRole::Predicate
+      BranchTarget: check_end::OperandRole::BranchTarget
+      Barrier: check_end::OperandRole::Barrier
+      ThreadCount: check_end::OperandRole::ThreadCount
+
+  resolved_operand_access:
+    cpp_type: check_end::OperandAccess
+    values:
+      Read: check_end::OperandAccess::Read
+      Write: check_end::OperandAccess::Write
+      ReadWrite: check_end::OperandAccess::ReadWrite
+      Control: check_end::OperandAccess::Control
+
+  resolved_operand_shapes:
+    cpp_type: check_end::OperandShape
+    values:
+      Register: check_end::OperandShape::Register
+      Predicate: check_end::OperandShape::Predicate
+      Immediate: check_end::OperandShape::Immediate
+      Address: check_end::OperandShape::Address
+      Symbol: check_end::OperandShape::Symbol
+      Vector: check_end::OperandShape::Vector
+      BranchTarget: check_end::OperandShape::BranchTarget
+      SpecialRegister: check_end::OperandShape::SpecialRegister
+      DirectCallTarget: check_end::OperandShape::DirectCallTarget
+      IndirectCallee: check_end::OperandShape::IndirectCallee
+      BranchTargetSet: check_end::OperandShape::BranchTargetSet
+      ShflDestination: check_end::OperandShape::ShflDestination
+      PredicatePair: check_end::OperandShape::PredicatePair
+      CallReturnParameter: check_end::OperandShape::CallReturnParameter
+      CallArguments: check_end::OperandShape::CallArguments
+
+  resolved_operand_type_expression_kinds:
+    cpp_type: check_end::OperandTypeExpressionKind
+    values:
+      None: check_end::OperandTypeExpressionKind::None
+      FixedScalar: check_end::OperandTypeExpressionKind::FixedScalar
+      ModifierField: check_end::OperandTypeExpressionKind::ModifierField
+
+  resolved_modifier_default_kinds:
+    cpp_type: check_end::ResolvedModifierDefaultKind
+    values:
+      Bool: check_end::ResolvedModifierDefaultKind::Bool
+      ScalarType: check_end::ResolvedModifierDefaultKind::ScalarType
+      RoundingMode: check_end::ResolvedModifierDefaultKind::RoundingMode
+      CacheOperator: check_end::ResolvedModifierDefaultKind::CacheOperator
+      MemoryConsistency: check_end::ResolvedModifierDefaultKind::MemoryConsistency
+      MemoryScope: check_end::ResolvedModifierDefaultKind::MemoryScope
+      MemoryStateSpace: check_end::ResolvedModifierDefaultKind::MemoryStateSpace
+      MbarrierPhaseType: check_end::ResolvedModifierDefaultKind::MbarrierPhaseType
+      MbarrierLayout: check_end::ResolvedModifierDefaultKind::MbarrierLayout
+      AsyncProxyKind: check_end::ResolvedModifierDefaultKind::AsyncProxyKind
+      ProxyKindPair: check_end::ResolvedModifierDefaultKind::ProxyKindPair
+
+  checker_modifier_value_kinds:
+    cpp_type: checker::ModifierValueKind
+    values:
+      bool: checker::ModifierValueKind::Bool
+      ScalarType: checker::ModifierValueKind::ScalarType
+      RoundingMode: checker::ModifierValueKind::RoundingMode
+      ComparisonOperator: checker::ModifierValueKind::ComparisonOperator
+      BooleanOperator: checker::ModifierValueKind::BooleanOperator
+      CacheOperator: checker::ModifierValueKind::CacheOperator
+      EvictionPriority: checker::ModifierValueKind::EvictionPriority
+      MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
+      MemoryScope: checker::ModifierValueKind::MemoryScope
+      VectorArity: checker::ModifierValueKind::VectorArity
+      MemoryStateSpace: checker::ModifierValueKind::MemoryStateSpace
+      MbarrierPhaseType: checker::ModifierValueKind::MbarrierPhaseType
+      MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
+      AsyncProxyKind: checker::ModifierValueKind::AsyncProxyKind
+      ProxyKindPair: checker::ModifierValueKind::ProxyKindPair
+
+# Per-instruction C++ overrides remain available in the model/schema, but the
+# current resolved-IR generator derives instruction structure from ISA YAML.
+instructions: {}

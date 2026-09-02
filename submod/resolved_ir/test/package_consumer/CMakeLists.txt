@@ -9,6 +9,25 @@ if(PTX_FRONTEND_TEST_UNKNOWN_COMPONENT)
     return()
 endif()
 
+if(PTX_FRONTEND_TEST_PTX_SPEC_ONLY)
+    find_package(
+        ptx_frontend 0.0.1 CONFIG REQUIRED
+        COMPONENTS ptx_spec
+    )
+    if(NOT ptx_frontend_ptx_spec_FOUND)
+        message(FATAL_ERROR "ptx_spec component was not found")
+    endif()
+    return()
+endif()
+
+if(PTX_FRONTEND_TEST_CODEGEN_ONLY)
+    find_package(
+        ptx_frontend 0.0.1 CONFIG REQUIRED
+        COMPONENTS codegen
+    )
+    return()
+endif()
+
 find_package(
     ptx_frontend 0.0.1 CONFIG REQUIRED
     COMPONENTS
@@ -21,6 +40,8 @@ find_package(
         binding
         semantic
         resolved_ir
+        ptx_spec
+        codegen
 )
 enable_testing()
 
@@ -40,10 +61,58 @@ foreach(_component IN ITEMS
     endif()
 endforeach()
 
+if(NOT ptx_frontend_ptx_spec_FOUND)
+    message(FATAL_ERROR "ptx_spec component was not found")
+endif()
+if(NOT ptx_frontend_codegen_FOUND)
+    message(FATAL_ERROR "codegen component was not found")
+endif()
+if(NOT EXISTS "${ptx_frontend_PTX_SPEC_DIR}/arithmetic.yaml")
+    message(FATAL_ERROR "Installed PTX spec is incomplete")
+endif()
+if(NOT EXISTS "${ptx_frontend_PTX_SPEC_SCHEMA}")
+    message(FATAL_ERROR "Installed PTX schema is missing")
+endif()
+if(NOT COMMAND ptx_frontend_generate)
+    message(FATAL_ERROR "Installed codegen helper is missing")
+endif()
+
+set(_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+ptx_frontend_generate(
+    TARGET ptx_frontend_codegen_primary
+    SPEC_DIR "${ptx_frontend_PTX_SPEC_DIR}"
+    BACKEND_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/backend.yaml"
+    OUTPUT_DIR "${_generated_dir}"
+)
+set(_primary_generated_files "${ptx_frontend_GENERATED_FILES}")
+ptx_frontend_generate(
+    TARGET ptx_frontend_codegen_secondary
+    SPEC_DIR "${ptx_frontend_PTX_SPEC_DIR}"
+    BACKEND_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/backend.yaml"
+    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_secondary"
+)
+
+add_library(ptx_frontend_generated_smoke OBJECT ${_primary_generated_files})
+target_compile_features(ptx_frontend_generated_smoke PRIVATE cxx_std_23)
+target_include_directories(
+    ptx_frontend_generated_smoke
+    PRIVATE "${_generated_dir}/public" "${_generated_dir}/private"
+)
+target_link_libraries(
+    ptx_frontend_generated_smoke
+    PRIVATE ptx_frontend::resolved_ir
+)
+add_dependencies(ptx_frontend_generated_smoke ptx_frontend_codegen_primary)
+
 add_executable(ptx_frontend_package_consumer main.cpp)
 target_compile_features(ptx_frontend_package_consumer PRIVATE cxx_std_23)
 target_link_libraries(
     ptx_frontend_package_consumer
     PRIVATE ptx_frontend::ptx_frontend
+)
+add_dependencies(
+    ptx_frontend_package_consumer
+    ptx_frontend_codegen_primary
+    ptx_frontend_codegen_secondary
 )
 add_test(NAME runs_installed_frontend COMMAND ptx_frontend_package_consumer)

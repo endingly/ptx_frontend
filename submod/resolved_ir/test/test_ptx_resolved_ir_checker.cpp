@@ -1956,6 +1956,40 @@ TEST(ResolvedIrChecker, ChecksDynamicVectorArityAndElementPolicy) {
             CheckDiagnosticKind::MissingVectorArityField);
 }
 
+TEST(ResolvedIrChecker, ChecksVectorSinkPayloadRequirement) {
+  constexpr std::array<uint8_t, 1> allowed_vector_arities = {2};
+  const OperandDescriptor descriptors[] = {{
+      .target_field_id = "dst",
+      .type_expression = {
+          .kind = OperandTypeExpressionKind::FixedScalar,
+          .fixed_scalar_type = ScalarType::B32,
+      },
+      .role = OperandRole::Destination,
+      .access = OperandAccess::Write,
+      .allowed_shapes = OperandShape::Vector,
+      .allowed_vector_arities = allowed_vector_arities,
+      .vector_type_policy = VectorTypePolicy::Element,
+      .allow_vector_sink = true,
+      .vector_sink_payload_bits = 256,
+  }};
+  const OperandView operand{
+      .field_id = "dst",
+      .actual_shape = OperandShape::Vector,
+      .vector_element_types = {ScalarType::B32, ScalarType::B32},
+      .vector_arity = 2,
+      .vector_sink_count = 1,
+      .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+  };
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+
+  const auto rejected = check_operands(
+      descriptors, {}, std::span<const OperandView>{&operand, 1}, {}, context);
+  ASSERT_FALSE(rejected.has_value());
+  ASSERT_EQ(rejected.error().size(), 1u);
+  EXPECT_EQ(rejected.error().front().kind,
+            CheckDiagnosticKind::InvalidVectorOperand);
+}
+
 TEST(ResolvedIrChecker, ChecksModernBracePackCardinalityAndElementShapes) {
   constexpr OperandDescriptor tensor[] = {{
       .target_field_id = "coordinate",

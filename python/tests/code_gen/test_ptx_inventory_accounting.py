@@ -27,6 +27,7 @@ PARTIAL_OPCODE_STATUS = {
 }
 COVERAGE_SECTION_ALIASES = {
     ("mov", "9.7.9"): frozenset({"9.7.9.3", "9.7.9.4"}),
+    ("mbarrier", "9.7.14.16.12"): frozenset({"9.7.14.16"}),
 }
 
 
@@ -179,6 +180,40 @@ class PtxInventoryAccountingTests(unittest.TestCase):
                 else:
                     self.assertEqual(item["status"], "unsupported")
                     self.assertIn("No implemented frozen coverage slice", item["reason"])
+
+    def test_m13_lifecycle_is_closed_and_deferred(self) -> None:
+        accounting = load_yaml(ACCOUNTING)
+        dispositions = accounting["dispositions"]
+        self.assertEqual(
+            [item for item in dispositions if item.get("milestone") == "M13"], []
+        )
+        closed = [
+            item
+            for item in dispositions
+            if item.get("milestone") == "post-1.0"
+            and item.get("reason", "").endswith("deferred after M13.")
+        ]
+        self.assertEqual(Counter(item["status"] for item in closed), {"partial": 24})
+        for item in closed:
+            with self.subTest(item=key(item)):
+                self.assertEqual(item["disposition"], "deferred")
+                self.assertEqual(item["support_source"], "opcode_coverage")
+                self.assertIn("implemented", item["reason"])
+                self.assertIn("residual variants", item["reason"])
+
+        tensormap_fence = next(
+            item
+            for item in dispositions
+            if item["spelling"] == "tensormap.cp_fenceproxy"
+        )
+        self.assertEqual(
+            (
+                tensormap_fence["status"],
+                tensormap_fence["disposition"],
+                tensormap_fence["milestone"],
+            ),
+            ("unsupported", "planned", "M14"),
+        )
 
     def test_gate_reports_missing_extra_duplicate_and_conflict_stably(self) -> None:
         accounting = load_yaml(ACCOUNTING)

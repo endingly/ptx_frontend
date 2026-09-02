@@ -26,6 +26,7 @@ from code_gen.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
+    MbarrierStateTokenForm,
     ModifierSpec,
     ModifierValueSpec,
     OperandParameterConstraint,
@@ -63,11 +64,16 @@ class ResolvedValueKind(Enum):
     MEMORY_SCOPE = "MemoryScope"
     VECTOR_ARITY = "VectorArity"
     MEMORY_STATE_SPACE = "MemoryStateSpace"
+    MBARRIER_PHASE_TYPE = "MbarrierPhaseType"
+    MBARRIER_LAYOUT = "MbarrierLayout"
+    ASYNC_PROXY_KIND = "AsyncProxyKind"
+    PROXY_KIND_PAIR = "ProxyKindPair"
     REGISTER = "Register"
     PREDICATE = "Predicate"
     PREDICATE_SOURCE = "PredicateSource"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
+    REGISTER_OR_SINK = "RegisterOrSink"
     MOV_SOURCE = "MovSource"
     VECTOR_REGISTER = "VectorRegister"
     VECTOR_SPECIAL_REGISTER = "VectorSpecialRegister"
@@ -84,6 +90,7 @@ class ResolvedValueKind(Enum):
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
     PREDICATE_PAIR = "PredicatePair"
+    MBARRIER_STATE_TOKEN = "MbarrierStateToken"
 
 
 class ResolvedFieldStorage(Enum):
@@ -318,6 +325,22 @@ class ResolvedField:
             return cpp_value(CppDomain.MEMORY_CONSISTENCIES, self.constant_value)
         if self.value_cpp_type == "MemoryScope" and isinstance(self.constant_value, str):
             return cpp_value(CppDomain.MEMORY_SCOPES, self.constant_value)
+        if self.value_cpp_type == "MbarrierPhaseType" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.MBARRIER_PHASE_TYPES, self.constant_value)
+        if self.value_cpp_type == "MbarrierLayout" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.MBARRIER_LAYOUTS, self.constant_value)
+        if self.value_cpp_type == "AsyncProxyKind" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.ASYNC_PROXY_KINDS, self.constant_value)
+        if self.value_cpp_type == "ProxyKindPair" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.PROXY_KIND_PAIRS, self.constant_value)
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
             f"{self.constant_value!r} for {self.value_cpp_type}"
@@ -336,7 +359,7 @@ class ResolvedVariant:
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
-    address_alignment: ResolvedAddressAlignmentConstraint | None
+    address_alignments: tuple[ResolvedAddressAlignmentConstraint, ...]
     memory_vector: ResolvedMemoryVectorConstraint | None
     immediate_value: ResolvedImmediateValueConstraint | None
     immediate_ranges: tuple[ResolvedImmediateRangeConstraint, ...]
@@ -357,7 +380,6 @@ class ResolvedVariant:
             for field in layout.fields:
                 fields.append(field)
         return tuple(fields)
-
 
 @dataclass(frozen=True)
 class ResolvedModifierBinding:
@@ -414,6 +436,12 @@ class ResolvedOperandBinding:
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
+    vector_sink_payload_bits: int = 0
+    allow_destination_sink: bool = False
+    allow_predicate_sink: bool = False
+    mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
+    sink_availability: tuple[tuple[str, Any], ...] = ()
+    allow_function_symbol: bool = False
     type_tag: str | None = None
     minimum_elements: int | None = None
     maximum_elements: int | None = None
@@ -447,12 +475,18 @@ _OPERAND_ALLOWED_SHAPES = {
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
+    "reg_or_sink": (ResolvedOperandShape.REGISTER,),
     "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
     "pred_pair": (ResolvedOperandShape.PREDICATE_PAIR,),
     "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
         ResolvedOperandShape.SPECIAL_REGISTER,
+        ResolvedOperandShape.SYMBOL,
+        ResolvedOperandShape.ADDRESS,
+    ),
+    "cluster_address": (
+        ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.SYMBOL,
         ResolvedOperandShape.ADDRESS,
     ),
@@ -471,6 +505,7 @@ _OPERAND_ALLOWED_SHAPES = {
     "reg_vector": (ResolvedOperandShape.VECTOR,),
     "descriptor": (ResolvedOperandShape.REGISTER,),
     "typed_token": (ResolvedOperandShape.REGISTER,),
+    "mbarrier_state_token": (ResolvedOperandShape.REGISTER,),
     "tensor_coordinate": (ResolvedOperandShape.VECTOR,),
     "matrix_fragment": (ResolvedOperandShape.VECTOR,),
     "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
@@ -563,9 +598,12 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_consistency,
             {field.source_name: field.name for field in modifier_fields},
         ),
-        address_alignment=_build_address_alignment_constraint(
-            variant.address_alignment,
-            {field.source_name: field.name for field in modifier_fields},
+        address_alignments=tuple(
+            _build_address_alignment_constraint(
+                constraint,
+                {field.source_name: field.name for field in modifier_fields},
+            )
+            for constraint in variant.address_alignments
         ),
         memory_vector=_build_memory_vector_constraint(
             variant.memory_vector,
@@ -775,6 +813,38 @@ def _build_modifier_default(
                 f"optional scope modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
+    if value_cpp_type == "MbarrierPhaseType":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.MBARRIER_PHASE_TYPES
+        ).values:
+            raise ValueError(
+                f"optional phase-type modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "MbarrierLayout":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.MBARRIER_LAYOUTS
+        ).values:
+            raise ValueError(
+                f"optional mbarrier-layout modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "AsyncProxyKind":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.ASYNC_PROXY_KINDS
+        ).values:
+            raise ValueError(
+                f"optional async-proxy modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
+    if value_cpp_type == "ProxyKindPair":
+        if not isinstance(modifier.default, str) or modifier.default not in cpp_domain(
+            CppDomain.PROXY_KIND_PAIRS
+        ).values:
+            raise ValueError(
+                f"optional proxy-pair modifier {modifier.name!r} has unsupported "
+                f"default {modifier.default!r}"
+            )
     return ResolvedModifierDefault(
         value_cpp_type=value_cpp_type,
         value=modifier.default,
@@ -888,6 +958,38 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported memory scope value "
                 f"{value.value!r}"
             )
+    if value_cpp_type == "MbarrierPhaseType":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.MBARRIER_PHASE_TYPES
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported mbarrier phase-type "
+                f"value {value.value!r}"
+            )
+    if value_cpp_type == "MbarrierLayout":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.MBARRIER_LAYOUTS
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported mbarrier layout "
+                f"value {value.value!r}"
+            )
+    if value_cpp_type == "AsyncProxyKind":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.ASYNC_PROXY_KINDS
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported async proxy value "
+                f"{value.value!r}"
+            )
+    if value_cpp_type == "ProxyKindPair":
+        if not isinstance(value.value, str) or value.value not in cpp_domain(
+            CppDomain.PROXY_KIND_PAIRS
+        ).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported proxy pair value "
+                f"{value.value!r}"
+            )
     return ResolvedModifierValueAvailability(
         source_kind_id=modifier.name,
         value_cpp_type=value_cpp_type,
@@ -968,6 +1070,12 @@ def _build_operand_layout(
                     operand.vector_type_policy.value.capitalize()
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
+                vector_sink_payload_bits=operand.vector_sink_payload_bits,
+                allow_destination_sink=operand.allow_destination_sink,
+                allow_predicate_sink=operand.allow_predicate_sink,
+                mbarrier_state_token_form=operand.mbarrier_state_token_form,
+                sink_availability=tuple(operand.sink_availability.items()),
+                allow_function_symbol=operand.kind == "mov_scalar_src",
                 type_tag=operand.type_tag,
                 minimum_elements=operand.minimum_elements,
                 maximum_elements=operand.maximum_elements,

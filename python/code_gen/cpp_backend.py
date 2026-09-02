@@ -46,6 +46,10 @@ class CppDomain(str, Enum):
     MEMORY_STATE_SPACES = (  # YAML: domains.memory_state_spaces
         "memory_state_spaces"
     )
+    MBARRIER_PHASE_TYPES = "mbarrier_phase_types"
+    MBARRIER_LAYOUTS = "mbarrier_layouts"
+    ASYNC_PROXY_KINDS = "async_proxy_kinds"
+    PROXY_KIND_PAIRS = "proxy_kind_pairs"
     PARAMETER_DIRECTIONS = "parameter_directions"
     REGISTER_WIDTH_POLICIES = "register_width_policies"
     MODIFIER_VALUE_CPP_TYPES = (  # YAML: domains.modifier_value_cpp_types

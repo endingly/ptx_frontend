@@ -241,6 +241,30 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryScope")},
                   .memory_scope = {value},
               }}"""
+    if default.value_cpp_type == "MbarrierPhaseType" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.MBARRIER_PHASE_TYPES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierPhaseType")},
+                  .mbarrier_phase_type = {value},
+              }}"""
+    if default.value_cpp_type == "MbarrierLayout" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.MBARRIER_LAYOUTS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierLayout")},
+                  .mbarrier_layout = {value},
+              }}"""
+    if default.value_cpp_type == "AsyncProxyKind" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.ASYNC_PROXY_KINDS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "AsyncProxyKind")},
+                  .async_proxy_kind = {value},
+              }}"""
+    if default.value_cpp_type == "ProxyKindPair" and isinstance(default.value, str):
+        value = cpp_value(CppDomain.PROXY_KIND_PAIRS, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "ProxyKindPair")},
+                  .proxy_kind_pair = {value},
+              }}"""
     raise ValueError(
         f"unsupported modifier default {default.value!r} for "
         f"{default.value_cpp_type}"
@@ -342,6 +366,38 @@ def _emit_operand_binding_descriptor(
         or binding.vector_arity_modifier_field_id is not None
         else ""
     )
+    vector_sink_payload_bits = (
+        "\n              .vector_sink_payload_bits = "
+        f"{binding.vector_sink_payload_bits},"
+        if binding.vector_sink_payload_bits else ""
+    )
+    allow_destination_sink = (
+        "\n              .allow_destination_sink = true,"
+        if binding.allow_destination_sink
+        else ""
+    )
+    allow_predicate_sink = (
+        "\n              .allow_predicate_sink = true,"
+        if binding.allow_predicate_sink
+        else ""
+    )
+    mbarrier_state_token_form = (
+        "\n              .mbarrier_state_token_form = "
+        f"checker::MbarrierStateTokenForm::{''.join(part.capitalize() for part in binding.mbarrier_state_token_form.value.split('_'))},"
+        if binding.mbarrier_state_token_form.value != "register"
+        else ""
+    )
+    sink_availability = (
+        "\n              .sink_availability = "
+        f"{_emit_availability(dict(binding.sink_availability))},"
+        if binding.sink_availability
+        else ""
+    )
+    allow_function_symbol = (
+        "\n              .allow_function_symbol = true,"
+        if binding.allow_function_symbol
+        else ""
+    )
     type_tag = (
         f'\n              .type_tag = "{binding.type_tag}",'
         if binding.type_tag is not None
@@ -395,7 +451,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
           }}"""
 
 

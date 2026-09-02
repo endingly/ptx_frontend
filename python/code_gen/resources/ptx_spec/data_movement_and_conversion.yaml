@@ -42,6 +42,82 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  mapa_shared_cluster:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: src
+      kind: cluster_address
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+      state_space: [shared]
+    - name: rank
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mapa_generic:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: rank
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  getctarank_shared_cluster:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+      register_width: same_width
+    - name: src
+      kind: cluster_address
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+      state_space: [shared]
+
+  getctarank_generic:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: u32
+      register_width: same_width
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+
   mov_pred:
     - name: dst
       kind: pred
@@ -301,6 +377,13 @@ operand_patterns:
       access: read
       type: u32
 
+  cp_async_mbarrier_arrive_address:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+
   isspacep_global_u64:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     - {name: src, kind: reg, role: src, access: read, type: u64, register_width: exact}
@@ -346,6 +429,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
     - name: address
       kind: addr
       role: addr
@@ -372,6 +456,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
     - name: address
       kind: addr
       role: addr
@@ -417,6 +502,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
 
   st_explicit_vector:
     - name: address
@@ -443,6 +529,7 @@ operand_patterns:
           expr: modifier(vector)
         type_policy: element
         allow_sink: true
+        sink_payload_bits: 256
 
   st_explicit_scalar:
     - name: address
@@ -862,6 +949,58 @@ instructions:
           - ptx: "mov.pred %p0, %p1;"
             valid: true
 
+  - opcode: mapa
+    section: "9.7.9.24"
+    doc: >
+      Map a shared or generic shared address to a cluster CTA rank. The frontend
+      validates local forms and target availability only; it does not model
+      cluster address validity or runtime mapping behavior.
+    syntax: "mapa{.shared::cluster}.{u32|u64} d, a, b"
+
+    variants:
+      - name: mapa_shared_cluster
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: ".shared::cluster"}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64]}
+        operands: $mapa_shared_cluster
+
+      - name: mapa_generic
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64]}
+        operands: $mapa_generic
+
+  - opcode: getctarank
+    section: "9.7.9.25"
+    doc: >
+      Query the CTA rank for a shared or generic shared address. The frontend
+      validates local forms and target availability only; it does not model
+      cluster address validity or runtime rank behavior.
+    syntax: "getctarank{.shared::cluster}.{u32|u64} d, a"
+
+    variants:
+      - name: getctarank_shared_cluster
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: ".shared::cluster"}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64]}
+        operands: $getctarank_shared_cluster
+
+      - name: getctarank_generic
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64]}
+        operands: $getctarank_generic
+
   - opcode: ld
     section: "9.7.9.8"
     doc: >
@@ -900,7 +1039,8 @@ instructions:
               - value: cta
                 availability: {ptx: "6.0", sm: 70}
               - value: cluster
-                availability: {ptx: "7.8", sm: 90}
+                availability:
+                  any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]
               - value: gpu
                 availability: {ptx: "6.0", sm: 70}
               - value: sys
@@ -1494,6 +1634,58 @@ instructions:
         examples:
           - ptx: "cp.async.wait_all;"
             valid: true
+
+  - opcode: cp
+    section: "9.7.14.16.18"
+    doc: "Asynchronous-copy mbarrier arrival; frontend validates only the shared aligned barrier address."
+    syntax: "cp.async.mbarrier.arrive{.noinc}{.shared{::cta}}.b64 [address]"
+    variants:
+      - name: cp_async_mbarrier_arrive_generic_or_shared
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: cp_async_mbarrier_arrive_shared_cta
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: cp_async_mbarrier_arrive_noinc_generic_or_shared
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: noinc, kind: flag, presence: fixed, value: true, token: .noinc}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: cp_async_mbarrier_arrive_noinc_shared_cta
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier, kind: flag, presence: fixed, value: true, token: .mbarrier}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: noinc, kind: flag, presence: fixed, value: true, token: .noinc}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $cp_async_mbarrier_arrive_address
+        rule: data_movement.cp_async_mbarrier_arrive
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
 
   - opcode: st
     section: "9.7.9.11"

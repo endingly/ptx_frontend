@@ -1,0 +1,22 @@
+.version 9.3
+.target sm_100
+.address_size 64
+
+.shared .align 16 .b8 response[16];
+.shared .align 8 .b64 barrier[2];
+
+.entry m13_synchronization_sm100() {
+  .reg .pred %p0;
+  .reg .b32 %r<4>;
+  .reg .b128 %q0;
+
+  barrier.cluster.arrive;
+  mbarrier.arrive.shared::cluster.b64 _, [barrier], 1;
+  clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [response], [barrier];
+  clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, %r1, %r2, %r3}, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 %r0, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid::y.b32.b128 %r1, %q0;
+  clusterlaunchcontrol.query_cancel.get_first_ctaid::z.b32.b128 %r2, %q0;
+  ret;
+}

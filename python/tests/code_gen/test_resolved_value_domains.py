@@ -57,6 +57,10 @@ class ResolvedValueDomainGenerationTests(unittest.TestCase):
         self.assertIn('{"xor", BooleanOperator::Xor}', source)
         self.assertIn('{"acq_rel", MemoryConsistency::AcqRel}', source)
         self.assertIn('{"v8", VectorArity::V8}', source)
+        self.assertIn("kAsyncProxyKinds", source)
+        self.assertIn('{"async.shared::cluster", AsyncProxyKind::AsyncSharedCluster}', source)
+        self.assertIn("kProxyKindPairs", source)
+        self.assertIn('{"tensormap::generic", ProxyKindPair::TensormapToGeneric}', source)
         self.assertNotIn("resolved_value_kinds =", source)
 
 

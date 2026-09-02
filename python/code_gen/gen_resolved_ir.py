@@ -616,12 +616,14 @@ def _emit_cross_rule_checks(
                                  memory_vector_check.error().end());
             }}
 """
-    if variant.address_alignment is not None:
-        checks += f"""            const auto alignment_check = check_address_alignment(
-                {checker_variant_expr}.address_alignment, fields, operands, context);
-            if (!alignment_check) {{
-              diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
-                                 alignment_check.error().end());
+    if variant.address_alignments:
+        checks += f"""            for (const auto& alignment : {checker_variant_expr}.address_alignments) {{
+              const auto alignment_check = check_address_alignment(
+                  alignment, fields, operands, context);
+              if (!alignment_check) {{
+                diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
+                                   alignment_check.error().end());
+              }}
             }}
 """
     if variant.immediate_value is not None:
@@ -707,6 +709,22 @@ def _emit_check_modifier_view(
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "MemoryScope" else "std::nullopt"
         )
+        mbarrier_phase_type = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MbarrierPhaseType" else "std::nullopt"
+        )
+        mbarrier_layout = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "MbarrierLayout" else "std::nullopt"
+        )
+        async_proxy_kind = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "AsyncProxyKind" else "std::nullopt"
+        )
+        proxy_kind_pair = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "ProxyKindPair" else "std::nullopt"
+        )
         cache_operator = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "CacheOperator" else "std::nullopt"
@@ -752,6 +770,22 @@ def _emit_check_modifier_view(
             f"selected.{field.name}.value"
             if field.value_cpp_type == "MemoryScope" else "std::nullopt"
         )
+        mbarrier_phase_type = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MbarrierPhaseType" else "std::nullopt"
+        )
+        mbarrier_layout = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "MbarrierLayout" else "std::nullopt"
+        )
+        async_proxy_kind = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "AsyncProxyKind" else "std::nullopt"
+        )
+        proxy_kind_pair = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "ProxyKindPair" else "std::nullopt"
+        )
         cache_operator = (
             f"selected.{field.name}.value"
             if field.value_cpp_type == "CacheOperator" else "std::nullopt"
@@ -773,6 +807,10 @@ def _emit_check_modifier_view(
                   .memory_state_space = {memory_state_space},
                   .memory_consistency = {memory_consistency},
                   .memory_scope = {memory_scope},
+                  .mbarrier_phase_type = {mbarrier_phase_type},
+                  .mbarrier_layout = {mbarrier_layout},
+                  .async_proxy_kind = {async_proxy_kind},
+                  .proxy_kind_pair = {proxy_kind_pair},
                   .locations = {locations},
               }}"""
 
@@ -937,6 +975,66 @@ def _emit_check_modifier_value_view(
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
         )
+    elif field.value_cpp_type == "MbarrierPhaseType":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MbarrierPhaseType"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        mbarrier_phase_type = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "MbarrierLayout":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "MbarrierLayout"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        mbarrier_layout = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "AsyncProxyKind":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "AsyncProxyKind"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        async_proxy_kind = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+    elif field.value_cpp_type == "ProxyKindPair":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "ProxyKindPair"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+        proxy_kind_pair = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
     else:
         raise ValueError(
             f"modifier field {field.name!r}: unsupported availability view type "
@@ -950,13 +1048,8 @@ def _emit_check_modifier_value_view(
     )
     if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
         is_present = "true"
-    elif field.value_cpp_type == "CacheOperator":
-        is_present = (
-            f"selected.{field.name}.value != "
-            f"{cpp_default(CppDomain.CACHE_OPERATORS)}"
-        )
     else:
-        is_present = "true"
+        is_present = f"!selected.{field.name}.locs.empty()"
     if field.value_cpp_type != "RoundingMode":
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
     if field.value_cpp_type != "ComparisonOperator":
@@ -975,6 +1068,14 @@ def _emit_check_modifier_value_view(
         memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
     if field.value_cpp_type != "MemoryScope":
         memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
+    if field.value_cpp_type != "MbarrierPhaseType":
+        mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
+    if field.value_cpp_type != "MbarrierLayout":
+        mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
+    if field.value_cpp_type != "AsyncProxyKind":
+        async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
+    if field.value_cpp_type != "ProxyKindPair":
+        proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
@@ -989,6 +1090,10 @@ def _emit_check_modifier_value_view(
                   .memory_state_space = {memory_state_space},
                   .memory_consistency = {memory_consistency},
                   .memory_scope = {memory_scope},
+                  .mbarrier_phase_type = {mbarrier_phase_type},
+                  .mbarrier_layout = {mbarrier_layout},
+                  .async_proxy_kind = {async_proxy_kind},
+                  .proxy_kind_pair = {proxy_kind_pair},
                   .is_present = {is_present},
                   .locations = {locations},
               }}"""
@@ -1117,12 +1222,36 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedMbarrierStateToken":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                  .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.register_ref
+                      ? {object_name}.{field.name}.value.register_ref->declared_type
+                      : std::nullopt,
+                  .is_sink = !{object_name}.{field.name}.value.register_ref,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
+    if field.value_cpp_type == "ResolvedRegisterOrSink":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                  .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.register_ref
+                      ? {object_name}.{field.name}.value.register_ref->declared_type
+                      : std::nullopt,
+                  .is_sink = !{object_name}.{field.name}.value.register_ref,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedShflSyncDestination":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "ShflDestination")},
                   .immediate_type = std::nullopt,
-                  .register_type = {object_name}.{field.name}.value.data.declared_type,
+                  .register_type = {object_name}.{field.name}.value.data
+                      ? {object_name}.{field.name}.value.data->value.declared_type
+                      : std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicatePair":
@@ -1320,6 +1449,27 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
               }}()"""
     if field.value_cpp_type == "ResolvedMovSource":
         return f"""              [&]() -> OperandView {{
+                const auto state_space_from_symbol =
+                    [](const ResolvedSymbolRef* symbol)
+                        -> std::optional<MemoryStateSpace> {{
+                  if (symbol == nullptr || !symbol->address_state_space)
+                    return std::nullopt;
+                  switch (*symbol->address_state_space) {{
+                    case syntax_ast::AstStateSpace::Global:
+                      return MemoryStateSpace::Global;
+                    case syntax_ast::AstStateSpace::Shared:
+                      return MemoryStateSpace::Shared;
+                    case syntax_ast::AstStateSpace::Local:
+                      return MemoryStateSpace::Local;
+                    case syntax_ast::AstStateSpace::Parameter:
+                      return MemoryStateSpace::Parameter;
+                    case syntax_ast::AstStateSpace::Constant:
+                      return MemoryStateSpace::Constant;
+                    case syntax_ast::AstStateSpace::Register:
+                      return std::nullopt;
+                  }}
+                  return std::nullopt;
+                }};
                 if (const auto* immediate =
                         std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
                   return OperandView{{
@@ -1378,6 +1528,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
                       .immediate_type = std::nullopt,
                       .register_type = std::nullopt,
+                      .address_state_space = state_space_from_symbol(symbol),
                       .value_availability = symbol->address_availability,
                       .value_name = symbol->spelling,
                       .locations = {object_name}.{field.name}.locs,
@@ -1395,6 +1546,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
                     .immediate_type = std::nullopt,
                     .register_type = std::nullopt,
+                    .address_state_space = state_space_from_symbol(symbol),
                     .value_availability =
                         symbol == nullptr ? std::nullopt
                                           : symbol->address_availability,

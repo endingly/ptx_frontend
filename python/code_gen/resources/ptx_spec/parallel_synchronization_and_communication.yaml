@@ -21,6 +21,12 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+  bar_warp_sync_membermask:
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
   bar_sync_barrier_and_thread_count:
     - name: barrier
       kind: reg_or_imm
@@ -155,6 +161,346 @@ operand_patterns:
       role: src
       access: read
       type: u32
+
+  match_sync_without_predicate:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  match_all_sync_without_predicate:
+    - name: dst
+      kind: reg_or_sink
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  match_sync_with_predicate:
+    - name: dst
+      kind: shfl_dest
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+      allow_destination_sink: true
+      allow_predicate_sink: true
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  redux_sync:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: exact
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_init:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_inval:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+
+  mbarrier_tx:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: tx_count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_arrive_cta:
+    - name: state
+      kind: mbarrier_state_token
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: register_or_sink
+      sink_availability: {ptx: "7.1", sm: 80}
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+
+  mbarrier_arrive_cta_count:
+    - name: state
+      kind: mbarrier_state_token
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: register_or_sink
+      sink_availability: {ptx: "7.1", sm: 80}
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_arrive_cluster:
+    - name: state
+      kind: mbarrier_state_token
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: sink
+      sink_availability: {ptx: "7.1", sm: 80}
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+
+  mbarrier_arrive_cluster_count:
+    - name: state
+      kind: mbarrier_state_token
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: sink
+      sink_availability: {ptx: "7.1", sm: 80}
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_arrive_expect_tx_cta:
+    - name: state
+      kind: mbarrier_state_token
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: register_or_sink
+      sink_availability: {ptx: "7.1", sm: 80}
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: tx_count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_arrive_expect_tx_cluster:
+    - name: state
+      kind: mbarrier_state_token
+      role: dst
+      access: write
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: sink
+      sink_availability: {ptx: "7.1", sm: 80}
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [shared]
+    - name: tx_count
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_test_wait_token:
+    - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - name: state
+      kind: mbarrier_state_token
+      role: src
+      access: read
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: register
+
+  mbarrier_test_wait_parity:
+    - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - name: phase_parity
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+
+  mbarrier_try_wait_token_hint:
+    - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - name: state
+      kind: mbarrier_state_token
+      role: src
+      access: read
+      type: b64
+      register_width: exact
+      mbarrier_state_token_form: register
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+
+  mbarrier_try_wait_parity_hint:
+    - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - name: phase_parity
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+      register_width: exact
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+
+  mbarrier_wait_token_report_predicate:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+  mbarrier_wait_token_report_predicate_value:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+  mbarrier_wait_parity_report_predicate:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_wait_parity_report_predicate_value:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_token_report_predicate_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_token_report_predicate_value_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_parity_report_predicate_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  mbarrier_try_wait_parity_report_predicate_value_hint:
+    - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
+    - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+  fence_proxy_acquire:
+    - {name: address, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: imm, role: src, access: read, type: u32}
+  clusterlaunchcontrol_try_cancel:
+    - {name: response, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: mbarrier, kind: addr, role: addr, access: read, state_space: [shared]}
+  clusterlaunchcontrol_query_cancel_status:
+    - {name: status, kind: pred, role: dst, access: write, type: pred}
+    - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
+  clusterlaunchcontrol_query_cancel_vector:
+    - name: ctaid
+      kind: reg_vector
+      role: dst
+      access: write
+      type: b32
+      register_width: exact
+      vector: {kind: vector, arity: [4], type_policy: element, allow_sink: true}
+    - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
+  clusterlaunchcontrol_query_cancel_scalar:
+    - {name: ctaid, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
 instructions:
   - opcode: bar
     section: "9.7.14.1"
@@ -520,6 +866,118 @@ instructions:
           - ptx: "bar.cta.red.or.pred %p0, 1, !%p1;"
             valid: true
 
+      - name: bar_warp_sync
+        section: "9.7.14.2"
+        description: >
+          Warp barrier with participating-thread memory ordering. The frontend
+          validates the membermask and target availability but does not
+          simulate or statically prove runtime membership or convergence.
+        availability:
+          ptx: "6.0"
+          sm: 30
+        modifiers:
+          - name: warp
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".warp"
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".sync"
+        operands: $bar_warp_sync_membermask
+
+        examples:
+          - ptx: "bar.warp.sync 0xffffffff;"
+            valid: true
+          - ptx: "bar.warp.sync %mask;"
+            valid: true
+
+  - opcode: barrier
+    section: "9.7.14.3"
+    doc: >
+      Cluster barrier arrival and wait. Aligned records the convergence
+      contract only; the frontend does not simulate runtime cluster barriers.
+    syntax: >-
+      barrier.cluster.arrive{.release|.relaxed}{.aligned} |
+      barrier.cluster.wait{.acquire}{.aligned}
+
+    variants:
+      - name: barrier_cluster_arrive
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cluster
+          - name: arrive
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".arrive"
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: release
+            values:
+              - value: release
+                availability: {ptx: "8.0"}
+              - value: relaxed
+                availability: {ptx: "8.0"}
+          - name: aligned
+            kind: flag
+            presence: optional
+            default: false
+            token: ".aligned"
+        operands: []
+
+        examples:
+          - ptx: "barrier.cluster.arrive;"
+            valid: true
+          - ptx: "barrier.cluster.arrive.release.aligned;"
+            valid: true
+
+      - name: barrier_cluster_wait
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90, capabilities: [cluster]}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: cluster
+          - name: wait
+            kind: flag
+            presence: fixed
+            value: true
+            token: ".wait"
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: acquire
+            values:
+              - value: acquire
+                availability: {ptx: "8.0"}
+          - name: aligned
+            kind: flag
+            presence: optional
+            default: false
+            token: ".aligned"
+        operands: []
+
+        examples:
+          - ptx: "barrier.cluster.wait;"
+            valid: true
+          - ptx: "barrier.cluster.wait.acquire.aligned;"
+            valid: true
+
   - opcode: membar
     section: "9.7.14.4"
     doc: "Memory barrier, limited to CTA scope."
@@ -543,8 +1001,11 @@ instructions:
 
   - opcode: fence
     section: "9.7.14.4"
-    doc: "Memory fence, limited to acquire-release CTA scope."
-    syntax: "fence.acq_rel.cta"
+    doc: "Memory fence slices for acquire-release CTA and modern async/tensormap proxy ordering."
+    syntax: >-
+      fence.acq_rel.cta | fence.proxy.async{.global|.shared::cta|.shared::cluster} |
+      fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
+      fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
 
     variants:
       - name: fence_acq_rel_cta
@@ -566,6 +1027,95 @@ instructions:
         examples:
           - ptx: "fence.acq_rel.cta;"
             valid: true
+
+      - name: fence_proxy_async
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async, async.global, async.shared::cta]}
+        operands: []
+
+      - name: fence_proxy_async_shared_cluster
+        availability:
+          any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async.shared::cluster]}
+        operands: []
+
+      - name: fence_proxy_tensormap_generic_release
+        availability: {ptx: "8.3", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, gpu, sys]}
+        operands: []
+
+      - name: fence_proxy_tensormap_generic_release_cluster
+        availability:
+          any_of: [{ptx: "8.3", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+
+      - name: fence_proxy_tensormap_generic_acquire
+        availability: {ptx: "8.3", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, gpu, sys]}
+        operands: $fence_proxy_acquire
+        constraints: [{kind: immediate_value, operand: size, values: [128]}]
+
+      - name: fence_proxy_tensormap_generic_acquire_cluster
+        availability:
+          any_of: [{ptx: "8.3", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: required, values: [tensormap::generic]}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: $fence_proxy_acquire
+        constraints: [{kind: immediate_value, operand: size, values: [128]}]
+
+      - name: fence_proxy_async_generic_acquire_sync_restrict_shared_cluster
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - name: proxy_pair
+            kind: proxy_pair
+            domain: proxy_kind_pairs
+            presence: required
+            values:
+              - value: async::generic
+                availability:
+                  any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: sync_restrict_shared_cluster, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cluster}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+
+      - name: fence_proxy_async_generic_release_sync_restrict_shared_cta
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - name: proxy_pair
+            kind: proxy_pair
+            domain: proxy_kind_pairs
+            presence: required
+            values:
+              - value: async::generic
+                availability:
+                  any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: sync_restrict_shared_cta, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cta}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
 
   - opcode: atom
     section: "9.7.14.5"
@@ -714,3 +1264,1271 @@ instructions:
         examples:
           - ptx: "vote.sync.ballot.b32 %b0, %p0, 0xffffffff;"
             valid: true
+
+  - opcode: match
+    section: "9.7.14.11"
+    doc: >
+      Warp match returns a 32-bit mask and optionally a predicate for all.
+      The frontend validates local operand forms and target availability only;
+      it does not prove runtime membermask participation or convergence.
+    syntax: >-
+      match.any.sync.{b32|b64} d, a, membermask |
+      match.all.sync.{b32|b64} d[|p], a, membermask
+
+    variants:
+      - name: match_any_sync
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: any
+            kind: flag
+            presence: fixed
+            value: true
+            token: .any
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values: [b32, b64]
+        operands: $match_sync_without_predicate
+
+        examples:
+          - ptx: "match.any.sync.b32 %b0, %b1, 0xffffffff;"
+            valid: true
+
+      - name: match_all_sync
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: all
+            kind: flag
+            presence: fixed
+            value: true
+            token: .all
+          - name: sync
+            kind: flag
+            presence: fixed
+            value: true
+            token: .sync
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values: [b32, b64]
+        operand_layouts:
+          - name: without_predicate
+            operands: $match_all_sync_without_predicate
+          - name: with_predicate
+            operands: $match_sync_with_predicate
+
+        examples:
+          - ptx: "match.all.sync.b64 %b0, %d0, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 %b0|%p0, %b1, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 _, %b1, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 _|%p0, %b1, 0xffffffff;"
+            valid: true
+          - ptx: "match.all.sync.b32 %b0|_, %b1, 0xffffffff;"
+            valid: true
+
+  - opcode: redux
+    section: "9.7.14.13"
+    doc: >
+      Warp reduction. The frontend validates local operand forms and target
+      availability only; it does not prove runtime membermask participation or
+      convergence.
+    syntax: >-
+      redux.sync.{add|min|max}.{u32|s32} d, a, membermask |
+      redux.sync.{and|or|xor}.b32 d, a, membermask |
+      redux.sync.{min|max}{.abs}{.NaN}.f32 d, a, membermask
+
+    variants:
+      - name: redux_sync_add
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: add, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $redux_sync
+
+      - name: redux_sync_min
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $redux_sync
+
+      - name: redux_sync_max
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $redux_sync
+
+      - name: redux_sync_boolean
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: operation, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands: $redux_sync
+
+      - name: redux_sync_min_f32
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: abs, kind: flag, presence: optional, default: false, token: .abs}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operands: $redux_sync
+
+      - name: redux_sync_max_f32
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: abs, kind: flag, presence: optional, default: false, token: .abs}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operands: $redux_sync
+
+  - opcode: griddepcontrol
+    section: "9.7.14.14"
+    doc: >
+      Grid dependency control. The frontend validates instruction identity and
+      target availability only; it does not model grid runtime dependencies or
+      protocol behavior.
+    syntax: "griddepcontrol.{launch_dependents|wait};"
+
+    variants:
+      - name: griddepcontrol_launch_dependents
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: launch_dependents, kind: flag, presence: fixed, value: true, token: .launch_dependents}
+        operands: []
+
+      - name: griddepcontrol_wait
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: wait, kind: flag, presence: fixed, value: true, token: .wait}
+        operands: []
+
+  - opcode: elect
+    section: "9.7.14.15"
+    doc: >
+      Warp leader election. The frontend validates local operand forms and
+      target availability only; it does not prove runtime membermask
+      participation or election behavior.
+    syntax: "elect.sync d|p, membermask"
+
+    variants:
+      - name: elect_sync
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        operands:
+          - name: result
+            kind: shfl_dest
+            role: dst
+            access: write
+            type: u32
+            register_width: same_width
+            allow_destination_sink: true
+          - name: membermask
+            kind: reg_or_imm
+            role: src
+            access: read
+            type: u32
+            register_width: exact
+
+  - opcode: mbarrier
+    section: "9.7.14.16.12"
+    doc: >
+      Initialize, invalidate, arrive at, test or try completion, query pending arrivals, or record expected or completed transaction counts for a
+      shared-memory barrier object. The frontend validates local address,
+      operand, alignment, and target constraints only; it does not model
+      barrier lifecycle or runtime phase behavior.
+    syntax: >-
+      mbarrier.init{.layout::{v0|v1}}{.shared{::cta}}.b64 |
+      mbarrier.inval{.shared{::cta}}.b64 |
+      mbarrier.expect_tx{.relaxed.{cta|cluster}}{.shared|.shared::cta|.shared::cluster}.b64 |
+      mbarrier.complete_tx{.relaxed.{cta|cluster}}{.shared|.shared::cta|.shared::cluster}.b64 |
+      mbarrier.arrive{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr]{, count} |
+      mbarrier.arrive{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr]{, count} |
+      mbarrier.arrive.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
+      mbarrier.arrive.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
+      mbarrier.arrive.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count |
+      mbarrier.arrive_drop{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr]{, count} |
+      mbarrier.arrive_drop{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr]{, count} |
+      mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
+      mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
+      mbarrier.arrive_drop.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count |
+      mbarrier.test_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state |
+      mbarrier.test_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity |
+      mbarrier.test_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
+      mbarrier.try_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
+      mbarrier.try_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
+      mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
+      mbarrier.pending_count{.layout::v0}.b64 count, state |
+      mbarrier.check_layout.layout::{v0|v1}{.shared::cta}.b64 p, [addr]
+
+    variants:
+      - name: mbarrier_init_generic_v0
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+                availability: {ptx: "9.3", sm: 90}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 1048575}
+
+      - name: mbarrier_init_shared_v0
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+                availability: {ptx: "9.3", sm: 90}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 1048575}
+
+      - name: mbarrier_init_shared_cta_v0
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - name: layout
+            kind: mbarrier_layout
+            domain: mbarrier_layouts
+            presence: optional
+            default: layout::v0
+            values:
+              - value: layout::v0
+                availability: {ptx: "9.3", sm: 90}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 1048575}
+
+      - name: mbarrier_init_generic_v1
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: required, values: [layout::v1]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}
+
+      - name: mbarrier_init_shared_v1
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: required, values: [layout::v1]}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}
+
+      - name: mbarrier_init_shared_cta_v1
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: init, kind: flag, presence: fixed, value: true, token: .init}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: required, values: [layout::v1]}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_init
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+          - {kind: immediate_range, operand: count, minimum: 1, maximum: 511}
+
+      - name: mbarrier_inval_generic
+        section: "9.7.14.16.13"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: inval, kind: flag, presence: fixed, value: true, token: .inval}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_inval_shared
+        section: "9.7.14.16.13"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: inval, kind: flag, presence: fixed, value: true, token: .inval}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_inval_shared_cta
+        section: "9.7.14.16.13"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: inval, kind: flag, presence: fixed, value: true, token: .inval}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_inval
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_generic_or_shared
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_shared_cta
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_shared_cluster
+        section: "9.7.14.16.14"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cta_generic_or_shared
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cta_shared_cta
+        section: "9.7.14.16.14"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cta_shared_cluster
+        section: "9.7.14.16.14"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cluster_generic_or_shared
+        section: "9.7.14.16.14"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cluster_shared_cta
+        section: "9.7.14.16.14"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_expect_tx_relaxed_cluster_shared_cluster
+        section: "9.7.14.16.14"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints:
+          - {kind: address_alignment, address_operand: address, alignment: 8}
+
+      - name: mbarrier_complete_tx_generic_or_shared
+        section: "9.7.14.16.15"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_shared_cta
+        section: "9.7.14.16.15"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_shared_cluster
+        section: "9.7.14.16.15"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_relaxed_cta_generic_or_shared
+        section: "9.7.14.16.15"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_relaxed_cta_shared_cta
+        section: "9.7.14.16.15"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_relaxed_cta_shared_cluster
+        section: "9.7.14.16.15"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_relaxed_cluster_generic_or_shared
+        section: "9.7.14.16.15"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_relaxed_cluster_shared_cta
+        section: "9.7.14.16.15"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_complete_tx_relaxed_cluster_shared_cluster
+        section: "9.7.14.16.15"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: complete_tx, kind: flag, presence: fixed, value: true, token: .complete_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_tx
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_generic_or_shared
+        section: "9.7.14.16.16"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - name: with_count
+            availability: {ptx: "7.8", sm: 90}
+            operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_shared_cta
+        section: "9.7.14.16.16"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - name: with_count
+            availability: {ptx: "7.8", sm: 90}
+            operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_shared_cluster
+        section: "9.7.14.16.16"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cluster}
+          - name: with_count
+            availability: {ptx: "7.8", sm: 90}
+            operands: $mbarrier_arrive_cluster_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_semantics_generic_or_shared
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: required
+            values:
+              - {value: release, availability: {ptx: "8.0", sm: 90}}
+              - {value: relaxed, availability: {ptx: "8.6", sm: 90}}
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: required
+            values:
+              - {value: cta, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - name: with_count
+            availability: {ptx: "7.8", sm: 90}
+            operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_semantics_shared_cta
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: required
+            values:
+              - {value: release, availability: {ptx: "8.0", sm: 90}}
+              - {value: relaxed, availability: {ptx: "8.6", sm: 90}}
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: required
+            values:
+              - {value: cta, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - name: with_count
+            availability: {ptx: "7.8", sm: 90}
+            operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_semantics_shared_cluster
+        section: "9.7.14.16.16"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: required
+            values:
+              - {value: release, availability: {ptx: "8.0", sm: 90}}
+              - {value: relaxed, availability: {ptx: "8.6", sm: 90}}
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: required
+            values:
+              - {value: cta, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cluster}
+          - name: with_count
+            availability: {ptx: "7.8", sm: 90}
+            operands: $mbarrier_arrive_cluster_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_expect_tx_generic_or_shared
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_expect_tx_shared_cta
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_expect_tx_shared_cluster
+        section: "9.7.14.16.16"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cluster
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_expect_tx_semantics_generic_or_shared
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: required
+            values:
+              - {value: release, availability: {ptx: "8.0", sm: 90}}
+              - {value: relaxed, availability: {ptx: "8.6", sm: 90}}
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: required
+            values:
+              - {value: cta, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_expect_tx_semantics_shared_cta
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: required
+            values:
+              - {value: release, availability: {ptx: "8.0", sm: 90}}
+              - {value: relaxed, availability: {ptx: "8.6", sm: 90}}
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: required
+            values:
+              - {value: cta, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_expect_tx_semantics_shared_cluster
+        section: "9.7.14.16.16"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: required
+            values:
+              - {value: release, availability: {ptx: "8.0", sm: 90}}
+              - {value: relaxed, availability: {ptx: "8.6", sm: 90}}
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: required
+            values:
+              - {value: cta, availability: {ptx: "8.0", sm: 90}}
+              - {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cluster
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_no_complete_generic_or_shared
+        section: "9.7.14.16.16"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_no_complete_shared_cta
+        section: "9.7.14.16.16"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_no_complete_release_cta_generic_or_shared
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_no_complete_release_cta_shared_cta
+        section: "9.7.14.16.16"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: .arrive}
+          - {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_drop_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cluster}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cluster_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_drop_semantics_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_semantics_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cta}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cta_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_semantics_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operand_layouts:
+          - {name: no_count, operands: $mbarrier_arrive_cluster}
+          - {name: with_count, availability: {ptx: "7.8", sm: 90}, operands: $mbarrier_arrive_cluster_count}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_arrive_drop_expect_tx_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}, {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_expect_tx_cluster
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_expect_tx_semantics_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_semantics_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cta
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_arrive_drop_expect_tx_semantics_shared_cluster
+        section: "9.7.14.16.17"
+        availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - {name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}
+          - {name: expect_tx, kind: flag, presence: fixed, value: true, token: .expect_tx}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: release, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}
+          - {name: shared_cluster, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands: $mbarrier_arrive_expect_tx_cluster
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+      - name: mbarrier_arrive_drop_no_complete_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_no_complete_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_no_complete_release_cta_generic_or_shared
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}, {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+      - name: mbarrier_arrive_drop_no_complete_release_cta_shared_cta
+        section: "9.7.14.16.17"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: arrive_drop, kind: flag, presence: fixed, value: true, token: .arrive_drop}, {name: no_complete, kind: flag, presence: fixed, value: true, token: .noComplete}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}, {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_arrive_cta_count
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: count, minimum: 0, maximum: 1048575}]
+
+      - name: mbarrier_test_wait_token_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_token
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_token
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.1", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.8", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_try_wait_token_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.8", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_token}
+          - {name: with_hint, operands: $mbarrier_try_wait_token_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_token_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.8", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_token}
+          - {name: with_hint, operands: $mbarrier_try_wait_token_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_parity_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.8", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_parity}
+          - {name: with_hint, operands: $mbarrier_try_wait_parity_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "7.8", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_parity}
+          - {name: with_hint, operands: $mbarrier_try_wait_parity_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_test_wait_token_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_try_wait_token_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_token}, {name: with_hint, operands: $mbarrier_try_wait_token_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_token_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_token_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_token_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_token_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_token}, {name: with_hint, operands: $mbarrier_try_wait_token_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_token_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_token_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_token_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_parity_primary_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_parity_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_primary_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_parity_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_conditional_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_conditional_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_pending_count
+        section: "9.7.14.16.20"
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: pending_count, kind: flag, presence: fixed, value: true, token: .pending_count}
+          - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: optional, values: [{value: layout::v0, availability: {ptx: "9.3", sm: 90}}], default: layout::v0}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: count, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+          - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
+      - name: mbarrier_check_layout_generic_v0
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v0}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_check_layout_generic_v1
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v1}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_check_layout_shared_cta_v0
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v0}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_check_layout_shared_cta_v1
+        section: "9.7.14.16.21"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: check_layout, kind: flag, presence: fixed, value: true, token: .check_layout}, {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: fixed, value: layout::v1}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: [{name: result, kind: pred, role: dst, access: write, type: pred}, {name: address, kind: addr, role: addr, access: read, state_space: [shared]}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+  - opcode: clusterlaunchcontrol
+    section: "9.7.14.18"
+    doc: >
+      Starts an asynchronous cancellation attempt or queries its response. The
+      frontend validates local operands and target availability only; it does
+      not model response contents or runtime cancellation.
+    syntax: |-
+      clusterlaunchcontrol.try_cancel.async{.shared::cta}.mbarrier::complete_tx::bytes{.multicast::cluster::all}.b128 [response], [mbarrier]
+      clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 pred, response
+      clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {x, y, z, _}, response
+      clusterlaunchcontrol.query_cancel.get_first_ctaid::{x|y|z}.b32.b128 reg, response
+    variants:
+      - name: clusterlaunchcontrol_try_cancel_async_generic
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_try_cancel_async_shared_cta
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async_shared_cta, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_try_cancel_async_multicast_generic
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a, capabilities: [cluster]}
+            - {ptx: "8.6", sm: 120, target: sm_120a, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 100, family: sm_100f, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 120, family: sm_120f, capabilities: [cluster]}
+            - {ptx: "9.0", sm: 110, family: sm_110f, capabilities: [cluster]}
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast_cluster_all, kind: flag, presence: fixed, value: true, token: .multicast::cluster::all}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_try_cancel_async_multicast_shared_cta
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a, capabilities: [cluster]}
+            - {ptx: "8.6", sm: 120, target: sm_120a, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 100, family: sm_100f, capabilities: [cluster]}
+            - {ptx: "8.8", sm: 120, family: sm_120f, capabilities: [cluster]}
+            - {ptx: "9.0", sm: 110, family: sm_110f, capabilities: [cluster]}
+        modifiers:
+          - {name: try_cancel, kind: flag, presence: fixed, value: true, token: .try_cancel}
+          - {name: async_shared_cta, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: mbarrier_complete_tx_bytes, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast_cluster_all, kind: flag, presence: fixed, value: true, token: .multicast::cluster::all}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_try_cancel
+        constraints: [{kind: address_alignment, address_operand: response, alignment: 16}, {kind: address_alignment, address_operand: mbarrier, alignment: 8}]
+      - name: clusterlaunchcontrol_query_cancel_is_canceled_pred
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: is_canceled, kind: flag, presence: fixed, value: true, token: .is_canceled}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_status
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_v4
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid, kind: flag, presence: fixed, value: true, token: .get_first_ctaid}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v4]}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_vector
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_x
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid_x, kind: flag, presence: fixed, value: true, token: .get_first_ctaid::x}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_scalar
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_y
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid_y, kind: flag, presence: fixed, value: true, token: .get_first_ctaid::y}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_scalar
+      - name: clusterlaunchcontrol_query_cancel_get_first_ctaid_z
+        section: "9.7.14.19"
+        availability:
+          any_of: [{ptx: "8.6", sm: 100, capabilities: [cluster]}]
+        modifiers:
+          - {name: query_cancel, kind: flag, presence: fixed, value: true, token: .query_cancel}
+          - {name: get_first_ctaid_z, kind: flag, presence: fixed, value: true, token: .get_first_ctaid::z}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+          - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $clusterlaunchcontrol_query_cancel_scalar

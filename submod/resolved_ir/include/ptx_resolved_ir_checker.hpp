@@ -85,6 +85,10 @@ using base::CacheOperator;
 using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
+using base::MbarrierLayout;
+using base::MbarrierPhaseType;
+using base::AsyncProxyKind;
+using base::ProxyKindPair;
 namespace detail {
 
 /** Combine variant-specific lambdas into the visitor accepted by std::visit. */
@@ -159,7 +163,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 
-inline constexpr size_t kMaxAvailabilityClauses = 4;
+inline constexpr size_t kMaxAvailabilityClauses = 5;
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 
 /** One AND-clause in a bounded generated availability expression. */
@@ -224,6 +228,12 @@ enum class VectorTypePolicy : uint8_t {
   Element,
 };
 
+enum class MbarrierStateTokenForm : uint8_t {
+  Register,
+  RegisterOrSink,
+  Sink,
+};
+
 /** Maximum resolved register-vector payload width supported by this frontend. */
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
 /** Maximum element count accepted by schema-defined modern brace packs. */
@@ -243,6 +253,13 @@ struct OperandDescriptor {
   std::string_view vector_arity_modifier_field_id{};
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
+  size_t vector_sink_payload_bits = 0;
+  bool allow_destination_sink = false;
+  bool allow_predicate_sink = false;
+  MbarrierStateTokenForm mbarrier_state_token_form =
+      MbarrierStateTokenForm::Register;
+  AvailabilityDescriptor sink_availability;
+  bool allow_function_symbol = false;
   /** Stable descriptor/token domain tag; empty for ordinary operands. */
   std::string_view type_tag{};
   /** Inclusive brace-pack bounds; zero means this is not a variable pack. */
@@ -270,6 +287,10 @@ struct FieldView {
   std::optional<MemoryStateSpace> memory_state_space;
   std::optional<MemoryConsistency> memory_consistency;
   std::optional<MemoryScope> memory_scope;
+  std::optional<MbarrierPhaseType> mbarrier_phase_type;
+  std::optional<MbarrierLayout> mbarrier_layout;
+  std::optional<AsyncProxyKind> async_proxy_kind;
+  std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
 };
 
@@ -291,6 +312,7 @@ struct OperandView {
   std::optional<uint64_t> immediate_bits;
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  bool is_sink = false;
   std::array<ScalarType, 2> predicate_pair_types{};
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
@@ -349,6 +371,10 @@ enum class ModifierValueKind : uint8_t {
   MemoryStateSpace,
   MemoryConsistency,
   MemoryScope,
+  MbarrierPhaseType,
+  MbarrierLayout,
+  AsyncProxyKind,
+  ProxyKindPair,
 };
 
 /** Target requirement attached to one legal semantic modifier value. */
@@ -366,6 +392,10 @@ struct ModifierValueAvailabilityDescriptor {
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
   MemoryScope memory_scope = MemoryScope::None;
+  MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
+  MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
 };
 
@@ -384,6 +414,10 @@ struct ModifierValueView {
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
   MemoryScope memory_scope = MemoryScope::None;
+  MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
+  MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
   std::span<const SourceRange> locations;
 };
@@ -414,8 +448,8 @@ struct VariantDescriptor {
     std::string_view address_field_id;
     std::string_view state_space_field_id;
   } memory_consistency;
-  /** Empty address fields mean this variant has no static alignment rule. */
-  AddressAlignmentConstraint address_alignment;
+  /** Empty span means this variant has no static alignment rules. */
+  std::span<const AddressAlignmentConstraint> address_alignments;
   /** Empty field IDs mean this variant has no modern memory-vector rule. */
   struct MemoryVectorDescriptor {
     std::string_view type_field_id;

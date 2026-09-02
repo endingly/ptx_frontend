@@ -22,7 +22,11 @@ from code_gen.gen_syntax_ast_arch import (
     generate_syntax_descriptor_source,
 )
 from code_gen.load_yaml import expand_value_refs
-from code_gen.model import OperandRegisterWidthPolicy, OperandVectorTypePolicy
+from code_gen.model import (
+    MbarrierStateTokenForm,
+    OperandRegisterWidthPolicy,
+    OperandVectorTypePolicy,
+)
 from code_gen.normalize import normalize_instruction_spec
 from ir.syntax_ast import from_InstructionSpec
 from ir.syntax_ast import (
@@ -300,6 +304,36 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(
             [slot.allowed_syntax_shapes for slot in vector_layout.slots],
             [OperandSyntaxShape.IDENTIFIER_REF, OperandSyntaxShape.IDENTIFIER_REF],
+        )
+
+    def test_mapa_cluster_source_layout_allows_register_symbol_or_address_forms(self) -> None:
+        database = load_codegen_database(
+            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+        )
+        mapa = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mapa"
+        )
+        descriptor = from_InstructionSpec(mapa)
+
+        shared_layout = descriptor.variants[0].operand_layouts[0]
+        self.assertEqual(
+            [slot.allowed_syntax_shapes for slot in shared_layout.slots],
+            [
+                OperandSyntaxShape.IDENTIFIER_REF,
+                OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS,
+                OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+            ],
+        )
+        generic_layout = descriptor.variants[1].operand_layouts[0]
+        self.assertEqual(
+            [slot.allowed_syntax_shapes for slot in generic_layout.slots],
+            [
+                OperandSyntaxShape.IDENTIFIER_REF,
+                OperandSyntaxShape.IDENTIFIER_REF,
+                OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+            ],
         )
 
     def test_ld_layout_requires_address_syntax(self) -> None:
@@ -804,6 +838,13 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
         self.assertIsNone(scalar.state_space_expression)
 
+        cluster_address = normalize_state_space("shared", kind="cluster_address")
+        self.assertEqual(
+            [(entry.value, entry.availability)
+             for entry in cluster_address.state_space_values],
+            [("shared", {})],
+        )
+
         values = normalize_state_space(
             [
                 "global",
@@ -1061,7 +1102,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             ({**valid, "type_modifier": "missing"}, "inactive modifier"),
             ({**valid, "type_modifier": "vector"}, "must name a 'type'"),
             (valid, "kind 'addr'"),
-            ([valid, valid], "at most one address_alignment"),
+            ([valid, valid], "at most one constraint"),
         )
         for constraint, message in cases:
             with self.subTest(message=message):
@@ -1070,6 +1111,50 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         constraint,
                         operand_kind="reg" if message == "kind 'addr'" else "addr",
                     )
+
+    def test_address_alignment_requires_one_address_in_each_layout(self) -> None:
+        def normalize_layouts(layouts: list[list[dict[str, object]]]) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_alignment_layouts",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operand_layouts": [
+                                        {"name": f"layout_{index}", "operands": operands}
+                                        for index, operands in enumerate(layouts)
+                                    ],
+                                    "constraints": [
+                                        {
+                                            "kind": "address_alignment",
+                                            "address_operand": "address",
+                                            "alignment": 8,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        address = {"name": "address", "kind": "addr", "role": "addr", "access": "read"}
+        count = {"name": "count", "kind": "imm", "role": "src", "access": "read", "type": "u32"}
+        normalize_layouts([[address], [address, count]])
+        for invalid_layouts in (
+            [[address], [count]],
+            [[address], [address, address]],
+            [[address], [{**address, "kind": "reg"}, count]],
+        ):
+            with self.subTest(layouts=invalid_layouts):
+                with self.assertRaisesRegex(ValueError, "kind 'addr' operand"):
+                    normalize_layouts(invalid_layouts)
 
     def test_immediate_value_constraint_normalization(self) -> None:
         def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
@@ -1236,7 +1321,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             }
         )
 
-    def test_immediate_constraints_require_an_immediate_in_every_layout(self) -> None:
+    def test_immediate_constraints_allow_a_missing_layout_operand(self) -> None:
         for kind, constraint, operand_name in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
@@ -1249,16 +1334,39 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             }, "stride"),
         ):
             with self.subTest(kind=kind):
-                with self.assertRaisesRegex(
-                    ValueError,
-                    rf"{kind} operand {operand_name!r}.*operand layout 'missing'",
-                ):
-                    self._normalize_multilayout_immediate_constraint(
-                        constraint,
-                        operand_name,
-                        "missing",
-                        [{"name": "dst", "kind": "reg"}],
-                    )
+                self._normalize_multilayout_immediate_constraint(
+                    constraint,
+                    operand_name,
+                    "missing",
+                    [{"name": "dst", "kind": "reg"}],
+                )
+
+    def test_immediate_constraint_rejects_unknown_operand(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError, r"immediate_range operand 'missing'.*at least one operand layout"
+        ):
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [{"opcode": "sample", "variants": [{
+                        "name": "sample_immediate",
+                        "availability": {"ptx": "1.0"},
+                        "operand_layouts": [
+                            {"name": "first", "operands": [
+                                {"name": "count", "kind": "imm"},
+                            ]},
+                            {"name": "second", "operands": [
+                                {"name": "dst", "kind": "reg"},
+                            ]},
+                        ],
+                        "constraints": [{
+                            "kind": "immediate_range", "operand": "missing",
+                            "minimum": 0,
+                        }],
+                    }]}],
+                }
+            )
 
     def test_immediate_constraints_name_non_immediate_layout_and_kind(self) -> None:
         for kind, constraint, operand_name in (
@@ -1310,6 +1418,34 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         {"name": operand_name, "kind": "imm"},
                     ],
                 )
+
+    def test_immediate_range_alone_accepts_reg_or_imm(self) -> None:
+        def normalize_constraint(constraint: dict[str, object]) -> None:
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [{"opcode": "sample", "variants": [{
+                        "name": "sample_count",
+                        "availability": {"ptx": "1.0"},
+                        "operands": [{
+                            "name": "count", "kind": "reg_or_imm",
+                            "role": "src", "access": "read", "type": "u32",
+                        }],
+                        "constraints": [constraint],
+                    }]}],
+                }
+            )
+
+        normalize_constraint(
+            {"kind": "immediate_range", "operand": "count", "minimum": 1}
+        )
+        for constraint in (
+            {"kind": "immediate_value", "operand": "count", "values": [1]},
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 1},
+        ):
+            with self.assertRaisesRegex(ValueError, r"kind 'imm'.*'reg_or_imm'"):
+                normalize_constraint(constraint)
 
     def test_register_vector_arity_expression_normalization(self) -> None:
         instruction = normalize_instruction_spec(
@@ -1428,6 +1564,140 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                                                 "arity": 2,
                                                 "allow_sink": 1,
                                             },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+    def test_destination_sink_is_shfl_dest_specific(self) -> None:
+        def normalize_operand(
+            kind: str, role: str = "dst", access: str = "write", **extra: object
+        ):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": kind,
+                                            "role": role,
+                                            "access": access,
+                                            "type": "u32",
+                                            **extra,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0].variants[0].operand_layouts[0].operands[0]
+
+        self.assertFalse(normalize_operand("shfl_dest").allow_destination_sink)
+        self.assertTrue(
+            normalize_operand("shfl_dest", allow_destination_sink=True)
+            .allow_destination_sink
+        )
+        self.assertFalse(normalize_operand("shfl_dest").allow_predicate_sink)
+        self.assertTrue(
+            normalize_operand("shfl_dest", allow_predicate_sink=True)
+            .allow_predicate_sink
+        )
+        with self.assertRaisesRegex(ValueError, "allow_destination_sink.*shfl_dest"):
+            normalize_operand("reg", allow_destination_sink=False)
+        with self.assertRaisesRegex(TypeError, "allow_destination_sink"):
+            normalize_operand("shfl_dest", allow_destination_sink=1)
+        with self.assertRaisesRegex(ValueError, "allow_predicate_sink.*shfl_dest"):
+            normalize_operand("reg", allow_predicate_sink=False)
+        with self.assertRaisesRegex(TypeError, "allow_predicate_sink"):
+            normalize_operand("shfl_dest", allow_predicate_sink=1)
+        self.assertEqual(normalize_operand("reg_or_sink").kind, "reg_or_sink")
+        with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
+            normalize_operand("reg_or_sink", role="src")
+        with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
+            normalize_operand("reg_or_sink", access="read")
+
+    def test_mbarrier_state_token_sink_policy_is_destination_specific_and_gated(self) -> None:
+        def normalize_token(**extra: object):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "state",
+                                            "kind": "mbarrier_state_token",
+                                            "role": "dst",
+                                            "access": "write",
+                                            "type": "b64",
+                                            **extra,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )[0].variants[0].operand_layouts[0].operands[0]
+
+        self.assertEqual(
+            normalize_token().mbarrier_state_token_form,
+            MbarrierStateTokenForm.REGISTER,
+        )
+        self.assertEqual(
+            normalize_token(
+                mbarrier_state_token_form="register_or_sink",
+                sink_availability={"ptx": "7.1"},
+            ).mbarrier_state_token_form,
+            MbarrierStateTokenForm.REGISTER_OR_SINK,
+        )
+        with self.assertRaisesRegex(ValueError, "requires sink_availability"):
+            normalize_token(mbarrier_state_token_form="sink")
+        with self.assertRaisesRegex(ValueError, "register-only.*sink_availability"):
+            normalize_token(sink_availability={"ptx": "7.1"})
+        with self.assertRaisesRegex(ValueError, "only valid"):
+            normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "variants": [
+                                {
+                                    "name": "sample_default",
+                                    "availability": {"ptx": "1.0"},
+                                    "modifiers": [],
+                                    "operands": [
+                                        {
+                                            "name": "dst",
+                                            "kind": "reg",
+                                            "role": "dst",
+                                            "access": "write",
+                                            "type": "b64",
+                                            "mbarrier_state_token_form": "sink",
+                                            "sink_availability": {"ptx": "7.1"},
                                         }
                                     ],
                                 }

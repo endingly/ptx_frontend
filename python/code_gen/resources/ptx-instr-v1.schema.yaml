@@ -289,7 +289,7 @@ $defs:
       It must not begin with '$'; '$name' is reserved for references to
       type_sets or value_sets.
     type: string
-    pattern: "^[A-Za-z_][A-Za-z0-9_:<>-]*$"
+    pattern: "^[A-Za-z_][A-Za-z0-9_.:<>-]*$"
 
   # ---------------------------------------------------------------------------
   # PTX state spaces and memory-related domains
@@ -357,6 +357,16 @@ $defs:
       - tensormap
       - alias
 
+  async_proxy_kind:
+    description: "PTX fence.proxy.async qualifier without leading dot."
+    type: string
+    enum: [async, async.global, async.shared::cta, async.shared::cluster]
+
+  proxy_kind_pair:
+    description: "Ordered PTX fence proxy to::from qualifier without leading dot."
+    type: string
+    enum: [tensormap::generic, async::generic]
+
   cache_operator:
     description: "PTX cache operator without leading dot."
     type: string
@@ -412,8 +422,11 @@ $defs:
       - boolean_op
       - shape
       - layout
+      - phase_type
+      - mbarrier_layout
       - memory_order
       - proxy
+      - proxy_pair
       - tensor_map
       - matrix
       - custom
@@ -451,7 +464,7 @@ $defs:
               - type: integer
           token:
             type: string
-            pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+            pattern: "^\\.[A-Za-z0-9_.:$<>-]+$"
           availability:
             $ref: "#/$defs/availability"
           doc:
@@ -514,7 +527,7 @@ $defs:
           Concrete token for flag-like modifiers, for example .sat or .relu.
           For type-like values, token is usually derived from value.
         type: string
-        pattern: "^\\.[A-Za-z0-9_:$<>-]+$"
+        pattern: "^\\.[A-Za-z0-9_.:$<>-]+$"
 
       default:
         description: >
@@ -595,8 +608,11 @@ $defs:
                 - boolean_op
                 - shape
                 - layout
+                - phase_type
+                - mbarrier_layout
                 - memory_order
                 - proxy
+                - proxy_pair
                 - tensor_map
                 - matrix
                 - custom
@@ -638,9 +654,11 @@ $defs:
       - symbol
       - func
       - reg_or_imm
+      - reg_or_sink
       - shfl_dest
       - pred_pair
       - mov_scalar_src
+      - cluster_address
       - vector_reg
       - vector_sreg
       - reg_vector
@@ -660,6 +678,7 @@ $defs:
       - matrix_fragment
       - descriptor
       - typed_token
+      - mbarrier_state_token
 
       - optional_reg
       - optional_pred
@@ -750,6 +769,26 @@ $defs:
           - same_width
           - equal_or_wider
         default: same_width
+
+      allow_destination_sink:
+        description: "Whether '_' is accepted as the data half of a shfl_dest pair."
+        type: boolean
+        default: false
+
+      allow_predicate_sink:
+        description: "Whether '_' is accepted as the predicate half of a shfl_dest pair."
+        type: boolean
+        default: false
+
+      mbarrier_state_token_form:
+        description: "Accepted spelling form for an mbarrier state-token destination."
+        type: string
+        enum: [register, register_or_sink, sink]
+        default: register
+
+      sink_availability:
+        description: "Target requirement that applies only when an mbarrier token is '_'."
+        $ref: "#/$defs/availability"
 
       state_space:
         description: >
@@ -982,6 +1021,15 @@ $defs:
         type: boolean
         default: false
 
+      sink_payload_bits:
+        description: >
+          Exact vector payload width required when a vector element is ``_``;
+          omission imposes no sink-specific payload requirement.
+        type: integer
+        minimum: 8
+        maximum: 256
+        multipleOf: 8
+
       components:
         description: "Allowed component names, for example x/y/z/w or 0..f."
         type: array
@@ -1118,7 +1166,7 @@ $defs:
           any_of:
             type: array
             minItems: 1
-            maxItems: 4
+            maxItems: 5
             items:
               type: object
               additionalProperties: false
@@ -1407,6 +1455,10 @@ $defs:
       syntax:
         description: "Optional syntax override for this variant."
         type: string
+
+      section:
+        description: "Optional PTX document section override for this variant."
+        $ref: "#/$defs/doc_section"
 
       availability:
         $ref: "#/$defs/availability"

@@ -12,7 +12,7 @@ function(ptx_frontend_check_codegen result_variable)
     endif()
     execute_process(
         COMMAND "${Python3_EXECUTABLE}" -c
-            "from importlib.metadata import version; from pathlib import Path; import code_gen; expected = '${ptx_frontend_VERSION}'; actual = version('ptx_frontend');\nif actual != expected: raise RuntimeError(f'expected ptx_frontend {expected}, got {actual}')\nroot = Path(code_gen.__file__).resolve().parent.parent\nif not root.is_dir(): raise RuntimeError(f'invalid code_gen package root: {root}')\nprint(root)"
+            "from importlib.metadata import version; from pathlib import Path; import code_gen; expected = '${ptx_frontend_VERSION}'; actual = version('ptx_frontend');\nif actual != expected and not actual.startswith(tuple(expected + suffix for suffix in ('a', 'b', 'rc', '.dev', '.post', '+'))): raise RuntimeError(f'expected ptx_frontend {expected}, got {actual}')\nroot = Path(code_gen.__file__).resolve().parent.parent\nif not root.is_dir(): raise RuntimeError(f'invalid code_gen package root: {root}')\nprint(root)"
         RESULT_VARIABLE _result
         OUTPUT_VARIABLE _root
         ERROR_VARIABLE _error

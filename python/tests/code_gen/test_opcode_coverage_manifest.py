@@ -40,9 +40,9 @@ def source_variant_sections() -> dict[tuple[str, str], str]:
         source = load_yaml(path)
         for instruction in source["instructions"]:
             for variant in instruction["variants"]:
-                sections[(instruction["opcode"], variant["name"])] = instruction[
-                    "section"
-                ]
+                sections[(instruction["opcode"], variant["name"])] = variant.get(
+                    "section", instruction["section"]
+                )
     return sections
 
 
@@ -67,7 +67,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         entries = manifest["opcodes"]
         opcodes = [entry["opcode"] for entry in entries]
-        self.assertEqual(len(opcodes), 60)
+        self.assertEqual(len(opcodes), 69)
         self.assertEqual(len(opcodes), len(set(opcodes)))
 
         by_opcode = {entry["opcode"]: entry for entry in entries}
@@ -76,7 +76,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 150)
+        self.assertEqual(len(slices), 320)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -261,6 +261,329 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "mma-mma-sync-aligned-m16n8k8-row-col-f32-f16-f16-f32": {"topology": "matrix_mma", "types": ["f32", "f16", "f16x2"], "shape": "m16n8k8", "modifiers": ["sync", "aligned", "row", "col"]},
             },
         )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "match-match-any-sync-default",
+                    "match-match-all-sync-without-predicate",
+                    "match-match-all-sync-with-predicate",
+                )
+            },
+            {
+                "match-match-any-sync-default": {
+                    "topology": "warp_match", "types": ["b32", "b64"],
+                    "shape": "scalar", "modifiers": ["any", "sync"],
+                },
+                "match-match-all-sync-without-predicate": {
+                    "topology": "warp_match", "types": ["b32", "b64"],
+                    "shape": "scalar", "modifiers": ["all", "sync"],
+                },
+                "match-match-all-sync-with-predicate": {
+                    "topology": "warp_match", "types": ["b32", "b64"],
+                    "shape": "predicate_pair", "modifiers": ["all", "sync"],
+                },
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "mbarrier-mbarrier-init-generic-v0-default",
+                    "mbarrier-mbarrier-init-shared-v0-default",
+                    "mbarrier-mbarrier-init-shared-cta-v0-default",
+                    "mbarrier-mbarrier-init-generic-v1-default",
+                    "mbarrier-mbarrier-init-shared-v1-default",
+                    "mbarrier-mbarrier-init-shared-cta-v1-default",
+                    "mbarrier-mbarrier-inval-generic-default",
+                    "mbarrier-mbarrier-inval-shared-default",
+                    "mbarrier-mbarrier-inval-shared-cta-default",
+                    "mbarrier-mbarrier-expect-tx-generic-or-shared-default",
+                    "mbarrier-mbarrier-expect-tx-shared-cta-default",
+                    "mbarrier-mbarrier-expect-tx-shared-cluster-default",
+                    "mbarrier-mbarrier-expect-tx-relaxed-cta-generic-or-shared-default",
+                    "mbarrier-mbarrier-expect-tx-relaxed-cta-shared-cta-default",
+                    "mbarrier-mbarrier-expect-tx-relaxed-cta-shared-cluster-default",
+                    "mbarrier-mbarrier-expect-tx-relaxed-cluster-generic-or-shared-default",
+                    "mbarrier-mbarrier-expect-tx-relaxed-cluster-shared-cta-default",
+                    "mbarrier-mbarrier-expect-tx-relaxed-cluster-shared-cluster-default",
+                    "mbarrier-mbarrier-complete-tx-generic-or-shared-default",
+                    "mbarrier-mbarrier-complete-tx-shared-cta-default",
+                    "mbarrier-mbarrier-complete-tx-shared-cluster-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cta-generic-or-shared-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cta-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cluster-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cluster-generic-or-shared-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cta-default",
+                    "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cluster-default",
+                )
+            },
+            {
+                "mbarrier-mbarrier-init-generic-v0-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v0"],
+                },
+                "mbarrier-mbarrier-init-shared-v0-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v0", "shared"],
+                },
+                "mbarrier-mbarrier-init-shared-cta-v0-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v0", "shared_cta"],
+                },
+                "mbarrier-mbarrier-init-generic-v1-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v1"],
+                },
+                "mbarrier-mbarrier-init-shared-v1-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v1", "shared"],
+                },
+                "mbarrier-mbarrier-init-shared-cta-v1-default": {
+                    "topology": "mbarrier_init", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_count",
+                    "modifiers": ["init", "layout_v1", "shared_cta"],
+                },
+                "mbarrier-mbarrier-inval-generic-default": {
+                    "topology": "mbarrier_inval", "types": ["b64"],
+                    "shape": "shared_address", "modifiers": ["inval"],
+                },
+                "mbarrier-mbarrier-inval-shared-default": {
+                    "topology": "mbarrier_inval", "types": ["b64"],
+                    "shape": "shared_address", "modifiers": ["inval", "shared"],
+                },
+                "mbarrier-mbarrier-inval-shared-cta-default": {
+                    "topology": "mbarrier_inval", "types": ["b64"],
+                    "shape": "shared_address",
+                    "modifiers": ["inval", "shared_cta"],
+                },
+                "mbarrier-mbarrier-expect-tx-generic-or-shared-default": {
+                    "topology": "mbarrier_expect_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-expect-tx-shared-cta-default": {
+                    "topology": "mbarrier_expect_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "shared_cta"],
+                },
+                "mbarrier-mbarrier-expect-tx-shared-cluster-default": {
+                    "topology": "mbarrier_expect_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-expect-tx-relaxed-cta-generic-or-shared-default": {
+                    "topology": "mbarrier_expect_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "relaxed", "cta", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-expect-tx-relaxed-cta-shared-cta-default": {
+                    "topology": "mbarrier_expect_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "relaxed", "cta", "shared_cta"],
+                },
+                "mbarrier-mbarrier-expect-tx-relaxed-cta-shared-cluster-default": {
+                    "topology": "mbarrier_expect_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "relaxed", "cta", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-expect-tx-relaxed-cluster-generic-or-shared-default": {
+                    "topology": "mbarrier_expect_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "relaxed", "cluster", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-expect-tx-relaxed-cluster-shared-cta-default": {
+                    "topology": "mbarrier_expect_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "relaxed", "cluster", "shared_cta"],
+                },
+                "mbarrier-mbarrier-expect-tx-relaxed-cluster-shared-cluster-default": {
+                    "topology": "mbarrier_expect_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["expect_tx", "relaxed", "cluster", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-complete-tx-generic-or-shared-default": {
+                    "topology": "mbarrier_complete_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-complete-tx-shared-cta-default": {
+                    "topology": "mbarrier_complete_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "shared_cta"],
+                },
+                "mbarrier-mbarrier-complete-tx-shared-cluster-default": {
+                    "topology": "mbarrier_complete_tx", "types": ["b64", "u32"],
+                    "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cta-generic-or-shared-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cta", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cta-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cta", "shared_cta"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cta-shared-cluster-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cta",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cta", "shared_cluster"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cluster-generic-or-shared-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cluster", "generic_or_shared"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cta-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cluster", "shared_cta"],
+                },
+                "mbarrier-mbarrier-complete-tx-relaxed-cluster-shared-cluster-default": {
+                    "topology": "mbarrier_complete_tx_relaxed_cluster",
+                    "types": ["b64", "u32"], "shape": "shared_address_and_tx_count",
+                    "modifiers": ["complete_tx", "relaxed", "cluster", "shared_cluster"],
+                },
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "getctarank-getctarank-shared-cluster-default",
+                    "getctarank-getctarank-generic-default",
+                )
+            },
+            {
+                "getctarank-getctarank-shared-cluster-default": {
+                    "topology": "cluster_rank_query", "types": ["u32", "u64"],
+                    "shape": "register_or_shared_symbol_address",
+                    "modifiers": ["shared_cluster"],
+                },
+                "getctarank-getctarank-generic-default": {
+                    "topology": "generic_rank_query", "types": ["u32", "u64"],
+                    "shape": "register",
+                },
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "mapa-mapa-shared-cluster-default",
+                    "mapa-mapa-generic-default",
+                )
+            },
+            {
+                "mapa-mapa-shared-cluster-default": {
+                    "topology": "cluster_address_mapping", "types": ["u32", "u64"],
+                    "shape": "register_or_shared_symbol_address",
+                    "modifiers": ["shared_cluster"],
+                },
+                "mapa-mapa-generic-default": {
+                    "topology": "generic_address_mapping", "types": ["u32", "u64"],
+                    "shape": "register",
+                },
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "redux-redux-sync-add-default",
+                    "redux-redux-sync-min-default",
+                    "redux-redux-sync-max-default",
+                    "redux-redux-sync-boolean-default",
+                    "redux-redux-sync-min-f32-default",
+                    "redux-redux-sync-max-f32-default",
+                )
+            },
+            {
+                "redux-redux-sync-add-default": {
+                    "topology": "warp_reduce", "types": ["u32", "s32"],
+                    "shape": "scalar", "modifiers": ["sync", "add"],
+                },
+                "redux-redux-sync-min-default": {
+                    "topology": "warp_reduce", "types": ["u32", "s32"],
+                    "shape": "scalar", "modifiers": ["sync", "min"],
+                },
+                "redux-redux-sync-max-default": {
+                    "topology": "warp_reduce", "types": ["u32", "s32"],
+                    "shape": "scalar", "modifiers": ["sync", "max"],
+                },
+                "redux-redux-sync-boolean-default": {
+                    "topology": "warp_reduce", "types": ["b32"],
+                    "shape": "scalar", "modifiers": ["sync", "and", "or", "xor"],
+                },
+                "redux-redux-sync-min-f32-default": {
+                    "topology": "warp_reduce", "types": ["f32"],
+                    "shape": "scalar", "modifiers": ["sync", "min", "abs", "nan"],
+                },
+                "redux-redux-sync-max-f32-default": {
+                    "topology": "warp_reduce", "types": ["f32"],
+                    "shape": "scalar", "modifiers": ["sync", "max", "abs", "nan"],
+                },
+            },
+        )
+        self.assertEqual(
+            selectors["elect-elect-sync-default"],
+            {
+                "topology": "warp_election", "types": ["u32", "pred"],
+                "shape": "optional_data_predicate_pair", "modifiers": ["sync"],
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "fence-fence-proxy-async-default",
+                    "fence-fence-proxy-async-shared-cluster-default",
+                    "fence-fence-proxy-tensormap-generic-release-default",
+                    "fence-fence-proxy-tensormap-generic-release-cluster-default",
+                    "fence-fence-proxy-tensormap-generic-acquire-default",
+                    "fence-fence-proxy-tensormap-generic-acquire-cluster-default",
+                    "fence-fence-proxy-async-generic-acquire-sync-restrict-shared-cluster-default",
+                    "fence-fence-proxy-async-generic-release-sync-restrict-shared-cta-default",
+                )
+            },
+            {
+                "fence-fence-proxy-async-default": {"topology": "proxy_fence_bidirectional", "types": [], "shape": "none", "modifiers": ["proxy", "async"]},
+                "fence-fence-proxy-async-shared-cluster-default": {"topology": "proxy_fence_bidirectional", "types": [], "shape": "none", "modifiers": ["proxy", "async_shared_cluster"]},
+                "fence-fence-proxy-tensormap-generic-release-default": {"topology": "proxy_fence_to_from_release", "types": [], "shape": "none", "modifiers": ["proxy", "tensormap_to_generic", "release", "scope_cta_gpu_sys"]},
+                "fence-fence-proxy-tensormap-generic-release-cluster-default": {"topology": "proxy_fence_to_from_release", "types": [], "shape": "none", "modifiers": ["proxy", "tensormap_to_generic", "release", "cluster"]},
+                "fence-fence-proxy-tensormap-generic-acquire-default": {"topology": "proxy_fence_to_from_acquire", "types": ["u32"], "shape": "global_address_size", "modifiers": ["proxy", "tensormap_to_generic", "acquire", "scope_cta_gpu_sys"]},
+                "fence-fence-proxy-tensormap-generic-acquire-cluster-default": {"topology": "proxy_fence_to_from_acquire", "types": ["u32"], "shape": "global_address_size", "modifiers": ["proxy", "tensormap_to_generic", "acquire", "cluster"]},
+                "fence-fence-proxy-async-generic-acquire-sync-restrict-shared-cluster-default": {"topology": "proxy_fence_to_from_sync_restrict", "types": [], "shape": "none", "modifiers": ["proxy", "async_to_generic", "acquire", "sync_restrict_shared_cluster", "cluster"]},
+                "fence-fence-proxy-async-generic-release-sync-restrict-shared-cta-default": {"topology": "proxy_fence_to_from_sync_restrict", "types": [], "shape": "none", "modifiers": ["proxy", "async_to_generic", "release", "sync_restrict_shared_cta", "cluster"]},
+            },
+        )
+        self.assertEqual(
+            {
+                slice_id: selectors[slice_id]
+                for slice_id in (
+                    "griddepcontrol-griddepcontrol-launch-dependents-default",
+                    "griddepcontrol-griddepcontrol-wait-default",
+                )
+            },
+            {
+                "griddepcontrol-griddepcontrol-launch-dependents-default": {
+                    "topology": "grid_dependency_control", "types": [],
+                    "shape": "none", "modifiers": ["launch_dependents"],
+                },
+                "griddepcontrol-griddepcontrol-wait-default": {
+                    "topology": "grid_dependency_control", "types": [],
+                    "shape": "none", "modifiers": ["wait"],
+                },
+            },
+        )
 
         expected_layouts = {
             "call": {
@@ -277,6 +600,14 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("mov_scalar", "unpack"),
                 ("mov_v4_u32", "default"),
                 ("mov_pred", "default"),
+            },
+            "mapa": {
+                ("mapa_shared_cluster", "default"),
+                ("mapa_generic", "default"),
+            },
+            "getctarank": {
+                ("getctarank_shared_cluster", "default"),
+                ("getctarank_generic", "default"),
             },
             "bar": {
                 ("bar_sync", "immediate_barrier"),
@@ -298,6 +629,172 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 ("bar_red_or_pred", "with_thread_count"),
                 ("bar_cta_red_or_pred", "without_thread_count"),
                 ("bar_cta_red_or_pred", "with_thread_count"),
+                ("bar_warp_sync", "default"),
+            },
+            "barrier": {
+                ("barrier_cluster_arrive", "default"),
+                ("barrier_cluster_wait", "default"),
+            },
+            "match": {
+                ("match_any_sync", "default"),
+                ("match_all_sync", "without_predicate"),
+                ("match_all_sync", "with_predicate"),
+            },
+            "redux": {
+                ("redux_sync_add", "default"),
+                ("redux_sync_min", "default"),
+                ("redux_sync_max", "default"),
+                ("redux_sync_boolean", "default"),
+                ("redux_sync_min_f32", "default"),
+                ("redux_sync_max_f32", "default"),
+            },
+            "elect": {("elect_sync", "default")},
+            "griddepcontrol": {
+                ("griddepcontrol_launch_dependents", "default"),
+                ("griddepcontrol_wait", "default"),
+            },
+            "clusterlaunchcontrol": {
+                ("clusterlaunchcontrol_try_cancel_async_generic", "default"),
+                ("clusterlaunchcontrol_try_cancel_async_shared_cta", "default"),
+                ("clusterlaunchcontrol_try_cancel_async_multicast_generic", "default"),
+                ("clusterlaunchcontrol_try_cancel_async_multicast_shared_cta", "default"),
+                ("clusterlaunchcontrol_query_cancel_is_canceled_pred", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_v4", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_x", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_y", "default"),
+                ("clusterlaunchcontrol_query_cancel_get_first_ctaid_z", "default"),
+            },
+            "mbarrier": {
+                ("mbarrier_init_generic_v0", "default"),
+                ("mbarrier_init_shared_v0", "default"),
+                ("mbarrier_init_shared_cta_v0", "default"),
+                ("mbarrier_init_generic_v1", "default"),
+                ("mbarrier_init_shared_v1", "default"),
+                ("mbarrier_init_shared_cta_v1", "default"),
+                ("mbarrier_inval_generic", "default"),
+                ("mbarrier_inval_shared", "default"),
+                ("mbarrier_inval_shared_cta", "default"),
+                ("mbarrier_expect_tx_generic_or_shared", "default"),
+                ("mbarrier_expect_tx_shared_cta", "default"),
+                ("mbarrier_expect_tx_shared_cluster", "default"),
+                ("mbarrier_expect_tx_relaxed_cta_generic_or_shared", "default"),
+                ("mbarrier_expect_tx_relaxed_cta_shared_cta", "default"),
+                ("mbarrier_expect_tx_relaxed_cta_shared_cluster", "default"),
+                ("mbarrier_expect_tx_relaxed_cluster_generic_or_shared", "default"),
+                ("mbarrier_expect_tx_relaxed_cluster_shared_cta", "default"),
+                ("mbarrier_expect_tx_relaxed_cluster_shared_cluster", "default"),
+                ("mbarrier_complete_tx_generic_or_shared", "default"),
+                ("mbarrier_complete_tx_shared_cta", "default"),
+                ("mbarrier_complete_tx_shared_cluster", "default"),
+                ("mbarrier_complete_tx_relaxed_cta_generic_or_shared", "default"),
+                ("mbarrier_complete_tx_relaxed_cta_shared_cta", "default"),
+                ("mbarrier_complete_tx_relaxed_cta_shared_cluster", "default"),
+                ("mbarrier_complete_tx_relaxed_cluster_generic_or_shared", "default"),
+                ("mbarrier_complete_tx_relaxed_cluster_shared_cta", "default"),
+                ("mbarrier_complete_tx_relaxed_cluster_shared_cluster", "default"),
+                ("mbarrier_arrive_generic_or_shared", "no_count"),
+                ("mbarrier_arrive_generic_or_shared", "with_count"),
+                ("mbarrier_arrive_shared_cta", "no_count"),
+                ("mbarrier_arrive_shared_cta", "with_count"),
+                ("mbarrier_arrive_shared_cluster", "no_count"),
+                ("mbarrier_arrive_shared_cluster", "with_count"),
+                ("mbarrier_arrive_semantics_generic_or_shared", "no_count"),
+                ("mbarrier_arrive_semantics_generic_or_shared", "with_count"),
+                ("mbarrier_arrive_semantics_shared_cta", "no_count"),
+                ("mbarrier_arrive_semantics_shared_cta", "with_count"),
+                ("mbarrier_arrive_semantics_shared_cluster", "no_count"),
+                ("mbarrier_arrive_semantics_shared_cluster", "with_count"),
+                ("mbarrier_arrive_expect_tx_generic_or_shared", "default"),
+                ("mbarrier_arrive_expect_tx_shared_cta", "default"),
+                ("mbarrier_arrive_expect_tx_shared_cluster", "default"),
+                ("mbarrier_arrive_expect_tx_semantics_generic_or_shared", "default"),
+                ("mbarrier_arrive_expect_tx_semantics_shared_cta", "default"),
+                ("mbarrier_arrive_expect_tx_semantics_shared_cluster", "default"),
+                ("mbarrier_arrive_no_complete_generic_or_shared", "default"),
+                ("mbarrier_arrive_no_complete_shared_cta", "default"),
+                ("mbarrier_arrive_no_complete_release_cta_generic_or_shared", "default"),
+                ("mbarrier_arrive_no_complete_release_cta_shared_cta", "default"),
+                ("mbarrier_arrive_drop_generic_or_shared", "no_count"),
+                ("mbarrier_arrive_drop_generic_or_shared", "with_count"),
+                ("mbarrier_arrive_drop_shared_cta", "no_count"),
+                ("mbarrier_arrive_drop_shared_cta", "with_count"),
+                ("mbarrier_arrive_drop_shared_cluster", "no_count"),
+                ("mbarrier_arrive_drop_shared_cluster", "with_count"),
+                ("mbarrier_arrive_drop_semantics_generic_or_shared", "no_count"),
+                ("mbarrier_arrive_drop_semantics_generic_or_shared", "with_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cta", "no_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cta", "with_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cluster", "no_count"),
+                ("mbarrier_arrive_drop_semantics_shared_cluster", "with_count"),
+                ("mbarrier_arrive_drop_expect_tx_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_expect_tx_shared_cta", "default"),
+                ("mbarrier_arrive_drop_expect_tx_shared_cluster", "default"),
+                ("mbarrier_arrive_drop_expect_tx_semantics_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_expect_tx_semantics_shared_cta", "default"),
+                ("mbarrier_arrive_drop_expect_tx_semantics_shared_cluster", "default"),
+                ("mbarrier_arrive_drop_no_complete_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_no_complete_shared_cta", "default"),
+                ("mbarrier_arrive_drop_no_complete_release_cta_generic_or_shared", "default"),
+                ("mbarrier_arrive_drop_no_complete_release_cta_shared_cta", "default"),
+                ("mbarrier_test_wait_token_generic_or_shared", "default"),
+                ("mbarrier_test_wait_token_shared_cta", "default"),
+                ("mbarrier_test_wait_parity_generic_or_shared", "default"),
+                ("mbarrier_test_wait_parity_shared_cta", "default"),
+                ("mbarrier_try_wait_token_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_token_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_token_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_token_shared_cta", "with_hint"),
+                ("mbarrier_try_wait_parity_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_parity_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_parity_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_parity_shared_cta", "with_hint"),
+                ("mbarrier_test_wait_token_primary_generic_or_shared", "default"),
+                ("mbarrier_test_wait_token_primary_generic_or_shared", "report_predicate"),
+                ("mbarrier_test_wait_token_primary_generic_or_shared", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_primary_generic_or_shared", "default"),
+                ("mbarrier_test_wait_parity_primary_generic_or_shared", "report_predicate"),
+                ("mbarrier_test_wait_parity_primary_generic_or_shared", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_conditional_generic_or_shared", "default"),
+                ("mbarrier_test_wait_token_primary_shared_cta", "default"),
+                ("mbarrier_test_wait_token_primary_shared_cta", "report_predicate"),
+                ("mbarrier_test_wait_token_primary_shared_cta", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_primary_shared_cta", "default"),
+                ("mbarrier_test_wait_parity_primary_shared_cta", "report_predicate"),
+                ("mbarrier_test_wait_parity_primary_shared_cta", "report_predicate_value"),
+                ("mbarrier_test_wait_parity_conditional_shared_cta", "default"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_token_primary_generic_or_shared", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_parity_primary_generic_or_shared", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_conditional_generic_or_shared", "no_hint"),
+                ("mbarrier_try_wait_parity_conditional_generic_or_shared", "with_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "with_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_token_primary_shared_cta", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "with_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_no_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_with_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_value_no_hint"),
+                ("mbarrier_try_wait_parity_primary_shared_cta", "report_predicate_value_with_hint"),
+                ("mbarrier_try_wait_parity_conditional_shared_cta", "no_hint"),
+                ("mbarrier_try_wait_parity_conditional_shared_cta", "with_hint"),
+                ("mbarrier_pending_count", "default"),
+                ("mbarrier_check_layout_generic_v0", "default"),
+                ("mbarrier_check_layout_generic_v1", "default"),
+                ("mbarrier_check_layout_shared_cta_v0", "default"),
+                ("mbarrier_check_layout_shared_cta_v1", "default"),
             },
         }
         for opcode, expected in expected_layouts.items():

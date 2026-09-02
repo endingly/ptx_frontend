@@ -118,6 +118,32 @@ enum class MemoryScope : uint8_t {
   Sys,
 };
 
+/** Semantic value of a PTX mbarrier .phase_type qualifier. */
+enum class MbarrierPhaseType : uint8_t {
+  Primary,
+  Conditional,
+};
+
+/** Semantic value of a PTX mbarrier .layout qualifier. */
+enum class MbarrierLayout : uint8_t {
+  V0,
+  V1,
+};
+
+/** Proxy selected by the bi-directional fence.proxy.async form. */
+enum class AsyncProxyKind : uint8_t {
+  Async,
+  AsyncGlobal,
+  AsyncSharedCta,
+  AsyncSharedCluster,
+};
+
+/** Ordered to::from identity selected by a uni-directional proxy fence. */
+enum class ProxyKindPair : uint8_t {
+  TensormapToGeneric,
+  AsyncToGeneric,
+};
+
 template <typename Enum>
   requires std::is_enum_v<Enum>
 std::string to_string(Enum e) {

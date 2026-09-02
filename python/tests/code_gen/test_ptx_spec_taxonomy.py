@@ -51,19 +51,23 @@ EXPECTED_SECTIONS = {
         "not": {"9.7.8.4"}, "lop3": {"9.7.8.6"}, "shf": {"9.7.8.7"}, "shl": {"9.7.8.8"}, "shr": {"9.7.8.9"},
     },
     "data_movement_and_conversion.yaml": {
-        "mov": {"9.7.9"}, "shfl": {"9.7.9.6"}, "ld": {"9.7.9.8", "9.7.9.9"},
+        "mov": {"9.7.9"}, "mapa": {"9.7.9.24"}, "getctarank": {"9.7.9.25"}, "shfl": {"9.7.9.6"}, "ld": {"9.7.9.8", "9.7.9.9"},
         "ldu": {"9.7.9.10"}, "st": {"9.7.9.11"}, "prefetch": {"9.7.9.16"}, "prefetchu": {"9.7.9.16"}, "applypriority": {"9.7.9.17"}, "discard": {"9.7.9.18"}, "createpolicy": {"9.7.9.19"},
         "prmt": {"9.7.9.7"}, "isspacep": {"9.7.9.20"}, "cvta": {"9.7.9.21"}, "cvt": {"9.7.9.22", "9.7.9.23"},
-        "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3"},
+        "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3", "9.7.14.16.18"},
     },
     "control_flow.yaml": {
         "bra": {"9.7.13.3"}, "brx": {"9.7.13.4"}, "call": {"9.7.13.5"},
         "ret": {"9.7.13.6"}, "exit": {"9.7.13.7"},
     },
     "parallel_synchronization_and_communication.yaml": {
-        "bar": {"9.7.14.1"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
+        "bar": {"9.7.14.1", "9.7.14.2"}, "barrier": {"9.7.14.3"}, "membar": {"9.7.14.4"}, "fence": {"9.7.14.4"},
         "atom": {"9.7.14.5"}, "red": {"9.7.14.6"}, "vote": {"9.7.14.10"},
-        "activemask": {"9.7.14.12"},
+        "match": {"9.7.14.11"}, "activemask": {"9.7.14.12"}, "redux": {"9.7.14.13"},
+        "griddepcontrol": {"9.7.14.14"},
+        "clusterlaunchcontrol": {"9.7.14.18", "9.7.14.19"},
+        "elect": {"9.7.14.15"},
+        "mbarrier": {"9.7.14.16.12", "9.7.14.16.13", "9.7.14.16.14", "9.7.14.16.15", "9.7.14.16.16", "9.7.14.16.17", "9.7.14.16.19", "9.7.14.16.20", "9.7.14.16.21"},
     },
     "warp_level_matrix_multiply_accumulate.yaml": {
         "mma": {"9.7.15.5.14"}, "ldmatrix": {"9.7.15.5.15"},
@@ -87,7 +91,15 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             actual: dict[str, set[str]] = {}
             for instruction in spec["instructions"]:
                 actual.setdefault(instruction["opcode"], set()).add(instruction["section"])
-                self.assertTrue(instruction["section"].startswith(section or "9.7."))
+                for variant in instruction["variants"]:
+                    actual[instruction["opcode"]].add(
+                        variant.get("section", instruction["section"])
+                    )
+                self.assertTrue(
+                    instruction["section"].startswith(section or "9.7.")
+                    or instruction["section"]
+                    in EXPECTED_SECTIONS[name].get(instruction["opcode"], set())
+                )
             self.assertEqual(actual, EXPECTED_SECTIONS[name])
 
 

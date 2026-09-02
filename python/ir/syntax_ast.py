@@ -133,6 +133,7 @@ OPERAND_SYNTAX_SHAPES = {
     "reg": OperandSyntaxShape.IDENTIFIER_REF,
     "imm": OperandSyntaxShape.IMMEDIATE,
     "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    "reg_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
     "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "mov_scalar_src": (
@@ -140,6 +141,9 @@ OPERAND_SYNTAX_SHAPES = {
         | OperandSyntaxShape.IMMEDIATE
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
+    ),
+    "cluster_address": (
+        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS
     ),
     "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
     "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
@@ -153,6 +157,7 @@ OPERAND_SYNTAX_SHAPES = {
     "reg_vector": OperandSyntaxShape.VECTOR_PACK,
     "descriptor": OperandSyntaxShape.IDENTIFIER_REF,
     "typed_token": OperandSyntaxShape.IDENTIFIER_REF,
+    "mbarrier_state_token": OperandSyntaxShape.IDENTIFIER_REF,
     "tensor_coordinate": OperandSyntaxShape.VECTOR_PACK,
     "matrix_fragment": OperandSyntaxShape.VECTOR_PACK,
     "direct_call_target": OperandSyntaxShape.CALL_TARGET,

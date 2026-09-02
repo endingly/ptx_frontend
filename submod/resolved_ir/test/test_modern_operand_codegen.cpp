@@ -184,6 +184,81 @@ TEST(ModernOperandCodegen, ChecksImmediateRangeInEachOperandLayout) {
   }
 }
 
+TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
+  const auto module = resolveModule(parseModule(R"ptx(
+.version 9.3
+.entry kernel() {
+  .reg .b64 %state;
+  synthetic_mbarrier_domain %state;
+  synthetic_mbarrier_domain.phase_type::conditional.layout::v1 %state;
+}
+)ptx"));
+  ASSERT_TRUE(module.has_value()) << module.error().front().message;
+  const auto& default_instruction = std::get<SyntheticMbarrierDomain>(
+      module->functions.front().body[0]);
+  const auto& defaults = std::get<SyntheticMbarrierDomain::Defaults>(
+      default_instruction.variant);
+  EXPECT_EQ(defaults.phase_type.value, MbarrierPhaseType::Primary);
+  EXPECT_EQ(defaults.layout.value, MbarrierLayout::V0);
+  ASSERT_TRUE(defaults.state.value.register_ref.has_value());
+  EXPECT_EQ(defaults.state.value.register_ref->spelling, "%state");
+  EXPECT_EQ(defaults.state.value.register_ref->declared_type, ScalarType::B64);
+  ASSERT_FALSE(defaults.state.locs.empty());
+
+  const checker::Context context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 0},
+      .instruction_range = defaults.state.locs.front(),
+  };
+  EXPECT_TRUE(checker::check(default_instruction, context).has_value());
+
+  const auto& explicit_instruction = std::get<SyntheticMbarrierDomain>(
+      module->functions.front().body[1]);
+  const auto& explicit_values = std::get<SyntheticMbarrierDomain::Defaults>(
+      explicit_instruction.variant);
+  EXPECT_EQ(explicit_values.phase_type.value, MbarrierPhaseType::Conditional);
+  EXPECT_EQ(explicit_values.layout.value, MbarrierLayout::V1);
+  const checker::Context old_context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 0},
+      .instruction_range = explicit_values.state.locs.front(),
+  };
+  const auto unavailable = checker::check(explicit_instruction, old_context);
+  ASSERT_FALSE(unavailable.has_value());
+  ASSERT_EQ(unavailable.error().size(), 2u);
+  for (const auto& diagnostic : unavailable.error())
+    EXPECT_EQ(diagnostic.kind, checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  const auto wrong_type_module = resolveModule(parseModule(R"ptx(
+.version 9.3
+.entry kernel() {
+  .reg .u32 %state;
+  synthetic_mbarrier_domain %state;
+}
+)ptx"));
+  ASSERT_TRUE(wrong_type_module.has_value())
+      << wrong_type_module.error().front().message;
+  const auto& wrong_type_instruction = std::get<SyntheticMbarrierDomain>(
+      wrong_type_module->functions.front().body.front());
+  const auto& wrong_type = std::get<SyntheticMbarrierDomain::Defaults>(
+      wrong_type_instruction.variant);
+  const checker::Context wrong_type_context{
+      .target = {.ptx_version = {9, 2}, .sm_version = 0},
+      .instruction_range = wrong_type.state.locs.front(),
+  };
+  const auto wrong_type_result =
+      checker::check(wrong_type_instruction, wrong_type_context);
+  ASSERT_FALSE(wrong_type_result.has_value());
+  ASSERT_EQ(wrong_type_result.error().size(), 1u);
+  EXPECT_EQ(wrong_type_result.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  const auto register_only_sink = resolveModule(parseModule(R"ptx(
+.entry kernel() { synthetic_mbarrier_domain _; }
+)ptx"));
+  ASSERT_FALSE(register_only_sink.has_value());
+  EXPECT_NE(register_only_sink.error().front().message.find("not allowed"),
+            std::string::npos);
+}
+
 TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {
   const auto sm90a_module = resolveModule(parseModule(R"ptx(
 .version 8.0

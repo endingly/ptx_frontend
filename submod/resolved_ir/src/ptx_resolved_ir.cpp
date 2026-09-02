@@ -529,6 +529,58 @@ std::expected<WithLocs<MemoryScope>, ResolveDiagnostic> resolve_memory_scope(
   return WithLocs<MemoryScope>{*value, modifier.syntax.range};
 }
 
+std::expected<WithLocs<MbarrierPhaseType>, ResolveDiagnostic>
+resolve_mbarrier_phase_type(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(
+      generated_detail::kMbarrierPhaseTypes, modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown mbarrier phase type '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<MbarrierPhaseType>{*value, modifier.syntax.range};
+}
+
+std::expected<WithLocs<MbarrierLayout>, ResolveDiagnostic>
+resolve_mbarrier_layout(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kMbarrierLayouts,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown mbarrier layout '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<MbarrierLayout>{*value, modifier.syntax.range};
+}
+
+std::expected<WithLocs<AsyncProxyKind>, ResolveDiagnostic>
+resolve_async_proxy_kind(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kAsyncProxyKinds,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown async proxy kind '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<AsyncProxyKind>{*value, modifier.syntax.range};
+}
+
+std::expected<WithLocs<ProxyKindPair>, ResolveDiagnostic>
+resolve_proxy_kind_pair(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kProxyKindPairs,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown proxy kind pair '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<ProxyKindPair>{*value, modifier.syntax.range};
+}
+
 std::optional<VectorArity> vector_arity_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kVectorArities, spelling);
@@ -850,6 +902,8 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
 
 std::expected<WithLocs<ResolvedShflSyncDestination>, ResolveDiagnostic>
 resolve_shfl_destination(const syntax_ast::AstOperand& operand,
+                         bool allow_destination_sink,
+                         bool allow_predicate_sink,
                          const ResolveContext* context) {
   const auto* pair =
       std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
@@ -857,17 +911,50 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
     return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
                                                .message = "Expected d|p destination."});
   }
-  auto data = resolve_register(syntax_ast::AstOperand{pair->dst}, context);
-  if (!data)
-    return std::unexpected(data.error());
-  auto predicate = resolve_predicate_identifier(
-      pair->predicate, false, pair->predicate.syntax.range, context);
-  if (!predicate)
-    return std::unexpected(predicate.error());
-  return WithLocs<ResolvedShflSyncDestination>{
-      ResolvedShflSyncDestination{.data = std::move(data->value),
-                                  .predicate = std::move(predicate->value)},
+  std::optional<WithLoc<ResolvedRegisterRef>> data;
+  if (pair->dst.syntax.text == "_") {
+    if (!allow_destination_sink) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = pair->dst.syntax.range,
+          .message = "The '_' sink is not allowed in this d|p destination.",
+      });
+    }
+  } else {
+    auto resolved_data =
+        resolve_register(syntax_ast::AstOperand{pair->dst}, context);
+    if (!resolved_data)
+      return std::unexpected(resolved_data.error());
+    data = WithLoc<ResolvedRegisterRef>{std::move(resolved_data->value),
+                                        pair->dst.syntax.range};
+  }
+  std::optional<WithLoc<ResolvedPredicate>> predicate;
+  if (pair->predicate.syntax.text == "_") {
+    if (!allow_predicate_sink) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = pair->predicate.syntax.range,
+          .message = "The '_' sink is not allowed as the predicate half of this d|p destination.",
+      });
+    }
+  } else {
+    auto resolved_predicate = resolve_predicate_identifier(
+        pair->predicate, false, pair->predicate.syntax.range, context);
+    if (!resolved_predicate)
+      return std::unexpected(resolved_predicate.error());
+    predicate = WithLoc<ResolvedPredicate>{
+        std::move(resolved_predicate->value), pair->predicate.syntax.range};
+  }
+  if (!data && !predicate) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = pair->range,
+        .message = "A d|p destination must retain a data or predicate output.",
+    });
+  }
+  WithLocs<ResolvedShflSyncDestination> result{
+      ResolvedShflSyncDestination{.data = std::move(data),
+                                  .predicate = std::move(predicate)},
       pair->range};
+  result.locs = {pair->dst.syntax.range, pair->predicate.syntax.range};
+  return result;
 }
 
 std::expected<WithLocs<ResolvedPredicatePair>, ResolveDiagnostic>
@@ -1705,6 +1792,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    checker::VectorTypePolicy vector_type_policy,
                    base::ScalarTypeSizePolicy register_width_policy,
                    bool allow_sink,
+                   size_t sink_payload_bits,
                    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
@@ -1788,11 +1876,12 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
             .message = "The '_' sink is allowed only in a destination vector.",
         });
       }
-      if (vector_type_policy == checker::VectorTypePolicy::Element &&
-          vector_payload_bits != 256) {
+      if (sink_payload_bits != 0 && vector_payload_bits != sink_payload_bits) {
         return std::unexpected(ResolveDiagnostic{
             .range = identifier->syntax.range,
-            .message = "The '_' sink is allowed only in a 256-bit memory vector.",
+            .message = fmt::format(
+                "The '_' sink requires an exact {}-bit vector payload.",
+                sink_payload_bits),
         });
       }
       ++sink_count;
@@ -1949,6 +2038,7 @@ resolve_tensor_coordinate(
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
+                   bool allow_function_symbol,
                    const ResolveContext* context) {
   if (type == ScalarType::B128) {
     return std::unexpected(ResolveDiagnostic{
@@ -2083,6 +2173,12 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
     if (lookup) {
       const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
       if (symbol.kind == binding::SymbolKind::Function) {
+        if (!allow_function_symbol) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = identifier->syntax.range,
+              .message = "This operand does not accept a function symbol.",
+          });
+        }
         if (auto rejected = reject_shape(checker::OperandShape::Symbol,
                                          identifier->syntax.range)) {
           return std::unexpected(std::move(*rejected));
@@ -2337,6 +2433,47 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::MbarrierStateToken: {
+      const bool is_sink = std::get_if<syntax_ast::AstIdentifierRef>(&operand) != nullptr &&
+                           std::get<syntax_ast::AstIdentifierRef>(operand).syntax.text == "_";
+      if (is_sink) {
+        if (binding.mbarrier_state_token_form ==
+            checker::MbarrierStateTokenForm::Register) {
+          return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+              .message = "The '_' sink is not allowed for this mbarrier state token."});
+        }
+        return ResolvedFieldValue{WithLocs<ResolvedMbarrierStateToken>{
+            ResolvedMbarrierStateToken{.register_ref = std::nullopt},
+            syntax_ast::sourceRange(operand)}};
+      }
+      if (binding.mbarrier_state_token_form == checker::MbarrierStateTokenForm::Sink) {
+        return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+            .message = "This mbarrier state token requires the '_' sink."});
+      }
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<ResolvedMbarrierStateToken> token{
+          ResolvedMbarrierStateToken{.register_ref = std::move(value->value)}};
+      token.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(token)};
+    }
+    case ResolvedValueKind::RegisterOrSink: {
+      if (const auto* identifier =
+              std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+          identifier != nullptr && identifier->syntax.text == "_") {
+        return ResolvedFieldValue{WithLocs<ResolvedRegisterOrSink>{
+            ResolvedRegisterOrSink{.register_ref = std::nullopt},
+            identifier->syntax.range}};
+      }
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<ResolvedRegisterOrSink> destination{
+          ResolvedRegisterOrSink{.register_ref = std::move(value->value)}};
+      destination.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(destination)};
+    }
     case ResolvedValueKind::Predicate: {
       auto value = resolve_predicate(operand, context);
       if (!value)
@@ -2378,7 +2515,9 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::ShflDestination: {
-      auto value = resolve_shfl_destination(operand, context);
+      auto value = resolve_shfl_destination(
+          operand, binding.allow_destination_sink,
+          binding.allow_predicate_sink, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2395,7 +2534,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!type)
         return std::unexpected(type.error());
       auto value =
-          resolve_mov_source(operand, *type, binding.allowed_shapes, context);
+          resolve_mov_source(operand, *type, binding.allowed_shapes,
+                             binding.allow_function_symbol, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2463,7 +2603,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
                              *arity,
                              binding.vector_type_policy,
                              binding.register_width_policy,
-                             binding.allow_vector_sink, context);
+                             binding.allow_vector_sink,
+                             binding.vector_sink_payload_bits, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2509,6 +2650,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MemoryScope:
     case ResolvedValueKind::VectorArity:
     case ResolvedValueKind::MemoryStateSpace:
+    case ResolvedValueKind::MbarrierPhaseType:
+    case ResolvedValueKind::MbarrierLayout:
+    case ResolvedValueKind::AsyncProxyKind:
+    case ResolvedValueKind::ProxyKindPair:
       throw ResolveException(fmt::format(
           "Operand slot '{}' has a non-operand resolved value kind.",
           field.field_id));
@@ -2599,6 +2744,39 @@ ResolvedFieldValue resolve_default_modifier_value(
       }
       return ResolvedFieldValue{WithLocs<MemoryStateSpace>{
           default_value.memory_state_space}};
+    case ResolvedValueKind::MbarrierPhaseType:
+      if (default_value.kind !=
+          ResolvedModifierDefaultKind::MbarrierPhaseType) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires an mbarrier phase-type default "
+            "for resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MbarrierPhaseType>{
+          default_value.mbarrier_phase_type}};
+    case ResolvedValueKind::MbarrierLayout:
+      if (default_value.kind != ResolvedModifierDefaultKind::MbarrierLayout) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires an mbarrier layout default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<MbarrierLayout>{
+          default_value.mbarrier_layout}};
+    case ResolvedValueKind::AsyncProxyKind:
+      if (default_value.kind != ResolvedModifierDefaultKind::AsyncProxyKind) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires an async proxy default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<AsyncProxyKind>{
+          default_value.async_proxy_kind}};
+    case ResolvedValueKind::ProxyKindPair:
+      if (default_value.kind != ResolvedModifierDefaultKind::ProxyKindPair) {
+        throw ResolveException(fmt::format(
+            "Optional modifier '{}' requires a proxy pair default for "
+            "resolved field '{}'.", binding.source_kind_id, field.field_id));
+      }
+      return ResolvedFieldValue{WithLocs<ProxyKindPair>{
+          default_value.proxy_kind_pair}};
     case ResolvedValueKind::Register:
     case ResolvedValueKind::Predicate:
     case ResolvedValueKind::PredicateSource:
@@ -2614,6 +2792,8 @@ ResolvedFieldValue resolve_default_modifier_value(
     case ResolvedValueKind::SpecialRegister:
     case ResolvedValueKind::Symbol:
     case ResolvedValueKind::Address:
+    case ResolvedValueKind::MbarrierStateToken:
+    case ResolvedValueKind::RegisterOrSink:
     case ResolvedValueKind::RegisterVector:
     case ResolvedValueKind::TensorCoordinate:
     case ResolvedValueKind::DirectCallTarget:
@@ -2907,6 +3087,30 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
           return std::unexpected(value.error());
         fields.modifiers.emplace(field.field_id, std::move(*value));
       } break;
+      case ResolvedValueKind::MbarrierPhaseType: {
+        auto value = resolve_mbarrier_phase_type(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::MbarrierLayout: {
+        auto value = resolve_mbarrier_layout(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::AsyncProxyKind: {
+        auto value = resolve_async_proxy_kind(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
+      case ResolvedValueKind::ProxyKindPair: {
+        auto value = resolve_proxy_kind_pair(*actual->second);
+        if (!value)
+          return std::unexpected(value.error());
+        fields.modifiers.emplace(field.field_id, std::move(*value));
+      } break;
       case ResolvedValueKind::Register:
       case ResolvedValueKind::Predicate:
       case ResolvedValueKind::PredicateSource:
@@ -2927,6 +3131,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       case ResolvedValueKind::IndirectCallee:
       case ResolvedValueKind::CallReturnParameter:
       case ResolvedValueKind::CallArguments:
+      case ResolvedValueKind::MbarrierStateToken:
+      case ResolvedValueKind::RegisterOrSink:
         throw ResolveException(
             fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
                         binding.source_kind_id));

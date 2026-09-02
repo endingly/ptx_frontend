@@ -155,6 +155,40 @@ domains:
       param::func: MemoryStateSpace::Parameter
       shared: MemoryStateSpace::Shared
 
+  mbarrier_phase_types:
+    cpp_type: MbarrierPhaseType
+    default: MbarrierPhaseType::Primary
+    runtime_lookup: ptx_suffix
+    values:
+      phase_type::primary: MbarrierPhaseType::Primary
+      phase_type::conditional: MbarrierPhaseType::Conditional
+
+  mbarrier_layouts:
+    cpp_type: MbarrierLayout
+    default: MbarrierLayout::V0
+    runtime_lookup: ptx_suffix
+    values:
+      layout::v0: MbarrierLayout::V0
+      layout::v1: MbarrierLayout::V1
+
+  async_proxy_kinds:
+    cpp_type: AsyncProxyKind
+    default: AsyncProxyKind::Async
+    runtime_lookup: ptx_suffix
+    values:
+      async: AsyncProxyKind::Async
+      async.global: AsyncProxyKind::AsyncGlobal
+      async.shared::cta: AsyncProxyKind::AsyncSharedCta
+      async.shared::cluster: AsyncProxyKind::AsyncSharedCluster
+
+  proxy_kind_pairs:
+    cpp_type: ProxyKindPair
+    default: ProxyKindPair::TensormapToGeneric
+    runtime_lookup: ptx_suffix
+    values:
+      tensormap::generic: ProxyKindPair::TensormapToGeneric
+      async::generic: ProxyKindPair::AsyncToGeneric
+
   parameter_directions:
     cpp_type: ParameterDirection
     default: ParameterDirection::None
@@ -184,6 +218,10 @@ domains:
       scope: MemoryScope
       vector: VectorArity
       state_space: MemoryStateSpace
+      phase_type: MbarrierPhaseType
+      mbarrier_layout: MbarrierLayout
+      proxy: AsyncProxyKind
+      proxy_pair: ProxyKindPair
 
   operand_value_cpp_types:
     cpp_type: CppType
@@ -191,9 +229,11 @@ domains:
       reg: ResolvedRegisterRef
       imm: ResolvedImmediate
       reg_or_imm: RegOrImm
+      reg_or_sink: ResolvedRegisterOrSink
       shfl_dest: ResolvedShflSyncDestination
       pred_pair: ResolvedPredicatePair
       mov_scalar_src: ResolvedMovSource
+      cluster_address: ResolvedMovSource
       vector_reg: ResolvedVectorRegisterRef
       vector_sreg: ResolvedVectorSpecialRegisterRef
       pred: ResolvedPredicate
@@ -206,6 +246,7 @@ domains:
       reg_vector: ResolvedRegisterVector
       descriptor: ResolvedRegisterRef
       typed_token: ResolvedRegisterRef
+      mbarrier_state_token: ResolvedMbarrierStateToken
       tensor_coordinate: ResolvedTensorCoordinate
       matrix_fragment: ResolvedRegisterVector
       direct_call_target: ResolvedFunctionRef
@@ -229,7 +270,13 @@ domains:
       MemoryScope: MemoryScope
       VectorArity: VectorArity
       MemoryStateSpace: MemoryStateSpace
+      MbarrierPhaseType: MbarrierPhaseType
+      MbarrierLayout: MbarrierLayout
+      AsyncProxyKind: AsyncProxyKind
+      ProxyKindPair: ProxyKindPair
       Register: ResolvedRegisterRef
+      MbarrierStateToken: ResolvedMbarrierStateToken
+      RegisterOrSink: ResolvedRegisterOrSink
       Predicate: ResolvedPredicate
       PredicateSource: ResolvedPredicateSource
       Immediate: ResolvedImmediate
@@ -306,11 +353,17 @@ domains:
       MemoryScope: check_end::ResolvedValueKind::MemoryScope
       VectorArity: check_end::ResolvedValueKind::VectorArity
       MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
+      MbarrierPhaseType: check_end::ResolvedValueKind::MbarrierPhaseType
+      MbarrierLayout: check_end::ResolvedValueKind::MbarrierLayout
+      AsyncProxyKind: check_end::ResolvedValueKind::AsyncProxyKind
+      ProxyKindPair: check_end::ResolvedValueKind::ProxyKindPair
+      MbarrierStateToken: check_end::ResolvedValueKind::MbarrierStateToken
       Register: check_end::ResolvedValueKind::Register
       Predicate: check_end::ResolvedValueKind::Predicate
       PredicateSource: check_end::ResolvedValueKind::PredicateSource
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
+      RegisterOrSink: check_end::ResolvedValueKind::RegisterOrSink
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
       PredicatePair: check_end::ResolvedValueKind::PredicatePair
       MovSource: check_end::ResolvedValueKind::MovSource
@@ -383,6 +436,10 @@ domains:
       MemoryConsistency: check_end::ResolvedModifierDefaultKind::MemoryConsistency
       MemoryScope: check_end::ResolvedModifierDefaultKind::MemoryScope
       MemoryStateSpace: check_end::ResolvedModifierDefaultKind::MemoryStateSpace
+      MbarrierPhaseType: check_end::ResolvedModifierDefaultKind::MbarrierPhaseType
+      MbarrierLayout: check_end::ResolvedModifierDefaultKind::MbarrierLayout
+      AsyncProxyKind: check_end::ResolvedModifierDefaultKind::AsyncProxyKind
+      ProxyKindPair: check_end::ResolvedModifierDefaultKind::ProxyKindPair
 
   checker_modifier_value_kinds:
     cpp_type: checker::ModifierValueKind
@@ -398,6 +455,10 @@ domains:
       MemoryScope: checker::ModifierValueKind::MemoryScope
       VectorArity: checker::ModifierValueKind::VectorArity
       MemoryStateSpace: checker::ModifierValueKind::MemoryStateSpace
+      MbarrierPhaseType: checker::ModifierValueKind::MbarrierPhaseType
+      MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
+      AsyncProxyKind: checker::ModifierValueKind::AsyncProxyKind
+      ProxyKindPair: checker::ModifierValueKind::ProxyKindPair
 
 # Per-instruction C++ overrides remain available in the model/schema, but the
 # current resolved-IR generator derives instruction structure from ISA YAML.

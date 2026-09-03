@@ -53,6 +53,7 @@ def generate_resolved_ir_header(
 {generated_at_comment()}
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <variant>
@@ -149,12 +150,19 @@ def _emit_resolved_module_containers(
     return f"""\
 using ResolvedInstruction = std::variant<{alternatives}>;
 
+struct ResolvedLabelPosition {{
+  binding::SymbolId symbol_id;
+  std::size_t instruction_offset;
+  bool operator==(const ResolvedLabelPosition&) const = default;
+}};
+
 struct ResolvedFunction {{
   binding::SymbolId symbol_id;
   std::string name;
   bool is_entry{{}};
   bool is_prototype{{}};
   std::vector<ResolvedInstruction> body;
+  std::vector<ResolvedLabelPosition> label_positions;
   SourceRange range;
 }};
 

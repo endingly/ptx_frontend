@@ -57,10 +57,14 @@ callers while retaining the strongly typed per-opcode structures.
 `resolveModule` first builds a `SymbolTable`, then constructs an explicit
 `ResolveContext` for each function scope. The resulting `ResolvedModule` owns
 that table, and each `ResolvedFunction` is identified by its function
-`SymbolId`. Standalone `resolveInstruction` and `resolve<T>` remain
-declaration-free for single-instruction tools. Directives, declarations, and
-labels remain in the Syntax AST/symbol table instead of being copied into
-Resolved IR as unresolved string fields. Bound `.file` and `.debug_str`
+`SymbolId`. `ResolvedFunction::label_positions` records each function label as
+its bound `SymbolId` and a source-order boundary in the recursively flattened
+instruction body: labels before the first instruction are at zero, consecutive
+labels share a boundary, and a trailing label is at `body.size()`. Standalone
+`resolveInstruction` and `resolve<T>` remain declaration-free for
+single-instruction tools. Directives and declarations remain in the Syntax
+AST/symbol table instead of being copied into Resolved IR as unresolved string
+fields. Bound `.file` and `.debug_str`
 identities validate `.loc` metadata there, but `.loc`, `.section`, and
 `.pragma` do not add Resolved IR nodes or instruction attachment.
 

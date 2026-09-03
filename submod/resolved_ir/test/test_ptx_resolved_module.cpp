@@ -92,6 +92,63 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_EQ(src1.declared_type, ScalarType::U32);
 }
 
+TEST(ResolvedModule, RecordsFunctionLabelInstructionBoundaries) {
+  const auto ast = parseModule(R"ptx(
+.entry kernel() {
+first:
+second:
+  bra first;
+before_nested:
+  {
+nested:
+    bra nested;
+  }
+before_final:
+  bra before_final;
+trailing:
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const ResolvedFunction& function = resolved->functions.front();
+  ASSERT_EQ(function.body.size(), 3u);
+  ASSERT_EQ(function.label_positions.size(), 6u);
+  EXPECT_EQ(function.label_positions[0].instruction_offset, 0u);
+  EXPECT_EQ(function.label_positions[1].instruction_offset, 0u);
+  EXPECT_EQ(function.label_positions[2].instruction_offset, 1u);
+  EXPECT_EQ(function.label_positions[3].instruction_offset, 1u);
+  EXPECT_EQ(function.label_positions[4].instruction_offset, 2u);
+  EXPECT_EQ(function.label_positions[5].instruction_offset,
+            function.body.size());
+
+  constexpr std::array<std::string_view, 6> label_names{
+      "first", "second", "before_nested", "nested", "before_final", "trailing"};
+  for (size_t index = 0; index != function.label_positions.size(); ++index) {
+    const binding::Symbol& label =
+        resolved->symbols.symbol(function.label_positions[index].symbol_id);
+    EXPECT_EQ(label.kind, binding::SymbolKind::Label);
+    EXPECT_EQ(label.name, label_names[index]);
+  }
+
+  const auto& first =
+      std::get<Bra::Direct>(std::get<Bra>(function.body[0]).variant);
+  const auto& nested =
+      std::get<Bra::Direct>(std::get<Bra>(function.body[1]).variant);
+  const auto& before_final =
+      std::get<Bra::Direct>(std::get<Bra>(function.body[2]).variant);
+  ASSERT_TRUE(first.target.value.symbol_id.has_value());
+  ASSERT_TRUE(nested.target.value.symbol_id.has_value());
+  ASSERT_TRUE(before_final.target.value.symbol_id.has_value());
+  EXPECT_EQ(function.label_positions[0].symbol_id,
+            *first.target.value.symbol_id);
+  EXPECT_EQ(function.label_positions[3].symbol_id,
+            *nested.target.value.symbol_id);
+  EXPECT_EQ(function.label_positions[4].symbol_id,
+            *before_final.target.value.symbol_id);
+}
+
 TEST(ResolvedModule, ResolvesAndChecksM12I05FrozenAddForms) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .version 9.3

@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from base.utils import file_stem_to_pascal_case
-from code_gen.cpp_backend import (
+from ptx_frontend.base.utils import file_stem_to_pascal_case
+from ptx_frontend.code_gen.cpp_backend import (
     CppDomain,
     cpp_domain,
     cpp_optional_value,
     cpp_value,
 )
-from code_gen.model import (
+from ptx_frontend.code_gen.model import (
     AddressAlignmentConstraint,
     ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,

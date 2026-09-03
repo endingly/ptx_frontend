@@ -9,8 +9,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from code_gen.load_yaml import load_yaml
-from code_gen.model import (
+from .load_yaml import load_yaml
+from .model import (
     CodegenUnit,
     DomainBackend,
     EmitAlternativeBackend,

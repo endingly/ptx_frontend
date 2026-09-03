@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntFlag
-from code_gen.model import (
+from ptx_frontend.code_gen.model import (
     InstructionSpec,
     ModifierSpec,
     OperandLayoutKind as ModelOperandLayoutKind,

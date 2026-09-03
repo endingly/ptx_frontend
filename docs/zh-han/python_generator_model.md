@@ -15,11 +15,11 @@ YAML files
 
 ## 输入数据库
 
-`code_gen.database` 递归发现 canonical 的
+`ptx_frontend.code_gen.database` 递归发现 canonical 的
 `python/code_gen/resources/ptx_spec/**/*.yaml`（源码树可通过兼容 symlink
 `instructions/ptx_spec` 访问），按路径排序加载，并
 保证所有文件使用相同 schema 版本；同 opcode 的定义随后合并。`InstructionSpec` 的最小稳定
-模型位于 `code_gen.model`：
+模型位于 `ptx_frontend.code_gen.model`：
 
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
@@ -40,7 +40,7 @@ C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时�
 
 ## Normalization
 
-`code_gen.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
+`ptx_frontend.code_gen.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
 
 - 统一展开 `type_sets` 与 `value_sets` 的 `$name` 引用，并拒绝两者同名；
 - 将 operand 的 `type: {expr: modifier(type)}` 解析为
@@ -56,7 +56,7 @@ C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时�
 
 ## Syntax 模型
 
-`ir.syntax_ast` 从 `InstructionSpec` 构建源语法 descriptor 模型：
+`ptx_frontend.ir.syntax_ast` 从 `InstructionSpec` 构建源语法 descriptor 模型：
 
 ```python
 SyntaxInstructionDescriptor(opcode, variants)
@@ -72,7 +72,7 @@ shape 与 slot 数量。当前 `OperandLayoutKind.FLAT` 和 `reg`、`imm`、`reg
 
 ## Resolved 模型
 
-`ir.resolved_ir` 把相同的 `InstructionSpec` 映射为 C++ resolved field 设计：
+`ptx_frontend.ir.resolved_ir` 把相同的 `InstructionSpec` 映射为 C++ resolved field 设计：
 
 ```python
 ResolvedInstruction(opcode, cpp_name, variants)
@@ -143,7 +143,7 @@ specialization 声明位于公共头的单一 `checker` namespace，每个 categ
 
 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 及其
 `instructions/schemas/ptx-cpp-backend-v1.schema.yaml` 作为独立的 C++ backend
-配置层。`code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
+配置层。`ptx_frontend.code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
 checker emitter 只通过 typed lookup 读取 C++ 拼写。查询接口的 domain 参数必须使用
 `CppDomain` 枚举成员，例如 `CppDomain.SCALAR_TYPES`，不接受裸字符串。当前 domain
 覆盖 scalar type、

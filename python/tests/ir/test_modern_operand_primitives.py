@@ -16,21 +16,21 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from code_gen.database import load_codegen_database
-from code_gen.cpp_backend import configure_cpp_backend
-from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
-from code_gen.gen_resolved_checker_descriptor import (
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
+from ptx_frontend.code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from code_gen.gen_resolved_ir import (
+from ptx_frontend.code_gen.gen_resolved_ir import (
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
-from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
-from code_gen.load_yaml import load_yaml
-from code_gen.normalize import normalize_instruction_spec, normalize_operand
-from ir.resolved_ir import ResolvedOperandShape, from_instruction_spec
-from ir.syntax_ast import (
+from ptx_frontend.code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
+from ptx_frontend.code_gen.load_yaml import load_yaml
+from ptx_frontend.code_gen.normalize import normalize_instruction_spec, normalize_operand
+from ptx_frontend.ir.resolved_ir import ResolvedOperandShape, from_instruction_spec
+from ptx_frontend.ir.syntax_ast import (
     OPERAND_SYNTAX_SHAPES,
     OperandSyntaxShape,
     from_InstructionSpec,

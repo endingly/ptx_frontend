@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import yaml
 
-from code_gen import cpp_backend
-from code_gen.cpp_backend import (
+from ptx_frontend.code_gen import cpp_backend
+from ptx_frontend.code_gen.cpp_backend import (
     CppDomain,
     configure_cpp_backend,
     cpp_value,
     load_cpp_backend,
 )
-from code_gen.model import (
+from ptx_frontend.code_gen.model import (
     CodegenUnit,
     DomainBackend,
     EmitAlternativeBackend,
@@ -23,7 +23,7 @@ from code_gen.model import (
     OperandBackend,
     RuntimeLookupKind,
 )
-from ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage
+from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage
 
 
 REPOSITORY_CPP_BACKEND_SPEC = (

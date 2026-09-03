@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from base.utils import generated_at_comment
-from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
-from code_gen.database import CodegenDatabase
-from ir.resolved_ir import (
+from ptx_frontend.base.utils import generated_at_comment
+from .cpp_backend import CppDomain, cpp_default, cpp_value
+from .database import CodegenDatabase
+from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedFieldStorage,
     ResolvedInstruction,

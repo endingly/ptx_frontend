@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from base.utils import generated_at_comment, to_file_stem
-from code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
-from code_gen.gen_resolved_checker_descriptor import _emit_availability
-from code_gen.database import CodegenDatabase
-from ir.resolved_ir import (
+from ptx_frontend.base.utils import generated_at_comment, to_file_stem
+from .cpp_backend import CppDomain, cpp_default, cpp_value
+from .gen_resolved_checker_descriptor import _emit_availability
+from .database import CodegenDatabase
+from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedInstruction,
     ResolvedModifierBinding,

@@ -4,8 +4,8 @@ import unittest
 
 from jsonschema import Draft202012Validator
 
-from code_gen.database import load_codegen_database
-from code_gen.m12_natural_corpus import build_natural_manifest
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.m12_natural_corpus import build_natural_manifest
 
 
 ROOT = Path(__file__).resolve().parents[3]

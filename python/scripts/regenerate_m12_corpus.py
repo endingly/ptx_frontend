@@ -22,8 +22,8 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from code_gen.database import load_codegen_database
-from code_gen.m12_natural_corpus import (
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.m12_natural_corpus import (
     build_natural_manifest,
     canonical_bytes,
     fixture_targets,

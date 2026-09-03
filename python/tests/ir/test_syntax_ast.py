@@ -14,22 +14,22 @@ PYTHON_ROOT = REPO_ROOT / "python"
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from base.utils import generated_at_comment
-from code_gen.cpp_backend import configure_cpp_backend
-from code_gen.database import load_codegen_database
-from code_gen.gen_syntax_ast_arch import (
+from ptx_frontend.base.utils import generated_at_comment
+from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.gen_syntax_ast_arch import (
     emit_check_end_instruction_descriptor_implementation,
     generate_syntax_descriptor_source,
 )
-from code_gen.load_yaml import expand_value_refs
-from code_gen.model import (
+from ptx_frontend.code_gen.load_yaml import expand_value_refs
+from ptx_frontend.code_gen.model import (
     MbarrierStateTokenForm,
     OperandRegisterWidthPolicy,
     OperandVectorTypePolicy,
 )
-from code_gen.normalize import normalize_instruction_spec
-from ir.syntax_ast import from_InstructionSpec
-from ir.syntax_ast import (
+from ptx_frontend.code_gen.normalize import normalize_instruction_spec
+from ptx_frontend.ir.syntax_ast import from_InstructionSpec
+from ptx_frontend.ir.syntax_ast import (
     ModifierPresence,
     OperandLayoutKind,
     OperandPresence,

@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from code_gen.load_yaml import load_yaml
+from ptx_frontend.code_gen.load_yaml import load_yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

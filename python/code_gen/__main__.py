@@ -1,4 +1,4 @@
-from code_gen.cli import main
+from .cli import main
 
 
 main()

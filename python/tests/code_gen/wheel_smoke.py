@@ -22,15 +22,19 @@ def main(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
     for name in (
-        "code_gen/cli.py",
-        "code_gen/__main__.py",
-        "code_gen/resources/ptx_spec/arithmetic.yaml",
+        "ptx_frontend/base/utils.py",
+        "ptx_frontend/code_gen/cli.py",
+        "ptx_frontend/code_gen/__main__.py",
+        "ptx_frontend/code_gen/resources/ptx_spec/arithmetic.yaml",
+        "ptx_frontend/ir/resolved_ir.py",
         f"ptx_frontend-{EXPECTED_VERSION}.dist-info/METADATA",
     ):
         if name not in names:
             raise AssertionError(f"wheel is missing {name}")
     if any("ptx_cpp_backend_spec" in name for name in names):
         raise AssertionError("wheel contains a private backend specification")
+    if any(name.startswith(("base/", "code_gen/", "ir/")) for name in names):
+        raise AssertionError("wheel contains an unqualified top-level package")
 
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -45,14 +49,14 @@ def main(wheel: Path) -> None:
             check=True, cwd=root, env=wheel_environment,
         )
         installed_spec_dir = subprocess.check_output(
-            [executable, "-c", f"from importlib.metadata import version; from importlib.resources import files; assert version('ptx_frontend') == {EXPECTED_VERSION!r}; print(files('code_gen.resources').joinpath('ptx_spec'))"],
+            [executable, "-c", f"from importlib.metadata import version; from importlib.resources import files; assert version('ptx_frontend') == {EXPECTED_VERSION!r}; print(files('ptx_frontend.code_gen.resources').joinpath('ptx_spec'))"],
             text=True, cwd=root, env=wheel_environment,
         ).strip()
-        subprocess.run([executable, "-m", "code_gen", "--help"], check=True, cwd=root, env=wheel_environment)
+        subprocess.run([executable, "-m", "ptx_frontend.code_gen", "--help"], check=True, cwd=root, env=wheel_environment)
         subprocess.run([bin_dir / "ptx-frontend-codegen", "--help"], check=True, cwd=root, env=wheel_environment)
         generated = root / "generated"
         command = [
-            executable, "-m", "code_gen", "--spec-dir", installed_spec_dir,
+            executable, "-m", "ptx_frontend.code_gen", "--spec-dir", installed_spec_dir,
             "--backend-spec", str(BACKEND_SPEC), "--output", str(generated),
         ]
         listed_outputs = subprocess.check_output(

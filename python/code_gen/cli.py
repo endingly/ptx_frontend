@@ -5,20 +5,20 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from base.utils import format_file_inplace
-from code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
-from code_gen.database import CodegenDatabase, load_codegen_database
-from code_gen.gen_resolved_checker_descriptor import (
+from ptx_frontend.base.utils import format_file_inplace
+from .cpp_backend import configure_cpp_backend, get_cpp_backend
+from .database import CodegenDatabase, load_codegen_database
+from .gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from code_gen.gen_resolved_descriptor import generate_resolved_descriptor_source
-from code_gen.gen_resolved_ir import (
+from .gen_resolved_descriptor import generate_resolved_descriptor_source
+from .gen_resolved_ir import (
     generate_resolved_dispatch_source,
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
-from code_gen.gen_resolved_value_domains import generate_resolved_value_domain_header
-from code_gen.gen_syntax_ast_arch import generate_syntax_descriptor_source
+from .gen_resolved_value_domains import generate_resolved_value_domain_header
+from .gen_syntax_ast_arch import generate_syntax_descriptor_source
 
 
 def parse_arguments() -> argparse.Namespace:

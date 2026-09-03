@@ -15,7 +15,7 @@ The package then defines:
 - `ptx_frontend_PTX_SPEC_DIR`, the installed directory containing the public PTX instruction YAML files;
 - `ptx_frontend_PTX_SPEC_SCHEMA`, the installed `ptx-instr-v1.schema.yaml` path.
 
-The canonical PTX specification lives in `python/code_gen/resources/ptx_spec` and is packaged as Python `code_gen` data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` remains only as a source-tree compatibility symlink.
+The canonical PTX specification lives in `python/code_gen/resources/ptx_spec` and is packaged as Python `ptx_frontend.code_gen` data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` remains only as a source-tree compatibility symlink.
 
 The repository-specific C++ backend policy remains at `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`; it is deliberately not a Python package resource and is not part of `ptx_spec`.
 
@@ -34,7 +34,7 @@ The `codegen` component installs only the CMake helper and provides `ptx_fronten
 cmake -S . -B build -DPython3_EXECUTABLE=/path/to/python
 ```
 
-The helper invokes `python -m code_gen`. Generation requires the consumer to select a backend specification explicitly:
+The helper invokes `python -m ptx_frontend.code_gen`. Generation requires the consumer to select a backend specification explicitly:
 
 ```cmake
 ptx_frontend_generate(

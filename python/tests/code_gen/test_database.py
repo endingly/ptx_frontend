@@ -6,10 +6,10 @@ import unittest
 import yaml
 from jsonschema import Draft202012Validator
 
-from code_gen.database import load_codegen_database
-from code_gen.load_yaml import load_yaml
-from code_gen.gen_resolved_checker_descriptor import _emit_availability
-from code_gen.normalize import normalize_availability, normalize_operand
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.load_yaml import load_yaml
+from ptx_frontend.code_gen.gen_resolved_checker_descriptor import _emit_availability
+from ptx_frontend.code_gen.normalize import normalize_availability, normalize_operand
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

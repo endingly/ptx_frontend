@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from code_gen.load_yaml import expand_value_refs
-from code_gen.model import (
+from .load_yaml import expand_value_refs
+from .model import (
     AddressAlignmentConstraint,
     ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
@@ -31,7 +31,7 @@ from code_gen.model import (
     OperandVectorTypePolicy,
     VariantSpec,
 )
-from ir.syntax_ast import OPERAND_SYNTAX_SHAPES
+from ptx_frontend.ir.syntax_ast import OPERAND_SYNTAX_SHAPES
 
 
 UINT64_MAX = (1 << 64) - 1

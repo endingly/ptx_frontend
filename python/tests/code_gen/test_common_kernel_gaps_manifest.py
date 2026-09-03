@@ -5,8 +5,8 @@ import unittest
 import yaml
 from jsonschema import Draft202012Validator
 
-from code_gen.database import load_codegen_database
-from code_gen.m12_natural_corpus import classify_instruction_spelling
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.m12_natural_corpus import classify_instruction_spelling
 
 
 ROOT = Path(__file__).resolve().parents[3]

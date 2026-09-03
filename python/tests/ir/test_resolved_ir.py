@@ -14,24 +14,24 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from code_gen.database import load_codegen_database
-from code_gen.database import CodegenDatabase
-from code_gen.cpp_backend import configure_cpp_backend
-from code_gen.gen_resolved_descriptor import (
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.database import CodegenDatabase
+from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
     generate_resolved_descriptor_source,
 )
-from code_gen.gen_resolved_checker_descriptor import (
+from ptx_frontend.code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from code_gen.gen_resolved_ir import (
+from ptx_frontend.code_gen.gen_resolved_ir import (
     generate_resolved_dispatch_source,
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
-from code_gen.normalize import normalize_instruction_spec
-from ir.resolved_ir import (
+from ptx_frontend.code_gen.normalize import normalize_instruction_spec
+from ptx_frontend.ir.resolved_ir import (
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
     ResolvedOperandAccess,
@@ -44,7 +44,7 @@ from ir.resolved_ir import (
     ResolvedVectorTypePolicy,
     from_instruction_spec,
 )
-from code_gen.model import (
+from ptx_frontend.code_gen.model import (
     ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
     ImmediateValueConstraint,

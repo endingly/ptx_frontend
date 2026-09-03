@@ -16,11 +16,11 @@ YAML files
 
 ## Input database
 
-`code_gen.database` recursively discovers the canonical
+`ptx_frontend.code_gen.database` recursively discovers the canonical
 `python/code_gen/resources/ptx_spec/**/*.yaml` (available in source trees via
 the compatibility symlink `instructions/ptx_spec`),
 loads them in path order, enforces one schema version, and then merges
-definitions of the same opcode. The minimal stable model in `code_gen.model` is:
+definitions of the same opcode. The minimal stable model in `ptx_frontend.code_gen.model` is:
 
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
@@ -44,7 +44,7 @@ remaining independent of modifier source order.
 
 ## Normalization
 
-`code_gen.normalize` converts different legal YAML spellings into one model:
+`ptx_frontend.code_gen.normalize` converts different legal YAML spellings into one model:
 
 - expands `$name` references from both `type_sets` and `value_sets`, rejecting
   names defined in both namespaces;
@@ -61,7 +61,7 @@ the compatibility boundary, not the emitters.
 
 ## Syntax model
 
-`ir.syntax_ast` builds a source-syntax descriptor model from `InstructionSpec`:
+`ptx_frontend.ir.syntax_ast` builds a source-syntax descriptor model from `InstructionSpec`:
 
 ```python
 SyntaxInstructionDescriptor(opcode, variants)
@@ -79,7 +79,7 @@ AST shape must first extend this model and the C++ foundation ABI.
 
 ## Resolved model
 
-`ir.resolved_ir` maps the same `InstructionSpec` to a resolved C++ field model:
+`ptx_frontend.ir.resolved_ir` maps the same `InstructionSpec` to a resolved C++ field model:
 
 ```python
 ResolvedInstruction(opcode, cpp_name, variants)
@@ -162,7 +162,7 @@ backend specs and generator inputs therefore produce byte-identical content.
 
 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and
 `instructions/schemas/ptx-cpp-backend-v1.schema.yaml` are retained as a
-separate C++ backend configuration layer. `code_gen.cpp_backend` normalizes its
+separate C++ backend configuration layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
 `domains` into `DomainBackend`; Syntax, Resolved, and checker emitters use only
 typed lookups for C++ spellings. Lookup APIs require a `CppDomain` enum member,
 such as `CppDomain.SCALAR_TYPES`, rather than a bare string. Current domains

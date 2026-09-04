@@ -32,6 +32,7 @@ def main(wheel: Path) -> None:
         "ptx_frontend/code_gen/database.py",
         "ptx_frontend/code_gen/normalize.py",
         "ptx_frontend/code_gen/cpp_backend.py",
+        "ptx_frontend/code_gen/resources/ptx_cpp_backend_spec/ptx_frontend.yaml",
         "ptx_frontend/code_gen/resources/ptx_spec/arithmetic.yaml",
         "ptx_frontend/ir/resolved_ir.py",
         f"ptx_frontend-{EXPECTED_VERSION}.dist-info/METADATA",
@@ -53,8 +54,6 @@ def main(wheel: Path) -> None:
             raise AssertionError(f"wheel exports frontend-private module {name}")
     if any("/code_gen/_frontend/" in name for name in names):
         raise AssertionError("wheel contains the source-only frontend generator directory")
-    if any("ptx_cpp_backend_spec" in name for name in names):
-        raise AssertionError("wheel contains a private backend specification")
     if any(name.startswith(("base/", "code_gen/", "ir/", "spec/")) for name in names):
         raise AssertionError("wheel contains an unqualified top-level package")
 
@@ -80,10 +79,12 @@ from ptx_frontend.spec import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 from ptx_frontend.spec.resources import packaged_spec_schema
 from ptx_frontend.code_gen.model import InstructionSpec as CompatibilityInstructionSpec
+from ptx_frontend.code_gen.resources import packaged_cpp_backend
 
 assert version('ptx_frontend') == {EXPECTED_VERSION!r}
 assert InstructionSpec is CompatibilityInstructionSpec
 assert packaged_spec_schema().is_file()
+assert packaged_cpp_backend().is_file()
 assert not any(ep.name == 'ptx-frontend-codegen' for ep in distribution('ptx_frontend').entry_points)
 for module in (
     'ptx_frontend.code_gen.__main__',

@@ -23,6 +23,15 @@ The repository-specific C++ backend policy remains at `instructions/ptx_cpp_back
 
 The installed CMake package does not export a code-generation component or a `ptx_frontend_generate()` helper. Code generation is an implementation detail of the frontend source build and of downstream projects that own their own generators.
 
-Python consumers may install the separately distributed `ptx_frontend` wheel when they need the normalized PTX specification model or packaged specification resources. The current wheel exposes the model under `ptx_frontend.code_gen.model`; consumers should treat the schema (`ptx-instr-v1`) as the stable data contract. Frontend-only generator modules (`cli.py`, `gen_*.py`, and repository corpus-generation helpers) live under the source-only `python/code_gen/_frontend` directory and are deliberately excluded from the wheel. The wheel also does not install a `ptx-frontend-codegen` console script.
+Python consumers that need the normalized PTX specification model should use the public `ptx_frontend.spec` namespace:
 
-A future package cleanup may move the reusable specification model to a narrower public namespace such as `ptx_frontend.spec` without reintroducing a CMake codegen component.
+```python
+from ptx_frontend.spec import load_packaged_spec_database
+from ptx_frontend.spec.model import InstructionSpec
+
+database = load_packaged_spec_database()
+```
+
+`ptx_frontend.spec` is the downstream-facing Python API. It exposes the reusable instruction model, database loaders, normalization helpers, and resource accessors while preserving the same underlying model types used by the frontend itself. Consumers should treat the `ptx-instr/v1` schema as the stable data contract.
+
+`ptx_frontend.code_gen` remains an implementation/compatibility namespace for the frontend source build. New downstream code should not depend on it. Frontend-only generator modules (`cli.py`, `gen_*.py`, and repository corpus-generation helpers) live under the source-only `python/code_gen/_frontend` directory and are deliberately excluded from the wheel. The wheel also does not install a `ptx-frontend-codegen` console script.

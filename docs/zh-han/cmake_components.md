@@ -23,6 +23,15 @@ PTX specification 的 canonical source 位于 `python/code_gen/resources/ptx_spe
 
 安装后的 CMake package 不再导出 codegen component，也不提供 `ptx_frontend_generate()` helper。代码生成属于 frontend 源码构建以及下游项目自有 generator 的实现细节。
 
-需要复用规范化 PTX specification model 或 packaged specification resources 的 Python consumer，可以单独安装 `ptx_frontend` wheel。当前 wheel 通过 `ptx_frontend.code_gen.model` 暴露 model；长期应将 `ptx-instr-v1` schema 视为稳定的数据契约。frontend 专用的 generator modules（`cli.py`、`gen_*.py` 以及仓库 corpus generation helper）统一放在源码专用的 `python/code_gen/_frontend` 目录中，并明确不打入 wheel；wheel 也不再安装 `ptx-frontend-codegen` console script。
+需要复用规范化 PTX specification model 的 Python consumer，应当使用公共 `ptx_frontend.spec` namespace：
 
-后续可以把可复用 specification model 收窄为类似 `ptx_frontend.spec` 的公共 namespace，而无需重新引入 CMake codegen component。
+```python
+from ptx_frontend.spec import load_packaged_spec_database
+from ptx_frontend.spec.model import InstructionSpec
+
+database = load_packaged_spec_database()
+```
+
+`ptx_frontend.spec` 是面向下游的 Python API，提供可复用的 instruction model、database loader、normalization helper 和 resource accessor，同时与 frontend 自身使用完全相同的底层 model 类型。consumer 应将 `ptx-instr/v1` schema 视为稳定的数据契约。
+
+`ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现/兼容 namespace，新下游代码不应依赖它。frontend 专用的 generator modules（`cli.py`、`gen_*.py` 以及仓库 corpus generation helper）统一放在源码专用的 `python/code_gen/_frontend` 目录中，并明确不打入 wheel；wheel 也不再安装 `ptx-frontend-codegen` console script。

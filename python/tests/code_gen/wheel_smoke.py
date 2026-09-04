@@ -22,6 +22,12 @@ def main(wheel: Path) -> None:
         names = archive.namelist()
     for name in (
         "ptx_frontend/base/utils.py",
+        "ptx_frontend/spec/__init__.py",
+        "ptx_frontend/spec/model.py",
+        "ptx_frontend/spec/database.py",
+        "ptx_frontend/spec/resources.py",
+        "ptx_frontend/spec/normalize.py",
+        "ptx_frontend/spec/load_yaml.py",
         "ptx_frontend/code_gen/model.py",
         "ptx_frontend/code_gen/database.py",
         "ptx_frontend/code_gen/normalize.py",
@@ -49,7 +55,7 @@ def main(wheel: Path) -> None:
         raise AssertionError("wheel contains the source-only frontend generator directory")
     if any("ptx_cpp_backend_spec" in name for name in names):
         raise AssertionError("wheel contains a private backend specification")
-    if any(name.startswith(("base/", "code_gen/", "ir/")) for name in names):
+    if any(name.startswith(("base/", "code_gen/", "ir/", "spec/")) for name in names):
         raise AssertionError("wheel contains an unqualified top-level package")
 
     with tempfile.TemporaryDirectory() as directory:
@@ -68,15 +74,16 @@ def main(wheel: Path) -> None:
         )
         smoke = f"""
 from importlib.metadata import distribution, version
-from importlib.resources import files
 from importlib.util import find_spec
-from pathlib import Path
 
-from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.model import InstructionSpec
-import ptx_frontend.ir.resolved_ir
+from ptx_frontend.spec import load_packaged_spec_database
+from ptx_frontend.spec.model import InstructionSpec
+from ptx_frontend.spec.resources import packaged_spec_schema
+from ptx_frontend.code_gen.model import InstructionSpec as CompatibilityInstructionSpec
 
 assert version('ptx_frontend') == {EXPECTED_VERSION!r}
+assert InstructionSpec is CompatibilityInstructionSpec
+assert packaged_spec_schema().is_file()
 assert not any(ep.name == 'ptx-frontend-codegen' for ep in distribution('ptx_frontend').entry_points)
 for module in (
     'ptx_frontend.code_gen.__main__',
@@ -85,8 +92,8 @@ for module in (
     'ptx_frontend.code_gen.m12_natural_corpus',
 ):
     assert find_spec(module) is None, module
-spec_dir = Path(str(files('ptx_frontend.code_gen.resources').joinpath('ptx_spec')))
-database = load_codegen_database(spec_dir=spec_dir)
+
+database = load_packaged_spec_database()
 assert database.instructions
 assert all(isinstance(item, InstructionSpec) for item in database.instructions)
 assert any(item.opcode == 'add' for item in database.instructions)

@@ -1,4 +1,4 @@
-"""Reusable PTX specification models with source-tree generator compatibility."""
+"""Frontend-internal code-generation implementation and compatibility namespace."""
 
 from pathlib import Path
 

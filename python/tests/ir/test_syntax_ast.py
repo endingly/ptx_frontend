@@ -224,11 +224,16 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     ModifierPresence.OPTIONAL,
                     (".rn", ".rz", ".rm", ".rp"),
                 ),
+                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
                 ("result_type", ModifierPresence.REQUIRED, (".f32",)),
                 ("input_type", ModifierPresence.REQUIRED, (".f16", ".bf16")),
                 ("ftz", ModifierPresence.ABSENT, ()),
-                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
             ],
+        )
+        self.assertEqual(
+            [[modifier.kind_id for modifier in alias]
+            for alias in mixed.modifier_order_aliases],
+            [["rounding", "result_type", "input_type", "ftz", "sat"]],
         )
 
     def test_add_binary_flat_operand_layout(self) -> None:

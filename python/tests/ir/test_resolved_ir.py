@@ -388,9 +388,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
             [
                 ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
+                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
                 ("result_type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
                 ("input_type", "WithLocs<ScalarType>", ResolvedFieldStorage.INSTANCE),
-                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
             ],
         )
         self.assertEqual(
@@ -1965,9 +1965,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "GlobalNcL1NoAllocateU32",
             ],
         )
-        self.assertEqual(ld.variants[1].modifiers[0].presence, "required")
+        explicit_state_space = next(
+            modifier
+            for modifier in ld.variants[1].modifiers
+            if modifier.name == "state_space"
+        )
+        self.assertEqual(explicit_state_space.presence, "required")
         self.assertEqual(
-            [value.value for value in ld.variants[1].modifiers[0].values],
+            [value.value for value in explicit_state_space.values],
             [
                 "const",
                 "global",
@@ -2026,15 +2031,22 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ld.variants[0], ld.variants[1], ld.variants[4], ld.variants[5]
         ):
             self.assertEqual(
-                [value.value for value in syntax_variant.modifiers[-1].values],
+                [
+                    value.value
+                    for value in next(
+                        modifier
+                        for modifier in syntax_variant.modifiers
+                        if modifier.name == "type"
+                    ).values
+                ],
                 expected_types,
             )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
+                ("mmio", "WithLocs<bool>"),
                 ("semantics", "WithLocs<MemoryConsistency>"),
                 ("scope", "WithLocs<MemoryScope>"),
-                ("mmio", "WithLocs<bool>"),
                 ("cache", "WithLocs<CacheOperator>"),
                 ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
@@ -2146,11 +2158,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIsNone(address_binding.state_space_modifier_field_id)
 
         self.assertEqual(explicit_variant.cpp_name, "ExplicitScalar")
+        explicit_state_space_field = next(
+            field
+            for field in explicit_variant.modifier_fields
+            if field.name == "state_space"
+        )
         self.assertEqual(
             (
-                explicit_variant.modifier_fields[0].name,
-                explicit_variant.modifier_fields[0].cpp_type,
-                explicit_variant.modifier_fields[0].storage,
+                explicit_state_space_field.name,
+                explicit_state_space_field.cpp_type,
+                explicit_state_space_field.storage,
             ),
             (
                 "state_space",
@@ -2158,11 +2175,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ResolvedFieldStorage.INSTANCE,
             ),
         )
+        explicit_cache_field = next(
+            field
+            for field in explicit_variant.modifier_fields
+            if field.name == "cache"
+        )
+        explicit_cache_binding = next(
+            binding
+            for binding in explicit_variant.modifier_bindings
+            if binding.source_kind_id == "cache"
+        )
         self.assertEqual(
             (
-                explicit_variant.modifier_fields[1].name,
-                explicit_variant.modifier_fields[1].cpp_type,
-                explicit_variant.modifier_bindings[1].default_value.value,
+                explicit_cache_field.name,
+                explicit_cache_field.cpp_type,
+                explicit_cache_binding.default_value.value,
             ),
             ("cache", "WithLocs<CacheOperator>", "unspecified"),
         )
@@ -2256,8 +2283,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             if instruction.opcode == "st"
         )
         store = from_instruction_spec(st)
+        explicit_store_state_space = next(
+            modifier
+            for modifier in st.variants[1].modifiers
+            if modifier.name == "state_space"
+        )
         self.assertEqual(
-            [value.value for value in st.variants[1].modifiers[0].values],
+            [value.value for value in explicit_store_state_space.values],
             ["global", "local", "param", "param::func", "shared"],
         )
         self.assertEqual(
@@ -2275,12 +2307,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
             st.variants[0], st.variants[1], st.variants[4], st.variants[5]
         ):
             self.assertEqual(
-                [value.value for value in syntax_variant.modifiers[-1].values],
+                [
+                    value.value
+                    for value in next(
+                        modifier
+                        for modifier in syntax_variant.modifiers
+                        if modifier.name == "type"
+                    ).values
+                ],
                 expected_types,
             )
         self.assertEqual(
             [field.name for field in store.variants[0].fields],
-            ["semantics", "scope", "mmio", "cache", "type", "address", "src"],
+            ["mmio", "semantics", "scope", "cache", "type", "address", "src"],
         )
         self.assertEqual(
             next(binding for binding in store.variants[0].modifier_bindings
@@ -2313,7 +2352,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "state_space",
         )
         self.assertEqual(
-            store.variants[1].modifier_bindings[1].default_value.value,
+            next(
+                binding.default_value.value
+                for binding in store.variants[1].modifier_bindings
+                if binding.source_kind_id == "cache"
+            ),
             "unspecified",
         )
         self.assertEqual(
@@ -3087,9 +3130,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
-                ("state_space", "MemoryStateSpace"),
                 ("semantics", "MemoryConsistency"),
                 ("scope", "MemoryScope"),
+                ("state_space", "MemoryStateSpace"),
                 ("add", "bool"),
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
@@ -3126,9 +3169,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [
-                ("state_space", "MemoryStateSpace"),
                 ("semantics", "MemoryConsistency"),
                 ("scope", "MemoryScope"),
+                ("state_space", "MemoryStateSpace"),
                 ("add", "bool"),
                 ("type", "ScalarType"),
                 ("address", "WithLocs<ResolvedAddress>"),

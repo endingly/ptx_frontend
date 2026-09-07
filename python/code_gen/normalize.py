@@ -734,6 +734,53 @@ def normalize_operand_layouts(
     return normalized_layouts
 
 
+def normalize_modifier_order_aliases(
+    raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...]
+) -> tuple[tuple[str, ...], ...]:
+    """Validate complete historical orders for one variant's modifier slots."""
+
+    raw_aliases = raw_variant.get("modifier_order_aliases", [])
+    if not isinstance(raw_aliases, list):
+        raise TypeError("modifier_order_aliases must be a list")
+
+    canonical_order = tuple(modifier.name for modifier in modifiers)
+    slot_names = set(canonical_order)
+    aliases: list[tuple[str, ...]] = []
+    for raw_alias in raw_aliases:
+        if not isinstance(raw_alias, list) or not all(
+            isinstance(slot, str) for slot in raw_alias
+        ):
+            raise TypeError("modifier_order_aliases entries must be slot-name lists")
+        alias = tuple(raw_alias)
+        unknown_slots = set(alias) - slot_names
+        if unknown_slots:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: modifier order alias names "
+                f"unknown slots {sorted(unknown_slots)!r}"
+            )
+        if len(set(alias)) != len(alias):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: modifier order alias "
+                "repeats a modifier slot"
+            )
+        if len(alias) != len(canonical_order) or set(alias) != slot_names:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: modifier order alias must "
+                "contain every modifier slot"
+            )
+        if alias == canonical_order:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: modifier order alias "
+                "duplicates the canonical modifier order"
+            )
+        if alias in aliases:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: duplicate modifier order alias"
+            )
+        aliases.append(alias)
+    return tuple(aliases)
+
+
 def _modern_pack_interval(operand: OperandSpec) -> tuple[int, int] | None:
     if operand.minimum_elements is None:
         return None
@@ -1421,6 +1468,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                 normalize_modifier(modifier, reusable_value_sets)
                 for modifier in raw_variant.get("modifiers", ())
             )
+            modifier_order_aliases = normalize_modifier_order_aliases(
+                raw_variant, modifiers
+            )
             operand_layouts = normalize_operand_layouts(
                 raw_variant, default_operands, operand_patterns
             )
@@ -1434,6 +1484,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     availability=normalize_availability(raw_variant["availability"]),
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
+                    modifier_order_aliases=modifier_order_aliases,
                     rule=raw_variant.get("rule"),
                     operand_type_compatibilities=(
                         _normalize_operand_type_compatibilities(

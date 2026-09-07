@@ -52,8 +52,8 @@ PTX 9.7.1 至 9.7.5 合并的例外。
 
 合并按 spec 文件路径及文件内声明顺序进行。文件路径本身就是定义来源，不再需要额外的
 `fragment` ID。database 会在发射代码前拒绝重复 variant ID、PascalCase 后冲突的
-C++ variant 名、同一 variant 内一个 spelling 归属多个活动 modifier slot，以及可接受
-同一无序 modifier 集合的重叠 variant。
+C++ variant 名、存在歧义的 modifier slot 绑定，以及可接受同一有序 modifier 序列
+（包括显式声明的顺序别名）的重叠 variant。
 
 ## Variant 与 modifier
 
@@ -133,9 +133,33 @@ default，不是可拼写的 modifier value。
 `flag` 通常给出 `token: ".sat"`；`type` 的 token 通常从 `value` 或 `values` 推导。
 `name` 是当前 variant 内的 modifier slot ID，`kind` 决定解析后的值类型。同一个
 spelling 可以在不同 variant 绑定不同 slot，例如 `.f32` 在普通 Add 中绑定 `type`，在
-mixed Add 中绑定 `result_type`；但在单个 variant 内必须唯一归属一个活动 slot。
-modifier matching 不依赖源码顺序。不同 variant 接受的无序 modifier 集合必须互斥，
-否则 database 会在生成前拒绝。
+mixed Add 中绑定 `result_type`。matching 遵循 `modifiers` 的声明顺序；可以跳过
+optional 和 absent slot，但不能跳过 required slot。只有 required/fixed slot 可以
+共享 spelling，且必须由有序位置消除绑定歧义。不同 variant 接受的有序 modifier
+序列必须互斥，否则 database 会在生成前拒绝。
+
+以固定版本 PTX 手册的 **Syntax** 顺序作为规范声明顺序。有兼容性证据支持其他拼写时，
+variant 可以声明 `modifier_order_aliases`：每项必须是全部 modifier slot 名称的完整
+排列，包括 absent slot。例如 mixed Add/Sub 的规范顺序是
+`rounding, sat, result_type, input_type, ftz`，同时保留历史顺序：
+
+```yaml
+modifier_order_aliases:
+  - [rounding, result_type, input_type, ftz, sat]
+```
+
+别名选择同一个 variant，绑定相同的语义 field、default 与源码位置；它不允许任意
+重排，也不放宽 checker 约束。database 会拒绝不完整的排列，以及让同一源码序列
+产生不同 slot 绑定的别名。
+
+此规范顺序策略用于解决固定版本
+[mixed-precision Sub 文档](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-sub)
+中的不一致：Syntax 将 `.sat` 放在 type 之前，而一个 example 将它放在 type 之后。
+两种形式都保留；这不意味着 Syntax 穷举了 assembler 接受的所有拼写。
+
+使用 Python 包生成代码的消费者应同步升级 C++ frontend，并重新生成、编译产物。
+variant ID 和 field 名称稳定不代表二进制布局兼容：规范 slot 重排也会改变生成成员的
+顺序，syntax descriptor 还增加了 alias span。
 
 `values` 的单项可改写为对象，为某个语义值追加 target availability：
 

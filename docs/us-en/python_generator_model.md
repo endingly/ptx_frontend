@@ -25,7 +25,7 @@ definitions of the same opcode. The minimal stable model in `ptx_frontend.code_g
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
                 codegen_category)
-VariantSpec(name, availability, modifiers, operand_layouts, rule)
+VariantSpec(name, availability, modifiers, operand_layouts, rule, ..., modifier_order_aliases)
 OperandLayoutSpec(name, operands)
 ModifierSpec(name, kind, presence, values, value, token, default)
 OperandSpec(name, kind, role, access, type_expression)
@@ -36,11 +36,13 @@ YAML documentation, examples, and constraints that have no generator consumer
 must not silently leak into the C++ representation.
 
 After merging an opcode, the database validates the selector language. Active
-modifier slots within one variant must have disjoint spelling sets, and the
-unordered spelling sets accepted by different variants must not overlap. Slot
-names are variant-local, so one spelling may bind different slots across
-variants. These checks make candidate-local C++ binding deterministic while
-remaining independent of modifier source order.
+modifier slots may share spellings only when required/fixed positions make
+ordered binding unambiguous. Canonical modifier sequences and explicit
+`modifier_order_aliases` must bind identically when they overlap within a
+variant; accepted sequences must not overlap across variants. Slot names are
+variant-local, so one spelling may bind different slots across variants. These
+checks keep candidate-local C++ binding deterministic without accepting
+arbitrary source order.
 
 ## Normalization
 
@@ -65,7 +67,7 @@ the compatibility boundary, not the emitters.
 
 ```python
 SyntaxInstructionDescriptor(opcode, variants)
-SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts)
+SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts, modifier_order_aliases=())
 SyntaxModifierDescriptor(kind_id, presence, allowed_spellings)
 SyntaxOperandLayoutDescriptor(layout_id, kind, slots)
 ```

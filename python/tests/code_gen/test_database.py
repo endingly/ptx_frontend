@@ -452,6 +452,115 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             ["add_first", "add_second"],
         )
 
+    def test_accepts_complete_modifier_order_alias(self) -> None:
+        spec = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_mixed",
+            type_value="f32",
+        )
+        variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], spec["instructions"])[0]["variants"],
+        )[0]
+        variant["modifiers"] = [
+            {
+                "name": "result_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f32",
+            },
+            {
+                "name": "input_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f16",
+            },
+        ]
+        variant["modifier_order_aliases"] = [["input_type", "result_type"]]
+
+        database = self._load(spec)
+
+        self.assertEqual(
+            database.instructions[0].variants[0].modifier_order_aliases,
+            (("input_type", "result_type"),),
+        )
+
+    def test_rejects_invalid_modifier_order_aliases(self) -> None:
+        for alias, message in (
+            (["missing"], "unknown slots"),
+            (["type", "type"], "non-unique elements"),
+            ([], "contain every modifier slot"),
+            (["type"], "duplicates the canonical"),
+        ):
+            with self.subTest(alias=alias):
+                spec = _spec(
+                    category="floating_point",
+                    codegen_category="arithmetic",
+                    variant_name="add_alias",
+                    type_value="f32",
+                )
+                variant = cast(
+                    list[dict[str, Any]],
+                    cast(list[dict[str, Any]], spec["instructions"])[0]["variants"],
+                )[0]
+                variant["modifier_order_aliases"] = [alias]
+                with self.assertRaisesRegex(ValueError, message):
+                    self._load(spec)
+
+    def test_rejects_ambiguous_alias_binding_and_cross_variant_overlap(self) -> None:
+        ambiguous = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_repeated",
+            type_value="f16",
+        )
+        ambiguous_variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], ambiguous["instructions"])[0]["variants"],
+        )[0]
+        ambiguous_variant["modifiers"] = [
+            {
+                "name": "first_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f16",
+            },
+            {
+                "name": "second_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f16",
+            },
+        ]
+        ambiguous_variant["modifier_order_aliases"] = [["second_type", "first_type"]]
+        with self.assertRaisesRegex(ValueError, "different slot identities"):
+            self._load(ambiguous)
+
+        first = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_first",
+            type_value="f32",
+        )
+        first_variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], first["instructions"])[0]["variants"],
+        )[0]
+        first_variant["modifiers"].append({
+            "name": "input_type", "kind": "type", "presence": "fixed",
+            "domain": "scalar_types", "value": "f16",
+        })
+        first_variant["modifier_order_aliases"] = [["input_type", "type"]]
+        second = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_second",
+            type_value="f16",
+        )
+        second_variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], second["instructions"])[0]["variants"],
+        )[0]
+        second_variant["modifiers"].append({
+            "name": "input_type", "kind": "type", "presence": "fixed",
+            "domain": "scalar_types", "value": "f32",
+        })
+        with self.assertRaisesRegex(ValueError, "overlapping modifier combination"):
+            self._load(first, second)
+
 
 class AvailabilityNormalizationTests(unittest.TestCase):
     def test_vector_sink_payload_requires_an_enabled_sink(self) -> None:

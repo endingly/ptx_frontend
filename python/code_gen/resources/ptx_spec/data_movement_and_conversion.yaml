@@ -1015,6 +1015,15 @@ instructions:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - &memory_mmio
+            name: mmio
+            kind: flag
+            presence: optional
+            values:
+              - value: true
+                token: .mmio
+                availability: {ptx: "8.2", sm: 70}
+            default: false
           - &ld_semantics
             name: semantics
             kind: semantics
@@ -1046,15 +1055,6 @@ instructions:
               - value: sys
                 availability: {ptx: "6.0", sm: 70}
             default: none
-          - &memory_mmio
-            name: mmio
-            kind: flag
-            presence: optional
-            values:
-              - value: true
-                token: .mmio
-                availability: {ptx: "8.2", sm: 70}
-            default: false
           - name: cache
             kind: cache
             domain: cache_operators
@@ -1070,6 +1070,8 @@ instructions:
             values:
               - $ld_st_scalar_types
               - f64
+        modifier_order_aliases:
+          - [semantics, scope, mmio, cache, type]
         operands: $ld_scalar
         rule: data_movement.ld_generic
         constraints:
@@ -1094,6 +1096,9 @@ instructions:
           ptx: "1.0"
           sm: 0
         modifiers:
+          - *memory_mmio
+          - *ld_semantics
+          - *memory_scope
           - name: state_space
             kind: state_space
             domain: state_spaces
@@ -1107,9 +1112,6 @@ instructions:
               - value: $ld_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
-          - *ld_semantics
-          - *memory_scope
-          - *memory_mmio
           - name: type
             kind: type
             domain: scalar_types
@@ -1120,6 +1122,8 @@ instructions:
                 availability:
                   ptx: "1.0"
                   sm: 13
+        modifier_order_aliases:
+          - [state_space, cache, semantics, scope, mmio, type]
         operands: $ld_explicit_scalar
         rule: data_movement.ld_explicit
         constraints:
@@ -1265,6 +1269,8 @@ instructions:
           ptx: "1.0"
           sm: 0
         modifiers:
+          - *ld_semantics
+          - *memory_scope
           - name: state_space
             kind: state_space
             domain: state_spaces
@@ -1278,8 +1284,6 @@ instructions:
               - value: $ld_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
-          - *ld_semantics
-          - *memory_scope
           - name: vector
             kind: vector
             domain: vector_arities
@@ -1298,6 +1302,8 @@ instructions:
                 availability:
                   ptx: "1.0"
                   sm: 13
+        modifier_order_aliases:
+          - [state_space, cache, semantics, scope, vector, type]
         operands: $ld_explicit_vector
         rule: data_movement.ld_explicit
         constraints:
@@ -1701,6 +1707,7 @@ instructions:
           ptx: "2.0"
           sm: 20
         modifiers:
+          - *memory_mmio
           - &st_semantics
             name: semantics
             kind: semantics
@@ -1709,7 +1716,6 @@ instructions:
             values: [{value: weak, availability: {ptx: "6.0", sm: 70}}, {value: volatile, availability: {ptx: "1.1"}}, {value: relaxed, availability: {ptx: "6.0", sm: 70}}, {value: release, availability: {ptx: "6.0", sm: 70}}]
             default: omitted
           - *memory_scope
-          - *memory_mmio
           - name: cache
             kind: cache
             domain: cache_operators
@@ -1725,6 +1731,8 @@ instructions:
             values:
               - $ld_st_scalar_types
               - f64
+        modifier_order_aliases:
+          - [semantics, scope, mmio, cache, type]
         operands: $st_scalar
         rule: data_movement.st_generic
         constraints:
@@ -1747,6 +1755,9 @@ instructions:
           ptx: "1.0"
           sm: 0
         modifiers:
+          - *memory_mmio
+          - *st_semantics
+          - *memory_scope
           - name: state_space
             kind: state_space
             domain: state_spaces
@@ -1760,9 +1771,6 @@ instructions:
               - value: $st_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
-          - *st_semantics
-          - *memory_scope
-          - *memory_mmio
           - name: type
             kind: type
             domain: scalar_types
@@ -1773,6 +1781,8 @@ instructions:
                 availability:
                   ptx: "1.0"
                   sm: 13
+        modifier_order_aliases:
+          - [state_space, cache, semantics, scope, mmio, type]
         operands: $st_explicit_scalar
         rule: data_movement.st_explicit
         constraints:
@@ -1918,6 +1928,8 @@ instructions:
           ptx: "1.0"
           sm: 0
         modifiers:
+          - *st_semantics
+          - *memory_scope
           - name: state_space
             kind: state_space
             domain: state_spaces
@@ -1931,8 +1943,6 @@ instructions:
               - value: $st_cache_operators
                 availability: {ptx: "2.0", sm: 20}
             default: unspecified
-          - *st_semantics
-          - *memory_scope
           - name: vector
             kind: vector
             domain: vector_arities
@@ -1951,6 +1961,8 @@ instructions:
                 availability:
                   ptx: "1.0"
                   sm: 13
+        modifier_order_aliases:
+          - [state_space, cache, semantics, scope, vector, type]
         operands: $st_explicit_vector
         rule: data_movement.st_explicit
         constraints:

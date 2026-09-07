@@ -60,8 +60,8 @@ exception that combines PTX 9.7.1 through 9.7.5 under one category.
 Merging follows sorted spec-path and in-file declaration order. The file path is
 already the definition source, so no separate `fragment` ID is needed. Before
 emission, the database rejects duplicate variant IDs, PascalCase C++ variant
-name collisions, a spelling owned by multiple active modifier slots within one
-variant, and variants whose accepted unordered modifier sets overlap.
+name collisions, ambiguous modifier-slot bindings, and variants whose accepted
+ordered modifier sequences overlap (including declared order aliases).
 
 ## Variants and modifiers
 
@@ -146,10 +146,39 @@ source-absence defaults, not spellable modifier values.
 from `value` or `values`. `name` is the modifier-slot ID local to one variant,
 while `kind` determines the resolved value type. The same spelling may bind a
 different slot in another variant: `.f32` binds `type` in standard Add and
-`result_type` in mixed Add. Within one variant, each spelling must have one
-unique active owner. Matching ignores source order, and distinct variants must
-accept disjoint unordered modifier sets; the database rejects overlap before
-emission.
+`result_type` in mixed Add. Matching follows the `modifiers` declaration order;
+optional and absent slots may be skipped, but required slots may not. Repeated
+spellings are allowed only between required/fixed slots when their ordered
+positions disambiguate the binding. Distinct variants must accept disjoint
+ordered modifier sequences; the database rejects overlap before emission.
+
+Use the pinned PTX manual's **Syntax** order as the canonical declaration order.
+When compatibility evidence supports another spelling, a variant may declare
+`modifier_order_aliases`: each item is a complete permutation of its modifier
+slot names, including absent slots. For example, mixed Add/Sub use canonical
+`rounding, sat, result_type, input_type, ftz` and preserve the historical order:
+
+```yaml
+modifier_order_aliases:
+  - [rounding, result_type, input_type, ftz, sat]
+```
+
+Aliases select the same variant and bind the same semantic fields, defaults,
+and source locations; they do not permit arbitrary reordering or relax checker
+constraints. The database rejects incomplete permutations and aliases that
+give the same source sequence different slot bindings.
+
+This canonical-order policy resolves an inconsistency in the pinned
+[mixed-precision Sub documentation](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-sub):
+Syntax places `.sat` before the types, while an example places it after them.
+Both forms are retained; Syntax is not assumed to enumerate every spelling
+accepted by an assembler.
+
+Consumers generating code from the Python package should upgrade it together
+with the C++ frontend and regenerate/rebuild their artifacts. Stable variant
+IDs and field names do not imply binary-layout compatibility: canonical slot
+reordering also changes generated member order, and syntax descriptors now
+carry an additional alias span.
 
 One `values` item may be an object to add target availability for a semantic
 value:

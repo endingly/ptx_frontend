@@ -1478,6 +1478,19 @@ $defs:
         items:
           $ref: "#/$defs/modifier"
 
+      modifier_order_aliases:
+        description: >
+          Complete historical source orders for this variant's modifier slots.
+          Each entry is semantically validated as a unique permutation of the
+          canonical modifiers list, including absent slots.
+        type: array
+        uniqueItems: true
+        items:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/$defs/schema_identifier"
+
       operands:
         description: >
           Either a $name operand-pattern reference or an explicit operand list. If omitted,

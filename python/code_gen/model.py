@@ -259,6 +259,10 @@ class VariantSpec:
     immediate_value: ImmediateValueConstraint | None = None
     immediate_ranges: tuple[ImmediateRangeConstraint, ...] = ()
     immediate_multiple_of: ImmediateMultipleOfConstraint | None = None
+    # Complete historical source orders for the variant-local modifier slots.
+    # The canonical order remains ``modifiers``; each alias includes absent
+    # slots so it can be validated as a permutation of that order.
+    modifier_order_aliases: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)

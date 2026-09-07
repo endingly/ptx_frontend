@@ -354,12 +354,14 @@ be disguised as `Flat`.
 generated opcode-specific implementation. Shared logic performs these steps:
 
 1. The common matcher diagnoses spellings unknown to the whole syntax
-   descriptor, then binds spellings to unique active slots separately inside
-   each candidate variant. Reusing one slot is a user diagnostic; one spelling
-   owned by multiple active slots in a variant is a descriptor bug.
+   descriptor, then binds spellings to ordered slots separately inside each
+   candidate variant. Required/fixed slots may share a spelling when their
+   positions disambiguate it; repeated optional spellings are rejected by the
+   database. Reusing one slot is a user diagnostic.
 2. `selectVariant<T>` selects exactly one variant from those variant-local
    bindings. `absent`, `optional`, and `required/fixed` match by slot and
-   allowed value, independent of source modifier order.
+   allowed value in canonical or explicitly declared alias order. Order aliases
+   do not create new semantic variants or change field bindings.
 3. The selected variant chooses exactly one `OperandLayout` from AST shapes and
    arity.
 4. `resolve_fields` resolves the common execution predicate and converts

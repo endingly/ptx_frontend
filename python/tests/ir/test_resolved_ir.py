@@ -69,6 +69,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
+        # Repository specs remain unchanged.
+        # Tests needing mutation load their own fixture.
         cls.database = database
         add = next(
             instruction
@@ -774,9 +776,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_bar_sync_uses_distinct_modifier_variants_and_operand_layouts(
         self,
     ) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         bar = next(
             instruction
             for instruction in database.instructions
@@ -882,9 +882,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_barrier_cluster_model_defaults_and_availability(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         barrier = next(
             instruction
             for instruction in database.instructions
@@ -928,9 +926,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertEqual(variant.operand_layouts[0].fields, ())
 
     def test_match_sync_model_layouts_and_availability(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         match = next(
             instruction
             for instruction in database.instructions
@@ -1002,9 +998,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
 
     def test_redux_sync_model_variants_and_availability(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         redux = next(
             instruction
             for instruction in database.instructions
@@ -1053,9 +1047,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
 
     def test_griddepcontrol_model_has_two_zero_operand_actions(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         griddepcontrol = next(
             instruction
             for instruction in database.instructions
@@ -1081,9 +1073,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
 
     def test_elect_sync_model_allows_only_its_destination_sink(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         elect = next(
             instruction
             for instruction in database.instructions
@@ -1117,9 +1107,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.allow_destination_sink = true,', source)
 
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         bra = next(
             instruction
             for instruction in database.instructions
@@ -1152,9 +1140,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.rule, "control_flow.bra")
 
     def test_brx_uses_a_u32_register_and_branch_target_set(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         brx = next(
             instruction
             for instruction in database.instructions
@@ -1188,9 +1174,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.rule, "control_flow.brx_idx")
 
     def test_ret_uses_a_bare_zero_operand_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ret = next(
             instruction
             for instruction in database.instructions
@@ -1207,9 +1191,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_exit_uses_a_bare_zero_operand_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         exit_instruction = next(
             instruction
             for instruction in database.instructions
@@ -1226,9 +1208,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_trap_uses_a_bare_zero_operand_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         trap = next(
             instruction
             for instruction in database.instructions
@@ -1245,9 +1225,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_and_uses_a_fixed_b32_binary_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         and_instruction = next(
             instruction
             for instruction in database.instructions
@@ -1266,9 +1244,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_or_uses_a_fixed_b32_binary_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         or_instruction = next(
             instruction
             for instruction in database.instructions
@@ -1285,7 +1261,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_xor_uses_a_fixed_b32_binary_variant(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         xor = next(item for item in database.instructions if item.opcode == "xor")
         instruction = from_instruction_spec(xor)
         self.assertEqual(instruction.cpp_name, "Xor")
@@ -1297,7 +1273,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_not_uses_a_fixed_b32_unary_variant(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         not_instruction = next(item for item in database.instructions if item.opcode == "not")
         instruction = from_instruction_spec(not_instruction)
         self.assertEqual(instruction.cpp_name, "Not")
@@ -1309,7 +1285,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shl_uses_fixed_b32_data_and_u32_amount(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         shl = next(item for item in database.instructions if item.opcode == "shl")
         instruction = from_instruction_spec(shl)
         self.assertEqual(instruction.cpp_name, "Shl")
@@ -1321,7 +1297,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shr_uses_fixed_u32_data_and_count(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         shr = next(item for item in database.instructions if item.opcode == "shr")
         instruction = from_instruction_spec(shr)
         self.assertEqual(instruction.cpp_name, "Shr")
@@ -1333,9 +1309,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mov = next(
             instruction
             for instruction in database.instructions
@@ -1473,9 +1447,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
 
     def test_mapa_uses_cluster_address_without_function_symbols(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mapa = next(
             instruction
             for instruction in database.instructions
@@ -1524,9 +1496,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_getctarank_uses_cluster_address_and_u32_rank_destination(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         getctarank = next(
             instruction
             for instruction in database.instructions
@@ -1974,9 +1944,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                              ResolvedRegisterWidthPolicy.EXACT)
 
     def test_ld_and_st_scalar_model_constraints(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ld = next(
             instruction
             for instruction in database.instructions
@@ -2424,9 +2392,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_ldu_global_u32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ldu = next(
             instruction
             for instruction in database.instructions
@@ -2459,9 +2425,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_prefetch_global_l1_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         prefetch = next(
             instruction
             for instruction in database.instructions
@@ -2489,9 +2453,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_prefetchu_l1_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         prefetchu = next(
             instruction
             for instruction in database.instructions
@@ -2514,9 +2476,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_createpolicy_fractional_l2_evict_last_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         createpolicy = next(
             instruction
             for instruction in database.instructions
@@ -2548,9 +2508,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_applypriority_global_l2_evict_normal_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         applypriority = next(
             instruction
             for instruction in database.instructions
@@ -2578,9 +2536,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_discard_global_l2_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         discard = next(
             instruction
             for instruction in database.instructions
@@ -2607,9 +2563,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         setmaxnreg = next(
             instruction
             for instruction in database.instructions
@@ -2673,9 +2627,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".divisor = uint64_t{8ULL},", descriptor)
 
     def test_cp_async_ca_shared_global_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         resolved = from_instruction_spec(cp)
         variant = resolved.variants[0]
@@ -2717,9 +2669,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_cp_async_mbarrier_arrive_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variants = from_instruction_spec(cp).variants[4:8]
 
@@ -2755,7 +2705,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertEqual(alignment.alignment, 8)
 
     def test_clusterlaunchcontrol_try_cancel_model(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         instruction = next(
             instruction
             for instruction in database.instructions
@@ -2842,9 +2792,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_cp_async_commit_group_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variant = from_instruction_spec(cp).variants[1]
 
@@ -2857,9 +2805,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_cp_async_wait_group_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variant = from_instruction_spec(cp).variants[2]
 
@@ -2881,9 +2827,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_cp_async_wait_all_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variant = from_instruction_spec(cp).variants[3]
 
@@ -2896,9 +2840,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_ldmatrix_sync_aligned_m8n8_x2_shared_b16_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ldmatrix = next(
             instruction for instruction in database.instructions if instruction.opcode == "ldmatrix"
         )
@@ -2939,9 +2881,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(alignment.alignment, 16)
 
     def test_mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mma = next(
             instruction for instruction in database.instructions if instruction.opcode == "mma"
         )
@@ -3001,9 +2941,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("std::expected<Mma, ResolveDiagnostic>", source)
 
     def test_cp_generator_emits_immediate_value_checker(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
@@ -3049,9 +2987,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.maximum = ~uint64_t{0},', descriptor)
 
     def test_membar_cta_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         membar = next(
             instruction
             for instruction in database.instructions
@@ -3072,9 +3008,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_fence_acq_rel_cta_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         fence = next(
             instruction
             for instruction in database.instructions
@@ -3135,9 +3069,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(release_sync.operand_layouts[0].bindings, ())
 
     def test_atom_global_relaxed_cta_add_u32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         atom = next(
             instruction
             for instruction in database.instructions
@@ -3176,9 +3108,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(bindings[1].state_space_modifier_field_id, "state_space")
 
     def test_red_global_relaxed_cta_add_u32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         red = next(
             instruction
             for instruction in database.instructions
@@ -3213,9 +3143,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
 
     def test_activemask_b32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         activemask = next(
             instruction
             for instruction in database.instructions
@@ -3239,9 +3167,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_vote_sync_ballot_b32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         vote = next(
             instruction
             for instruction in database.instructions
@@ -3272,9 +3198,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shfl_sync_idx_b32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         shfl = next(
             instruction
             for instruction in database.instructions
@@ -3309,9 +3233,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shfl_generator_emits_pair_operand_view(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             generate_resolved_ir_source(
@@ -3328,9 +3250,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("selected.dst.value.data\n                      ?", source)
 
     def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
             generate_resolved_ir_source(
@@ -3348,9 +3268,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("selected.dst.value.second.register_ref.declared_type", source)
 
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         for opcode in ("ld", "st"):
             spec = next(
@@ -3379,9 +3297,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertEqual(cache_binding.default_value.value, "unspecified")
 
     def test_generate_resolved_ir_header(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir.gen.hpp"
@@ -3535,9 +3451,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
 
     def test_generate_resolved_instruction_dispatch_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_dispatch.gen.cpp"
@@ -3624,9 +3538,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
@@ -3651,9 +3563,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Trap>(", source)
 
     def test_generate_data_movement_resolved_ir_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
@@ -3730,9 +3640,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_memory_vector(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
@@ -3818,9 +3726,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertNotIn(opcode_wrapper, checker_source)
 
     def test_generate_private_resolved_descriptor_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
@@ -3939,9 +3845,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.capabilities = {{"tensor"}}', parameter_source)
 
     def test_generate_private_checker_descriptor_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"

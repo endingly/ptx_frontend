@@ -4,11 +4,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   push:
-    branches: [main]
-    paths:
-      - .github/workflows/linux-ci.yml
-      - .github/workflows/python-and-package-consumer.yml
-      - vcpkg.json
+    # PR caches cannot warm other PRs; keep both integration branches warm.
+    branches: [dev, main]
   schedule:
     - cron: "0 0 1 * *"
   workflow_dispatch:
@@ -27,6 +24,7 @@ env:
   VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.cache/vcpkg/archives,readwrite"
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   CCACHE_MAXSIZE: 1G
+  PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
 
 jobs:
   test:
@@ -80,11 +78,25 @@ jobs:
             zip
           sudo chmod -R a+rX "$APT_CACHE_DIR"
 
+      - name: Compute toolchain cache identity
+        id: toolchain
+        shell: bash
+        run: |
+          fingerprint=$( { printf '%s\n' "$ImageOS" "$ImageVersion"; g++ --version; cmake --version; } | sha256sum | cut -d ' ' -f 1)
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Python download cache
+        uses: actions/cache@v6
+        with:
+          path: .cache/pip
+          key: pip-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}-
+
       - name: Install Python generator dependencies
         shell: bash
         run: |
           python3 -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
@@ -94,9 +106,10 @@ jobs:
           path: |
             .cache/vcpkg/archives
             .cache/vcpkg/downloads
-          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          # Refresh immutable snapshots so newly built ABIs survive this run.
+          key: vcpkg-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-${{ runner.arch }}-
+            vcpkg-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('vcpkg.json') }}-
 
       - name: Prepare vcpkg cache directories
         shell: bash
@@ -114,13 +127,22 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/ccache
-          key: ccache-v3-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.cache-epoch.outputs.month }}-${{ hashFiles('.github/workflows/python-and-package-consumer.yml', 'CMakeLists.txt', 'CMakePresets.json', '**/CMakeLists.txt', '**/*.cmake', 'vcpkg.json', 'requirements.txt', 'python/base/**/*.py', 'python/code_gen/**/*.py', 'python/ir/**/*.py', 'instructions/**/*.yaml') }}
+          # Save a fresh snapshot after source changes, independently of full Debug.
+          key: ccache-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-consumer-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ccache-v3-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-
+            ccache-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-consumer-
 
-      - name: Run Python and package-consumer workflow
+      - name: Configure
         shell: bash
-        run: cmake --workflow --preset ci-python-and-package-consumer
+        run: |
+          ccache --zero-stats
+          cmake --preset ci-linux-gcc-debug
+
+      - name: Build
+        run: cmake --build --preset ci-python-and-package-consumer
+
+      - name: Test Python and package consumer
+        run: ctest --preset ci-python-and-package-consumer --output-on-failure
 
       - name: Show compiler cache statistics
         if: always()

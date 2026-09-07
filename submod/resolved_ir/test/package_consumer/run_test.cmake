@@ -180,18 +180,49 @@ if(DEFINED PTX_MAGIC_ENUM_DIR AND NOT PTX_MAGIC_ENUM_DIR STREQUAL "")
         "-Dmagic_enum_DIR=${PTX_MAGIC_ENUM_DIR}")
 endif()
 execute_process(COMMAND ${_nondefault_configure_command} COMMAND_ERROR_IS_FATAL ANY)
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_nondefault_build_dir}"
-    --parallel --target resolved_ir COMMAND_ERROR_IS_FATAL ANY)
-execute_process(COMMAND "${CMAKE_COMMAND}" --install "${_nondefault_build_dir}"
-    --prefix "${_nondefault_install_dir}" COMMAND_ERROR_IS_FATAL ANY)
+
+# Reuse the default prefix's compiled targets. The custom-data configure only
+# needs to install ptx_spec and replace the package config that records its
+# relocated data path.
+file(COPY "${_install_dir}/" DESTINATION "${_nondefault_install_dir}")
+file(REMOVE_RECURSE
+    "${_nondefault_install_dir}/share/ptx_frontend/ptx_spec")
+file(REMOVE "${_nondefault_install_dir}/share/ptx_frontend/ptx-instr-v1.schema.yaml")
+set(_nondefault_install_command
+    "${CMAKE_COMMAND}" --install "${_nondefault_build_dir}"
+    --prefix "${_nondefault_install_dir}" --component ptx_spec)
+if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
+    list(APPEND _nondefault_install_command --config "${PTX_TEST_CONFIG}")
+endif()
+execute_process(COMMAND ${_nondefault_install_command} COMMAND_ERROR_IS_FATAL ANY)
+
+set(_nondefault_package_config
+    "${_nondefault_build_dir}/ptx_frontendConfig.cmake")
+set(_nondefault_installed_package_config
+    "${_nondefault_install_dir}/lib/cmake/ptx_frontend/ptx_frontendConfig.cmake")
+if(NOT EXISTS "${_nondefault_package_config}")
+    message(FATAL_ERROR "Custom-data package config was not generated")
+endif()
+file(READ "${_nondefault_package_config}" _nondefault_package_config_content)
+if(NOT _nondefault_package_config_content MATCHES
+       "custom-data/ptx_frontend/ptx_spec")
+    message(FATAL_ERROR "Custom-data package config does not record the PTX spec path")
+endif()
+file(COPY_FILE "${_nondefault_package_config}"
+    "${_nondefault_installed_package_config}" ONLY_IF_DIFFERENT)
 
 if(NOT EXISTS "${_nondefault_install_dir}/custom-data/ptx_frontend/ptx_spec/arithmetic.yaml")
     message(FATAL_ERROR "Non-default PTX spec install location is missing")
+endif()
+if(EXISTS "${_nondefault_install_dir}/share/ptx_frontend/ptx_spec" OR
+   EXISTS "${_nondefault_install_dir}/share/ptx_frontend/ptx-instr-v1.schema.yaml")
+    message(FATAL_ERROR "Non-default install retained default PTX spec resources")
 endif()
 set(_nondefault_consumer_command
     "${CMAKE_COMMAND}" -S "${_relocated_source_dir}" -B "${_nondefault_consumer_build_dir}"
     ${_nested_generator_args}
     "-DCMAKE_PREFIX_PATH=${_nondefault_install_dir}"
+    "-DPTX_FRONTEND_TEST_EXPECTED_PTX_SPEC_DIR=${_nondefault_install_dir}/custom-data/ptx_frontend/ptx_spec"
     ${_consumer_dependency_args})
 execute_process(COMMAND ${_nondefault_consumer_command} COMMAND_ERROR_IS_FATAL ANY)
 

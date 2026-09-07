@@ -108,7 +108,7 @@ endif()
 
 set(_build_command
     "${CMAKE_COMMAND}" --build "${_nested_binary_dir}"
-    --target modern_operand_resolved_ir)
+    --target modern_operand_resolved_ir_generated)
 if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
     list(APPEND _build_command --config "${PTX_TEST_CONFIG}")
 endif()
@@ -132,8 +132,8 @@ string(REPLACE "codegen_category: test" "codegen_category: topology"
     _fixture_after "${_fixture_before}")
 file(WRITE "${_fixture}" "${_fixture_after}")
 file(GLOB_RECURSE _old_partition_objects
-    "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir.dir/*/resolved_ir_test.gen.cpp.o"
-    "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir.dir/*/resolved_ir_test.gen.cpp.obj")
+    "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir_generated.dir/*/resolved_ir_test.gen.cpp.o"
+    "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir_generated.dir/*/resolved_ir_test.gen.cpp.obj")
 
 execute_process(
     COMMAND ${_build_command}
@@ -153,8 +153,8 @@ endif()
 
 if(_failure STREQUAL "")
     file(GLOB_RECURSE _new_partition_objects
-        "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir.dir/*/resolved_ir_topology.gen.cpp.o"
-        "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir.dir/*/resolved_ir_topology.gen.cpp.obj")
+        "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir_generated.dir/*/resolved_ir_topology.gen.cpp.o"
+        "${_nested_binary_dir}/submod/resolved_ir/CMakeFiles/modern_operand_resolved_ir_generated.dir/*/resolved_ir_topology.gen.cpp.obj")
     list(LENGTH _new_partition_objects _new_partition_object_count)
     if(_new_partition_object_count EQUAL 0)
         string(APPEND _failure

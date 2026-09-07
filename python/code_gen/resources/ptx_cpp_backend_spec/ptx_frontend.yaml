@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../schemas/ptx-cpp-backend-v1.schema.yaml
+# yaml-language-server: $schema=../ptx-cpp-backend-v1.schema.yaml
 
 schema: ptx-cpp-backend/v1
 backend: cpp
@@ -8,7 +8,7 @@ category: common
 namespace: ptx_frontend::resolved_ir
 
 # This file owns C++ spellings and explicitly declared runtime lookup tables.
-# PTX legality, variants, layouts, and availability remain in instructions/ptx_spec.
+# PTX legality, variants, layouts, and availability remain in the packaged PTX spec.
 domains:
   scalar_types:
     cpp_type: ScalarType

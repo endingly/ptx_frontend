@@ -22,6 +22,19 @@ class PackagedResourceTests(unittest.TestCase):
                 (ROOT / "instructions/schemas" / name).read_bytes(),
             )
 
+    def test_cpp_backend_is_packaged_with_an_instructions_compatibility_link(
+        self,
+    ) -> None:
+        backend = RESOURCES / "ptx_cpp_backend_spec/ptx_frontend.yaml"
+        comment = backend.read_text(encoding="utf-8").splitlines()[0]
+        match = re.fullmatch(r"# yaml-language-server: \$schema=(.+)", comment)
+        self.assertIsNotNone(match)
+        self.assertTrue((backend.parent / match.group(1)).is_file())
+
+        compatibility_path = ROOT / "instructions/ptx_cpp_backend_spec"
+        self.assertTrue(compatibility_path.is_symlink())
+        self.assertEqual(compatibility_path.resolve(), backend.parent.resolve())
+
 
 if __name__ == "__main__":
     unittest.main()

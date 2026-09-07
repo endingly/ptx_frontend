@@ -2,12 +2,15 @@
 
 ## 目的
 
-`instructions/ptx_spec/` 中的 YAML 是 PTX 指令事实的声明来源。它描述合法的源码
+`python/code_gen/resources/ptx_spec/` 中的 YAML 是 PTX 指令事实的 canonical
+声明来源（`instructions/ptx_spec/` 仅为源码树兼容 symlink）。它描述合法的源码
 形式、variant、operand layout、availability 和规则标识；Python generator 从中同时
 生成 Syntax descriptor、Resolved descriptor、checker descriptor 和 C++ instruction
 结构。它不是 C++ 代码模板，也不是 backend layout 配置。
 
-每个文件使用 `instructions/schemas/ptx-instr-v1.schema.yaml`：
+每个文件使用同级 package schema
+`python/code_gen/resources/ptx-instr-v1.schema.yaml`（YAML comment 通过
+`../ptx-instr-v1.schema.yaml` 引用）：
 
 ```yaml
 schema: ptx-instr/v1

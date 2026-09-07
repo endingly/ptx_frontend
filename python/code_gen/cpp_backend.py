@@ -9,8 +9,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from code_gen.load_yaml import load_yaml
-from code_gen.model import (
+from .load_yaml import load_yaml
+from .model import (
     CodegenUnit,
     DomainBackend,
     EmitAlternativeBackend,
@@ -22,12 +22,8 @@ from code_gen.model import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CPP_BACKEND_SPEC = (
-    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
-)
 DEFAULT_CPP_BACKEND_SCHEMA = (
-    REPO_ROOT / "instructions/schemas/ptx-cpp-backend-v1.schema.yaml"
+    Path(__file__).resolve().parent / "resources/ptx-cpp-backend-v1.schema.yaml"
 )
 
 
@@ -50,6 +46,10 @@ class CppDomain(str, Enum):
     MEMORY_STATE_SPACES = (  # YAML: domains.memory_state_spaces
         "memory_state_spaces"
     )
+    MBARRIER_PHASE_TYPES = "mbarrier_phase_types"
+    MBARRIER_LAYOUTS = "mbarrier_layouts"
+    ASYNC_PROXY_KINDS = "async_proxy_kinds"
+    PROXY_KIND_PAIRS = "proxy_kind_pairs"
     PARAMETER_DIRECTIONS = "parameter_directions"
     REGISTER_WIDTH_POLICIES = "register_width_policies"
     MODIFIER_VALUE_CPP_TYPES = (  # YAML: domains.modifier_value_cpp_types
@@ -99,7 +99,7 @@ class CppDomain(str, Enum):
 
 _REQUIRED_DOMAINS = frozenset(domain.value for domain in CppDomain)
 
-_active_backend_spec = DEFAULT_CPP_BACKEND_SPEC
+_active_backend_spec: Path | None = None
 
 
 def configure_cpp_backend(path: Path) -> None:
@@ -112,6 +112,11 @@ def configure_cpp_backend(path: Path) -> None:
 def get_cpp_backend() -> CodegenUnit:
     """Return the configured, immutable backend model."""
 
+    if _active_backend_spec is None:
+        raise RuntimeError(
+            "C++ backend is not configured; "
+            "call configure_cpp_backend(path) first"
+        )
     return load_cpp_backend(_active_backend_spec)
 
 

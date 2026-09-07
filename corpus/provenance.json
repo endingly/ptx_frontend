@@ -188,6 +188,30 @@
       "license": "MIT"
     },
     {
+      "path": "corpus/m13/synchronization_sm90a.ptx",
+      "kind": "project_authored",
+      "sha256": "b39f1381f0a63de9634ce1d27a45e23cb34c05be8ef03cb00b27dd56da864283",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "targets": [
+        "sm_90a"
+      ],
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/m13/synchronization_sm100.ptx",
+      "kind": "project_authored",
+      "sha256": "20fba40dd89665dbfe5af66a4ac2d62a90731ca1004364eaf19b96f945500bb0",
+      "generator": "project-authored",
+      "toolkit": "not-applicable",
+      "targets": [
+        "sm_100"
+      ],
+      "source": "hand-authored against NVIDIA PTX ISA 9.3",
+      "license": "MIT"
+    },
+    {
       "path": "corpus/m9/address_conversion.ptx",
       "kind": "project_authored",
       "sha256": "82519eb1a4fa228fecc0331a53bee3cdda192b40326946526db9fb1c0b619799",

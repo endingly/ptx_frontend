@@ -13,7 +13,7 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11、M12 已完成；M13～M19 尚未开始。
+> - M11～M13 已完成；M14～M19 尚未开始。
 >
 > ISA 规划基线：
 >
@@ -504,7 +504,7 @@ evidence links
 | M10 | ✅ | modern instruction seed slices |
 | M11 | ✅ | PTX 9.3 基线、exhaustive ledger 与 target capability |
 | M12 | ✅ | common compiler-generated scalar/data-movement closure |
-| M13 | ⬜ | cluster、proxy 与 mbarrier |
+| M13 | ✅ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
 | M15 | ⬜ | warp-level matrix、sparse MMA 与 WMMA compatibility |
 | M16 | ⬜ | Hopper WGMMA |
@@ -864,38 +864,55 @@ kernel。其 coverage ledger 仍是 partial，simulator execution 仍不支持�
 
 ## 目标
 
-建立 Hopper/Blackwell async instruction 共用的同步基础。M13 只建模 frontend identity 与
-instruction-local legality，不模拟 runtime barrier phase。
+M13 已完成：建立 Hopper/Blackwell async instruction 共用的同步 frontend 基础。冻结边界为：
+
+```text
+frontend identity + instruction-local legality + target/profile availability + protocol metadata exposure != runtime synchronization execution
+```
+
+因此本 milestone 不模拟 runtime barrier phase，也不证明跨线程或跨 CTA 的同步协议。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M13-I01 | ⬜ | 独立 | 支持 `bar.warp.sync` | member mask、barrier semantics、target |
-| M13-I02 | ⬜ | 独立 | 支持 `barrier.cluster` | arrive/wait slice、cluster capability |
-| M13-I03 | ⬜ | 独立 | 支持 `match.sync` | mask/value/result topology |
-| M13-I04 | ⬜ | 独立 | 支持 `redux.sync` | operation/type/mask/result |
-| M13-I05 | ⬜ | 独立 | 支持 `elect.sync` | leader predicate 与 optional lane result |
-| M13-I06 | ⬜ | 独立 | 支持 `mapa` | peer CTA rank、shared address、cluster scope |
-| M13-I07 | ⬜ | 独立 | 支持 `getctarank` | shared address 与 rank result |
-| M13-I08 | ⬜ | 独立 | 支持 `griddepcontrol` | launch/wait topology 与 target |
-| M13-I09 | ⬜ | 独立 | 建立 mbarrier operand domain | object address、state token、phase、tx-count、layout |
-| M13-I10 | ⬜ | 独立 | 支持 `mbarrier.init` | address/count/alignment/space |
-| M13-I11 | ⬜ | 独立 | 支持 `mbarrier.inval` | object lifecycle boundary |
-| M13-I12 | ⬜ | 独立 | 支持 `mbarrier.expect_tx` | expected transaction bytes/count |
-| M13-I13 | ⬜ | 独立 | 支持 `mbarrier.complete_tx` | complete count/space/scope |
-| M13-I14 | ⬜ | 独立 | 支持 `mbarrier.arrive` | state token output、count、semantics |
-| M13-I15 | ⬜ | 独立 | 支持 `mbarrier.arrive_drop` | drop count 与 token |
-| M13-I16 | ⬜ | 独立 | 支持 `cp.async.mbarrier.arrive` | legacy cp.async completion bridge |
-| M13-I17 | ⬜ | 独立 | 支持 `mbarrier.test_wait` basic slice | token/phase/predicate |
-| M13-I18 | ⬜ | 独立 | 支持 `mbarrier.try_wait` basic slice | token/phase/suspend hint |
-| M13-I19 | ⬜ | 独立 | 支持 PTX 9.3 wait extension | `.phase_type::*`、reportPredicate、reportValue |
-| M13-I20 | ⬜ | 独立 | 支持 `mbarrier.pending_count` | state token 与 count result |
-| M13-I21 | ⬜ | 独立 | 支持 `mbarrier.check_layout` | `.layout` qualifier 与 report result |
-| M13-I22 | ⬜ | 独立 | 建立 proxy-kind 与 `fence.proxy` modern slice | async/tensormap 与 source/destination proxy identity |
-| M13-I23 | ⬜ | 独立 | 支持 `clusterlaunchcontrol.try_cancel` | cancel token/status topology |
-| M13-I24 | ⬜ | 独立 | 支持 `clusterlaunchcontrol.query_cancel` | query token/status topology |
-| M13-C01 | ⬜ | 耦合 | 统一 mbarrier lifecycle domain | init/arrive/wait/tx/layout 共用唯一 token/phase 表示 |
-| M13-C02 | ⬜ | 耦合 | 统一 cluster capability constraints | directive、sreg、address、scope、instruction 共同验证 |
-| M13-C03 | ⬜ | 耦合 | 建立 synchronization corpus | CTA/cluster/mbarrier/proxy 正反例在 sm90a/sm100 profile 通过 |
+| M13-I01 | ✅ | 独立 | 支持 `bar.warp.sync` | member mask、barrier semantics、target |
+| M13-I02 | ✅ | 独立 | 支持 `barrier.cluster` | arrive/wait slice、cluster capability |
+| M13-I03 | ✅ | 独立 | 支持 `match.sync` | mask/value/result topology |
+| M13-I04 | ✅ | 独立 | 支持 `redux.sync` | operation/type/mask/result |
+| M13-I05 | ✅ | 独立 | 支持 `elect.sync` | leader predicate 与 optional lane result |
+| M13-I06 | ✅ | 独立 | 支持 `mapa` | peer CTA rank、shared address、cluster scope |
+| M13-I07 | ✅ | 独立 | 支持 `getctarank` | shared address 与 rank result |
+| M13-I08 | ✅ | 独立 | 支持 `griddepcontrol` | launch/wait topology 与 target |
+| M13-I09 | ✅ | 独立 | 建立 mbarrier operand domain | object address、state token、phase、tx-count、layout |
+| M13-I10 | ✅ | 独立 | 支持 `mbarrier.init` | address/count/alignment/space |
+| M13-I11 | ✅ | 独立 | 支持 `mbarrier.inval` | object lifecycle boundary |
+| M13-I12 | ✅ | 独立 | 支持 `mbarrier.expect_tx` | expected transaction bytes/count |
+| M13-I13 | ✅ | 独立 | 支持 `mbarrier.complete_tx` | complete count/space/scope |
+| M13-I14 | ✅ | 独立 | 支持 `mbarrier.arrive` | state token output、count、semantics |
+| M13-I15 | ✅ | 独立 | 支持 `mbarrier.arrive_drop` | drop count 与 token |
+| M13-I16 | ✅ | 独立 | 支持 `cp.async.mbarrier.arrive` | legacy cp.async completion bridge |
+| M13-I17 | ✅ | 独立 | 支持 `mbarrier.test_wait` basic slice | token/phase/predicate |
+| M13-I18 | ✅ | 独立 | 支持 `mbarrier.try_wait` basic slice | token/phase/suspend hint |
+| M13-I19 | ✅ | 独立 | 支持 PTX 9.3 wait extension | `.phase_type::*`、reportPredicate、reportValue |
+| M13-I20 | ✅ | 独立 | 支持 `mbarrier.pending_count` | state token 与 count result |
+| M13-I21 | ✅ | 独立 | 支持 `mbarrier.check_layout` | `.layout` qualifier 与 report result |
+| M13-I22 | ✅ | 独立 | 建立 proxy-kind 与 `fence.proxy` modern slice | async/tensormap 与 source/destination proxy identity |
+| M13-I23 | ✅ | 独立 | 支持 `clusterlaunchcontrol.try_cancel` | cancel token/status topology |
+| M13-I24 | ✅ | 独立 | 支持 `clusterlaunchcontrol.query_cancel` | query token/status topology |
+| M13-C01 | ✅ | 耦合 | 统一 mbarrier lifecycle domain | init/arrive/wait/tx/layout 共用唯一 token/phase 表示 |
+| M13-C02 | ✅ | 耦合 | 统一 cluster capability constraints | directive、sreg、address、scope、instruction 共同验证 |
+| M13-C03 | ✅ | 耦合 | 建立 synchronization corpus | CTA/cluster/mbarrier/proxy 正反例在 sm90a/sm100 profile 通过 |
+
+### 闭环证据（持续可验证）
+
+- PTX ISA 9.3 instruction registry、opcode coverage 与 inventory accounting 的 join 持续验证
+  每个 M13 opcode slice 的 source section、support status 与 residual disposition；partial
+  slice 不被误记为完整 family。
+- 生成的 descriptor/resolved/checker 路径持续验证 cluster capability、target/profile
+  availability 与 instruction-local operand topology；mbarrier 的 address、state token、phase、
+  transaction count 与 layout 使用统一 domain。
+- `m13_synchronization` manifest、sm90a/sm100 corpus 与 closure test 共同持续验证
+  CTA、cluster、mbarrier 与 proxy 的正反例；其验证对象是 frontend
+  parse/resolve/check contract，而非 runtime execution。
 
 ### 出口
 

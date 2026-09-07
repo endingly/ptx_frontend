@@ -1,17 +1,17 @@
-"""Emit C++ syntax architecture descriptors from ``ir.syntax_ast``."""
+"""Emit C++ syntax architecture descriptors from ``ptx_frontend.ir.syntax_ast``."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from base.utils import (
+from ptx_frontend.base.utils import (
     file_stem_to_pascal_case,
     generated_at_comment,
     to_file_stem,
 )
-from code_gen.cpp_backend import CppDomain, cpp_value
-from code_gen.database import CodegenDatabase
-from ir.syntax_ast import (
+from .cpp_backend import CppDomain, cpp_value
+from .database import CodegenDatabase
+from ptx_frontend.ir.syntax_ast import (
     ModifierPresence,
     OperandLayoutKind,
     OperandPresence,

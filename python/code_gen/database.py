@@ -8,16 +8,15 @@ from functools import cache
 from pathlib import Path
 from typing import Any, TypeVar
 
-from base.utils import file_stem_to_pascal_case
-from code_gen.load_yaml import load_yaml
-from code_gen.model import InstructionSpec, VariantSpec, modifier_spellings
-from code_gen.normalize import normalize_instruction_spec
+from ptx_frontend.base.utils import file_stem_to_pascal_case
+from .load_yaml import load_yaml
+from .model import InstructionSpec, VariantSpec, modifier_spellings
+from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
 
 
 PTX_INSTRUCTION_SCHEMA = (
-    Path(__file__).resolve().parents[2]
-    / "instructions/schemas/ptx-instr-v1.schema.yaml"
+    Path(__file__).resolve().parent / "resources/ptx-instr-v1.schema.yaml"
 )
 
 

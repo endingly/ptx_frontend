@@ -268,6 +268,25 @@ TEST(PtxSymbolTable, DiagnosesTrulyUnresolvedReferences) {
             "Unresolved instruction operand '%missing'.");
 }
 
+TEST(PtxSymbolTable, DoesNotBindPlainSinkAsAnUnresolvedReference) {
+  PtxSyntaxParser parser(
+      ".entry kernel() { .reg .u32 %r<1>; add.u32 _, %missing, 1; }");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+
+  const auto binding_result = binding::bindSymbols(*module);
+  ASSERT_EQ(binding_result.diagnostics.size(), 1u);
+  EXPECT_EQ(binding_result.diagnostics.front().kind,
+            binding::BindDiagnosticKind::UnresolvedReference);
+  EXPECT_EQ(binding_result.diagnostics.front().message,
+            "Unresolved instruction operand '%missing'.");
+  EXPECT_FALSE(std::ranges::any_of(
+      binding_result.table.references(), [](const auto& reference) {
+        return reference.kind == binding::ReferenceKind::InstructionOperand &&
+               reference.spelling == "_";
+      }));
+}
+
 TEST(PtxSymbolTable, ClassifiesSpecialRegistersAndExternalSymbols) {
   constexpr std::string_view source = R"ptx(
 .extern .global .u32 external_value;

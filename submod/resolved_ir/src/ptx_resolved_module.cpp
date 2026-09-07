@@ -679,6 +679,24 @@ void resolve_body(
       check_call_abi(*instruction, symbols, context.scope, signatures,
                      call_argument_properties, diagnostics);
       resolved_function.body.push_back(std::move(*resolved));
+    } else if (const auto* label =
+                   std::get_if<syntax_ast::AstLabel>(&body_item)) {
+      const binding::ScopeId function_scope =
+          context.function_scope.value_or(context.scope);
+      const auto lookup =
+          symbols.lookup(function_scope, label->name.syntax.text);
+      if (!lookup) {
+        throw ResolveException(
+            "Bound module has no symbol for a syntax label.");
+      }
+      const binding::Symbol& symbol = symbols.symbol(lookup->symbol);
+      if (symbol.kind != binding::SymbolKind::Label ||
+          symbol.scope != function_scope) {
+        throw ResolveException("Bound label symbol is not function-local.");
+      }
+      resolved_function.label_positions.push_back(
+          {.symbol_id = symbol.id,
+           .instruction_offset = resolved_function.body.size()});
     } else if (const auto* block =
                    std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
                        &body_item);

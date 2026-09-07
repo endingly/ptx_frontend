@@ -4,7 +4,7 @@ import unittest
 
 from jsonschema import Draft202012Validator
 
-from code_gen.load_yaml import load_yaml
+from ptx_frontend.code_gen.load_yaml import load_yaml
 from scripts.verify_ptx_isa_baseline import (
     BaselineVerificationError,
     fetch_raw_response_body,

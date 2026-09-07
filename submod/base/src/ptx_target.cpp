@@ -15,6 +15,8 @@ constexpr std::array<std::string_view, 2> kSm103fEnabledFamilyFeatures{
     "sm_100f", "sm_103f"};
 constexpr std::array<std::string_view, 1> kSm120fEnabledFamilyFeatures{
     "sm_120f"};
+constexpr std::array<std::string_view, 1> kSm110fEnabledFamilyFeatures{
+    "sm_110f"};
 constexpr std::array<std::string_view, 2> kSm80Capabilities{
     "reserved_smem",
     "graph_exec",
@@ -45,6 +47,11 @@ constexpr CatalogEntry kTargetProfiles[]{
     {"sm_103", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_103a", kSm103fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_103f", kSm103fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_110", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_110a", kSm110fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_110f", kSm110fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_120", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_120a", kSm120fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_120f", kSm120fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
 };
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from base.utils import file_stem_to_pascal_case, generated_at_comment
-from code_gen.model import CodegenUnit, DomainBackend, RuntimeLookupKind
+from ptx_frontend.base.utils import file_stem_to_pascal_case, generated_at_comment
+from .model import CodegenUnit, DomainBackend, RuntimeLookupKind
 
 
 def generate_resolved_value_domain_header(

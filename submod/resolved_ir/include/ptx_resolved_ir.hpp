@@ -32,6 +32,10 @@ using base::CacheOperator;
 using base::EvictionPriority;
 using base::MemoryConsistency;
 using base::MemoryScope;
+using base::MbarrierLayout;
+using base::MbarrierPhaseType;
+using base::AsyncProxyKind;
+using base::ProxyKindPair;
 namespace check_end {
 
 using OperandShape = checker::OperandShape;
@@ -82,11 +86,16 @@ enum class ResolvedValueKind : uint8_t {
   MemoryScope,
   VectorArity,
   MemoryStateSpace,
+  MbarrierPhaseType,
+  MbarrierLayout,
+  AsyncProxyKind,
+  ProxyKindPair,
   Register,
   Predicate,
   PredicateSource,
   Immediate,
   RegOrImm,
+  RegisterOrSink,
   ShflDestination,
   PredicatePair,
   MovSource,
@@ -103,6 +112,7 @@ enum class ResolvedValueKind : uint8_t {
   BranchTargetSet,
   CallReturnParameter,
   CallArguments,
+  MbarrierStateToken,
 };
 
 struct SyntaxOperandSlotDescriptor {
@@ -170,6 +180,10 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   MemoryConsistency,
   MemoryScope,
   MemoryStateSpace,
+  MbarrierPhaseType,
+  MbarrierLayout,
+  AsyncProxyKind,
+  ProxyKindPair,
 };
 
 struct ResolvedModifierDefaultDescriptor {
@@ -179,6 +193,10 @@ struct ResolvedModifierDefaultDescriptor {
   RoundingMode rounding_mode = RoundingMode::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
+  MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
   MemoryScope memory_scope = MemoryScope::None;
 };
@@ -249,6 +267,18 @@ struct ResolvedRegisterRef {
   std::optional<ScalarType> declared_type;
   std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
+};
+
+/** Opaque mbarrier state; a null register reference is the ``_`` sink. */
+struct ResolvedMbarrierStateToken {
+  std::optional<ResolvedRegisterRef> register_ref;
+  bool operator==(const ResolvedMbarrierStateToken&) const = default;
+};
+
+/** A scalar destination register; a null reference is the ``_`` sink. */
+struct ResolvedRegisterOrSink {
+  std::optional<ResolvedRegisterRef> register_ref;
+  bool operator==(const ResolvedRegisterOrSink&) const = default;
 };
 
 struct ResolvedImmediate {
@@ -421,8 +451,8 @@ struct ResolvedTensorCoordinate {
 };
 
 struct ResolvedShflSyncDestination {
-  ResolvedRegisterRef data;
-  ResolvedPredicate predicate;
+  std::optional<WithLoc<ResolvedRegisterRef>> data;
+  std::optional<WithLoc<ResolvedPredicate>> predicate;
   bool operator==(const ResolvedShflSyncDestination&) const = default;
 };
 
@@ -446,7 +476,12 @@ using ResolvedFieldValue =
                  WithLocs<MemoryConsistency>,
                  WithLocs<MemoryScope>, WithLocs<VectorArity>,
                  WithLocs<MemoryStateSpace>,
-                 WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedImmediate>,
+                 WithLocs<MbarrierPhaseType>, WithLocs<MbarrierLayout>,
+                 WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>,
+                 WithLocs<ResolvedRegisterRef>,
+                 WithLocs<ResolvedMbarrierStateToken>,
+                 WithLocs<ResolvedRegisterOrSink>,
+                 WithLocs<ResolvedImmediate>,
                  WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
                  WithLocs<ResolvedPredicatePair>,
                  WithLocs<ResolvedMovSource>,

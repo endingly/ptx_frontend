@@ -48,9 +48,12 @@ resolveModule(const syntax_ast::AstModule& ast);
 需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。`resolveModule` 先建立
 `SymbolTable`，再为每个 function scope 构造显式 `ResolveContext`；返回的
 `ResolvedModule` 拥有 symbol table，`ResolvedFunction` 以函数 `SymbolId` 标识。
-standalone `resolveInstruction` 与 `resolve<T>` 不要求声明上下文，继续服务单指令工具。
-directive、declaration 与 label 目前仍由 Syntax AST/symbol table 保存，不复制成未解析的
-Resolved IR 字符串字段。`.file` 与 `.debug_str` identity 会在那里验证 `.loc` metadata，
+`ResolvedFunction::label_positions` 以已绑定的 `SymbolId` 和 source-order 的 instruction
+boundary 记录每个 function label；boundary 基于递归展平的 body，首条 instruction 前为零、
+连续 label 共用一个 boundary、末尾 label 为 `body.size()`。standalone `resolveInstruction`
+与 `resolve<T>` 不要求声明上下文，继续服务单指令工具。directive 与 declaration 仍由
+Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串字段。`.file` 与
+`.debug_str` identity 会在那里验证 `.loc` metadata，
 但 `.loc`、`.section` 与 `.pragma` 不产生 Resolved IR node，也不附着到 instruction。
 
 module resolution 还负责不能放入 generated single-instruction checker 的 direct 与 metadata-backed

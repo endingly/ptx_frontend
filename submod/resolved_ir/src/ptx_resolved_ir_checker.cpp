@@ -137,6 +137,14 @@ bool matches_modifier_value(
       return descriptor.memory_consistency == actual.memory_consistency;
     case ModifierValueKind::MemoryScope:
       return descriptor.memory_scope == actual.memory_scope;
+    case ModifierValueKind::MbarrierPhaseType:
+      return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
+    case ModifierValueKind::MbarrierLayout:
+      return descriptor.mbarrier_layout == actual.mbarrier_layout;
+    case ModifierValueKind::AsyncProxyKind:
+      return descriptor.async_proxy_kind == actual.async_proxy_kind;
+    case ModifierValueKind::ProxyKindPair:
+      return descriptor.proxy_kind_pair == actual.proxy_kind_pair;
   }
   return false;
 }
@@ -458,6 +466,11 @@ CheckResult check_operands(
               descriptor.target_field_id),
       });
     }
+    if (operand->is_sink) {
+      append_address_constraint_availability_diagnostics(
+          descriptor.sink_availability, "mbarrier state-token sink", *operand,
+          context, diagnostics);
+    }
 
     if (descriptor.minimum_elements != 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
@@ -754,6 +767,19 @@ CheckResult check_operands(
                 "Vector operand '{}' uses the '_' sink in an invalid "
                 "position.",
                 descriptor.target_field_id),
+        });
+        continue;
+      }
+      if (operand->vector_sink_count != 0 &&
+          descriptor.vector_sink_payload_bits != 0 &&
+          vector_payload_bits != descriptor.vector_sink_payload_bits) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::InvalidVectorOperand,
+            .range = range,
+            .message = fmt::format(
+                "Vector operand '{}' uses the '_' sink with {} bits; {} bits are required.",
+                descriptor.target_field_id, vector_payload_bits,
+                descriptor.vector_sink_payload_bits),
         });
         continue;
       }
@@ -1320,7 +1346,9 @@ CheckResult check_immediate_value(
     return {};
   const OperandView* operand =
       find_operand(operands, descriptor.operand_field_id);
-  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+  if (operand == nullptr)
+    return {};
+  if (operand->actual_shape != OperandShape::Immediate ||
       !operand->immediate_bits) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -1350,7 +1378,9 @@ CheckResult check_immediate_multiple_of(
     return {};
   const OperandView* operand =
       find_operand(operands, descriptor.operand_field_id);
-  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+  if (operand == nullptr)
+    return {};
+  if (operand->actual_shape != OperandShape::Immediate ||
       !operand->immediate_bits) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -1390,7 +1420,13 @@ CheckResult check_immediate_range(
     return {};
   const OperandView* operand =
       find_operand(operands, descriptor.operand_field_id);
-  if (operand == nullptr || operand->actual_shape != OperandShape::Immediate ||
+  if (operand == nullptr)
+    return {};
+  // A register operand is dynamically unknown; the generated range applies
+  // only when it resolves to an immediate.
+  if (operand->actual_shape == OperandShape::Register)
+    return {};
+  if (operand->actual_shape != OperandShape::Immediate ||
       !operand->immediate_bits) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,

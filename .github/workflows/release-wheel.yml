@@ -1,0 +1,33 @@
+name: Release wheel
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Build wheel
+        run: python3 -m pip wheel --no-deps --wheel-dir dist ./python
+
+      - name: Check tag version and smoke-test wheel
+        shell: bash
+        run: |
+          version=$(python3 -c "from configparser import ConfigParser; p = ConfigParser(); p.read('python/setup.cfg'); print(p['metadata']['version'])")
+          test "${GITHUB_REF_NAME#v}" = "$version"
+          python3 python/tests/code_gen/wheel_smoke.py dist/*.whl
+
+      - name: Publish GitHub Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.whl --generate-notes

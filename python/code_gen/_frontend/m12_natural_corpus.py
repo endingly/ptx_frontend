@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 import re
 
-from code_gen.database import CodegenDatabase, _variant_modifier_language
+from .database import CodegenDatabase, _variant_modifier_language
 
 
 _ENTRY = re.compile(r"^\.visible\s+\.entry\s+([A-Za-z_][A-Za-z0-9_]*)\(")

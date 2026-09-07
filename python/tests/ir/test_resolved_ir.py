@@ -14,23 +14,24 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from code_gen.database import load_codegen_database
-from code_gen.database import CodegenDatabase
-from code_gen.gen_resolved_descriptor import (
+from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.database import CodegenDatabase
+from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
     generate_resolved_descriptor_source,
 )
-from code_gen.gen_resolved_checker_descriptor import (
+from ptx_frontend.code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from code_gen.gen_resolved_ir import (
+from ptx_frontend.code_gen.gen_resolved_ir import (
     generate_resolved_dispatch_source,
     generate_resolved_ir_header,
     generate_resolved_ir_source,
 )
-from code_gen.normalize import normalize_instruction_spec
-from ir.resolved_ir import (
+from ptx_frontend.code_gen.normalize import normalize_instruction_spec
+from ptx_frontend.ir.resolved_ir import (
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
     ResolvedOperandAccess,
@@ -43,7 +44,7 @@ from ir.resolved_ir import (
     ResolvedVectorTypePolicy,
     from_instruction_spec,
 )
-from code_gen.model import (
+from ptx_frontend.code_gen.model import (
     ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
     ImmediateValueConstraint,
@@ -58,12 +59,18 @@ from code_gen.model import (
 )
 
 
+def setUpModule() -> None:
+    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
+
+
 class ResolvedIrBuildTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
+        # Repository specs remain unchanged.
+        # Tests needing mutation load their own fixture.
         cls.database = database
         add = next(
             instruction
@@ -769,9 +776,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_bar_sync_uses_distinct_modifier_variants_and_operand_layouts(
         self,
     ) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         bar = next(
             instruction
             for instruction in database.instructions
@@ -793,6 +798,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "CtaRedAndPred",
                 "RedOrPred",
                 "CtaRedOrPred",
+                "WarpSync",
             },
         )
         self.assertEqual(
@@ -861,11 +867,247 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variants["RedAndPred"].operand_layouts[1].fields[0].value_cpp_type,
             "ResolvedPredicate",
         )
+        self.assertEqual(
+            [field.name for field in variants["WarpSync"].modifier_fields],
+            ["warp", "sync"],
+        )
+        self.assertEqual(
+            [(field.name, field.value_cpp_type)
+             for field in variants["WarpSync"].operand_layouts[0].fields],
+            [("membermask", "RegOrImm")],
+        )
+        self.assertEqual(
+            dict(variants["WarpSync"].availability),
+            {"ptx": "6.0", "sm": 30},
+        )
+
+    def test_barrier_cluster_model_defaults_and_availability(self) -> None:
+        database = self.database
+        barrier = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "barrier"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(barrier).variants
+        }
+        self.assertEqual(set(variants), {"ClusterArrive", "ClusterWait"})
+        expected_availability = {
+            "any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}],
+        }
+        for name, default, values in (
+            ("ClusterArrive", "release", ("release", "relaxed")),
+            ("ClusterWait", "acquire", ("acquire",)),
+        ):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), expected_availability)
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [
+                    ("scope", "MemoryScope"),
+                    ("arrive" if name == "ClusterArrive" else "wait", "bool"),
+                    ("semantics", "WithLocs<MemoryConsistency>"),
+                    ("aligned", "WithLocs<bool>"),
+                ],
+            )
+            self.assertEqual(
+                variant.modifier_bindings[2].default_value.value,
+                default,
+            )
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities],
+                list(values),
+            )
+            self.assertTrue(
+                all(dict(entry.availability) == {"ptx": "8.0"}
+                    for entry in variant.modifier_value_availabilities)
+            )
+            self.assertEqual(variant.operand_layouts[0].fields, ())
+
+    def test_match_sync_model_layouts_and_availability(self) -> None:
+        database = self.database
+        match = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "match"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(match).variants
+        }
+        self.assertEqual(set(variants), {"AnySync", "AllSync"})
+        for variant in variants.values():
+            self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [
+                    ("any" if variant.cpp_name == "AnySync" else "all", "bool"),
+                    ("sync", "bool"),
+                    ("type", "WithLocs<ScalarType>"),
+                ],
+            )
+        self.assertEqual(
+            [layout.layout_id for layout in variants["AnySync"].operand_layouts],
+            ["default"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in variants["AllSync"].operand_layouts],
+            ["without_predicate", "with_predicate"],
+        )
+        plain = variants["AllSync"].operand_layouts[0].bindings
+        paired = variants["AllSync"].operand_layouts[1].bindings
+        self.assertEqual(
+            variants["AllSync"].operand_layouts[0].fields[0].cpp_type,
+            "WithLocs<ResolvedRegisterOrSink>",
+        )
+        self.assertEqual(
+            [binding.allowed_shapes for binding in plain],
+            [
+                (ResolvedOperandShape.REGISTER,),
+                (ResolvedOperandShape.REGISTER,),
+                (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+            ],
+        )
+        self.assertEqual(
+            paired[0].allowed_shapes,
+            (ResolvedOperandShape.SHFL_DESTINATION,),
+        )
+        self.assertTrue(paired[0].allow_destination_sink)
+        self.assertTrue(paired[0].allow_predicate_sink)
+        self.assertFalse(variants["AnySync"].operand_layouts[0].bindings[0].allow_destination_sink)
+        self.assertFalse(variants["AnySync"].operand_layouts[0].bindings[0].allow_predicate_sink)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_descriptor.gen.cpp"
+            generate_resolved_descriptor_source(database, output_path=output_path)
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn('.allow_predicate_sink = true,', source)
+        self.assertIn("ResolvedValueKind::RegisterOrSink", source)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_parallel.gen.cpp"
+            generate_resolved_ir_source(
+                database,
+                category="parallel_synchronization_and_communication",
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn(".is_sink = !payload.dst.value.register_ref,", source)
+        for binding in (*plain, *paired):
+            self.assertEqual(
+                binding.register_width_policy, ResolvedRegisterWidthPolicy.EXACT
+            )
+
+    def test_redux_sync_model_variants_and_availability(self) -> None:
+        database = self.database
+        redux = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "redux"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(redux).variants
+        }
+        self.assertEqual(
+            set(variants),
+            {"SyncAdd", "SyncMin", "SyncMax", "SyncBoolean", "SyncMinF32", "SyncMaxF32"},
+        )
+        for name in ("SyncAdd", "SyncMin", "SyncMax"):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [("sync", "bool"), (name.removeprefix("Sync").lower(), "bool"),
+                 ("type", "WithLocs<ScalarType>")],
+            )
+        boolean = variants["SyncBoolean"]
+        self.assertEqual(dict(boolean.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in boolean.modifier_fields],
+            [("sync", "bool"), ("operation", "WithLocs<BooleanOperator>"),
+             ("type", "ScalarType")],
+        )
+        availability = {"any_of": [
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        ]}
+        for name, operation in (("SyncMinF32", "min"), ("SyncMaxF32", "max")):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), availability)
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [("sync", "bool"), (operation, "bool"), ("abs", "WithLocs<bool>"),
+                 ("nan", "WithLocs<bool>"), ("type", "ScalarType")],
+            )
+        for variant in variants.values():
+            self.assertEqual(len(variant.operand_layouts), 1)
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            )
+
+    def test_griddepcontrol_model_has_two_zero_operand_actions(self) -> None:
+        database = self.database
+        griddepcontrol = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "griddepcontrol"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(griddepcontrol).variants
+        }
+        self.assertEqual(set(variants), {"LaunchDependents", "Wait"})
+        for name, action in (("LaunchDependents", "launch_dependents"),
+                             ("Wait", "wait")):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), {"ptx": "7.8", "sm": 90})
+            self.assertEqual(
+                [(field.name, field.cpp_type) for field in variant.fields],
+                [(action, "bool")],
+            )
+            self.assertEqual(
+                [(layout.layout_id, layout.bindings)
+                 for layout in variant.operand_layouts],
+                [("default", ())],
+            )
+
+    def test_elect_sync_model_allows_only_its_destination_sink(self) -> None:
+        database = self.database
+        elect = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "elect"
+        )
+        resolved = from_instruction_spec(elect)
+        self.assertEqual(resolved.cpp_name, "Elect")
+        self.assertEqual([variant.cpp_name for variant in resolved.variants], ["Sync"])
+        variant = resolved.variants[0]
+        self.assertEqual(dict(variant.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variant.fields],
+            [
+                ("sync", "bool"),
+                ("result", "WithLocs<ResolvedShflSyncDestination>"),
+                ("membermask", "WithLocs<RegOrImm>"),
+            ],
+        )
+        result, membermask = variant.operand_layouts[0].bindings
+        self.assertEqual(result.allowed_shapes, (ResolvedOperandShape.SHFL_DESTINATION,))
+        self.assertEqual(result.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+        self.assertTrue(result.allow_destination_sink)
+        self.assertFalse(result.allow_predicate_sink)
+        self.assertEqual(membermask.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertFalse(membermask.allow_destination_sink)
+        self.assertFalse(membermask.allow_predicate_sink)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_descriptor.gen.cpp"
+            generate_resolved_descriptor_source(database, output_path=output_path)
+            source = output_path.read_text(encoding="utf-8")
+        self.assertIn('.allow_destination_sink = true,', source)
 
     def test_bra_uses_a_binding_aware_branch_target(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         bra = next(
             instruction
             for instruction in database.instructions
@@ -898,9 +1140,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.rule, "control_flow.bra")
 
     def test_brx_uses_a_u32_register_and_branch_target_set(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         brx = next(
             instruction
             for instruction in database.instructions
@@ -934,9 +1174,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.rule, "control_flow.brx_idx")
 
     def test_ret_uses_a_bare_zero_operand_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ret = next(
             instruction
             for instruction in database.instructions
@@ -953,9 +1191,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_exit_uses_a_bare_zero_operand_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         exit_instruction = next(
             instruction
             for instruction in database.instructions
@@ -972,9 +1208,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_trap_uses_a_bare_zero_operand_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         trap = next(
             instruction
             for instruction in database.instructions
@@ -991,9 +1225,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_and_uses_a_fixed_b32_binary_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         and_instruction = next(
             instruction
             for instruction in database.instructions
@@ -1012,9 +1244,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_or_uses_a_fixed_b32_binary_variant(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         or_instruction = next(
             instruction
             for instruction in database.instructions
@@ -1031,7 +1261,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_xor_uses_a_fixed_b32_binary_variant(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         xor = next(item for item in database.instructions if item.opcode == "xor")
         instruction = from_instruction_spec(xor)
         self.assertEqual(instruction.cpp_name, "Xor")
@@ -1043,7 +1273,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_not_uses_a_fixed_b32_unary_variant(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         not_instruction = next(item for item in database.instructions if item.opcode == "not")
         instruction = from_instruction_spec(not_instruction)
         self.assertEqual(instruction.cpp_name, "Not")
@@ -1055,7 +1285,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shl_uses_fixed_b32_data_and_u32_amount(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         shl = next(item for item in database.instructions if item.opcode == "shl")
         instruction = from_instruction_spec(shl)
         self.assertEqual(instruction.cpp_name, "Shl")
@@ -1067,7 +1297,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shr_uses_fixed_u32_data_and_count(self) -> None:
-        database = load_codegen_database(spec_dir=REPO_ROOT / "instructions/ptx_spec")
+        database = self.database
         shr = next(item for item in database.instructions if item.opcode == "shr")
         instruction = from_instruction_spec(shr)
         self.assertEqual(instruction.cpp_name, "Shr")
@@ -1079,9 +1309,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mov = next(
             instruction
             for instruction in database.instructions
@@ -1146,6 +1374,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 modifier_field_id="type",
             ),
         )
+        self.assertTrue(source_binding.allow_function_symbol)
         self.assertEqual(
             variant.operand_layouts[1].bindings[1].allowed_vector_arities,
             (2, 4),
@@ -1217,10 +1446,505 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ),
             )
 
-    def test_ld_and_st_scalar_model_constraints(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+    def test_mapa_uses_cluster_address_without_function_symbols(self) -> None:
+        database = self.database
+        mapa = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "mapa"
         )
+        instruction = from_instruction_spec(mapa)
+
+        self.assertEqual(instruction.cpp_name, "Mapa")
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            ["SharedCluster", "Generic"],
+        )
+        shared, generic = instruction.variants
+        self.assertEqual(
+            dict(shared.availability),
+            {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in shared.fields],
+            [
+                ("shared_cluster", "bool"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedMovSource>"),
+                ("rank", "WithLocs<RegOrImm>"),
+            ],
+        )
+        shared_source = shared.operand_layouts[0].bindings[1]
+        self.assertEqual(
+            shared_source.allowed_shapes,
+            (
+                ResolvedOperandShape.REGISTER,
+                ResolvedOperandShape.SYMBOL,
+                ResolvedOperandShape.ADDRESS,
+            ),
+        )
+        self.assertFalse(shared_source.allow_function_symbol)
+        self.assertEqual(
+            [value.value for value in shared_source.allowed_address_state_spaces],
+            ["shared"],
+        )
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in generic.operand_layouts[0].bindings],
+            [None, None, "u32"],
+        )
+
+    def test_getctarank_uses_cluster_address_and_u32_rank_destination(self) -> None:
+        database = self.database
+        getctarank = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "getctarank"
+        )
+        instruction = from_instruction_spec(getctarank)
+
+        self.assertEqual(instruction.cpp_name, "Getctarank")
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            ["SharedCluster", "Generic"],
+        )
+        shared, generic = instruction.variants
+        self.assertEqual(
+            dict(shared.availability),
+            {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in shared.fields],
+            [
+                ("shared_cluster", "bool"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<ResolvedMovSource>"),
+            ],
+        )
+        dst, shared_source = shared.operand_layouts[0].bindings
+        self.assertEqual(dst.type_expression.scalar_type, "u32")
+        self.assertEqual(
+            dst.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
+        )
+        self.assertEqual(
+            shared_source.allowed_shapes,
+            (
+                ResolvedOperandShape.REGISTER,
+                ResolvedOperandShape.SYMBOL,
+                ResolvedOperandShape.ADDRESS,
+            ),
+        )
+        self.assertFalse(shared_source.allow_function_symbol)
+        self.assertEqual(
+            [value.value for value in shared_source.allowed_address_state_spaces],
+            ["shared"],
+        )
+        generic_dst, generic_source = generic.operand_layouts[0].bindings
+        self.assertEqual(generic_dst.type_expression.scalar_type, "u32")
+        self.assertEqual(
+            generic_dst.register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+        self.assertEqual(
+            generic_source.type_expression.modifier_field_id, "type"
+        )
+
+    def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
+        mbarrier = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "mbarrier"
+        )
+        instruction = from_instruction_spec(mbarrier)
+
+        self.assertEqual(instruction.cpp_name, "Mbarrier")
+        self.assertEqual(
+            [variant.cpp_name for variant in instruction.variants],
+            ["InitGenericV0", "InitSharedV0", "InitSharedCtaV0",
+             "InitGenericV1", "InitSharedV1", "InitSharedCtaV1",
+             "InvalGeneric", "InvalShared", "InvalSharedCta",
+             "ExpectTxGenericOrShared", "ExpectTxSharedCta", "ExpectTxSharedCluster",
+             "ExpectTxRelaxedCtaGenericOrShared", "ExpectTxRelaxedCtaSharedCta",
+             "ExpectTxRelaxedCtaSharedCluster", "ExpectTxRelaxedClusterGenericOrShared",
+             "ExpectTxRelaxedClusterSharedCta", "ExpectTxRelaxedClusterSharedCluster",
+             "CompleteTxGenericOrShared", "CompleteTxSharedCta", "CompleteTxSharedCluster",
+             "CompleteTxRelaxedCtaGenericOrShared", "CompleteTxRelaxedCtaSharedCta",
+             "CompleteTxRelaxedCtaSharedCluster", "CompleteTxRelaxedClusterGenericOrShared",
+             "CompleteTxRelaxedClusterSharedCta", "CompleteTxRelaxedClusterSharedCluster",
+             "ArriveGenericOrShared", "ArriveSharedCta", "ArriveSharedCluster",
+             "ArriveSemanticsGenericOrShared", "ArriveSemanticsSharedCta",
+             "ArriveSemanticsSharedCluster", "ArriveExpectTxGenericOrShared",
+             "ArriveExpectTxSharedCta", "ArriveExpectTxSharedCluster",
+             "ArriveExpectTxSemanticsGenericOrShared", "ArriveExpectTxSemanticsSharedCta",
+             "ArriveExpectTxSemanticsSharedCluster", "ArriveNoCompleteGenericOrShared",
+             "ArriveNoCompleteSharedCta", "ArriveNoCompleteReleaseCtaGenericOrShared",
+             "ArriveNoCompleteReleaseCtaSharedCta", "ArriveDropGenericOrShared",
+             "ArriveDropSharedCta", "ArriveDropSharedCluster",
+             "ArriveDropSemanticsGenericOrShared", "ArriveDropSemanticsSharedCta",
+             "ArriveDropSemanticsSharedCluster", "ArriveDropExpectTxGenericOrShared",
+             "ArriveDropExpectTxSharedCta", "ArriveDropExpectTxSharedCluster",
+             "ArriveDropExpectTxSemanticsGenericOrShared",
+             "ArriveDropExpectTxSemanticsSharedCta",
+             "ArriveDropExpectTxSemanticsSharedCluster",
+             "ArriveDropNoCompleteGenericOrShared", "ArriveDropNoCompleteSharedCta",
+             "ArriveDropNoCompleteReleaseCtaGenericOrShared",
+             "ArriveDropNoCompleteReleaseCtaSharedCta",
+             "TestWaitTokenGenericOrShared", "TestWaitTokenSharedCta",
+             "TestWaitParityGenericOrShared", "TestWaitParitySharedCta",
+             "TryWaitTokenGenericOrShared", "TryWaitTokenSharedCta",
+             "TryWaitParityGenericOrShared", "TryWaitParitySharedCta",
+             "TestWaitTokenPrimaryGenericOrShared", "TestWaitTokenPrimarySharedCta",
+             "TestWaitParityPrimaryGenericOrShared", "TestWaitParityPrimarySharedCta",
+             "TestWaitParityConditionalGenericOrShared", "TestWaitParityConditionalSharedCta",
+             "TryWaitTokenPrimaryGenericOrShared", "TryWaitTokenPrimarySharedCta",
+             "TryWaitParityPrimaryGenericOrShared", "TryWaitParityPrimarySharedCta",
+             "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta",
+             "PendingCount", "CheckLayoutGenericV0", "CheckLayoutGenericV1",
+             "CheckLayoutSharedCtaV0", "CheckLayoutSharedCtaV1"],
+        )
+        generic_v0, _, shared_cta_v0, generic_v1, _, _, inval_generic, _, inval_shared_cta = instruction.variants[:9]
+        expect_tx_generic, _, _, expect_tx_relaxed_cta, _, _, expect_tx_relaxed_cluster, _, _ = instruction.variants[9:18]
+        complete_tx_generic, _, _, complete_tx_relaxed_cta, _, _, complete_tx_relaxed_cluster, _, _ = instruction.variants[18:27]
+        self.assertEqual(dict(generic_v0.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(shared_cta_v0.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(dict(generic_v1.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(dict(inval_generic.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(inval_shared_cta.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(dict(expect_tx_generic.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(expect_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
+        cluster_availability = {
+            "any_of": [{"ptx": "8.0", "sm": 90, "capabilities": ["cluster"]}],
+        }
+        cluster_only_variants = [
+            variant for variant in instruction.variants
+            if "SharedCluster" in variant.cpp_name or "RelaxedCluster" in variant.cpp_name
+        ]
+        self.assertEqual(len(cluster_only_variants), 18)
+        self.assertTrue(all(dict(variant.availability) == cluster_availability
+                            for variant in cluster_only_variants))
+        self.assertEqual(dict(expect_tx_relaxed_cluster.availability), cluster_availability)
+        self.assertEqual(dict(complete_tx_generic.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(complete_tx_relaxed_cta.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(complete_tx_relaxed_cluster.availability), cluster_availability)
+        arrive_generic, _, arrive_cluster, arrive_semantics, _, _, arrive_expect, _, _, arrive_expect_semantics, _, _, arrive_no_complete, _, arrive_no_complete_explicit, _ = instruction.variants[27:43]
+        arrive_drop_generic, _, arrive_drop_cluster, arrive_drop_semantics, _, _, arrive_drop_expect, _, _, arrive_drop_expect_semantics, _, _, arrive_drop_no_complete, _, arrive_drop_no_complete_explicit, _ = instruction.variants[43:59]
+        test_wait_token, test_wait_token_cta, test_wait_parity, test_wait_parity_cta = instruction.variants[59:63]
+        try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta = instruction.variants[63:67]
+        test_wait_primary_token, _, test_wait_primary_parity, _, test_wait_conditional, _ = instruction.variants[67:73]
+        try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
+        pending_count = instruction.variants[79]
+        check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[80:84]
+        arrival_count_variants = [
+            variant
+            for variant in instruction.variants[27:59]
+            if variant.immediate_ranges
+        ]
+        self.assertEqual(len(arrival_count_variants), 20)
+        self.assertTrue(
+            all(
+                [(constraint.operand_field_id, constraint.minimum,
+                  constraint.maximum) for constraint in variant.immediate_ranges]
+                == [("count", 0, 1048575)]
+                for variant in arrival_count_variants
+            )
+        )
+        self.assertEqual(dict(arrive_generic.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_cluster.availability), cluster_availability)
+        self.assertEqual(dict(arrive_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_expect.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_no_complete.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_generic.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_drop_cluster.availability), cluster_availability)
+        self.assertEqual(dict(arrive_drop_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_expect.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_expect_semantics.availability), {"ptx": "8.0", "sm": 90})
+        self.assertEqual(dict(arrive_drop_no_complete.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(arrive_drop_no_complete_explicit.availability), {"ptx": "8.0", "sm": 90})
+        cluster_scope_values = [
+            entry
+            for variant in instruction.variants
+            for entry in variant.modifier_value_availabilities
+            if entry.source_kind_id == "scope" and entry.value == "cluster"
+        ]
+        self.assertEqual(len(cluster_scope_values), 12)
+        self.assertTrue(all(dict(entry.availability) == cluster_availability
+                            for entry in cluster_scope_values))
+        self.assertEqual(dict(test_wait_token.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(dict(test_wait_token_cta.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(dict(test_wait_parity.availability), {"ptx": "7.1", "sm": 80})
+        self.assertEqual(dict(test_wait_parity_cta.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(
+            [dict(variant.availability) for variant in
+             (try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta)],
+            [{"ptx": "7.8", "sm": 90}] * 4,
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in test_wait_token.fields],
+            [("test_wait", "bool"), ("state_space", "WithLocs<MemoryStateSpace>"),
+             ("type", "ScalarType"), ("wait_complete", "WithLocs<ResolvedPredicate>"),
+             ("address", "WithLocs<ResolvedAddress>"),
+             ("state", "WithLocs<ResolvedMbarrierStateToken>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in test_wait_parity.fields],
+            [("test_wait", "bool"), ("parity", "bool"),
+             ("state_space", "WithLocs<MemoryStateSpace>"), ("type", "ScalarType"),
+             ("wait_complete", "WithLocs<ResolvedPredicate>"),
+             ("address", "WithLocs<ResolvedAddress>"),
+             ("phase_parity", "WithLocs<RegOrImm>")],
+        )
+        state = test_wait_token.operand_layouts[0].bindings[-1]
+        parity = test_wait_parity.operand_layouts[0].bindings[-1]
+        self.assertEqual(state.mbarrier_state_token_form.value, "register")
+        self.assertEqual(
+            [dict(variant.availability) for variant in
+             (check_layout_generic_v0, check_layout_generic_v1,
+              check_layout_shared_cta_v0, check_layout_shared_cta_v1)],
+            [{"ptx": "9.3", "sm": 90}] * 4,
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in check_layout_generic_v0.fields],
+            [("check_layout", "bool"), ("layout", "MbarrierLayout"),
+             ("type", "ScalarType"), ("result", "WithLocs<ResolvedPredicate>"),
+             ("address", "WithLocs<ResolvedAddress>")],
+        )
+        self.assertEqual(check_layout_generic_v0.modifier_fields[1].constant_value, "layout::v0")
+        self.assertEqual(check_layout_generic_v1.modifier_fields[1].constant_value, "layout::v1")
+        self.assertEqual(check_layout_shared_cta_v0.modifier_fields[2].constant_value, True)
+        self.assertEqual(check_layout_shared_cta_v1.modifier_fields[1].constant_value, "layout::v1")
+        self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(parity.type_expression.scalar_type, "u32")
+        self.assertEqual(parity.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(
+            [(constraint.minimum, constraint.maximum)
+             for constraint in test_wait_parity.immediate_ranges],
+            [(0, 1)],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in try_wait_token.operand_layouts],
+            ["no_hint", "with_hint"],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type)
+             for field in try_wait_token.operand_layouts[0].fields],
+            [("wait_complete", "WithLocs<ResolvedPredicate>"),
+             ("address", "WithLocs<ResolvedAddress>"),
+             ("state", "WithLocs<ResolvedMbarrierStateToken>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type)
+             for field in try_wait_token.operand_layouts[1].fields[-2:]],
+            [("state", "WithLocs<ResolvedMbarrierStateToken>"),
+             ("time_hint", "WithLocs<RegOrImm>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type)
+             for field in try_wait_parity.operand_layouts[1].fields[-2:]],
+            [("phase_parity", "WithLocs<RegOrImm>"),
+             ("time_hint", "WithLocs<RegOrImm>")],
+        )
+        self.assertEqual(
+            [(constraint.minimum, constraint.maximum)
+             for constraint in try_wait_parity.immediate_ranges],
+            [(0, 1)],
+        )
+        self.assertEqual(dict(test_wait_primary_token.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(dict(test_wait_primary_parity.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(dict(test_wait_conditional.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(
+            [layout.layout_id for layout in test_wait_primary_token.operand_layouts],
+            ["default", "report_predicate", "report_predicate_value"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in try_wait_primary_token.operand_layouts],
+            ["no_hint", "with_hint", "report_predicate_no_hint", "report_predicate_with_hint", "report_predicate_value_no_hint", "report_predicate_value_with_hint"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in try_wait_conditional.operand_layouts],
+            ["no_hint", "with_hint"],
+        )
+        self.assertEqual(dict(pending_count.availability), {"ptx": "7.0", "sm": 80})
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in pending_count.fields],
+            [("pending_count", "bool"), ("layout", "WithLocs<MbarrierLayout>"),
+             ("type", "ScalarType"), ("count", "WithLocs<ResolvedRegisterRef>"),
+             ("state", "WithLocs<ResolvedMbarrierStateToken>")],
+        )
+        self.assertEqual(
+            pending_count.modifier_bindings[1].default_value.value, "layout::v0"
+        )
+        self.assertEqual(
+            dict(pending_count.modifier_value_availabilities[0].availability),
+            {"ptx": "9.3", "sm": 90},
+        )
+        count, state = pending_count.operand_layouts[0].bindings
+        self.assertEqual(count.type_expression.scalar_type, "u32")
+        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(state.mbarrier_state_token_form.value, "register")
+        self.assertEqual(
+            [layout.layout_id for layout in arrive_drop_generic.operand_layouts],
+            ["no_count", "with_count"],
+        )
+        self.assertEqual(
+            [layout.layout_id for layout in arrive_generic.operand_layouts],
+            ["no_count", "with_count"],
+        )
+        self.assertEqual(
+            arrive_generic.operand_layouts[0].bindings[0].mbarrier_state_token_form.value,
+            "register_or_sink",
+        )
+        self.assertEqual(
+            dict(arrive_generic.operand_layouts[0].bindings[0].sink_availability),
+            {"ptx": "7.1", "sm": 80},
+        )
+        self.assertEqual(
+            arrive_cluster.operand_layouts[0].bindings[0].mbarrier_state_token_form.value,
+            "sink",
+        )
+        self.assertEqual(
+            arrive_generic.operand_layouts[1].bindings[-1].register_width_policy,
+            ResolvedRegisterWidthPolicy.EXACT,
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in generic_v0.fields],
+            [
+                ("init", "bool"),
+                ("layout", "WithLocs<MbarrierLayout>"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("count", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            generic_v0.modifier_bindings[1].default_value.value, "layout::v0"
+        )
+        self.assertEqual(
+            [entry.value for entry in generic_v0.modifier_value_availabilities],
+            ["layout::v0"],
+        )
+        self.assertEqual(
+            [entry.minimum for entry in generic_v0.immediate_ranges], [1]
+        )
+        self.assertEqual(
+            [entry.maximum for entry in generic_v0.immediate_ranges], [1048575]
+        )
+        self.assertEqual(
+            [entry.minimum for entry in generic_v1.immediate_ranges], [1]
+        )
+        self.assertEqual(
+            [entry.maximum for entry in generic_v1.immediate_ranges], [511]
+        )
+        address, count = generic_v0.operand_layouts[0].bindings
+        self.assertEqual(address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(
+            [value.value for value in address.allowed_address_state_spaces], ["shared"]
+        )
+        self.assertEqual(count.type_expression.scalar_type, "u32")
+        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in inval_generic.fields],
+            [
+                ("inval", "bool"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        inval_address = inval_generic.operand_layouts[0].bindings[0]
+        self.assertEqual(inval_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(
+            [value.value for value in inval_address.allowed_address_state_spaces],
+            ["shared"],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in expect_tx_generic.fields],
+            [
+                ("expect_tx", "bool"),
+                ("state_space", "WithLocs<MemoryStateSpace>"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("tx_count", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(expect_tx_generic.modifier_bindings[1].default_value.value, "generic")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in expect_tx_relaxed_cta.fields[:3]],
+            [("expect_tx", "bool"), ("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
+        )
+        expect_tx_address, tx_count = expect_tx_generic.operand_layouts[0].bindings
+        self.assertEqual(expect_tx_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(tx_count.type_expression.scalar_type, "u32")
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in complete_tx_generic.fields],
+            [
+                ("complete_tx", "bool"),
+                ("state_space", "WithLocs<MemoryStateSpace>"),
+                ("type", "ScalarType"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("tx_count", "WithLocs<RegOrImm>"),
+            ],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in complete_tx_relaxed_cta.fields[:3]],
+            [("complete_tx", "bool"), ("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
+        )
+        complete_tx_address, complete_tx_count = complete_tx_generic.operand_layouts[0].bindings
+        self.assertEqual(complete_tx_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+        self.assertEqual(complete_tx_count.type_expression.scalar_type, "u32")
+        self.assertEqual(complete_tx_count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+
+    def test_mbarrier_operand_domains_are_uniform_across_variants(self) -> None:
+        mbarrier = from_instruction_spec(next(
+            instruction for instruction in self.database.instructions
+            if instruction.opcode == "mbarrier"
+        ))
+        self.assertTrue(mbarrier.variants)
+        for prefix in (
+            "Init", "Arrive", "TestWait", "TryWait", "ExpectTx", "CompleteTx",
+            "PendingCount", "CheckLayout",
+        ):
+            self.assertTrue(any(variant.cpp_name.startswith(prefix)
+                                for variant in mbarrier.variants), prefix)
+
+        fields = [field for variant in mbarrier.variants for field in variant.fields]
+        for name, cpp_type in (
+            ("state", "ResolvedMbarrierStateToken"),
+            ("phase_type", "MbarrierPhaseType"),
+            ("layout", "MbarrierLayout"),
+            ("address", "ResolvedAddress"),
+        ):
+            matching = [field for field in fields if field.name == name]
+            self.assertTrue(matching, name)
+            self.assertEqual({field.value_cpp_type for field in matching}, {cpp_type})
+
+        inputs = [
+            binding
+            for variant in mbarrier.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.target_field_id in {"phase_parity", "tx_count", "count"}
+            and binding.role == ResolvedOperandRole.SOURCE
+            and binding.access == ResolvedOperandAccess.READ
+        ]
+        self.assertTrue(inputs)
+        self.assertEqual(
+            {binding.target_field_id for binding in inputs},
+            {"phase_parity", "tx_count", "count"},
+        )
+        for binding in inputs:
+            self.assertEqual(
+                binding.allowed_shapes,
+                (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+            )
+            self.assertEqual(binding.type_expression.scalar_type, "u32")
+            self.assertEqual(binding.register_width_policy,
+                             ResolvedRegisterWidthPolicy.EXACT)
+
+    def test_ld_and_st_scalar_model_constraints(self) -> None:
+        database = self.database
         ld = next(
             instruction
             for instruction in database.instructions
@@ -1338,6 +2062,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "none",
         )
         self.assertEqual(
+            dict(next(entry.availability
+                      for entry in variant.modifier_value_availabilities
+                      if entry.source_kind_id == "scope" and entry.value == "cluster")),
+            {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
             [
                 (entry.source_kind_id, entry.value_cpp_type, entry.value)
                 for entry in variant.modifier_value_availabilities
@@ -1371,9 +2101,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
         self.assertEqual(variant.memory_consistency.address_field_id, "address")
-        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
-        self.assertEqual(variant.address_alignment.type_field_id, "type")
-        self.assertIsNone(variant.address_alignment.vector_field_id)
+        (alignment,) = variant.address_alignments
+        self.assertEqual(alignment.address_field_ids, ("address",))
+        self.assertEqual(alignment.type_field_id, "type")
+        self.assertIsNone(alignment.vector_field_id)
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].type_expression,
             ResolvedOperandTypeExpression(
@@ -1482,7 +2213,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["semantics", "scope", "cache", "vector", "type", "dst", "address"],
         )
         self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
-        self.assertEqual(vector_variant.address_alignment.vector_field_id, "vector")
+        self.assertEqual(vector_variant.address_alignments[0].vector_field_id, "vector")
         self.assertEqual(
             [value.value for value in next(modifier for modifier in ld.variants[4].modifiers if modifier.name == "vector").values],
             ["v2", "v4", "v8"],
@@ -1495,6 +2226,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedVectorTypePolicy.ELEMENT,
         )
         self.assertTrue(vector_binding.allow_vector_sink)
+        self.assertEqual(vector_binding.vector_sink_payload_bits, 256)
         self.assertEqual(vector_variant.memory_vector.type_field_id, "type")
         self.assertEqual(vector_variant.memory_vector.vector_field_id, "dst")
         self.assertEqual(
@@ -1648,6 +2380,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedVectorTypePolicy.ELEMENT,
         )
         self.assertTrue(store_vector_binding.allow_vector_sink)
+        self.assertEqual(store_vector_binding.vector_sink_payload_bits, 256)
         self.assertEqual(store_vector.memory_vector.vector_field_id, "src")
         store_vector_parameter = (
             store.variants[5].operand_layouts[0].bindings[0].parameter_constraint
@@ -1659,9 +2392,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_ldu_global_u32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ldu = next(
             instruction
             for instruction in database.instructions
@@ -1694,9 +2425,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_prefetch_global_l1_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         prefetch = next(
             instruction
             for instruction in database.instructions
@@ -1724,9 +2453,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_prefetchu_l1_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         prefetchu = next(
             instruction
             for instruction in database.instructions
@@ -1749,9 +2476,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_createpolicy_fractional_l2_evict_last_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         createpolicy = next(
             instruction
             for instruction in database.instructions
@@ -1783,9 +2508,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_applypriority_global_l2_evict_normal_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         applypriority = next(
             instruction
             for instruction in database.instructions
@@ -1810,12 +2533,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(variant.immediate_value.values, (128,))
-        self.assertEqual(variant.address_alignment.alignment, 128)
+        self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_discard_global_l2_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         discard = next(
             instruction
             for instruction in database.instructions
@@ -1839,12 +2560,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(variant.immediate_value.values, (128,))
-        self.assertEqual(variant.address_alignment.alignment, 128)
+        self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         setmaxnreg = next(
             instruction
             for instruction in database.instructions
@@ -1908,9 +2627,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".divisor = uint64_t{8ULL},", descriptor)
 
     def test_cp_async_ca_shared_global_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         resolved = from_instruction_spec(cp)
         variant = resolved.variants[0]
@@ -1918,7 +2635,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Cp")
         self.assertEqual(
             [candidate.cpp_name for candidate in resolved.variants],
-            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll"],
+            ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll",
+             "AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
+             "AsyncMbarrierArriveNoincGenericOrShared",
+             "AsyncMbarrierArriveNoincSharedCta"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
@@ -1936,8 +2656,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.immediate_value.operand_field_id, "cp_size")
         self.assertEqual(variant.immediate_value.values, (4, 8, 16))
-        self.assertEqual(variant.address_alignment.address_field_ids, ("dst", "src"))
-        self.assertEqual(variant.address_alignment.immediate_operand_field_id, "cp_size")
+        (alignment,) = variant.address_alignments
+        self.assertEqual(alignment.address_field_ids, ("dst", "src"))
+        self.assertEqual(alignment.immediate_operand_field_id, "cp_size")
         self.assertEqual(
             [value.value for value in variant.operand_layouts[0].bindings[0].allowed_address_state_spaces],
             ["shared"],
@@ -1947,10 +2668,131 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["global"],
         )
 
-    def test_cp_async_commit_group_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
+    def test_cp_async_mbarrier_arrive_model(self) -> None:
+        database = self.database
+        cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
+        variants = from_instruction_spec(cp).variants[4:8]
+
+        self.assertEqual(
+            [variant.cpp_name for variant in variants],
+            ["AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
+             "AsyncMbarrierArriveNoincGenericOrShared",
+             "AsyncMbarrierArriveNoincSharedCta"],
         )
+        self.assertEqual(
+            [dict(variant.availability) for variant in variants],
+            [{"ptx": "7.0", "sm": 80}, {"ptx": "7.8", "sm": 80},
+             {"ptx": "7.0", "sm": 80}, {"ptx": "7.8", "sm": 80}],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[0].fields],
+            [("async", "bool"), ("mbarrier", "bool"), ("arrive", "bool"),
+             ("state_space", "WithLocs<MemoryStateSpace>"),
+             ("type", "ScalarType"), ("address", "WithLocs<ResolvedAddress>")],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[2].fields[:4]],
+            [("async", "bool"), ("mbarrier", "bool"), ("arrive", "bool"),
+             ("noinc", "bool")],
+        )
+        for variant in variants:
+            address = variant.operand_layouts[0].bindings[0]
+            (alignment,) = variant.address_alignments
+            self.assertEqual(address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
+            self.assertEqual(
+                [value.value for value in address.allowed_address_state_spaces], ["shared"]
+            )
+            self.assertEqual(alignment.alignment, 8)
+
+    def test_clusterlaunchcontrol_try_cancel_model(self) -> None:
+        database = self.database
+        instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "clusterlaunchcontrol"
+        )
+        variants = from_instruction_spec(instruction).variants
+        self.assertEqual(
+            [variant.cpp_name for variant in variants],
+            [
+                "TryCancelAsyncGeneric",
+                "TryCancelAsyncSharedCta",
+                "TryCancelAsyncMulticastGeneric",
+                "TryCancelAsyncMulticastSharedCta",
+                "QueryCancelIsCanceledPred",
+                "QueryCancelGetFirstCtaidV4",
+                "QueryCancelGetFirstCtaidX",
+                "QueryCancelGetFirstCtaidY",
+                "QueryCancelGetFirstCtaidZ",
+            ],
+        )
+        self.assertEqual(
+            dict(variants[0].availability),
+            {"any_of": [{"ptx": "8.6", "sm": 100, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            dict(variants[2].availability),
+            {"any_of": [
+                {"ptx": "8.6", "sm": 100, "target": "sm_100a", "capabilities": ["cluster"]},
+                {"ptx": "8.6", "sm": 120, "target": "sm_120a", "capabilities": ["cluster"]},
+                {"ptx": "8.8", "sm": 100, "family": "sm_100f", "capabilities": ["cluster"]},
+                {"ptx": "8.8", "sm": 120, "family": "sm_120f", "capabilities": ["cluster"]},
+                {"ptx": "9.0", "sm": 110, "family": "sm_110f", "capabilities": ["cluster"]},
+            ]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[0].fields],
+            [
+                ("try_cancel", "bool"),
+                ("async", "bool"),
+                ("mbarrier_complete_tx_bytes", "bool"),
+                ("type", "ScalarType"),
+                ("response", "WithLocs<ResolvedAddress>"),
+                ("mbarrier", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[1].fields[:3]],
+            [
+                ("try_cancel", "bool"),
+                ("async_shared_cta", "bool"),
+                ("mbarrier_complete_tx_bytes", "bool"),
+            ],
+        )
+        self.assertEqual(
+            [constraint.alignment for constraint in variants[0].address_alignments],
+            [16, 8],
+        )
+        self.assertEqual(
+            [constraint.address_field_ids for constraint in variants[0].address_alignments],
+            [("response",), ("mbarrier",)],
+        )
+        self.assertFalse(hasattr(variants[0], "address_alignment"))
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in variants[4].fields],
+            [
+                ("query_cancel", "bool"),
+                ("is_canceled", "bool"),
+                ("result_type", "ScalarType"),
+                ("response_type", "ScalarType"),
+                ("status", "WithLocs<ResolvedPredicate>"),
+                ("response", "WithLocs<ResolvedRegisterRef>"),
+            ],
+        )
+        self.assertEqual(
+            variants[5].operand_layouts[0].bindings[0].allowed_vector_arities, (4,)
+        )
+        self.assertTrue(variants[5].operand_layouts[0].bindings[0].allow_vector_sink)
+        self.assertEqual(
+            variants[5].operand_layouts[0].bindings[0].vector_sink_payload_bits, 0
+        )
+        self.assertEqual(
+            dict(variants[8].availability),
+            {"any_of": [{"ptx": "8.6", "sm": 100, "capabilities": ["cluster"]}]},
+        )
+
+    def test_cp_async_commit_group_model(self) -> None:
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variant = from_instruction_spec(cp).variants[1]
 
@@ -1963,9 +2805,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_cp_async_wait_group_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variant = from_instruction_spec(cp).variants[2]
 
@@ -1987,9 +2827,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_cp_async_wait_all_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")
         variant = from_instruction_spec(cp).variants[3]
 
@@ -2002,9 +2840,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_ldmatrix_sync_aligned_m8n8_x2_shared_b16_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ldmatrix = next(
             instruction for instruction in database.instructions if instruction.opcode == "ldmatrix"
         )
@@ -2040,13 +2876,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [value.value for value in variant.operand_layouts[0].bindings[1].allowed_address_state_spaces],
             ["shared"],
         )
-        self.assertEqual(variant.address_alignment.address_field_ids, ("address",))
-        self.assertEqual(variant.address_alignment.alignment, 16)
+        (alignment,) = variant.address_alignments
+        self.assertEqual(alignment.address_field_ids, ("address",))
+        self.assertEqual(alignment.alignment, 16)
 
     def test_mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mma = next(
             instruction for instruction in database.instructions if instruction.opcode == "mma"
         )
@@ -2106,9 +2941,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("std::expected<Mma, ResolveDiagnostic>", source)
 
     def test_cp_generator_emits_immediate_value_checker(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
@@ -2146,7 +2979,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor,
         )
         self.assertIn('.operand_field_id = "cp_size",', descriptor)
-        self.assertIn('AsyncCaSharedGlobal_address_alignment_address_fields = {{"dst", "src"}};', descriptor)
+        self.assertIn('AsyncCaSharedGlobal_address_alignment_0_address_fields = {{"dst", "src"}};', descriptor)
         self.assertIn('.immediate_operand_field_id = "cp_size",', descriptor)
         self.assertIn('.operand_field_id = "n",', descriptor)
         self.assertIn('.minimum = uint64_t{0ULL},', descriptor)
@@ -2154,9 +2987,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.maximum = ~uint64_t{0},', descriptor)
 
     def test_membar_cta_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         membar = next(
             instruction
             for instruction in database.instructions
@@ -2177,9 +3008,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_fence_acq_rel_cta_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         fence = next(
             instruction
             for instruction in database.instructions
@@ -2189,20 +3018,58 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Fence")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["AcqRelCta"]
+            [variant.cpp_name for variant in resolved.variants],
+            [
+                "AcqRelCta",
+                "ProxyAsync",
+                "ProxyAsyncSharedCluster",
+                "ProxyTensormapGenericRelease",
+                "ProxyTensormapGenericReleaseCluster",
+                "ProxyTensormapGenericAcquire",
+                "ProxyTensormapGenericAcquireCluster",
+                "ProxyAsyncGenericAcquireSyncRestrictSharedCluster",
+                "ProxyAsyncGenericReleaseSyncRestrictSharedCta",
+            ],
         )
-        variant = resolved.variants[0]
+        variant, async_proxy, async_cluster, release, _, acquire, _, acquire_sync, release_sync = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field.cpp_type) for field in variant.fields],
             [("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in async_proxy.fields],
+            [("proxy", "bool"), ("proxy_kind", "WithLocs<AsyncProxyKind>")],
+        )
+        self.assertEqual(
+            dict(async_cluster.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90, "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in release.fields],
+            [
+                ("proxy", "bool"),
+                ("proxy_pair", "WithLocs<ProxyKindPair>"),
+                ("semantics", "MemoryConsistency"),
+                ("scope", "WithLocs<MemoryScope>"),
+            ],
+        )
+        self.assertEqual(len(acquire.operand_layouts[0].bindings), 2)
+        self.assertEqual(
+            [(field.name, field.cpp_type) for field in acquire_sync.fields],
+            [
+                ("proxy", "bool"),
+                ("proxy_pair", "WithLocs<ProxyKindPair>"),
+                ("semantics", "MemoryConsistency"),
+                ("sync_restrict_shared_cluster", "bool"),
+                ("scope", "MemoryScope"),
+            ],
+        )
+        self.assertEqual(release_sync.operand_layouts[0].bindings, ())
 
     def test_atom_global_relaxed_cta_add_u32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         atom = next(
             instruction
             for instruction in database.instructions
@@ -2241,9 +3108,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(bindings[1].state_space_modifier_field_id, "state_space")
 
     def test_red_global_relaxed_cta_add_u32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         red = next(
             instruction
             for instruction in database.instructions
@@ -2278,9 +3143,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
 
     def test_activemask_b32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         activemask = next(
             instruction
             for instruction in database.instructions
@@ -2304,9 +3167,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_vote_sync_ballot_b32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         vote = next(
             instruction
             for instruction in database.instructions
@@ -2337,9 +3198,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shfl_sync_idx_b32_model(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         shfl = next(
             instruction
             for instruction in database.instructions
@@ -2374,9 +3233,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
 
     def test_shfl_generator_emits_pair_operand_view(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             generate_resolved_ir_source(
@@ -2390,12 +3247,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::ShflDestination,", source
         )
-        self.assertIn("selected.dst.value.data.declared_type", source)
+        self.assertIn("selected.dst.value.data\n                      ?", source)
 
     def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
             generate_resolved_ir_source(
@@ -2413,9 +3268,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("selected.dst.value.second.register_ref.declared_type", source)
 
     def test_ld_and_st_cache_defaults_use_unspecified_sentinel(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         for opcode in ("ld", "st"):
             spec = next(
@@ -2444,9 +3297,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertEqual(cache_binding.default_value.value, "unspecified")
 
     def test_generate_resolved_ir_header(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir.gen.hpp"
@@ -2458,6 +3309,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("// Generated at: ", source)
         self.assertIn("#pragma once", source)
+        self.assertIn("#include <cstddef>", source)
         self.assertIn("#include <optional>", source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>', source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>', source)
@@ -2524,21 +3376,35 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("WithLocs<ComparisonOperator> comparison;", source)
         self.assertIn("WithLocs<BooleanOperator> boolean;", source)
         self.assertIn("struct Mov {", source)
+        self.assertIn("struct Mapa {", source)
         self.assertIn("struct Ld {", source)
         self.assertIn("struct Ldu {", source)
         self.assertIn("struct Prefetch {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
-        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 1)
+        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 3)
+        mov = source[source.index("struct Mov {"):source.index("struct Mapa {")]
+        mapa = source[
+            source.index("struct Mapa {"):source.index("struct Getctarank {")
+        ]
+        getctarank = source[
+            source.index("struct Getctarank {"):source.index("struct Ld {")
+        ]
+        self.assertIn("WithLocs<ResolvedMovSource> src;", mov)
+        self.assertIn("WithLocs<ResolvedMovSource> src;", mapa)
+        self.assertIn("WithLocs<ResolvedMovSource> src;", getctarank)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",
             source,
         )
         self.assertIn("using ResolvedInstruction = std::variant<", source)
+        self.assertIn("struct ResolvedLabelPosition {", source)
         self.assertIn("struct ResolvedFunction {", source)
         self.assertIn("struct ResolvedModule {", source)
         self.assertIn("binding::SymbolTable symbols;", source)
         self.assertIn("binding::SymbolId symbol_id;", source)
+        self.assertIn("std::size_t instruction_offset;", source)
+        self.assertIn("std::vector<ResolvedLabelPosition> label_positions;", source)
         self.assertIn("resolveInstruction(", source)
         self.assertIn("const ResolveContext& context);", source)
         self.assertIn("resolveModule(const syntax_ast::AstModule& ast);", source)
@@ -2585,9 +3451,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
 
     def test_generate_resolved_instruction_dispatch_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_dispatch.gen.cpp"
@@ -2674,9 +3538,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("Unknown PTX opcode", source)
 
     def test_generate_control_flow_resolved_ir_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
@@ -2701,9 +3563,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Trap>(", source)
 
     def test_generate_data_movement_resolved_ir_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
@@ -2742,6 +3602,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".value_availability = function->address_availability", source
         )
+        self.assertIn("state_space_from_symbol(symbol)", source)
         self.assertIn("CheckResult check<Mov>(", source)
         self.assertIn("std::expected<Ld, ResolveDiagnostic>", source)
         self.assertIn("std::expected<Ldu, ResolveDiagnostic>", source)
@@ -2779,9 +3640,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_memory_vector(", source)
 
     def test_generate_category_resolved_ir_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
@@ -2867,9 +3726,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertNotIn(opcode_wrapper, checker_source)
 
     def test_generate_private_resolved_descriptor_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
@@ -2893,6 +3750,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_end::ResolvedModifierBindingDescriptor", source)
         self.assertIn("check_end::ResolvedOperandBindingDescriptor", source)
         self.assertIn("checker::AddressStateSpaceDescriptor", source)
+        self.assertIn(".vector_sink_payload_bits = 256,", source)
         self.assertIn(".allowed_address_state_spaces =", source)
         self.assertIn(".parameter_constraint = {", source)
         self.assertIn(
@@ -2987,9 +3845,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.capabilities = {{"tensor"}}', parameter_source)
 
     def test_generate_private_checker_descriptor_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
@@ -3007,7 +3863,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("checker::OperandLayoutDescriptor", source)
         self.assertIn("checker::OperandTypeCompatibilityDescriptor", source)
         self.assertIn(".memory_consistency = {", source)
-        self.assertIn(".address_alignment = {", source)
+        self.assertIn(".address_alignments =", source)
         self.assertIn('.vector_field_id = "vector",', source)
         self.assertIn(".memory_vector = {", source)
         self.assertIn('.vector_field_id = "dst",', source)

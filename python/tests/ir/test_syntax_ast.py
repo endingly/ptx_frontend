@@ -47,6 +47,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         database = load_codegen_database(
             spec_dir=REPO_ROOT / "instructions/ptx_spec",
         )
+        # Repository specs remain unchanged.
+        # Tests needing mutation load their own fixture.
+        cls.database = database
         add = next(
             instruction
             for instruction in database.instructions
@@ -278,9 +281,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
 
     def test_mov_source_layout_covers_data_and_address_forms(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mov = next(
             instruction
             for instruction in database.instructions
@@ -307,9 +308,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
 
     def test_mapa_cluster_source_layout_allows_register_symbol_or_address_forms(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         mapa = next(
             instruction
             for instruction in database.instructions
@@ -337,9 +336,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
 
     def test_ld_layout_requires_address_syntax(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
         ld = next(
             instruction
             for instruction in database.instructions
@@ -1818,9 +1815,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertTrue(source.endswith("}"))
 
     def test_generate_private_syntax_descriptor_source(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "syntax_descriptor.gen.cpp"

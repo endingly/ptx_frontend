@@ -79,11 +79,22 @@ if(BUILD_TESTING)
         VERBATIM)
     add_custom_target(modern_operand_resolved_ir_codegen
         DEPENDS ${PTX_MODERN_OPERAND_TEST_GENERATED_FILES})
+    # Build these objects once for both the fixture executable and the topology
+    # regression, which directly compiles the same generated source set.
+    add_library(modern_operand_resolved_ir_generated OBJECT
+        ${PTX_MODERN_OPERAND_TEST_GENERATED_SRCS})
+    add_dependencies(modern_operand_resolved_ir_generated
+        modern_operand_resolved_ir_codegen)
+    target_include_directories(modern_operand_resolved_ir_generated
+        PUBLIC "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
+               "$<TARGET_PROPERTY:resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
+        PRIVATE "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}")
+    target_link_libraries(modern_operand_resolved_ir_generated
+        PRIVATE ptx_frontend::base ptx_frontend::binding ptx_frontend::syntax
+                ptx_frontend::common ptx_frontend::semantic fmt::fmt)
     add_library(modern_operand_resolved_ir STATIC
         ${resolved_ir_srcs}
-        ${PTX_MODERN_OPERAND_TEST_GENERATED_SRCS})
-    add_dependencies(modern_operand_resolved_ir
-        modern_operand_resolved_ir_codegen)
+        $<TARGET_OBJECTS:modern_operand_resolved_ir_generated>)
     target_include_directories(modern_operand_resolved_ir
         PUBLIC "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
                "$<TARGET_PROPERTY:resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"

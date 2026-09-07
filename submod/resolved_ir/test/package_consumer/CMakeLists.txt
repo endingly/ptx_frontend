@@ -69,6 +69,18 @@ endif()
 if(NOT EXISTS "${ptx_frontend_PTX_SPEC_SCHEMA}")
     message(FATAL_ERROR "Installed PTX schema is missing")
 endif()
+if(DEFINED PTX_FRONTEND_TEST_EXPECTED_PTX_SPEC_DIR)
+    if(NOT "${ptx_frontend_PTX_SPEC_DIR}" STREQUAL
+           "${PTX_FRONTEND_TEST_EXPECTED_PTX_SPEC_DIR}")
+        message(FATAL_ERROR "Installed PTX spec path did not preserve custom data dir")
+    endif()
+    get_filename_component(_expected_ptx_data_dir
+        "${PTX_FRONTEND_TEST_EXPECTED_PTX_SPEC_DIR}" DIRECTORY)
+    if(NOT "${ptx_frontend_PTX_SPEC_SCHEMA}" STREQUAL
+           "${_expected_ptx_data_dir}/ptx-instr-v1.schema.yaml")
+        message(FATAL_ERROR "Installed PTX schema path did not preserve custom data dir")
+    endif()
+endif()
 if(COMMAND ptx_frontend_generate)
     message(FATAL_ERROR "Installed package unexpectedly exports codegen")
 endif()

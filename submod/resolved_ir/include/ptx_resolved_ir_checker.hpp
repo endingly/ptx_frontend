@@ -174,7 +174,7 @@ struct AvailabilityClause {
   base::TargetArchitecture exact_target_architecture{};
   base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
   std::string_view required_family{};
-  // ponytail: fixed DNF capacity; raise schema and this bound together if needed.
+  /** Fixed DNF capacity; raise the schema and this bound together if needed. */
   std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
   uint8_t capability_count = 0;
 };

@@ -288,10 +288,12 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 实现，公共逻辑依次执行：
 
 1. 公共 matcher 先用全部 syntax descriptor 诊断真正未知的 spelling，再分别在每个
-   候选 variant 内把 spelling 绑定到唯一活动 slot。重复占用一个 slot 会被诊断；单个
-   variant 内一个 spelling 归属多个活动 slot 则是 descriptor bug。
+   候选 variant 内把 spelling 绑定到有序 slot。required/fixed slot 可以通过位置
+   消除共享 spelling 的歧义；database 会拒绝涉及 optional slot 的重复 spelling。
+   重复占用一个 slot 会被诊断。
 2. `selectVariant<T>` 只依据上述 variant-local 绑定选择唯一 variant。`absent`、
-   `optional`、`required/fixed` 都按 slot 和允许值匹配，不依赖源码 modifier 顺序。
+   `optional`、`required/fixed` 都按 slot、允许值和规范或显式别名顺序匹配。
+   顺序别名不产生新的语义 variant，也不改变 field 绑定。
 3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
 4. `resolve_fields` 解析公共 execution predicate，并按 resolved descriptor 把 modifier 和
    operand 转换为带位置的 resolved 值；有 binding context 时，guard 必须绑定到 `.pred`

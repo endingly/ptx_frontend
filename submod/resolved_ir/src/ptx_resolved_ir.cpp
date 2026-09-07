@@ -2253,11 +2253,12 @@ struct ModifierBindingAttempt {
  * descriptors in order; optional and absent slots may be skipped, but required
  * slots may not.
  */
-ModifierBindingAttempt bind_variant_modifiers(
+ModifierBindingAttempt bind_modifier_order(
     const syntax_ast::AstInstruction& ast,
-    const SyntaxVariantDescriptor& variant) {
+    const SyntaxVariantDescriptor& variant,
+    std::span<const SyntaxModifierDescriptor> modifiers) {
   std::unordered_set<std::string_view> slot_ids;
-  for (const auto& descriptor : variant.modifiers) {
+  for (const auto& descriptor : modifiers) {
     if (!slot_ids.insert(descriptor.kind_id).second) {
       throw ResolveException(
           fmt::format("Variant '{}' contains duplicate modifier slot '{}'.",
@@ -2267,7 +2268,7 @@ ModifierBindingAttempt bind_variant_modifiers(
 
   ActualModifierTable result;
   size_t actual_index = 0;
-  for (const auto& descriptor : variant.modifiers) {
+  for (const auto& descriptor : modifiers) {
     if (descriptor.presence == check_end::PresenceRequirement::Absent)
       continue;
     if (actual_index < ast.modifiers.size() &&
@@ -2285,8 +2286,8 @@ ModifierBindingAttempt bind_variant_modifiers(
     return ModifierBindingAttempt{.modifiers = std::move(result)};
 
   const auto& extra = ast.modifiers[actual_index];
-  for (auto descriptor = variant.modifiers.rbegin();
-       descriptor != variant.modifiers.rend(); ++descriptor) {
+  for (auto descriptor = modifiers.rbegin(); descriptor != modifiers.rend();
+       ++descriptor) {
     if (descriptor->presence != check_end::PresenceRequirement::Absent &&
         result.contains(std::string(descriptor->kind_id)) &&
         std::ranges::contains(descriptor->allowed_values, extra.syntax.text)) {
@@ -2297,6 +2298,36 @@ ModifierBindingAttempt bind_variant_modifiers(
     }
   }
   return {};
+}
+
+/**
+ * Bind against the canonical modifier order and every declared historical
+ * order for one semantic variant.
+ */
+ModifierBindingAttempt bind_variant_modifiers(
+    const syntax_ast::AstInstruction& ast,
+    const SyntaxVariantDescriptor& variant) {
+  ModifierBindingAttempt result;
+  const auto try_order = [&](std::span<const SyntaxModifierDescriptor> order) {
+    auto attempt = bind_modifier_order(ast, variant, order);
+    if (attempt.modifiers) {
+      if (result.modifiers && *result.modifiers != *attempt.modifiers) {
+        throw ResolveException(fmt::format(
+            "Variant '{}' has modifier orders with ambiguous slot bindings.",
+            variant.variant_name));
+      }
+      if (!result.modifiers)
+        result.modifiers = std::move(attempt.modifiers);
+    } else if (result.duplicate == nullptr && attempt.duplicate != nullptr) {
+      result.duplicate = attempt.duplicate;
+      result.duplicate_slot = attempt.duplicate_slot;
+    }
+  };
+
+  try_order(variant.modifiers);
+  for (const auto& alias : variant.modifier_order_aliases)
+    try_order(alias.modifiers);
+  return result;
 }
 
 bool is_known_modifier_spelling(const SyntaxInstructionDescriptor& instruction,

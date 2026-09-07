@@ -153,10 +153,19 @@ struct SyntaxModifierDescriptor {
   bool check(std::string modifier_str) const;
 };
 
+/** One complete, explicitly accepted historical modifier-slot order. */
+struct SyntaxModifierOrderDescriptor {
+  /** Static descriptors ordered as they may appear in source. */
+  std::span<const SyntaxModifierDescriptor> modifiers;
+};
+
 struct SyntaxVariantDescriptor {
   std::string_view variant_name;
+  /** Canonical source order for this variant's modifier slots. */
   std::span<const SyntaxModifierDescriptor> modifiers;
   std::span<const SyntaxOperandLayoutDescriptor> operand_layouts;
+  /** Additional complete source orders accepted for this same variant. */
+  std::span<const SyntaxModifierOrderDescriptor> modifier_order_aliases{};
 
   int32_t get_required_modifier_num() const;
 };

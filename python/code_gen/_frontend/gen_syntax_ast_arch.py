@@ -145,7 +145,13 @@ def _emit_variant_storage(
         for index, modifier in enumerate(variant.modifiers)
         if modifier.allowed_spellings
     )
-    modifiers = _emit_modifier_array(name, variant.modifiers)
+    modifiers = _emit_modifier_array(
+        f"{name}_modifiers",
+        name,
+        variant.modifiers,
+        tuple(range(len(variant.modifiers))),
+    )
+    modifier_order_aliases = _emit_modifier_order_alias_arrays(name, variant)
     slot_arrays = "\n\n".join(
         _emit_operand_slot_array(name, index, layout)
         for index, layout in enumerate(variant.operand_layouts)
@@ -154,7 +160,13 @@ def _emit_variant_storage(
 
     parts = [
         part
-        for part in (allowed_value_arrays, modifiers, slot_arrays, layouts)
+        for part in (
+            allowed_value_arrays,
+            modifiers,
+            modifier_order_aliases,
+            slot_arrays,
+            layouts,
+        )
         if part
     ]
     return "\n\n".join(parts)
@@ -174,16 +186,52 @@ def _emit_allowed_value_array(
 
 
 def _emit_modifier_array(
-    variant_name: str,
+    array_name: str,
+    canonical_variant_name: str,
     modifiers: tuple[SyntaxModifierDescriptor, ...],
+    canonical_indexes: tuple[int, ...],
 ) -> str:
     entries = ",\n".join(
-        _emit_modifier_entry(variant_name, index, modifier)
-        for index, modifier in enumerate(modifiers)
+        _emit_modifier_entry(canonical_variant_name, index, modifier)
+        for index, modifier in zip(canonical_indexes, modifiers, strict=True)
     )
     return f"""\
   inline static constexpr std::array<check_end::SyntaxModifierDescriptor, {len(modifiers)}>
-      {variant_name}_modifiers = {{
+      {array_name} = {{
+{entries}
+      }};"""
+
+
+def _emit_modifier_order_alias_arrays(
+    variant_name: str, variant: SyntaxVariantDescriptor
+) -> str:
+    """Emit complete historical modifier orders using canonical value storage."""
+
+    if not variant.modifier_order_aliases:
+        return ""
+
+    canonical_indexes = {
+        modifier.kind_id: index for index, modifier in enumerate(variant.modifiers)
+    }
+    arrays = "\n\n".join(
+        _emit_modifier_array(
+            f"{variant_name}_modifier_order_alias_{alias_index}",
+            variant_name,
+            alias,
+            tuple(canonical_indexes[modifier.kind_id] for modifier in alias),
+        )
+        for alias_index, alias in enumerate(variant.modifier_order_aliases)
+    )
+    entries = ",\n".join(
+        "          check_end::SyntaxModifierOrderDescriptor{"
+        f".modifiers = {variant_name}_modifier_order_alias_{alias_index}" "}"
+        for alias_index in range(len(variant.modifier_order_aliases))
+    )
+    return f"""\
+{arrays}
+
+  inline static constexpr std::array<check_end::SyntaxModifierOrderDescriptor, {len(variant.modifier_order_aliases)}>
+      {variant_name}_modifier_order_aliases = {{
 {entries}
       }};"""
 
@@ -276,11 +324,17 @@ def _emit_variant_descriptor(
     opcode: str,
 ) -> str:
     name = to_file_stem(variant.variant_id)
+    modifier_order_aliases = (
+        f"{name}_modifier_order_aliases"
+        if variant.modifier_order_aliases
+        else "{}"
+    )
     return f"""\
           check_end::SyntaxVariantDescriptor{{
               .variant_name = {_cpp_string(_cpp_variant_name(opcode, variant.variant_id))},
               .modifiers = {name}_modifiers,
               .operand_layouts = {name}_operand_layouts,
+              .modifier_order_aliases = {modifier_order_aliases},
           }}"""
 
 

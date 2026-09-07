@@ -99,6 +99,7 @@ class SyntaxVariantDescriptor:
     variant_id: str
     modifiers: tuple[SyntaxModifierDescriptor, ...]
     operand_layouts: tuple[SyntaxOperandLayoutDescriptor, ...]
+    modifier_order_aliases: tuple[tuple[SyntaxModifierDescriptor, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -171,11 +172,15 @@ OPERAND_SYNTAX_SHAPES = {
 def _build_variant_descriptor_view(
     variant: VariantSpec,
 ) -> SyntaxVariantDescriptor:
+    modifiers = tuple(
+        _build_modifier_descriptor_view(modifier) for modifier in variant.modifiers
+    )
+    modifiers_by_name = {
+        modifier.kind_id: modifier for modifier in modifiers
+    }
     return SyntaxVariantDescriptor(
         variant_id=variant.name,
-        modifiers=tuple(
-            _build_modifier_descriptor_view(modifier) for modifier in variant.modifiers
-        ),
+        modifiers=modifiers,
         operand_layouts=tuple(
             SyntaxOperandLayoutDescriptor(
                 layout_id=layout.name,
@@ -192,6 +197,10 @@ def _build_variant_descriptor_view(
                 ),
             )
             for layout in variant.operand_layouts
+        ),
+        modifier_order_aliases=tuple(
+            tuple(modifiers_by_name[slot_name] for slot_name in alias)
+            for alias in variant.modifier_order_aliases
         ),
     )
 

@@ -433,6 +433,12 @@ instructions:
             values:
               - $rounding_modes
 
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
           - name: result_type
             kind: type
             domain: scalar_types
@@ -451,17 +457,14 @@ instructions:
             kind: flag
             presence: absent
 
-          - name: sat
-            kind: flag
-            presence: optional
-            default: false
-            token: .sat
+        modifier_order_aliases:
+          - [rounding, result_type, input_type, ftz, sat]
         rule: mixed_precision.add
 
         examples:
           - ptx: "add.f32.f16 d, a, c;"
             valid: true
-          - ptx: "add.rz.f32.bf16.sat d, a, c;"
+          - ptx: "add.rz.sat.f32.bf16 d, a, c;"
             valid: true
 
   - opcode: sub
@@ -711,6 +714,12 @@ instructions:
             values:
               - $rounding_modes
 
+          - name: sat
+            kind: flag
+            presence: optional
+            default: false
+            token: .sat
+
           - name: result_type
             kind: type
             domain: scalar_types
@@ -729,17 +738,14 @@ instructions:
             kind: flag
             presence: absent
 
-          - name: sat
-            kind: flag
-            presence: optional
-            default: false
-            token: .sat
+        modifier_order_aliases:
+          - [rounding, result_type, input_type, ftz, sat]
         rule: mixed_precision.sub
 
         examples:
           - ptx: "sub.f32.f16 d, a, c;"
             valid: true
-          - ptx: "sub.rz.f32.bf16.sat d, a, c;"
+          - ptx: "sub.rz.sat.f32.bf16 d, a, c;"
             valid: true
 
   - opcode: mul

@@ -77,6 +77,24 @@ int main() {
   if (!integer_add.dst.value.symbol_id)
     return 11;
 
+  bool add_has_legacy_mixed_precision_order = false;
+  for (const auto& variant :
+       ptx_frontend::resolved_ir::Add::get_syntax_descriptor().variants) {
+    if (variant.variant_name != "MixedF32" ||
+        variant.modifier_order_aliases.size() != 1 ||
+        variant.modifier_order_aliases.front().modifiers.size() != 5) {
+      continue;
+    }
+    const auto& legacy_order = variant.modifier_order_aliases.front().modifiers;
+    add_has_legacy_mixed_precision_order =
+        legacy_order[0].kind_id == "rounding" &&
+        legacy_order[1].kind_id == "result_type" &&
+        legacy_order[2].kind_id == "input_type" &&
+        legacy_order[4].kind_id == "sat";
+  }
+  if (!add_has_legacy_mixed_precision_order)
+    return 30;
+
   ptx_frontend::PtxSyntaxParser call_parser(
       "call (%result), callee, (%argument, 1);");
   const auto call = call_parser.parseInstruction();

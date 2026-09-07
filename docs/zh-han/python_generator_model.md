@@ -24,7 +24,7 @@ YAML files
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
                 codegen_category)
-VariantSpec(name, availability, modifiers, operand_layouts, rule)
+VariantSpec(name, availability, modifiers, operand_layouts, rule, ..., modifier_order_aliases)
 OperandLayoutSpec(name, operands)
 ModifierSpec(name, kind, presence, values, value, token, default)
 OperandSpec(name, kind, role, access, type_expression)
@@ -33,10 +33,11 @@ OperandSpec(name, kind, role, access, type_expression)
 该模型只保存生成当前 frontend 所需的字段。YAML 中的文档、example、constraint 等
 尚未被 generator 使用的元数据，不应悄悄混入 C++ 表示。
 
-database 在合并 opcode 后验证 selector 语言：每个 variant 内，活动 modifier slot 的
-spelling 集合必须两两不交；不同 variant 接受的无序 spelling 集合必须互斥。slot name
-只在 variant 内有意义，所以同一 spelling 可以跨 variant 绑定不同 slot。校验通过后，
-C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时保持 modifier 顺序无关。
+database 在合并 opcode 后验证 selector 语言：只有 required/fixed slot 的有序位置
+能够消除绑定歧义时，活动 modifier slot 才可以共享 spelling。同一 variant 的规范
+序列与显式 `modifier_order_aliases` 若有交集，必须产生相同绑定；不同 variant 接受
+的序列必须互斥。slot name 只在 variant 内有意义，所以同一 spelling 可以跨 variant
+绑定不同 slot。这些校验使 C++ matcher 能确定性地局部绑定，而不接受任意源码顺序。
 
 ## Normalization
 
@@ -60,7 +61,7 @@ C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时�
 
 ```python
 SyntaxInstructionDescriptor(opcode, variants)
-SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts)
+SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts, modifier_order_aliases=())
 SyntaxModifierDescriptor(kind_id, presence, allowed_spellings)
 SyntaxOperandLayoutDescriptor(layout_id, kind, slots)
 ```

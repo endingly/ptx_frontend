@@ -10,7 +10,7 @@ from typing import Any, TypeVar
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from .load_yaml import load_yaml
-from .model import InstructionSpec, VariantSpec, modifier_spellings
+from .model import InstructionSpec, ModifierSpec, VariantSpec, modifier_spellings
 from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
 
@@ -190,17 +190,10 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
 def _variant_modifier_language(
     opcode: str, variant: VariantSpec
 ) -> set[tuple[str, ...]]:
-    """Return every ordered source-modifier sequence accepted by one variant.
-
-    A spelling may bind to multiple required/fixed variant-local slots when
-    source order makes that binding unambiguous. Optional slots may not share
-    a spelling: generated descriptors rely on this invariant to bind greedily
-    without backtracking.
-    """
+    """Return the union of canonical and declared alias modifier languages."""
 
     slot_names: set[str] = set()
     owners_by_spelling: dict[str, list[tuple[str, str]]] = {}
-    language: set[tuple[str, ...]] = {()}
     for modifier in variant.modifiers:
         if modifier.name in slot_names:
             raise ValueError(
@@ -210,22 +203,18 @@ def _variant_modifier_language(
         slot_names.add(modifier.name)
 
         spellings = set(modifier_spellings(modifier))
-        if modifier.presence == "absent":
-            choices: set[str | None] = {None}
-        elif modifier.presence == "optional":
+        if modifier.presence == "optional":
             if not spellings:
                 raise ValueError(
                     f"opcode {opcode!r} variant {variant.name!r} optional "
                     f"modifier {modifier.name!r} has no source spelling"
                 )
-            choices = {None, *spellings}
-        else:
+        elif modifier.presence != "absent":
             if not spellings:
                 raise ValueError(
                     f"opcode {opcode!r} variant {variant.name!r} active "
                     f"modifier {modifier.name!r} has no source spelling"
                 )
-            choices = set(spellings)
 
         if modifier.presence != "absent":
             for spelling in spellings:
@@ -241,14 +230,47 @@ def _variant_modifier_language(
                     )
                 owners.append((modifier.name, modifier.presence))
 
+    modifiers_by_name = {modifier.name: modifier for modifier in variant.modifiers}
+    languages: dict[tuple[str, ...], tuple[str, ...]] = {}
+    orders = (
+        tuple(modifier.name for modifier in variant.modifiers),
+        *variant.modifier_order_aliases,
+    )
+    for order in orders:
+        language = _modifier_order_language(
+            tuple(modifiers_by_name[slot_name] for slot_name in order)
+        )
+        for sequence, binding in language.items():
+            previous_binding = languages.setdefault(sequence, binding)
+            if previous_binding != binding:
+                raise ValueError(
+                    f"opcode {opcode!r} variant {variant.name!r} modifier "
+                    f"order aliases bind {sequence!r} to different slot identities"
+                )
+    return set(languages)
+
+
+def _modifier_order_language(
+    modifiers: tuple[ModifierSpec, ...],
+) -> dict[tuple[str, ...], tuple[str, ...]]:
+    """Return source sequences and their slot bindings for one complete order."""
+
+    language: dict[tuple[str, ...], tuple[str, ...]] = {(): ()}
+    for modifier in modifiers:
+        spellings = set(modifier_spellings(modifier))
+        if modifier.presence == "absent":
+            choices: set[str | None] = {None}
+        elif modifier.presence == "optional":
+            choices = {None, *spellings}
+        else:
+            choices = set(spellings)
+
         language = {
-            combination
-            if choice is None
-            else (*combination, choice)
-            for combination in language
+            sequence if choice is None else (*sequence, choice):
+            binding if choice is None else (*binding, modifier.name)
+            for (sequence, binding) in language.items()
             for choice in choices
         }
-
     return language
 
 

@@ -247,6 +247,152 @@ TEST(ResolvedModule, ResolvesAndChecksM12I06FrozenSubForms) {
   }
 }
 
+TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
+  constexpr std::array<std::string_view, 5> roundings{
+      "", ".rn", ".rz", ".rm", ".rp"};
+  constexpr std::array rounding_modes{
+      RoundingMode::Rn, RoundingMode::Rn, RoundingMode::Rz,
+      RoundingMode::Rm, RoundingMode::Rp};
+  constexpr std::array input_types{"f16", "bf16"};
+  constexpr std::array input_type_values{ScalarType::F16, ScalarType::BF16};
+  constexpr std::array input_registers{"%h0", "%bf0"};
+
+  std::string source = R"ptx(
+.entry kernel() {
+  .reg .f32 %f<2>;
+  .reg .f16 %h0;
+  .reg .bf16 %bf0;
+)ptx";
+  const auto append_instruction = [&](std::string_view opcode,
+                                      std::string_view rounding,
+                                      std::string_view before_types,
+                                      std::string_view input_type,
+                                      std::string_view after_types,
+                                      std::string_view input_register) {
+    source += "  ";
+    source += opcode;
+    source += rounding;
+    source += before_types;
+    source += ".f32.";
+    source += input_type;
+    source += after_types;
+    source += " %f0, ";
+    source += input_register;
+    source += ", %f1;\n";
+  };
+  const auto append_forms = [&](std::string_view opcode) {
+    for (size_t type_index = 0; type_index != input_types.size(); ++type_index) {
+      for (const std::string_view rounding : roundings) {
+        append_instruction(opcode, rounding, "", input_types[type_index], "",
+                           input_registers[type_index]);
+        append_instruction(opcode, rounding, ".sat", input_types[type_index],
+                           "", input_registers[type_index]);
+        append_instruction(opcode, rounding, "", input_types[type_index], ".sat",
+                           input_registers[type_index]);
+      }
+    }
+  };
+  append_forms("add");
+  append_forms("sub");
+  source += "}\n";
+
+  const auto ast = parseModule(source);
+  const auto resolved = resolveModule(ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  constexpr size_t forms_per_opcode =
+      input_types.size() * roundings.size() * 3U;
+  ASSERT_EQ(body.size(), forms_per_opcode * 2U);
+  const auto& syntax_function =
+      std::get<syntax_ast::AstFunction>(ast.items.back());
+  const checker::Context context{
+      .target = {.ptx_version = {8, 6}, .sm_version = 100},
+      .instruction_range = ast.range,
+  };
+
+  const auto expect_fields = [&](const WithLocs<RoundingMode>& rounding,
+                                 const WithLocs<ScalarType>& input_type,
+                                 const WithLocs<bool>& saturate,
+                                 const syntax_ast::AstInstruction& instruction,
+                                 const size_t type_index,
+                                 const size_t rounding_index,
+                                 const bool expected_saturate,
+                                 const size_t input_modifier_index,
+                                 const size_t saturate_modifier_index) {
+    EXPECT_EQ(rounding.value, rounding_modes[rounding_index]);
+    if (roundings[rounding_index].empty()) {
+      EXPECT_TRUE(rounding.locs.empty());
+    } else {
+      ASSERT_EQ(rounding.locs.size(), 1U);
+      EXPECT_EQ(rounding.locs.front(), instruction.modifiers.front().syntax.range);
+    }
+    EXPECT_EQ(input_type.value, input_type_values[type_index]);
+    ASSERT_EQ(input_type.locs.size(), 1U);
+    EXPECT_EQ(input_type.locs.front(),
+              instruction.modifiers[input_modifier_index].syntax.range);
+    EXPECT_EQ(saturate.value, expected_saturate);
+    if (expected_saturate) {
+      ASSERT_EQ(saturate.locs.size(), 1U);
+      EXPECT_EQ(saturate.locs.front(),
+                instruction.modifiers[saturate_modifier_index].syntax.range);
+    } else {
+      EXPECT_TRUE(saturate.locs.empty());
+    }
+  };
+
+  const auto expect_instruction =
+      [&](const ResolvedInstruction& resolved_instruction,
+          const syntax_ast::AstInstruction& syntax_instruction,
+          const size_t type_index, const size_t rounding_index,
+          const bool expected_saturate, const size_t input_modifier_index,
+          const size_t saturate_modifier_index) {
+        if (const auto* add = std::get_if<Add>(&resolved_instruction)) {
+          const auto& mixed = std::get<Add::MixedF32>(add->variant);
+          expect_fields(mixed.rounding, mixed.input_type, mixed.saturate,
+                        syntax_instruction, type_index, rounding_index,
+                        expected_saturate, input_modifier_index,
+                        saturate_modifier_index);
+          EXPECT_TRUE(checker::check(*add, context).has_value());
+        } else {
+          const auto& sub = std::get<Sub>(resolved_instruction);
+          const auto& mixed = std::get<Sub::MixedF32>(sub.variant);
+          expect_fields(mixed.rounding, mixed.input_type, mixed.saturate,
+                        syntax_instruction, type_index, rounding_index,
+                        expected_saturate, input_modifier_index,
+                        saturate_modifier_index);
+          EXPECT_TRUE(checker::check(sub, context).has_value());
+        }
+      };
+
+  size_t instruction_index = 0;
+  for (size_t opcode_index = 0; opcode_index != 2U; ++opcode_index) {
+    for (size_t type_index = 0; type_index != input_types.size(); ++type_index) {
+      for (size_t rounding_index = 0; rounding_index != roundings.size();
+           ++rounding_index) {
+        const size_t type_modifier_index =
+            roundings[rounding_index].empty() ? 0U : 1U;
+        const auto& nonsat_syntax = std::get<syntax_ast::AstInstruction>(
+            syntax_function.body[3U + instruction_index]);
+        const auto& canonical_syntax = std::get<syntax_ast::AstInstruction>(
+            syntax_function.body[4U + instruction_index]);
+        const auto& legacy_syntax = std::get<syntax_ast::AstInstruction>(
+            syntax_function.body[5U + instruction_index]);
+
+        expect_instruction(body[instruction_index], nonsat_syntax, type_index,
+                           rounding_index, false, type_modifier_index + 1U, 0U);
+        expect_instruction(body[instruction_index + 1U], canonical_syntax,
+                           type_index, rounding_index, true,
+                           type_modifier_index + 2U, type_modifier_index);
+        expect_instruction(body[instruction_index + 2U], legacy_syntax,
+                           type_index, rounding_index, true,
+                           type_modifier_index + 1U,
+                           type_modifier_index + 2U);
+        instruction_index += 3U;
+      }
+    }
+  }
+}
+
 TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .entry kernel() {
@@ -2146,14 +2292,20 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
 .global .align 4 .u32 global_value;
 .entry kernel() {
   .reg .u32 %r<2>;
+  atom.relaxed.cta.global.add.u32 %r0, [global_value], %r1;
   atom.global.relaxed.cta.add.u32 %r0, [global_value], %r1;
 }
 )ptx");
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& instruction = std::get<Atom>(resolved->functions.front().body.front());
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2U);
+  const auto& instruction = std::get<Atom>(body.front());
+  const auto& legacy_instruction = std::get<Atom>(body.back());
   const auto& atom =
       std::get<Atom::GlobalRelaxedCtaAddU32>(instruction.variant);
+  const auto& legacy_atom =
+      std::get<Atom::GlobalRelaxedCtaAddU32>(legacy_instruction.variant);
   EXPECT_EQ(atom.state_space, MemoryStateSpace::Global);
   EXPECT_EQ(atom.semantics, MemoryConsistency::Relaxed);
   EXPECT_EQ(atom.scope, MemoryScope::Cta);
@@ -2161,8 +2313,20 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   EXPECT_EQ(atom.type, ScalarType::U32);
   EXPECT_EQ(atom.dst.value.declared_type, ScalarType::U32);
   EXPECT_EQ(atom.src.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(legacy_atom.state_space, atom.state_space);
+  EXPECT_EQ(legacy_atom.semantics, atom.semantics);
+  EXPECT_EQ(legacy_atom.scope, atom.scope);
+  EXPECT_EQ(legacy_atom.add, atom.add);
+  EXPECT_EQ(legacy_atom.type, atom.type);
   EXPECT_TRUE(checker::check(
                   instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  legacy_instruction,
                   checker::Context{
                       .target = {.ptx_version = {6, 0}, .sm_version = 70},
                       .instruction_range = ast.range,
@@ -2254,21 +2418,39 @@ TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
 .global .align 4 .u32 global_value;
 .entry kernel() {
   .reg .u32 %r0;
+  red.relaxed.cta.global.add.u32 [global_value], %r0;
   red.global.relaxed.cta.add.u32 [global_value], %r0;
 }
 )ptx");
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& instruction = std::get<Red>(resolved->functions.front().body.front());
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2U);
+  const auto& instruction = std::get<Red>(body.front());
+  const auto& legacy_instruction = std::get<Red>(body.back());
   const auto& red = std::get<Red::GlobalRelaxedCtaAddU32>(instruction.variant);
+  const auto& legacy_red =
+      std::get<Red::GlobalRelaxedCtaAddU32>(legacy_instruction.variant);
   EXPECT_EQ(red.state_space, MemoryStateSpace::Global);
   EXPECT_EQ(red.semantics, MemoryConsistency::Relaxed);
   EXPECT_EQ(red.scope, MemoryScope::Cta);
   EXPECT_TRUE(red.add);
   EXPECT_EQ(red.type, ScalarType::U32);
   EXPECT_EQ(red.src.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(legacy_red.state_space, red.state_space);
+  EXPECT_EQ(legacy_red.semantics, red.semantics);
+  EXPECT_EQ(legacy_red.scope, red.scope);
+  EXPECT_EQ(legacy_red.add, red.add);
+  EXPECT_EQ(legacy_red.type, red.type);
   EXPECT_TRUE(checker::check(
                   instruction,
+                  checker::Context{
+                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                      .instruction_range = ast.range,
+                  })
+                  .has_value());
+  EXPECT_TRUE(checker::check(
+                  legacy_instruction,
                   checker::Context{
                       .target = {.ptx_version = {6, 0}, .sm_version = 70},
                       .instruction_range = ast.range,

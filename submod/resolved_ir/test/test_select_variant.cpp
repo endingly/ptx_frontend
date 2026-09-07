@@ -1428,6 +1428,18 @@ TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
               Ld::VariantType::GenericVector);
   expect_load("ld.shared.ca.v4.u16 {%h0, %h1, %h2, %h3}, [%rd0];",
               Ld::VariantType::ExplicitVector);
+  expect_load("ld.relaxed.cta.global.u32 %r0, [%rd0];",
+              Ld::VariantType::ExplicitScalar);
+  expect_load("ld.global.relaxed.cta.u32 %r0, [%rd0];",
+              Ld::VariantType::ExplicitScalar);
+  expect_load("ld.relaxed.cta.global.v2.u32 {%r0, %r1}, [%rd0];",
+              Ld::VariantType::ExplicitVector);
+  expect_load("ld.global.relaxed.cta.v2.u32 {%r0, %r1}, [%rd0];",
+              Ld::VariantType::ExplicitVector);
+  expect_load("ld.mmio.relaxed.sys.global.u32 %r0, [%rd0];",
+              Ld::VariantType::ExplicitScalar);
+  expect_load("ld.global.relaxed.sys.mmio.u32 %r0, [%rd0];",
+              Ld::VariantType::ExplicitScalar);
 
   const auto invalid_load = parse_instruction("ld.wb.u32 %r0, [%rd0];");
   const auto invalid_load_selected = selectVariant<Ld>(invalid_load);
@@ -1449,6 +1461,18 @@ TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
                St::VariantType::GenericVector);
   expect_store("st.shared.cg.v4.u16 [%rd0], {%h0, %h1, %h2, %h3};",
                St::VariantType::ExplicitVector);
+  expect_store("st.release.sys.global.u32 [%rd0], %r0;",
+               St::VariantType::ExplicitScalar);
+  expect_store("st.global.release.sys.u32 [%rd0], %r0;",
+               St::VariantType::ExplicitScalar);
+  expect_store("st.release.sys.global.v2.u32 [%rd0], {%r0, %r1};",
+               St::VariantType::ExplicitVector);
+  expect_store("st.global.release.sys.v2.u32 [%rd0], {%r0, %r1};",
+               St::VariantType::ExplicitVector);
+  expect_store("st.mmio.relaxed.sys.global.u32 [%rd0], %r0;",
+               St::VariantType::ExplicitScalar);
+  expect_store("st.global.relaxed.sys.mmio.u32 [%rd0], %r0;",
+               St::VariantType::ExplicitScalar);
 
   const auto invalid_store = parse_instruction("st.ca.u32 [%rd0], %r0;");
   const auto invalid_store_selected = selectVariant<St>(invalid_store);
@@ -2594,6 +2618,32 @@ TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
   EXPECT_EQ(relaxed_local_check.error().back().kind,
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
+  const auto canonical_relaxed_local = resolve<Ld>(
+      parse_instruction("ld.relaxed.cta.local.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(canonical_relaxed_local.has_value())
+      << canonical_relaxed_local.error().message;
+  const auto canonical_relaxed_local_check =
+      checker::check(*canonical_relaxed_local, context);
+  ASSERT_FALSE(canonical_relaxed_local_check.has_value());
+  EXPECT_EQ(canonical_relaxed_local_check.error().back().kind,
+            checker::CheckDiagnosticKind::MemoryConsistencyViolation);
+
+  const auto canonical_cache = resolve<Ld>(
+      parse_instruction("ld.relaxed.cta.global.ca.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(canonical_cache.has_value()) << canonical_cache.error().message;
+  const auto canonical_cache_check = checker::check(*canonical_cache, context);
+  ASSERT_FALSE(canonical_cache_check.has_value());
+  EXPECT_EQ(canonical_cache_check.error().back().kind,
+            checker::CheckDiagnosticKind::MemoryConsistencyViolation);
+
+  const auto canonical_mmio = resolve<Ld>(
+      parse_instruction("ld.mmio.relaxed.cta.global.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(canonical_mmio.has_value()) << canonical_mmio.error().message;
+  const auto canonical_mmio_check = checker::check(*canonical_mmio, context);
+  ASSERT_FALSE(canonical_mmio_check.has_value());
+  EXPECT_EQ(canonical_mmio_check.error().back().kind,
+            checker::CheckDiagnosticKind::MemoryConsistencyViolation);
+
   const auto unknown_generic = resolve<Ld>(
       parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
   ASSERT_TRUE(unknown_generic.has_value()) << unknown_generic.error().message;
@@ -2618,6 +2668,24 @@ TEST(CollectActualModifiersAdd, BindsSpellingsToSelectedVariantSlots) {
   EXPECT_EQ(actual->at("sat"), &ast.modifiers[3]);
 }
 
+TEST(CollectActualModifiersAdd, BindsCanonicalMixedPrecisionSlots) {
+  const auto ast = parse_instruction("add.rz.sat.f32.bf16 %f0, %h1, %f2;");
+  const auto& instruction = Add::get_syntax_descriptor();
+  const auto mixed = std::ranges::find_if(
+      instruction.variants,
+      [](auto variant) { return variant.variant_name == "MixedF32"; });
+  ASSERT_NE(mixed, instruction.variants.end());
+
+  const auto actual = collect_actual_modifiers(ast, *mixed);
+
+  ASSERT_TRUE(actual.has_value()) << actual.error().message;
+  ASSERT_EQ(actual->size(), 4U);
+  EXPECT_EQ(actual->at("rounding"), &ast.modifiers[0]);
+  EXPECT_EQ(actual->at("sat"), &ast.modifiers[1]);
+  EXPECT_EQ(actual->at("result_type"), &ast.modifiers[2]);
+  EXPECT_EQ(actual->at("input_type"), &ast.modifiers[3]);
+}
+
 TEST(CollectActualModifiersAdd, RejectsOutOfOrderMixedSlots) {
   const auto ast = parse_instruction("add.rz.f32.sat.bf16 %f0, %h1, %f2;");
   const auto& instruction = Add::get_syntax_descriptor();
@@ -2631,6 +2699,24 @@ TEST(CollectActualModifiersAdd, RejectsOutOfOrderMixedSlots) {
   ASSERT_FALSE(actual.has_value());
   EXPECT_EQ(actual.error().message,
             "Modifier combination does not match instruction variant 'MixedF32'.");
+}
+
+TEST(SelectVariantMixedPrecision, RejectsUnsupportedReorderingAndDuplicates) {
+  for (const std::string_view opcode : {"add", "sub"}) {
+    for (const std::string_view suffix : {
+             ".rz.f32.sat.bf16", ".rz.sat.bf16.f32", ".sat.sat.f32.bf16",
+             ".rn.rz.f32.bf16", ".sat.f32.f16.sat",
+         }) {
+      const std::string source =
+          std::string(opcode) + std::string(suffix) + " %f0, %h1, %f2;";
+      SCOPED_TRACE(source);
+      const auto ast = parse_instruction(source);
+      if (opcode == "add")
+        EXPECT_FALSE(selectVariant<Add>(ast).has_value());
+      else
+        EXPECT_FALSE(selectVariant<Sub>(ast).has_value());
+    }
+  }
 }
 
 TEST(CollectActualModifiers, BindsRepeatedSpellingsToOrderedSlots) {

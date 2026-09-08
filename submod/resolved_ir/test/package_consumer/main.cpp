@@ -1,5 +1,6 @@
 #include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
 
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -106,6 +107,7 @@ int check_storage_declaration_metadata() {
 .global .u32 data[2][3] = {{1, 2}, {3}};
 .const .f32 weights[] = {0.5, -0.25};
 .global .u64 pointer = generic(data) + 4;
+.const .b128 wide[] = {-1, -1U};
 .entry storage_kernel() {
   .shared .align 8 .b8 tile[16];
   .local .u16 scratch[2][2];
@@ -124,14 +126,15 @@ int check_storage_declaration_metadata() {
   using ptx_frontend::base::ScalarType;
   using namespace ptx_frontend::resolved_ir;
   const auto& declarations = resolved_module->storage_declarations;
-  if (declarations.size() != 6)
+  if (declarations.size() != 7)
     return 72;
   const auto& dynamic = declarations[0];
   const auto& data = declarations[1];
   const auto& weights = declarations[2];
   const auto& pointer = declarations[3];
-  const auto& tile = declarations[4];
-  const auto& scratch = declarations[5];
+  const auto& wide = declarations[4];
+  const auto& tile = declarations[5];
+  const auto& scratch = declarations[6];
   if (dynamic.space != StorageSpace::Shared ||
       dynamic.declaration_kind != StorageDeclarationKind::External ||
       !dynamic.is_dynamic_shared || dynamic.byte_extent ||
@@ -161,6 +164,24 @@ int check_storage_declaration_metadata() {
       relocation->address_kind != StorageAddressKind::Generic ||
       relocation->addend_bits != 4 || relocation->byte_mask) {
     return 74;
+  }
+  if (wide.element_type != StorageElementType{ScalarType::B128} ||
+      wide.byte_extent != 32 || wide.alignment != 16 ||
+      wide.initialization != StorageInitializationKind::Explicit ||
+      wide.initializer.size() != 2 || wide.initializer[0].byte_offset != 0 ||
+      wide.initializer[1].byte_offset != 16) {
+    return 75;
+  }
+  const auto* signed_value =
+      std::get_if<StorageConstant>(&wide.initializer[0].value);
+  const auto* unsigned_value =
+      std::get_if<StorageConstant>(&wide.initializer[1].value);
+  if (signed_value == nullptr || unsigned_value == nullptr ||
+      signed_value->bits != std::numeric_limits<uint64_t>::max() ||
+      signed_value->high_bits != std::numeric_limits<uint64_t>::max() ||
+      unsigned_value->bits != std::numeric_limits<uint64_t>::max() ||
+      unsigned_value->high_bits != 0) {
+    return 76;
   }
   return 0;
 }

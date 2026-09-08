@@ -320,6 +320,14 @@ std::optional<StorageConstant> integer_constant(
         .is_unsigned = true};
   }
   const uint8_t byte_size = base::scalar_size_of(type);
+  if (type == base::ScalarType::B128) {
+    // Widen the evaluated result, not its operands: PTX expressions stay 64-bit.
+    const bool negative = !value->is_unsigned && (value->bits >> 63) != 0;
+    return StorageConstant{
+        .bits = value->bits,
+        .high_bits = negative ? std::numeric_limits<uint64_t>::max() : 0,
+    };
+  }
   if (byte_size == 0 || byte_size > sizeof(uint64_t)) {
     diagnose(
         diagnostics, DeclarationDiagnosticKind::UnsupportedStorageInitializer,
@@ -905,14 +913,6 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
           diagnostics, DeclarationDiagnosticKind::UnsupportedStorageInitializer,
           declarator.initializer->range,
           "Opaque storage initializers have no representable scalar layout.");
-      return;
-    }
-    if (scalar_bytes > sizeof(uint64_t)) {
-      diagnose(
-          diagnostics, DeclarationDiagnosticKind::UnsupportedStorageInitializer,
-          declarator.initializer->range,
-          "Storage initializers wider than 64 bits have no representable "
-          "constant domain.");
       return;
     }
     std::vector<uint64_t> shape;

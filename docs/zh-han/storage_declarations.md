@@ -41,7 +41,9 @@ global/constant 隐式初始化使用 `Zero`；源码 initializer（包括空 br
 `Explicit` 中未列出的位置按零初始化；frontend 不会把大型 aggregate 展开成 byte buffer。
 递归 array/vector brace 的位置决定各项 offset。
 
-`StorageConstant` 保存已规范化的 element bits。`StorageRelocation` 保存 bound symbol、
+`StorageConstant` 保存已规范化的 element bits：`bits` 为低 64 位，`high_bits` 为高
+64 位，与 host byte order 无关。不超过 64 bit 的元素，其高位 word 为零。
+`StorageRelocation` 保存 bound symbol、
 可选的 parameterized member、state-space/generic/function address interpretation、
 byte addend 及可选原始 byte mask（`0xff` 左移 0、8、…、56 bit）。
 mask 在应用 addend 之后选择一个 byte，并将其放入低八位；提取之后的算术会被拒绝，
@@ -60,7 +62,16 @@ initializer 要求 PTX 3.1。versionless fragment
 
 scalar type alternative 只允许 fundamental declaration type；instruction-only 的
 packed/alternate format 必须使用对应 bit-container type。integer/bit initializer element
-最多为 64 bit；`.b128` 可以保留 storage size，但 `.b128` initializer 不在此规范化范围。
+支持 `.b128`，array stride 为 16 byte。整数 literal 与 expression 仍在 PTX 的
+`.s64/.u64` 范围求值；更宽的 destination 不会启用 128-bit literal 或 expression 算术。
+对于 `.b128`，frontend 只在求值完成后对 signed result 做符号扩展，对 unsigned result
+做零扩展。因此 `-1` 的两个 word 均全为 1，而 `-1U` 只有低位 word 全为 1。
+稀疏 aggregate 中未列出的位置保持零初始化。
+
+这一扩展是明确的 frontend 策略，不表示已经通过 GPU conformance 验证：PTX 规定在
+初始化处转换宽度，但未明确说明 `.b128` 高半部分的规则。当前没有 GPU 验证条件，
+本契约也不复现 ptxas 13.3.33 输出中观察到的异常高位 word。
+
 floating initializer 支持 `.f32/.f64` literal、符号及括号，不规范化复合浮点算术。
 opaque object metadata 限于 module-level scalar `.global` declaration；其
 field-assignment initializer 仍不在 parser/normalizer 的支持范围。

@@ -40,12 +40,17 @@ enum class StorageInitializationKind : uint8_t {
 enum class StorageAddressKind : uint8_t { StateSpace, Generic, Function };
 
 /**
- * Constant bits for a supported initializer element of at most 64 bits.
- * Wider element types may have storage metadata but their initializers diagnose.
+ * Owned constant bits for one initializer element, up to 128 bits.
+ * Word significance is independent of host byte order; the declaration gives
+ * the element width. Integer expressions are evaluated at 64 bits before widening.
  */
 struct StorageConstant {
   /** Low-order bits; unused high bits are zero for types narrower than 64 bits. */
   uint64_t bits{};
+  /** Bits 64..127; zero for elements of at most 64 bits. For .b128, signed
+   * negative expression results are sign-extended; all other results zero-extend.
+   */
+  uint64_t high_bits{};
 };
 
 /** A link/runtime-resolved symbol address with an optional byte extraction. */

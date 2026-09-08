@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -567,8 +568,7 @@ TEST(ResolvedStorageDeclarations, RetainsScopedInitializerSymbolIdentity) {
 }
 
 /** Scalar width and constant ownership remain explicit at integer boundaries. */
-TEST(ResolvedStorageDeclarations,
-     RetainsIntegerBitsAndRejectsWideInitializers) {
+TEST(ResolvedStorageDeclarations, RetainsIntegerBitsAndImplicitWideZero) {
   const auto resolved = resolveSource(R"ptx(
 .global .u32 negative = -1;
 .global .b128 wide;
@@ -579,20 +579,102 @@ TEST(ResolvedStorageDeclarations,
   ASSERT_EQ(negative.initializer.size(), 1u);
   EXPECT_EQ(std::get<StorageConstant>(negative.initializer.front().value).bits,
             0xffffffffu);
+  EXPECT_EQ(std::get<StorageConstant>(negative.initializer.front().value).high_bits,
+            0u);
   const auto& wide = storageNamed(*resolved, "wide");
   EXPECT_EQ(wide.element_type, StorageElementType{base::ScalarType::B128});
   EXPECT_EQ(wide.byte_extent, 16u);
   EXPECT_EQ(wide.alignment, 16u);
   EXPECT_EQ(wide.initialization, StorageInitializationKind::Zero);
 
-  const auto explicit_wide = resolveSource(".global .b128 wide_value = 1;");
-  ASSERT_FALSE(explicit_wide.has_value());
-  EXPECT_TRUE(hasDeclarationKind(
-      explicit_wide.error(), declaration_semantics::DeclarationDiagnosticKind::
-                                 UnsupportedStorageInitializer));
-
   const auto empty_wide = resolveSource(".global .b128 wide_empty = {};");
   EXPECT_FALSE(empty_wide.has_value());
+}
+
+/** Widen only the typed 64-bit result, preserving signedness and wraparound. */
+TEST(ResolvedStorageDeclarations, WidensB128IntegerResults) {
+  constexpr uint64_t all_bits = std::numeric_limits<uint64_t>::max();
+  /** Expected low/high words for a scalar initializer expression. */
+  struct Fixture {
+    std::string_view expression;
+    uint64_t low;
+    uint64_t high;
+  };
+  constexpr std::array fixtures{
+      Fixture{"1", 1, 0},
+      Fixture{"0", 0, 0},
+      Fixture{"-1", all_bits, all_bits},
+      Fixture{"-1U", all_bits, 0},
+      Fixture{"~0", all_bits, 0},
+      Fixture{"0x8000000000000000", uint64_t{1} << 63, 0},
+      Fixture{"0xffffffffffffffff", all_bits, 0},
+      Fixture{"(.s64)0x8000000000000000", uint64_t{1} << 63, all_bits},
+      Fixture{"(.u64)-1", all_bits, 0},
+      Fixture{"-2 + 1", all_bits, all_bits},
+      Fixture{"1 ? -1 : 0U", all_bits, 0},
+      Fixture{"1 << 63", uint64_t{1} << 63, all_bits},
+      Fixture{"0xffffffffffffffffU + 1U", 0, 0},
+      Fixture{"0xff00(0x1234)", 0x12, 0},
+  };
+  for (const auto& fixture : fixtures) {
+    SCOPED_TRACE(fixture.expression);
+    const auto resolved = resolveSource(
+        ".version 9.3\n.global .b128 wide = " +
+        std::string{fixture.expression} + ";");
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    const auto& wide = storageNamed(*resolved, "wide");
+    EXPECT_EQ(wide.byte_extent, 16u);
+    EXPECT_EQ(wide.alignment, 16u);
+    EXPECT_EQ(wide.initialization, StorageInitializationKind::Explicit);
+    ASSERT_EQ(wide.initializer.size(), 1u);
+    EXPECT_EQ(wide.initializer[0].byte_offset, 0u);
+    const auto* value = std::get_if<StorageConstant>(&wide.initializer[0].value);
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(value->bits, fixture.low);
+    EXPECT_EQ(value->high_bits, fixture.high);
+  }
+}
+
+/** Wide aggregates retain sparse entries and 16-byte element strides. */
+TEST(ResolvedStorageDeclarations, RetainsSparseB128Aggregates) {
+  const auto resolved = resolveSource(R"ptx(
+.global .b128 values[][3] = {{1, -1}, {-1U}};
+.const .b128 empty[2] = {};
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& values = storageNamed(*resolved, "values");
+  EXPECT_EQ(values.array_extents,
+            (std::vector<std::optional<uint64_t>>{2, 3}));
+  EXPECT_EQ(values.byte_extent, 96u);
+  ASSERT_EQ(values.initializer.size(), 3u);
+  EXPECT_EQ(values.initializer[0].byte_offset, 0u);
+  EXPECT_EQ(values.initializer[1].byte_offset, 16u);
+  EXPECT_EQ(values.initializer[2].byte_offset, 48u);
+  EXPECT_EQ(std::get<StorageConstant>(values.initializer[1].value).high_bits,
+            std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(std::get<StorageConstant>(values.initializer[2].value).high_bits, 0u);
+  const auto& empty = storageNamed(*resolved, "empty");
+  EXPECT_EQ(empty.byte_extent, 32u);
+  EXPECT_EQ(empty.initialization, StorageInitializationKind::Explicit);
+  EXPECT_TRUE(empty.initializer.empty());
+}
+
+/** A wider destination does not permit wider literals, addresses or float values. */
+TEST(ResolvedStorageDeclarations, RejectsInvalidB128Initializers) {
+  constexpr std::array sources{
+      ".global .b128 wide = 18446744073709551616;",
+      ".global .b128 wide = 0x10000000000000000;",
+      ".global .b128 wide = 1.0;",
+      ".global .u32 target; .global .b128 wide = target;",
+      ".global .b128 wide[1] = {1, 2};",
+  };
+  for (const auto source : sources) {
+    SCOPED_TRACE(source);
+    const auto rejected = resolveSource(source);
+    ASSERT_FALSE(rejected.has_value());
+    ASSERT_FALSE(rejected.error().empty());
+    EXPECT_TRUE(rejected.error().front().declaration_kind.has_value());
+  }
 }
 
 /** Storage resolution reports overflow and invalid alignment with declaration kinds. */

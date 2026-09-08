@@ -48,7 +48,9 @@ positions in `Explicit` mode are zero-filled; the frontend does not expand a
 large aggregate into a byte buffer. Recursive array/vector brace positions
 determine each offset.
 
-`StorageConstant` holds the normalized element bits. `StorageRelocation`
+`StorageConstant` holds the normalized element bits: `bits` is the low 64-bit
+word and `high_bits` is the high word, independent of host byte order. The high
+word is zero for elements of at most 64 bits. `StorageRelocation`
 retains the bound symbol, optional parameterized member, state-space/generic/
 function address interpretation, a byte addend, and an optional raw byte mask
 (`0xff` shifted by 0, 8, ..., 56 bits).
@@ -69,8 +71,18 @@ a versionless fragment is not a target-validity certificate.
 
 Only fundamental scalar declaration types enter the scalar type alternative;
 instruction-only packed/alternate formats must use their bit-container types.
-Integer/bit initializer elements are limited to 64 bits. `.b128` may retain its
-storage size, but a `.b128` initializer is outside this normalization domain.
+Integer/bit initializer elements include `.b128`, with 16-byte array strides.
+Integer literals and expressions still use PTX's `.s64`/`.u64` evaluation domain;
+the wider destination does not enable 128-bit literals or expression arithmetic.
+For `.b128`, the frontend sign-extends a signed result and zero-extends an
+unsigned result only after evaluation. Thus `-1` fills both words with ones,
+whereas `-1U` fills only the low word. Sparse aggregate positions remain zero.
+
+This widening is an explicit frontend policy, not a GPU-verified conformance
+claim: PTX specifies conversion at initialization but does not explicitly state
+the upper-half rule for `.b128`. No GPU validation was available, and observed
+anomalous upper words in ptxas 13.3.33 output are not reproduced by this contract.
+
 Floating initialization supports `.f32`/`.f64` literals with signs and
 parentheses; compound floating arithmetic is not normalized. Opaque object
 metadata is limited to module-level scalar `.global` declarations;

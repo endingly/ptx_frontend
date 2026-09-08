@@ -3,6 +3,8 @@
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include "ptx_storage_declarations.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <limits>
@@ -728,10 +730,25 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     diagnostics.push_back(ResolveDiagnostic{
         .range = diagnostic.range,
         .message = diagnostic.message,
+        .declaration_kind = diagnostic.kind,
+        .previous_range = diagnostic.previous_range,
     });
   }
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
+
+  auto storage = resolve_storage_declarations(ast, binding_result.table);
+  if (!storage) {
+    for (const auto& diagnostic : storage.error()) {
+      diagnostics.push_back(ResolveDiagnostic{
+          .range = diagnostic.range,
+          .message = diagnostic.message,
+          .declaration_kind = diagnostic.kind,
+          .previous_range = diagnostic.previous_range,
+      });
+    }
+    return std::unexpected(std::move(diagnostics));
+  }
 
   FunctionSignatureIndex signatures;
   CallArgumentPropertyIndex call_argument_properties;
@@ -841,6 +858,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
       .symbols = std::move(binding_result.table),
       .functions = std::move(functions),
       .range = ast.range,
+      .storage_declarations = std::move(*storage),
   };
   const auto availability = checkModuleAvailability(ast, module);
   if (!availability) {

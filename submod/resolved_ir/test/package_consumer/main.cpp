@@ -1,3 +1,6 @@
+#include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
+
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -91,6 +94,94 @@ int check_entry_parameter_metadata() {
           *defined_function_scope ||
       declared[0].symbol_id == defined[0].symbol_id) {
     return 35;
+  }
+  return 0;
+}
+
+/** Verify owned storage metadata using only independently included installed headers. */
+int check_storage_declaration_metadata() {
+  std::optional<ptx_frontend::resolved_ir::ResolvedModule> resolved_module;
+  {
+    const std::string fixture = R"ptx(
+.extern .shared .align 16 .b8 dynamic[];
+.global .u32 data[2][3] = {{1, 2}, {3}};
+.const .f32 weights[] = {0.5, -0.25};
+.global .u64 pointer = generic(data) + 4;
+.const .b128 wide[] = {-1, -1U};
+.entry storage_kernel() {
+  .shared .align 8 .b8 tile[16];
+  .local .u16 scratch[2][2];
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(fixture);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return 70;
+    auto resolved = ptx_frontend::resolved_ir::resolveModule(*ast);
+    if (!resolved)
+      return 71;
+    resolved_module = std::move(*resolved);
+  }
+
+  using ptx_frontend::base::ScalarType;
+  using namespace ptx_frontend::resolved_ir;
+  const auto& declarations = resolved_module->storage_declarations;
+  if (declarations.size() != 7)
+    return 72;
+  const auto& dynamic = declarations[0];
+  const auto& data = declarations[1];
+  const auto& weights = declarations[2];
+  const auto& pointer = declarations[3];
+  const auto& wide = declarations[4];
+  const auto& tile = declarations[5];
+  const auto& scratch = declarations[6];
+  if (dynamic.space != StorageSpace::Shared ||
+      dynamic.declaration_kind != StorageDeclarationKind::External ||
+      !dynamic.is_dynamic_shared || dynamic.byte_extent ||
+      dynamic.array_extents.size() != 1 || dynamic.array_extents[0] ||
+      dynamic.initialization != StorageInitializationKind::External ||
+      data.space != StorageSpace::Global ||
+      data.element_type != StorageElementType{ScalarType::U32} ||
+      data.byte_extent != 24 || data.initializer.size() != 3 ||
+      data.initializer[0].byte_offset != 0 ||
+      data.initializer[1].byte_offset != 4 ||
+      data.initializer[2].byte_offset != 12 ||
+      weights.space != StorageSpace::Constant ||
+      weights.element_type != StorageElementType{ScalarType::F32} ||
+      weights.byte_extent != 8 || weights.initializer.size() != 2 ||
+      tile.space != StorageSpace::Shared || tile.byte_extent != 16 ||
+      tile.alignment != 8 || scratch.space != StorageSpace::Local ||
+      scratch.byte_extent != 8 || !scratch.owner_function) {
+    return 73;
+  }
+  if (pointer.initialization != StorageInitializationKind::Explicit ||
+      pointer.initializer.size() != 1) {
+    return 74;
+  }
+  const auto* relocation =
+      std::get_if<StorageRelocation>(&pointer.initializer.front().value);
+  if (relocation == nullptr || relocation->symbol_id != data.symbol_id ||
+      relocation->address_kind != StorageAddressKind::Generic ||
+      relocation->addend_bits != 4 || relocation->byte_mask) {
+    return 74;
+  }
+  if (wide.element_type != StorageElementType{ScalarType::B128} ||
+      wide.byte_extent != 32 || wide.alignment != 16 ||
+      wide.initialization != StorageInitializationKind::Explicit ||
+      wide.initializer.size() != 2 || wide.initializer[0].byte_offset != 0 ||
+      wide.initializer[1].byte_offset != 16) {
+    return 75;
+  }
+  const auto* signed_value =
+      std::get_if<StorageConstant>(&wide.initializer[0].value);
+  const auto* unsigned_value =
+      std::get_if<StorageConstant>(&wide.initializer[1].value);
+  if (signed_value == nullptr || unsigned_value == nullptr ||
+      signed_value->bits != std::numeric_limits<uint64_t>::max() ||
+      signed_value->high_bits != std::numeric_limits<uint64_t>::max() ||
+      unsigned_value->bits != std::numeric_limits<uint64_t>::max() ||
+      unsigned_value->high_bits != 0) {
+    return 76;
   }
   return 0;
 }
@@ -254,6 +345,10 @@ int main() {
   if (const int metadata_result = check_entry_parameter_metadata();
       metadata_result != 0) {
     return metadata_result;
+  }
+  if (const int storage_result = check_storage_declaration_metadata();
+      storage_result != 0) {
+    return storage_result;
   }
   if (const int fma_result = check_fma_contract(); fma_result != 0)
     return fma_result;

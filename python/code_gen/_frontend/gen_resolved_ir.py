@@ -172,6 +172,8 @@ struct ResolvedModule {{
   binding::SymbolTable symbols;
   std::vector<ResolvedFunction> functions;
   SourceRange range;
+  /** Owned non-parameter storage declarations, in source traversal order. */
+  std::vector<ResolvedStorageDeclaration> storage_declarations;
 }};
 
 /** Check one resolved module against its source .version and .target profile. */

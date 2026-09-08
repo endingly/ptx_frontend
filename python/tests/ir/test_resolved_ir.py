@@ -3479,6 +3479,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct ResolvedLabelPosition {", source)
         self.assertIn("struct ResolvedFunction {", source)
         self.assertIn("struct ResolvedModule {", source)
+        self.assertIn(
+            "std::vector<ResolvedStorageDeclaration> storage_declarations;",
+            source,
+        )
         self.assertIn("binding::SymbolTable symbols;", source)
         self.assertIn("binding::SymbolId symbol_id;", source)
         self.assertIn("std::size_t instruction_offset;", source)

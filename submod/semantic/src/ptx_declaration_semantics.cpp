@@ -1433,17 +1433,25 @@ class Checker {
       std::vector<std::optional<uint64_t>> extents;
       extents.reserve(declarator.array_dimensions.size() +
                       (declaration.vector_type ? 1 : 0));
+      const bool is_external = declarationLinkage(declaration.qualifiers) ==
+                               binding::SymbolLinkage::External;
+      const bool is_external_storage =
+          is_external &&
+          (declaration.state_space == syntax_ast::AstStateSpace::Global ||
+           declaration.state_space == syntax_ast::AstStateSpace::Constant ||
+           declaration.state_space == syntax_ast::AstStateSpace::Shared ||
+           declaration.state_space == syntax_ast::AstStateSpace::Local);
       for (size_t index = 0; index < declarator.array_dimensions.size();
            ++index) {
         const auto& dimension = declarator.array_dimensions[index];
         if (!dimension.size) {
           extents.push_back(std::nullopt);
-          if (index != 0 || !declarator.initializer) {
+          if (index != 0 || (!declarator.initializer && !is_external_storage)) {
             diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                      dimension.range,
                      index == 0
                          ? "An unsized first array dimension requires an "
-                           "initializer."
+                           "initializer unless it is an external declaration."
                          : "Only the first array dimension may be unsized.");
           }
           continue;
@@ -1531,6 +1539,20 @@ class Checker {
       checkInitializer(element, extents, depth + 1, element_type);
   }
 
+  /** Return the binding target recorded for this exact initializer token. */
+  std::optional<binding::SymbolLookup> initializerTarget(
+      SourceRange range) const {
+    const auto reference = std::ranges::find_if(
+        symbols_.references(),
+        [range](const binding::SymbolReference& candidate) {
+          return candidate.kind == binding::ReferenceKind::Initializer &&
+                 candidate.range == range;
+        });
+    if (reference == symbols_.references().end())
+      return std::nullopt;
+    return reference->target;
+  }
+
   void checkInitializerSymbols(const AstConstantExpression& expression) {
     std::visit(
         [this](const auto& value) {
@@ -1539,8 +1561,7 @@ class Checker {
             return;
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstConstantSymbol>) {
-            const auto lookup =
-                symbols_.lookup(symbols_.moduleScope(), value.name.syntax.text);
+            const auto lookup = initializerTarget(value.name.syntax.range);
             if (!lookup)
               return;
             const binding::Symbol& symbol = symbols_.symbol(lookup->symbol);
@@ -1624,6 +1645,18 @@ FunctionSignature functionSignature(
 std::optional<uint64_t> constantArrayExtent(
     const syntax_ast::AstConstantExpression& expression) {
   return nonnegativeIntegerValue(classifyExpression(expression));
+}
+
+std::optional<IntegerConstantValue> constantIntegerValue(
+    const syntax_ast::AstConstantExpression& expression) {
+  const ExpressionInfo info = classifyExpression(expression);
+  if (info.category != ExpressionCategory::Integer || !info.integer_value)
+    return std::nullopt;
+  return IntegerConstantValue{
+      .bits = info.integer_value->bits,
+      .is_unsigned =
+          info.integer_value->type == ExpressionInfo::IntegerType::Unsigned,
+  };
 }
 
 std::vector<DeclarationDiagnostic> checkDeclarations(

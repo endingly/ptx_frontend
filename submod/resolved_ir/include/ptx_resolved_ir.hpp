@@ -17,12 +17,10 @@
 #include <ptx_frontend/common/source_loc.hpp>
 #include <ptx_frontend/common/utils.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
+#include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
-
-namespace ptx_frontend::declaration_semantics {
-struct FunctionParameterContract;
-}
 
 namespace ptx_frontend::resolved_ir {
 using base::ScalarType;
@@ -262,6 +260,10 @@ struct ResolvedInstructionDescriptor {
 struct ResolveDiagnostic {
   SourceRange range;
   std::string message;
+  /** Preserved declaration-stage category; absent for other diagnostic stages. */
+  std::optional<declaration_semantics::DeclarationDiagnosticKind> declaration_kind{};
+  /** Related declaration location when provided by declaration semantics. */
+  std::optional<SourceRange> previous_range{};
 };
 
 class ResolveException : public std::runtime_error {

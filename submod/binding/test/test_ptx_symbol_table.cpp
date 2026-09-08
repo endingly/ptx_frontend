@@ -642,6 +642,33 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   EXPECT_EQ(pm4->minimum_ptx_major, 3u);
   EXPECT_EQ(pm4->minimum_sm, 20u);
 
+  const auto pm7_64 = base::lookup("%pm7_64");
+  const auto envreg31 = base::lookup("%envreg31");
+  ASSERT_TRUE(pm7_64.has_value());
+  ASSERT_TRUE(envreg31.has_value());
+  EXPECT_EQ(pm7_64->id.kind,
+            base::SpecialRegisterKind::PerformanceMonitor64);
+  EXPECT_EQ(pm7_64->id.index, 7u);
+  EXPECT_EQ(pm7_64->element_type, base::ScalarType::U64);
+  EXPECT_EQ(pm7_64->minimum_ptx_major, 4u);
+  EXPECT_EQ(pm7_64->minimum_sm, 50u);
+  EXPECT_EQ(envreg31->id.kind, base::SpecialRegisterKind::Environment);
+  EXPECT_EQ(envreg31->id.index, 31u);
+  EXPECT_EQ(envreg31->element_type, base::ScalarType::B32);
+  EXPECT_EQ(envreg31->minimum_ptx_major, 2u);
+  EXPECT_EQ(envreg31->minimum_ptx_minor, 1u);
+  EXPECT_FALSE(base::lookup("%pm8_64").has_value());
+  EXPECT_FALSE(base::lookup("%envreg32").has_value());
+  EXPECT_FALSE(base::lookup("%envreg01").has_value());
+
+  const auto globaltimer_hi = base::lookup("%globaltimer_hi");
+  ASSERT_TRUE(globaltimer_hi.has_value());
+  EXPECT_EQ(globaltimer_hi->id.kind, base::SpecialRegisterKind::GlobalTimerHi);
+  EXPECT_EQ(globaltimer_hi->element_type, base::ScalarType::U32);
+  EXPECT_EQ(globaltimer_hi->minimum_ptx_major, 3u);
+  EXPECT_EQ(globaltimer_hi->minimum_ptx_minor, 1u);
+  EXPECT_EQ(globaltimer_hi->minimum_sm, 30u);
+
   const auto cluster = base::lookup("%cluster_ctarank");
   ASSERT_TRUE(cluster.has_value());
   EXPECT_EQ(cluster->element_type, base::ScalarType::U32);

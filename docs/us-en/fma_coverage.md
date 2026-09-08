@@ -3,9 +3,8 @@
 This document states the complete PTX 9.3 `fma` contract modelled by the
 frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it
 is not a claim that every PTX opcode or simulator execution is supported. The
-machine-readable sources
-are `instructions/ptx_spec/arithmetic.yaml` and
-`instructions/opcode_coverage.yaml`.
+machine-readable instruction specification is
+`instructions/ptx_spec/arithmetic.yaml`.
 
 The normative reference is NVIDIA's PTX ISA 9.3 archive: [floating FMA
 §9.7.3.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-fma),
@@ -71,15 +70,13 @@ check declared operand types, exact bit containers, and each mixed operand
 position. The [installed C++ consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)
 parses, resolves, and checks all 16 variants using only public installed APIs.
 
-The shared Python gates cover every table row: the exact 16-variant/section and
-selector inventory is asserted by
-`python/tests/code_gen/test_opcode_coverage_manifest.py`; the PTX-section
-taxonomy by `python/tests/code_gen/test_ptx_spec_taxonomy.py`; and generated
-Resolved-IR operand layouts by `python/tests/ir/test_resolved_ir.py`. The
-installed-wheel smoke test, `python/tests/code_gen/wheel_smoke.py`, repeats the
-variant inventory and the independent mixed-precision operand types.
+The shared Python tests check PTX-section taxonomy in
+`python/tests/code_gen/test_ptx_spec_taxonomy.py` and generated Resolved-IR
+operand layouts in `python/tests/ir/test_resolved_ir.py`. The installed-wheel
+smoke test, `python/tests/code_gen/wheel_smoke.py`, checks the 16 variants and
+the independent mixed-precision operand types.
 
-Coverage accounting is at the official PTX 9.3 opcode-section level. All three
-registered FMA sections are covered, so its inventory entries are complete. The
-older common-kernel corpus and actual opcode coverage are distinct: corpus
-presence is not used as evidence of this closure.
+The coverage stated here is defined by the three official PTX 9.3 FMA sections
+and the implementation/tests above, not a manual coverage ledger. The older
+common-kernel corpus and actual opcode coverage are distinct: corpus presence
+is not used as evidence of this closure.

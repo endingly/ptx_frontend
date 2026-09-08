@@ -1,8 +1,8 @@
 # FMA 覆盖情况
 
 本文描述 frontend 已建模的完整 PTX 9.3 `fma` contract。它补充[语法覆盖矩阵](syntax_coverage.md)，
-不表示所有 PTX opcode 或 simulator execution 已受支持。machine-readable source 为
-`instructions/ptx_spec/arithmetic.yaml` 和 `instructions/opcode_coverage.yaml`。
+不表示所有 PTX opcode 或 simulator execution 已受支持。machine-readable instruction
+specification 为 `instructions/ptx_spec/arithmetic.yaml`。
 
 规范依据是 NVIDIA 的 PTX ISA 9.3 archive：[floating FMA
 §9.7.3.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-fma)、
@@ -64,13 +64,12 @@ operand type、exact bit container 以及 mixed form 的每个 operand position�
 [已安装的 C++ consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)
 只使用公开安装 API，对全部 16 个 variant 执行 parse、resolve 和 check。
 
-共享 Python gate 覆盖表中的每一行：
-`python/tests/code_gen/test_opcode_coverage_manifest.py` 断言精确的 16-variant/
-section/selector inventory；`python/tests/code_gen/test_ptx_spec_taxonomy.py` 验证
-PTX section taxonomy；`python/tests/ir/test_resolved_ir.py` 验证生成的 Resolved-IR
-operand layout。installed-wheel smoke test `python/tests/code_gen/wheel_smoke.py`
-会再次验证 variant inventory 及相互独立的 mixed-precision operand type。
+共享 Python 测试通过 `python/tests/code_gen/test_ptx_spec_taxonomy.py` 验证
+PTX section taxonomy，通过 `python/tests/ir/test_resolved_ir.py` 验证生成的
+Resolved-IR operand layout。installed-wheel smoke test
+`python/tests/code_gen/wheel_smoke.py` 验证 16 个 variant 及相互独立的
+mixed-precision operand type。
 
-coverage accounting 位于 official PTX 9.3 opcode-section 层级。三个已登记的 FMA section
-都已覆盖，因此 inventory entry 为 complete。较早的 common-kernel corpus 与实际 opcode
-coverage 不同；不会以 corpus presence 作为完成闭环的证据。
+本文的 coverage 由三个 official PTX 9.3 FMA section 及上述实现和测试界定，不依赖手工
+coverage ledger。较早的 common-kernel corpus 与实际 opcode coverage 不同；不会以
+corpus presence 作为完成闭环的证据。

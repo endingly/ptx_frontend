@@ -6417,6 +6417,33 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   EXPECT_EQ(cluster_check.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
 
+  PtxSyntaxParser timer_parser("mov.u32 %r0, %globaltimer_hi;");
+  const auto timer_ast = timer_parser.parseInstruction();
+  ASSERT_TRUE(timer_ast.has_value()) << timer_ast.diagnostics.front().message;
+  const auto timer_resolved = resolveInstruction(*timer_ast);
+  ASSERT_TRUE(timer_resolved.has_value()) << timer_resolved.error().message;
+  const auto& timer_mov = std::get<Mov>(*timer_resolved);
+  const checker::Context timer_too_old_ptx{
+      .target = checker::TargetInfo{
+          .ptx_version = checker::PtxVersion{3, 0},
+          .sm_version = 30,
+      },
+      .instruction_range = timer_ast->range,
+  };
+  const auto timer_ptx_rejected = checker::check(timer_mov, timer_too_old_ptx);
+  ASSERT_FALSE(timer_ptx_rejected.has_value());
+  EXPECT_EQ(timer_ptx_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  auto timer_too_old_sm = timer_too_old_ptx;
+  timer_too_old_sm.target.ptx_version = checker::PtxVersion{3, 1};
+  timer_too_old_sm.target.sm_version = 20;
+  const auto timer_sm_rejected = checker::check(timer_mov, timer_too_old_sm);
+  ASSERT_FALSE(timer_sm_rejected.has_value());
+  EXPECT_EQ(timer_sm_rejected.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  timer_too_old_sm.target.sm_version = 30;
+  EXPECT_TRUE(checker::check(timer_mov, timer_too_old_sm).has_value());
+
   PtxSyntaxParser wide_parser("mov.u32 %r0, %clock64;");
   const auto wide_ast = wide_parser.parseInstruction();
   ASSERT_TRUE(wide_ast.has_value()) << wide_ast.diagnostics.front().message;

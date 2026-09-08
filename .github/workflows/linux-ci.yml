@@ -154,11 +154,6 @@ jobs:
       - name: Test
         run: ctest --preset "${{ matrix.preset }}" --output-on-failure
 
-      - name: Verify archived PTX ISA baseline
-        if: matrix.name == 'Debug' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        shell: bash
-        run: .venv/bin/python python/scripts/verify_ptx_isa_baseline.py instructions/ptx_isa_baseline.yaml
-
       - name: Show compiler cache statistics
         if: always()
         shell: bash

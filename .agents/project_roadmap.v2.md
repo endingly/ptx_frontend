@@ -44,7 +44,7 @@
 因此，旧 M11 不再直接承担 1.0。M10 之后重建为 M11～M19，其中：
 
 ```text
-M11  PTX 9.3 基线、完整 coverage ledger 和 target capability
+M11  PTX 9.3 规范基线和 target capability
 M12  真实 compiler kernel 的 common scalar/data-movement 闭环
 M13  cluster、proxy 与 mbarrier
 M14  tensor map、TMA 与 bulk/tensor async copy
@@ -90,19 +90,16 @@ source
 
 它是现代指令建模的种子和 schema 验证，不是 Hopper/Blackwell coverage 的终点。
 
-### D-04：coverage manifest 不是 exhaustive ledger
+### D-04：已退役的 coverage 审计账本
 
-当前 `instructions/opcode_coverage.yaml` 只列出已经碰到的 opcode，而且所有条目均是
-`partial`。没有被列出的官方 opcode 无法区分：
+曾经的 `instructions/opcode_coverage.yaml` 和配套 instruction、directive、special-register
+registry 是人工维护的审计账本；它们及其 schema、validator 和 CI gate 已退役。它们曾记录的
+`partial` 边界不是完整 ISA 支持的声明，也不应由另一份手工 YAML 重建。
 
-- 未发现；
-- 已发现但未计划；
-- 明确推迟；
-- 明确不属于 1.0；
-- schema 暂时无法表达；
-- 等待 consumer evidence。
-
-M11 必须把它升级为覆盖 instruction、directive、special register 的 exhaustive ledger。
+当前范围以可执行的 parser、resolver、checker 和 corpus 证据，以及本 roadmap、README 和双语
+coverage 文档中的明确边界为准。未列出的 official opcode 不能据此推断具体支持范围或计划；
+特定源码仍可由 parser、resolver 或 checker 给出 diagnostic。新增范围必须由对应实现、测试和
+文档共同说明。
 
 ### D-05：target 不能只按 SM 数字比较
 
@@ -221,7 +218,7 @@ resolver/checker。
 - family 的公共 shape/type/layout/descriptor domain 已稳定；
 - 支持的 slice 有完整 parse/resolve/check/corpus；
 - 邻接但未支持的 variant 有明确、稳定的 diagnostic；
-- coverage ledger 明确记录 `partial`，不得伪装为 complete；
+- 文档和测试必须明确区分已实现的 `partial` slice 与 complete family，不得伪装为 complete；
 - 后续同 topology 的 variant 应主要通过 YAML/data 扩展，而不是新增 C++ special case。
 
 ## 2.3 1.0 不等于完整 PTX 9.3
@@ -238,7 +235,8 @@ resolver/checker。
 - WGMMA/TCGEN05 的 simulator execution；
 - 跨 CFG、跨线程的 async protocol proof。
 
-但这些 family 必须在 exhaustive ledger 中明确标为 `deferred` 或 `out_of_scope_1_0`，不能消失。
+但这些 family 的已知边界必须在 roadmap、README 或双语 coverage 文档中明确说明；不以一份
+手工 exhaustive ledger 作为持续门禁。
 
 ---
 
@@ -280,7 +278,6 @@ PTX facts
 + C++ backend spelling
 + schemas
 + target capability catalog
-+ exhaustive coverage ledger
         |
         v
 Python load / normalize / validate
@@ -290,7 +287,6 @@ generated public types
 generated descriptors
 generated lookup/dispatch
 generated checker data
-generated coverage reports
 ```
 
 ## 3.3 新增的现代公共 domain
@@ -374,12 +370,11 @@ ScaleFactorDescriptor
 18. shape cardinality 不得散落在多个 C++ switch。
 19. generic target、architecture-specific target 和 family-specific target 不得只按数值比较。
 20. temporal protocol validation 不得伪装成 instruction-local checker。
-21. unsupported official item 必须进入 coverage ledger。
-22. 文档不得把 representative slice 描述为完整 family coverage。
+21. 文档不得把 representative slice 描述为完整 family coverage。
 
 ---
 
-# 5. 规范、证据与 coverage 治理
+# 5. 规范、证据与 coverage 边界
 
 ## 5.1 证据优先级
 
@@ -395,44 +390,19 @@ ScaleFactorDescriptor
 8. C++/Python tests；
 9. README 和历史日志。
 
-## 5.2 Coverage 状态
+## 5.2 Coverage 边界
 
-exhaustive ledger 必须支持：
-
-| 状态 | 含义 |
-| --- | --- |
-| `unsupported` | 已知官方 item，当前完全不支持 |
-| `syntax_only` | 可无损进入 CST/AST，但不能 resolve/check |
-| `partial` | 有明确的 variant slice |
-| `complete` | 对 ledger 中冻结的 family scope 完整，不等于整部 PTX |
-| `deferred` | 已知且明确推迟，有理由和目标 milestone |
-| `out_of_scope_1_0` | 不进入 1.0，但仍保留正式记录 |
-| `paused` | 等待规范/toolchain/consumer evidence |
-
-每条 record 至少包含：
-
-```text
-official section
-family
-opcode/directive/sreg spelling
-variant slice
-syntax status
-resolved status
-checker status
-simulator status
-minimum PTX
-target capability
-planned milestone
-disposition reason
-evidence links
-```
+Coverage 文档使用 `partial`、supported subset、deferred 和 out-of-scope 等自然语言边界来
+说明实际实现的 variant slice。它们是读者理解当前行为的说明，不是覆盖 PTX 9.3 的人工
+inventory，也不构成 no-unaccounted-item CI gate。任何 `complete` 表述只能针对明示的
+family scope，绝不表示整部 PTX ISA。
 
 ## 5.3 1.0 family disposition
 
 | PTX 9.3 family | 1.0 处置 | Milestone |
 | --- | --- | --- |
 | Integer arithmetic | common compiler-kernel subset；剩余 cross-product 延后 | M12 |
-| Extended-precision integer | ledger 完整；非 corpus 必需项延后 | post-1.0 |
+| Extended-precision integer | 非 corpus 必需项延后 | post-1.0 |
 | Floating / half / mixed precision | common subset；transcendental 完整度延后 | M12 / post-1.0 |
 | Comparison / selection | common integer/float/predicate topology | M12 |
 | Logic / shift | common compiler-kernel subset | M12 |
@@ -447,7 +417,7 @@ evidence links
 | WMMA compatibility | representative slice 进入 1.0 | M15 |
 | Hopper WGMMA | 进入 1.0 | M16 |
 | Blackwell TCGEN05 | 进入 1.0 | M17/M18 |
-| Stack manipulation | ledger 完整；默认延后 | post-1.0 |
+| Stack manipulation | 默认延后 | post-1.0 |
 | Video instructions | 明确不进入 1.0 | post-1.0 |
 | Misc instructions | `trap` 已完成；`setmaxnreg` 进入 common profile；其他延后 | M9/M12 |
 | Multimem | base identity 可预留；完整 instruction family 延后 | post-1.0 |
@@ -472,16 +442,15 @@ evidence links
 10. module-aware resolver 有成功与失败测试；
 11. checker 有 operand/modifier/layout/target 测试；
 12. diagnostics 包含准确 SourceRange；
-13. coverage ledger 同步；
-14. 双语 coverage 同步；
-15. public capability 变化时同步 README；
-16. `git diff --check` 通过；
-17. Debug build/test 通过；
-18. Release build/test 通过；
-19. installed consumer 不被破坏；
-20. generated output 未被手工修改；
-21. issue 对应独立 commit；
-22. milestone 最后一个 commit 进行 code review 与 document-drift review。
+13. 双语 coverage 同步；
+14. public capability 变化时同步 README；
+15. `git diff --check` 通过；
+16. Debug build/test 通过；
+17. Release build/test 通过；
+18. installed consumer 不被破坏；
+19. generated output 未被手工修改；
+20. issue 对应独立 commit；
+21. milestone 最后一个 commit 进行 code review 与 document-drift review。
 
 只有 lexer/parser 能接受源码，不算支持 instruction。
 
@@ -502,7 +471,7 @@ evidence links
 | M8 | ✅ | module grammar、nested scope 与 recovery；I14 暂停 |
 | M9 | ✅ | simulator MVP frontend opcode coverage；C03 暂停 |
 | M10 | ✅ | modern instruction seed slices |
-| M11 | ✅ | PTX 9.3 基线、exhaustive ledger 与 target capability |
+| M11 | ✅ | PTX 9.3 规范基线和 target capability |
 | M12 | ✅ | common compiler-generated scalar/data-movement closure |
 | M13 | ✅ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
@@ -642,7 +611,7 @@ evidence links
 | M8-I05 | ✅ | `.section` | matched brace/raw DWARF payload |
 | M8-I06 | ✅ | `.pragma` | module/header/body placement |
 | M8-I07 | ✅ | kernel-resource directives | maxnreg/maxntid/reqntid/minnctapersm |
-| M8-I08 | ✅ | directive registry | PTX 9.3 directive boundary |
+| M8-I08 | ✅ | directive coverage boundary | PTX 9.3 directive boundary |
 | M8-I09 | ✅ | DiagnosticCollection | optional value + ordered diagnostics |
 | M8-I10 | ✅ | recovery node | inserted/skipped/error |
 | M8-I11 | ✅ | synchronization point | bounded module recovery |
@@ -659,7 +628,7 @@ M9 milestone 已完成；`M9-C03` 单独暂停，不再把 milestone 标为进�
 
 | ID | 状态 | Issue | 闭环摘要 |
 | --- | --- | --- | --- |
-| M9-I01 | ✅ | opcode coverage manifest | syntax/resolved/checker/simulator 状态 |
+| M9-I01 | ✅ | opcode coverage boundary | syntax/resolved/checker/simulator 状态；审计 YAML 已退役 |
 | M9-I02 | ✅ | simulator MVP corpus | 固定最小 kernel/opcode |
 | M9-I03 | ✅ | `ret` | frozen slice |
 | M9-I04 | ✅ | `exit` | context/availability |
@@ -693,7 +662,7 @@ M9 milestone 已完成；`M9-C03` 单独暂停，不再把 milestone 标为进�
 
 | ID | 状态 | Issue | 闭环摘要 |
 | --- | --- | --- | --- |
-| M10-I01 | ✅ | `ld/st` extension gap manifest | machine-readable gaps |
+| M10-I01 | ✅ | `ld/st` extension boundary | frozen supported/excluded forms；审计 YAML 已退役 |
 | M10-I02 | ✅ | cache-hint/eviction slice | L1 eviction + L2 hint |
 | M10-I03 | ✅ | `ldu` | global scalar slice |
 | M10-I04 | ✅ | `prefetch` | global/L1 slice |
@@ -722,25 +691,28 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 
 ---
 
-# 9. M11：PTX 9.3 基线、exhaustive ledger 与 target capability
+# 9. M11：PTX 9.3 规范基线和 target capability
 
 ## 目标
 
 在继续扩展 opcode 前，先保证：
 
-- PTX 9.3 的每个 instruction/directive/sreg 都被记录；
+- PTX 9.3 规范基线和其 official archive 链接被固定在文档中；
 - target identity 能表达 generic、architecture-specific 和 family-specific profile；
 - modern descriptor/fragment/tensor operand 有 schema 基础；
-- 未支持 item 不再因为“不在 YAML 中”而不可见。
+- 未支持行为由稳定 diagnostic 和明确文档边界说明，不从 artifact 缺席推断。
+
+历史说明：M11-I02～I06 和 M11-C02 曾使用人工 YAML registry/ledger 及其审计测试。这些
+artifact 与门禁均已退役；下表保留历史完成语境，不要求重建文件，也不表示这些 CI 仍在运行。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
 | M11-I01 | ✅ | 独立 | 冻结 PTX ISA 9.3 规范基线 | 记录版本、发布日期、章节 URL 与更新策略；不得无审查追随 latest |
-| M11-I02 | ✅ | 独立 | 建立 exhaustive instruction registry | PTX 9.3 §9.7 每个 family/opcode/sub-opcode 均有 record |
-| M11-I03 | ✅ | 独立 | 建立 exhaustive directive registry | Chapter 11 与已知 pragma string 全部有 record |
-| M11-I04 | ✅ | 独立 | 建立 exhaustive special-register registry | Chapter 10 每个 spelling、shape、type、availability 有 record |
-| M11-I05 | ✅ | 独立 | 将 coverage 提升到 variant-slice 粒度 | 同一 opcode 的不同 topology/type/shape 可独立标记 |
-| M11-I06 | ✅ | 独立 | 建立 disposition/reason schema | planned/deferred/out-of-scope/paused 均要求理由和 milestone |
+| M11-I02 | ✅（历史） | 独立 | exhaustive instruction registry | 历史审计 artifact，现已退役 |
+| M11-I03 | ✅（历史） | 独立 | exhaustive directive registry | 历史审计 artifact，现已退役 |
+| M11-I04 | ✅（历史） | 独立 | exhaustive special-register registry | 历史审计 artifact，现已退役 |
+| M11-I05 | ✅（历史） | 独立 | variant-slice coverage audit | 历史审计 artifact，现已退役 |
+| M11-I06 | ✅（历史） | 独立 | disposition/reason audit schema | 历史审计 artifact，现已退役 |
 | M11-I07 | ✅ | 独立 | 建立 `TargetArchitecture` 与 `TargetFlavor` | 保留 source spelling；numeric、`a`、`f` 不混淆 |
 | M11-I08 | ✅ | 独立 | 扩展 availability expression | 支持 min PTX、numeric SM、exact target、feature capability 与 AND/OR |
 | M11-I09 | ✅ | 独立 | 建立 validation `TargetProfile` catalog | 至少覆盖 sm80、sm90/sm90a、sm100/sm100a/sm100f；未知 target 不猜测 |
@@ -752,18 +724,16 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 | M11-I15 | ✅ | 独立 | 扩展 modern operand schema primitive | opaque descriptor、tensor coordinate、variable fragment cardinality、typed token |
 | M11-I16 | ✅ | 独立 | 定义 real-PTX corpus provenance contract | fixture 记录生成器/toolkit/target/source/license/hash，禁止无来源 blob |
 | M11-C01 | ✅ | 耦合 | 统一 instruction/directive/sreg availability | 三类 checker 共用 `TargetProfile` 与 diagnostic protocol |
-| M11-C02 | ✅ | 耦合 | 建立 no-unaccounted-item CI gate | PTX 9.3 官方 inventory 新增/删除时 CI 给出结构化 diff |
+| M11-C02 | ✅（历史） | 耦合 | no-unaccounted-item CI gate | 历史审计 gate，现已退役 |
 | M11-C03 | ✅ | 耦合 | 建立 SM80/SM90a/SM100 multi-generation corpus | 支持项通过，未支持项明确 diagnostic，无 silent drop |
 
 ### 闭环证据（持续可验证）
 
-- PTX ISA 9.3 证据固定到 CUDA 13.3.0 archive；digest 明确 `contents.html` subject 和
-  `raw_response_body`。baseline 与 instruction/directive/special-register registry 的
-  `source_url`/`evidence_url` 由 cross-artifact equality 测试分别对齐 archive
-  `root`/`contents`，scheduled/manual workflow 可重算远端原始 bytes。
-- instruction、directive 与 special-register registry 均通过 official inventory accounting
-  join；每个官方 item 只有一个可解释的 support outcome，新增、缺失、重复或冲突均产生
-  structured diff。
+- PTX ISA 9.3 的规范性基线固定为 CUDA 13.3.0 archive 的
+  [PTX ISA](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/) 与
+  [Contents](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/contents.html)。
+  这些链接是文档基线，不存在 online archive digest verifier、远端 bytes 重算或 registry
+  cross-artifact equality gate。
 - generic、architecture-specific exact identity、`family` 与 capability 在同一
   `TargetProfile` 路径中分别验证。`family` 是最低 family-specific 源特性 target，只查
   `enabled_family_features`：`sm_100`/`sm_103` 为无，`sm_100f`/`sm_100a` 为 `sm_100f`，
@@ -780,21 +750,20 @@ M10 完成后的文档审查还规范了 `instructions/ptx_spec` 的 PTX ISA 9.3
 - corpus provenance 为每个 fixture 保存有序 `targets`；multi-target corpus 保留完整 directive
   sequence，删除、重排或追加 target 都会触发 provenance mismatch。
 
-M11 的完成状态以前述离线测试以及最终 Debug/Release workflow、installed consumer、online
-archive digest verifier 和 `git diff --check` 全部通过为前置条件；这些是持续门禁，不记录
-一次性运行数量。
+M11 的当前可验证完成状态以前述实现测试以及最终 Debug/Release workflow、installed consumer
+和 `git diff --check` 为依据。已退役的 YAML audit、registry join、no-unaccounted-item CI 与
+online archive digest verifier 不是持续门禁。
 
 ### 出口
 
 ```text
-PTX 9.3 official inventory
+PTX 9.3 normative archive links
         |
         v
-exhaustive machine-readable ledger
+target capability catalog + generated descriptors
         |
-        +--> target capability catalog
-        +--> generated coverage report
-        +--> CI no-unaccounted-item gate
+        +--> parser / resolver / checker tests
+        +--> corpus evidence and documented scope
 ```
 
 ---
@@ -806,16 +775,16 @@ exhaustive machine-readable ledger
 M12 已完成。现代 matrix kernel 仍依赖大量普通 scalar/control/address 指令。确定性 inline-PTX
 slice 在固定 SM80/SM90a/SM100 上验证 60 个 common forms，避免“能识别 WGMMA，却在前一条
 `lop3` 或 `prmt` 上失败”。同一组 profile 的普通 CUDA `natural_kernel` 编译输出是独立的真实
-compiler-emission evidence；其每个 module 均完整 parse/resolve/check，同时 manifest 记录 emitted
-spelling、频率和仅针对 opcode+modifier catalog 的 first blocker；它不检查 operands、target/profile
-availability 或 C++ checker。完整 frontend support 以 M12 C++ corpus test 的
-parse/resolve/check E2E 证据为权威。
+compiler-emission evidence；其每个 module 均完整 parse/resolve/check。该 corpus 的通过只证明
+所执行 forms 的 frontend contract；它不穷举 operands、target/profile availability 或完整 C++ checker
+行为。完整 frontend support 以 M12 C++ corpus test 的 parse/resolve/check E2E 证据为权威，且该
+证据也不代表完整 PTX ISA。
 
 每个 opcode issue 只实现固定 corpus 所需的明确 slice；不追求完整 historical cross-product。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M12-I01 | ✅ | 独立 | 建立 common-kernel gap manifest | 按 corpus 统计 opcode+modifier catalog first blocker、frequency 与 profile；完整 frontend support 由 C++ E2E corpus 证明 |
+| M12-I01 | ✅（历史） | 独立 | common-kernel gap audit | 历史审计 YAML 已退役；完整 frontend support 由 C++ E2E corpus 证明 |
 | M12-I02 | ✅ | 独立 | 支持 `set` common slice | integer/float result topology 与 compare/boolean modifier 冻结 |
 | M12-I03 | ✅ | 独立 | 扩展 `setp` common slice | dual-predicate output 与 common compare operators |
 | M12-I04 | ✅ | 独立 | 支持 `slct` common slice | predicate/value/result type 约束 |
@@ -850,13 +819,13 @@ parse/resolve/check E2E 证据为权威。
 | M12-I33 | ✅ | 独立 | 支持 `setmaxnreg` common slice | action、immediate、warpgroup/target rule |
 | M12-C01 | ✅ | 耦合 | 统一 common scalar domain | compare/rounding/saturation/width/type diagnostic 无重复实现 |
 | M12-C02 | ✅ | 耦合 | 打通 common compiler-kernel corpus | 三个 target profile 的 60 个 deterministic inline-PTX forms 与 ordinary CUDA scaffolding 均可 parse/resolve/check |
-| M12-C03 | ✅ | 耦合 | 回写 exhaustive ledger | deterministic corpus frequency/support status 与 natural compiler-emission spelling/frequency/catalog first blocker 同步；三个 profile 的当前 catalog first blocker 均为 `none`，完整 frontend support 由 C++ E2E corpus 证明 |
+| M12-C03 | ✅ | 耦合 | 固化 common-kernel closure | deterministic 与 natural corpus 的 parse/resolve/check E2E 证明已实现 forms；不主张完整 ISA coverage |
 
 ### 出口
 
 M12 已结束；deterministic common slice 与 ordinary compiler scaffolding 不应阻断 Hopper/Blackwell
-kernel。其 coverage ledger 仍是 partial，simulator execution 仍不支持；后续工作继续以 manifest
-和 ledger 的明确边界为准。
+kernel。它们仅覆盖明确的 partial forms，simulator execution 仍不支持；后续工作以实现、corpus
+和同步文档所声明的边界为准，而非已退役的 manifest 或 ledger。
 
 ---
 
@@ -904,14 +873,14 @@ frontend identity + instruction-local legality + target/profile availability + p
 
 ### 闭环证据（持续可验证）
 
-- PTX ISA 9.3 instruction registry、opcode coverage 与 inventory accounting 的 join 持续验证
-  每个 M13 opcode slice 的 source section、support status 与 residual disposition；partial
-  slice 不被误记为完整 family。
+- M13 的 source section、supported slice 与邻接边界由实现、corpus 和本 roadmap 共同说明；
+  退役的 instruction registry、opcode coverage 和 inventory-accounting join 不再验证这些事项。
+  partial slice 不得在文档中误记为完整 family。
 - 生成的 descriptor/resolved/checker 路径持续验证 cluster capability、target/profile
   availability 与 instruction-local operand topology；mbarrier 的 address、state token、phase、
   transaction count 与 layout 使用统一 domain。
-- `m13_synchronization` manifest、sm90a/sm100 corpus 与 closure test 共同持续验证
-  CTA、cluster、mbarrier 与 proxy 的正反例；其验证对象是 frontend
+- sm90a/sm100 corpus 与 closure test 共同持续验证 CTA、cluster、mbarrier 与 proxy 的正反例；
+  其验证对象是 frontend
   parse/resolve/check contract，而非 runtime execution。
 
 ### 出口
@@ -1153,9 +1122,8 @@ cross-product 可以继续作为 data-only expansion，不要求破坏 public co
 ### 1.0 最低完成标准
 
 - M0～M19 的必要 issue 完成；
-- M8-I14 可以继续暂停，但必须在 ledger 中明确排除；
+- M8-I14 可以继续暂停；其范围和所缺证据由 roadmap 说明，不要求进入 ledger；
 - M10 frozen slices 与其 PTX ISA 9.3 taxonomy 维护修正保持完整；
-- PTX 9.3 instruction/directive/sreg 无 unaccounted item；
 - `core-sm80` 能完成最小 functional execution；
 - `hopper-sm90a` 能完成 cluster/mbarrier/TMA/WGMMA parse/resolve/check；
 - `blackwell-sm100` 能完成 Tensor Memory/TCGEN05 parse/resolve/check；
@@ -1164,7 +1132,7 @@ cross-product 可以继续作为 data-only expansion，不要求破坏 public co
 - modern descriptor/tensor/matrix public view 稳定；
 - GCC/Clang、Debug/Release、ASan/UBSan、fuzz、package、consumer 全通过；
 - generated output 可复现；
-- README、双语 coverage、roadmap、manifest 与代码一致。
+- README、双语 coverage、roadmap 与代码一致。
 
 ---
 
@@ -1176,7 +1144,7 @@ cross-product 可以继续作为 data-only expansion，不要求破坏 public co
 M10 seed slices
       |
       v
-M11 exhaustive ledger + target capability
+M11 normative baseline + target capability
       |
       +-----------------------------+
       |                             |
@@ -1240,8 +1208,9 @@ M19 diagnostics/CI/reproducibility infrastructure
 # 19. 当前推荐实施顺序
 
 1. 以当前分支已完成的 M10 frozen slices 与 PTX ISA 9.3 taxonomy 维护修正为起点，不重复实现。
-2. 实现 M11-I01～I09，先冻结 PTX 9.3 inventory、coverage schema 和 target capability。
-3. 完成 M11 cluster directive/sreg、modern lexical corpus 和 no-unaccounted-item gate。
+2. 以 M11 的 PTX 9.3 规范基线、target capability 和 operand schema 为前提，不重建已退役的
+   inventory/coverage audit YAML。
+3. 完成 M11 cluster directive/sreg 与 modern lexical corpus。
 4. M12、M13 和 M15 的独立基础 issue 并行推进。
 5. M13 完成后进入 M14 TMA。
 6. M13 + M15 完成后进入 M16 WGMMA。
@@ -1267,16 +1236,14 @@ M19 diagnostics/CI/reproducibility infrastructure
 11. YAML/schema 变化同时有 Python 与 C++ 测试。
 12. generated file 不能代替 generator 修改。
 13. consumer 需求通过 adapter/public view 进入 frontend，不把 simulator state 放入 IR。
-14. future ISA item 必须先进入 exhaustive ledger。
-15. official inventory 变化由 CI 报告，不允许人工遗忘。
-16. unsupported item 不得 silent drop。
-17. `partial` 不得在 prose 中写成 complete。
-18. target family capability 不得退化为 SM 数值比较。
-19. cross-instruction protocol proof 不得塞入 opcode resolver。
-20. temporary fallback 必须记录删除 milestone。
-21. milestone 最后一个 commit 必须同时 review code、coverage、README、双语 docs 与 roadmap。
-22. `docs/deprecated/next_step.md` 保持冻结历史。
-23. 本文与当前分支事实冲突时，以当前代码和可重复的本地验证为准并立即修本文。
+14. unsupported item 不得 silent drop；已实现或明确排除的边界须在相关测试和文档中可见。
+15. `partial` 不得在 prose 中写成 complete。
+16. target family capability 不得退化为 SM 数值比较。
+17. cross-instruction protocol proof 不得塞入 opcode resolver。
+18. temporary fallback 必须记录删除 milestone。
+19. milestone 最后一个 commit 必须同时 review code、coverage、README、双语 docs 与 roadmap。
+20. `docs/deprecated/next_step.md` 保持冻结历史。
+21. 本文与当前分支事实冲突时，以当前代码和可重复的本地验证为准并立即修本文。
 
 ---
 
@@ -1315,10 +1282,10 @@ M19 diagnostics/CI/reproducibility infrastructure
   -> diagnostics precise
   -> public API consumable
 
-未支持的 official PTX
-  -> exhaustive ledger 中可见
+未支持或未建模的 official PTX
+  -> 不从 parser/corpus artifact 的缺席推断为支持
   -> 不 silent drop
-  -> 有明确 disposition
+  -> 有明确的文档或 diagnostic 边界
   -> 可以按单 opcode / 单 slice 演进
 ```
 

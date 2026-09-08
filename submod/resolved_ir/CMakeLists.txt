@@ -147,9 +147,9 @@ set(magic_enum_DIR [==[${magic_enum_DIR}]==] CACHE PATH \"\" FORCE)
 set(GTest_DIR [==[${GTest_DIR}]==] CACHE PATH \"\" FORCE)
 set(CMAKE_PREFIX_PATH [==[${CMAKE_PREFIX_PATH}]==] CACHE STRING \"\" FORCE)
 ")
-    add_test(
-        NAME ptx_frontend.package_consumer
-        COMMAND "${CMAKE_COMMAND}"
+    # Keep the full acceptance and opt-in smoke on the same installed API client.
+    set(_package_consumer_command
+        "${CMAKE_COMMAND}"
             "-DPTX_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DPTX_BINARY_DIR=${CMAKE_BINARY_DIR}"
             "-DPTX_PYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
@@ -166,6 +166,21 @@ set(CMAKE_PREFIX_PATH [==[${CMAKE_PREFIX_PATH}]==] CACHE STRING \"\" FORCE)
             "-DPTX_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}"
             "-DPTX_FMT_DIR=${fmt_DIR}"
             "-DPTX_MAGIC_ENUM_DIR=${magic_enum_DIR}"
+    )
+    add_test(
+        NAME ptx_frontend.package_consumer
+        COMMAND ${_package_consumer_command}
+            "-DPTX_PACKAGE_CONSUMER_SMOKE_ONLY=OFF"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/package_consumer/run_test.cmake"
     )
+    option(PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST
+        "Register an additional installed API smoke test for integration builds" OFF)
+    if(PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST)
+        add_test(
+            NAME ptx_frontend.package_consumer_smoke
+            COMMAND ${_package_consumer_command}
+                "-DPTX_PACKAGE_CONSUMER_SMOKE_ONLY=ON"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/test/package_consumer/run_test.cmake"
+        )
+    endif()
 endif()

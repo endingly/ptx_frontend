@@ -1,0 +1,140 @@
+name: Set up Linux build dependencies
+description: Shared GCC, Python, vcpkg, and cache setup for Linux CI workflows
+
+inputs:
+  writes-shared-caches:
+    description: Whether this job may save shared APT and pip cache entries
+    default: "false"
+
+outputs:
+  month:
+    description: UTC cache-maintenance epoch
+    value: ${{ steps.epoch.outputs.month }}
+  compiler-identity:
+    description: Installed GCC/tool identity and runner-image fingerprint
+    value: ${{ steps.identity.outputs.compiler }}
+  vcpkg-revision:
+    description: Full vcpkg builtin baseline from the manifest
+    value: ${{ steps.identity.outputs.vcpkg-revision }}
+  python-version:
+    description: Python interpreter version used for the pip cache key
+    value: ${{ steps.identity.outputs.python }}
+  pip-cache-key:
+    description: Exact Python download cache key
+    value: ${{ steps.pip.outputs.cache-primary-key }}
+  pip-cache-hit:
+    description: Whether the exact Python download cache entry was restored
+    value: ${{ steps.pip.outputs.cache-hit }}
+  downloads-cache-key:
+    description: Exact vcpkg source-download cache key
+    value: ${{ steps.downloads.outputs.cache-primary-key }}
+  downloads-cache-hit:
+    description: Whether the exact vcpkg source-download cache entry was restored
+    value: ${{ steps.downloads.outputs.cache-hit }}
+  binary-cache-key:
+    description: Exact vcpkg binary archive cache key
+    value: ${{ steps.binaries.outputs.cache-primary-key }}
+  binary-cache-hit:
+    description: Whether the exact vcpkg binary archive cache entry was restored
+    value: ${{ steps.binaries.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Reject floating third-party action references
+      shell: bash
+      run: python3 .github/scripts/check_action_pins.py
+
+    - name: Compute cache epoch
+      id: epoch
+      shell: bash
+      run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+    - name: Restore APT package cache
+      id: apt
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: .cache/apt/archives
+        key: apt-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.month }}-${{ hashFiles('.github/actions/setup-linux/action.yml') }}
+        restore-keys: |
+          apt-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.month }}-
+
+    - name: Install system dependencies
+      shell: bash
+      env:
+        APT_CACHE_DIR: ${{ github.workspace }}/.cache/apt/archives
+      run: |
+        mkdir -p "$APT_CACHE_DIR/partial"
+        chmod 0777 "$APT_CACHE_DIR" "$APT_CACHE_DIR/partial"
+        sudo apt-get update
+        sudo apt-get \
+          -o Dir::Cache::archives="$APT_CACHE_DIR" \
+          -o Binary::apt::APT::Keep-Downloaded-Packages=true \
+          install -y --no-install-recommends \
+          build-essential ccache clang-format cmake curl flex gcc g++ git \
+          ninja-build pkg-config python3 python3-pip python3-venv tar unzip zip
+        sudo chmod -R a+rX "$APT_CACHE_DIR"
+
+    - name: Save APT package cache
+      if: inputs.writes-shared-caches == 'true' && steps.apt.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: .cache/apt/archives
+        key: ${{ steps.apt.outputs.cache-primary-key }}
+
+    - name: Identify compiler and vcpkg revision
+      id: identity
+      shell: bash
+      run: python3 .github/scripts/compiler-cache-identity.py
+
+    - name: Restore Python download cache
+      id: pip
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: .cache/pip
+        key: pip-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.python }}-${{ steps.epoch.outputs.month }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}
+        restore-keys: |
+          pip-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.python }}-${{ steps.epoch.outputs.month }}-
+
+    - name: Install Python generator dependencies
+      shell: bash
+      run: |
+        python3 -m venv .venv
+        .venv/bin/python -m pip install -r requirements.txt
+        echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Save Python download cache
+      if: inputs.writes-shared-caches == 'true' && steps.pip.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: .cache/pip
+        key: ${{ steps.pip.outputs.cache-primary-key }}
+
+    - name: Restore vcpkg binary archive cache
+      id: binaries
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: .cache/vcpkg/archives
+        key: vcpkg-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.compiler }}-${{ steps.identity.outputs.vcpkg-revision }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', '.ports/**', 'CMakePresets.json') }}
+
+    - name: Restore vcpkg source-download cache
+      id: downloads
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: .cache/vcpkg/downloads
+        key: vcpkg-downloads-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.vcpkg-revision }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', '.ports/**') }}
+        restore-keys: |
+          vcpkg-downloads-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.identity.outputs.vcpkg-revision }}-
+
+    - name: Prepare vcpkg cache directories
+      shell: bash
+      run: mkdir -p "$VCPKG_BINARY_CACHE" "$VCPKG_DOWNLOADS"
+
+    - name: Set up vcpkg
+      uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+      with:
+        vcpkgDirectory: ${{ env.VCPKG_ROOT }}
+        vcpkgGitCommitId: ${{ steps.identity.outputs.vcpkg-revision }}
+        vcpkgJsonGlob: vcpkg.json
+        runVcpkgInstall: false
+        doNotCache: true

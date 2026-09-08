@@ -3,15 +3,16 @@ name: Linux CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    # PR caches cannot warm other PRs; keep both integration branches warm.
-    branches: [dev, main]
   schedule:
     - cron: "0 0 1 * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: linux-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
@@ -27,126 +28,58 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-26.04
     timeout-minutes: 60
-    concurrency:
-      group: linux-ci-${{ github.ref }}-${{ matrix.preset }}
-      cancel-in-progress: true
+    env:
+      CC: /usr/bin/gcc
+      CXX: /usr/bin/g++
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Debug
             preset: ci-linux-gcc-debug
+            writes_shared_caches: true
           - name: Release
             preset: ci-linux-gcc-release
+            writes_shared_caches: false
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Compute cache epoch
-        id: cache-epoch
-        shell: bash
-        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore APT package cache
-        uses: actions/cache@v6
+      - name: Set up Linux dependencies
+        id: setup
+        uses: ./.github/actions/setup-linux
         with:
-          path: .cache/apt/archives
-          key: apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache-epoch.outputs.month }}-${{ hashFiles('.github/workflows/linux-ci.yml') }}
-          restore-keys: |
-            apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache-epoch.outputs.month }}-
-
-      - name: Install system dependencies
-        shell: bash
-        env:
-          APT_CACHE_DIR: ${{ github.workspace }}/.cache/apt/archives
-        run: |
-          mkdir -p "$APT_CACHE_DIR/partial"
-          chmod 0777 "$APT_CACHE_DIR" "$APT_CACHE_DIR/partial"
-          sudo apt-get update
-          sudo apt-get \
-            -o Dir::Cache::archives="$APT_CACHE_DIR" \
-            -o Binary::apt::APT::Keep-Downloaded-Packages=true \
-            install -y --no-install-recommends \
-            build-essential \
-            ccache \
-            clang-format \
-            cmake \
-            curl \
-            flex \
-            gcc \
-            g++ \
-            git \
-            ninja-build \
-            pkg-config \
-            python3 \
-            python3-pip \
-            python3-venv \
-            tar \
-            unzip \
-            zip
-          sudo chmod -R a+rX "$APT_CACHE_DIR"
-
-      - name: Compute toolchain cache identity
-        id: toolchain
-        shell: bash
-        run: |
-          fingerprint=$( { printf '%s\n' "$ImageOS" "$ImageVersion"; g++ --version; cmake --version; } | sha256sum | cut -d ' ' -f 1)
-          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Python download cache
-        uses: actions/cache@v6
-        with:
-          path: .cache/pip
-          key: pip-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            pip-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}-
-
-      - name: Install Python generator dependencies
-        shell: bash
-        run: |
-          python3 -m venv .venv
-          .venv/bin/python -m pip install -r requirements.txt
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
-
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            .cache/vcpkg/archives
-            .cache/vcpkg/downloads
-          # Refresh immutable snapshots so newly built ABIs survive this run.
-          key: vcpkg-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            vcpkg-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('vcpkg.json') }}-
-
-      - name: Prepare vcpkg cache directories
-        shell: bash
-        run: mkdir -p "$VCPKG_BINARY_CACHE" "$VCPKG_DOWNLOADS"
-
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: ${{ env.VCPKG_ROOT }}
-          vcpkgJsonGlob: '**/vcpkg.json'
-          runVcpkgInstall: false
-          doNotCache: true
+          writes-shared-caches: ${{ matrix.writes_shared_caches }}
 
       - name: Restore compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
-          # ccache validates source/header contents; snapshots must advance even
-          # when only C++ files change. Keep consumer and full-build caches separate.
-          key: ccache-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ matrix.preset }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ccache-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ matrix.preset }}-
+            ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-
+            ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
 
       - name: Configure
         shell: bash
         run: |
           ccache --zero-stats
-          cmake --preset "${{ matrix.preset }}"
+          cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+
+      - name: Save vcpkg source-download cache
+        if: success() && matrix.writes_shared_caches && steps.setup.outputs.downloads-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/vcpkg/downloads
+          key: ${{ steps.setup.outputs.downloads-cache-key }}
+
+      - name: Save vcpkg binary archive cache
+        if: success() && matrix.writes_shared_caches && steps.setup.outputs.binary-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/vcpkg/archives
+          key: ${{ steps.setup.outputs.binary-cache-key }}
 
       - name: Build
         run: cmake --build --preset "${{ matrix.preset }}"

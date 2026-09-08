@@ -19,7 +19,8 @@ array dimension 必须能求值为正整数 constant。求值器以带 `.s64/.u6
 64-bit bit pattern 保存每个整数子表达式，支持负数中间值、cast、usual arithmetic
 conversion，以及一元/二元/三元运算；因此 `-1 + 2` 等合法表达式不会在中间阶段被
 误判。`WARP_SZ` 同样在此阶段求值；symbol address 不能作为 dimension。
-只有带 initializer 的第一维可以省略，其长度由最外层 initializer list 推导。
+只有第一维可以省略：有 initializer 时由最外层 list 推导其长度；external storage
+declaration 也可在没有 initializer 时保留未知的首维。
 
 initializer 的 brace nesting 必须与 array 维数一致；vector declaration 额外形成长度为
 2 或 4 的最内层 aggregate。每一维允许少于声明长度，剩余元素按 PTX 规则补零；只有
@@ -77,6 +78,12 @@ warning severity、backend resource feasibility 与数值上限仍不属于本 p
 feasibility semantic。
 
 ## 当前边界
+
+declaration 检查之后，module resolution 将已支持的 storage form 投影到
+[拥有自身数据的存储元信息](storage_declarations.md)，包含 checked byte extent 与 typed
+initializer value/reference。即使 declaration checker 接受某个 expression category，
+超出可表示范围的 form 仍可能在这一步产生 diagnostic。declaration category 与关联 range
+会通过 `ResolveDiagnostic` 保留。
 
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module
 symbol 选择。integer constant expression 当前覆盖已有 AST grammar，并按 PTX 的

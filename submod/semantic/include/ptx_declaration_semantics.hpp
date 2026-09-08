@@ -36,6 +36,17 @@ struct FunctionSignature {
   bool operator==(const FunctionSignature&) const = default;
 };
 
+/** A fully evaluated integer constant with the signedness used by PTX rules. */
+struct IntegerConstantValue {
+  /** Two's-complement bits of the evaluated 64-bit integer expression. */
+  uint64_t bits{};
+  /** True when the expression's usual-arithmetic result is unsigned. */
+  bool is_unsigned{};
+
+  /** Compare the normalized integer bits and signedness. */
+  bool operator==(const IntegerConstantValue&) const = default;
+};
+
 /** Build the canonical signature used by declaration checking and call ABI work. */
 [[nodiscard]] FunctionSignature functionSignature(
     const syntax_ast::AstFunction& function);
@@ -46,6 +57,10 @@ struct FunctionSignature {
 
 /** Return a nonnegative constant array extent when the expression has one. */
 [[nodiscard]] std::optional<uint64_t> constantArrayExtent(
+    const syntax_ast::AstConstantExpression& expression);
+
+/** Return an evaluated integer expression without imposing an array-extent sign rule. */
+[[nodiscard]] std::optional<IntegerConstantValue> constantIntegerValue(
     const syntax_ast::AstConstantExpression& expression);
 
 enum class DeclarationDiagnosticKind : uint8_t {
@@ -70,6 +85,9 @@ enum class DeclarationDiagnosticKind : uint8_t {
   UnsupportedDirectivePtxVersion,
   InvalidDeclarationDirective,
   InvalidFunctionAlias,
+  StorageExtentOverflow,
+  UnsupportedStorageDeclaration,
+  UnsupportedStorageInitializer,
 };
 
 struct DeclarationDiagnostic {

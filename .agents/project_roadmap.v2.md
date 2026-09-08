@@ -524,6 +524,11 @@ family scope，绝不表示整部 PTX ISA。
 | M2-C01 | ✅ | `resolveModule()` | binding/declaration/instruction diagnostic 汇总 |
 | M2-C02 | ✅ | module diagnostic regression | duplicate/unresolved/wrong-kind 可区分 |
 
+存储声明的当前公共边界另见 [storage metadata](../docs/us-en/storage_declarations.md)
+与[中文契约](../docs/zh-han/storage_declarations.md)：module resolution 保留非 `.param` state-space
+global/constant/shared/local declaration 的 identity、shape、size/alignment 与 typed
+initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 consumer。
+
 ## M3：值、地址与 `mov`
 
 | ID | 状态 | Issue | 闭环摘要 |

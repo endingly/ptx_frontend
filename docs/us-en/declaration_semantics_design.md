@@ -23,7 +23,8 @@ subexpression. It therefore supports negative intermediate values, casts,
 usual arithmetic conversions, and unary, binary, and conditional operations
 without rejecting expressions such as `-1 + 2`. `WARP_SZ` is evaluated here as
 well; a symbol address is not an array extent. Only the first dimension may be
-omitted, only when an initializer can infer it from its outermost list.
+omitted: an initializer can infer it from its outermost list, while an external
+storage declaration may leave its first dimension unknown without an initializer.
 
 Initializer brace nesting must match the array rank. A vector declaration adds
 an innermost aggregate extent of two or four. A list may contain fewer elements
@@ -92,6 +93,13 @@ This declaration pass intentionally adds no DWARF payload-expression, source
 attachment, or resource-feasibility semantics.
 
 ## Current boundary
+
+After declaration checking, module resolution projects the supported storage
+forms into [owned storage metadata](storage_declarations.md), including checked
+byte extents and typed initializer values/references. This additional
+normalization can diagnose a form outside its representable domain even when
+the declaration checker alone accepts its expression category. Declaration
+categories and related ranges survive through `ResolveDiagnostic`.
 
 This pass does not perform opcode-specific instruction type checking or
 link-time selection across modules. Integer constant-expression handling

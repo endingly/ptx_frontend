@@ -11,6 +11,7 @@
                 "CMAKE_CXX_COMPILER": "/usr/bin/g++",
                 "CMAKE_BUILD_TYPE": "Debug",
                 "BUILD_TESTING": "ON",
+                "PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST": "OFF",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
@@ -28,6 +29,15 @@
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
+        },
+        {
+            "name": "ci-integration-smoke",
+            "inherits": "ci-linux-gcc-debug",
+            "binaryDir": "${sourceDir}/out/build/ci-linux-gcc-debug",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/ci-linux-gcc-debug",
+                "PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -44,6 +54,12 @@
         {
             "name": "ci-python-and-package-consumer",
             "configurePreset": "ci-linux-gcc-debug",
+            "configuration": "Debug",
+            "targets": ["resolved_ir"]
+        },
+        {
+            "name": "ci-integration-smoke",
+            "configurePreset": "ci-integration-smoke",
             "configuration": "Debug",
             "targets": ["resolved_ir"]
         }
@@ -83,6 +99,22 @@
             },
             "execution": {
                 "jobs": 2
+            }
+        },
+        {
+            "name": "ci-integration-smoke",
+            "configurePreset": "ci-integration-smoke",
+            "configuration": "Debug",
+            "filter": {
+                "include": {
+                    "name": "^ptx_frontend\\.package_consumer_smoke$"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
             }
         }
     ],
@@ -140,6 +172,25 @@
                 },
                 {
                     "name": "ci-python-and-package-consumer",
+                    "type": "test"
+                }
+            ]
+        },
+        {
+            "name": "ci-integration-smoke",
+            "displayName": "Integration library build and installed API smoke",
+            "description": "Build production libraries and run the installed consumer without full package acceptance",
+            "steps": [
+                {
+                    "name": "ci-integration-smoke",
+                    "type": "configure"
+                },
+                {
+                    "name": "ci-integration-smoke",
+                    "type": "build"
+                },
+                {
+                    "name": "ci-integration-smoke",
                     "type": "test"
                 }
             ]

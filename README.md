@@ -153,6 +153,12 @@ PYTHONPATH=python python3 -m unittest_parallel \
 The `ci-linux-gcc-release` preset provides an equivalent local Release
 workflow; running it does not mean GitHub Actions was triggered.
 
+GitHub Actions keeps full Debug/Release and Python/package acceptance on PRs,
+monthly runs, and manual dispatch. Pushes to `main` and `dev` instead run
+`ci-integration-smoke`: production libraries plus the installed public consumer.
+See the [CI workflow and cache contract](docs/us-en/ci_workflows.md)
+([中文](docs/zh-han/ci_workflows.md)) for scope and local smoke commands.
+
 ## Use after installing
 
 Build and install the package into the configured prefix:

@@ -1668,6 +1668,78 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
   return ResolvedImmediate{.bits = bits, .type = type, .is_negative = negative};
 }
 
+/**
+ * Convert IEEE binary64 bits to binary32 using round-to-nearest, ties-to-even.
+ * Literal conversion is independent of instruction rounding and host floating
+ * point modes. Overflow becomes signed infinity; underflow is gradual. NaNs
+ * retain their sign and high payload bits and are quieted across precisions.
+ */
+uint32_t narrow_float_literal_bits(uint64_t bits) {
+  const auto sign = static_cast<uint32_t>(bits >> 32) & 0x80000000U;
+  const auto exponent = static_cast<int>((bits >> 52) & 0x7ffU);
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff) {
+    return sign | 0x7f800000U |
+           (fraction == 0 ? 0U
+                          : static_cast<uint32_t>(fraction >> 29) | 0x00400000U);
+  }
+  // Every binary64 subnormal is smaller than half a binary32 subnormal ULP.
+  if (exponent == 0)
+    return sign;
+  const int unbiased_exponent = exponent - 1023;
+  if (unbiased_exponent > 127)
+    return sign | 0x7f800000U;
+  if (unbiased_exponent < -150)
+    return sign;
+
+  const uint64_t significand = (uint64_t{1} << 52) | fraction;
+  // Retain 24 bits for normals, or fewer for subnormals (shift is 29..53).
+  const int shift = unbiased_exponent >= -126 ? 29 : -97 - unbiased_exponent;
+  uint32_t rounded = static_cast<uint32_t>(significand >> shift);
+  const uint64_t remainder = significand & ((uint64_t{1} << shift) - 1);
+  const uint64_t halfway = uint64_t{1} << (shift - 1);
+  if (remainder > halfway || (remainder == halfway && (rounded & 1U)))
+    ++rounded;
+  if (unbiased_exponent < -126)
+    return sign | rounded;
+  // The retained implicit bit supplies one exponent unit; rounding may carry
+  // into the next exponent, including the infinity encoding at overflow.
+  return sign |
+         ((static_cast<uint32_t>(unbiased_exponent + 126) << 23) + rounded);
+}
+
+/**
+ * Widen IEEE binary32 literal bits exactly without host floating arithmetic.
+ * Subnormals and signed zero are preserved; NaNs are quieted with their sign
+ * and payload retained in the high binary64 fraction bits.
+ */
+uint64_t widen_float_literal_bits(uint32_t bits) {
+  const uint64_t sign = static_cast<uint64_t>(bits & 0x80000000U) << 32;
+  const uint32_t exponent = (bits >> 23) & 0xffU;
+  const uint32_t fraction = bits & 0x007fffffU;
+  if (exponent == 0xffU) {
+    return sign | 0x7ff0000000000000ULL |
+           (fraction == 0 ? 0ULL
+                          : (static_cast<uint64_t>(fraction) << 29) |
+                                0x0008000000000000ULL);
+  }
+  if (exponent != 0) {
+    return sign | (static_cast<uint64_t>(exponent + 896) << 52) |
+           (static_cast<uint64_t>(fraction) << 29);
+  }
+  if (fraction == 0)
+    return sign;
+  // A binary32 subnormal is fraction * 2^-149, normal in binary64.
+  const int leading_bit = std::bit_width(fraction) - 1;
+  return sign | (static_cast<uint64_t>(leading_bit + 874) << 52) |
+         ((static_cast<uint64_t>(fraction) << (52 - leading_bit)) &
+          0x000fffffffffffffULL);
+}
+
+/**
+ * Decode a floating literal in its lexical precision, then convert to the
+ * operand precision. Equal-width literals retain their exact payload bits.
+ */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     std::string_view text, bool negative, uint8_t bit_width) {
@@ -1677,20 +1749,28 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
         fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
                     immediate.syntax.text)));
   }
-  const ScalarType expected_type =
-      bit_width == 32 ? ScalarType::F32 : ScalarType::F64;
-  if (type != expected_type) {
+  if (type != ScalarType::F32 && type != ScalarType::F64) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format(
-            "Floating bit-pattern literal '{}' requires scalar type '{}'.",
-            immediate.syntax.text, to_string(expected_type))));
+            "Floating bit-pattern literal '{}' is incompatible with scalar "
+            "type '{}'.",
+            immediate.syntax.text, to_string(type))));
   }
 
   text.remove_prefix(2);  // 0f or 0d
   const auto bits = parse_unsigned_literal(immediate, text, 16);
   if (!bits)
     return std::unexpected(bits.error());
+  if (bit_width == 32 && type == ScalarType::F64) {
+    return ResolvedImmediate{
+        .bits = widen_float_literal_bits(static_cast<uint32_t>(*bits)),
+        .type = type};
+  }
+  if (bit_width == 64 && type == ScalarType::F32) {
+    return ResolvedImmediate{.bits = narrow_float_literal_bits(*bits),
+                             .type = type};
+  }
   return ResolvedImmediate{.bits = *bits, .type = type};
 }
 
@@ -1717,16 +1797,9 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
   }
 
   if (type == ScalarType::F32) {
-    const float narrowed = static_cast<float>(value);
-    if (!std::isfinite(narrowed)) {
-      return std::unexpected(invalid_immediate(
-          immediate,
-          fmt::format("Decimal floating literal '{}' is out of range for "
-                      "scalar type '{}'.",
-                      immediate.syntax.text, to_string(type))));
-    }
-    return ResolvedImmediate{.bits = std::bit_cast<uint32_t>(narrowed),
-                             .type = type};
+    return ResolvedImmediate{
+        .bits = narrow_float_literal_bits(std::bit_cast<uint64_t>(value)),
+        .type = type};
   }
   return ResolvedImmediate{.bits = std::bit_cast<uint64_t>(value),
                            .type = type};

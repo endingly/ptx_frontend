@@ -98,6 +98,25 @@ database = load_packaged_spec_database()
 assert database.instructions
 assert all(isinstance(item, InstructionSpec) for item in database.instructions)
 assert any(item.opcode == 'add' for item in database.instructions)
+fma = next(item for item in database.instructions if item.opcode == 'fma')
+assert tuple(variant.name for variant in fma.variants) == (
+    'fma_rn_f32', 'fma_directed_f32', 'fma_rn_f64', 'fma_directed_f64',
+    'fma_f32x2', 'fma_rn_f16', 'fma_rn_f16x2', 'fma_half_relu',
+    'fma_half_oob', 'fma_half_oob_relu', 'fma_bf16', 'fma_bf16x2',
+    'fma_bf16_oob', 'fma_bf16x2_oob', 'fma_mixed_f32_f16',
+    'fma_mixed_f32_bf16',
+)
+layouts = {{variant.name: variant.operand_layouts[0].operands for variant in fma.variants}}
+assert [operand.kind for operand in layouts['fma_rn_f32'][1:]] == ['reg_or_imm'] * 3
+assert [operand.kind for operand in layouts['fma_f32x2']] == ['reg'] * 4
+assert [operand.kind for operand in layouts['fma_bf16x2']] == ['reg'] * 4
+for name in ('fma_mixed_f32_f16', 'fma_mixed_f32_bf16'):
+    operands = layouts[name]
+    assert [operand.kind for operand in operands] == ['reg', 'reg', 'reg', 'reg_or_imm']
+    assert operands[0].type_expression.modifier_name == 'result_type'
+    assert operands[3].type_expression.modifier_name == 'result_type'
+assert layouts['fma_mixed_f32_f16'][1].type_expression.modifier_name == 'input_type'
+assert layouts['fma_mixed_f32_bf16'][1].type_expression.scalar_type == 'b16'
 """
         subprocess.run(
             [executable, "-c", smoke],

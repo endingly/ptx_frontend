@@ -95,6 +95,75 @@ int check_entry_parameter_metadata() {
   return 0;
 }
 
+/** Verify the complete FMA family through installed parsing and checker APIs. */
+int check_fma_contract() {
+  using namespace ptx_frontend::resolved_ir;
+  constexpr std::string_view fixture = R"ptx(
+.version 9.3
+.target sm_100
+.address_size 64
+.entry fma_forms() {
+  .reg .f32 %f<4>;
+  .reg .f64 %d<4>;
+  .reg .f16 %h<4>;
+  .reg .b16 %b<4>;
+  .reg .b32 %p<4>;
+  .reg .b64 %q<4>;
+  fma.rn.ftz.sat.f32 %f0, 0d3ff0000000000000, 1e300, %f3;
+  fma.rz.f32 %f0, %f1, %f2, %f3;
+  fma.rn.f64 %d0, 0f3f800000, %d2, %d3;
+  fma.rp.f64 %d0, %d1, %d2, %d3;
+  fma.rm.ftz.f32x2 %q0, %q1, %q2, %q3;
+  fma.rn.sat.f16 %h0, %b1, %h2, %h3;
+  fma.rn.ftz.f16x2 %p0, %p1, %p2, %p3;
+  fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;
+  fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;
+  fma.rn.oob.relu.f16x2 %p0, %p1, %p2, %p3;
+  fma.rn.relu.bf16 %b0, %b1, %b2, %b3;
+  fma.rn.bf16x2 %p0, %p1, %p2, %p3;
+  fma.rn.oob.bf16 %b0, %b1, %b2, %b3;
+  fma.rn.oob.relu.bf16x2 %p0, %p1, %p2, %p3;
+  fma.rp.sat.f32.f16 %f0, %h1, %b2, 1.0;
+  fma.rm.f32.bf16 %f0, %b1, %b2, %f3;
+}
+)ptx";
+  ptx_frontend::PtxSyntaxParser parser(fixture);
+  const auto ast = parser.parseModule();
+  if (!ast || !ast.diagnostics.empty())
+    return 40;
+  const auto module = resolveModule(*ast);
+  if (!module || module->functions.size() != 1 ||
+      module->functions.front().body.size() != 16 ||
+      Fma::get_syntax_descriptor().variants.size() != 16)
+    return 41;
+
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  for (const auto& instruction : module->functions.front().body) {
+    const auto* fma = std::get_if<Fma>(&instruction);
+    if (!fma || !checker::check(*fma, context))
+      return 42;
+  }
+  const auto& mixed_instruction =
+      std::get<Fma>(module->functions.front().body[14]);
+  const auto* mixed = std::get_if<Fma::MixedF32F16>(&mixed_instruction.variant);
+  if (!mixed || mixed->result_type != ScalarType::F32 ||
+      mixed->input_type != ScalarType::F16 ||
+      mixed->rounding.value != RoundingMode::Rp || !mixed->saturate.value ||
+      mixed->dst.value.declared_type != ScalarType::F32 ||
+      mixed->src1.value.declared_type != ScalarType::F16 ||
+      mixed->src2.value.declared_type != ScalarType::B16)
+    return 43;
+  const auto* addend = std::get_if<ResolvedImmediate>(&mixed->src3.value);
+  if (!addend || addend->type != ScalarType::F32 || addend->bits != 0x3f800000)
+    return 44;
+  const checker::Context old_target{
+      .target = {.ptx_version = {8, 6}, .sm_version = 90}};
+  if (checker::check(mixed_instruction, old_target))
+    return 45;
+  return 0;
+}
+
 int main() {
   constexpr std::string_view source = "add.u32 %r0, %r1, 1;";
   ptx_frontend::PtxCstParser cst_parser(source);
@@ -186,6 +255,8 @@ int main() {
       metadata_result != 0) {
     return metadata_result;
   }
+  if (const int fma_result = check_fma_contract(); fma_result != 0)
+    return fma_result;
 
   ptx_frontend::PtxSyntaxParser call_parser(
       "call (%result), callee, (%argument, 1);");

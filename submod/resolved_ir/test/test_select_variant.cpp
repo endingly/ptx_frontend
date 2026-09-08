@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -1934,49 +1935,274 @@ TEST(ResolveMad, RejectsUnfrozenVariants) {
   }
 }
 
-TEST(ResolveFma, SelectsFrozenRnF32Variant) {
-  const auto resolved = resolve<Fma>(parse_instruction("fma.rn.f32 %f0, %f1, %f2, %f3;"));
-  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Fma::RnF32>(&resolved->variant), nullptr);
-  EXPECT_EQ(Fma::RnF32::rounding, RoundingMode::Rn);
-  EXPECT_EQ(Fma::RnF32::type, ScalarType::F32);
+TEST(ResolveFma, SelectsCompleteFmaVariantFamily) {
+  const auto expect_variant = [](std::string_view source,
+                                 Fma::VariantType expected) {
+    const auto resolved = resolve<Fma>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    EXPECT_EQ(resolved->variant.index(), static_cast<size_t>(expected));
+  };
+
+  expect_variant("fma.rn.ftz.sat.f32 %f0, %f1, %f2, %f3;",
+                 Fma::VariantType::RnF32);
+  expect_variant("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;",
+                 Fma::VariantType::DirectedF32);
+  expect_variant("fma.rn.f64 %d0, %d1, %d2, %d3;",
+                 Fma::VariantType::RnF64);
+  expect_variant("fma.rp.f64 %d0, %d1, %d2, %d3;",
+                 Fma::VariantType::DirectedF64);
+  expect_variant("fma.rm.ftz.f32x2 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::F32x2);
+  expect_variant("fma.rn.ftz.sat.f16 %h0, %h1, %h2, %h3;",
+                 Fma::VariantType::RnF16);
+  expect_variant("fma.rn.ftz.sat.f16x2 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::RnF16x2);
+  expect_variant("fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;",
+                 Fma::VariantType::HalfRelu);
+  expect_variant("fma.rn.oob.sat.f16x2 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::HalfOob);
+  expect_variant("fma.rn.oob.relu.f16 %h0, %h1, %h2, %h3;",
+                 Fma::VariantType::HalfOobRelu);
+  expect_variant("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::Bf16);
+  expect_variant("fma.rn.bf16x2 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::Bf16x2);
+  expect_variant("fma.rn.oob.bf16 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::Bf16Oob);
+  expect_variant("fma.rn.oob.relu.bf16x2 %b0, %b1, %b2, %b3;",
+                 Fma::VariantType::Bf16x2Oob);
+  expect_variant("fma.rp.sat.f32.f16 %f0, %h1, %h2, %f3;",
+                 Fma::VariantType::MixedF32F16);
+  expect_variant("fma.rm.f32.bf16 %f0, %b1, %b2, %f3;",
+                 Fma::VariantType::MixedF32Bf16);
 }
 
-TEST(ResolveFma, SelectsM12RnF64AndF16Variants) {
-  const auto f64 =
-      resolve<Fma>(parse_instruction("fma.rn.f64 %d0, %d1, %d2, %d3;"));
-  ASSERT_TRUE(f64.has_value()) << f64.error().message;
-  ASSERT_NE(std::get_if<Fma::RnF64>(&f64->variant), nullptr);
-  EXPECT_EQ(Fma::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(Fma::RnF64::type, ScalarType::F64);
+TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
+  constexpr std::array<std::string_view, 4> roundings{"rn", "rz", "rm", "rp"};
+  constexpr std::array<std::string_view, 2> optional_flags{"", ".ftz"};
+  constexpr std::array<std::string_view, 2> saturation_flags{"", ".sat"};
+  constexpr std::array<std::string_view, 2> half_types{"f16", "f16x2"};
+  constexpr std::array<std::string_view, 2> bfloat_types{"bf16", "bf16x2"};
+  constexpr std::array<std::string_view, 2> mixed_input_types{"f16", "bf16"};
+  constexpr std::array<std::string_view, 2> relu_flags{"", ".relu"};
+  size_t resolved_count = 0;
 
-  const auto f16 =
-      resolve<Fma>(parse_instruction("fma.rn.f16 %h0, %h1, %h2, %h3;"));
-  ASSERT_TRUE(f16.has_value()) << f16.error().message;
-  ASSERT_NE(std::get_if<Fma::RnF16>(&f16->variant), nullptr);
-  EXPECT_EQ(Fma::RnF16::rounding, RoundingMode::Rn);
-  EXPECT_EQ(Fma::RnF16::type, ScalarType::F16);
-}
-
-TEST(ResolveFma, RejectsUnfrozenVariants) {
-  for (const auto source : {"fma.f32 %f0, %f1, %f2, %f3;",
-                            "fma.rz.f32 %f0, %f1, %f2, %f3;",
-                            "fma.rz.f64 %d0, %d1, %d2, %d3;",
-                            "fma.rz.f16 %h0, %h1, %h2, %h3;",
-                            "fma.rn.ftz.f32 %f0, %f1, %f2, %f3;",
-                            "fma.rn.sat.f32 %f0, %f1, %f2, %f3;"}) {
-    const auto selected = selectVariant<Fma>(parse_instruction(source));
+  const auto expect_resolved = [&resolved_count](const std::string& source) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selected.has_value());
+    const auto resolved = resolve<Fma>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    ++resolved_count;
+  };
+
+  for (const auto rounding : roundings) {
+    for (const auto ftz : optional_flags) {
+      for (const auto sat : saturation_flags) {
+        expect_resolved("fma." + std::string(rounding) + std::string(ftz) +
+                        std::string(sat) + ".f32 %f0, %f1, %f2, %f3;");
+      }
+    }
+    expect_resolved("fma." + std::string(rounding) +
+                    ".f64 %d0, %d1, %d2, %d3;");
+    for (const auto ftz : optional_flags) {
+      expect_resolved("fma." + std::string(rounding) + std::string(ftz) +
+                      ".f32x2 %b0, %b1, %b2, %b3;");
+    }
+  }
+
+  for (const auto type : half_types) {
+    const std::string_view registers = type == "f16" ? "%h0, %h1, %h2, %h3"
+                                                       : "%b0, %b1, %b2, %b3";
+    for (const auto ftz : optional_flags) {
+      for (const auto sat : saturation_flags) {
+        expect_resolved("fma.rn" + std::string(ftz) + std::string(sat) +
+                        "." + std::string(type) + " " +
+                        std::string(registers) + ";");
+      }
+      expect_resolved("fma.rn" + std::string(ftz) + ".relu." +
+                      std::string(type) + " " + std::string(registers) + ";");
+    }
+    for (const auto sat : saturation_flags) {
+      expect_resolved("fma.rn.oob" + std::string(sat) + "." +
+                      std::string(type) + " " + std::string(registers) + ";");
+    }
+    expect_resolved("fma.rn.oob.relu." + std::string(type) + " " +
+                    std::string(registers) + ";");
+  }
+
+  for (const auto type : bfloat_types) {
+    for (const auto relu : relu_flags) {
+      expect_resolved("fma.rn" + std::string(relu) + "." +
+                      std::string(type) + " %b0, %b1, %b2, %b3;");
+      expect_resolved("fma.rn.oob" + std::string(relu) + "." +
+                      std::string(type) + " %b0, %b1, %b2, %b3;");
+    }
+  }
+
+  for (const auto input_type : mixed_input_types) {
+    const std::string_view inputs = input_type == "f16" ? "%h1, %h2"
+                                                         : "%b1, %b2";
+    for (const auto rounding : roundings) {
+      for (const auto sat : saturation_flags) {
+        expect_resolved("fma." + std::string(rounding) + std::string(sat) +
+                        ".f32." + std::string(input_type) + " %f0, " +
+                        std::string(inputs) + ", %f3;");
+      }
+    }
+  }
+
+  EXPECT_EQ(resolved_count, 70U);
+}
+
+TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
+  const auto directed = resolve<Fma>(
+      parse_instruction("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(directed.has_value()) << directed.error().message;
+  const auto* directed_f32 = std::get_if<Fma::DirectedF32>(&directed->variant);
+  ASSERT_NE(directed_f32, nullptr);
+  EXPECT_EQ(directed_f32->rounding.value, RoundingMode::Rz);
+  EXPECT_TRUE(directed_f32->ftz.value);
+  EXPECT_TRUE(directed_f32->saturate.value);
+  EXPECT_EQ(Fma::DirectedF32::type, ScalarType::F32);
+
+  const auto half_relu = resolve<Fma>(
+      parse_instruction("fma.rn.ftz.relu.f16x2 %b0, %b1, %b2, %b3;"));
+  ASSERT_TRUE(half_relu.has_value()) << half_relu.error().message;
+  const auto* relu = std::get_if<Fma::HalfRelu>(&half_relu->variant);
+  ASSERT_NE(relu, nullptr);
+  EXPECT_TRUE(relu->ftz.value);
+  EXPECT_TRUE(Fma::HalfRelu::relu);
+  EXPECT_EQ(relu->type.value, ScalarType::F16x2);
+
+  const auto oob = resolve<Fma>(
+      parse_instruction("fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;"));
+  ASSERT_TRUE(oob.has_value()) << oob.error().message;
+  const auto* half_oob = std::get_if<Fma::HalfOob>(&oob->variant);
+  ASSERT_NE(half_oob, nullptr);
+  EXPECT_TRUE(Fma::HalfOob::oob);
+  EXPECT_TRUE(half_oob->saturate.value);
+  EXPECT_EQ(half_oob->type.value, ScalarType::F16);
+
+  const auto bf16 = resolve<Fma>(
+      parse_instruction("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;"));
+  ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
+  const auto* bfloat = std::get_if<Fma::Bf16>(&bf16->variant);
+  ASSERT_NE(bfloat, nullptr);
+  EXPECT_TRUE(bfloat->relu.value);
+  EXPECT_EQ(Fma::Bf16::type, ScalarType::BF16);
+
+  const auto mixed = resolve<Fma>(
+      parse_instruction("fma.rp.sat.f32.bf16 %f0, %b1, %b2, %f3;"));
+  ASSERT_TRUE(mixed.has_value()) << mixed.error().message;
+  const auto* mixed_bf16 = std::get_if<Fma::MixedF32Bf16>(&mixed->variant);
+  ASSERT_NE(mixed_bf16, nullptr);
+  EXPECT_EQ(mixed_bf16->rounding.value, RoundingMode::Rp);
+  EXPECT_TRUE(mixed_bf16->saturate.value);
+  EXPECT_EQ(Fma::MixedF32Bf16::result_type, ScalarType::F32);
+  EXPECT_EQ(Fma::MixedF32Bf16::input_type, ScalarType::BF16);
+}
+
+TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
+  const auto f32 = resolve<Fma>(parse_instruction(
+      "fma.rn.f32 %f0, 0d3ff0000000000000, 1.5, 0f3f800000;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  const auto* f32_variant = std::get_if<Fma::RnF32>(&f32->variant);
+  ASSERT_NE(f32_variant, nullptr);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f32_variant->src1.value).type,
+            ScalarType::F32);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f32_variant->src2.value).type,
+            ScalarType::F32);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f32_variant->src3.value).type,
+            ScalarType::F32);
+
+  const auto f64 = resolve<Fma>(parse_instruction(
+      "fma.rp.f64 %d0, 0f3f800000, 1.5, 0d3ff0000000000000;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  const auto* f64_variant = std::get_if<Fma::DirectedF64>(&f64->variant);
+  ASSERT_NE(f64_variant, nullptr);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src1.value).type,
+            ScalarType::F64);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src2.value).type,
+            ScalarType::F64);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src3.value).type,
+            ScalarType::F64);
+
+  const auto widened = resolve<Fma>(parse_instruction(
+      "fma.rn.f64 %d0, 0f00000001, 0f80000000, 0f7f800000;"));
+  ASSERT_TRUE(widened.has_value()) << widened.error().message;
+  const auto* widened_variant = std::get_if<Fma::RnF64>(&widened->variant);
+  ASSERT_NE(widened_variant, nullptr);
+  EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src1.value).bits,
+            0x36a0000000000000ULL);
+  EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src2.value).bits,
+            0x8000000000000000ULL);
+  EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src3.value).bits,
+            0x7ff0000000000000ULL);
+
+  for (const auto source : {
+           "fma.rn.f16 %h0, 1.0, %h2, %h3;",
+           "fma.rn.f16x2 %b0, 1.0, %b2, %b3;",
+           "fma.rn.bf16 %b0, 1.0, %b2, %b3;",
+           "fma.rn.f32x2 %b0, 1.0, %b2, %b3;",
+           "fma.rn.f32.bf16 %f0, 1.0, %b2, %f3;",
+           "fma.rn.f32.bf16 %f0, %b1, %b2, 1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolve<Fma>(parse_instruction(source)).has_value());
   }
 }
 
-TEST(ResolveFma, RejectsImmediateOperands) {
-  for (const auto source : {"fma.rn.f32 %f0, 1.0, %f2, %f3;",
-                            "fma.rn.f64 %d0, 1.0, %d2, %d3;",
-                            "fma.rn.f16 %h0, 1.0, %h2, %h3;"}) {
+TEST(ResolveFma, NarrowsFloatingLiteralsForSinglePrecisionAccumulators) {
+  const auto standard = resolve<Fma>(parse_instruction(
+      "fma.rn.f32 %f0, 1e300, -1e300, 0d7fefffffffffffff;"));
+  ASSERT_TRUE(standard.has_value()) << standard.error().message;
+  const auto* standard_variant = std::get_if<Fma::RnF32>(&standard->variant);
+  ASSERT_NE(standard_variant, nullptr);
+  EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src1.value).bits,
+            0x7f800000U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src2.value).bits,
+            0xff800000U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src3.value).bits,
+            0x7f800000U);
+
+  const auto mixed = resolve<Fma>(parse_instruction(
+      "fma.rn.f32.f16 %f0, %h1, %h2, -1e300;"));
+  ASSERT_TRUE(mixed.has_value()) << mixed.error().message;
+  const auto* mixed_variant = std::get_if<Fma::MixedF32F16>(&mixed->variant);
+  ASSERT_NE(mixed_variant, nullptr);
+  EXPECT_EQ(std::get<ResolvedImmediate>(mixed_variant->src3.value).bits,
+            0xff800000U);
+
+  for (const auto source : {
+           "fma.rn.f64 %d0, 1e400, %d2, %d3;",
+           "fma.rn.f64 %d0, 1e-400, %d2, %d3;",
+       }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Fma>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveFma, RejectsMissingRoundingAndConflictingFlags) {
+  for (const auto source : {
+           "fma.f32 %f0, %f1, %f2, %f3;",
+           "fma.f64 %d0, %d1, %d2, %d3;",
+           "fma.f32x2 %b0, %b1, %b2, %b3;",
+           "fma.f16 %h0, %h1, %h2, %h3;",
+           "fma.bf16 %b0, %b1, %b2, %b3;",
+           "fma.rz.f16 %h0, %h1, %h2, %h3;",
+           "fma.rp.bf16x2 %b0, %b1, %b2, %b3;",
+           "fma.f32.f16 %f0, %h1, %h2, %f3;",
+           "fma.rn.ftz.f64 %d0, %d1, %d2, %d3;",
+           "fma.rn.sat.f32x2 %b0, %b1, %b2, %b3;",
+           "fma.rn.sat.relu.f16 %h0, %h1, %h2, %h3;",
+           "fma.rn.ftz.oob.f16 %h0, %h1, %h2, %h3;",
+           "fma.rn.oob.sat.relu.f16 %h0, %h1, %h2, %h3;",
+           "fma.rn.ftz.bf16 %b0, %b1, %b2, %b3;",
+           "fma.rn.sat.bf16x2 %b0, %b1, %b2, %b3;",
+           "fma.rn.ftz.f32.bf16 %f0, %b1, %b2, %f3;",
+       }) {
+    const auto selected = selectVariant<Fma>(parse_instruction(source));
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selected.has_value());
   }
 }
 
@@ -3112,6 +3338,42 @@ TEST(ResolveImmediateLiteral, SupportsFloatingLexicalForms) {
   EXPECT_EQ(incompatible.error().message,
             "Decimal floating literal '1.5' is incompatible with scalar type "
             "'U32'.");
+}
+
+TEST(ResolveImmediateLiteral, NarrowsAtIeeeBoundariesAndPreservesExactPayloads) {
+  constexpr std::array<std::pair<std::string_view, uint64_t>, 15> cases{{
+      {"0d0000000000000000", 0x00000000},
+      {"0d8000000000000000", 0x80000000},
+      {"0d0000000000000001", 0x00000000},
+      {"0d8000000000000001", 0x80000000},
+      {"0d3690000000000000", 0x00000000},
+      {"0d3690000000000001", 0x00000001},
+      {"0d36a0000000000000", 0x00000001},
+      {"0d36a8000000000000", 0x00000002},
+      {"0d380fffffe0000000", 0x00800000},
+      {"0d3ff0000010000000", 0x3f800000},
+      {"0d3ff0000030000000", 0x3f800002},
+      {"0d47efffffefffffff", 0x7f7fffff},
+      {"0d47effffff0000000", 0x7f800000},
+      {"0d7ff0000000000000", 0x7f800000},
+      {"0d7ff0000000000001", 0x7fc00000},
+  }};
+  for (const auto& [source, expected] : cases) {
+    SCOPED_TRACE(source);
+    const auto converted =
+        resolve_immediate_literal(parse_immediate(source), ScalarType::F32);
+    ASSERT_TRUE(converted.has_value()) << converted.error().message;
+    EXPECT_EQ(converted->bits, expected);
+    EXPECT_EQ(converted->type, ScalarType::F32);
+  }
+  const auto unchanged_nan = resolve_immediate_literal(
+      parse_immediate("0f7f800001"), ScalarType::F32);
+  ASSERT_TRUE(unchanged_nan.has_value());
+  EXPECT_EQ(unchanged_nan->bits, 0x7f800001);
+  const auto widened_nan = resolve_immediate_literal(
+      parse_immediate("0f7f800001"), ScalarType::F64);
+  ASSERT_TRUE(widened_nan.has_value());
+  EXPECT_EQ(widened_nan->bits, 0x7ff8000020000000ULL);
 }
 
 TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {

@@ -17,6 +17,7 @@
 #include <ptx_frontend/common/source_loc.hpp>
 #include <ptx_frontend/common/utils.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 namespace ptx_frontend::declaration_semantics {
@@ -36,6 +37,23 @@ using base::MbarrierLayout;
 using base::MbarrierPhaseType;
 using base::AsyncProxyKind;
 using base::ProxyKindPair;
+
+/** Owned declaration metadata for one entry input parameter; no launch layout. */
+struct ResolvedEntryParameter {
+  /** Input parameter identity in the owning ResolvedModule's symbol table. */
+  binding::SymbolId symbol_id;
+  /** Normalized PTX scalar type spelling, including the leading dot. */
+  std::string type;
+  /** Explicit or natural byte alignment; absent if binding cannot determine it. */
+  std::optional<uint64_t> alignment;
+  /** Pointee contract; absent for non-pointers, absent pointed space is generic. */
+  std::optional<call_argument_compatibility::PointerProperties> pointer;
+  /** Distinguishes an unsized array from a scalar when array_extent is absent. */
+  bool is_array{};
+  /** Constant element count, not bytes; absent for scalars and unsized arrays. */
+  std::optional<uint64_t> array_extent;
+};
+
 namespace check_end {
 
 using OperandShape = checker::OperandShape;

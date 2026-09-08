@@ -57,16 +57,34 @@ callers while retaining the strongly typed per-opcode structures.
 `resolveModule` first builds a `SymbolTable`, then constructs an explicit
 `ResolveContext` for each function scope. The resulting `ResolvedModule` owns
 that table, and each `ResolvedFunction` is identified by its function
-`SymbolId`. `ResolvedFunction::label_positions` records each function label as
+`SymbolId`. Entry functions additionally own source-ordered
+`entry_parameters` metadata for their input declarations; `.func` functions
+have an empty list.
+`ResolvedFunction::label_positions` records each function label as
 its bound `SymbolId` and a source-order boundary in the recursively flattened
 instruction body: labels before the first instruction are at zero, consecutive
 labels share a boundary, and a trailing label is at `body.size()`. Standalone
 `resolveInstruction` and `resolve<T>` remain declaration-free for
-single-instruction tools. Directives and declarations remain in the Syntax
+single-instruction tools. Raw directives and declarations remain in the Syntax
 AST/symbol table instead of being copied into Resolved IR as unresolved string
-fields. Bound `.file` and `.debug_str`
+fields; owned, normalized entry-input ABI metadata is the deliberate exception.
+Bound `.file` and `.debug_str`
 identities validate `.loc` metadata there, but `.loc`, `.section`, and
 `.pragma` do not add Resolved IR nodes or instruction attachment.
+
+`ResolvedEntryParameter` is an inspection boundary, not a launch-layout or
+runtime-policy model. Each item owns its normalized scalar PTX `type` spelling,
+the local-declaration `symbol_id`, optional effective byte `alignment`, optional
+`PointerProperties`, `is_array`, and optional constant `array_extent` in
+elements. The binding-derived alignment includes an explicit declaration
+alignment or a known natural alignment and is absent when it is unknown. A
+non-pointer has no pointer properties; a pointer with no pointed state space is
+generic, and a pointed alignment omitted in the source has the semantic default
+of four bytes. `is_array` distinguishes an unsized array from a scalar when
+`array_extent` is absent. The metadata owns all represented values, so clients
+can inspect it after the source text and Syntax AST have been destroyed. Its
+parameter IDs refer to each entry's function-local declaration scope, so
+separate entries can reuse parameter names while retaining distinct identities.
 
 Module resolution additionally performs direct and metadata-backed indirect
 call ABI and call-context work

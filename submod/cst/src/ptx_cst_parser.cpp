@@ -1122,6 +1122,11 @@ PtxCstParser::parseFunctionParameter() {
   auto type = expect(TokenKind::DotIdent, "parameter type");
   if (!type)
     return std::unexpected(type.error());
+  if (token(*type).text == ".v2" || token(*type).text == ".v4") {
+    return std::unexpected(CstParseDiagnostic{
+        token(*type).range,
+        "vector function parameters are not supported"});
+  }
 
   std::optional<TokenId> pointer_directive;
   std::optional<TokenId> pointer_space;
@@ -1166,6 +1171,11 @@ PtxCstParser::parseFunctionParameter() {
       return std::unexpected(close.error());
     right_bracket = *close;
     last = *close;
+  }
+  if (token(peek()).kind == TokenKind::LBracket) {
+    return std::unexpected(CstParseDiagnostic{
+        token(peek()).range,
+        "multidimensional function parameters are not supported"});
   }
 
   return syntax_cst::CstFunctionParameter{

@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
@@ -933,6 +935,29 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   ASSERT_TRUE(pointer.pointer_alignment.has_value());
   EXPECT_EQ(result->token(*pointer.pointer_alignment).text, "16");
   EXPECT_EQ(result->sourceText(), source);
+}
+
+/** Parameter syntax restrictions report their boundary before generic token errors. */
+TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
+  for (const auto& [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".entry kernel(.param .v2 .u32 input) { }",
+            "vector function parameters are not supported"},
+           {".func (.param .v4 .b8 result) helper();",
+            "vector function parameters are not supported"},
+           {".entry kernel(.param .u32 input[2][3]) { }",
+            "multidimensional function parameters are not supported"},
+           {".func (.param .u32 result[2][3]) helper();",
+            "multidimensional function parameters are not supported"},
+           {".entry kernel() { .param .b8 bytes[] = {1}; }",
+            "variable initializer requires '.global' or '.const' state space"}}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
+  }
 }
 
 TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {

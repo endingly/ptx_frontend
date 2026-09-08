@@ -57,9 +57,9 @@ callers while retaining the strongly typed per-opcode structures.
 `resolveModule` first builds a `SymbolTable`, then constructs an explicit
 `ResolveContext` for each function scope. The resulting `ResolvedModule` owns
 that table, and each `ResolvedFunction` is identified by its function
-`SymbolId`. Entry functions additionally own source-ordered
-`entry_parameters` metadata for their input declarations; `.func` functions
-have an empty list.
+`SymbolId`. Each function owns a single `parameter_declarations` table for its
+validated `.param` declarations. Filtering by `ParameterDeclarationRole::EntryInput`
+selects entry header inputs in source order.
 `ResolvedFunction::label_positions` records each function label as
 its bound `SymbolId` and a source-order boundary in the recursively flattened
 instruction body: labels before the first instruction are at zero, consecutive
@@ -67,24 +67,28 @@ labels share a boundary, and a trailing label is at `body.size()`. Standalone
 `resolveInstruction` and `resolve<T>` remain declaration-free for
 single-instruction tools. Raw directives and declarations remain in the Syntax
 AST/symbol table instead of being copied into Resolved IR as unresolved string
-fields; owned, normalized entry-input ABI metadata is the deliberate exception.
+fields; owned, normalized parameter and storage metadata are deliberate exceptions.
 Bound `.file` and `.debug_str`
 identities validate `.loc` metadata there, but `.loc`, `.section`, and
 `.pragma` do not add Resolved IR nodes or instruction attachment.
 
-`ResolvedEntryParameter` is an inspection boundary, not a launch-layout or
-runtime-policy model. Each item owns its normalized scalar PTX `type` spelling,
-the local-declaration `symbol_id`, optional effective byte `alignment`, optional
-`PointerProperties`, `is_array`, and optional constant `array_extent` in
-elements. The binding-derived alignment includes an explicit declaration
-alignment or a known natural alignment and is absent when it is unknown. A
-non-pointer has no pointer properties; a pointer with no pointed state space is
-generic, and a pointed alignment omitted in the source has the semantic default
-of four bytes. `is_array` distinguishes an unsized array from a scalar when
-`array_extent` is absent. The metadata owns all represented values, so clients
-can inspect it after the source text and Syntax AST have been destroyed. Its
-parameter IDs refer to each entry's function-local declaration scope, so
-separate entries can reuse parameter names while retaining distinct identities.
+`ResolvedFunction::parameter_declarations` owns validated `.param`
+declarations: return formals first, input formals next, then body-local declarators
+in lexical traversal order (including nested blocks). Each
+`ResolvedParameterDeclaration` retains its `symbol_id`, `scope_id`, role
+(`EntryInput`, `DeviceInput`, `DeviceReturn`, or `BodyLocal`), fundamental
+`scalar_type`, effective byte `alignment`, `explicit_alignment`, `vector_width`,
+outer-to-inner `array_extents`, checked `byte_extent`, and optional pointee
+properties. Scalar shapes have no array extents; supported unsized device input
+arrays have a null extent and no byte extent. The owning function and symbol
+table preserve lexical identity even for shadowed local names. Values remain
+inspectable after source text and Syntax AST destruction. A non-pointer has no
+pointer properties; a pointer with no pointed state space is generic, and omitted
+pointee alignment defaults to four bytes. This sole parameter table does not
+include `.reg` formals or `.callprototype` signatures. See the
+[parameter coverage and migration contract](parameter_declarations.md)
+for declaration validation, unsupported forms, and version boundaries. None of
+these fields describes packed argument offsets or a runtime allocation.
 
 Module resolution additionally performs direct and metadata-backed indirect
 call ABI and call-context work

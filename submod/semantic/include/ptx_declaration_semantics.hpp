@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
@@ -14,10 +16,12 @@ namespace ptx_frontend::declaration_semantics {
 /** ABI-relevant, source-location-independent function parameter data. */
 struct FunctionParameterContract {
   syntax_ast::AstStateSpace state_space{};
+  /** Effective byte alignment as a decimal key, or retained invalid source text. */
   std::optional<std::string> alignment;
   std::string type;
   bool is_pointer{};
   std::optional<std::string> pointer_space;
+  /** Effective pointee alignment (default four bytes); absent for non-pointers. */
   std::optional<std::string> pointer_alignment;
   bool is_array{};
   /** A normalized constant extent, or a structural key for an invalid one. */
@@ -63,6 +67,15 @@ struct IntegerConstantValue {
 [[nodiscard]] std::optional<IntegerConstantValue> constantIntegerValue(
     const syntax_ast::AstConstantExpression& expression);
 
+/**
+ * Classify a supported non-predicate fundamental scalar parameter spelling.
+ *
+ * Opaque parameter identities and unsupported or instruction-only spellings
+ * deliberately have no scalar classification.
+ */
+[[nodiscard]] std::optional<base::ScalarType> parameterScalarType(
+    std::string_view spelling) noexcept;
+
 enum class DeclarationDiagnosticKind : uint8_t {
   InvalidArrayDimension,
   UnsizedArrayDimension,
@@ -88,6 +101,7 @@ enum class DeclarationDiagnosticKind : uint8_t {
   StorageExtentOverflow,
   UnsupportedStorageDeclaration,
   UnsupportedStorageInitializer,
+  UnsupportedParameterDeclaration,
 };
 
 struct DeclarationDiagnostic {

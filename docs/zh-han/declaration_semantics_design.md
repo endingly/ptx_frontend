@@ -62,6 +62,13 @@ binding 负责。module resolution 会把有效 prototype 转为与 function 相
 并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
 availability 仍留给后续工作。
 
+## 参数声明
+
+参数另有按上下文区分的[覆盖与验证契约](parameter_declarations.md)，包括支持的类型、
+unsized array 位置、pointer attribute，以及可静态判定的 ISA version/target 与 entry
+大小限制。该契约适用于 entry/device header、call-prototype formal 与 body-local `.param`
+声明；保留 type spelling 或 array syntax 本身不表示声明合法。
+
 ## Entry resource constraint
 
 对已支持的 entry-header `.maxnreg`、`.maxntid`、`.reqntid` 与 `.minnctapersm`，本 pass

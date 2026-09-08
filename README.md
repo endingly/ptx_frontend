@@ -18,6 +18,9 @@ The frontend currently provides:
   initializer, and instruction forms;
 - module/function symbol scopes, reference classification, and declaration
   semantics;
+- owned [parameter-declaration metadata](docs/us-en/parameter_declarations.md)
+  for entry/device inputs, device returns, and body-local `.param` declarations,
+  with typed shapes, checked byte extents, and an explicit supported ISA boundary;
 - owned [storage-declaration metadata](docs/us-en/storage_declarations.md) for
   global, constant, shared, and local data: declaration identity, lexical owner,
   type/shape, checked byte extent, alignment, linkage, and typed initializer

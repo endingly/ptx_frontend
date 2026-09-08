@@ -164,8 +164,11 @@ struct ResolvedFunction {{
   std::vector<ResolvedInstruction> body;
   std::vector<ResolvedLabelPosition> label_positions;
   SourceRange range;
-  /** Owned input metadata in source order for .entry; empty for .func. */
-  std::vector<ResolvedEntryParameter> entry_parameters;
+  /**
+   * Owned .param returns, inputs, then body declarations in lexical traversal order.
+   * Filter ParameterDeclarationRole::EntryInput for source-ordered entry inputs.
+   */
+  std::vector<ResolvedParameterDeclaration> parameter_declarations;
 }};
 
 struct ResolvedModule {{

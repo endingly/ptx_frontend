@@ -85,12 +85,14 @@ std::optional<uint64_t> contract_array_size(
 
 CallArgumentProperties call_argument_properties(
     const declaration_semantics::FunctionParameterContract& contract) {
+  const auto scalar = declaration_semantics::parameterScalarType(contract.type);
+  const uint64_t natural_alignment = scalar ? base::scalar_size_of(*scalar) : 1;
   CallArgumentProperties properties{
       .state_space = *call_state_space(contract.state_space),
       .type_spelling = contract.type,
       .array_alignment = contract.alignment
-                             ? unsigned_value(*contract.alignment).value_or(1)
-                             : 1,
+                             ? unsigned_value(*contract.alignment).value_or(natural_alignment)
+                             : natural_alignment,
       .is_array = contract.is_array,
       .array_size = contract_array_size(contract),
   };
@@ -361,7 +363,13 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
                                const auto& formals) {
     const size_t actual_count =
         actuals == nullptr ? 0 : actuals->parameters.size();
-    if (actual_count != formals.size()) {
+    // A validated final unsized byte input can be omitted for an empty payload.
+    const bool omitted_unsized_input =
+        kind == "input" && !formals.empty() &&
+        actual_count == formals.size() - 1 && formals.back().is_array &&
+        !formals.back().array_extent && formals.back().type == ".b8" &&
+        formals.back().state_space == syntax_ast::AstStateSpace::Parameter;
+    if (actual_count != formals.size() && !omitted_unsized_input) {
       diagnostics.push_back(ResolveDiagnostic{
           .range = actuals == nullptr ? target_range : actuals->range,
           .message = fmt::format("{} has {} {} argument{} but callee requires {}.",
@@ -664,15 +672,107 @@ void check_call_staging_body(
   }
 }
 
-void resolve_body(
-    const std::vector<syntax_ast::AstFunctionBodyItem>& body,
-    const ResolveContext& context, const binding::SymbolTable& symbols,
-    const FunctionSignatureIndex& signatures,
-    const CallArgumentPropertyIndex& call_argument_properties,
-    ResolvedFunction& resolved_function, ModuleResolveDiagnostics& diagnostics) {
+/** Compute declared bytes after semantic validation, without allocating ABI slots. */
+std::optional<uint64_t> parameter_byte_extent(
+    ScalarType type, uint32_t vector_width,
+    const std::vector<std::optional<uint64_t>>& extents) {
+  uint64_t bytes = base::scalar_size_of(type) * vector_width;
+  for (const auto extent : extents) {
+    if (!extent)
+      return std::nullopt;
+    if (*extent != 0 && bytes > std::numeric_limits<uint64_t>::max() / *extent)
+      throw ResolveException("Validated parameter byte extent overflows.");
+    bytes *= *extent;
+  }
+  return bytes;
+}
+
+/** Project a validated header .param while preserving its declaration role. */
+ResolvedParameterDeclaration resolve_parameter_declaration(
+    const syntax_ast::AstFunctionParameter& parameter,
+    ParameterDeclarationRole role, const binding::Symbol& symbol,
+    const CallArgumentProperties& properties) {
+  const auto type =
+      declaration_semantics::parameterScalarType(parameter.type.text);
+  if (!type || !symbol.address_alignment)
+    throw ResolveException(
+        "Validated parameter has no scalar type or alignment.");
+  std::vector<std::optional<uint64_t>> extents;
+  if (parameter.is_array)
+    extents.push_back(
+        parameter.array_size
+            ? declaration_semantics::constantArrayExtent(*parameter.array_size)
+            : std::nullopt);
+  const auto bytes = parameter_byte_extent(*type, 1, extents);
+  return {
+      .symbol_id = symbol.id,
+      .scope_id = symbol.scope,
+      .role = role,
+      .scalar_type = *type,
+      .alignment = *symbol.address_alignment,
+      .explicit_alignment = parameter.alignment.has_value(),
+      .array_extents = std::move(extents),
+      .byte_extent = bytes,
+      .pointer = properties.pointer,
+  };
+}
+
+/** Project one body-local .param declarator with owned multidimensional shape. */
+ResolvedParameterDeclaration resolve_parameter_declaration(
+    const syntax_ast::AstVariableDeclaration& declaration,
+    const syntax_ast::AstVariableDeclarator& declarator,
+    const binding::Symbol& symbol) {
+  const auto type =
+      declaration_semantics::parameterScalarType(declaration.type.text);
+  if (!type || !symbol.address_alignment)
+    throw ResolveException(
+        "Validated parameter has no scalar type or alignment.");
+  const uint32_t lanes = declaration.vector_type
+                             ? (declaration.vector_type->text == ".v2" ? 2 : 4)
+                             : 1;
+  std::vector<std::optional<uint64_t>> extents;
+  extents.reserve(declarator.array_dimensions.size());
+  for (const auto& dimension : declarator.array_dimensions)
+    extents.push_back(
+        dimension.size
+            ? declaration_semantics::constantArrayExtent(*dimension.size)
+            : std::nullopt);
+  const auto bytes = parameter_byte_extent(*type, lanes, extents);
+  return {
+      .symbol_id = symbol.id,
+      .scope_id = symbol.scope,
+      .role = ParameterDeclarationRole::BodyLocal,
+      .scalar_type = *type,
+      .alignment = *symbol.address_alignment,
+      .explicit_alignment = declaration.alignment.has_value(),
+      .vector_width = lanes,
+      .array_extents = std::move(extents),
+      .byte_extent = bytes,
+  };
+}
+
+void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+                  const ResolveContext& context,
+                  const binding::SymbolTable& symbols,
+                  const FunctionSignatureIndex& signatures,
+                  const CallArgumentPropertyIndex& call_argument_properties,
+                  ResolvedFunction& resolved_function,
+                  ModuleResolveDiagnostics& diagnostics) {
   for (const auto& body_item : body) {
-    if (const auto* instruction =
-            std::get_if<syntax_ast::AstInstruction>(&body_item)) {
+    if (const auto* declaration =
+            std::get_if<syntax_ast::AstVariableDeclaration>(&body_item);
+        declaration &&
+        declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
+      for (const auto& declarator : declaration->declarators) {
+        const auto symbol = declared_symbol(symbols, context.scope, declarator);
+        if (!symbol)
+          throw ResolveException("Bound body parameter has no local symbol.");
+        resolved_function.parameter_declarations.push_back(
+            resolve_parameter_declaration(*declaration, declarator,
+                                          symbols.symbol(*symbol)));
+      }
+    } else if (const auto* instruction =
+                   std::get_if<syntax_ast::AstInstruction>(&body_item)) {
       auto resolved = resolveInstruction(*instruction, context);
       if (!resolved) {
         diagnostics.push_back(std::move(resolved.error()));
@@ -824,27 +924,31 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
         .is_prototype = function->is_prototype,
         .range = function->range,
     };
-    if (function->is_entry) {
-      resolved_function.entry_parameters.reserve(function->parameters.size());
-      for (const auto& parameter : function->parameters) {
-        const auto parameter_lookup =
-            binding_result.table.lookup(scope, parameter.name.syntax.text);
-        if (!parameter_lookup)
-          throw ResolveException("Bound entry parameter has no local symbol.");
-        const auto& parameter_symbol =
-            binding_result.table.symbol(parameter_lookup->symbol);
-        const auto& properties =
-            call_argument_properties.at(parameter_symbol.id.value);
-        resolved_function.entry_parameters.push_back({
-            .symbol_id = parameter_symbol.id,
-            .type = properties.type_spelling,
-            .alignment = parameter_symbol.address_alignment,
-            .pointer = properties.pointer,
-            .is_array = properties.is_array,
-            .array_extent = properties.array_size,
-        });
-      }
-    }
+    /** Append header declarations in return-list then input-list order. */
+    const auto append_parameters =
+        [&](const std::vector<syntax_ast::AstFunctionParameter>& parameters,
+            ParameterDeclarationRole role) {
+          for (const auto& parameter : parameters) {
+            if (parameter.state_space != syntax_ast::AstStateSpace::Parameter)
+              continue;
+            const auto found =
+                binding_result.table.lookup(scope, parameter.name.syntax.text);
+            if (!found)
+              throw ResolveException("Bound parameter has no local symbol.");
+            const auto& parameter_symbol =
+                binding_result.table.symbol(found->symbol);
+            resolved_function.parameter_declarations.push_back(
+                resolve_parameter_declaration(
+                    parameter, role, parameter_symbol,
+                    call_argument_properties.at(parameter_symbol.id.value)));
+          }
+        };
+    append_parameters(function->return_parameters,
+                      ParameterDeclarationRole::DeviceReturn);
+    append_parameters(function->parameters,
+                      function->is_entry
+                          ? ParameterDeclarationRole::EntryInput
+                          : ParameterDeclarationRole::DeviceInput);
     resolve_body(function->body, context, binding_result.table, signatures,
                  call_argument_properties, resolved_function, diagnostics);
     check_call_staging_body(*function, function->body, binding_result.table,

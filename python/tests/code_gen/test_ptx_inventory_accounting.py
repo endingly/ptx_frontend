@@ -19,12 +19,6 @@ SOURCES = {
     "special_register": "ptx_special_register_registry.yaml",
 }
 KIND_ORDER = tuple(SOURCES)
-PARTIAL_OPCODE_STATUS = {
-    "syntax": "partial",
-    "resolved": "partial",
-    "checker": "partial",
-    "simulator": "unsupported",
-}
 COVERAGE_SECTION_ALIASES = {
     ("mov", "9.7.9"): frozenset({"9.7.9.3", "9.7.9.4"}),
     ("mbarrier", "9.7.14.16.12"): frozenset({"9.7.14.16"}),
@@ -122,7 +116,6 @@ class PtxInventoryAccountingTests(unittest.TestCase):
         implemented = [
             (entry["opcode"], slice_["section"], slice_["id"])
             for entry in coverage["opcodes"]
-            if entry["status"] == PARTIAL_OPCODE_STATUS
             for slice_ in entry["slices"]
             if slice_["disposition"] == "implemented"
         ]
@@ -135,18 +128,23 @@ class PtxInventoryAccountingTests(unittest.TestCase):
                 for opcode, section, _ in implemented
             )
             with self.subTest(item=key(item)):
-                self.assertEqual(item["status"] == "partial", covered)
+                self.assertEqual(item["status"] in {"partial", "complete"}, covered)
                 if covered:
                     self.assertEqual(item["support_source"], "opcode_coverage")
-                    self.assertNotEqual(item["disposition"], "implemented")
-                    self.assertTrue(item["reason"])
-                    self.assertTrue(item["milestone"])
+                    if item["status"] == "complete":
+                        self.assertEqual(item["disposition"], "implemented")
+                        self.assertNotIn("reason", item)
+                        self.assertNotIn("milestone", item)
+                    else:
+                        self.assertNotEqual(item["disposition"], "implemented")
+                        self.assertTrue(item["reason"])
+                        self.assertTrue(item["milestone"])
 
         unmapped = [
             slice_id
             for opcode, section, slice_id in implemented
             if not any(
-                item["status"] == "partial"
+                item["status"] in {"partial", "complete"}
                 and item["support_source"] == "opcode_coverage"
                 and coverage_matches(item, section_by_record, opcode, section)
                 for item in instruction_dispositions
@@ -168,7 +166,7 @@ class PtxInventoryAccountingTests(unittest.TestCase):
         ]
         self.assertEqual(
             Counter(item["status"] for item in closed),
-            {"partial": 56, "unsupported": 7},
+            {"partial": 54, "unsupported": 6},
         )
         for item in closed:
             with self.subTest(item=key(item)):

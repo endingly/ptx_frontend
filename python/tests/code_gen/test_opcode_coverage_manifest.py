@@ -33,6 +33,13 @@ M9_OPCODE_ISSUES = {
     "div": ("M9-I24",),
 }
 
+FMA_COMPLETE_STATUS = {
+    "syntax": "supported",
+    "resolved": "supported",
+    "checker": "supported",
+    "simulator": "unsupported",
+}
+
 
 def source_variant_sections() -> dict[tuple[str, str], str]:
     sections = {}
@@ -76,7 +83,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
         self.assertEqual(set(by_opcode), database_opcodes | set(M9_OPCODE_ISSUES))
 
         slices = [slice_ for entry in entries for slice_ in entry["slices"]]
-        self.assertEqual(len(slices), 320)
+        self.assertEqual(len(slices), 333)
         self.assertEqual(len({slice_["id"] for slice_ in slices}), len(slices))
         self.assertEqual({slice_["disposition"] for slice_ in slices}, {"implemented"})
         sections = source_variant_sections()
@@ -116,11 +123,12 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
 
         for opcode in database_opcodes:
             self.assertEqual(
-                {field: by_opcode[opcode]["status"][field]
-                 for field in ("syntax", "resolved", "checker")},
-                {"syntax": "partial", "resolved": "partial", "checker": "partial"},
+                by_opcode[opcode]["status"],
+                FMA_COMPLETE_STATUS if opcode == "fma" else {
+                    "syntax": "partial", "resolved": "partial",
+                    "checker": "partial", "simulator": "unsupported",
+                },
             )
-            self.assertEqual(by_opcode[opcode]["status"]["simulator"], "unsupported")
             self.assertTrue(by_opcode[opcode]["slices"])
             self.assertTrue(
                 all(
@@ -137,7 +145,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 self.assertNotIn("m9_issues", by_opcode[opcode])
 
         for opcode, issues in M9_OPCODE_ISSUES.items():
-            expected_frontend_status = (
+            expected_frontend_status = "supported" if opcode == "fma" else (
                 "partial" if opcode in database_opcodes else "unsupported"
             )
             self.assertEqual(
@@ -201,7 +209,7 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "mad-mad-lo-s32": {"topology": "arithmetic", "types": ["s32"], "shape": "scalar", "modifiers": ["lo"]},
                 "mad-mad-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
                 "mad-mad-wide-u32": {"topology": "arithmetic", "types": ["u64", "u32"], "shape": "scalar", "modifiers": ["wide"]},
-                "fma-fma-rn-f16": {"topology": "arithmetic", "types": ["f16"], "shape": "scalar", "modifiers": ["rn"]},
+                "fma-fma-rn-f16": {"topology": "arithmetic", "types": ["f16"], "shape": "scalar", "modifiers": ["rn", "ftz", "sat"]},
                 "fma-fma-rn-f64": {"topology": "arithmetic", "types": ["f64"], "shape": "scalar", "modifiers": ["rn"]},
                 "div-div-rn-f32": {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn"]},
                 "div-div-rn-f64": {"topology": "arithmetic", "types": ["f64"], "shape": "scalar", "modifiers": ["rn"]},
@@ -259,6 +267,30 @@ class OpcodeCoverageManifestTests(unittest.TestCase):
                 "cp-cp-async-wait-all": {"topology": "async_group", "types": [], "shape": "none", "modifiers": ["wait_all"]},
                 "ldmatrix-ldmatrix-sync-aligned-m8n8-x2-shared-b16": {"topology": "matrix_load", "types": ["b16", "b32"], "shape": "m8n8_x2", "modifiers": ["sync", "aligned"], "state_space": ["shared"]},
                 "mma-mma-sync-aligned-m16n8k8-row-col-f32-f16-f16-f32": {"topology": "matrix_mma", "types": ["f32", "f16", "f16x2"], "shape": "m16n8k8", "modifiers": ["sync", "aligned", "row", "col"]},
+            },
+        )
+        self.assertEqual(
+            {
+                slice_["spec_variant"]: (slice_["section"], slice_["selector"])
+                for slice_ in by_opcode["fma"]["slices"]
+            },
+            {
+                "fma_rn_f32": ("9.7.3.6", {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rn", "ftz", "sat"]}),
+                "fma_directed_f32": ("9.7.3.6", {"topology": "arithmetic", "types": ["f32"], "shape": "scalar", "modifiers": ["rz", "rm", "rp", "ftz", "sat"]}),
+                "fma_rn_f64": ("9.7.3.6", {"topology": "arithmetic", "types": ["f64"], "shape": "scalar", "modifiers": ["rn"]}),
+                "fma_directed_f64": ("9.7.3.6", {"topology": "arithmetic", "types": ["f64"], "shape": "scalar", "modifiers": ["rz", "rm", "rp"]}),
+                "fma_f32x2": ("9.7.3.6", {"topology": "arithmetic", "types": ["f32x2"], "shape": "packed", "modifiers": ["rn", "rz", "rm", "rp", "ftz"]}),
+                "fma_rn_f16": ("9.7.4.4", {"topology": "arithmetic", "types": ["f16"], "shape": "scalar", "modifiers": ["rn", "ftz", "sat"]}),
+                "fma_rn_f16x2": ("9.7.4.4", {"topology": "arithmetic", "types": ["f16x2"], "shape": "packed", "modifiers": ["rn", "ftz", "sat"]}),
+                "fma_half_relu": ("9.7.4.4", {"topology": "arithmetic", "types": ["f16", "f16x2"], "shape": "scalar_or_packed", "modifiers": ["rn", "ftz", "relu"]}),
+                "fma_half_oob": ("9.7.4.4", {"topology": "arithmetic", "types": ["f16", "f16x2"], "shape": "scalar_or_packed", "modifiers": ["rn", "oob", "sat"]}),
+                "fma_half_oob_relu": ("9.7.4.4", {"topology": "arithmetic", "types": ["f16", "f16x2"], "shape": "scalar_or_packed", "modifiers": ["rn", "oob", "relu"]}),
+                "fma_bf16": ("9.7.4.4", {"topology": "arithmetic", "types": ["bf16"], "shape": "scalar", "modifiers": ["rn", "relu"]}),
+                "fma_bf16x2": ("9.7.4.4", {"topology": "arithmetic", "types": ["bf16x2"], "shape": "packed", "modifiers": ["rn", "relu"]}),
+                "fma_bf16_oob": ("9.7.4.4", {"topology": "arithmetic", "types": ["bf16"], "shape": "scalar", "modifiers": ["rn", "oob", "relu"]}),
+                "fma_bf16x2_oob": ("9.7.4.4", {"topology": "arithmetic", "types": ["bf16x2"], "shape": "packed", "modifiers": ["rn", "oob", "relu"]}),
+                "fma_mixed_f32_f16": ("9.7.5.3", {"topology": "arithmetic", "types": ["f32", "f16"], "shape": "mixed", "modifiers": ["rn", "rz", "rm", "rp", "sat"]}),
+                "fma_mixed_f32_bf16": ("9.7.5.3", {"topology": "arithmetic", "types": ["f32", "bf16"], "shape": "mixed", "modifiers": ["rn", "rz", "rm", "rp", "sat"]}),
             },
         )
         self.assertEqual(

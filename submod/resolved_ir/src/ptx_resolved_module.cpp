@@ -807,6 +807,27 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
         .is_prototype = function->is_prototype,
         .range = function->range,
     };
+    if (function->is_entry) {
+      resolved_function.entry_parameters.reserve(function->parameters.size());
+      for (const auto& parameter : function->parameters) {
+        const auto parameter_lookup =
+            binding_result.table.lookup(scope, parameter.name.syntax.text);
+        if (!parameter_lookup)
+          throw ResolveException("Bound entry parameter has no local symbol.");
+        const auto& parameter_symbol =
+            binding_result.table.symbol(parameter_lookup->symbol);
+        const auto& properties =
+            call_argument_properties.at(parameter_symbol.id.value);
+        resolved_function.entry_parameters.push_back({
+            .symbol_id = parameter_symbol.id,
+            .type = properties.type_spelling,
+            .alignment = parameter_symbol.address_alignment,
+            .pointer = properties.pointer,
+            .is_array = properties.is_array,
+            .array_extent = properties.array_size,
+        });
+      }
+    }
     resolve_body(function->body, context, binding_result.table, signatures,
                  call_argument_properties, resolved_function, diagnostics);
     check_call_staging_body(*function, function->body, binding_result.table,

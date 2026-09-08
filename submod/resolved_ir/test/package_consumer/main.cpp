@@ -1,4 +1,7 @@
+#include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
@@ -7,6 +10,90 @@
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+/** Verify entry input metadata through only the installed resolved-IR API. */
+int check_entry_parameter_metadata() {
+  std::optional<ptx_frontend::resolved_ir::ResolvedModule> resolved_module;
+  {
+    const std::string fixture = R"ptx(
+.entry declared(.param .u16 scalar,
+                 .param .align 8 .b8 declaration_unsized[]) { }
+.entry defined(.param .u32 scalar, .param .align 16 .u64 aligned,
+               .param .u64 .ptr generic_pointer,
+               .param .u64 .ptr .global .align 32 global_pointer,
+               .param .align 8 .b8 values[2 * 4]) { }
+.func device_only(.param .u32 ignored) { }
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(fixture);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return 31;
+    auto resolved = ptx_frontend::resolved_ir::resolveModule(*ast);
+    if (!resolved)
+      return 32;
+    resolved_module = std::move(*resolved);
+  }
+
+  const auto& functions = resolved_module->functions;
+  if (functions.size() != 3 || !functions[0].is_entry ||
+      functions[0].is_prototype || !functions[1].is_entry ||
+      functions[1].is_prototype || functions[2].is_entry ||
+      !functions[2].entry_parameters.empty()) {
+    return 33;
+  }
+
+  const auto& declared = functions[0].entry_parameters;
+  const auto& defined = functions[1].entry_parameters;
+  if (declared.size() != 2 || defined.size() != 5 ||
+      declared[0].type != ".u16" || declared[0].alignment != 2 ||
+      declared[0].is_array || declared[0].array_extent || declared[0].pointer ||
+      declared[1].type != ".b8" || declared[1].alignment != 8 ||
+      !declared[1].is_array || declared[1].array_extent ||
+      declared[1].pointer || defined[0].type != ".u32" ||
+      defined[0].alignment != 4 || defined[0].is_array ||
+      defined[0].array_extent || defined[0].pointer ||
+      defined[1].type != ".u64" || defined[1].alignment != 16 ||
+      defined[1].is_array || defined[1].array_extent || defined[1].pointer ||
+      defined[2].type != ".u64" || defined[2].alignment != 8 ||
+      !defined[2].pointer || defined[2].pointer->pointed_state_space ||
+      defined[2].pointer->pointed_alignment != 4 || defined[3].type != ".u64" ||
+      defined[3].alignment != 8 || !defined[3].pointer ||
+      defined[3].pointer->pointed_state_space !=
+          ptx_frontend::call_argument_compatibility::PointedStateSpace::
+              Global ||
+      defined[3].pointer->pointed_alignment != 32 || defined[4].type != ".b8" ||
+      defined[4].alignment != 8 || !defined[4].is_array ||
+      defined[4].array_extent != 8 || defined[4].pointer) {
+    return 34;
+  }
+
+  const auto declared_function_scope =
+      resolved_module->symbols.symbol(functions[0].symbol_id).owned_scope;
+  const auto defined_function_scope =
+      resolved_module->symbols.symbol(functions[1].symbol_id).owned_scope;
+  if (!declared_function_scope || !defined_function_scope ||
+      resolved_module->symbols.symbol(declared[0].symbol_id).name !=
+          "scalar" ||
+      resolved_module->symbols.symbol(declared[1].symbol_id).name !=
+          "declaration_unsized" ||
+      resolved_module->symbols.symbol(defined[0].symbol_id).name != "scalar" ||
+      resolved_module->symbols.symbol(defined[1].symbol_id).name != "aligned" ||
+      resolved_module->symbols.symbol(defined[2].symbol_id).name !=
+          "generic_pointer" ||
+      resolved_module->symbols.symbol(defined[3].symbol_id).name !=
+          "global_pointer" ||
+      resolved_module->symbols.symbol(defined[4].symbol_id).name != "values" ||
+      resolved_module->symbols.symbol(declared[0].symbol_id).scope !=
+          *declared_function_scope ||
+      resolved_module->symbols.symbol(defined[0].symbol_id).scope !=
+          *defined_function_scope ||
+      resolved_module->symbols.symbol(defined[4].symbol_id).scope !=
+          *defined_function_scope ||
+      declared[0].symbol_id == defined[0].symbol_id) {
+    return 35;
+  }
+  return 0;
+}
 
 int main() {
   constexpr std::string_view source = "add.u32 %r0, %r1, 1;";
@@ -94,6 +181,11 @@ int main() {
   }
   if (!add_has_legacy_mixed_precision_order)
     return 30;
+
+  if (const int metadata_result = check_entry_parameter_metadata();
+      metadata_result != 0) {
+    return metadata_result;
+  }
 
   ptx_frontend::PtxSyntaxParser call_parser(
       "call (%result), callee, (%argument, 1);");

@@ -47,14 +47,29 @@ resolveModule(const syntax_ast::AstModule& ast);
 `resolveInstruction` 根据指令数据库生成，并分发到现有的 `resolve<T>` 特化。调用者不再
 需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。`resolveModule` 先建立
 `SymbolTable`，再为每个 function scope 构造显式 `ResolveContext`；返回的
-`ResolvedModule` 拥有 symbol table，`ResolvedFunction` 以函数 `SymbolId` 标识。
+`ResolvedModule` 拥有 symbol table，`ResolvedFunction` 以函数 `SymbolId` 标识。entry
+function 还拥有按 source order 排列的 `entry_parameters` 输入声明 metadata；`.func` 的
+列表始终为空。
 `ResolvedFunction::label_positions` 以已绑定的 `SymbolId` 和 source-order 的 instruction
 boundary 记录每个 function label；boundary 基于递归展平的 body，首条 instruction 前为零、
 连续 label 共用一个 boundary、末尾 label 为 `body.size()`。standalone `resolveInstruction`
 与 `resolve<T>` 不要求声明上下文，继续服务单指令工具。directive 与 declaration 仍由
-Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串字段。`.file` 与
+Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串字段；唯一刻意保留的
+例外是拥有值的、已规范化 entry-input ABI metadata。`.file` 与
 `.debug_str` identity 会在那里验证 `.loc` metadata，
 但 `.loc`、`.section` 与 `.pragma` 不产生 Resolved IR node，也不附着到 instruction。
+
+`ResolvedEntryParameter` 是 inspection boundary，而非 launch layout 或 runtime policy
+model。每个条目拥有规范化标量 PTX `type` spelling、local-declaration `symbol_id`、可选的
+有效字节 `alignment`、可选 `PointerProperties`、`is_array` 与以 element 为单位的可选常量
+`array_extent`。binding 推导的 alignment 包括显式 declaration alignment 或已知 natural
+alignment；无法确定时为空。non-pointer 没有 pointer properties；未写 pointed state space 的
+pointer 为 generic，source 未写 pointed alignment 时采用四字节的语义默认值。`array_extent`
+为空时，
+`is_array` 用于区分 unsized array 与 scalar。metadata 拥有其所表示的全部值，因此 source
+text 与 Syntax AST 销毁后仍可供 client 检查。parameter ID 指向每个 entry 的
+function-local declaration scope；不同 entry 可以复用 parameter name，同时保留不同的
+identity。
 
 module resolution 还负责不能放入 generated single-instruction checker 的 direct 与 metadata-backed
 indirect-call ABI 以及

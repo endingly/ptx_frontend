@@ -450,24 +450,59 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [ResolvedRegisterWidthPolicy.EXACT] * 4,
         )
 
-    def test_fma_merges_frozen_rn_ternary_layouts(self) -> None:
+    def test_fma_models_all_ptx_93_ternary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.fma_instruction.variants],
-            ["RnF32", "RnF64", "RnF16"],
+            [
+                "RnF32", "DirectedF32", "RnF64", "DirectedF64", "F32x2",
+                "RnF16", "RnF16x2", "HalfRelu", "HalfOob", "HalfOobRelu",
+                "Bf16", "Bf16x2", "Bf16Oob", "Bf16x2Oob", "MixedF32F16",
+                "MixedF32Bf16",
+            ],
         )
         self.assertEqual(
             [field.name for field in self.fma_instruction.variants[0].fields],
-            ["rounding", "type", "dst", "src1", "src2", "src3"],
+            ["rounding", "ftz", "saturate", "type", "dst", "src1", "src2", "src3"],
         )
-        self.assertEqual(
-            self.fma_instruction.variants[0].operand_layouts[0].bindings[3].role,
-            ResolvedOperandRole.SOURCE,
-        )
-        for variant in self.fma_instruction.variants[1:]:
+        variants = {
+            variant.variant_id: variant for variant in self.fma_instruction.variants
+        }
+        for name in (
+            "fma_rn_f32", "fma_directed_f32", "fma_rn_f64", "fma_directed_f64",
+        ):
+            bindings = variants[name].operand_layouts[0].bindings
             self.assertEqual(
-                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [binding.allowed_shapes for binding in bindings[1:]],
+                [(ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE)] * 3,
+            )
+            self.assertEqual(
+                [binding.register_width_policy for binding in bindings],
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+            )
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in variants["fma_f32x2"].operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 4,
+        )
+        for name in ("fma_bf16", "fma_bf16_oob"):
+            self.assertEqual(
+                [binding.register_width_policy
+                 for binding in variants[name].operand_layouts[0].bindings],
                 [ResolvedRegisterWidthPolicy.EXACT] * 4,
             )
+        for name in ("fma_mixed_f32_f16", "fma_mixed_f32_bf16"):
+            bindings = variants[name].operand_layouts[0].bindings
+            self.assertEqual(
+                [binding.allowed_shapes for binding in bindings],
+                [
+                    (ResolvedOperandShape.REGISTER,),
+                    (ResolvedOperandShape.REGISTER,),
+                    (ResolvedOperandShape.REGISTER,),
+                    (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+                ],
+            )
+            self.assertEqual(bindings[0].type_expression.modifier_field_id, "result_type")
+            self.assertEqual(bindings[3].type_expression.modifier_field_id, "result_type")
 
     def test_div_merges_frozen_integer_and_floating_binary_layouts(self) -> None:
         self.assertEqual(

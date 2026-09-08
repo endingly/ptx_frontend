@@ -93,6 +93,36 @@ operand_patterns:
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(type)"}}
 
+  ternary_b16_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src3, kind: reg, role: src3, access: read, type: b16, register_width: exact}
+
+  ternary_b32_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: src3, kind: reg, role: src3, access: read, type: b32, register_width: exact}
+
+  ternary_b64_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b64, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b64, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b64, register_width: exact}
+    - {name: src3, kind: reg, role: src3, access: read, type: b64, register_width: exact}
+
+  ternary_mixed_f16:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(result_type)"}}
+    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(input_type)"}}
+    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(input_type)"}}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(result_type)"}}
+
+  ternary_mixed_bf16:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(result_type)"}}
+    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(result_type)"}}
+
   ternary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
@@ -776,12 +806,12 @@ instructions:
 
   - opcode: fma
     section: "9.7.3.6"
-    doc: "Frozen round-to-nearest single- and double-precision fused multiply-add."
-    syntax: "fma.rn.f32 | fma.rn.f64 dst, src1, src2, src3"
-    operands: $ternary_float_register
+    doc: "Single-, double-, and packed single-precision fused multiply-add."
+    syntax: "fma.rnd{.ftz}{.sat}.f32 | fma.rnd.f64 | fma.rnd{.ftz}.f32x2 dst, src1, src2, src3"
+    operands: $ternary_arith
     variants:
       - name: fma_rn_f32
-        description: "Register-only round-to-nearest single-precision fused multiply-add."
+        description: "Round-to-nearest single-precision fused multiply-add."
         availability:
           ptx: "2.0"
           sm: 20
@@ -791,6 +821,8 @@ instructions:
             domain: rounding_modes
             presence: fixed
             value: rn
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
           - name: type
             kind: type
             domain: scalar_types
@@ -800,8 +832,17 @@ instructions:
           - ptx: "fma.rn.f32 %f0, %f1, %f2, %f3;"
             valid: true
 
+      - name: fma_directed_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "fma.rz.ftz.sat.f32 %f0, %f1, 1.0, %f3;", valid: true}
+
       - name: fma_rn_f64
-        operands: $ternary_float_register_exact
         availability: {ptx: "1.4", sm: 13}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
@@ -809,19 +850,149 @@ instructions:
         examples:
           - {ptx: "fma.rn.f64 %d0, %d1, %d2, %d3;", valid: true}
 
+      - name: fma_directed_f64
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "fma.rp.f64 %d0, %d1, %d2, 1.0;", valid: true}
+
+      - name: fma_f32x2
+        operands: $ternary_b64_register_exact
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rn, rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32x2}
+        examples:
+          - {ptx: "fma.rm.ftz.f32x2 %b0, %b1, %b2, %b3;", valid: true}
+
   - opcode: fma
     section: "9.7.4.4"
-    doc: "Frozen round-to-nearest half-precision fused multiply-add."
-    syntax: "fma.rn.f16 dst, src1, src2, src3"
-    operands: $ternary_float_register_exact
+    doc: "Half- and bfloat-precision fused multiply-add, including packed, ReLU, and out-of-bounds forms."
+    syntax: "fma.rn{.ftz}{.sat|.relu}.{f16|f16x2} | fma.rn{.relu}.{bf16|bf16x2} | fma.rn.oob{.relu}.type dst, src1, src2, src3"
+    operands: $ternary_float_register
     variants:
       - name: fma_rn_f16
         availability: {ptx: "4.2", sm: 53}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
         examples:
           - {ptx: "fma.rn.f16 %h0, %h1, %h2, %h3;", valid: true}
+
+      - name: fma_rn_f16x2
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "fma.rn.ftz.sat.f16x2 %h0, %h1, %h2, %h3;", valid: true}
+
+      - name: fma_half_relu
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: relu, kind: flag, presence: fixed, value: true, token: .relu}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, f16x2]}
+        examples:
+          - {ptx: "fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;", valid: true}
+
+      # The ISA syntax omits .sat here; ptxas 13.3 accepts it for half types.
+      - name: fma_half_oob
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, f16x2]}
+        examples:
+          - {ptx: "fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;", valid: true}
+
+      - name: fma_half_oob_relu
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
+          - {name: relu, kind: flag, presence: fixed, value: true, token: .relu}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, f16x2]}
+        examples:
+          - {ptx: "fma.rn.oob.relu.f16x2 %h0, %h1, %h2, %h3;", valid: true}
+
+      - name: fma_bf16
+        operands: $ternary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "fma.rn.relu.bf16 %b0, %b1, %b2, %b3;", valid: true}
+
+      - name: fma_bf16x2
+        operands: $ternary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "fma.rn.bf16x2 %b0, %b1, %b2, %b3;", valid: true}
+
+      - name: fma_bf16_oob
+        operands: $ternary_b16_register_exact
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
+          - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "fma.rn.oob.bf16 %b0, %b1, %b2, %b3;", valid: true}
+
+      - name: fma_bf16x2_oob
+        operands: $ternary_b32_register_exact
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
+          - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "fma.rn.oob.relu.bf16x2 %b0, %b1, %b2, %b3;", valid: true}
+
+  - opcode: fma
+    section: "9.7.5.3"
+    doc: "Mixed-precision fused multiply-add with independent multiplicand and accumulator types."
+    syntax: "fma.rnd{.sat}.f32.{f16|bf16} dst, src1, src2, src3"
+    variants:
+      - name: fma_mixed_f32_f16
+        operands: $ternary_mixed_f16
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rn, rz, rm, rp]}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+          - {name: input_type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "fma.rp.sat.f32.f16 %f0, %h1, %h2, 1.0;", valid: true}
+
+      - name: fma_mixed_f32_bf16
+        operands: $ternary_mixed_bf16
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rn, rz, rm, rp]}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+          - {name: input_type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "fma.rn.f32.bf16 %f0, %b1, %b2, %f3;", valid: true}
 
   - opcode: mad
     section: "9.7.3.7"

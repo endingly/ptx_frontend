@@ -1099,6 +1099,17 @@ resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
                                identifier.syntax.text),
     });
   }
+  if (*symbol.state_space == syntax_ast::AstStateSpace::Parameter &&
+      (symbol.kind == binding::SymbolKind::InputParameter ||
+       symbol.kind == binding::SymbolKind::ReturnParameter)) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier.syntax.range,
+        .message = fmt::format(
+            "Formal .param parameter '{}' cannot be used directly as a call "
+            "argument; use a register or body-local .param object.",
+            identifier.syntax.text),
+    });
+  }
   resolved.symbol_id = lookup->symbol;
   resolved.parameterized_index = lookup->parameterized_index;
   resolved.state_space = symbol.state_space;

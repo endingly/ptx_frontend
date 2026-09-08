@@ -8,7 +8,8 @@ may be destroyed after successful resolution.
 
 This is a declaration-to-consumer contract, not a memory allocator or a claim
 of complete PTX declaration conformance. Parameters remain separate:
-`ResolvedFunction::entry_parameters` continues to describe entry inputs.
+`ResolvedFunction::parameter_declarations` describes `.param` declarations;
+the `EntryInput` role identifies entry inputs.
 Registers and call parameters do not enter the storage list.
 
 ## Identity and layout inputs

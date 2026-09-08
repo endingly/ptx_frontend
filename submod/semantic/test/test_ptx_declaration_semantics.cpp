@@ -21,6 +21,7 @@ CheckedModule check(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
   EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  EXPECT_TRUE(module.diagnostics.empty());
   auto binding = binding::bindSymbols(*module);
   auto diagnostics = checkDeclarations(*module, binding.table);
   return {std::move(binding), std::move(diagnostics)};
@@ -198,6 +199,236 @@ TEST(PtxDeclarationSemantics, ValidatesInitializerExpressionTypes) {
       2u);
 }
 
+/** Parameter declarations reject unsupported types, shapes, and ABI contexts. */
+TEST(PtxDeclarationSemantics, ValidatesParameterDeclarationBoundaries) {
+  /** One source declaration expected to produce the named diagnostic kind. */
+  struct Case {
+    std::string_view source;
+    DeclarationDiagnosticKind kind;
+  };
+  constexpr std::array cases = {
+      Case{R"ptx(.version 9.3
+.target sm_80
+.entry k(.param .pred predicate) {})ptx",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{R"ptx(.version 9.3
+.target sm_80
+.entry k(.param .mystery value) {})ptx",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{R"ptx(.version 9.3
+.target sm_80
+.entry k(.param .texref texture) {})ptx",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{R"ptx(.version 9.3
+.target sm_80
+.entry k(.param .b8 bytes[]) {})ptx",
+           DeclarationDiagnosticKind::UnsizedArrayDimension},
+      Case{R"ptx(.version 5.0
+.target sm_30
+.func f(.param .b8 bytes[]);)ptx",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{R"ptx(.version 9.3
+.target sm_80
+.func f(.param .u64 .ptr .global pointer);)ptx",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{R"ptx(.version 8.1
+.target sm_80
+.entry k(.param .b8 payload[32765]) {})ptx",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+  };
+  for (const auto& test : cases) {
+    const CheckedModule result = check(test.source);
+    EXPECT_GT(diagnosticCount(result, test.kind), 0u) << test.source;
+  }
+}
+
+/** Supported parameter forms preserve body-local array coverage and predicates. */
+TEST(PtxDeclarationSemantics, AcceptsSupportedParameterDeclarationForms) {
+  const CheckedModule result = check(R"ptx(
+.version 8.0
+.target sm_80
+.entry k(.param .u64 .ptr .global pointer) {
+  .param .u32 matrix[2][3];
+}
+.func device(.reg .pred predicate, .param .b8 bytes[]);
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
+/** Parameter availability and incomplete-array rules honor PTX and SM bounds. */
+TEST(PtxDeclarationSemantics, ValidatesParameterAvailabilityBoundaries) {
+  /** One versioned source declaration expected to produce the named diagnostic. */
+  struct Case {
+    std::string_view source;
+    DeclarationDiagnosticKind kind;
+  };
+  constexpr std::array rejected = {
+      Case{".version 1.3\n.entry k(.param .u32 value) {}",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 1.5\n.target sm_20\n.func f(.param .u32 value);",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 2.0\n.target sm_13\n.func f(.param .u32 value);",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 2.1\n.target sm_30\n.entry k(.param .u64 .ptr p) {}",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 2.0\n.target sm_20\n.entry k() {\n"
+           "p: .callprototype _ (.param .u32 value);\n}",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 5.0\n.target sm_30\n.func f(.param .b8 bytes[]);",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 6.0\n.target sm_20\n.func f(.param .b8 bytes[]);",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".version 6.0\n.target sm_30\n.func f(.param .u32 bytes[]);",
+           DeclarationDiagnosticKind::UnsizedArrayDimension},
+      Case{".version 6.0\n.target sm_30\n.func f(\n"
+           ".param .b8 bytes[], .param .u32 trailing);",
+           DeclarationDiagnosticKind::UnsizedArrayDimension},
+      Case{".version 8.0\n.target sm_80\n.func (.param .b8 result[]) f();",
+           DeclarationDiagnosticKind::UnsizedArrayDimension},
+  };
+  for (const auto& test : rejected) {
+    const CheckedModule result = check(test.source);
+    EXPECT_GT(diagnosticCount(result, test.kind), 0u) << test.source;
+  }
+
+  constexpr std::array accepted = {
+      ".version 1.4\n.target sm_20\n.entry k(.param .u32 value) {}",
+      ".version 2.0\n.target sm_20\n.func f(.param .u32 value);",
+      ".version 2.2\n.target sm_20\n.entry k(.param .u64 .ptr p) {}",
+      ".version 2.1\n.target sm_20\n.entry k() {\n"
+      "p: .callprototype _ (.param .u32 value);\n}",
+      ".version 6.0\n.target sm_30\n.func f(.param .b8 bytes[]);",
+  };
+  for (const auto source : accepted) {
+    const CheckedModule result = check(source);
+    EXPECT_TRUE(result.binding.diagnostics.empty()) << source;
+    EXPECT_TRUE(result.diagnostics.empty()) << source;
+  }
+}
+
+/** Entry parameter byte limits account for alignment and checked arithmetic. */
+TEST(PtxDeclarationSemantics, ValidatesEntryParameterByteBoundaries) {
+  const auto entry = [](std::string_view version, uint64_t bytes) {
+    return ".version " + std::string{version} +
+           "\n.target sm_80\n.entry k(.param .b8 payload[" +
+           std::to_string(bytes) + "]) {}";
+  };
+  constexpr std::array<std::pair<std::string_view, uint64_t>, 4> limits{{
+      {"1.4", 256},
+      {"1.5", 4352},
+      {"8.0", 4352},
+      {"8.1", 32764},
+  }};
+  for (const auto& [version, limit] : limits) {
+    const CheckedModule exact = check(entry(version, limit));
+    EXPECT_TRUE(exact.diagnostics.empty()) << version;
+    const CheckedModule excess = check(entry(version, limit + 1));
+    EXPECT_GT(
+        diagnosticCount(
+            excess, DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+        0u)
+        << version;
+  }
+
+  const CheckedModule aligned_fit = check(
+      ".version 1.4\n.target sm_20\n.entry k("
+      ".param .b8 first[1], .param .align 16 .b8 second[240]) {}");
+  EXPECT_TRUE(aligned_fit.diagnostics.empty());
+  const CheckedModule aligned_excess = check(
+      ".version 1.4\n.target sm_20\n.entry k("
+      ".param .b8 first[1], .param .align 16 .b8 second[241]) {}");
+  EXPECT_GT(diagnosticCount(
+                aligned_excess,
+                DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+            0u);
+
+  const CheckedModule multiply_overflow = check(
+      ".version 8.1\n.target sm_80\n.entry k("
+      ".param .u64 values[18446744073709551615U]) {}");
+  EXPECT_GT(diagnosticCount(multiply_overflow,
+                            DeclarationDiagnosticKind::StorageExtentOverflow),
+            0u);
+  const CheckedModule sum_overflow = check(
+      ".version 8.1\n.target sm_80\n.entry k("
+      ".param .b8 first[18446744073709551608U], .param .b8 second[16]) {}");
+  EXPECT_GT(diagnosticCount(sum_overflow,
+                            DeclarationDiagnosticKind::StorageExtentOverflow),
+            0u);
+}
+
+/** Parameter scalar classification accepts only the modeled storage subset. */
+TEST(PtxDeclarationSemantics, ClassifiesSupportedParameterScalarTypes) {
+  constexpr std::array supported = {
+      ".u8", ".u16", ".u32", ".u64", ".s8",   ".s16", ".s32", ".s64",
+      ".b8", ".b16", ".b32", ".b64", ".b128", ".f16", ".f32", ".f64",
+  };
+  std::string source = ".version 9.3\n.target sm_80\n.entry k(";
+  for (size_t index = 0; index < supported.size(); ++index) {
+    if (index != 0)
+      source += ", ";
+    source += ".param ";
+    source += supported[index];
+    source += " value" + std::to_string(index);
+  }
+  source += ") {}";
+  const CheckedModule accepted = check(source);
+  EXPECT_TRUE(accepted.binding.diagnostics.empty());
+  EXPECT_TRUE(accepted.diagnostics.empty());
+  for (const auto type : supported)
+    EXPECT_TRUE(parameterScalarType(type).has_value()) << type;
+
+  constexpr std::array unsupported = {
+      ".pred", ".f16x2", ".bf16", ".tf32", ".mystery",
+  };
+  for (const auto type : unsupported) {
+    const CheckedModule result = check(
+        ".version 9.3\n.target sm_80\n.entry "
+        "k(.param " +
+        std::string{type} + " value) {}");
+    EXPECT_GT(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+        0u)
+        << type;
+    EXPECT_FALSE(parameterScalarType(type).has_value()) << type;
+  }
+  const CheckedModule register_packed_half =
+      check(".version 9.3\n.target sm_80\n.func f(.reg .f16x2 value);");
+  EXPECT_TRUE(register_packed_half.diagnostics.empty());
+}
+
+/** Body-local parameters reject unmodeled forms but retain sized multidimensional arrays. */
+TEST(PtxDeclarationSemantics, ValidatesBodyLocalParameterForms) {
+  /** One body-local declaration expected to produce the named diagnostic. */
+  struct Case {
+    std::string_view declaration;
+    DeclarationDiagnosticKind kind;
+  };
+  constexpr std::array rejected = {
+      Case{".param .b8 bytes[];",
+           DeclarationDiagnosticKind::UnsizedArrayDimension},
+      Case{".param .v2 .u32 vector;",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".param .texref texture;",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+      Case{".param .u32 values<2>;",
+           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
+  };
+  for (const auto& test : rejected) {
+    const CheckedModule result =
+        check(".version 8.0\n.target sm_80\n.entry k() {\n" +
+              std::string{test.declaration} + "\n}");
+    EXPECT_GT(diagnosticCount(result, test.kind), 0u) << test.declaration;
+  }
+  const CheckedModule accepted = check(
+      ".version 8.0\n.target sm_80\n.entry k() {\n"
+      ".param .u32 matrix[2][3];\n}");
+  EXPECT_TRUE(accepted.binding.diagnostics.empty());
+  EXPECT_TRUE(accepted.diagnostics.empty());
+}
+
 TEST(PtxDeclarationSemantics,
      AcceptsCompatibleExternalAndFunctionDeclarations) {
   const CheckedModule result = check(R"ptx(
@@ -222,16 +453,16 @@ TEST(PtxDeclarationSemantics,
 TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   PtxSyntaxParser parser(R"ptx(
 .func (.param .align 16 .u32 result) helper(
-    .param .u64 .ptr .global .align 16 pointer,
+    .param .u64 address,
     .param .u32 values[2 * 2]);
 .func (.param .align 16 .u32 output) helper(
-    .param .u64 .ptr .global .align 16 address,
+    .param .u64 address,
     .param .u32 data[4]) { ret; }
 .entry kernel() { }
 .func noreturn_function() .noreturn { }
 .func indirect() {
   prototype: .callprototype (.param .align 16 .u32 output) _
-      (.param .u64 .ptr .global .align 16 address, .param .u32 data[4]);
+      (.param .u64 address, .param .u32 data[4]);
   noreturn_prototype: .callprototype _ .noreturn;
 }
 )ptx");
@@ -247,10 +478,9 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_EQ(result.state_space, syntax_ast::AstStateSpace::Parameter);
   EXPECT_EQ(result.alignment, "16");
   EXPECT_EQ(result.type, ".u32");
-  const auto& pointer = prototype_signature.parameters[0];
-  EXPECT_TRUE(pointer.is_pointer);
-  EXPECT_EQ(pointer.pointer_space, ".global");
-  EXPECT_EQ(pointer.pointer_alignment, "16");
+  const auto& address = prototype_signature.parameters[0];
+  EXPECT_FALSE(address.is_pointer);
+  EXPECT_EQ(address.type, ".u64");
   ASSERT_EQ(prototype_signature.parameters.size(), 2u);
   const auto& values = prototype_signature.parameters[1];
   EXPECT_TRUE(values.is_array);

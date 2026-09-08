@@ -529,6 +529,11 @@ family scope，绝不表示整部 PTX ISA。
 global/constant/shared/local declaration 的 identity、shape、size/alignment 与 typed
 initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 consumer。
 
+`.param` 的声明覆盖与公共 metadata 边界另见 [parameter coverage](../docs/us-en/parameter_declarations.md)
+与[中文契约](../docs/zh-han/parameter_declarations.md)：保留 entry/device input、device return
+与 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
+其他 unsupported form 明确诊断，不扩展为 launch packing 或 simulator allocation。
+
 ## M3：值、地址与 `mov`
 
 | ID | 状态 | Issue | 闭环摘要 |

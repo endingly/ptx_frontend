@@ -36,20 +36,36 @@ using base::MbarrierPhaseType;
 using base::AsyncProxyKind;
 using base::ProxyKindPair;
 
-/** Owned declaration metadata for one entry input parameter; no launch layout. */
-struct ResolvedEntryParameter {
-  /** Input parameter identity in the owning ResolvedModule's symbol table. */
+/** Declaration role, independent of how a body-local parameter is used by calls. */
+enum class ParameterDeclarationRole : uint8_t {
+  EntryInput,
+  DeviceInput,
+  DeviceReturn,
+  BodyLocal,
+};
+
+/** Owned, validated .param declaration data; contains no ABI offsets or storage. */
+struct ResolvedParameterDeclaration {
+  /** Declaration identity in the owning module's symbol table. */
   binding::SymbolId symbol_id;
-  /** Normalized PTX scalar type spelling, including the leading dot. */
-  std::string type;
-  /** Explicit or natural byte alignment; absent if binding cannot determine it. */
-  std::optional<uint64_t> alignment;
-  /** Pointee contract; absent for non-pointers, absent pointed space is generic. */
+  /** Lexical declaration scope; disambiguates shadowed body-local names. */
+  binding::ScopeId scope_id;
+  /** Header direction or body-local declaration role, not runtime call usage. */
+  ParameterDeclarationRole role{};
+  /** Validated fundamental element type, never Invalid or Pred. */
+  ScalarType scalar_type{ScalarType::Invalid};
+  /** Natural or explicitly requested byte alignment. */
+  uint64_t alignment{};
+  /** Retains whether the declaration requested its alignment explicitly. */
+  bool explicit_alignment{};
+  /** Number of scalar elements in a vector; one for scalar declarations. */
+  uint32_t vector_width{1};
+  /** Outer-to-inner element counts; empty for scalars, null for an unsized axis. */
+  std::vector<std::optional<uint64_t>> array_extents;
+  /** Total declared bytes, absent only for a supported unsized parameter. */
+  std::optional<uint64_t> byte_extent;
+  /** Pointee properties, not parameter storage alignment or allocation policy. */
   std::optional<call_argument_compatibility::PointerProperties> pointer;
-  /** Distinguishes an unsized array from a scalar when array_extent is absent. */
-  bool is_array{};
-  /** Constant element count, not bytes; absent for scalars and unsized arrays. */
-  std::optional<uint64_t> array_extent;
 };
 
 namespace check_end {

@@ -73,6 +73,14 @@ Module resolution converts a valid prototype to the same canonical signature
 as a function and reuses the validated first `.calltargets` member signature
 for indirect-call ABI checking. ABI suffix availability remains later work.
 
+## Parameter declarations
+
+Parameters have a context-aware [coverage and validation contract](parameter_declarations.md),
+including supported types, unsized-array placement, pointer attributes, and
+statically decidable ISA version/target and entry-size limits. This applies to
+entry/device headers, call-prototype formals, and body-local `.param`
+declarations; retained type spelling or array syntax alone does not establish validity.
+
 ## Entry resource constraints
 
 For the supported entry-header `.maxnreg`, `.maxntid`, `.reqntid`, and

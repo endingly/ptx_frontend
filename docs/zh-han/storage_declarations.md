@@ -6,7 +6,8 @@ declarator 提供拥有自身数据的元信息。数据类型位于
 通常的 resolved-IR header 使用。成功解析后可以销毁源码及 Syntax AST。
 
 这是从声明到 consumer 的契约，不是内存分配器，也不表示完整 PTX 声明合法性已验证。
-参数继续独立处理：`ResolvedFunction::entry_parameters` 仍描述 entry 输入参数；
+参数继续独立处理：`ResolvedFunction::parameter_declarations` 描述 `.param` 声明，
+其中 `EntryInput` role 标识 entry 输入参数；
 register 与 call parameter 不进入存储列表。
 
 ## 身份与布局输入

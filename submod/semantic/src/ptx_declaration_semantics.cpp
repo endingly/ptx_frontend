@@ -1,5 +1,7 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include <ptx_frontend/base/ptx_target.hpp>
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -534,19 +536,39 @@ bool compactTargetsOverlap(std::string_view existing_prefix,
          (existing_in_candidate && *existing_in_candidate < candidate_count);
 }
 
+/** Normalize known effective alignment while retaining invalid source for diagnostics. */
+std::optional<std::string> parameterAlignmentContract(
+    const std::optional<syntax_ast::AstSyntax>& explicit_alignment,
+    std::optional<uint64_t> default_alignment) {
+  if (explicit_alignment) {
+    const auto value = positiveCount(explicit_alignment->text);
+    return value ? std::to_string(*value) : explicit_alignment->text;
+  }
+  return default_alignment ? std::optional{std::to_string(*default_alignment)}
+                           : std::nullopt;
+}
+
 FunctionParameterContract parameterContract(
     const syntax_ast::AstFunctionParameter& parameter) {
   const auto syntax_text =
       [](const auto& syntax) -> std::optional<std::string> {
     return syntax ? std::optional<std::string>{syntax->text} : std::nullopt;
   };
+  const auto scalar = parameterScalarType(parameter.type.text);
+  const std::optional<uint64_t> natural_alignment =
+      scalar ? std::optional<uint64_t>{base::scalar_size_of(*scalar)}
+      : parameter.type.text == ".pred" ? std::optional<uint64_t>{1}
+      : parameter.type.text == ".f16x2" ? std::optional<uint64_t>{4}
+                                        : std::nullopt;
   return {
       .state_space = parameter.state_space,
-      .alignment = syntax_text(parameter.alignment),
+      .alignment = parameterAlignmentContract(parameter.alignment, natural_alignment),
       .type = parameter.type.text,
       .is_pointer = parameter.is_pointer,
       .pointer_space = syntax_text(parameter.pointer_space),
-      .pointer_alignment = syntax_text(parameter.pointer_alignment),
+      .pointer_alignment = parameterAlignmentContract(
+          parameter.pointer_alignment,
+          parameter.is_pointer ? std::optional<uint64_t>{4} : std::nullopt),
       .is_array = parameter.is_array,
       .array_extent = parameter.array_size
                           ? std::optional{dimensionKey(*parameter.array_size)}
@@ -572,6 +594,11 @@ std::string variableSignature(
 
 bool isUnsupportedInitializerType(std::string_view type) {
   return type == ".f16" || type == ".f16x2" || type == ".pred";
+}
+
+/** Return whether a spelling denotes an opaque parameter identity. */
+bool isOpaqueParameterType(std::string_view type) {
+  return type == ".texref" || type == ".samplerref" || type == ".surfref";
 }
 
 bool initializerTypeAccepts(std::string_view type,
@@ -605,8 +632,10 @@ class Checker {
   explicit Checker(const binding::SymbolTable& symbols) : symbols_(symbols) {}
 
   std::vector<DeclarationDiagnostic> run(const syntax_ast::AstModule& module) {
+    const auto module_version = modulePtxVersion(module);
+    const auto module_sm = moduleSmVersion(module);
     checkRedeclarations(module);
-    checkControlFlowMetadata(module);
+    checkControlFlowMetadata(module, module_version, module_sm);
     checkKernelResources(module);
     checkM11Directives(module);
     for (const auto& item : module.items) {
@@ -615,15 +644,16 @@ class Checker {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
-          diagnose(DeclarationDiagnosticKind::ModuleScopeParameter,
-                   declaration->range,
-                   "A .param variable declaration must be local to a function.");
+          diagnose(
+              DeclarationDiagnosticKind::ModuleScopeParameter,
+              declaration->range,
+              "A .param variable declaration must be local to a function.");
         }
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
-        checkFunctionAlignments(*function);
-        checkFunctionArrays(*function);
-        checkFunctionBodyDeclarations(function->body);
+        checkFunctionParameters(*function, module_version, module_sm);
+        checkFunctionBodyDeclarations(function->body, module_version,
+                                      module_sm);
       }
     }
     return std::move(diagnostics_);
@@ -651,6 +681,15 @@ class Checker {
     uint16_t major{};
     uint16_t minor{};
     constexpr auto operator<=>(const PtxVersion&) const = default;
+  };
+
+  /** Lexical role that determines the declaration rules for a parameter. */
+  enum class ParameterContext : uint8_t {
+    EntryInput,
+    DeviceInput,
+    DeviceReturn,
+    CallPrototypeInput,
+    CallPrototypeReturn,
   };
 
   const binding::SymbolTable& symbols_;
@@ -934,9 +973,23 @@ class Checker {
     return std::nullopt;
   }
 
-  void requirePtx(std::optional<PtxVersion> module_version,
-                  PtxVersion required, SourceRange range,
-                  std::string_view spelling) {
+  /** Return the architecture number from the first recognized module target. */
+  std::optional<uint32_t> moduleSmVersion(
+      const syntax_ast::AstModule& module) const {
+    for (const auto& item : module.items) {
+      const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item);
+      if (target == nullptr || target->targets.empty())
+        continue;
+      const auto identity =
+          base::parse_target_identity(target->targets.front().text);
+      if (identity)
+        return identity->architecture.number;
+    }
+    return std::nullopt;
+  }
+
+  void requirePtx(std::optional<PtxVersion> module_version, PtxVersion required,
+                  SourceRange range, std::string_view spelling) {
     if (!module_version || *module_version >= required)
       return;
     diagnose(DeclarationDiagnosticKind::UnsupportedDirectivePtxVersion, range,
@@ -1299,33 +1352,296 @@ class Checker {
     }
   }
 
-  void checkCallPrototype(const syntax_ast::AstCallPrototype& prototype) {
+  /** Report a parameter construct whose PTX or SM availability is too old. */
+  void requireParameterAvailability(std::optional<PtxVersion> module_version,
+                                    std::optional<uint32_t> module_sm,
+                                    PtxVersion required_version,
+                                    uint32_t required_sm, SourceRange range,
+                                    std::string_view spelling) {
+    if (module_version && *module_version < required_version) {
+      diagnose(
+          DeclarationDiagnosticKind::UnsupportedParameterDeclaration, range,
+          fmt::format("{} requires PTX ISA >= {}.{}, but module PTX ISA "
+                      "is {}.{}.",
+                      spelling, required_version.major, required_version.minor,
+                      module_version->major, module_version->minor));
+    }
+    if (module_sm && *module_sm < required_sm) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               range,
+               fmt::format("{} requires sm_{} or later, but module "
+                           "target is sm_{}.",
+                           spelling, required_sm, *module_sm));
+    }
+  }
+
+  /** Return whether a header role permits a register formal parameter. */
+  static bool permitsRegisterParameter(ParameterContext context) {
+    return context == ParameterContext::DeviceInput ||
+           context == ParameterContext::DeviceReturn ||
+           context == ParameterContext::CallPrototypeInput ||
+           context == ParameterContext::CallPrototypeReturn;
+  }
+
+  /** Return whether an input role can carry the documented unsized byte array. */
+  static bool permitsUnsizedInput(ParameterContext context) {
+    return context == ParameterContext::DeviceInput ||
+           context == ParameterContext::CallPrototypeInput;
+  }
+
+  /** Return a static scalar or one-dimensional array byte count when known. */
+  static std::optional<uint64_t> parameterByteExtent(
+      base::ScalarType type, bool is_array,
+      const std::optional<AstConstantExpression>& array_size) {
+    const uint64_t scalar_bytes = base::scalar_size_of(type);
+    if (scalar_bytes == 0 || (is_array && !array_size))
+      return std::nullopt;
+    if (!is_array)
+      return scalar_bytes;
+    const auto extent = constantArrayExtent(*array_size);
+    if (!extent || *extent == 0 ||
+        scalar_bytes > std::numeric_limits<uint64_t>::max() / *extent) {
+      return std::nullopt;
+    }
+    return scalar_bytes * *extent;
+  }
+
+  /** Validate type, state space, shape, availability, and pointer attributes. */
+  void checkHeaderParameter(const syntax_ast::AstFunctionParameter& parameter,
+                            ParameterContext context, bool is_final,
+                            std::optional<PtxVersion> module_version,
+                            std::optional<uint32_t> module_sm) {
+    checkAlignment(parameter.alignment);
+    checkAlignment(parameter.pointer_alignment);
+    if (parameter.array_size)
+      checkDimension(*parameter.array_size);
+
+    const bool is_parameter =
+        parameter.state_space == syntax_ast::AstStateSpace::Parameter;
+    const bool is_register =
+        parameter.state_space == syntax_ast::AstStateSpace::Register;
+    if ((!is_parameter &&
+         !(is_register && permitsRegisterParameter(context))) ||
+        (context == ParameterContext::EntryInput && !is_parameter)) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               parameter.range,
+               "This parameter role does not permit the declared state space.");
+      return;
+    }
+
+    if (isOpaqueParameterType(parameter.type.text)) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               parameter.type.range,
+               "Opaque .texref/.samplerref/.surfref parameters are not "
+               "modeled by this frontend.");
+      return;
+    }
+    const bool predicate = parameter.type.text == ".pred";
+    const bool packed_half_register =
+        parameter.type.text == ".f16x2" && is_register;
+    const auto scalar = parameterScalarType(parameter.type.text);
+    if (!scalar && !(predicate && is_register) && !packed_half_register) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               parameter.type.range,
+               predicate ? ".pred parameters must use .reg state space."
+               : parameter.type.text == ".f16x2"
+                   ? "Fundamental .f16x2 parameter storage is not "
+                     "modeled by this frontend."
+                   : fmt::format("Parameter type '{}' is not a supported "
+                                 "fundamental scalar type.",
+                                 parameter.type.text));
+      return;
+    }
+
+    if (parameter.is_array && !is_parameter) {
+      const bool is_call_prototype =
+          context == ParameterContext::CallPrototypeInput ||
+          context == ParameterContext::CallPrototypeReturn;
+      diagnose(is_call_prototype ? DeclarationDiagnosticKind::InvalidCallPrototype
+                                 : DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               parameter.range,
+               is_call_prototype
+                   ? "A .callprototype array parameter must use .param state space."
+                   : "Array parameters must use .param state space.");
+      return;
+    }
+    if (parameter.is_array && !parameter.array_size) {
+      if (!permitsUnsizedInput(context) || !is_final || !scalar ||
+          *scalar != base::ScalarType::B8) {
+        diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
+                 parameter.range,
+                 "Only a final device or call-prototype .param .b8 input may "
+                 "be unsized.");
+        return;
+      }
+      requireParameterAvailability(module_version, module_sm, {6, 0}, 30,
+                                   parameter.range, "Unsized .param input");
+    }
+    if (is_parameter && (context == ParameterContext::DeviceInput ||
+                         context == ParameterContext::DeviceReturn)) {
+      requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
+                                   parameter.range, "Device .param formal");
+    }
+    if (parameter.is_pointer) {
+      if (context != ParameterContext::EntryInput || !is_parameter || !scalar ||
+          parameter.is_array ||
+          (*scalar != base::ScalarType::U32 &&
+           *scalar != base::ScalarType::U64)) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 parameter.range,
+                 ".ptr is supported only on scalar .entry .param .u32/.u64 "
+                 "inputs.");
+      } else {
+        requireParameterAvailability(module_version, module_sm, {2, 2}, 0,
+                                     parameter.range, ".ptr entry parameter");
+      }
+    }
+    if (scalar && parameter.array_size) {
+      const auto extent = constantArrayExtent(*parameter.array_size);
+      if (extent && *extent != 0 &&
+          !parameterByteExtent(*scalar, true, parameter.array_size)) {
+        diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
+                 parameter.array_size->range,
+                 "Parameter byte extent overflows uint64_t.");
+      }
+    }
+  }
+
+  /** Validate the role-specific formal parameters of one function header. */
+  void checkFunctionParameters(const syntax_ast::AstFunction& function,
+                               std::optional<PtxVersion> module_version,
+                               std::optional<uint32_t> module_sm) {
+    if (function.is_entry) {
+      if (!function.return_parameters.empty()) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 function.return_parameters.front().range,
+                 ".entry declarations cannot have return parameters.");
+      }
+      for (size_t index = 0; index < function.parameters.size(); ++index) {
+        checkHeaderParameter(
+            function.parameters[index], ParameterContext::EntryInput,
+            index + 1 == function.parameters.size(), module_version, module_sm);
+      }
+      if (!function.parameters.empty()) {
+        requireParameterAvailability(module_version, module_sm, {1, 4}, 0,
+                                     function.parameters.front().range,
+                                     ".entry parameter list");
+        checkEntryParameterSize(function.parameters, module_version);
+      }
+      return;
+    }
+    if (function.return_parameters.size() > 1 && module_version && module_sm &&
+        *module_version >= PtxVersion{2, 0} && *module_sm >= 20) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               function.return_parameters[1].range,
+               "Modern device-function declarations support at most one return "
+               "parameter.",
+               function.return_parameters.front().range);
+    }
+    for (size_t index = 0; index < function.return_parameters.size(); ++index) {
+      checkHeaderParameter(function.return_parameters[index],
+                           ParameterContext::DeviceReturn,
+                           index + 1 == function.return_parameters.size(),
+                           module_version, module_sm);
+    }
+    for (size_t index = 0; index < function.parameters.size(); ++index) {
+      checkHeaderParameter(
+          function.parameters[index], ParameterContext::DeviceInput,
+          index + 1 == function.parameters.size(), module_version, module_sm);
+    }
+  }
+
+  /** Check the version-dependent static byte limit for one entry header. */
+  void checkEntryParameterSize(
+      const std::vector<syntax_ast::AstFunctionParameter>& parameters,
+      std::optional<PtxVersion> module_version) {
+    if (!module_version)
+      return;
+    const uint64_t limit = *module_version < PtxVersion{1, 5}   ? 256
+                           : *module_version < PtxVersion{8, 1} ? 4352
+                                                                : 32764;
+    uint64_t total = 0;
+    for (const auto& parameter : parameters) {
+      if (parameter.state_space != syntax_ast::AstStateSpace::Parameter)
+        return;
+      const auto scalar = parameterScalarType(parameter.type.text);
+      const auto bytes = scalar
+                             ? parameterByteExtent(*scalar, parameter.is_array,
+                                                   parameter.array_size)
+                             : std::nullopt;
+      if (!bytes)
+        return;
+      if (parameter.alignment && !isValidAlignment(parameter.alignment->text))
+        return;
+      const uint64_t alignment =
+          parameter.alignment
+              ? positiveCount(parameter.alignment->text).value_or(0)
+              : base::scalar_size_of(*scalar);
+      if (alignment == 0)
+        return;
+      if (total > std::numeric_limits<uint64_t>::max() - (alignment - 1)) {
+        diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
+                 parameter.range,
+                 "Aligned entry parameter byte size overflows uint64_t.");
+        return;
+      }
+      total = ((total + alignment - 1) / alignment) * alignment;
+      if (total > std::numeric_limits<uint64_t>::max() - *bytes) {
+        diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
+                 parameter.range,
+                 "Aligned entry parameter byte size overflows uint64_t.");
+        return;
+      }
+      total += *bytes;
+    }
+    if (total > limit) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               parameters.front().range,
+               fmt::format("Static entry parameter bytes ({}) exceed the PTX "
+                           "ISA {}.{} limit of {} bytes.",
+                           total, module_version->major, module_version->minor,
+                           limit));
+    }
+  }
+
+  /** Validate PTX-versioned local call-prototype parameter declarations. */
+  void checkCallPrototype(const syntax_ast::AstCallPrototype& prototype,
+                          std::optional<PtxVersion> module_version,
+                          std::optional<uint32_t> module_sm) {
+    requireParameterAvailability(module_version, module_sm, {2, 1}, 20,
+                                 prototype.range, ".callprototype");
     if (prototype.noreturn_directive && !prototype.return_parameters.empty()) {
       diagnose(DeclarationDiagnosticKind::InvalidCallPrototype,
                prototype.noreturn_directive->range,
                "A .callprototype with return parameters cannot specify "
-               ".noreturn.", prototype.return_parameters.front().range);
+               ".noreturn.",
+               prototype.return_parameters.front().range);
     }
-    const auto check_parameters = [this](const auto& parameters) {
-      for (const auto& parameter : parameters) {
-        checkAlignment(parameter.alignment);
-        checkAlignment(parameter.pointer_alignment);
-        if (parameter.array_size)
-          checkDimension(*parameter.array_size);
-        if (parameter.is_array &&
-            parameter.state_space != syntax_ast::AstStateSpace::Parameter) {
-          diagnose(DeclarationDiagnosticKind::InvalidCallPrototype,
-                   parameter.range,
-                   "A .callprototype array parameter must use .param state "
-                   "space.");
-        }
-      }
-    };
-    check_parameters(prototype.return_parameters);
-    check_parameters(prototype.parameters);
+    if (prototype.return_parameters.size() > 1 && module_version && module_sm &&
+        *module_version >= PtxVersion{2, 0} && *module_sm >= 20) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               prototype.return_parameters[1].range,
+               "Modern call-prototype declarations support at most one return "
+               "parameter.",
+               prototype.return_parameters.front().range);
+    }
+    for (size_t index = 0; index < prototype.return_parameters.size();
+         ++index) {
+      checkHeaderParameter(prototype.return_parameters[index],
+                           ParameterContext::CallPrototypeReturn,
+                           index + 1 == prototype.return_parameters.size(),
+                           module_version, module_sm);
+    }
+    for (size_t index = 0; index < prototype.parameters.size(); ++index) {
+      checkHeaderParameter(
+          prototype.parameters[index], ParameterContext::CallPrototypeInput,
+          index + 1 == prototype.parameters.size(), module_version, module_sm);
+    }
   }
 
-  void checkControlFlowMetadata(const syntax_ast::AstModule& module) {
+  void checkControlFlowMetadata(const syntax_ast::AstModule& module,
+                                std::optional<PtxVersion> module_version,
+                                std::optional<uint32_t> module_sm) {
     std::unordered_map<std::string, SeenFunction> seen_functions;
     std::vector<binding::ScopeId> function_scopes;
     for (const auto& scope : symbols_.scopes()) {
@@ -1344,18 +1660,21 @@ class Checker {
                              : std::nullopt;
       ++function_index;
       if (scope)
-        checkControlFlowMetadataBody(function->body, *scope, seen_functions);
+        checkControlFlowMetadataBody(function->body, *scope, seen_functions,
+                                     module_version, module_sm);
     }
   }
 
   void checkControlFlowMetadataBody(
       const std::vector<syntax_ast::AstFunctionBodyItem>& body,
       binding::ScopeId function_scope,
-      const std::unordered_map<std::string, SeenFunction>& seen_functions) {
+      const std::unordered_map<std::string, SeenFunction>& seen_functions,
+      std::optional<PtxVersion> module_version,
+      std::optional<uint32_t> module_sm) {
     for (const auto& body_item : body) {
       if (const auto* prototype =
               std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
-        checkCallPrototype(*prototype);
+        checkCallPrototype(*prototype, module_version, module_sm);
       } else if (const auto* targets =
                      std::get_if<syntax_ast::AstCallTargets>(&body_item)) {
         checkCallTargets(*targets, seen_functions);
@@ -1367,23 +1686,103 @@ class Checker {
                          &body_item);
                  block != nullptr && *block) {
         checkControlFlowMetadataBody((*block)->body, function_scope,
-                                     seen_functions);
+                                     seen_functions, module_version, module_sm);
       }
     }
   }
 
   void checkFunctionBodyDeclarations(
-      const std::vector<syntax_ast::AstFunctionBodyItem>& body) {
+      const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+      std::optional<PtxVersion> module_version,
+      std::optional<uint32_t> module_sm) {
     for (const auto& body_item : body) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration);
+        if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
+          checkBodyParameterDeclaration(*declaration, module_version,
+                                        module_sm);
+        }
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
                          &body_item);
                  block != nullptr && *block) {
-        checkFunctionBodyDeclarations((*block)->body);
+        checkFunctionBodyDeclarations((*block)->body, module_version,
+                                      module_sm);
+      }
+    }
+  }
+
+  /** Validate body-local .param objects without assigning call ABI allocation. */
+  void checkBodyParameterDeclaration(
+      const syntax_ast::AstVariableDeclaration& declaration,
+      std::optional<PtxVersion> module_version,
+      std::optional<uint32_t> module_sm) {
+    requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
+                                 declaration.range, "Body-local call .param");
+    if (declaration.vector_type) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               declaration.vector_type->range,
+               "Vector body-local .param declarations are not modeled by this "
+               "frontend.");
+      return;
+    }
+    if (isOpaqueParameterType(declaration.type.text)) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               declaration.type.range,
+               "Opaque .texref/.samplerref/.surfref parameters are not "
+               "modeled by this frontend.");
+      return;
+    }
+    const auto scalar = parameterScalarType(declaration.type.text);
+    if (!scalar) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               declaration.type.range,
+               declaration.type.text == ".pred"
+                   ? ".pred parameters must use .reg state space."
+               : declaration.type.text == ".f16x2"
+                   ? "Fundamental .f16x2 parameter storage is not "
+                     "modeled by this frontend."
+                   : fmt::format("Parameter type '{}' is not a supported "
+                                 "fundamental scalar type.",
+                                 declaration.type.text));
+      return;
+    }
+    for (const auto& declarator : declaration.declarators) {
+      if (declarator.initializer) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 declarator.initializer->range,
+                 "Body-local .param declarations cannot have initializers.");
+      }
+      if (declarator.parameterized_count) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 declarator.parameterized_count->range,
+                 "Parameterized body-local .param declaration groups are not "
+                 "modeled by this frontend.");
+        continue;
+      }
+      uint64_t bytes = base::scalar_size_of(*scalar);
+      for (const auto& dimension : declarator.array_dimensions) {
+        if (!dimension.size) {
+          if (declarator.initializer) {
+            diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
+                     dimension.range,
+                     "Body-local .param array dimensions must be sized.");
+          }
+          break;
+        }
+        const auto extent = constantArrayExtent(*dimension.size);
+        if (!extent || *extent == 0) {
+          break;
+        }
+        if (bytes > std::numeric_limits<uint64_t>::max() / *extent) {
+          diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
+                   dimension.range,
+                   "Body-local parameter byte extent overflows uint64_t.");
+          break;
+        }
+        bytes *= *extent;
       }
     }
   }
@@ -1398,33 +1797,11 @@ class Checker {
     }
   }
 
-  void checkFunctionArrays(const syntax_ast::AstFunction& function) {
-    const auto check_parameters = [this](const auto& parameters) {
-      for (const auto& parameter : parameters) {
-        if (parameter.array_size)
-          checkDimension(*parameter.array_size);
-      }
-    };
-    check_parameters(function.return_parameters);
-    check_parameters(function.parameters);
-  }
-
   void checkAlignment(const std::optional<syntax_ast::AstSyntax>& alignment) {
     if (alignment && !isValidAlignment(alignment->text)) {
       diagnose(DeclarationDiagnosticKind::InvalidAlignment, alignment->range,
                "Declaration alignment must be a positive power of two.");
     }
-  }
-
-  void checkFunctionAlignments(const syntax_ast::AstFunction& function) {
-    const auto check_parameters = [this](const auto& parameters) {
-      for (const auto& parameter : parameters) {
-        checkAlignment(parameter.alignment);
-        checkAlignment(parameter.pointer_alignment);
-      }
-    };
-    check_parameters(function.return_parameters);
-    check_parameters(function.parameters);
   }
 
   void checkVariableDeclaration(
@@ -1657,6 +2034,44 @@ std::optional<IntegerConstantValue> constantIntegerValue(
       .is_unsigned =
           info.integer_value->type == ExpressionInfo::IntegerType::Unsigned,
   };
+}
+
+std::optional<base::ScalarType> parameterScalarType(
+    std::string_view spelling) noexcept {
+  using base::ScalarType;
+  if (spelling == ".u8")
+    return ScalarType::U8;
+  if (spelling == ".u16")
+    return ScalarType::U16;
+  if (spelling == ".u32")
+    return ScalarType::U32;
+  if (spelling == ".u64")
+    return ScalarType::U64;
+  if (spelling == ".s8")
+    return ScalarType::S8;
+  if (spelling == ".s16")
+    return ScalarType::S16;
+  if (spelling == ".s32")
+    return ScalarType::S32;
+  if (spelling == ".s64")
+    return ScalarType::S64;
+  if (spelling == ".b8")
+    return ScalarType::B8;
+  if (spelling == ".b16")
+    return ScalarType::B16;
+  if (spelling == ".b32")
+    return ScalarType::B32;
+  if (spelling == ".b64")
+    return ScalarType::B64;
+  if (spelling == ".b128")
+    return ScalarType::B128;
+  if (spelling == ".f16")
+    return ScalarType::F16;
+  if (spelling == ".f32")
+    return ScalarType::F32;
+  if (spelling == ".f64")
+    return ScalarType::F64;
+  return std::nullopt;
 }
 
 std::vector<DeclarationDiagnostic> checkDeclarations(

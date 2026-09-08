@@ -8855,10 +8855,8 @@ TEST(ResolvedModule, ReportsDirectCallAbiPropertyAndLiteralMismatches) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .func scalar(.param .u32 input);
 .func bytes(.param .align 16 .b8 input[8]);
-.func pointer(.param .u64 .ptr .global .align 16 input);
 .func literal(.param .u16 input);
-.entry caller(.param .u64 .ptr .shared .align 32 wrong_space,
-              .param .u64 .ptr .global .align 8 weak_alignment) {
+.entry caller() {
   .reg .v2 .u32 vector_argument;
   .reg .b8 register_byte;
   .param .align 16 .b8 wrong_size[4];
@@ -8867,17 +8865,14 @@ TEST(ResolvedModule, ReportsDirectCallAbiPropertyAndLiteralMismatches) {
   call bytes, (register_byte);
   call bytes, (wrong_size);
   call bytes, (weak_array_alignment);
-  call pointer, (wrong_space);
-  call pointer, (weak_alignment);
   call literal, (1.5);
   call literal, (65536);
   call bytes, (1);
-  call pointer, (1);
 }
 )ptx"));
 
   ASSERT_FALSE(resolved.has_value());
-  ASSERT_EQ(resolved.error().size(), 10u);
+  ASSERT_EQ(resolved.error().size(), 7u);
   EXPECT_EQ(resolved.error()[0].message,
             "Direct call input argument 1 for 'scalar' has type or vector "
             "shape mismatch.");
@@ -8891,34 +8886,25 @@ TEST(ResolvedModule, ReportsDirectCallAbiPropertyAndLiteralMismatches) {
             "Direct call input argument 1 for 'bytes' has array alignment "
             "mismatch.");
   EXPECT_EQ(resolved.error()[4].message,
-            "Direct call input argument 1 for 'pointer' has pointed "
-            "state-space mismatch.");
-  EXPECT_EQ(resolved.error()[5].message,
-            "Direct call input argument 1 for 'pointer' has pointed alignment "
-            "mismatch.");
-  EXPECT_EQ(resolved.error()[6].message,
             "Decimal floating literal '1.5' is incompatible with scalar type "
             "'U16'.");
-  EXPECT_EQ(resolved.error()[7].message,
+  EXPECT_EQ(resolved.error()[5].message,
             "Integer literal '65536' is out of range for scalar type 'U16'.");
-  EXPECT_EQ(resolved.error()[8].message,
+  EXPECT_EQ(resolved.error()[6].message,
             "Direct call input argument 1 for 'bytes' has call argument "
             "state-space mismatch.");
-  EXPECT_EQ(resolved.error()[9].message,
-            "Direct call input argument 1 for 'pointer' has pointer "
-            "qualification mismatch.");
 }
 
 TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
   const auto resolved = resolveModule(parseModule(R"ptx(
+.version 8.0
+.target sm_80
 .func prototype_only(.reg .u32 input);
 .extern .func external(.reg .u32 input);
 .func defined_before(.reg .u32 input) { }
 .func bytes(.param .align 8 .b8 input[]);
-.func generic_pointer(.param .u64 .ptr .align 8 input);
-.func global_pointer(.param .u64 .ptr .global .align 16 input);
 .func immediate(.reg .u8 high, .reg .s8 low, .reg .f32 float);
-.entry caller(.param .u64 .ptr .global .align 16 global_actual) {
+.entry caller() {
   .reg .u32 %r;
   .param .align 8 .b8 blob[8];
   call prototype_only, (%r);
@@ -8927,8 +8913,6 @@ TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
   call defined_after, (%r);
   call renamed, (%r);
   call bytes, (blob);
-  call generic_pointer, (global_actual);
-  call global_pointer, (global_actual);
   call immediate, (255, -128, 0f3f800000);
 }
 .func defined_after(.reg .u32 input) { }
@@ -9262,24 +9246,22 @@ TEST(ResolvedModule, ReportsIndirectCallAbiMismatches) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .func target(.reg .u32 input);
 .func another_target(.reg .u32 value);
-.entry caller(.param .u64 .ptr .shared .align 32 wrong_space) {
+.entry caller() {
   .reg .u64 %fptr, %wide;
   .reg .b8 %byte;
 arity: .callprototype (.reg .u32 result) _;
 targets: .calltargets target, another_target;
 bytes: .callprototype _ (.param .align 16 .b8 expected[8]);
-pointer: .callprototype _ (.param .u64 .ptr .global .align 16 expected);
 literal: .callprototype _ (.param .u16 expected);
   call %fptr, arity;
   call %fptr, (%wide), targets;
   call %fptr, (%byte), bytes;
-  call %fptr, (wrong_space), pointer;
   call %fptr, (65536), literal;
 }
 )ptx"));
 
   ASSERT_FALSE(resolved.has_value());
-  ASSERT_EQ(resolved.error().size(), 5u);
+  ASSERT_EQ(resolved.error().size(), 4u);
   EXPECT_EQ(resolved.error()[0].message,
             "Indirect call via metadata 'arity' has 0 return arguments but "
             "callee requires 1.");
@@ -9290,9 +9272,6 @@ literal: .callprototype _ (.param .u16 expected);
             "Indirect call via metadata 'bytes' input argument 1 has call "
             "argument state-space mismatch.");
   EXPECT_EQ(resolved.error()[3].message,
-            "Indirect call via metadata 'pointer' input argument 1 has "
-            "pointed state-space mismatch.");
-  EXPECT_EQ(resolved.error()[4].message,
             "Integer literal '65536' is out of range for scalar type 'U16'.");
 }
 

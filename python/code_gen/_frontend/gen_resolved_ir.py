@@ -1145,14 +1145,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 OperandView view{{
                     .field_id = "{field.name}",
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
-                    .vector_arity = static_cast<uint8_t>(
-                        {object_name}.{field.name}.value.elements.size()),
+                    .vector_arity = {object_name}.{field.name}.value.elements.size(),
                     .locations = {object_name}.{field.name}.locs,
                 }};
                 size_t index = 0;
                 for (const auto& element :
                      {object_name}.{field.name}.value.elements) {{
-                  if (index >= view.vector_element_shapes.size())
+                  if (index >= view.vector_element_shapes.size() ||
+                      index >= view.vector_element_types.size())
                     break;
                   if (element) {{
                     view.vector_element_shapes[index] =
@@ -1171,14 +1171,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 OperandView view{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
-                  .vector_arity = static_cast<uint8_t>(
-                      {object_name}.{field.name}.value.elements.size()),
+                  .vector_arity = {object_name}.{field.name}.value.elements.size(),
                   .locations = {object_name}.{field.name}.locs,
                 }};
                 size_t index = 0;
                 for (const auto& element :
                      {object_name}.{field.name}.value.elements) {{
-                  if (index >= view.vector_element_shapes.size())
+                  if (index >= view.vector_element_shapes.size() ||
+                      index >= view.vector_element_types.size())
                     break;
                   if (const auto* register_ref =
                           std::get_if<ResolvedRegisterRef>(&element)) {{
@@ -1203,10 +1203,13 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 OperandView view{{
                     .field_id = "{field.name}",
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
-                    .vector_arity = register_ref.vector_width.value_or(0),
+                    .vector_arity = static_cast<size_t>(
+                        register_ref.vector_width.value_or(0)),
                     .locations = {object_name}.{field.name}.locs,
                 }};
-                for (uint8_t index = 0; index < view.vector_arity; ++index)
+                for (size_t index = 0;
+                     index < view.vector_arity &&
+                     index < view.vector_element_types.size(); ++index)
                   view.vector_element_types[index] =
                       register_ref.declared_type.value_or(ScalarType::Invalid);
                 return view;
@@ -1220,12 +1223,14 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
                     .special_register_type = info.element_type,
                     .special_register_id = special_register.id,
-                    .vector_arity = info.vector_width,
+                    .vector_arity = static_cast<size_t>(info.vector_width),
                     .value_availability = special_register_availability(info),
                     .value_name = special_register.spelling,
                     .locations = {object_name}.{field.name}.locs,
                 }};
-                for (uint8_t index = 0; index < view.vector_arity; ++index)
+                for (size_t index = 0;
+                     index < view.vector_arity &&
+                     index < view.vector_element_types.size(); ++index)
                   view.vector_element_types[index] = info.element_type;
                 return view;
               }}()"""

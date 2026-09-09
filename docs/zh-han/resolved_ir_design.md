@@ -359,6 +359,13 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 - 由 generated operand constraint 描述的 explicit `.param` input/return direction 与
   function-context availability；方向错误优先于上下文 availability。
 
+生成的 vector projection 可接收调用方手工构造或修改的公开 IR，无需另行预验证
+向量长度。`OperandView::vector_arity` 保留原始 width/元素数量，对固定容量元素数组
+的写入始终受容量限制。公共 checker 在读取元素前，以 `InvalidVectorOperand`
+拒绝零长度或超过容量的向量；容量内的数量仍须通过指令自身约束。超长 payload
+不会因窄化或截断而变成合法向量。这项保证仅涵盖向量投影长度，不代表覆盖全部
+非法 IR invariant 或跨指令约束。
+
 `rule_id` 留给指令特有规则的 typed wrapper。寄存器符号可见性与 `.reg` state-space 在
 module resolution 阶段检查；公共 checker 已处理生成的 address-space constraint，跨
 instruction 约束仍不属于当前 ABI。

@@ -444,6 +444,16 @@ Each generated `checker::check<T>` wrapper uses common checking for:
   from the generated operand constraint; direction mismatches take precedence
   over that contextual availability.
 
+Generated vector projections also accept caller-constructed or mutated public
+IR without requiring a separate vector-size preverification pass. They retain
+the original width/element count in `OperandView::vector_arity` and bound writes
+to the fixed-capacity element arrays. The common checker rejects zero or
+over-capacity vector counts with `InvalidVectorOperand` before inspecting
+elements; supported counts still undergo their instruction-specific checks.
+An oversized payload is never narrowed or clamped into a valid vector. This
+guarantee covers vector projection sizes, not every possible malformed-IR
+invariant or cross-instruction constraint.
+
 `rule_id` is reserved for typed instruction-specific rules. Register visibility
 and `.reg` state space are checked during module resolution; the common checker
 handles generated address-space constraints, while cross-instruction

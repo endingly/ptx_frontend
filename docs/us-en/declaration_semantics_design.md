@@ -21,6 +21,14 @@ Integer literals share decimal, leading-zero octal, and hexadecimal decoding
 with instruction immediates. For example, `010` initializes the value 8 and
 denotes an array extent of 8; an unsigned suffix does not change the radix.
 
+An integer literal that cannot be decoded in the 64-bit source domain is an
+invalid expression, not a deferred value. Declaration checking reports
+`InvalidIntegerLiteral` at the literal's own range, and `resolveModule()`
+preserves that category and location. Folding cannot hide this failure, even
+when a conditional has identical branches or the literal is in an unselected
+branch. Valid deferred expressions remain distinct: equal-branch folding of
+a valid but unevaluated comparison can still produce a constant.
+
 An array dimension must evaluate to a positive integer constant. The evaluator
 retains a 64-bit bit pattern plus `.s64`/`.u64` signedness for every integer
 subexpression. It therefore supports negative intermediate values, casts,

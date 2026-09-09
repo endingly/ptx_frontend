@@ -126,6 +126,93 @@ TEST(ResolvedStorageDeclarations, InvalidOctalCannotReachCleanResolution) {
   }
 }
 
+/** A failed integer decode must not become a value through equal-branch folding. */
+TEST(ResolvedStorageDeclarations, RejectsUndecodableConditionalInteger) {
+  const auto resolved = resolveSource(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .u32 result = (18446744073709551616 ? 7 : 7);
+.global .u8 bytes[18446744073709551616 ? 1 : 1];
+.visible .entry k() { ret; }
+)ptx");
+  EXPECT_FALSE(resolved.has_value());
+}
+
+/** Module diagnostics retain the undecodable literal's category and exact source range. */
+TEST(ResolvedStorageDeclarations, RetainsInvalidIntegerLiteralDiagnostics) {
+  constexpr std::array contexts{
+      std::pair{".global .u32 value = ", ";"},
+      std::pair{".global .u32 value = (", " ? 7 : 7);"},
+      std::pair{".global .u8 bytes[", " ? 1 : 1];"},
+      std::pair{".entry k(.param .b8 arg[", " ? 1 : 1]) { ret; }"},
+      std::pair{".entry k() { .local .u8 local[", " ? 1 : 1]; }"},
+      std::pair{".entry k() { .param .b8 slot[", " ? 1 : 1]; ret; }"},
+      std::pair{".global .u32 value = (-", " ? 7 : 7);"},
+      std::pair{".global .u32 value = ((.u64)", " ? 7 : 7);"},
+      std::pair{".global .u32 value = ((", " + 1) ? 7 : 7);"},
+      std::pair{".global .u32 base; .global .u64 value = generic(base + ", ");"},
+      std::pair{".global .u32 value = (0xff(", ") ? 7 : 7);"},
+  };
+  for (const std::string_view literal : {
+           "18446744073709551616", "0x10000000000000000",
+           "02000000000000000000000"}) {
+    for (const auto& [prefix, suffix] : contexts) {
+      const std::string source =
+          ".version 9.3\n.target sm_80\n.address_size 64\n" +
+          std::string{prefix} + std::string{literal} + suffix;
+      SCOPED_TRACE(source);
+      const auto resolved = resolveSource(source);
+      ASSERT_FALSE(resolved.has_value());
+      const SourceRange expected{
+          {4, static_cast<int32_t>(std::string_view{prefix}.size() + 1)},
+          {4, static_cast<int32_t>(std::string_view{prefix}.size() + literal.size() + 1)}};
+      EXPECT_EQ(std::ranges::count_if(resolved.error(), [&](const auto& diagnostic) {
+        return diagnostic.declaration_kind ==
+                   declaration_semantics::DeclarationDiagnosticKind::InvalidIntegerLiteral &&
+               diagnostic.range == expected;
+      }), 1);
+    }
+  }
+}
+
+/** Valid 64-bit boundaries, deferred equal-branch folding, masks, and relocations survive. */
+TEST(ResolvedStorageDeclarations, PreservesValidAndDeferredIntegerConstants) {
+  auto resolved = resolveSource(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .u32 base;
+.global .u64 limits[] = {9223372036854775807, 9223372036854775808,
+                         18446744073709551615, 0xffffffffffffffffU};
+.global .u32 folded = ((base == base) ? 7 : 7);
+.global .u8 bytes[(1.0 < 2.0) ? 1 : 1];
+.global .u64 pointer = generic(base) + 8;
+.global .u32 masked = 0xff(0xffff);
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& limits = storageNamed(*resolved, "limits");
+  constexpr std::array<uint64_t, 4> expected{
+      0x7fffffffffffffffULL, 0x8000000000000000ULL,
+      0xffffffffffffffffULL, 0xffffffffffffffffULL};
+  ASSERT_EQ(limits.initializer.size(), expected.size());
+  for (size_t index = 0; index < expected.size(); ++index) {
+    EXPECT_EQ(std::get<StorageConstant>(limits.initializer[index].value).bits,
+              expected[index]);
+  }
+  const auto& folded = storageNamed(*resolved, "folded");
+  ASSERT_EQ(folded.initializer.size(), 1u);
+  EXPECT_EQ(std::get<StorageConstant>(folded.initializer[0].value).bits, 7u);
+  EXPECT_EQ(storageNamed(*resolved, "bytes").array_extents,
+            (std::vector<std::optional<uint64_t>>{1u}));
+  const auto& pointer = storageNamed(*resolved, "pointer");
+  ASSERT_EQ(pointer.initializer.size(), 1u);
+  EXPECT_EQ(std::get<StorageRelocation>(pointer.initializer[0].value).addend_bits, 8u);
+  const auto& masked = storageNamed(*resolved, "masked");
+  ASSERT_EQ(masked.initializer.size(), 1u);
+  EXPECT_EQ(std::get<StorageConstant>(masked.initializer[0].value).bits, 255u);
+}
+
 /** Metadata owns values needed after both the syntax tree and source disappear. */
 TEST(ResolvedStorageDeclarations, RetainsAddressableDeclarationsWithoutAst) {
   std::optional<ResolvedModule> resolved_module;

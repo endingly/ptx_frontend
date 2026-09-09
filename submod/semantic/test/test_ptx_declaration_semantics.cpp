@@ -199,6 +199,73 @@ TEST(PtxDeclarationSemantics,
   EXPECT_TRUE(result.diagnostics.empty());
 }
 
+/**
+ * @brief Reports every undecodable integer literal, including conditional
+ * branches whose value is not selected.
+ */
+TEST(PtxDeclarationSemantics,
+     PropagatesOverflowingIntegerLiteralsThroughDeclarations) {
+  const CheckedModule result = check(R"ptx(.global .u32 decimal[18446744073709551616];
+.global .u32 hexadecimal[0x10000000000000000];
+.global .u32 octal[02000000000000000000000];
+.global .u32 selected[1 ? 18446744073709551616 : 7];
+.global .u32 unselected[0 ? 18446744073709551616 : 7];
+.global .u32 masked = 0x10000000000000000(7);
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  size_t invalid_literal_count = 0;
+  for (const DeclarationDiagnostic& diagnostic : result.diagnostics) {
+    if (diagnostic.kind != DeclarationDiagnosticKind::InvalidIntegerLiteral)
+      continue;
+    ++invalid_literal_count;
+    EXPECT_GE(diagnostic.range.start.line, 1U);
+    EXPECT_LE(diagnostic.range.start.line, 6U);
+    EXPECT_FALSE(diagnostic.previous_range.has_value());
+  }
+  EXPECT_EQ(invalid_literal_count, 6u);
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::InvalidArrayDimension),
+            5u);
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::InvalidInitializerExpression),
+            1u);
+}
+
+/**
+ * @brief Diagnoses malformed externally constructed integer ASTs at the
+ * literal token while value-only helpers remain silent.
+ */
+TEST(PtxDeclarationSemantics,
+     DiagnosesExternallyConstructedInvalidOctalIntegerLiteral) {
+  PtxSyntaxParser parser(".global .u32 value[010];");
+  auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  auto* declaration =
+      std::get_if<syntax_ast::AstVariableDeclaration>(&module->items.front());
+  ASSERT_NE(declaration, nullptr);
+  ASSERT_EQ(declaration->declarators.size(), 1u);
+  auto& dimension = declaration->declarators.front().array_dimensions.front();
+  ASSERT_TRUE(dimension.size.has_value());
+  auto* literal = std::get_if<syntax_ast::AstConstantLiteral>(
+      &dimension.size->node);
+  ASSERT_NE(literal, nullptr);
+  const SourceRange literal_range = literal->value.syntax.range;
+  literal->value.syntax.text = "09";
+
+  const auto binding = binding::bindSymbols(*module);
+  const auto diagnostics = checkDeclarations(*module, binding.table);
+
+  const auto invalid = std::ranges::find_if(
+      diagnostics, [](const DeclarationDiagnostic& diagnostic) {
+        return diagnostic.kind == DeclarationDiagnosticKind::InvalidIntegerLiteral;
+      });
+  ASSERT_NE(invalid, diagnostics.end());
+  EXPECT_EQ(invalid->range, literal_range);
+  EXPECT_FALSE(constantArrayExtent(*dimension.size).has_value());
+  EXPECT_FALSE(constantIntegerValue(*dimension.size).has_value());
+}
+
 TEST(PtxDeclarationSemantics, ValidatesInitializerExpressionTypes) {
   const CheckedModule result = check(R"ptx(
 .global .u32 integer_from_float = 1.0;

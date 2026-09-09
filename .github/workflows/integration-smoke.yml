@@ -71,8 +71,9 @@ jobs:
           path: .cache/vcpkg/downloads
           key: ${{ steps.setup.outputs.downloads-cache-key }}
 
+      # Runner images can differ within the matrix, producing distinct binary keys.
       - name: Save vcpkg binary archive cache
-        if: success() && matrix.writes_shared_caches && steps.setup.outputs.binary-cache-hit != 'true'
+        if: success() && steps.setup.outputs.binary-cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/vcpkg/archives

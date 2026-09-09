@@ -42,7 +42,7 @@ jobs:
         uses: ./.github/actions/setup-linux
 
       - name: Restore compiler cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
           key: ccache-v7-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-${{ github.run_id }}-${{ github.run_attempt }}

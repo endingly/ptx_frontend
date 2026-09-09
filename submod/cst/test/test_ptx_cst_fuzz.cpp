@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size);
@@ -24,6 +25,24 @@ TEST(PtxCstFuzz, HandlesRepresentativeByteSeeds) {
     EXPECT_EQ(LLVMFuzzerTestOneInput(
                   reinterpret_cast<const uint8_t*>(source.data()), source.size()),
               0);
+  }
+}
+
+/** Generated depth seeds exercise rejection and cleanup without large fixtures. */
+TEST(PtxCstFuzz, HandlesDeepConstantTreeSeeds) {
+  for (const std::size_t depth : {127u, 128u, 129u, 1024u}) {
+    const std::array seeds{
+        ".global .u32 x = " + std::string(depth, '+') + "1;",
+        ".global .u32 x = " + std::string(depth, '(') + "1" +
+            std::string(depth, ')') + ";",
+        ".global .u32 x[] = " + std::string(depth, '{') + "1" +
+            std::string(depth, '}') + ";",
+        ".global .u32 x = " + std::string(depth, '(') + "1 + ("};
+    for (const auto& source : seeds) {
+      EXPECT_EQ(LLVMFuzzerTestOneInput(
+                    reinterpret_cast<const uint8_t*>(source.data()), source.size()),
+                0);
+    }
   }
 }
 

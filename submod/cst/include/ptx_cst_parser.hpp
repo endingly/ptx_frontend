@@ -25,6 +25,9 @@ using CstParseResult =
 /** Parses a PTX instruction fragment or module into a lossless CST. */
 class PtxCstParser {
  public:
+  /** Maximum permitted height of a constant expression or initializer tree. */
+  static constexpr std::size_t maxConstantTreeDepth = 128;
+
   explicit PtxCstParser(std::string_view source);
 
   CstParseResult parseInstruction();
@@ -52,9 +55,26 @@ class PtxCstParser {
     RecoveryStop stop{};
   };
 
+  /** A parsed expression together with its private structural tree height. */
+  struct ParsedConstantExpression {
+    syntax_cst::CstConstantExpression expression;
+    /** Leaf expressions have height one; each expression wrapper adds one. */
+    std::size_t depth{};
+  };
+
+  /** A parsed initializer together with its private structural tree height. */
+  struct ParsedInitializer {
+    syntax_cst::CstInitializer initializer;
+    /** Scalar initializer wrappers add no height; initializer lists add one. */
+    std::size_t depth{};
+  };
+
   [[nodiscard]] TokenId peek();
   TokenId consume();
   [[nodiscard]] const PtxToken& token(TokenId id) const;
+  /** Build a diagnostic for a source tree that exceeds the active depth budget. */
+  [[nodiscard]] CstParseDiagnostic depthLimitExceeded(
+      TokenId id, std::string_view tree_kind) const;
   [[nodiscard]] bool atImmediateStart();
   [[nodiscard]] RecoveryResult recover(
       TokenId first,
@@ -82,14 +102,14 @@ class PtxCstParser {
   parseIndexedBranchOperands();
   std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
   parseInstructionNode(std::optional<TokenId> opcode = std::nullopt);
-  std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
-  parseConstantExpression(int minimum_precedence = 0);
-  std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
-  parseConstantUnary();
-  std::expected<syntax_cst::CstConstantExpression, CstParseDiagnostic>
-  parseConstantPrimary();
-  std::expected<syntax_cst::CstInitializer, CstParseDiagnostic>
-  parseInitializer();
+  std::expected<ParsedConstantExpression, CstParseDiagnostic>
+  parseConstantExpression(int minimum_precedence, std::size_t remaining_depth);
+  std::expected<ParsedConstantExpression, CstParseDiagnostic>
+  parseConstantUnary(std::size_t remaining_depth);
+  std::expected<ParsedConstantExpression, CstParseDiagnostic>
+  parseConstantPrimary(std::size_t remaining_depth);
+  std::expected<ParsedInitializer, CstParseDiagnostic> parseInitializer(
+      std::size_t remaining_depth);
   std::expected<syntax_cst::CstVariableDeclaration, CstParseDiagnostic>
   parseVariableDeclaration(std::vector<TokenId> qualifiers = {},
                            std::optional<TokenId> first_token = std::nullopt);

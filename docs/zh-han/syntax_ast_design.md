@@ -83,6 +83,15 @@ GTest seed smoke。尚未加入 ASan/UBSan 或 CI matrix。它必须单独 confi
 的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
 由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
 
+源码中的 constant-expression 与 initializer tree 共享 128 层的深度上限
+（`PtxCstParser::maxConstantTreeDepth`）。literal 或 symbol 深度为 1；unary、cast、
+括号、call、binary、conditional 或花括号列表节点的深度为最深子节点加 1，
+scalar-initializer 包装不另计一层。这是 frontend 资源限制，不是 PTX 语言限制；
+浅层列表可包含超过 128 个元素。递归解析在下降前检查剩余深度，循环构造的 binary
+和 postfix 节点在添加父节点前检查树高。超限输入产生带源码位置的 parse diagnostic，
+并按正常无损恢复流程处理，使部分树清理以及后续 lowering、检查和析构的深度有界。
+该源码 parser 保证不涵盖调用方手工构造的任意深度 CST/AST。
+
 公开 parser/lowering root 返回 `ResultWithDiagnostics<T, D>`：optional value 加有序
 `DiagnosticCollection<D>`。这样后续 recovery 可在不再改变 API 的情况下，同时返回 CST 与
 diagnostic。module recovery 可同时返回 value 与 diagnostic；standalone instruction fragment

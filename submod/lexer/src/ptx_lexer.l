@@ -125,6 +125,8 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
                                 yyextra->block_comment_start,
                                 ptx_make_current_range(yyextra).end,
                             };
+                            /* Report the error once, then let recovery reach EOF. */
+                            BEGIN(INITIAL);
                             return TokenKind::Error;
                         }
 

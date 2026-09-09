@@ -1122,6 +1122,77 @@ TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
   EXPECT_EQ(file.sourceText(), original_source);
 }
 
+/** Recovery retains the error token exactly once and terminates at real EOF. */
+TEST(PtxCstParser, UnterminatedCommentOnlyTerminatesAndRoundTrips) {
+  constexpr std::string_view source = "/*";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{1, 1}, SourcePos{1, 3}}));
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_EQ(result->tokens.size(), 2u);
+  EXPECT_EQ(result->tokens.front().kind, TokenKind::Error);
+  EXPECT_EQ(result->tokens.front().text, source);
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+/** An unterminated trailing comment must not discard an already parsed function. */
+TEST(PtxCstParser,
+     UnterminatedCommentAfterModulePrefixTerminatesAndRoundTrips) {
+  constexpr std::string_view source = ".entry k() { ret; }\n /* tail";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{2, 2}, SourcePos{2, 9}}));
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_NE(result->module(), nullptr);
+  ASSERT_FALSE(result->module()->items.empty());
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+      result->module()->items.front()));
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+/** A function-tail comment diagnoses both the invalid token and missing brace. */
+TEST(PtxCstParser, UnterminatedCommentInFunctionTerminatesAndRoundTrips) {
+  constexpr std::string_view source = ".entry k() { ret;\n /* tail";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{2, 2}, SourcePos{2, 9}}));
+  EXPECT_EQ(result.diagnostics.back().message,
+            "expected '}' at end of function body");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_FALSE(function.body.empty());
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstInstruction>(
+      function.body.front()));
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+/** Recoverable invalid characters must not be mistaken for terminal lexer errors. */
+TEST(PtxCstParser, RecoversLexicalErrorBeforeValidModuleItem) {
+  constexpr std::string_view source = "` .entry k() { ret; }";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_EQ(result->module()->items.size(), 2u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+      result->module()->items.back()));
+}
+
 TEST(PtxCstParser, RecoversMissingBodySemicolonBeforeNextInstruction) {
   constexpr std::string_view source = R"ptx(.entry kernel() {
   add.u32 %r0, %r1, %r2

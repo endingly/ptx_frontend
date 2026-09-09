@@ -69,8 +69,12 @@ smoke 注册。Release 使用独立 build 目录。
 
 工作流共用 `.github/actions/setup-linux` 完成系统包、Python 依赖及 vcpkg setup。
 缓存身份包含实际安装的工具链与 runner image；vcpkg 使用 manifest 的精确 builtin
-baseline。依赖二进制 archive 与源文件下载分别缓存，由指定 job 写入共享依赖/下载
-缓存；其他 job 只恢复并使用。
+baseline。依赖二进制 archive 与源文件下载分别缓存。两个矩阵工作流中的每个
+Debug/Release job 都在 configure 成功且精确 vcpkg 二进制缓存 key 未命中时保存缓存。
+同一矩阵可能使用不同 runner image，因此固定由 Debug 写入无法覆盖所有 Release key。
+相同 key 的 job 可能竞争保存；cache action 会处理重复保存，不使 job 失败。
+APT、pip 和 vcpkg 源文件下载缓存仍仅由 Debug 写入；独立 Python/package job
+对依赖缓存仍只恢复、不保存。
 
 Integration 与 PR 的 Debug job 共用编译缓存命名空间，Release 另有共用命名空间。
 Python/package job 恢复 Debug 缓存，但不上传较小的 library/consumer-only 快照，

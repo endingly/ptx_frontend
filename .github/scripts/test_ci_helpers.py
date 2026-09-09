@@ -249,27 +249,42 @@ class WorkflowContractTests(unittest.TestCase):
             consumer,
         )
 
-    def test_dependency_archives_have_debug_only_configure_time_writers(self) -> None:
-        """Only Debug matrix entries may save shared dependencies after configuration."""
-        linux = (WORKFLOWS / "linux-ci.yml").read_text(encoding="utf-8")
-        smoke = (WORKFLOWS / "integration-smoke.yml").read_text(encoding="utf-8")
+    def test_binary_cache_writers_are_independent_of_shared_download_ownership(self) -> None:
+        """Every matrix job saves its missing binary key; shared downloads stay Debug-owned."""
+        for filename in ("linux-ci.yml", "integration-smoke.yml"):
+            with self.subTest(workflow=filename):
+                workflow = (WORKFLOWS / filename).read_text(encoding="utf-8")
+                self.assertIn(
+                    "name: Debug\n            preset: ci-linux-gcc-debug\n            writes_shared_caches: true",
+                    workflow,
+                )
+                self.assertIn(
+                    "name: Release\n            preset: ci-linux-gcc-release\n            writes_shared_caches: false",
+                    workflow,
+                )
+                for name, condition in (
+                    (
+                        "Save vcpkg binary archive cache",
+                        "success() && steps.setup.outputs.binary-cache-hit != 'true'",
+                    ),
+                    (
+                        "Save vcpkg source-download cache",
+                        "success() && matrix.writes_shared_caches && steps.setup.outputs.downloads-cache-hit != 'true'",
+                    ),
+                ):
+                    start = workflow.index(f"- name: {name}")
+                    end = workflow.index("\n      - name:", start)
+                    step = workflow[start:end]
+                    self.assertIn(f"if: {condition}\n", step)
+                    self.assertIn("uses: actions/cache/save@", step)
+                    self.assertGreater(start, workflow.index("- name: Configure"))
+                    self.assertLess(start, workflow.index("- name: Build"))
+                archive = workflow.split("- name: Save vcpkg binary archive cache", 1)[1]
+                archive = archive.split("\n      - name:", 1)[0]
+                self.assertIn("path: .cache/vcpkg/archives", archive)
+                self.assertIn("key: ${{ steps.setup.outputs.binary-cache-key }}", archive)
+                self.assertNotIn("matrix.", archive)
         action = (SCRIPTS.parent / "actions/setup-linux/action.yml").read_text(encoding="utf-8")
-        self.assertIn("name: Debug\n            preset: ci-linux-gcc-debug\n            writes_shared_caches: true", linux)
-        self.assertIn("name: Release\n            preset: ci-linux-gcc-release\n            writes_shared_caches: false", linux)
-        self.assertGreater(linux.index("- name: Save vcpkg binary archive cache"), linux.index("- name: Configure"))
-        self.assertLess(linux.index("- name: Save vcpkg binary archive cache"), linux.index("- name: Build"))
-        self.assertIn(
-            "writes-shared-caches: ${{ matrix.writes_shared_caches }}",
-            smoke,
-        )
-        source_save = smoke.index("- name: Save vcpkg source-download cache")
-        archive_save = smoke.index("- name: Save vcpkg binary archive cache")
-        self.assertIn("if: success() && matrix.writes_shared_caches", smoke[source_save:])
-        self.assertIn("if: success() && matrix.writes_shared_caches", smoke[archive_save:])
-        self.assertGreater(source_save, smoke.index("- name: Configure"))
-        self.assertLess(source_save, smoke.index("- name: Build"))
-        self.assertGreater(archive_save, smoke.index("- name: Configure"))
-        self.assertLess(archive_save, smoke.index("- name: Build"))
         self.assertIn("vcpkg-binaries-v3-", action)
         self.assertNotIn("github.run_id", action)
 

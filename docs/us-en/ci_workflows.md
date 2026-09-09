@@ -81,8 +81,13 @@ acceptance. Release uses its own build directory.
 The workflows share `.github/actions/setup-linux` for system packages, Python
 dependencies, and vcpkg setup. Cache identity includes the installed toolchain
 and runner image; vcpkg uses the manifest's exact builtin baseline. Dependency
-archives are separate from source downloads. Designated jobs write shared
-dependency/download caches; other jobs restore and use them.
+archives are separate from source downloads. In both matrix workflows, every
+Debug/Release job saves a missing exact vcpkg binary-cache key after successful
+configuration. Runner images can differ within one matrix, so a fixed Debug
+writer cannot populate every Release key. Jobs sharing a key may race to save;
+the cache action handles duplicate saves without failing the job.
+Only Debug writes shared APT, pip, and vcpkg source-download caches. The separate
+Python/package job remains restore-only for dependency caches.
 
 Integration and PR Debug jobs share a compiler-cache namespace; Release has its
 own shared namespace. The Python/package job restores Debug caches but does not

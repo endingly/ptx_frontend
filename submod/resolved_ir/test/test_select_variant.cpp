@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -3308,6 +3309,135 @@ TEST(ResolveImmediateLiteral, SupportsIntegerSuffixesAndTargetWidth) {
   EXPECT_EQ(rejected.error().range, out_of_range.syntax.range);
   EXPECT_EQ(rejected.error().message,
             "Integer literal '65536' is out of range for scalar type 'U16'.");
+}
+
+/**
+ * @brief Resolves leading-zero integer spellings as octal without changing
+ * their AST kind.
+ */
+TEST(ResolveImmediateLiteral,
+     ResolvesOctalIntegerLiteralsAndRetainsDecimalSyntaxKind) {
+  constexpr std::array<std::pair<std::string_view, uint64_t>, 6> cases{{
+      {"0", 0U},
+      {"0U", 0U},
+      {"010", 8U},
+      {"077", 63U},
+      {"010u", 8U},
+      {"010U", 8U},
+  }};
+  for (const auto& [source, expected] : cases) {
+    SCOPED_TRACE(source);
+    const auto immediate = parse_immediate(source);
+    EXPECT_EQ(immediate.kind, syntax_ast::AstImmediateKind::DecimalInteger);
+    const auto resolved = resolve_immediate_literal(immediate, ScalarType::U8);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    EXPECT_EQ(resolved->bits, expected);
+    EXPECT_EQ(resolved->type, ScalarType::U8);
+  }
+
+  const auto positive = resolve_immediate_literal(parse_immediate("+010"),
+                                                  ScalarType::S8);
+  ASSERT_TRUE(positive.has_value()) << positive.error().message;
+  EXPECT_EQ(positive->bits, 8U);
+  EXPECT_FALSE(positive->is_negative);
+
+  const auto negative = resolve_immediate_literal(parse_immediate("-010"),
+                                                  ScalarType::S8);
+  ASSERT_TRUE(negative.has_value()) << negative.error().message;
+  EXPECT_EQ(negative->bits, 0xf8U);
+  EXPECT_TRUE(negative->is_negative);
+}
+
+/**
+ * @brief Preserves scalar range rules at signed and uint64 octal boundaries.
+ */
+TEST(ResolveImmediateLiteral, EnforcesOctalSignedAndUint64Boundaries) {
+  const auto signed_limit =
+      resolve_immediate_literal(parse_immediate("0177"), ScalarType::S8);
+  ASSERT_TRUE(signed_limit.has_value()) << signed_limit.error().message;
+  EXPECT_EQ(signed_limit->bits, 0x7fU);
+
+  const auto signed_overflow =
+      resolve_immediate_literal(parse_immediate("0200"), ScalarType::S8);
+  ASSERT_FALSE(signed_overflow.has_value());
+  EXPECT_EQ(signed_overflow.error().message,
+            "Integer literal '0200' is out of range for scalar type 'S8'.");
+
+  const auto uint64_limit = resolve_immediate_literal(
+      parse_immediate("01777777777777777777777"), ScalarType::U64);
+  ASSERT_TRUE(uint64_limit.has_value()) << uint64_limit.error().message;
+  EXPECT_EQ(uint64_limit->bits, std::numeric_limits<uint64_t>::max());
+
+  const auto uint64_overflow = resolve_immediate_literal(
+      parse_immediate("02000000000000000000000"), ScalarType::U64);
+  ASSERT_FALSE(uint64_overflow.has_value());
+  EXPECT_EQ(uint64_overflow.error().message,
+            "Invalid integer literal '02000000000000000000000'.");
+}
+
+/**
+ * @brief Rejects malformed and overflowing octal text supplied directly to
+ * immediate resolution.
+ */
+TEST(ResolveImmediateLiteral, RejectsInvalidOctalTextOutsideLexer) {
+  constexpr std::array<std::string_view, 3> invalid_cases{{
+      "09",
+      "078U",
+      "02000000000000000000000",
+  }};
+  for (const auto source : invalid_cases) {
+    SCOPED_TRACE(source);
+    auto immediate = parse_immediate("010");
+    immediate.syntax.text = source;
+    EXPECT_EQ(immediate.kind, syntax_ast::AstImmediateKind::DecimalInteger);
+
+    const auto resolved = resolve_immediate_literal(immediate, ScalarType::U64);
+
+    ASSERT_FALSE(resolved.has_value());
+    EXPECT_EQ(resolved.error().range, immediate.syntax.range);
+  }
+}
+
+/**
+ * @brief Keeps decimal, hexadecimal, and floating leading-zero literal forms
+ * distinct from octal.
+ */
+TEST(ResolveImmediateLiteral, PreservesOctalAdjacentLiteralForms) {
+  const auto decimal = parse_immediate("10");
+  EXPECT_EQ(decimal.kind, syntax_ast::AstImmediateKind::DecimalInteger);
+  const auto decimal_value = resolve_immediate_literal(decimal, ScalarType::U8);
+  ASSERT_TRUE(decimal_value.has_value()) << decimal_value.error().message;
+  EXPECT_EQ(decimal_value->bits, 10U);
+
+  const auto hexadecimal = parse_immediate("0x10");
+  EXPECT_EQ(hexadecimal.kind, syntax_ast::AstImmediateKind::HexInteger);
+  const auto hexadecimal_value =
+      resolve_immediate_literal(hexadecimal, ScalarType::U8);
+  ASSERT_TRUE(hexadecimal_value.has_value())
+      << hexadecimal_value.error().message;
+  EXPECT_EQ(hexadecimal_value->bits, 16U);
+
+  const auto decimal_float = parse_immediate("0.5");
+  EXPECT_EQ(decimal_float.kind, syntax_ast::AstImmediateKind::DecimalFloat);
+  const auto decimal_float_value =
+      resolve_immediate_literal(decimal_float, ScalarType::F32);
+  ASSERT_TRUE(decimal_float_value.has_value())
+      << decimal_float_value.error().message;
+  EXPECT_EQ(decimal_float_value->bits, 0x3f000000U);
+
+  const auto f32_hex = parse_immediate("0f3f800000");
+  EXPECT_EQ(f32_hex.kind, syntax_ast::AstImmediateKind::F32Hex);
+  const auto f32_hex_value =
+      resolve_immediate_literal(f32_hex, ScalarType::F32);
+  ASSERT_TRUE(f32_hex_value.has_value()) << f32_hex_value.error().message;
+  EXPECT_EQ(f32_hex_value->bits, 0x3f800000U);
+
+  const auto f64_hex = parse_immediate("0d3ff0000000000000");
+  EXPECT_EQ(f64_hex.kind, syntax_ast::AstImmediateKind::F64Hex);
+  const auto f64_hex_value =
+      resolve_immediate_literal(f64_hex, ScalarType::F64);
+  ASSERT_TRUE(f64_hex_value.has_value()) << f64_hex_value.error().message;
+  EXPECT_EQ(f64_hex_value->bits, 0x3ff0000000000000ULL);
 }
 
 TEST(ResolveImmediateLiteral, SupportsFloatingLexicalForms) {

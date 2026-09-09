@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -11,6 +12,7 @@
 #include <fmt/format.h>
 
 #include <ptx_frontend/base/ptx_special_register.hpp>
+#include <ptx_frontend/base/ptx_integer.hpp>
 
 namespace ptx_frontend::binding {
 namespace {
@@ -69,19 +71,7 @@ bool isMetadataSymbol(SymbolKind kind) {
 }
 
 std::optional<uint64_t> parseDebugFileId(std::string_view text) {
-  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
-    text.remove_suffix(1);
-  int base = 10;
-  if (text.starts_with("0x") || text.starts_with("0X")) {
-    text.remove_prefix(2);
-    base = 16;
-  }
-  uint64_t value = 0;
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), value, base);
-  if (text.empty() || error != std::errc{} || end != text.data() + text.size())
-    return std::nullopt;
-  return value;
+  return base::parseIntegerMagnitude(text);
 }
 
 bool isInitializerOperator(std::string_view spelling) {
@@ -117,13 +107,8 @@ std::optional<uint64_t> scalarAlignment(std::string_view type) {
 }
 
 std::optional<uint64_t> parseAlignment(std::string_view text) {
-  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
-    text.remove_suffix(1);
-  uint64_t value = 0;
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), value);
-  if (text.empty() || error != std::errc{} || end != text.data() + text.size() ||
-      value == 0 || (value & (value - 1)) != 0)
+  const auto value = base::parseIntegerMagnitude(text);
+  if (!value || *value == 0 || (*value & (*value - 1)) != 0)
     return std::nullopt;
   return value;
 }
@@ -414,14 +399,9 @@ struct SymbolTableBuilder {
       const syntax_ast::AstVariableDeclarator& declarator) {
     if (!declarator.parameterized_count)
       return std::nullopt;
-    std::string_view text = declarator.parameterized_count->text;
-    if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
-      text.remove_suffix(1);
-    uint32_t count = 0;
-    const auto [end, error] =
-        std::from_chars(text.data(), text.data() + text.size(), count);
-    if (error != std::errc{} || end != text.data() + text.size() ||
-        count == 0) {
+    const auto count =
+        base::parseIntegerMagnitude(declarator.parameterized_count->text);
+    if (!count || *count == 0 || *count > std::numeric_limits<uint32_t>::max()) {
       result.diagnostics.push_back(BindDiagnostic{
           .kind = BindDiagnosticKind::InvalidParameterizedCount,
           .range = declarator.parameterized_count->range,
@@ -431,7 +411,7 @@ struct SymbolTableBuilder {
       });
       return 0;
     }
-    return count;
+    return static_cast<uint32_t>(*count);
   }
 
   void collectVariableDeclaration(

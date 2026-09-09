@@ -10,8 +10,8 @@
 | Token 与 trivia | 部分支持 | identifier、dot identifier、literal、标点、注释、空白与部分稳定 directive；未修改的 `CstFile::sourceText()` 会从 token buffer 逐字节 round-trip |
 | 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、vector member/vector pack，以及 call/branch 专用 operand shape |
 | Module header | 支持子集 | `.version`、`.target`、`.address_size` |
-| Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/hex uint64 ID 在 debug-only namespace 中 binding，重复 ID 幂等且 overflow 会诊断 |
-| Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；不附着到 instruction，也不进入 Resolved IR |
+| Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复 ID 幂等且 overflow 会诊断 |
+| Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；不附着到 instruction，也不进入 Resolved IR |
 | Debug section directive | 支持子集 | outermost `.section name { ... }` 的匹配 brace 与有序 raw DWARF payload token 会保留；`.debug_str` 与 raw `name:` label 会绑定为 debug identity，payload width、relocation 和 offset semantic 仍未支持 |
 | Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；pragma 不进入 binding 或 Resolved IR |
 | Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST；declaration semantics 检查 source `.version` 最低版本，并拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；target/launch-time rule 尚未检查 |
@@ -72,11 +72,11 @@ instruction 间接保留/check 该 identity；`C` = 直接 binding/declaration s
 | `.entry` | D | E | E | Y | Y | C | 既有 function node |
 | `.explicitcluster` | D | T | T | — | — | C | 仅 entry、零参数、PTX 7.8 source-version minimum；target/launch rule 留后续 |
 | `.extern` | D | E | E | Y | Y | C | 既有 linkage qualifier |
-| `.file` | D | T | T | Y | — | C | decimal/hex uint64 identity；重复 ID 幂等，overflow 诊断 |
+| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复 ID 幂等，overflow 诊断 |
 | `.func` | D | E | E | Y | Y | C | 既有 function node |
 | `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.local` | D | E | E | Y | Y | C | 既有 variable declaration |
-| `.loc` | D | T | T | Y | — | C | decimal/hex file ID 与 `.debug_str` function-name identity；不做 attachment |
+| `.loc` | D | T | T | Y | — | C | decimal/octal/hex file ID 与 `.debug_str` function-name identity；不做 attachment |
 | `.maxclusterrank` | D | T | T | — | — | C | 仅 entry、一个参数、PTX 7.8 source-version minimum；与 `.reqnctapercluster` 冲突 |
 | `.maxnctapersm` | G | R | — | — | — | — | 未建模 deprecated resource directive |
 | `.maxnreg` | D | T | T | — | — | C | 仅 entry；检查 source-version minimum |

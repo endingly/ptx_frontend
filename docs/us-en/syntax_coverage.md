@@ -11,8 +11,8 @@ PTX ISA support. The reference grammar is NVIDIA's
 | Tokens and trivia | Partial | Identifiers, dot identifiers, literals, punctuation, comments, whitespace, and selected stable directives; unmodified `CstFile::sourceText()` round-trips its token buffer byte-for-byte |
 | Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, vector members/packs, and dedicated call/branch operand shapes |
 | Module header | Supported subset | `.version`, `.target`, `.address_size` |
-| Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/hex uint64 IDs bind in a debug-only namespace, repeated IDs are idempotent, and overflow diagnoses |
-| Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it does not attach to instructions or enter Resolved IR |
+| Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/octal/hex uint64 IDs bind in a debug-only namespace, repeated IDs are idempotent, and overflow diagnoses |
+| Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/octal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it does not attach to instructions or enter Resolved IR |
 | Debug section directive | Supported subset | Outermost `.section name { ... }` retains matched braces and ordered raw DWARF payload tokens; `.debug_str` and raw `name:` labels bind as debug identity, while payload widths, relocations, and offset semantics remain unsupported |
 | Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; pragmas neither bind nor enter Resolved IR |
 | Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, `.minnctapersm ncta`, `.reqnctapercluster nx[,ny[,nz]]`, zero-argument `.explicitcluster`, and `.maxclusterrank n` with dedicated CST/AST; declaration semantics checks source `.version` minima and rejects same-entry `.maxntid` plus `.reqntid` and `.reqnctapercluster` plus `.maxclusterrank`; target/launch-time rules remain unchecked |
@@ -78,11 +78,11 @@ stage.
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
 | `.explicitcluster` | D | T | T | — | — | C | Entry-only, zero arguments, PTX 7.8 source-version minimum; target/launch rules deferred |
 | `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.file` | D | T | T | Y | — | C | Decimal/hex uint64 identity; repeated ID idempotent, overflow diagnoses |
+| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; repeated ID idempotent, overflow diagnoses |
 | `.func` | D | E | E | Y | Y | C | Existing function node |
 | `.global` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.local` | D | E | E | Y | Y | C | Existing variable declaration |
-| `.loc` | D | T | T | Y | — | C | Decimal/hex file ID plus `.debug_str` function-name identity; no attachment |
+| `.loc` | D | T | T | Y | — | C | Decimal/octal/hex file ID plus `.debug_str` function-name identity; no attachment |
 | `.maxclusterrank` | D | T | T | — | — | C | Entry-only, one argument, PTX 7.8 source-version minimum; conflicts with `.reqnctapercluster` |
 | `.maxnctapersm` | G | R | — | — | — | — | Unmodeled deprecated resource directive |
 | `.maxnreg` | D | T | T | — | — | C | Entry-only source-version minimum |

@@ -15,6 +15,9 @@ pass，并在解析 instruction 前累积两者的诊断。
 
 ## Array 与 initializer
 
+整数字面量与指令立即数共享十进制、前导零八进制和十六进制解码规则。例如，
+`010` 的初始化值为 8，用作数组维度时也为 8；无符号后缀不改变基数。
+
 array dimension 必须能求值为正整数 constant。求值器以带 `.s64/.u64` signedness 的
 64-bit bit pattern 保存每个整数子表达式，支持负数中间值、cast、usual arithmetic
 conversion，以及一元/二元/三元运算；因此 `-1 + 2` 等合法表达式不会在中间阶段被
@@ -43,6 +46,9 @@ module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再�
 - symbol kind 冲突、linkage 冲突、签名变化和多个 definition 均产生带 previous range 的
   诊断；
 - `.extern .func` 只能是 prototype，不能带 body。
+
+显式 alignment、parameterized count 和 ABI-preserve count 按解码后的整数值比较，
+因此等值的八进制与十进制拼写相匹配。
 
 function prototype 与 definition 各自仍拥有 lexical scope。function symbol 的
 `owned_scope` 优先指向 definition scope，从而使后续 module resolution 使用 definition

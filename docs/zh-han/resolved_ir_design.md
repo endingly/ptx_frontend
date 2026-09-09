@@ -102,7 +102,7 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 `ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
 重新解释 literal 文本。
 
-`AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/hex（包括可选 `U`
+`AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/octal/hex（包括可选 `U`
 后缀）按目标整数或 bit type 的位宽做范围检查；负数以该目标宽度的二进制补码存入
 `bits`，不会再无条件扩展为 64 位。decimal float 目前支持转换至 `F32` 与 `F64`；
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。

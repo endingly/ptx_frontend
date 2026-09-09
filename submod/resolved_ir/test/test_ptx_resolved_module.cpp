@@ -6651,6 +6651,66 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
   EXPECT_EQ(immediate_base.bits, 240u);
 }
 
+/**
+ * @brief Resolves octal instruction immediates and every supported
+ * address-offset base.
+ */
+TEST(ResolvedModule, ResolvesOctalImmediateAndAddressOffsets) {
+  const auto ast = parseModule(R"ptx(
+.version 8.0
+.target sm_80
+.address_size 64
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r<4>;
+  mov.u32 %r0, 010;
+  mov.u64 %rd0, global_value+010;
+  ld.u32 %r1, [%rd0-010];
+  ld.u32 %r2, [010+010];
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+
+  const auto& immediate = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[0])).src.value);
+  EXPECT_EQ(immediate.type, ScalarType::U32);
+  EXPECT_EQ(immediate.bits, 8U);
+
+  const auto& symbol_address = std::get<ResolvedAddress>(
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
+  ASSERT_TRUE(symbol_address.offset.has_value());
+  EXPECT_EQ(symbol_address.offset->operation,
+            ResolvedAddressOffsetOperator::Add);
+  EXPECT_EQ(symbol_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(symbol_address.offset->value.bits, 8U);
+
+  const auto& register_address =
+      std::get<Ld::GenericScalar>(std::get<Ld>(body[2]).variant).address.value;
+  ASSERT_TRUE(register_address.offset.has_value());
+  EXPECT_EQ(register_address.offset->operation,
+            ResolvedAddressOffsetOperator::Subtract);
+  EXPECT_EQ(register_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(register_address.offset->value.bits, 8U);
+
+  const auto& absolute_address =
+      std::get<Ld::GenericScalar>(std::get<Ld>(body[3]).variant).address.value;
+  const auto& absolute_base =
+      std::get<ResolvedImmediate>(absolute_address.base);
+  EXPECT_EQ(absolute_base.type, ScalarType::U64);
+  EXPECT_EQ(absolute_base.bits, 8U);
+  ASSERT_TRUE(absolute_address.offset.has_value());
+  EXPECT_EQ(absolute_address.offset->operation,
+            ResolvedAddressOffsetOperator::Add);
+  EXPECT_EQ(absolute_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(absolute_address.offset->value.bits, 8U);
+}
+
 TEST(ResolvedModule, ChecksGenericLoadAvailability) {
   PtxSyntaxParser parser("ld.u32 %r0, [%rd0+4];");
   const auto ast = parser.parseInstruction();

@@ -15,6 +15,7 @@
 #include <fmt/format.h>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/base/ptx_integer.hpp>
 
 #include "resolved_value_domains.gen.hpp"
 
@@ -156,21 +157,9 @@ std::optional<StorageOpaqueType> opaque_type(std::string_view spelling) {
   return std::nullopt;
 }
 
-/** Parse an unsigned decimal or hexadecimal source value with an optional suffix. */
+/** Decode a source magnitude independently of its declaration's range policy. */
 std::optional<uint64_t> unsigned_value(std::string_view text) {
-  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
-    text.remove_suffix(1);
-  const int base = text.starts_with("0x") || text.starts_with("0X") ? 16 : 10;
-  if (base == 16)
-    text.remove_prefix(2);
-  uint64_t value = 0;
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), value, base);
-  if (text.empty() || error != std::errc{} ||
-      end != text.data() + text.size()) {
-    return std::nullopt;
-  }
-  return value;
+  return base::parseIntegerMagnitude(text);
 }
 
 /** Find the exact bound symbol created for one source declarator. */

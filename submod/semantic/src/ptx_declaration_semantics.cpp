@@ -1,6 +1,7 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
 #include <ptx_frontend/base/ptx_target.hpp>
+#include <ptx_frontend/base/ptx_integer.hpp>
 
 #include <algorithm>
 #include <array>
@@ -48,23 +49,16 @@ struct ExpressionInfo {
 };
 
 std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
-    std::string_view spelling, int base) {
+    std::string_view spelling) {
   const bool explicitly_unsigned =
       !spelling.empty() && (spelling.back() == 'u' || spelling.back() == 'U');
-  if (explicitly_unsigned) {
-    spelling.remove_suffix(1);
-  }
-  if (base == 16 && spelling.size() >= 2)
-    spelling.remove_prefix(2);
-  uint64_t value = 0;
-  const auto [end, error] = std::from_chars(
-      spelling.data(), spelling.data() + spelling.size(), value, base);
-  if (error != std::errc{} || end != spelling.data() + spelling.size())
+  const auto value = base::parseIntegerMagnitude(spelling);
+  if (!value)
     return std::nullopt;
   return ExpressionInfo::IntegerValue{
-      .bits = value,
+      .bits = *value,
       .type = explicitly_unsigned ||
-                      value > static_cast<uint64_t>(
+                      *value > static_cast<uint64_t>(
                                   std::numeric_limits<int64_t>::max())
                   ? ExpressionInfo::IntegerType::Unsigned
                   : ExpressionInfo::IntegerType::Signed,
@@ -72,11 +66,7 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
 }
 
 std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
-  const int base = spelling.starts_with("0x") || spelling.starts_with("0X")
-                       ? 16
-                       : 10;
-  const auto value = parseIntegerLiteral(spelling, base);
-  return value ? std::optional{value->bits} : std::nullopt;
+  return base::parseIntegerMagnitude(spelling);
 }
 
 std::optional<uint64_t> languageCode(std::string_view spelling) {
@@ -312,11 +302,9 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
             case syntax_ast::AstImmediateKind::DecimalInteger:
-              return {ExpressionCategory::Integer,
-                      parseIntegerLiteral(value.value.syntax.text, 10)};
             case syntax_ast::AstImmediateKind::HexInteger:
               return {ExpressionCategory::Integer,
-                      parseIntegerLiteral(value.value.syntax.text, 16)};
+                      parseIntegerLiteral(value.value.syntax.text)};
             case syntax_ast::AstImmediateKind::WarpSize:
               return {ExpressionCategory::Integer,
                       ExpressionInfo::IntegerValue{
@@ -494,6 +482,12 @@ std::string optionalSyntaxKey(
   return syntax ? syntax->text : "-";
 }
 
+/** Compare numeric declaration fields by value while retaining invalid spelling. */
+std::string integerSyntaxKey(const syntax_ast::AstSyntax& syntax) {
+  const auto value = base::parseIntegerMagnitude(syntax.text);
+  return value ? std::to_string(*value) : syntax.text;
+}
+
 std::optional<uint64_t> compactLabelIndex(std::string_view prefix,
                                           std::string_view label) {
   if (!label.starts_with(prefix) || label.size() == prefix.size())
@@ -510,13 +504,8 @@ std::optional<uint64_t> compactLabelIndex(std::string_view prefix,
 }
 
 std::optional<uint64_t> positiveCount(std::string_view text) {
-  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
-    text.remove_suffix(1);
-  uint64_t count = 0;
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), count);
-  if (text.empty() || error != std::errc{} ||
-      end != text.data() + text.size() || count == 0) {
+  const auto count = base::parseIntegerMagnitude(text);
+  if (!count || *count == 0) {
     return std::nullopt;
   }
   return count;
@@ -581,9 +570,9 @@ std::string variableSignature(
     const syntax_ast::AstVariableDeclarator& declarator) {
   std::string signature = fmt::format(
       "variable:{}:{}:{}:{}:{}", static_cast<int>(declaration.state_space),
-      optionalSyntaxKey(declaration.alignment),
+      declaration.alignment ? integerSyntaxKey(*declaration.alignment) : "-",
       optionalSyntaxKey(declaration.vector_type), declaration.type.text,
-      declarator.parameterized_count ? declarator.parameterized_count->text
+      declarator.parameterized_count ? integerSyntaxKey(*declarator.parameterized_count)
                                      : "-");
   for (const auto& dimension : declarator.array_dimensions) {
     signature += "|d:";
@@ -617,14 +606,8 @@ bool initializerTypeAccepts(std::string_view type,
 }
 
 bool isValidAlignment(std::string_view text) {
-  if (!text.empty() && (text.back() == 'u' || text.back() == 'U'))
-    text.remove_suffix(1);
-  uint64_t value = 0;
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), value);
-  return !text.empty() && error == std::errc{} &&
-         end == text.data() + text.size() && value != 0 &&
-         (value & (value - 1)) == 0;
+  const auto value = positiveCount(text);
+  return value && (*value & (*value - 1)) == 0;
 }
 
 class Checker {
@@ -812,7 +795,7 @@ class Checker {
     };
     const auto same_suffix = [](const auto& lhs, const auto& rhs) {
       return lhs.has_value() == rhs.has_value() &&
-             (!lhs || lhs->count.text == rhs->count.text);
+             (!lhs || integerSyntaxKey(lhs->count) == integerSyntaxKey(rhs->count));
     };
     const auto same_language = [](const auto& lhs, const auto& rhs) {
       if (lhs.has_value() != rhs.has_value())

@@ -155,7 +155,7 @@ operators and precedence.
 
 The lexer recognizes:
 
-- Decimal integers, with an optional `u` or `U` suffix.
+- Decimal and leading-zero octal integers, with an optional `u` or `U` suffix.
 - Hexadecimal integers beginning with `0x` or `0X`, with an optional unsigned
   suffix.
 - PTX bit-pattern floating literals `0f` plus eight hex digits.
@@ -166,6 +166,13 @@ The lexer recognizes:
 
 Literal tokens preserve their exact source spelling. Numeric conversion and
 string unescaping are intentionally outside the lexer.
+
+For compatibility, both decimal and octal integers use `TokenKind::Decimal`
+and lower to `AstImmediateKind::DecimalInteger`; these names do not determine
+the numeric radix. Integer decoding treats a leading zero as octal (`010` is
+8). An octal spelling containing `8` or `9`, such as `09U`, produces one
+`Error` token spanning the whole literal. Decimal floating spellings such as
+`09.0` and `09e1` remain floating tokens.
 
 ### Generic Identifiers
 

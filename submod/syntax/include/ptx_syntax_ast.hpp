@@ -41,6 +41,7 @@ struct AstPredicateOperand {
 
 /** Lexical category of the literal token underlying an immediate. */
 enum class AstImmediateKind : uint8_t {
+  /** Unprefixed integer spelling: decimal or leading-zero octal. */
   DecimalInteger,
   HexInteger,
   F32Hex,

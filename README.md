@@ -154,8 +154,10 @@ The `ci-linux-gcc-release` preset provides an equivalent local Release
 workflow; running it does not mean GitHub Actions was triggered.
 
 GitHub Actions keeps full Debug/Release and Python/package acceptance on PRs,
-monthly runs, and manual dispatch. Pushes to `main` and `dev` instead run
-`ci-integration-smoke`: production libraries plus the installed public consumer.
+monthly runs, and manual dispatch. Pushes to `main` and `dev` instead warm the
+full Debug/Release build caches and run only the Debug installed-package consumer,
+without repeating the C++ or Python test suites. The library-only
+`ci-integration-smoke` preset remains available for local checks.
 See the [CI workflow and cache contract](docs/us-en/ci_workflows.md)
 ([中文](docs/zh-han/ci_workflows.md)) for scope and local smoke commands.
 

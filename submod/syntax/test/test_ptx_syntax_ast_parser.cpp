@@ -338,6 +338,54 @@ TEST(PtxSyntaxParser, MapsCstDiagnosticsToSyntaxDiagnostics) {
   EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
 }
 
+/** The syntax facade must terminate and preserve ordered diagnostics at comment EOF. */
+TEST(PtxSyntaxParser, UnterminatedCommentsTerminateWithRecoveredSyntax) {
+  constexpr std::array<std::string_view, 3> sources{
+      "/*", ".entry k() { ret; }\n /* tail", ".entry k() { ret;\n /* tail"};
+  for (std::size_t index = 0; index < sources.size(); ++index) {
+    SCOPED_TRACE(sources[index]);
+    PtxCstParser cst_parser(sources[index]);
+    PtxSyntaxParser syntax_parser(sources[index]);
+    const auto cst = cst_parser.parseModule();
+    const auto syntax = syntax_parser.parseModule();
+
+    ASSERT_TRUE(cst.has_value());
+    ASSERT_TRUE(syntax.has_value());
+    ASSERT_EQ(syntax.diagnostics.size(), index == 2 ? 2u : 1u);
+    ASSERT_EQ(syntax.diagnostics.size(), cst.diagnostics.size());
+    for (std::size_t diagnostic = 0; diagnostic < syntax.diagnostics.size();
+         ++diagnostic) {
+      EXPECT_EQ(syntax.diagnostics[diagnostic].message,
+                cst.diagnostics[diagnostic].message);
+      EXPECT_EQ(syntax.diagnostics[diagnostic].range,
+                cst.diagnostics[diagnostic].range);
+    }
+    if (index == 0) {
+      EXPECT_TRUE(syntax->items.empty());
+    } else {
+      ASSERT_EQ(syntax->items.size(), 1u);
+      const auto& function =
+          std::get<syntax_ast::AstFunction>(syntax->items.front());
+      ASSERT_EQ(function.body.size(), 1u);
+      EXPECT_EQ(
+          std::get<AstInstruction>(function.body.front()).opcode.syntax.text,
+          "ret");
+    }
+  }
+}
+
+/** Ordinary lexical errors leave following valid syntax available to consumers. */
+TEST(PtxSyntaxParser, RecoversLexicalErrorBeforeValidModuleItem) {
+  PtxSyntaxParser parser("` .entry k() { ret; }");
+  const auto syntax = parser.parseModule();
+  ASSERT_TRUE(syntax.has_value());
+  ASSERT_EQ(syntax.diagnostics.size(), 1u);
+  ASSERT_EQ(syntax->items.size(), 1u);
+  EXPECT_EQ(
+      std::get<syntax_ast::AstFunction>(syntax->items.front()).name.syntax.text,
+      "k");
+}
+
 TEST(PtxSyntaxParser, LowersOnlyValidNeighborsOfRecoveredModuleCst) {
   constexpr std::string_view source = R"ptx(.version nope;
 .target;

@@ -248,7 +248,8 @@ Block comments use an exclusive `BLOCK_COMMENT` scanner state:
 1. `/*` enters the state.
 2. All content is skipped until `*/`.
 3. `*/` returns to the initial state.
-4. End of input inside the state emits `TokenKind::Error`.
+4. End of input inside the state emits one `TokenKind::Error` and returns to
+   the initial state so the next read reaches `TokenKind::Eof`.
 
 Block comments are not nested.
 
@@ -278,20 +279,23 @@ Line endings are handled as follows:
 Columns count bytes, not Unicode code points. PTX identifiers are currently
 restricted to ASCII, so this matches the accepted lexical grammar.
 
-EOF and an unterminated block comment use a zero-width range at the current
-position.
+EOF uses a zero-width range at the current position. An unterminated block
+comment retains the range from its opening `/*` through end of input.
 
 ## Error Behavior
 
 An unknown character is emitted as `TokenKind::Error` with the offending byte
 in `Token::text` and its normal source range.
 
-An unterminated block comment emits `TokenKind::Error` with empty text and a
-zero-width range at end of input.
+An unterminated block comment emits one `TokenKind::Error` containing its full
+text, source range, and preceding trivia. Subsequent reads return EOF with empty
+text and no repeated trivia. Repeated `peek()` calls can observe the same cached
+error until `consume()` advances past it.
 
 The lexer reports errors as tokens rather than throwing exceptions. A caller
 may stop at the first error or request additional tokens when recovery is
-appropriate.
+appropriate. An ordinary invalid character does not force EOF: following valid
+tokens remain available. Module recovery relies on this progress contract.
 
 EOF is emitted as `TokenKind::Eof`, with empty text and a zero-width current
 position range.

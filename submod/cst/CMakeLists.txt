@@ -36,5 +36,6 @@ if(BUILD_TESTING)
     target_sources(test_cst PRIVATE fuzz/lexer_cst_fuzz.cpp)
     find_package(GTest CONFIG REQUIRED)
     target_link_libraries(test_cst PRIVATE GTest::gtest GTest::gtest_main cst)
-    gtest_discover_tests(test_cst)
+    # Each parser/fuzz regression runs in its own time-bounded CTest process.
+    gtest_discover_tests(test_cst PROPERTIES TIMEOUT 10)
 endif()

@@ -538,6 +538,50 @@ TEST(PtxLexerNew, UnterminatedBlockCommentReturnsError) {
   EXPECT_EQ(toks.back().kind, TokenKind::Error);
 }
 
+/** Preserve an unterminated comment once, then keep direct reads at EOF. */
+TEST(PtxLexerNew, UnterminatedBlockCommentReportsErrorOnceThenEof) {
+  PtxLexer lexer(" \t/* unterminated\n tail");
+  const auto error = lexer.next();
+  ASSERT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.text, "/* unterminated\n tail");
+  EXPECT_EQ(error.range, (SourceRange{SourcePos{1, 3}, SourcePos{2, 6}}));
+  ASSERT_EQ(error.leading_trivia.size(), 1u);
+  EXPECT_EQ(error.leading_trivia.front().text, " \t");
+
+  for (int index = 0; index < 3; ++index) {
+    const auto eof = lexer.next();
+    EXPECT_EQ(eof.kind, TokenKind::Eof);
+    EXPECT_TRUE(eof.text.empty());
+    EXPECT_TRUE(eof.leading_trivia.empty());
+    EXPECT_EQ(eof.range, (SourceRange{SourcePos{2, 6}, SourcePos{2, 6}}));
+  }
+  EXPECT_EQ(error.text, "/* unterminated\n tail");
+}
+
+/** Lookahead repeats the cached error, but consuming it must advance to EOF. */
+TEST(PtxLexerNew, UnterminatedBlockCommentLookaheadAdvancesAfterConsume) {
+  PtxLexer lexer("/*");
+  EXPECT_EQ(lexer.peek().kind, TokenKind::Error);
+  EXPECT_EQ(lexer.peek().text, "/*");
+  const auto error = lexer.consume();
+  EXPECT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.range, (SourceRange{SourcePos{1, 1}, SourcePos{1, 3}}));
+  EXPECT_EQ(lexer.peek().kind, TokenKind::Eof);
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Eof);
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Eof);
+}
+
+/** Ordinary invalid bytes must not prevent later tokens or completed comments. */
+TEST(PtxLexerNew, LexicalErrorDoesNotDiscardFollowingTokens) {
+  PtxLexer lexer("` /* closed */ ret;");
+  const auto error = lexer.consume();
+  ASSERT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.text, "`");
+  EXPECT_EQ(lexer.consume().text, "ret");
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Semicolon);
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Eof);
+}
+
 // -----------------------------------------------------------------------------
 // Peek / consume behavior
 // -----------------------------------------------------------------------------

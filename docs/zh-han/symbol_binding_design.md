@@ -39,7 +39,7 @@ definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 def
 control-flow metadata 则有意保持 function-local，而非 block-local。
 
 debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
-`uint64_t`（decimal/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
+`uint64_t`（decimal/octal/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
 有意复用第一个 `SymbolId`。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
 `DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
 program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成

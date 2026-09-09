@@ -17,6 +17,10 @@ their diagnostics before resolving any instruction.
 
 ## Arrays and initializers
 
+Integer literals share decimal, leading-zero octal, and hexadecimal decoding
+with instruction immediates. For example, `010` initializes the value 8 and
+denotes an array extent of 8; an unsigned suffix does not change the radix.
+
 An array dimension must evaluate to a positive integer constant. The evaluator
 retains a 64-bit bit pattern plus `.s64`/`.u64` signedness for every integer
 subexpression. It therefore supports negative intermediate values, casts,
@@ -51,6 +55,9 @@ decides whether the redeclaration is legal:
 - symbol-kind conflicts, linkage conflicts, signature changes, and multiple
   definitions report diagnostics carrying the previous source range;
 - an `.extern .func` must be a prototype and cannot have a body.
+
+Explicit alignments, parameterized counts, and ABI-preserve counts compare by
+decoded integer value, so equivalent octal and decimal spellings match.
 
 Every function prototype and definition still owns a lexical scope. The
 function symbol's `owned_scope` prefers the definition scope, so module

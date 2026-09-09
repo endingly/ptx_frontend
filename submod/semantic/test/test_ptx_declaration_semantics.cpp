@@ -115,6 +115,27 @@ TEST(PtxDeclarationSemantics, CanonicalizesEquivalentM11HeaderValues) {
             0u);
 }
 
+/** Redeclaration identity compares integer values across octal and decimal spellings. */
+TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
+  for (const std::string count : {"8", "16"}) {
+    SCOPED_TRACE(count);
+    const auto result = check(
+        ".version 9.3\n"
+        ".extern .global .align 010 .u32 aligned;\n"
+        ".extern .global .align " + count + " .u32 aligned;\n"
+        ".extern .global .u32 slots<010>;\n"
+        ".extern .global .u32 slots<" + count + ">;\n"
+        ".func f() .abi_preserve 010 .abi_preserve_control 010;\n"
+        ".func f() .abi_preserve " + count + " .abi_preserve_control " +
+        count + " {}\n");
+    EXPECT_TRUE(result.binding.diagnostics.empty());
+    EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
+              count == "8" ? 0u : 3u);
+    if (count == "8")
+      EXPECT_TRUE(result.diagnostics.empty());
+  }
+}
+
 TEST(PtxDeclarationSemantics, ValidatesArrayDimensionsAndInitializerShape) {
   const CheckedModule result = check(R"ptx(
 .global .u32 too_many[2] = {1, 2, 3};

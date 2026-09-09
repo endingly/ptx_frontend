@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <string_view>
 #include <vector>
@@ -1632,7 +1633,7 @@ std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
-    std::string_view text, bool negative, int base) {
+    std::string_view text, bool negative) {
   using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
@@ -1655,11 +1656,11 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
                                 ? std::numeric_limits<uint64_t>::max()
                                 : (uint64_t{1} << bit_width) - 1;
 
-  if (base == 16 && (text.starts_with("0x") || text.starts_with("0X")))
-    text.remove_prefix(2);
-  const auto magnitude = parse_unsigned_literal(immediate, text, base);
+  const auto magnitude = base::parseIntegerMagnitude(text);
   if (!magnitude)
-    return std::unexpected(magnitude.error());
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format("Invalid integer literal '{}'.", immediate.syntax.text)));
 
   uint64_t limit = bit_mask;
   if (kind == base::ScalarKind::Signed) {
@@ -1827,9 +1828,8 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
 
   switch (immediate.kind) {
     case syntax_ast::AstImmediateKind::DecimalInteger:
-      return resolve_integer_literal(immediate, type, text, negative, 10);
     case syntax_ast::AstImmediateKind::HexInteger:
-      return resolve_integer_literal(immediate, type, text, negative, 16);
+      return resolve_integer_literal(immediate, type, text, negative);
     case syntax_ast::AstImmediateKind::F32Hex:
       return resolve_float_bits_literal(immediate, type, text, negative, 32);
     case syntax_ast::AstImmediateKind::F64Hex:

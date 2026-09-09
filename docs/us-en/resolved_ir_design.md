@@ -122,7 +122,7 @@ strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 `ResolvedFunctionRef`, `ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
 and `ScalarType`, so the checker never has to reinterpret literal text.
 
-`AstImmediateKind` retains the lexer's literal classification. Decimal and hex
+`AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
 integers, including their optional `U` suffix, are range-checked against the
 target integer or bit type. Negative values are stored in `bits` as the
 target-width two's-complement representation rather than being unconditionally

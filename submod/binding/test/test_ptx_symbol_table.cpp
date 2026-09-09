@@ -21,6 +21,42 @@ const binding::SymbolReference* findReference(const binding::SymbolTable& table,
   return iterator == table.references().end() ? nullptr : &*iterator;
 }
 
+/** Octal declaration counts and alignments agree with indexed binding and debug IDs. */
+TEST(PtxSymbolTable, OctalDeclarationMetadata) {
+  PtxSyntaxParser parser(R"ptx(
+.file 010 "octal.ptx"
+.global .align 010 .u32 values;
+.entry k() {
+  .reg .u32 %r<010>;
+  .loc 8 1 0
+  mov.u32 %r7, 010;
+}
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value());
+  ASSERT_TRUE(module.diagnostics.empty());
+  const auto result = binding::bindSymbols(*module);
+  ASSERT_TRUE(result.diagnostics.empty());
+  const auto& table = result.table;
+  const auto values = table.lookup(table.moduleScope(), "values");
+  ASSERT_TRUE(values.has_value());
+  EXPECT_EQ(table.symbol(values->symbol).address_alignment, 8u);
+  const auto kernel = table.lookup(table.moduleScope(), "k");
+  ASSERT_TRUE(kernel.has_value());
+  const auto scope = table.symbol(kernel->symbol).owned_scope;
+  ASSERT_TRUE(scope.has_value());
+  const auto member = table.lookup(*scope, "%r7");
+  ASSERT_TRUE(member.has_value());
+  EXPECT_EQ(member->parameterized_index, 7u);
+  EXPECT_EQ(table.symbol(member->symbol).parameterized_count, 8u);
+  EXPECT_FALSE(table.lookup(*scope, "%r8").has_value());
+  const auto* file = findReference(table, "8", binding::ReferenceKind::DebugFile);
+  ASSERT_NE(file, nullptr);
+  ASSERT_TRUE(file->target.has_value());
+  EXPECT_EQ(table.symbol(file->target->symbol).kind, binding::SymbolKind::DebugFile);
+  EXPECT_EQ(table.symbol(file->target->symbol).name, "8");
+}
+
 TEST(PtxSymbolTable, CollectsScopesAndBindsLexicalReferences) {
   constexpr std::string_view source = R"ptx(
 .global .u32 count = 2;

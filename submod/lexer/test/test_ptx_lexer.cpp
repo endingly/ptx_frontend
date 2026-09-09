@@ -71,6 +71,37 @@ static void expect_token(const LexedToken& tok, TokenKind kind,
 // Basic instruction lexing
 // -----------------------------------------------------------------------------
 
+/** Octal source retains the existing integer token category and exact spelling. */
+TEST(PtxLexerNew, OctalSpellingsAndDecimalFloatControls) {
+  for (const std::string_view spelling : {"0", "0U", "00", "010", "077u", "010U"}) {
+    PtxLexer lexer(spelling);
+    const auto token = lexer.next();
+    EXPECT_EQ(token.kind, TokenKind::Decimal) << spelling;
+    EXPECT_EQ(token.text, spelling);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+  for (const std::string_view spelling : {"09.0", "09e1", "08.5e-1"}) {
+    PtxLexer lexer(spelling);
+    EXPECT_EQ(lexer.next().kind, TokenKind::F64) << spelling;
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
+/** Invalid octal digits form one recoverable error with the full literal range. */
+TEST(PtxLexerNew, InvalidOctalReportsWholeLiteralAndRecovers) {
+  for (const std::string_view spelling : {"08", "09", "019U", "0789u"}) {
+    const std::string source = std::string{spelling} + " 7";
+    PtxLexer lexer(source);
+    const auto error = lexer.next();
+    EXPECT_EQ(error.kind, TokenKind::Error) << spelling;
+    EXPECT_EQ(error.text, spelling);
+    EXPECT_EQ(error.range.start.column, 1u);
+    EXPECT_EQ(error.range.end.column, spelling.size() + 1u);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Decimal);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
 TEST(PtxLexerNew, EmitsEof) {
   PtxLexer lexer("add.s32;");
 

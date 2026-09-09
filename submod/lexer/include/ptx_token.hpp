@@ -68,7 +68,7 @@ enum class TokenKind : uint16_t {
   F64Hex,   // 0d<16hex>
   Hex,      // 0x...  (integer hex, optional U suffix)
   F64,      // decimal floating literal
-  Decimal,  // decimal integer, optional U suffix
+  Decimal,  // unprefixed integer (decimal or leading-zero octal), optional U suffix
   String,   // "..."
   WarpSz,   // WARP_SZ
 

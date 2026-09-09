@@ -59,6 +59,73 @@ bool hasDeclarationKind(const ModuleResolveDiagnostics& diagnostics,
   });
 }
 
+/** Leading-zero integer constants retain their octal value through storage lowering. */
+TEST(ResolvedStorageDeclarations, OctalInitializerAndExtent) {
+  auto resolved = resolveSource(R"ptx(
+.version 8.0
+.target sm_80
+.address_size 64
+.global .u32 octal_value = 010;
+.global .u8 octal_extent[010];
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& value = storageNamed(*resolved, "octal_value");
+  ASSERT_EQ(value.initializer.size(), 1u);
+  EXPECT_EQ(std::get<StorageConstant>(value.initializer[0].value).bits, 8u);
+  EXPECT_EQ(storageNamed(*resolved, "octal_extent").array_extents,
+            (std::vector<std::optional<uint64_t>>{8u}));
+}
+
+/** Octal decoding applies before folding, storage narrowing, and relocation lowering. */
+TEST(ResolvedStorageDeclarations, OctalExpressionsAndDeclarationMetadata) {
+  auto resolved = resolveSource(R"ptx(
+.global .align 010 .u8 values[010] = {0, 0U, 010, 077u, +010, -010, 010 + 02, 0x10};
+.global .u32 slots<010>;
+.global .u64 pointer = generic(values) + 010;
+.global .u64 signedness[] = {(-010 < 0), (-010U < 0), 01777777777777777777777U};
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& values = storageNamed(*resolved, "values");
+  EXPECT_EQ(values.alignment, 8u);
+  EXPECT_EQ(values.byte_extent, 8u);
+  const std::array<uint64_t, 8> expected{0, 0, 8, 63, 8, 248, 10, 16};
+  ASSERT_EQ(values.initializer.size(), expected.size());
+  for (size_t index = 0; index < expected.size(); ++index) {
+    EXPECT_EQ(std::get<StorageConstant>(values.initializer[index].value).bits,
+              expected[index]);
+  }
+  EXPECT_EQ(storageNamed(*resolved, "slots").parameterized_count, 8u);
+  const auto& pointer = storageNamed(*resolved, "pointer");
+  ASSERT_EQ(pointer.initializer.size(), 1u);
+  EXPECT_EQ(std::get<StorageRelocation>(pointer.initializer[0].value).addend_bits,
+            8u);
+  const auto& signedness = storageNamed(*resolved, "signedness");
+  ASSERT_EQ(signedness.initializer.size(), 3u);
+  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[0].value).bits, 1u);
+  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[1].value).bits, 0u);
+  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[2].value).bits,
+            std::numeric_limits<uint64_t>::max());
+}
+
+/** Invalid octal input reports its literal position, including inside foldable expressions. */
+TEST(ResolvedStorageDeclarations, InvalidOctalCannotReachCleanResolution) {
+  for (const std::string source : {
+           ".global .u32 invalid = 09;",
+           ".global .u32 invalid = (09 ? 7 : 7);",
+           ".global .u8 invalid[09];",
+           ".entry k() { .reg .u32 %r; mov.u32 %r, 09; }",
+           ".entry k() { .reg .u32 %r; ld.global.u32 %r, [09]; }"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    ASSERT_FALSE(ast.diagnostics.empty());
+    EXPECT_TRUE(std::ranges::any_of(ast.diagnostics, [&](const auto& diagnostic) {
+      return diagnostic.range.start.column ==
+             static_cast<int32_t>(source.find("09") + 1);
+    }));
+  }
+}
+
 /** Metadata owns values needed after both the syntax tree and source disappear. */
 TEST(ResolvedStorageDeclarations, RetainsAddressableDeclarationsWithoutAst) {
   std::optional<ResolvedModule> resolved_module;

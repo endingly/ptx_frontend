@@ -412,7 +412,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 binding.register_width_policy
                 for binding in self.mul_instruction.variants[3].operand_layouts[0].bindings
             ],
-            [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
         )
         self.assertEqual(
             [
@@ -440,14 +440,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 binding.register_width_policy
                 for binding in self.mad_instruction.variants[3].operand_layouts[0].bindings
             ],
-            [ResolvedRegisterWidthPolicy.EXACT] * 4,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
         )
         self.assertEqual(
             [
                 binding.register_width_policy
                 for binding in self.mad_instruction.variants[0].operand_layouts[0].bindings
             ],
-            [ResolvedRegisterWidthPolicy.EXACT] * 4,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
         )
 
     def test_fma_models_all_ptx_93_ternary_layouts(self) -> None:
@@ -516,7 +516,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         for variant in self.div_instruction.variants[:2]:
             self.assertEqual(
                 [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
-                [ResolvedRegisterWidthPolicy.EXACT] * 3,
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
             )
 
     def test_rem_has_frozen_signed_and_unsigned_binary_variants(self) -> None:
@@ -551,7 +551,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(nan_f32.fields[1].constant_value, "f32")
         self.assertEqual(
             [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
         )
 
     def test_max_has_frozen_signed_and_nan_binary_variants(self) -> None:
@@ -572,7 +572,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(nan_f32.fields[1].constant_value, "f32")
         self.assertEqual(
             [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.EXACT] * 3,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
         )
 
     def test_abs_has_frozen_signed_and_float_unary_variants(self) -> None:
@@ -603,7 +603,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [binding.register_width_policy
              for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.EXACT] * 2,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
+        )
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
+            ["f16x2"] * 2,
         )
 
     def test_lop3_has_fixed_b32_variant_and_lut_range(self) -> None:
@@ -635,7 +640,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [binding.register_width_policy
              for binding in variant.operand_layouts[0].bindings[:2]],
-            [ResolvedRegisterWidthPolicy.EXACT] * 2,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
         )
 
     def test_shf_has_frozen_direction_and_mode_variants(self) -> None:
@@ -1027,9 +1032,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
             source = output_path.read_text(encoding="utf-8")
         self.assertIn(".is_sink = !payload.dst.value.register_ref,", source)
-        for binding in (*plain, *paired):
+        for binding in (*variants["AnySync"].operand_layouts[0].bindings,
+                        *plain, *paired):
             self.assertEqual(
-                binding.register_width_policy, ResolvedRegisterWidthPolicy.EXACT
+                binding.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
             )
 
     def test_redux_sync_model_variants_and_availability(self) -> None:
@@ -1078,7 +1084,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertEqual(len(variant.operand_layouts), 1)
             self.assertEqual(
                 [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
-                [ResolvedRegisterWidthPolicy.EXACT] * 3,
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
             )
 
     def test_griddepcontrol_model_has_two_zero_operand_actions(self) -> None:
@@ -1132,7 +1138,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(result.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertTrue(result.allow_destination_sink)
         self.assertFalse(result.allow_predicate_sink)
-        self.assertEqual(membermask.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(membermask.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertFalse(membermask.allow_destination_sink)
         self.assertFalse(membermask.allow_predicate_sink)
         with tempfile.TemporaryDirectory() as directory:
@@ -1525,9 +1531,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["shared"],
         )
         self.assertEqual(
+            [binding.register_width_policy for binding in shared.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
+        )
+        self.assertEqual(
             [binding.type_expression.scalar_type
              for binding in generic.operand_layouts[0].bindings],
             [None, None, "u32"],
+        )
+        self.assertEqual(
+            [binding.register_width_policy for binding in generic.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
         )
 
     def test_getctarank_uses_cluster_address_and_u32_rank_destination(self) -> None:
@@ -1576,6 +1590,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [value.value for value in shared_source.allowed_address_state_spaces],
             ["shared"],
         )
+        self.assertEqual(
+            shared_source.register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
         generic_dst, generic_source = generic.operand_layouts[0].bindings
         self.assertEqual(generic_dst.type_expression.scalar_type, "u32")
         self.assertEqual(
@@ -1583,7 +1601,54 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
         self.assertEqual(
+            generic_source.register_width_policy,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
+        )
+        self.assertEqual(
             generic_source.type_expression.modifier_field_id, "type"
+        )
+
+    def test_cvt_and_isspacep_register_width_policies(self) -> None:
+        cvt = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "cvt"
+        ))
+        rn_f32_s32 = next(
+            variant for variant in cvt.variants if variant.cpp_name == "RnF32S32"
+        )
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in rn_f32_s32.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH,
+             ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER],
+        )
+        rn_f16x2_f32 = next(
+            variant for variant in cvt.variants if variant.cpp_name == "RnF16x2F32"
+        )
+        self.assertEqual(
+            [binding.type_expression.scalar_type
+             for binding in rn_f16x2_f32.operand_layouts[0].bindings],
+            ["f16x2", "f32", "f32"],
+        )
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in rn_f16x2_f32.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
+        )
+
+        isspacep = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "isspacep"
+        ))
+        global_u64 = next(
+            variant for variant in isspacep.variants if variant.cpp_name == "GlobalU64"
+        )
+        self.assertEqual(
+            [binding.register_width_policy
+             for binding in global_u64.operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
         )
 
     def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
@@ -1753,7 +1818,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(check_layout_shared_cta_v1.modifier_fields[1].constant_value, "layout::v1")
         self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
         self.assertEqual(parity.type_expression.scalar_type, "u32")
-        self.assertEqual(parity.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(parity.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertEqual(
             [(constraint.minimum, constraint.maximum)
              for constraint in test_wait_parity.immediate_ranges],
@@ -1818,7 +1883,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         count, state = pending_count.operand_layouts[0].bindings
         self.assertEqual(count.type_expression.scalar_type, "u32")
-        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+        self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
         self.assertEqual(state.mbarrier_state_token_form.value, "register")
         self.assertEqual(
             [layout.layout_id for layout in arrive_drop_generic.operand_layouts],
@@ -1842,7 +1908,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             arrive_generic.operand_layouts[1].bindings[-1].register_width_policy,
-            ResolvedRegisterWidthPolicy.EXACT,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
         self.assertEqual(
             [(field.name, field.cpp_type) for field in generic_v0.fields],
@@ -1879,7 +1945,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [value.value for value in address.allowed_address_state_spaces], ["shared"]
         )
         self.assertEqual(count.type_expression.scalar_type, "u32")
-        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertEqual(
             [(field.name, field.cpp_type) for field in inval_generic.fields],
             [
@@ -1929,7 +1995,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         complete_tx_address, complete_tx_count = complete_tx_generic.operand_layouts[0].bindings
         self.assertEqual(complete_tx_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
         self.assertEqual(complete_tx_count.type_expression.scalar_type, "u32")
-        self.assertEqual(complete_tx_count.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(complete_tx_count.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
 
     def test_mbarrier_operand_domains_are_uniform_across_variants(self) -> None:
         mbarrier = from_instruction_spec(next(
@@ -1976,7 +2042,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
             self.assertEqual(binding.type_expression.scalar_type, "u32")
             self.assertEqual(binding.register_width_policy,
-                             ResolvedRegisterWidthPolicy.EXACT)
+                             ResolvedRegisterWidthPolicy.SAME_WIDTH)
 
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = self.database
@@ -3241,7 +3307,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].register_width_policy,
-            ResolvedRegisterWidthPolicy.EXACT,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
 
     def test_vote_sync_ballot_b32_model(self) -> None:
@@ -3272,7 +3338,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].register_width_policy,
-            ResolvedRegisterWidthPolicy.EXACT,
+            ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
 
     def test_shfl_sync_idx_b32_model(self) -> None:

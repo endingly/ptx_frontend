@@ -40,29 +40,29 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
     - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
 
-  unary_packed_b32_register_exact:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
+  unary_f16x2_register:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
+    - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
 
   popc_b32:
-    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
 
   clz_b32:
-    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
 
   clz_b64:
-    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: b64, register_width: same_width}
 
   bfind_shiftamt_u32:
-    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
-    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: same_width}
 
   bfe_u32:
-    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: exact}
-    - {name: src, kind: reg, role: src1, access: read, type: u32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg, role: src1, access: read, type: u32, register_width: same_width}
     - {name: offset, kind: imm, role: src2, access: read, type: u32}
     - {name: width, kind: imm, role: src3, access: read, type: u32}
 
@@ -78,9 +78,9 @@ operand_patterns:
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
 
   binary_wide_u32:
-    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
 
   binary_wide_s32:
     - {name: dst, kind: reg, role: dst, access: write, type: s64}
@@ -124,10 +124,10 @@ operand_patterns:
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(result_type)"}}
 
   ternary_wide_u32:
-    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: exact}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: exact}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: exact}
-    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: u64, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: u64, register_width: same_width}
 
   binary_float_scalar:
     - name: dst
@@ -173,11 +173,6 @@ operand_patterns:
       type:
         expr: modifier(type)
 
-  binary_float_register_exact:
-    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: exact}
-
   ternary_float_register:
     - name: dst
       kind: reg
@@ -206,12 +201,6 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
-
-  ternary_float_register_exact:
-    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: exact}
-    - {name: src3, kind: reg, role: src3, access: read, type: {expr: "modifier(type)"}, register_width: exact}
 
   binary_mixed_float_register:
     - name: dst
@@ -998,7 +987,7 @@ instructions:
     section: "9.7.3.7"
     doc: "Frozen round-to-nearest single-precision multiply-add."
     syntax: "mad.rn.f32 dst, src1, src2, src3"
-    operands: $ternary_float_register_exact
+    operands: $ternary_float_register
     variants:
       - name: mad_rn_f32
         availability: {ptx: "2.0", sm: 20}
@@ -1012,7 +1001,7 @@ instructions:
     section: "9.7.3.8"
     doc: "Frozen round-to-nearest single- and double-precision division."
     syntax: "div.rn.f32 | div.rn.f64 dst, src1, src2"
-    operands: $binary_float_register_exact
+    operands: $binary_float_register
     variants:
       - name: div_rn_f32
         availability: {ptx: "1.4", sm: 20}
@@ -1248,7 +1237,7 @@ instructions:
     section: "9.7.3.11"
     doc: "Frozen NaN-propagating single-precision minimum."
     syntax: "min.NaN.f32 dst, src1, src2"
-    operands: $binary_float_register_exact
+    operands: $binary_float_register
     variants:
       - name: min_nan_f32
         availability: {ptx: "7.0", sm: 80}
@@ -1275,7 +1264,7 @@ instructions:
     section: "9.7.3.12"
     doc: "Frozen NaN-propagating single-precision maximum."
     syntax: "max.NaN.f32 dst, src1, src2"
-    operands: $binary_float_register_exact
+    operands: $binary_float_register
     variants:
       - name: max_nan_f32
         availability: {ptx: "7.0", sm: 80}
@@ -1341,7 +1330,7 @@ instructions:
     section: "9.7.4.5"
     doc: "Frozen packed half-precision negation using b32 register containers."
     syntax: "neg.f16x2 dst, src"
-    operands: $unary_packed_b32_register_exact
+    operands: $unary_f16x2_register
     variants:
       - name: neg_f16x2
         availability: {ptx: "6.0", sm: 53}

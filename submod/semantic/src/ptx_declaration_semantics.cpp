@@ -48,6 +48,8 @@ struct ExpressionInfo {
   std::optional<IntegerValue> integer_value;
 };
 
+using DiagnosticSink = std::vector<DeclarationDiagnostic>*;
+
 std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
     std::string_view spelling) {
   const bool explicitly_unsigned =
@@ -63,6 +65,20 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
                   ? ExpressionInfo::IntegerType::Unsigned
                   : ExpressionInfo::IntegerType::Signed,
   };
+}
+
+/** Report an integer spelling that cannot be decoded without truncation. */
+void reportInvalidIntegerLiteral(
+    DiagnosticSink diagnostics, const syntax_ast::AstImmediate& literal) {
+  if (diagnostics == nullptr)
+    return;
+  diagnostics->push_back(DeclarationDiagnostic{
+      .kind = DeclarationDiagnosticKind::InvalidIntegerLiteral,
+      .range = literal.syntax.range,
+      .message = fmt::format("Integer literal '{}' is not representable as "
+                             "a uint64_t value.",
+                             literal.syntax.text),
+  });
 }
 
 std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
@@ -237,11 +253,14 @@ ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
   return {};
 }
 
-ExpressionInfo classifyExpression(const AstConstantExpression& expression);
+ExpressionInfo classifyExpression(const AstConstantExpression& expression,
+                                  DiagnosticSink diagnostics);
 
-ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary) {
-  const ExpressionInfo left = classifyExpression(*binary.left);
-  const ExpressionInfo right = classifyExpression(*binary.right);
+ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
+                              DiagnosticSink diagnostics) {
+  const ExpressionInfo left = classifyExpression(*binary.left, diagnostics);
+  const ExpressionInfo right =
+      classifyExpression(*binary.right, diagnostics);
   using Operator = AstConstantBinaryOperator;
 
   const bool comparison = binary.operation == Operator::Less ||
@@ -295,16 +314,22 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary) {
                                *right.integer_value);
 }
 
-ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
+ExpressionInfo classifyExpression(const AstConstantExpression& expression,
+                                  DiagnosticSink diagnostics) {
   return std::visit(
-      [](const auto& value) -> ExpressionInfo {
+      [diagnostics](const auto& value) -> ExpressionInfo {
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
             case syntax_ast::AstImmediateKind::DecimalInteger:
-            case syntax_ast::AstImmediateKind::HexInteger:
-              return {ExpressionCategory::Integer,
-                      parseIntegerLiteral(value.value.syntax.text)};
+            case syntax_ast::AstImmediateKind::HexInteger: {
+              const auto integer = parseIntegerLiteral(value.value.syntax.text);
+              if (!integer) {
+                reportInvalidIntegerLiteral(diagnostics, value.value);
+                return {};
+              }
+              return {ExpressionCategory::Integer, integer};
+            }
             case syntax_ast::AstImmediateKind::WarpSize:
               return {ExpressionCategory::Integer,
                       ExpressionInfo::IntegerValue{
@@ -321,13 +346,16 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
           return {ExpressionCategory::Address, std::nullopt};
         } else if constexpr (std::same_as<
                                  Value, syntax_ast::AstConstantParenthesized>) {
-          return classifyExpression(*value.expression);
+          return classifyExpression(*value.expression, diagnostics);
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCall>) {
+          const ExpressionInfo callee =
+              classifyExpression(*value.callee, diagnostics);
+          const ExpressionInfo argument =
+              classifyExpression(*value.argument, diagnostics);
           const auto* callee_symbol =
               std::get_if<syntax_ast::AstConstantSymbol>(&value.callee->node);
           if (callee_symbol != nullptr &&
               callee_symbol->name.syntax.text == "generic") {
-            const ExpressionInfo argument = classifyExpression(*value.argument);
             return argument.category == ExpressionCategory::Address
                        ? ExpressionInfo{ExpressionCategory::Address,
                                         std::nullopt}
@@ -337,15 +365,16 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
               std::get_if<syntax_ast::AstConstantLiteral>(&value.callee->node);
           if (mask != nullptr &&
               mask->value.kind == syntax_ast::AstImmediateKind::HexInteger) {
-            const ExpressionInfo argument = classifyExpression(*value.argument);
-            if (argument.category == ExpressionCategory::Integer ||
-                argument.category == ExpressionCategory::Address) {
+            if (callee.category == ExpressionCategory::Integer &&
+                (argument.category == ExpressionCategory::Integer ||
+                 argument.category == ExpressionCategory::Address)) {
               return {ExpressionCategory::Integer, std::nullopt};
             }
           }
           return {};
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCast>) {
-          ExpressionInfo operand = classifyExpression(*value.operand);
+          ExpressionInfo operand =
+              classifyExpression(*value.operand, diagnostics);
           if (operand.category != ExpressionCategory::Integer)
             return {};
           if (operand.integer_value) {
@@ -357,7 +386,8 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
           return operand;
         } else if constexpr (std::same_as<Value,
                                           syntax_ast::AstConstantUnary>) {
-          ExpressionInfo operand = classifyExpression(*value.operand);
+          ExpressionInfo operand =
+              classifyExpression(*value.operand, diagnostics);
           if (value.operation == AstConstantUnaryOperator::Plus ||
               value.operation == AstConstantUnaryOperator::Minus) {
             if (operand.category != ExpressionCategory::Integer &&
@@ -387,13 +417,14 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression) {
           return operand;
         } else if constexpr (std::same_as<Value,
                                           syntax_ast::AstConstantBinary>) {
-          return classifyBinary(value);
+          return classifyBinary(value, diagnostics);
         } else {
-          const ExpressionInfo condition = classifyExpression(*value.condition);
+          const ExpressionInfo condition =
+              classifyExpression(*value.condition, diagnostics);
           ExpressionInfo true_value =
-              classifyExpression(*value.true_expression);
+              classifyExpression(*value.true_expression, diagnostics);
           ExpressionInfo false_value =
-              classifyExpression(*value.false_expression);
+              classifyExpression(*value.false_expression, diagnostics);
           if (condition.category != ExpressionCategory::Integer ||
               true_value.category != false_value.category) {
             return {};
@@ -458,7 +489,7 @@ std::string expressionKey(const AstConstantExpression& expression) {
 }
 
 std::string dimensionKey(const AstConstantExpression& expression) {
-  const ExpressionInfo value = classifyExpression(expression);
+  const ExpressionInfo value = classifyExpression(expression, nullptr);
   if (const auto integer = nonnegativeIntegerValue(value))
     return fmt::format("#{}", *integer);
   return expressionKey(expression);
@@ -1771,7 +1802,7 @@ class Checker {
   }
 
   void checkDimension(const AstConstantExpression& expression) {
-    const ExpressionInfo value = classifyExpression(expression);
+    const ExpressionInfo value = classifyExpression(expression, &diagnostics_);
     const auto integer = nonnegativeIntegerValue(value);
     if (!integer || *integer == 0) {
       diagnose(DeclarationDiagnosticKind::InvalidArrayDimension,
@@ -1816,7 +1847,8 @@ class Checker {
           }
           continue;
         }
-        const ExpressionInfo value = classifyExpression(*dimension.size);
+        const ExpressionInfo value =
+            classifyExpression(*dimension.size, &diagnostics_);
         const auto integer = nonnegativeIntegerValue(value);
         if (!integer || *integer == 0) {
           diagnose(
@@ -1857,7 +1889,8 @@ class Checker {
                  "Scalar initializer element cannot be a brace list.");
         return;
       }
-      const ExpressionInfo info = classifyExpression(*expression);
+      const ExpressionInfo info =
+          classifyExpression(*expression, &diagnostics_);
       checkInitializerSymbols(*expression);
       if (info.category == ExpressionCategory::Invalid) {
         diagnose(DeclarationDiagnosticKind::InvalidInitializerExpression,
@@ -2004,12 +2037,12 @@ FunctionSignature functionSignature(
 
 std::optional<uint64_t> constantArrayExtent(
     const syntax_ast::AstConstantExpression& expression) {
-  return nonnegativeIntegerValue(classifyExpression(expression));
+  return nonnegativeIntegerValue(classifyExpression(expression, nullptr));
 }
 
 std::optional<IntegerConstantValue> constantIntegerValue(
     const syntax_ast::AstConstantExpression& expression) {
-  const ExpressionInfo info = classifyExpression(expression);
+  const ExpressionInfo info = classifyExpression(expression, nullptr);
   if (info.category != ExpressionCategory::Integer || !info.integer_value)
     return std::nullopt;
   return IntegerConstantValue{

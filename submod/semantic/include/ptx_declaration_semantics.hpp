@@ -59,11 +59,24 @@ struct IntegerConstantValue {
 [[nodiscard]] FunctionSignature functionSignature(
     const syntax_ast::AstCallPrototype& prototype);
 
-/** Return a nonnegative constant array extent when the expression has one. */
+/**
+ * Return a nonnegative constant array extent when the expression has one.
+ *
+ * Invalid literals and valid deferred expressions both return ``nullopt``;
+ * ``checkDeclarations`` emits the source-located invalid-literal diagnostic
+ * for declaration expressions.
+ */
 [[nodiscard]] std::optional<uint64_t> constantArrayExtent(
     const syntax_ast::AstConstantExpression& expression);
 
-/** Return an evaluated integer expression without imposing an array-extent sign rule. */
+/**
+ * Return an evaluated integer expression without imposing an array-extent
+ * sign rule.
+ *
+ * Invalid literals and valid deferred expressions both return ``nullopt``;
+ * ``checkDeclarations`` emits the source-located invalid-literal diagnostic
+ * for declaration expressions.
+ */
 [[nodiscard]] std::optional<IntegerConstantValue> constantIntegerValue(
     const syntax_ast::AstConstantExpression& expression);
 
@@ -102,6 +115,8 @@ enum class DeclarationDiagnosticKind : uint8_t {
   UnsupportedStorageDeclaration,
   UnsupportedStorageInitializer,
   UnsupportedParameterDeclaration,
+  /** An integer literal cannot be decoded as an exact uint64_t magnitude. */
+  InvalidIntegerLiteral,
 };
 
 struct DeclarationDiagnostic {

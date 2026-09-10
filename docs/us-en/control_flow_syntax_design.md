@@ -129,7 +129,9 @@ canonical signatures.
 ordered list preserves ordinary labels and compact entries such as `N<5>`;
 the latter retain name, count, angle punctuation, and one entry range without
 expanding into synthetic labels. Declaration semantics checks local-label
-membership, compact overlap, and count validity without adding symbols.
+membership and count validity without adding symbols. Repeated destinations,
+including overlapping compact entries, retain their order and multiplicity;
+each expanded occurrence denotes a separate index slot.
 `brx.idx` consumes the declaration by stable local identity without expanding
 its entries.
 

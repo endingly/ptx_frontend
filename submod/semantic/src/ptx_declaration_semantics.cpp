@@ -542,20 +542,6 @@ std::optional<uint64_t> positiveCount(std::string_view text) {
   return count;
 }
 
-bool compactTargetsOverlap(std::string_view existing_prefix,
-                           uint64_t existing_count,
-                           std::string_view candidate_prefix,
-                           uint64_t candidate_count) {
-  const std::string existing_first = std::string{existing_prefix} + "0";
-  const std::string candidate_first = std::string{candidate_prefix} + "0";
-  const auto candidate_in_existing =
-      compactLabelIndex(existing_prefix, candidate_first);
-  const auto existing_in_candidate =
-      compactLabelIndex(candidate_prefix, existing_first);
-  return (candidate_in_existing && *candidate_in_existing < existing_count) ||
-         (existing_in_candidate && *existing_in_candidate < candidate_count);
-}
-
 /** Normalize known effective alignment while retaining invalid source for diagnostics. */
 std::optional<std::string> parameterAlignmentContract(
     const std::optional<syntax_ast::AstSyntax>& explicit_alignment,
@@ -1247,6 +1233,12 @@ class Checker {
     }
   }
 
+  /**
+   * Validate every .branchtargets slot against labels in its enclosing function.
+   *
+   * Repeated explicit and compact destinations are legal and retain their AST
+   * ordering; this check only validates each destination independently.
+   */
   void checkBranchTargets(
       binding::ScopeId function_scope,
       const syntax_ast::AstBranchTargets& targets) {
@@ -1258,35 +1250,8 @@ class Checker {
       }
     }
 
-    struct CompactTarget {
-      std::string_view prefix;
-      uint64_t count;
-      SourceRange range;
-    };
-    std::unordered_map<std::string, SourceRange> seen_labels;
-    std::vector<CompactTarget> seen_compact_targets;
-    const auto check_label = [this, function_scope, &labels, &seen_labels,
-                              &seen_compact_targets](std::string_view name,
-                                                     SourceRange range) {
-      const auto [previous, inserted] =
-          seen_labels.emplace(std::string{name}, range);
-      if (!inserted) {
-        diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget, range,
-                 fmt::format("Duplicate .branchtargets member '{}'.", name),
-                 previous->second);
-      } else {
-        for (const auto& compact : seen_compact_targets) {
-          const auto index = compactLabelIndex(compact.prefix, name);
-          if (index && *index < compact.count) {
-            diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget,
-                     range,
-                     fmt::format("Duplicate .branchtargets member '{}'.",
-                                 name),
-                     compact.range);
-            break;
-          }
-        }
-      }
+    const auto check_label = [this, function_scope, &labels](
+                                 std::string_view name, SourceRange range) {
       const auto label = labels.find(name);
       if (label == labels.end()) {
         const auto bound = symbols_.lookup(function_scope, name);
@@ -1320,32 +1285,6 @@ class Checker {
         continue;
       }
 
-      std::optional<SourceRange> duplicate_range;
-      for (const auto& compact : seen_compact_targets) {
-        if (compactTargetsOverlap(compact.prefix, compact.count,
-                                  target.name.syntax.text, *count)) {
-          duplicate_range = compact.range;
-          break;
-        }
-      }
-      if (!duplicate_range) {
-        for (const auto& [label, range] : seen_labels) {
-          const auto index =
-              compactLabelIndex(target.name.syntax.text, label);
-          if (index && *index < *count) {
-            duplicate_range = range;
-            break;
-          }
-        }
-      }
-      if (duplicate_range) {
-        diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget,
-                 target.range,
-                 fmt::format("Duplicate .branchtargets member '{}<{}>'.",
-                             target.name.syntax.text, target.count->text),
-                 *duplicate_range);
-      }
-
       uint64_t matched = 0;
       for (const auto& entry : labels) {
         const auto index =
@@ -1361,8 +1300,6 @@ class Checker {
                              "not declared in the current function.",
                              target.name.syntax.text, target.count->text));
       }
-      seen_compact_targets.push_back(
-          CompactTarget{target.name.syntax.text, *count, target.range});
     }
   }
 

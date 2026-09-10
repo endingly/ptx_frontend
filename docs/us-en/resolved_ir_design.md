@@ -110,6 +110,14 @@ formal-typed literals, and enforces function-local `.param` qualification,
 predication, and staging adjacency. The generated checker remains responsible
 for one resolved instruction and target-aware descriptor rules.
 
+Call-staging adjacency follows the executable instruction sequence within the
+current lexical body. Ordinary variable declarations, `.loc`, and `.pragma` do
+not interrupt argument stores before a call or return loads after it. Labels,
+nested blocks, and call/branch metadata remain scan boundaries; nested bodies
+are checked separately with their own symbol scope. Actual intervening
+instructions and predicated staging accesses remain invalid. The declaration's
+placement does not change which bound parameter identity the call must use.
+
 ## Locations and primitive values
 
 Every independently diagnosable resolved value uses:

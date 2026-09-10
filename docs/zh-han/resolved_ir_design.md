@@ -88,6 +88,12 @@ call-context 工作：它取得 canonical prototype/definition signature，检�
 adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor
 规则。
 
+call-staging 邻接性按当前词法 body 的执行指令序列检查。普通变量声明、`.loc` 和
+`.pragma` 不打断 call 前的参数 store 或 call 后的返回值 load。标签、嵌套 block 及
+call/branch metadata 仍是扫描边界；嵌套 body 使用自身 symbol scope 独立检查。
+实际插入的执行指令与带 predicate 的 staging 访问仍然非法。声明所在的位置不会改变
+call 必须使用的已绑定参数 identity。
+
 ## 位置与基本值
 
 每个可独立诊断的 resolved 值使用：

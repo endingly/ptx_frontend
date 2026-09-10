@@ -508,8 +508,10 @@ bool is_staging_load(const syntax_ast::AstFunctionBodyItem& item,
          staging_parameter(*instruction, symbols, scope).has_value();
 }
 
+/** Skip non-executing declarations/debug items without crossing control or scope boundaries. */
 bool is_staging_transparent(const syntax_ast::AstFunctionBodyItem& item) {
-  return std::holds_alternative<syntax_ast::AstLocDirective>(item) ||
+  return std::holds_alternative<syntax_ast::AstVariableDeclaration>(item) ||
+         std::holds_alternative<syntax_ast::AstLocDirective>(item) ||
          std::holds_alternative<syntax_ast::AstPragma>(item);
 }
 

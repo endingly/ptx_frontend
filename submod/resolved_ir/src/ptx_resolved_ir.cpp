@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <unordered_set>
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <string_view>

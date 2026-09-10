@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 
 namespace ptx_frontend::syntax_ast {
@@ -37,17 +38,6 @@ struct AstPredicateOperand {
   bool negated{};
   AstIdentifierRef name;
   SourceRange range;
-};
-
-/** Lexical category of the literal token underlying an immediate. */
-enum class AstImmediateKind : uint8_t {
-  /** Unprefixed integer spelling: decimal or leading-zero octal. */
-  DecimalInteger,
-  HexInteger,
-  F32Hex,
-  F64Hex,
-  DecimalFloat,
-  WarpSize,
 };
 
 /** A lexical literal whose semantic value is decoded during resolution. */
@@ -304,15 +294,6 @@ struct AstAttribute {
   AstAttributeKind kind{};
   std::vector<AstSyntax> values;
   SourceRange range;
-};
-
-enum class AstStateSpace : uint8_t {
-  Register,
-  Parameter,
-  Local,
-  Shared,
-  Global,
-  Constant,
 };
 
 struct AstVariableDeclaration {

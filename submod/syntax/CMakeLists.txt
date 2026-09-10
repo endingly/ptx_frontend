@@ -2,7 +2,7 @@ file(GLOB_RECURSE syntax_srcs CONFIGURE_DEPENDS src/*.cpp)
 add_library(syntax STATIC ${syntax_srcs})
 add_library(ptx_frontend::syntax ALIAS syntax)
 register_headers(syntax syntax PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(syntax PUBLIC ptx_frontend::cst)
+target_link_libraries(syntax PUBLIC ptx_frontend::base ptx_frontend::cst)
 
 if(BUILD_TESTING)
     file(GLOB syntax_test_srcs CONFIGURE_DEPENDS test/*.cpp)

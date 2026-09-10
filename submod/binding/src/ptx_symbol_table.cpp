@@ -1,4 +1,5 @@
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 #include <algorithm>
 #include <array>

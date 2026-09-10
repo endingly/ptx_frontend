@@ -6,8 +6,12 @@
 #include <string_view>
 #include <vector>
 
+#include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
-#include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
+
+namespace ptx_frontend::syntax_ast {
+struct AstModule;
+}
 
 namespace ptx_frontend::binding {
 
@@ -150,8 +154,11 @@ class SymbolTable {
   [[nodiscard]] const Symbol& symbol(SymbolId id) const;
 
   /** Return the lexical child block identified by its parent and AST range. */
-  [[nodiscard]] std::optional<ScopeId> blockScope(
-      ScopeId parent, SourceRange range) const;
+  [[nodiscard]] std::optional<ScopeId> blockScope(ScopeId parent,
+                                                  SourceRange range) const;
+
+  /** Return the function scope whose declaration occupies ``range``. */
+  [[nodiscard]] std::optional<ScopeId> functionScope(SourceRange range) const;
 
   /** Look up an exact or parameterized name, walking parent scopes. */
   [[nodiscard]] std::optional<SymbolLookup> lookup(ScopeId scope,

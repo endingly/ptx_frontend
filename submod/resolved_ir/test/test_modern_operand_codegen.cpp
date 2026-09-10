@@ -9,6 +9,7 @@
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 #include "resolved_ir.gen.hpp"
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 
 namespace ptx_frontend::resolved_ir {
 namespace {

@@ -38,11 +38,10 @@ def update_executable_identity(
 
 
 def compiler_identity(environment: Mapping[str, str]) -> str:
-    """Hash the compiler, build-tool, operating-system, and runner identities."""
+    """Hash installed tools and OS identity, excluding runner image revisions."""
     digest = hashlib.sha256()
     digest.update(Path("/etc/os-release").read_bytes())
-    for variable in ("ImageOS", "ImageVersion"):
-        digest.update(f"{variable}={environment.get(variable, 'local')}\n".encode("utf-8"))
+    digest.update(f"ImageOS={environment.get('ImageOS', 'local')}\n".encode("utf-8"))
 
     for variable in ("CC", "CXX"):
         update_executable_identity(

@@ -158,8 +158,8 @@ monthly runs, and manual dispatch. Pushes to `main` and `dev` instead warm the
 full Debug/Release build caches and run only the Debug installed-package consumer,
 without repeating the C++ or Python test suites. The library-only
 `ci-integration-smoke` preset remains available for local checks.
-See the [CI workflow and cache contract](docs/us-en/ci_workflows.md)
-([中文](docs/zh-han/ci_workflows.md)) for scope and local smoke commands.
+See the [CI workflow and cache contract](.github/CONTRIBUTING.md)
+for scope and local smoke commands.
 
 ## Use after installing
 

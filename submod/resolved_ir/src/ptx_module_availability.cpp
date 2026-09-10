@@ -289,13 +289,49 @@ void check_instruction_body(const ResolvedFunction& function,
 
 }  // namespace
 
-checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
-                                             const ResolvedModule& module) {
+checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
+                                    const ResolvedModule& module,
+                                    ModuleValidationPolicy policy) {
   if (auto associations = check_source_associations(ast, module); !associations)
     return associations;
   const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  // Retargeting must not bypass version/target-sensitive declaration rules.
+  const auto rebound = binding::bindSymbols(ast);
+  for (const auto& diagnostic : rebound.diagnostics) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
+        .range = diagnostic.range,
+        .message = diagnostic.message,
+    });
+  }
+  for (const auto& diagnostic :
+       declaration_semantics::checkDeclarations(ast, rebound.table)) {
+    using DeclarationKind = declaration_semantics::DeclarationDiagnosticKind;
+    const bool availability =
+        diagnostic.kind == DeclarationKind::UnsupportedKernelResourcePtxVersion ||
+        diagnostic.kind == DeclarationKind::UnsupportedDirectivePtxVersion ||
+        diagnostic.kind == DeclarationKind::UnsupportedParameterDeclaration;
+    diagnostics.push_back({
+        .kind = availability ? checker::CheckDiagnosticKind::UnsupportedAvailability
+                             : checker::CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic.range,
+        .message = diagnostic.message,
+    });
+  }
   std::optional<checker::TargetInfo> active_target;
+  /** Strict validation may not silently skip a source region without context. */
+  const auto require_context = [&](SourceRange range) {
+    if (!active_target && policy == ModuleValidationPolicy::RequireCompleteContext)
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::MissingValidationContext,
+          .range = range,
+          .message = "Complete validation requires a PTX version and a recognized source target.",
+      });
+  };
+  if (!version && policy == ModuleValidationPolicy::RequireCompleteContext)
+    require_context(ast.range);
+
   for (const auto& item : ast.items) {
     if (const auto* target =
             std::get_if<syntax_ast::AstTargetDirective>(&item)) {
@@ -322,16 +358,19 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
       }
     } else if (const auto* variable =
                    std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+      require_context(variable->range);
       if (active_target)
         check_attributes(variable->attributes, *active_target, diagnostics);
     } else if (const auto* alias =
                    std::get_if<syntax_ast::AstAliasDirective>(&item)) {
+      require_context(alias->range);
       if (active_target)
         append_requirement(diagnostics,
                            directive_availability(DirectiveAvailability::Alias),
                            *active_target, alias->range, ".alias");
     } else if (const auto* function =
                    std::get_if<syntax_ast::AstFunction>(&item)) {
+      require_context(function->range);
       if (!active_target)
         continue;
       check_attributes(function->attributes, *active_target, diagnostics);
@@ -359,5 +398,9 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
   return std::unexpected(std::move(diagnostics));
 }
 
+checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
+                                             const ResolvedModule& module) {
+  return validateModule(ast, module, ModuleValidationPolicy::AvailableContext);
+}
 
 }  // namespace ptx_frontend::resolved_ir

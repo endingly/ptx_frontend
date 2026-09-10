@@ -820,7 +820,7 @@ void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
 
 }  // namespace
 
-std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     const syntax_ast::AstModule& ast) {
   binding::SymbolBinding binding_result = binding::bindSymbols(ast);
 
@@ -977,7 +977,17 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
       .storage_declarations = std::move(*storage),
       .source_identity = detail::module_source_identity(ast),
   };
-  const auto availability = checkModuleAvailability(ast, module);
+  return module;
+}
+
+namespace {
+/** Resolve once, then apply the caller's explicit validation-context policy. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolve_and_check(
+    const syntax_ast::AstModule& ast, ModuleValidationPolicy policy) {
+  auto module = resolveModuleOnly(ast);
+  if (!module)
+    return module;
+  const auto availability = validateModule(ast, *module, policy);
   if (!availability) {
     ModuleResolveDiagnostics availability_diagnostics;
     availability_diagnostics.reserve(availability.error().size());
@@ -990,6 +1000,17 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     return std::unexpected(std::move(availability_diagnostics));
   }
   return module;
+}
+}  // namespace
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
+    const syntax_ast::AstModule& ast) {
+  return resolve_and_check(ast, ModuleValidationPolicy::AvailableContext);
+}
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveAndValidateModule(
+    const syntax_ast::AstModule& ast) {
+  return resolve_and_check(ast, ModuleValidationPolicy::RequireCompleteContext);
 }
 
 }  // namespace ptx_frontend::resolved_ir

@@ -396,6 +396,58 @@ TEST(PtxDeclarationSemantics, ValidatesParameterAvailabilityBoundaries) {
   }
 }
 
+/** Parameter availability follows the target active at each function source range. */
+TEST(PtxDeclarationSemantics, UsesEffectiveTargetForParameterAvailability) {
+  const CheckedModule upgraded = check(R"ptx(
+.version 6.0
+.target sm_20
+.func early() { ret; }
+.target sm_30
+.func late(.param .b8 payload[]) { ret; }
+)ptx");
+  EXPECT_TRUE(upgraded.binding.diagnostics.empty());
+  EXPECT_TRUE(upgraded.diagnostics.empty());
+
+  const CheckedModule downgraded = check(R"ptx(
+.version 6.0
+.target sm_30
+.func early() { ret; }
+.target sm_20
+.func late(.param .b8 payload[]) { ret; }
+)ptx");
+  EXPECT_TRUE(downgraded.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                downgraded,
+                DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+            1u);
+
+  const CheckedModule nested_downgraded = check(R"ptx(
+.version 6.0
+.target sm_30
+.func early() { ret; }
+.target sm_13
+.func late() {
+  .param .u32 staging;
+  indirect: .callprototype _ (.param .u32 argument);
+  ret;
+}
+)ptx");
+  EXPECT_TRUE(nested_downgraded.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                nested_downgraded,
+                DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+            2u);
+
+  const CheckedModule unknown_target = check(R"ptx(
+.version 6.0
+.target sm_20
+.target sm_123a
+.func late(.param .b8 payload[]) { ret; }
+)ptx");
+  EXPECT_TRUE(unknown_target.binding.diagnostics.empty());
+  EXPECT_TRUE(unknown_target.diagnostics.empty());
+}
+
 /** Entry parameter byte limits account for alignment and checked arithmetic. */
 TEST(PtxDeclarationSemantics, ValidatesEntryParameterByteBoundaries) {
   const auto entry = [](std::string_view version, uint64_t bytes) {

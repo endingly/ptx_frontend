@@ -115,6 +115,14 @@ and the explicit lowering functions when retained tokens and source text are
 required. `resolved_ir::resolveModule` runs binding and declaration checks as
 part of module resolution and returns their diagnostics together with
 instruction-resolution diagnostics.
+It retains compatibility behavior: instruction/directive checking runs wherever
+a recognized source `.target` and `.version` are available. For an explicit
+contract, `resolveModuleOnly` performs resolution (including binding, declaration,
+and call-ABI checks), while `resolveAndValidateModule` also requires complete
+validation context. Targetless fragments remain supported by resolution-only
+and compatibility entry points; they are not a claim of target-valid code.
+Model-only consumers can include `ptx_resolved_ir_model.hpp` without the Syntax
+AST or resolver/checker implementation interfaces.
 Imported binding, declaration, and checker diagnostics retain their typed
 categories and source locations through `ResolveDiagnostic`; `stage()` identifies
 their origin, and `previous_range` preserves related declaration locations.

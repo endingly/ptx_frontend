@@ -41,10 +41,10 @@ TEST(ModuleSourceIdentity, RejectsDifferentNestedBodyShape) {
   ASSERT_TRUE(original);
   ASSERT_TRUE(changed);
 
-  const auto module = resolveModule(*original);
+  const auto module = resolveModuleOnly(*original);
   ASSERT_TRUE(module.has_value());
-  const auto validation = checkModuleAvailability(
-      *changed, *module);
+  const auto validation = validateModule(
+      *changed, *module, ModuleValidationPolicy::AvailableContext);
   ASSERT_FALSE(validation.has_value());
   EXPECT_TRUE(hasDiagnostic(
       validation.error(), checker::CheckDiagnosticKind::ModuleSourceMismatch));
@@ -63,15 +63,39 @@ TEST(ModuleSourceIdentity, RejectsChangedGlobalType) {
   ASSERT_TRUE(original);
   ASSERT_TRUE(changed);
 
-  const auto module = resolveModule(*original);
+  const auto module = resolveModuleOnly(*original);
   ASSERT_TRUE(module.has_value());
-  const auto validation = checkModuleAvailability(
-      *changed, *module);
+  const auto validation = validateModule(
+      *changed, *module, ModuleValidationPolicy::AvailableContext);
   ASSERT_FALSE(validation.has_value());
   EXPECT_TRUE(hasDiagnostic(
       validation.error(), checker::CheckDiagnosticKind::ModuleSourceMismatch));
 }
 
+/** Retargeting rechecks unsized formals after structure matches the owned model. */
+TEST(ModuleSourceIdentity, RechecksUnsizedFormalAfterRetarget) {
+  const auto original = parseModule(R"ptx(
+.version 6.0
+.target sm_30
+.func f(.param .b8 bytes[]) { ret; }
+)ptx");
+  const auto retargeted = parseModule(R"ptx(
+.version 6.0
+.target sm_20
+.func f(.param .b8 bytes[]) { ret; }
+)ptx");
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(retargeted);
+
+  const auto module = resolveModuleOnly(*original);
+  ASSERT_TRUE(module.has_value());
+  const auto validation = validateModule(
+      *retargeted, *module, ModuleValidationPolicy::AvailableContext);
+  ASSERT_FALSE(validation.has_value());
+  EXPECT_TRUE(
+      hasDiagnostic(validation.error(),
+                    checker::CheckDiagnosticKind::UnsupportedAvailability));
+}
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

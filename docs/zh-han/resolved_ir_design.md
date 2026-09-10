@@ -31,7 +31,13 @@ payload 或 ABI。generated `Call::Direct` 现有三个额外的 `IndirectCall` 
 normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
-生成的公共层还提供了一个与具体 opcode 无关的边界：
+公共 model 入口是 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`，
+只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
+instruction checker 实现接口。解析入口位于 `ptx_resolved_ir_resolution.hpp`，
+检查入口位于 `ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 保留为兼容聚合头。
+生成的 model 包含 foundation 而非聚合头，避免循环包含。
+
+公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
 using ResolvedInstruction =
@@ -43,6 +49,44 @@ resolveInstruction(const syntax_ast::AstInstruction& ast);
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
+
+各模块入口的成功契约明确区分如下：
+
+| 入口 | 成功含义 |
+| --- | --- |
+| `resolveModuleOnly(ast)` | binding、declaration semantics、指令解析、call ABI/staging 检查通过；不运行末尾的 instruction/directive checker。 |
+| `resolveAndValidateModule(ast)` | 解析与末尾检查通过，每个受检区域都有已识别 source target 和 PTX version；缺少上下文时报错。 |
+| `resolveModule(ast)` | 保留兼容行为：解析并检查上下文可用的区域，仍接受 targetless fragment。 |
+| `validateModule(ast, module, policy)` | source 对应关系和显式策略下的 instruction/directive 检查通过，默认 `RequireCompleteContext`；module 必须已经通过解析。 |
+| `checkModuleAvailability(ast, module)` | `AvailableContext` 策略的兼容包装；虽然历史名称是 availability，实际在有上下文的区域运行完整 instruction checker。 |
+
+resolve-only 仍会在源码提供相关 version/target 时检查声明可用性，不是绕过非法声明的入口。
+binding、声明形状/类型规则、operand resolution 与 call ABI/staging 属于解析阶段。
+末尾的 generated checker 负责其余指令约束（包括不依赖 target 的 layout/type 关系），
+以及 PTX/SM/profile availability。因此 resolve-only 不保证所有 target-independent
+指令约束都已通过；全部验证保证均限于当前建模的指令和声明子集。
+每条 `.target` 替换 active source context，未知 target 也会清除此前已识别的 target。
+函数头、嵌套 body declaration 和局部 call prototype 使用所属函数所在的 source region，
+不与 lowering 阶段的 deployment target 选择混用。
+显式 validation catalog 包含不具有现代 capability 的历史 `sm_13` 与 `sm_20`，以一致检查 PTX 6.0
+的 `sm_20`/`sm_30` 声明边界；不会因此接受任意数字形式的 target spelling。
+
+`ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
+`SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；
+解析、storage 收集和声明检查通过此关联查找，不再配对独立遍历的下标。
+`instruction_ranges` 与 `instruction_opcodes` 为每条展平指令拥有一条记录；
+`source_target` 与 `source_version` 保存原始源码上下文，`source_identity` 拥有不依赖位置的
+语法身份，用于检查对应关系。
+`ResolvedModule::source_identity` 还覆盖 module declaration、alias 和 address size，
+避免改变 global 类型或 initializer 后静默复用另一份源码的指令绑定。
+
+验证通过 `ModuleSourceMismatch` 明确拒绝缺失、额外、含糊或结构不同的函数/指令关联。
+仍允许使用另行解析、函数体等价但行号变化并替换 target/version 的 AST；
+影响解析语义的 directive 仍须匹配。验证会重新绑定传入 AST 并重复 declaration semantics，
+包括新 source context 下的声明可用性。重复等价声明必须能唯一识别对应 occurrence，不会按顺序静默配对。
+指令诊断使用 IR 拥有的原始 range，directive 诊断使用传入 AST 的位置。
+严格验证缺少上下文时返回 `MissingValidationContext`。原始 module directive 仍需要 AST；
+这不代表提供无需 AST 的完整模块序列化契约。
 
 `ResolveDiagnostic` 拥有 message 和 source range 的值。模块解析保留原阶段的
 `binding_kind`、`declaration_kind` 或 `checker_kind`，以及主位置 `range` 和 binding

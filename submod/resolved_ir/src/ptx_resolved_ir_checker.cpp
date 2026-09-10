@@ -443,6 +443,23 @@ CheckResult check_operands(
     const Context& context) {
   CheckDiagnostics diagnostics;
 
+  for (const OperandView& operand : operands) {
+    if (operand.actual_shape != OperandShape::Vector ||
+        (operand.vector_arity != 0 &&
+         operand.vector_arity <= kMaxOperandElements)) {
+      continue;
+    }
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::InvalidVectorOperand,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Vector operand '{}' has an unsupported element count.",
+            operand.field_id),
+    });
+  }
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+
   for (const OperandDescriptor& descriptor : descriptors) {
     const OperandView* operand =
         find_operand(operands, descriptor.target_field_id);

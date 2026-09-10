@@ -3676,7 +3676,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("ResolvedVectorSpecialRegisterRef", source)
         self.assertIn("ResolvedVectorRegisterRef", source)
         self.assertIn("ResolvedPredicateSource", source)
-        self.assertIn(".vector_arity = static_cast<uint8_t>", source)
+        self.assertIn(".vector_arity = ", source)
+        self.assertNotIn(".vector_arity = static_cast<uint8_t>", source)
         self.assertIn(".value_availability = special_register_availability(info)", source)
         self.assertIn(
             ".value_availability = symbol->address_availability", source

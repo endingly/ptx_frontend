@@ -360,7 +360,9 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         self.assertIn(".maximum_elements = 64,", descriptor)
         self.assertIn(".allowed_element_shapes = check_end::OperandShape::Register | "
                       "check_end::OperandShape::Immediate,", descriptor)
-        self.assertIn(".vector_arity = static_cast<uint8_t>(", source)
+        self.assertIn(".vector_arity = ", source)
+        self.assertIn(".value.elements.size(),", source)
+        self.assertNotIn(".vector_arity = static_cast<uint8_t>(", source)
         self.assertIn('.type_tag = "tensor_descriptor",', syntax_source)
         self.assertIn(".minimum_elements = 1,", syntax_source)
         self.assertIn(".maximum_elements = 64,", syntax_source)

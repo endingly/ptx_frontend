@@ -55,8 +55,8 @@ class CompilerCacheIdentityTests(unittest.TestCase):
                 second = IDENTITY.compiler_identity(environment)
         self.assertEqual(first, second)
 
-    def test_runner_image_changes_identity(self) -> None:
-        """Runner image revisions partition caches even when tool output is identical."""
+    def test_runner_image_version_does_not_change_identity(self) -> None:
+        """Runner image revisions alone must not invalidate installed-tool caches."""
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             with mock.patch.object(IDENTITY.Path, "read_bytes", return_value=b"os-release"), mock.patch.object(
@@ -64,7 +64,7 @@ class CompilerCacheIdentityTests(unittest.TestCase):
             ):
                 older = IDENTITY.compiler_identity(self._environment(directory, "20260908.1"))
                 newer = IDENTITY.compiler_identity(self._environment(directory, "20260909.1"))
-        self.assertNotEqual(older, newer)
+        self.assertEqual(older, newer)
 
     def test_compiler_content_and_version_change_identity(self) -> None:
         """Compiler executable bytes and reported versions independently partition caches."""

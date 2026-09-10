@@ -11,7 +11,7 @@ outputs:
     description: UTC cache-maintenance epoch
     value: ${{ steps.epoch.outputs.month }}
   compiler-identity:
-    description: Installed GCC/tool identity and runner-image fingerprint
+    description: Installed GCC/tool and OS identity, excluding runner image revisions
     value: ${{ steps.identity.outputs.compiler }}
   vcpkg-revision:
     description: Full vcpkg builtin baseline from the manifest

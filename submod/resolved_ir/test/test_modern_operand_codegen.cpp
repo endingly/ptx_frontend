@@ -122,6 +122,47 @@ TEST(ModernOperandCodegen, ChecksModuleBoundCoordinateElementTypes) {
                   .has_value());
 }
 
+/** Real generated projections must retain oversized counts instead of wrapping. */
+TEST(ModernOperandCodegen, RejectsMutatedVectorProjectionCounts) {
+  PtxSyntaxParser parser("synthetic_modern {%r0, 1}, {%r1};");
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast.has_value());
+  ASSERT_TRUE(ast.diagnostics.empty());
+  const auto original = resolve<SyntheticModern>(*ast);
+  ASSERT_TRUE(original.has_value()) << original.error().message;
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 0},
+      .instruction_range = ast->range,
+  };
+  for (const bool coordinate : {true, false}) {
+    for (const size_t count : {0u, 4u, 5u, 64u, 65u, 255u, 256u, 258u}) {
+      SCOPED_TRACE(std::string{coordinate ? "coordinate " : "fragment "} +
+                   std::to_string(count));
+      auto instruction = *original;
+      auto& primitive = std::get<SyntheticModern::Primitive>(instruction.variant);
+      if (coordinate) {
+        const auto element = primitive.coordinate.value.elements.front();
+        primitive.coordinate.value.elements.resize(count, element);
+      } else {
+        const auto element = primitive.fragment.value.elements.front();
+        primitive.fragment.value.elements.resize(count, element);
+      }
+      const auto result = checker::check(instruction, context);
+      if (count >= 1 && count <= (coordinate ? 5u : 64u)) {
+        EXPECT_TRUE(result.has_value());
+      } else {
+        ASSERT_FALSE(result.has_value());
+        ASSERT_FALSE(result.error().empty());
+        EXPECT_EQ(result.error().front().kind,
+                  checker::CheckDiagnosticKind::InvalidVectorOperand);
+        EXPECT_EQ(result.error().front().range,
+                  coordinate ? primitive.coordinate.locs.front()
+                             : primitive.fragment.locs.front());
+      }
+    }
+  }
+}
+
 TEST(ModernOperandCodegen, ChecksAllModernFragmentElementTypes) {
   for (const size_t wrong_index : {size_t{0}, size_t{8}, size_t{63}}) {
     const auto wrong = resolveModule(parseModule(

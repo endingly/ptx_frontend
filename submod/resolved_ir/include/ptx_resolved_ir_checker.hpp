@@ -329,7 +329,8 @@ struct OperandView {
   std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   /** Per-element source shape for variable modern brace packs. */
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
-  uint8_t vector_arity = 0;
+  /** Original, untruncated element count before fixed-size detail projection. */
+  size_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
   std::optional<AvailabilityDescriptor> value_availability;
   std::string_view value_name{};

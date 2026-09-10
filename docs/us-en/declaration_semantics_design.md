@@ -79,7 +79,9 @@ members are rejected with both member ranges, and every valid member must have
 the same canonical `FunctionSignature`. `.branchtargets` members must be labels
 in the owning function; forward labels are valid. Compact entries such as
 `N<5>` are checked against the existing local labels without creating synthetic
-symbols, and report the compact-entry range for missing or overlapping labels.
+symbols, and report the compact-entry range for missing labels. The branch
+table is an ordered index sequence: repeated explicit destinations and overlaps
+with or between compact entries are valid and are not deduplicated.
 
 `.callprototype` rejects `.noreturn` with return parameters, applies existing
 alignment/array-extent checks to its formals, and requires an array formal to

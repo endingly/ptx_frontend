@@ -664,7 +664,7 @@ N1:
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::DuplicateMetadataTarget),
-            3u);
+            1u);
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             3u);
@@ -682,16 +682,16 @@ N1:
                             DeclarationDiagnosticKind::InvalidArrayDimension),
             1u);
 
-  const auto compact_duplicate = std::ranges::find_if(
+  const auto duplicate_call_target = std::ranges::find_if(
       result.diagnostics, [](const auto& diagnostic) {
         return diagnostic.kind ==
                    DeclarationDiagnosticKind::DuplicateMetadataTarget &&
-               diagnostic.message.find("N<2>") != std::string::npos;
+               diagnostic.message.find(".calltargets") != std::string::npos;
       });
-  ASSERT_NE(compact_duplicate, result.diagnostics.end());
-  ASSERT_TRUE(compact_duplicate->previous_range.has_value());
-  EXPECT_EQ(compact_duplicate->previous_range->start.line, 10);
-  EXPECT_EQ(compact_duplicate->range.start.line, 10);
+  ASSERT_NE(duplicate_call_target, result.diagnostics.end());
+  ASSERT_TRUE(duplicate_call_target->previous_range.has_value());
+  EXPECT_EQ(duplicate_call_target->previous_range->start.line, 9);
+  EXPECT_EQ(duplicate_call_target->range.start.line, 9);
 
   const auto incompatible = std::ranges::find_if(
       result.diagnostics, [](const auto& diagnostic) {
@@ -705,7 +705,7 @@ N1:
 }
 
 TEST(PtxDeclarationSemantics,
-     DiagnosesSymbolicDuplicateBranchTargetsBeforeResolution) {
+     AllowsRepeatedSymbolicBranchTargetsWhileCheckingEachDestination) {
   const CheckedModule result = check(R"ptx(
 .func dispatch() {
   branches: .branchtargets Missing, Missing, N<3>, N<2>;
@@ -715,13 +715,31 @@ TEST(PtxDeclarationSemantics,
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::DuplicateMetadataTarget),
-            2u);
+            0u);
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             4u);
 }
 
-TEST(PtxDeclarationSemantics, DiagnosesOverlappingCompactBranchTargetPrefixes) {
+TEST(PtxDeclarationSemantics, AllowsOverlappingBranchTargetDestinations) {
+  const CheckedModule result = check(R"ptx(
+.func dispatch() {
+N0:
+N1:
+N2:
+N3:
+N10:
+N11:
+  branches: .branchtargets N0, N0, N<4>, N<2>, N1<2>;
+}
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics,
+     ReportsMissingLabelsForDistinctCompactBranchTargetPrefixes) {
   const CheckedModule result = check(R"ptx(
 .func dispatch() {
   branches: .branchtargets N<20>, N1<2>;
@@ -731,7 +749,7 @@ TEST(PtxDeclarationSemantics, DiagnosesOverlappingCompactBranchTargetPrefixes) {
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::DuplicateMetadataTarget),
-            1u);
+            0u);
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             2u);

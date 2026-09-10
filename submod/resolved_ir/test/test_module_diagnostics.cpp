@@ -195,11 +195,19 @@ TEST(ModuleDiagnostics, ProjectsCheckerDiagnosticForRecognizedTargetAndVersion) 
       checkModuleAvailability(*checked_ast, *unchecked_module);
   ASSERT_FALSE(expected.has_value());
   ASSERT_EQ(expected.error().size(), 1u);
+  // Retargeting preserves the IR's original instruction location, not AST-B's.
+  EXPECT_EQ(expected.error().front().range,
+            unchecked_module->functions.front().instruction_ranges.front());
+  auto same_source_expected = expected.error().front();
+  const auto& checked_function =
+      std::get<syntax_ast::AstFunction>(checked_ast->items.back());
+  same_source_expected.range =
+      std::get<syntax_ast::AstInstruction>(checked_function.body.back()).range;
 
   const auto resolved = resolveModule(*checked_ast);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), expected.error().size());
-  expectCheckerProjection(resolved.error().front(), expected.error().front());
+  expectCheckerProjection(resolved.error().front(), same_source_expected);
   EXPECT_EQ(resolved.error().front().checker_kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
 }

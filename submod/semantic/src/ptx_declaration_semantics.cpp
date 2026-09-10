@@ -1594,22 +1594,13 @@ class Checker {
                                 std::optional<PtxVersion> module_version,
                                 std::optional<uint32_t> module_sm) {
     std::unordered_map<std::string, SeenFunction> seen_functions;
-    std::vector<binding::ScopeId> function_scopes;
-    for (const auto& scope : symbols_.scopes()) {
-      if (scope.kind == binding::ScopeKind::Function)
-        function_scopes.push_back(scope.id);
-    }
-    size_t function_index = 0;
     for (const auto& item : module.items) {
       const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
       if (function == nullptr)
         continue;
       seen_functions.try_emplace(function->name.syntax.text,
                                  SeenFunction{functionSignature(*function)});
-      const auto scope = function_index < function_scopes.size()
-                             ? std::optional{function_scopes[function_index]}
-                             : std::nullopt;
-      ++function_index;
+      const auto scope = symbols_.functionScope(function->range);
       if (scope)
         checkControlFlowMetadataBody(function->body, *scope, seen_functions,
                                      module_version, module_sm);

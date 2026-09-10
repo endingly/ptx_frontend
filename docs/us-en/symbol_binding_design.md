@@ -38,6 +38,11 @@ parameter; a function symbol also records its `.func`/`.entry` classification.
 A function symbol points to its function scope through `owned_scope`. When a
 prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.
+Each function scope also owns its declaration's `SourceRange`.
+`functionScope(range)` returns the unique matching occurrence (or no value for
+a missing/ambiguous range), so clients need not align function and scope-vector
+traversals. This occurrence identity must not be replaced by `owned_scope` when
+processing a prototype's local parameters.
 
 Lookup checks exact names first, parameterized names second, and then walks to
 the parent scope. A block declaration can therefore shadow an outer or module

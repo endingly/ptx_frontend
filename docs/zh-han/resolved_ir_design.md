@@ -44,6 +44,15 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
+`ResolveDiagnostic` 拥有 message 和 source range 的值。模块解析保留原阶段的
+`binding_kind`、`declaration_kind` 或 `checker_kind`，以及主位置 `range` 和 binding
+或 declaration semantics 提供的 `previous_range`。`stage()` 由类型化类别推导出
+`Binding`、`DeclarationSemantics` 或 `Checking`。转换而来的诊断恰有一个类别字段；
+resolver 原生错误的三个类别字段均为空，阶段为 `Resolution`，目前没有更细的错误码。
+调用者无需解析 message，即可检查转换诊断的原始类别与关联位置；源码和 AST 销毁后
+这些信息仍然有效。诊断顺序和原有提前返回边界不变。既有 aggregate 字段保持原顺序，
+新增可选类别字段追加在末尾。
+
 `resolveInstruction` 根据指令数据库生成，并分发到现有的 `resolve<T>` 特化。调用者不再
 需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。`resolveModule` 先建立
 `SymbolTable`，再为每个 function scope 构造显式 `ResolveContext`；返回的

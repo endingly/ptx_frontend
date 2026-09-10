@@ -823,6 +823,8 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     diagnostics.push_back(ResolveDiagnostic{
         .range = diagnostic.range,
         .message = diagnostic.message,
+        .previous_range = diagnostic.previous_range,
+        .binding_kind = diagnostic.kind,
     });
   }
   for (const auto& diagnostic :
@@ -970,7 +972,9 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     availability_diagnostics.reserve(availability.error().size());
     for (const checker::CheckDiagnostic& diagnostic : availability.error()) {
       availability_diagnostics.push_back(
-          {.range = diagnostic.range, .message = diagnostic.message});
+          {.range = diagnostic.range,
+           .message = diagnostic.message,
+           .checker_kind = diagnostic.kind});
     }
     return std::unexpected(std::move(availability_diagnostics));
   }

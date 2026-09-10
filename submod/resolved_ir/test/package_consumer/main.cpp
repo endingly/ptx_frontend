@@ -380,6 +380,43 @@ int check_fma_contract() {
   return 0;
 }
 
+/** Verify imported binding diagnostics survive through the installed module API. */
+int check_module_diagnostics() {
+  using namespace ptx_frontend;
+  std::vector<binding::BindDiagnostic> original;
+  resolved_ir::ModuleResolveDiagnostics diagnostics;
+  {
+    const std::string source =
+        ".entry k() { .reg .u32 %r; .reg .u32 %r; }";
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return 100;
+    original = binding::bindSymbols(*ast).diagnostics;
+    auto result = resolved_ir::resolveModule(*ast);
+    if (result || original.empty())
+      return 101;
+    diagnostics = std::move(result.error());
+  }
+  if (diagnostics.size() < original.size())
+    return 102;
+  for (size_t index = 0; index < original.size(); ++index) {
+    const auto& diagnostic = diagnostics[index];
+    const auto& expected = original[index];
+    if (diagnostic.stage() != resolved_ir::ResolveDiagnosticStage::Binding ||
+        diagnostic.binding_kind != expected.kind ||
+        diagnostic.declaration_kind || diagnostic.checker_kind ||
+        diagnostic.range != expected.range ||
+        diagnostic.previous_range != expected.previous_range ||
+        diagnostic.message != expected.message)
+      return 103;
+  }
+  if (original.front().kind != binding::BindDiagnosticKind::DuplicateSymbol ||
+      !diagnostics.front().previous_range)
+    return 104;
+  return 0;
+}
+
 int main() {
   constexpr std::string_view source = "add.u32 %r0, %r1, 1;";
   ptx_frontend::PtxCstParser cst_parser(source);
@@ -481,6 +518,9 @@ int main() {
   }
   if (const int fma_result = check_fma_contract(); fma_result != 0)
     return fma_result;
+  if (const int diagnostic_result = check_module_diagnostics();
+      diagnostic_result != 0)
+    return diagnostic_result;
 
   ptx_frontend::PtxSyntaxParser call_parser(
       "call (%result), callee, (%argument, 1);");

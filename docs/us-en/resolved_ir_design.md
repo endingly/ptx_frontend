@@ -51,6 +51,18 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
+`ResolveDiagnostic` owns its message and source ranges. Module resolution
+preserves the originating `binding_kind`, `declaration_kind`, or `checker_kind`,
+as well as the primary `range` and any `previous_range` supplied by binding or
+declaration semantics. `stage()` derives `Binding`, `DeclarationSemantics`, or
+`Checking` from that typed category. Exactly one category is populated for an
+imported diagnostic; native resolver errors keep all three empty and report
+`Resolution`. Native resolver errors do not yet have a finer-grained code.
+Consumers can inspect imported error categories and related locations without
+parsing the human-readable message, even after source text and AST destruction.
+Diagnostic ordering and existing early-return boundaries are unchanged. The
+existing aggregate fields remain in order, with new optional categories appended.
+
 `resolveInstruction` is generated from the instruction database and dispatches
 to the existing `resolve<T>` specialization. This keeps opcode dispatch out of
 callers while retaining the strongly typed per-opcode structures.

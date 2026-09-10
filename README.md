@@ -115,6 +115,9 @@ and the explicit lowering functions when retained tokens and source text are
 required. `resolved_ir::resolveModule` runs binding and declaration checks as
 part of module resolution and returns their diagnostics together with
 instruction-resolution diagnostics.
+Imported binding, declaration, and checker diagnostics retain their typed
+categories and source locations through `ResolveDiagnostic`; `stage()` identifies
+their origin, and `previous_range` preserves related declaration locations.
 
 ## Requirements
 

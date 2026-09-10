@@ -273,13 +273,46 @@ struct ResolvedInstructionDescriptor {
 
 };  // namespace check_end
 
+/** Origin of a diagnostic returned through the resolution API. */
+enum class ResolveDiagnosticStage : uint8_t {
+  Resolution,
+  Binding,
+  DeclarationSemantics,
+  Checking,
+};
+
+/**
+ * Owned diagnostic returned by standalone or module resolution.
+ *
+ * Imported diagnostics retain their original typed category. At most one of
+ * the category fields is populated by the frontend; native resolution errors
+ * have none. Source ranges are values and the message owns its text, so this
+ * record remains valid after the source, AST, and intermediate results die.
+ */
 struct ResolveDiagnostic {
+  /** Primary source location supplied by the originating stage. */
   SourceRange range;
+  /** Owned human-readable explanation; not a machine-readable error code. */
   std::string message;
   /** Preserved declaration-stage category; absent for other diagnostic stages. */
   std::optional<declaration_semantics::DeclarationDiagnosticKind> declaration_kind{};
-  /** Related declaration location when provided by declaration semantics. */
+  /** Related declaration location supplied by binding or declaration semantics. */
   std::optional<SourceRange> previous_range{};
+  /** Original binding category; absent for other diagnostic stages. */
+  std::optional<binding::BindDiagnosticKind> binding_kind{};
+  /** Original checker category; absent for other diagnostic stages. */
+  std::optional<checker::CheckDiagnosticKind> checker_kind{};
+
+  /** Derive the origin from the typed category without duplicating stage state. */
+  [[nodiscard]] constexpr ResolveDiagnosticStage stage() const noexcept {
+    if (binding_kind)
+      return ResolveDiagnosticStage::Binding;
+    if (declaration_kind)
+      return ResolveDiagnosticStage::DeclarationSemantics;
+    if (checker_kind)
+      return ResolveDiagnosticStage::Checking;
+    return ResolveDiagnosticStage::Resolution;
+  }
 };
 
 class ResolveException : public std::runtime_error {

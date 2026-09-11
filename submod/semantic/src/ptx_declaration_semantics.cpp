@@ -215,13 +215,13 @@ ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
               signedBoolean(left.bits != 0 || right.bits != 0)};
     case Operator::BitwiseAnd:
       return {ExpressionCategory::Integer,
-              IntegerValue{left.bits & right.bits, IntegerType::Unsigned}};
+              IntegerValue{left.bits & right.bits, converted_type}};
     case Operator::BitwiseXor:
       return {ExpressionCategory::Integer,
-              IntegerValue{left.bits ^ right.bits, IntegerType::Unsigned}};
+              IntegerValue{left.bits ^ right.bits, converted_type}};
     case Operator::BitwiseOr:
       return {ExpressionCategory::Integer,
-              IntegerValue{left.bits | right.bits, IntegerType::Unsigned}};
+              IntegerValue{left.bits | right.bits, converted_type}};
     case Operator::Remainder:
       if (right.bits == 0)
         return {};

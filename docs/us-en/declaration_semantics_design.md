@@ -161,3 +161,7 @@ link-time selection across modules. Integer constant-expression handling
 covers the current AST grammar and propagates PTX `.s64`/`.u64` types; new
 constant operators must extend classification, signedness propagation, and
 evaluation together.
+
+Binary bitwise operators follow the detailed PTX usual-conversion rule; see
+[the signedness decision and reproducible assembler evidence](bitwise_constant_policy.md)
+for the conflicting summary-table wording and tool-version limitations.

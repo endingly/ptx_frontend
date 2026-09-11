@@ -132,3 +132,6 @@ initializer value/reference。即使 declaration checker 接受某个 expression
 symbol 选择。integer constant expression 当前覆盖已有 AST grammar，并按 PTX 的
 `.s64/.u64` 类型传播规则求值；后续若增加新的 constant operator，需要同时扩展分类、
 signedness 传播与求值逻辑。
+
+二元位运算遵循 PTX 正文中的通常算术转换规则；汇总表的不同表述、可复现汇编
+证据和工具版本限制见[符号性决策说明](bitwise_constant_policy.md)。

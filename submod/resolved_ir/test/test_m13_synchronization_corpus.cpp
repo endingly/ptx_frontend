@@ -11,14 +11,14 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include "test_syntax_parse_helpers.hpp"
+
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-syntax_ast::AstModule parseModule(std::string_view source) {
+SyntaxModuleParseResult parseModule(std::string_view source) {
   PtxSyntaxParser parser(source);
-  auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value()) << module.diagnostics.front().message;
-  return std::move(*module);
+  return parser.parseModule();
 }
 
 std::string readCorpusFile(const std::filesystem::path& file) {
@@ -78,9 +78,10 @@ TEST(ResolvedModule, ResolvesAndChecksEveryM13SynchronizationCorpusModule) {
 TEST(ResolvedModule, RejectsM13MatchSinkBoundaryPairsAtTheirDestination) {
   const auto reject = [](std::string_view source) {
     const auto ast = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
     const auto& instruction = std::get<syntax_ast::AstInstruction>(
-        std::get<syntax_ast::AstFunction>(ast.items.back()).body.back());
-    const auto resolved = resolveModule(ast);
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body.back());
+    const auto resolved = resolveModule(*ast);
     ASSERT_FALSE(resolved.has_value());
     ASSERT_FALSE(resolved.error().empty());
     EXPECT_EQ(resolved.error().front().range,
@@ -99,10 +100,11 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
 .global .align 8 .b64 global_barrier[2];
 .entry kernel() { mbarrier.inval.b64 [global_barrier]; }
 )ptx");
-  const auto mbarrier = resolveModule(mbarrier_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(mbarrier_ast);
+  const auto mbarrier = resolveModule(*mbarrier_ast);
   ASSERT_TRUE(mbarrier.has_value());
   const auto& mbarrier_instruction = std::get<syntax_ast::AstInstruction>(
-      std::get<syntax_ast::AstFunction>(mbarrier_ast.items.back()).body.front());
+      std::get<syntax_ast::AstFunction>(mbarrier_ast->items.back()).body.front());
   const auto mbarrier_checked = checker::check(
       std::get<Mbarrier>(mbarrier->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90},
@@ -118,10 +120,11 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
 .global .align 16 .b8 global_value[128];
 .entry kernel() { fence.proxy.tensormap::generic.acquire.cluster [global_value], 64; }
 )ptx");
-  const auto proxy = resolveModule(proxy_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(proxy_ast);
+  const auto proxy = resolveModule(*proxy_ast);
   ASSERT_TRUE(proxy.has_value());
   const auto& proxy_instruction = std::get<syntax_ast::AstInstruction>(
-      std::get<syntax_ast::AstFunction>(proxy_ast.items.back()).body.front());
+      std::get<syntax_ast::AstFunction>(proxy_ast->items.back()).body.front());
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const auto proxy_checked = checker::check(
       std::get<Fence>(proxy->functions.front().body.front()),
@@ -139,10 +142,11 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
   const auto barrier_ast = parseModule(R"ptx(
 .entry kernel() { barrier.cluster.arrive; }
 )ptx");
-  const auto barrier = resolveModule(barrier_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(barrier_ast);
+  const auto barrier = resolveModule(*barrier_ast);
   ASSERT_TRUE(barrier.has_value());
   const auto& barrier_instruction = std::get<syntax_ast::AstInstruction>(
-      std::get<syntax_ast::AstFunction>(barrier_ast.items.back()).body.front());
+      std::get<syntax_ast::AstFunction>(barrier_ast->items.back()).body.front());
   const auto no_capability = checker::check(
       std::get<Barrier>(barrier->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90},
@@ -169,10 +173,11 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
 clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %r0;
 }
 )ptx");
-  const auto query = resolveModule(query_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(query_ast);
+  const auto query = resolveModule(*query_ast);
   ASSERT_TRUE(query.has_value());
   const auto& query_instruction = std::get<syntax_ast::AstInstruction>(
-      std::get<syntax_ast::AstFunction>(query_ast.items.back()).body.back());
+      std::get<syntax_ast::AstFunction>(query_ast->items.back()).body.back());
   const auto sm100 = base::find_target_profile("sm_100");
   ASSERT_TRUE(sm100.has_value());
   const auto query_checked = checker::check(
@@ -199,10 +204,11 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   mbarrier.arrive.shared::cluster.b64 _, [bar];
 }
 )ptx");
-  const auto sink = resolveModule(sink_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(sink_ast);
+  const auto sink = resolveModule(*sink_ast);
   ASSERT_TRUE(sink.has_value()) << sink.error().front().message;
   const auto& sink_function =
-      std::get<syntax_ast::AstFunction>(sink_ast.items.back());
+      std::get<syntax_ast::AstFunction>(sink_ast->items.back());
   const auto& generic_sink_instruction = std::get<syntax_ast::AstInstruction>(
       sink_function.body[0]);
   const auto& cluster_sink_instruction = std::get<syntax_ast::AstInstruction>(
@@ -236,10 +242,11 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
 .shared .align 8 .b64 bar;
 .entry kernel() { mbarrier.arrive.shared::cluster.b64 _, [bar], 1048576; }
 )ptx");
-  const auto count = resolveModule(count_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(count_ast);
+  const auto count = resolveModule(*count_ast);
   ASSERT_TRUE(count.has_value()) << count.error().front().message;
   const auto& count_instruction = std::get<syntax_ast::AstInstruction>(
-      std::get<syntax_ast::AstFunction>(count_ast.items.back()).body.back());
+      std::get<syntax_ast::AstFunction>(count_ast->items.back()).body.back());
   const auto invalid_count = checker::check(
       std::get<Mbarrier>(count->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {9, 3},
@@ -265,13 +272,14 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   mbarrier.try_wait.parity.b64 %p0, [bar], 2;
 }
 )ptx");
-  const auto parity = resolveModule(parity_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parity_ast);
+  const auto parity = resolveModule(*parity_ast);
   ASSERT_TRUE(parity.has_value()) << parity.error().front().message;
   const checker::Context mbarrier_context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
   };
   const auto& parity_function =
-      std::get<syntax_ast::AstFunction>(parity_ast.items.back());
+      std::get<syntax_ast::AstFunction>(parity_ast->items.back());
   for (const auto index : {0u, 1u, 3u, 4u})
     EXPECT_TRUE(checker::check(
                     std::get<Mbarrier>(parity->functions.front().body[index]),
@@ -290,7 +298,7 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
                   .syntax.range);
   }
 
-  const auto reports = resolveModule(parseModule(R"ptx(
+  const auto reports_ast = parseModule(R"ptx(
 .shared .align 8 .b64 bar;
 .entry kernel() {
   .reg .pred %p<2>;
@@ -301,7 +309,9 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, %report, [bar], %state;
   mbarrier.test_wait.parity.phase_type::conditional.b64 %p0, [bar], 1;
 }
-)ptx"));
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(reports_ast);
+  const auto reports = resolveModule(*reports_ast);
   ASSERT_TRUE(reports.has_value()) << reports.error().front().message;
   for (const auto& instruction : reports->functions.front().body)
     EXPECT_TRUE(
@@ -312,10 +322,11 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
 .entry kernel() { .reg .pred %p<2>; .reg .b8 %report; .reg .b64 %state;
   mbarrier.test_wait.parity.phase_type::conditional.b64 %p0|%p1, %report, [bar], 1; }
 )ptx");
-  const auto invalid_conditional = resolveModule(invalid_conditional_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(invalid_conditional_ast);
+  const auto invalid_conditional = resolveModule(*invalid_conditional_ast);
   ASSERT_FALSE(invalid_conditional.has_value());
   const auto& conditional_instruction = std::get<syntax_ast::AstInstruction>(
-      std::get<syntax_ast::AstFunction>(invalid_conditional_ast.items.back())
+      std::get<syntax_ast::AstFunction>(invalid_conditional_ast->items.back())
           .body.back());
   EXPECT_EQ(invalid_conditional.error().front().range,
             conditional_instruction.range);
@@ -340,11 +351,12 @@ TEST(ResolvedModule, ChecksM13ClusterlaunchcontrolBoundaryMatrix) {
   const auto check_alignment = [&](std::string_view source,
                                    size_t operand_index) {
     const auto ast = parseModule(source);
-    const auto resolved = resolveModule(ast);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto resolved = resolveModule(*ast);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     const auto& instruction =
         std::get<syntax_ast::AstInstruction>(
-            std::get<syntax_ast::AstFunction>(ast.items.back()).body.back());
+            std::get<syntax_ast::AstFunction>(ast->items.back()).body.back());
     const auto checked = checker::check(
         std::get<Clusterlaunchcontrol>(resolved->functions.front().body.front()),
         context_for(*profile, instruction.range));
@@ -371,11 +383,12 @@ TEST(ResolvedModule, ChecksM13ClusterlaunchcontrolBoundaryMatrix) {
 .shared .align 8 .b8 barrier[8];
 .entry kernel() { clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [response], [barrier]; }
 )ptx");
-  const auto multicast = resolveModule(multicast_ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(multicast_ast);
+  const auto multicast = resolveModule(*multicast_ast);
   ASSERT_TRUE(multicast.has_value()) << multicast.error().front().message;
   const auto& multicast_instruction =
       std::get<syntax_ast::AstInstruction>(
-          std::get<syntax_ast::AstFunction>(multicast_ast.items.back()).body.back());
+          std::get<syntax_ast::AstFunction>(multicast_ast->items.back()).body.back());
   const auto& resolved_multicast =
       std::get<Clusterlaunchcontrol>(multicast->functions.front().body.front());
   EXPECT_TRUE(checker::check(resolved_multicast,
@@ -409,9 +422,10 @@ TEST(ResolvedModule, ChecksMbarrierParityIntegerSourceValues) {
   mbarrier.test_wait.parity.shared.b64 %p, [mb], )ptx" +
                                std::string{literal} + ";\n}\n";
     const auto ast = parseModule(source);
-    const auto resolved = resolveModule(ast);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto resolved = resolveModule(*ast);
     const auto& instruction = std::get<syntax_ast::AstInstruction>(
-        std::get<syntax_ast::AstFunction>(ast.items.back()).body.back());
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body.back());
     if (!expected_valid) {
       ASSERT_FALSE(resolved.has_value());
       EXPECT_EQ(resolved.error().front().range,

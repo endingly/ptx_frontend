@@ -65,7 +65,7 @@ exercise all 70 canonical modifier combinations (including the half OOB `.sat`
 extension), invalid combinations, and floating-literal conversion boundaries.
 [Availability tests](../../submod/resolved_ir/test/test_ptx_resolved_ir_checker.cpp)
 check each of the 16 variants at its minimum PTX/SM and independently below each
-minimum. [Module tests](../../submod/resolved_ir/test/test_ptx_resolved_module.cpp)
+minimum. [Module tests](../../submod/resolved_ir/test/test_resolved_module_instruction_types.cpp)
 check declared operand types, exact bit containers, and each mixed operand
 position. The [installed C++ consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)
 parses, resolves, and checks all 16 variants using only public installed APIs.

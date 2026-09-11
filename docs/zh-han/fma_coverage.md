@@ -59,7 +59,7 @@ decimal literal 先按 binary64 求值再转换为 operand type；包括会缩�
 及浮点字面量转换边界。
 [Availability test](../../submod/resolved_ir/test/test_ptx_resolved_ir_checker.cpp)
 对 16 个 variant 逐一验证最低 PTX/SM，并分别验证低于各项最低版本时的拒绝行为。
-[Module test](../../submod/resolved_ir/test/test_ptx_resolved_module.cpp) 验证声明的
+[Module test](../../submod/resolved_ir/test/test_resolved_module_instruction_types.cpp) 验证声明的
 operand type、exact bit container 以及 mixed form 的每个 operand position。
 [已安装的 C++ consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)
 只使用公开安装 API，对全部 16 个 variant 执行 parse、resolve 和 check。

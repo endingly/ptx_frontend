@@ -217,7 +217,9 @@ strict conversion explicitly. Call literals checked against formal parameter
 types and address offsets retain strict target-width representability. A signed
 `-0` is numerically zero,
 whereas floating negative zero retains its IEEE sign bit. Decimal floats
-currently convert to `F32` and `F64`, while
+currently convert to `F32` and `F64`; a single leading `+` is normalized only
+at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
+their normal floating semantics. Raw `0f`/`0d` bit-pattern rules are unchanged.
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
 respectively. Other floating formats require explicit quantization rules and
 must not silently take the integer path.

@@ -173,6 +173,8 @@ multiple-of control 比较保留的 source bits，而无约束的 control 显式
 按 formal parameter type 检查的 call literal 与 address offset 继续执行严格的 target-width
 representability 检查。signed `-0` 在数值上是 zero，而 floating negative
 zero 保留其 IEEE sign bit。decimal float 目前支持转换至 `F32` 与 `F64`；
+单个 leading `+` 只在 decimal decoding 时规范化，而 leading `-`、signed zero 与
+exponent sign 保持通常的 floating semantics。raw `0f`/`0d` bit-pattern rule 不变。
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
 其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
 

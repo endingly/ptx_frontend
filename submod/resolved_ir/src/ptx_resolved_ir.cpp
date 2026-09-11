@@ -1893,6 +1893,15 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                     immediate.syntax.text, to_string(type))));
   }
 
+  if (!text.empty() && text.front() == '+') {
+    text.remove_prefix(1);
+    if (text.empty() || text.front() == '+' || text.front() == '-') {
+      return std::unexpected(invalid_immediate(
+          immediate, fmt::format("Invalid decimal floating literal '{}'.",
+                                 immediate.syntax.text)));
+    }
+  }
+
   double value = 0.0;
   const auto [end, error] =
       std::from_chars(text.data(), text.data() + text.size(), value,

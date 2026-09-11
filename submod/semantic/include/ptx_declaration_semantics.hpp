@@ -117,6 +117,8 @@ enum class DeclarationDiagnosticKind : uint8_t {
   UnsupportedParameterDeclaration,
   /** An integer literal cannot be decoded as an exact uint64_t magnitude. */
   InvalidIntegerLiteral,
+  /** A function address was used before its declaration occurrence. */
+  FunctionAddressBeforeDeclaration,
 };
 
 struct DeclarationDiagnostic {

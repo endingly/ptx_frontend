@@ -122,6 +122,16 @@ struct SymbolReference {
   std::optional<SymbolLookup> target;
 };
 
+/** One lexical declaration occurrence for a stable symbol identity. */
+struct SymbolDeclarationOccurrence {
+  /** Stable identity shared by compatible redeclarations. */
+  SymbolId symbol;
+  /** Declaration spelling location retained for diagnostics and association. */
+  SourceRange range;
+  /** Source traversal position; absent when the source location is ambiguous. */
+  std::optional<uint32_t> lexical_order;
+};
+
 enum class BindDiagnosticKind : uint8_t {
   DuplicateSymbol,
   InvalidParameterizedCount,
@@ -189,6 +199,20 @@ class SymbolTable {
    */
   [[nodiscard]] const SymbolReference* initializerReference(
       SourceRange range) const noexcept;
+
+  /** Return the brx.idx target-set reference recorded at ``range``, if any. */
+  [[nodiscard]] const SymbolReference* branchTargetSetReference(
+      SourceRange range) const noexcept;
+
+  /**
+   * Return whether a declaration occurrence for ``symbol`` precedes ``use``.
+   *
+   * ``nullopt`` means the supplied source has no unambiguous lexical ordering
+   * for ``use``.  This deliberately keeps occurrence visibility separate from
+   * the symbol's canonical identity.
+   */
+  [[nodiscard]] std::optional<bool> hasPriorDeclaration(
+      SymbolId symbol, SourceRange use) const noexcept;
 
  private:
   friend struct SymbolTableBuilder;
@@ -285,9 +309,17 @@ class SymbolTable {
   std::vector<Scope> scopes_;
   std::vector<Symbol> symbols_;
   std::vector<SymbolReference> references_;
+  /** Declaration occurrences grouped by stable SymbolId. */
+  std::vector<std::vector<SymbolDeclarationOccurrence>>
+      declaration_occurrences_;
+  /** Unambiguous lexical source order keyed by exact syntax range. */
+  std::unordered_map<SourceRange, uint32_t, SourceRangeHash> source_orders_;
   /** First initializer reference by exact source range; values index references_. */
   std::unordered_map<SourceRange, size_t, SourceRangeHash>
       initializer_reference_indexes_;
+  /** Exact brx.idx target-set reference ranges; values index references_. */
+  std::unordered_map<SourceRange, size_t, SourceRangeHash>
+      branch_target_set_reference_indexes_;
   /** Scope-aligned owned accelerators; never borrow Symbol::name storage. */
   std::vector<ScopeNameIndex> scope_name_indexes_;
 };

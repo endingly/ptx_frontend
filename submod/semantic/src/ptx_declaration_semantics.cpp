@@ -1707,12 +1707,50 @@ class Checker {
       } else if (const auto* targets =
                      std::get_if<syntax_ast::AstBranchTargets>(&body_item)) {
         checkBranchTargets(function_scope, *targets);
+      } else if (const auto* instruction =
+                     std::get_if<syntax_ast::AstInstruction>(&body_item)) {
+        checkIndexedBranchTargetSetVisibility(function_scope, *instruction);
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
                          &body_item);
                  block != nullptr && *block) {
         checkControlFlowMetadataBody((*block)->body, function_scope,
                                      seen_functions, module_version, module_sm);
+      }
+    }
+  }
+
+  /** Require each brx.idx target-set declaration to precede its use site. */
+  void checkIndexedBranchTargetSetVisibility(
+      binding::ScopeId function_scope,
+      const syntax_ast::AstInstruction& instruction) {
+    for (const auto& operand : instruction.operands) {
+      const auto* target_set =
+          std::get_if<syntax_ast::AstBranchTargetSet>(&operand);
+      if (target_set == nullptr)
+        continue;
+      const binding::SymbolReference* reference =
+          symbols_.branchTargetSetReference(target_set->name.syntax.range);
+      if (reference == nullptr || !reference->target)
+        continue;
+      const binding::Symbol& symbol =
+          symbols_.symbol(reference->target->symbol);
+      if (symbol.kind != binding::SymbolKind::BranchTargetSet ||
+          symbol.scope != function_scope)
+        continue;
+      const auto prior = symbols_.hasPriorDeclaration(
+          symbol.id, target_set->name.syntax.range);
+      if (!prior || !*prior) {
+        diagnose(
+            DeclarationDiagnosticKind::UnresolvedMetadataTarget,
+            target_set->name.syntax.range,
+            prior ? fmt::format("brx.idx branch target list '{}' must be "
+                                "defined before its use.",
+                                target_set->name.syntax.text)
+                  : fmt::format("Cannot establish whether brx.idx branch "
+                                "target list '{}' is defined before its use.",
+                                target_set->name.syntax.text),
+            prior ? std::optional{symbol.declaration_range} : std::nullopt);
       }
     }
   }
@@ -1978,6 +2016,24 @@ class Checker {
                            "Initializer symbol '{}' must name a function or a "
                            ".global/.const variable.",
                            value.name.syntax.text));
+            } else if (symbol.kind == binding::SymbolKind::Function) {
+              const auto prior = symbols_.hasPriorDeclaration(
+                  symbol.id, value.name.syntax.range);
+              if (!prior || !*prior) {
+                diagnose(
+                    DeclarationDiagnosticKind::FunctionAddressBeforeDeclaration,
+                    value.name.syntax.range,
+                    prior ? fmt::format("Function '{}' must be declared "
+                                        "before its address is used in an "
+                                        "initializer.",
+                                        value.name.syntax.text)
+                          : fmt::format("Cannot establish whether function "
+                                        "'{}' is declared before its address "
+                                        "is used in an initializer.",
+                                        value.name.syntax.text),
+                    prior ? std::optional{symbol.declaration_range}
+                          : std::nullopt);
+              }
             }
           } else if constexpr (std::same_as<
                                    Value,

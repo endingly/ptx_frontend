@@ -916,6 +916,162 @@ second_label:
             1u);
 }
 
+TEST(PtxDeclarationSemantics, RequiresFunctionDeclarationsBeforeAddressInitializers) {
+  const CheckedModule result = check(R"ptx(
+.global .u64 late_table[1] = { late };
+.func late() { ret; }
+.func declared();
+.func local_table() {
+  .global .u64 targets[1] = { declared };
+}
+.func declared() { ret; }
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(
+      diagnosticCount(
+          result, DeclarationDiagnosticKind::FunctionAddressBeforeDeclaration),
+      1u);
+  const auto diagnostic =
+      std::ranges::find_if(result.diagnostics, [](const auto& candidate) {
+        return candidate.kind ==
+               DeclarationDiagnosticKind::FunctionAddressBeforeDeclaration;
+      });
+  ASSERT_NE(diagnostic, result.diagnostics.end());
+  EXPECT_EQ(diagnostic->range.start.line, 2);
+  ASSERT_TRUE(diagnostic->previous_range.has_value());
+  EXPECT_EQ(diagnostic->previous_range->start.line, 3);
+}
+
+TEST(PtxDeclarationSemantics,
+     PreservesAliasIdentityWhileCheckingAliasDeclarationVisibility) {
+  const CheckedModule accepted = check(R"ptx(
+.func alias_fn();
+.global .u64 targets[1] = { alias_fn };
+.func target() { ret; }
+.alias alias_fn, target;
+)ptx");
+  EXPECT_TRUE(accepted.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                accepted,
+                DeclarationDiagnosticKind::FunctionAddressBeforeDeclaration),
+            0u);
+
+  const CheckedModule rejected = check(R"ptx(
+.func target();
+.global .u64 targets[1] = { alias_fn };
+.func alias_fn();
+.func target() { ret; }
+.alias alias_fn, target;
+)ptx");
+  EXPECT_TRUE(rejected.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                rejected,
+                DeclarationDiagnosticKind::FunctionAddressBeforeDeclaration),
+            1u);
+}
+
+TEST(PtxDeclarationSemantics,
+     RejectsFunctionAddressWhenSourceOrderCannotBeEstablished) {
+  PtxSyntaxParser parser(R"ptx(
+.global .u64 targets[1] = { later };
+.func later() { ret; }
+)ptx");
+  auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value());
+  ASSERT_TRUE(module.diagnostics.empty());
+  auto& declaration =
+      std::get<syntax_ast::AstVariableDeclaration>(module->items.front());
+  auto& initializer_list = std::get<syntax_ast::AstInitializerList>(
+      declaration.declarators.front().initializer->value);
+  auto& expression = std::get<syntax_ast::AstConstantExpression>(
+      initializer_list.elements.front().value);
+  auto& symbol = std::get<syntax_ast::AstConstantSymbol>(expression.node);
+  auto& function = std::get<syntax_ast::AstFunction>(module->items.back());
+  symbol.name.syntax.range = SourceRange{};
+  function.name.syntax.range = SourceRange{};
+
+  auto binding = binding::bindSymbols(*module);
+  const auto diagnostics = checkDeclarations(*module, binding.table);
+  const auto diagnostic =
+      std::ranges::find_if(diagnostics, [](const auto& candidate) {
+        return candidate.kind ==
+               DeclarationDiagnosticKind::FunctionAddressBeforeDeclaration;
+      });
+  ASSERT_NE(diagnostic, diagnostics.end());
+  EXPECT_FALSE(diagnostic->previous_range.has_value());
+  EXPECT_NE(diagnostic->message.find("Cannot establish"), std::string::npos);
+}
+
+TEST(PtxDeclarationSemantics,
+     KeepsDeclarationOccurrencesAlignedAfterDebugMetadataSymbols) {
+  const CheckedModule result = check(R"ptx(
+.file 1 "source.ptx"
+.func declared();
+.global .u64 targets[1] = { declared };
+.func declared() { ret; }
+)ptx");
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics,
+     RequiresBranchTargetMetadataBeforeIndexedBranchUse) {
+  const CheckedModule late = check(R"ptx(
+.entry kernel() {
+  .reg .u32 %index;
+  brx.idx %index, targets;
+  targets: .branchtargets L0;
+L0:
+  ret;
+}
+)ptx");
+  EXPECT_TRUE(late.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                late, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            1u);
+
+  const CheckedModule prior = check(R"ptx(
+.entry kernel() {
+  .reg .u32 %index;
+  { targets: .branchtargets L0; }
+  brx.idx %index, targets;
+  bra done;
+L0:
+done:
+  ret;
+}
+)ptx");
+  EXPECT_TRUE(prior.binding.diagnostics.empty());
+  EXPECT_TRUE(prior.diagnostics.empty());
+}
+
+TEST(PtxDeclarationSemantics,
+     KeepsNestedBranchTargetSetShadowingAtItsBoundIdentity) {
+  const CheckedModule result = check(R"ptx(
+.entry kernel() {
+  .reg .u32 %index;
+  targets: .branchtargets done;
+  {
+    .reg .u32 targets;
+    brx.idx %index, targets;
+  }
+done:
+  ret;
+}
+)ptx");
+  EXPECT_EQ(std::ranges::count_if(
+                result.binding.diagnostics,
+                [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         binding::BindDiagnosticKind::InvalidReferenceTarget;
+                }),
+            1u);
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            0u);
+}
+
 TEST(PtxDeclarationSemantics, RequiresPositivePowerOfTwoAlignment) {
   const CheckedModule result = check(R"ptx(
 .global .align 0 .u32 zero;

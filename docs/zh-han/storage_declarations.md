@@ -52,6 +52,10 @@ mask 在应用 addend 之后选择一个 byte，并将其放入低八位；提�
 symbol identity 沿用 lexical binding，包括内层 scope 的同名声明。
 function reference 可以直接使用或提取 byte mask；对 function reference 做 generic
 转换或地址算术会被拒绝。
+function-address initializer 中的 function spelling 必须已有更早的 declaration
+occurrence；two-pass binding 即使能找到较晚的 definition，也不会使该 use 合法。
+兼容的 prototype 与 definition 仍共享 stable identity，但 initializer 使用 alias
+spelling 时，该 alias 本身也必须先声明。
 未解析的 external symbol 和 function reference 都不会
 获得臆造地址。下游根据自己的链接／分配模型解析这些引用，无需重新解析 initializer 文本。
 

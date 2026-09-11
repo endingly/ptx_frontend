@@ -97,3 +97,9 @@ add_executable(ptx_frontend_model_consumer model_only.cpp)
 target_compile_features(ptx_frontend_model_consumer PRIVATE cxx_std_23)
 target_link_libraries(ptx_frontend_model_consumer PRIVATE ptx_frontend::resolved_ir)
 add_test(NAME runs_installed_model COMMAND ptx_frontend_model_consumer)
+
+add_executable(ptx_frontend_validation_consumer validation_regressions.cpp)
+target_compile_features(ptx_frontend_validation_consumer PRIVATE cxx_std_23)
+target_link_libraries(ptx_frontend_validation_consumer PRIVATE ptx_frontend::resolved_ir)
+add_test(NAME revalidates_installed_modifier_domain
+    COMMAND ptx_frontend_validation_consumer modifier)

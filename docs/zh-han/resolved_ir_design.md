@@ -405,6 +405,11 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 
 `checker::check<T>` 是每个 opcode 的生成 wrapper，公共 checker 至少检查：
 
+- 每个 projected dynamic modifier value 是否属于已选 variant 生成的 semantic domain。此检查
+  不依赖 source location 或 modifier 在源码中是否出现：省略 optional modifier 时检查该字段声明的
+  default；越出 domain 的编辑后 value 即使没有 provenance 也仍然非法，诊断 range 回退至
+  instruction range。
+  `ModifierValueDomainMismatch` 表示 value 不在该 domain 内。
 - variant、已选 operand layout 与实际 modifier value 的最低 PTX 版本、SM 版本与 target family；
 - layout tag 的范围；
 - layout tag/payload 一致性；
@@ -417,6 +422,15 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
   register、immediate 与 standalone base 的未知 space 不推断。
 - 由 generated operand constraint 描述的 explicit `.param` input/return direction 与
   function-context availability；方向错误优先于上下文 availability。
+
+单条 instruction 的 `checker::check<T>` 由调用方提供 `checker::Context::target` 与
+`instruction_range`；编辑字段没有保留 source provenance 时，后者是稳定的 diagnostic range 回退。
+
+semantic-domain membership 与 target availability 是两个独立问题。domain 由 normalized variant
+modifier values 及各 optional field 自身的 default 得出，不从 availability entry 推断，也不会笼统
+接受 enum sentinel。availability 保持现有 source-presence 行为，因为省略的 default 不必与显式
+spelling 具有相同的 PTX 或 SM 要求。因此 legal value 可以通过 domain membership，但仍因 target
+availability 被拒绝。
 
 生成的 vector projection 可接收调用方手工构造或修改的公开 IR，无需另行预验证
 向量长度。`OperandView::vector_arity` 保留原始 width/元素数量，对固定容量元素数组

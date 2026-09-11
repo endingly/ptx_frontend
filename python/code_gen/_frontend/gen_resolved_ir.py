@@ -495,6 +495,14 @@ def _emit_check_variant_lambda(
             diagnostics.insert(diagnostics.end(), common.error().begin(),
                                common.error().end());
           }}
+          const auto modifier_domain = check_modifier_value_domain(
+              {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
+                  .modifier_value_domains,
+              modifier_values, context);
+          if (!modifier_domain) {{
+            diagnostics.insert(diagnostics.end(), modifier_domain.error().begin(),
+                               modifier_domain.error().end());
+          }}
           const auto modifier_availability = check_modifier_value_availability(
               {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                   .modifier_value_availabilities,

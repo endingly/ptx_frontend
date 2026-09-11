@@ -38,6 +38,7 @@ enum class CheckDiagnosticKind : uint8_t {
   RuleViolation,
   ModuleSourceMismatch,
   MissingValidationContext,
+  ModifierValueDomainMismatch,
 };
 
 /** A checker failure anchored to a stable resolved-IR source range. */
@@ -87,6 +88,10 @@ CheckResult check_operand_layout_availability(const VariantDescriptor&,
 /** Check target requirements of selected dynamic modifier values. */
 CheckResult check_modifier_value_availability(
     std::span<const ModifierValueAvailabilityDescriptor>,
+    std::span<const ModifierValueView>, const Context&);
+/** Check selected modifier values against the variant's semantic value domain. */
+CheckResult check_modifier_value_domain(
+    std::span<const ModifierValueDomainDescriptor>,
     std::span<const ModifierValueView>, const Context&);
 /** Check generated ld/st memory-order and address-space cross constraints. */
 CheckResult check_memory_consistency(

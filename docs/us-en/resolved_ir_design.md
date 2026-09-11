@@ -506,6 +506,13 @@ descriptors do not redo resolve bindings.
 
 Each generated `checker::check<T>` wrapper uses common checking for:
 
+- membership of every projected dynamic modifier value in the selected
+  variant's generated semantic domain. This check is independent of source
+  locations and modifier spelling-presence: an omitted optional modifier is
+  checked using that field's declared default, while an out-of-domain edited
+  value with no provenance remains invalid and uses the instruction range as
+  its diagnostic fallback. `ModifierValueDomainMismatch` reports a value
+  outside this domain.
 - minimum PTX version, SM version, and target family for the variant, selected operand layout, and actual modifier value;
 - layout-tag bounds;
 - layout-tag/payload agreement;
@@ -521,6 +528,18 @@ Each generated `checker::check<T>` wrapper uses common checking for:
 - explicit `.param` input/return direction and function-context availability
   from the generated operand constraint; direction mismatches take precedence
   over that contextual availability.
+
+The caller supplies `checker::Context::target` and `instruction_range` for a
+single-instruction check. The latter is the stable fallback diagnostic range
+when the edited field has no retained source provenance.
+
+Semantic-domain membership and target availability are separate questions. The
+domain is derived from the normalized variant modifier values together with the
+individual optional field default; it is not inferred from availability entries,
+and it does not admit a blanket enum sentinel. Availability keeps its existing
+source-presence behavior, because an omitted default need not have the same PTX
+or SM requirement as an explicitly spelled value. Therefore a legal value can
+pass domain membership yet still fail its target availability check.
 
 Generated vector projections also accept caller-constructed or mutated public
 IR without requiring a separate vector-size preverification pass. They retain

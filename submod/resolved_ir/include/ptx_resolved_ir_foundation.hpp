@@ -309,6 +309,28 @@ struct ModifierValueAvailabilityDescriptor {
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
 };
+/** One target-independent semantic modifier value admitted by a variant. */
+struct ModifierValueDomainDescriptor {
+  /** Borrowed generated modifier-kind text; storage outlives every check. */
+  std::string_view kind_id;
+  /** Selects the single meaningful typed payload member below. */
+  ModifierValueKind value_kind;
+  bool bool_value = false;
+  ScalarType scalar_type = ScalarType::Invalid;
+  RoundingMode rounding_mode = RoundingMode::Invalid;
+  ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
+  BooleanOperator boolean_operator = BooleanOperator::Invalid;
+  CacheOperator cache_operator = CacheOperator::Unspecified;
+  EvictionPriority eviction_priority = EvictionPriority::Invalid;
+  VectorArity vector_arity = VectorArity::Invalid;
+  MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
+  MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
+  MemoryScope memory_scope = MemoryScope::None;
+  MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
+  MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
+  ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
+};
 struct ModifierValueView {
   std::string_view kind_id;
   ModifierValueKind value_kind;
@@ -333,6 +355,7 @@ struct ModifierValueView {
 struct VariantDescriptor {
   std::string_view variant_name;
   AvailabilityDescriptor availability;
+  std::span<const ModifierValueDomainDescriptor> modifier_value_domains;
   std::span<const ModifierValueAvailabilityDescriptor>
       modifier_value_availabilities;
   std::span<const OperandLayoutDescriptor> operand_layouts;

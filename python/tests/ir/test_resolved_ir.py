@@ -4094,6 +4094,99 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(".scalar_type = ScalarType::U64,", source)
         self.assertIn(".minimum_ptx_version = {2, 0},", source)
 
+    def test_modifier_value_domain_includes_legal_values_and_optional_default(
+        self,
+    ) -> None:
+        specs = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_rounding",
+                                "availability": {"ptx": "1.0", "sm": 0},
+                                "modifiers": [
+                                    {
+                                        "name": "rounding",
+                                        "kind": "rounding",
+                                        "presence": "optional",
+                                        "default": "rn",
+                                        "values": [
+                                            "rn",
+                                            {"value": "rz", "availability": {"sm": 20}},
+                                        ],
+                                    },
+                                    {
+                                        "name": "saturate",
+                                        "kind": "flag",
+                                        "presence": "optional",
+                                        "default": False,
+                                        "token": ".sat",
+                                    },
+                                    {
+                                        "name": "cache",
+                                        "kind": "cache",
+                                        "presence": "optional",
+                                        "default": "unspecified",
+                                        "values": ["ca"],
+                                    },
+                                    {
+                                        "name": "required_static_flag",
+                                        "kind": "flag",
+                                        "presence": "fixed",
+                                        "value": True,
+                                        "token": ".fixed",
+                                    },
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        resolved = from_instruction_spec(specs[0])
+        variant = resolved.variants[0]
+        self.assertEqual(
+            [(entry.source_kind_id, entry.value) for entry in variant.modifier_value_domains],
+            [
+                ("rounding", "rn"),
+                ("rounding", "rz"),
+                ("saturate", True),
+                ("saturate", False),
+                ("cache", "ca"),
+                ("cache", "unspecified"),
+                ("required_static_flag", True),
+            ],
+        )
+        self.assertEqual(
+            [entry.value for entry in variant.modifier_value_availabilities], ["rz"]
+        )
+
+        database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
+            generate_resolved_checker_descriptor_source(
+                database,
+                output_path=output_path,
+            )
+            source = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("checker::ModifierValueDomainDescriptor", source)
+        self.assertIn("Rounding_modifier_value_domains", source)
+        self.assertIn(".rounding_mode = RoundingMode::Rn,", source)
+        self.assertIn(".rounding_mode = RoundingMode::Rz,", source)
+        self.assertIn('.kind_id = "saturate",', source)
+        self.assertIn(".bool_value = true,", source)
+        self.assertIn(".bool_value = false,", source)
+        self.assertIn('.kind_id = "cache",', source)
+        self.assertIn(".cache_operator = CacheOperator::Unspecified,", source)
+        self.assertIn('.kind_id = "required_static_flag",', source)
+        self.assertNotIn("RoundingMode::Rzi", source)
+
     def test_comparison_modifier_domain_emits_typed_availability(self) -> None:
         specs = normalize_instruction_spec(
             {

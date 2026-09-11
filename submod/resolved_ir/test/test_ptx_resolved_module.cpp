@@ -6781,6 +6781,65 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
   EXPECT_EQ(immediate_base.bits, 240u);
 }
 
+/** Bound address bases accept integer/bit declarations and reject other known types. */
+TEST(ResolvedModule, ValidatesBoundAddressRegisterTypes) {
+  constexpr std::array valid_types = {".b8",  ".u8",  ".s8",  ".b16",
+                                      ".u16", ".s16", ".b32", ".u32",
+                                      ".s32", ".b64", ".u64", ".s64"};
+  for (const std::string_view type : valid_types) {
+    const auto resolved = resolveModule(parseModule(
+        ".version 9.3\n.target sm_80\n.address_size 64\n.entry kernel() { .reg " +
+        std::string(type) +
+        " %addr; .reg .u32 %value; ld.global.u32 %value, [%addr]; "
+        "st.global.u32 [%addr], %value; }"));
+    ASSERT_TRUE(resolved.has_value())
+        << type << ": " << resolved.error().front().message;
+  }
+
+  constexpr std::array invalid_types = {
+      std::pair{".f16", ScalarType::F16}, std::pair{".f16x2", ScalarType::F16x2},
+      std::pair{".f32", ScalarType::F32}, std::pair{".f64", ScalarType::F64},
+      std::pair{".b128", ScalarType::B128},
+  };
+  for (const auto [spelling, scalar] : invalid_types) {
+    for (const std::string_view use : {
+             "ld.global.u32 %value, [%addr];",
+             "st.global.u32 [%addr], %value;",
+             "mbarrier.init.b64 [%addr], 1;",
+         }) {
+      const auto ast = parseModule(
+          ".entry kernel() { .reg " + std::string(spelling) +
+          " %addr; .reg .u32 %value; " + std::string(use) + " }");
+      const auto resolved = resolveModule(ast);
+      ASSERT_FALSE(resolved.has_value()) << spelling << ": " << use;
+      EXPECT_EQ(
+          resolved.error().front().message,
+          "Address register '%addr' has invalid declared type '" +
+              base::to_string(scalar) +
+              "'; expected an integer or bit-size type no wider than 64 bits.");
+
+      const auto& function =
+          std::get<syntax_ast::AstFunction>(ast.items.front());
+      const auto& instruction =
+          std::get<syntax_ast::AstInstruction>(function.body.back());
+      const auto address = std::ranges::find_if(
+          instruction.operands, [](const syntax_ast::AstOperand& operand) {
+            return std::holds_alternative<syntax_ast::AstAddress>(operand);
+          });
+      ASSERT_NE(address, instruction.operands.end());
+      const auto& base = std::get<syntax_ast::AstIdentifierRef>(
+          std::get<syntax_ast::AstAddress>(*address).base);
+      EXPECT_EQ(resolved.error().front().range, base.syntax.range);
+    }
+  }
+
+  PtxSyntaxParser standalone_parser("ld.global.u32 %r0, [%rd0];");
+  const auto standalone_ast = standalone_parser.parseInstruction();
+  ASSERT_TRUE(standalone_ast.has_value())
+      << standalone_ast.diagnostics.front().message;
+  EXPECT_TRUE(resolveInstruction(*standalone_ast).has_value());
+}
+
 /**
  * @brief Resolves octal instruction immediates and every supported
  * address-offset base.

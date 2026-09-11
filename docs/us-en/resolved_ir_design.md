@@ -302,8 +302,14 @@ Standalone resolution cannot tell whether an unbound name denotes data or a
 function, so it remains a `ResolvedSymbolRef` with no identity.
 
 A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
-`ResolvedImmediate`, and `ResolvedSymbolRef`. Its optional offset retains the
-add/subtract operator and a parsed signed 64-bit value.
+`ResolvedImmediate`, and `ResolvedSymbolRef`. A bound register base must be an
+integer or bit-size declaration no wider than 64 bits: floating declarations
+and `.b128` are rejected before checker projection. This preserves PTX address
+extension/truncation for narrower integer/bit declarations without treating a
+known floating register as an unknown address. Declaration-free standalone
+resolution has no type fact and therefore keeps the address base deferred. Its
+optional offset retains the add/subtract operator and a parsed signed 64-bit
+value.
 A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
 address value restricted to an addressable data-symbol or formal-parameter
 base. Scalar and braced-vector `ld`/`st` require bracketed dereference and

@@ -1437,6 +1437,31 @@ resolve_address_offset(const syntax_ast::AstAddress& address) {
   };
 }
 
+/** Return whether a declared register can hold a PTX address value. */
+bool is_address_register_type(ScalarType type) {
+  const auto kind = scalar_kind(type);
+  return (kind == base::ScalarKind::Unsigned ||
+          kind == base::ScalarKind::Signed || kind == base::ScalarKind::Bit) &&
+         scalar_size_of(type) <= sizeof(uint64_t);
+}
+
+/** Reject a bound address base whose declaration cannot represent an address. */
+std::expected<void, ResolveDiagnostic> check_address_register_type(
+    const ResolvedRegisterRef& register_ref, SourceRange range) {
+  if (register_ref.declared_type &&
+      is_address_register_type(*register_ref.declared_type))
+    return {};
+  return std::unexpected(ResolveDiagnostic{
+      .range = range,
+      .message = fmt::format(
+          "Address register '{}' has invalid declared type '{}'; expected an "
+          "integer or bit-size type no wider than 64 bits.",
+          register_ref.spelling,
+          register_ref.declared_type ? to_string(*register_ref.declared_type)
+                                     : "unknown"),
+  });
+}
+
 enum class FormalParameterAddressPolicy : uint8_t {
   Reject,
   PreserveParameterSpace,
@@ -1567,6 +1592,10 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
                                    *context, identifier->syntax.range);
         if (!register_ref)
           return std::unexpected(register_ref.error());
+        if (auto type_check = check_address_register_type(
+                *register_ref, identifier->syntax.range);
+            !type_check)
+          return std::unexpected(type_check.error());
         base = std::move(*register_ref);
       } else {
         auto symbol = resolve_data_symbol(

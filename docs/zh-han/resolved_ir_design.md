@@ -233,8 +233,12 @@ register、data symbol 与 address expression，避免这些 identifier 形状�
 空 identity 的 `ResolvedSymbolRef`。
 
 `ResolvedAddress` 的 base 是 `ResolvedRegisterRef`、`ResolvedImmediate` 或
-`ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
-value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
+`ResolvedSymbolRef` 的 variant。已绑定的 register base 必须是宽度不超过 64 bit 的
+integer 或 bit-size declaration：floating declaration 和 `.b128` 会在投影至 checker
+之前被拒绝。这既保留了 PTX 对较窄 integer/bit declaration 的地址 extension/truncation，
+也不会把已知的 floating register 当作未知地址。没有 declaration 的 standalone resolution
+缺少类型事实，因此仍将 address base 延后处理。其可选 offset 保留加减 operator 和解析后的
+signed 64-bit value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
 addressable data-symbol 或 formal-parameter base 的地址值；
 scalar 与 braced-vector `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
 bound-symbol base。每个 opcode 使用 `GenericScalar`、`ExplicitScalar`、`GenericVector`

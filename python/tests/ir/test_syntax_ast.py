@@ -1234,6 +1234,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         normalize_constraint(
             {"kind": "immediate_multiple_of", "operand": "count", "divisor": 8}
         )
+        normalize_constraint(
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 8},
+            operand_kind="reg_or_imm",
+        )
         for constraint, message, kind in (
             ({"kind": "immediate_multiple_of", "operand": "missing", "divisor": 8}, "kind 'imm'", "imm"),
             ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 0}, "positive integer", "imm"),
@@ -1442,9 +1446,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         normalize_constraint(
             {"kind": "immediate_range", "operand": "count", "minimum": 1}
         )
+        normalize_constraint(
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 1}
+        )
         for constraint in (
             {"kind": "immediate_value", "operand": "count", "values": [1]},
-            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 1},
         ):
             with self.assertRaisesRegex(ValueError, r"kind 'imm'.*'reg_or_imm'"):
                 normalize_constraint(constraint)

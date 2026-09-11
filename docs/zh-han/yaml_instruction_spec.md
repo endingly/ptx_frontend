@@ -367,7 +367,9 @@ layout name 是稳定语义 ID，不是 C++ layout directive。它按声明顺�
 
 ## Immediate operand constraint
 
-variant-level `constraints` 可以对具名 `kind: imm` operand 声明可执行的整数规则：
+variant-level `constraints` 可以对具名 operand 声明可执行的整数规则。根据
+constraint kind，它可以是 `kind: imm` 或 `kind: reg_or_imm`；`reg_or_imm` rule
+仅在 source 是已知 immediate 时生效：
 
 ```yaml
 constraints:
@@ -379,8 +381,9 @@ constraints:
 每个 variant 最多一个 `immediate_value`，它是非空且无重复的 allowlist。每个 operand
 最多一个 `immediate_range`；`minimum` 为 inclusive，下界可选的 `maximum` 也为
 inclusive，省略 `maximum` 表示没有上界。每个 variant 最多一个
-`immediate_multiple_of` divisor rule。当具名 operand 的语义合理时，这些 descriptor
-可以组合使用。
+`immediate_multiple_of` divisor rule。和 `immediate_range` 一样，它可指向 `imm`
+或 `reg_or_imm` operand：生成的 checker 会检查已知 immediate，而把动态未知的
+register 值留给 runtime。当具名 operand 的语义合理时，这些 descriptor 可以组合使用。
 
 所有配置值使用生成代码的 `uint64_t` 域：YAML 中实际的整数必须落在
 `0..18446744073709551615`（`2^64 - 1`）。负数、Boolean、float 或其他非整数，以及
@@ -388,13 +391,12 @@ inclusive，省略 `maximum` 表示没有上界。每个 variant 最多一个
 `immediate_value.values[index]`，并以同一规则验证 `minimum`、出现时的 `maximum` 和
 `divisor`；还会拒绝 `maximum < minimum`，并要求 `divisor > 0`。
 
-operand 引用刻意是 variant-wide，而不是 layout-local。对三种 constraint kind 中的每一种，
-该具名 operand 都必须存在于此 variant 的**每一个** operand layout，且在每个 layout 中
-都必须是 `kind: imm`。哪怕只有一个具名 layout 缺少该 operand，或写成
-`reg`/`reg_or_imm`，normalization 也会报错，并指明 variant、constraint kind、operand 与
-layout。不得用 layout-local constraint DSL 或“runtime 缺 operand 就跳过”的规则绕过它。
-未来 instruction 若确实需要 layout-specific rule，必须新增经过明确设计的 contract；不能
-放宽这个不变量。
+operand 引用刻意是 variant-wide，而不是 layout-local。它必须至少出现在一个 operand
+layout；省略它的 layout 不会导致 missing-field error。出现时，`immediate_value` 要求
+`kind: imm`，而 `immediate_range` 与 `immediate_multiple_of` 接受 `kind: imm` 或
+`kind: reg_or_imm`。`reg` occurrence 会导致 normalization error，并指明 variant、
+constraint kind、operand 与 layout。这样既允许 optional operand，又在值 contract 要求时
+保留 immediate-only rule。
 
 当前冻结的 `setmaxnreg.inc.sync.aligned.u32` form 展示了 range 与 divisibility rule 的组合：
 

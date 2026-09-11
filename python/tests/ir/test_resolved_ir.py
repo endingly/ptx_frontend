@@ -930,6 +930,46 @@ class ResolvedIrBuildTest(unittest.TestCase):
             {"ptx": "6.0", "sm": 30},
         )
 
+    def test_cta_barrier_numeric_constraints_are_resolved_for_all_cta_forms(
+        self,
+    ) -> None:
+        bar = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "bar"
+        )
+        variants = {
+            variant.cpp_name: variant
+            for variant in from_instruction_spec(bar).variants
+        }
+
+        for name in ("Sync", "CtaSync", "Arrive", "CtaArrive", "RedPopcU32",
+                     "CtaRedPopcU32", "RedAndPred", "CtaRedAndPred", "RedOrPred",
+                     "CtaRedOrPred"):
+            with self.subTest(variant=name):
+                variant = variants[name]
+                ranges = [
+                    (constraint.operand_field_id, constraint.minimum, constraint.maximum)
+                    for constraint in variant.immediate_ranges
+                ]
+                self.assertIn(("barrier", 0, 15), ranges)
+                self.assertEqual(
+                    (variant.immediate_multiple_of.operand_field_id,
+                     variant.immediate_multiple_of.divisor),
+                    ("thread_count", 32),
+                )
+
+        for name in ("Arrive", "CtaArrive"):
+            with self.subTest(arrive_variant=name):
+                self.assertIn(
+                    ("thread_count", 1, None),
+                    [
+                        (constraint.operand_field_id, constraint.minimum,
+                         constraint.maximum)
+                        for constraint in variants[name].immediate_ranges
+                    ],
+                )
+
     def test_immediate_conversion_is_independent_of_type_expression(self) -> None:
         """Fixed and modifier-derived types can select either conversion use."""
 

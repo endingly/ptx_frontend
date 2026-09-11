@@ -1446,6 +1446,19 @@ CheckResult check_immediate_multiple_of(
       find_operand(operands, descriptor.operand_field_id);
   if (operand == nullptr)
     return {};
+  if (descriptor.divisor == 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = fmt::format("Immediate-multiple constraint for '{}' has zero "
+                               "divisor.",
+                               descriptor.operand_field_id),
+    }});
+  }
+  // A register operand is dynamically unknown; the generated divisibility
+  // rule applies only when it resolves to an immediate.
+  if (operand->actual_shape == OperandShape::Register)
+    return {};
   if (operand->actual_shape != OperandShape::Immediate ||
       !operand->immediate_bits) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
@@ -1453,15 +1466,6 @@ CheckResult check_immediate_multiple_of(
         .range = context.instruction_range,
         .message = fmt::format("Immediate-multiple constraint references missing "
                                "immediate operand '{}'.",
-                               descriptor.operand_field_id),
-    }});
-  }
-  if (descriptor.divisor == 0) {
-    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-        .kind = CheckDiagnosticKind::RuleViolation,
-        .range = context.instruction_range,
-        .message = fmt::format("Immediate-multiple constraint for '{}' has zero "
-                               "divisor.",
                                descriptor.operand_field_id),
     }});
   }

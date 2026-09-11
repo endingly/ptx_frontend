@@ -3640,7 +3640,10 @@ TEST(ResolveImmediateLiteral, PreservesFloatingNegativeZero) {
 }
 
 TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
-  const declaration_semantics::FunctionParameterContract u16{.type = ".u16"};
+  const declaration_semantics::FunctionParameterContract u16{
+      .scalar_type = base::ScalarType::U16,
+      .type_spelling = ".u16",
+  };
   const auto typed_immediate = parse_immediate("42");
   const auto typed = resolve_call_literal(
       ResolvedCallLiteral{.spelling = typed_immediate.syntax.text,
@@ -3663,7 +3666,10 @@ TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
   EXPECT_EQ(overflow.error().message,
             "Integer literal '65536' is out of range for scalar type 'U16'.");
 
-  const declaration_semantics::FunctionParameterContract u32{.type = ".u32"};
+  const declaration_semantics::FunctionParameterContract u32{
+      .scalar_type = base::ScalarType::U32,
+      .type_spelling = ".u32",
+  };
   const auto float_immediate = parse_immediate("1.5");
   const auto mismatch = resolve_call_literal(
       ResolvedCallLiteral{.spelling = float_immediate.syntax.text,
@@ -3676,7 +3682,7 @@ TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
             "'U32'.");
 
   const declaration_semantics::FunctionParameterContract unsupported_type{
-      .type = ".v2"};
+      .type_spelling = ".v2"};
   const auto unsupported_immediate = parse_immediate("1");
   const auto unsupported = resolve_call_literal(
       ResolvedCallLiteral{.spelling = unsupported_immediate.syntax.text,

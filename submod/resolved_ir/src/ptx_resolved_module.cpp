@@ -8,11 +8,11 @@
 #include "ptx_source_identity.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <limits>
 #include <ranges>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include <fmt/format.h>
 
@@ -22,15 +22,15 @@ namespace {
 using call_argument_compatibility::CallArgumentCompatibility;
 using call_argument_compatibility::CallArgumentProperties;
 using call_argument_compatibility::CallArgumentStateSpace;
-using call_argument_compatibility::PointedStateSpace;
+using call_argument_compatibility::CallArgumentVectorShape;
 
 using CallArgumentPropertyIndex =
     std::unordered_map<uint32_t, CallArgumentProperties>;
 using FunctionSignatureIndex =
     std::unordered_map<uint32_t, declaration_semantics::FunctionSignature>;
 
-std::optional<CallArgumentStateSpace> call_state_space(
-    syntax_ast::AstStateSpace state_space) {
+/** Translate AST state space without accepting invalid constructed values. */
+CallArgumentStateSpace call_state_space(syntax_ast::AstStateSpace state_space) {
   switch (state_space) {
     case syntax_ast::AstStateSpace::Register:
       return CallArgumentStateSpace::Register;
@@ -45,67 +45,67 @@ std::optional<CallArgumentStateSpace> call_state_space(
     case syntax_ast::AstStateSpace::Constant:
       return CallArgumentStateSpace::Constant;
   }
+  return CallArgumentStateSpace::Invalid;
+}
+
+/** Translate an optional AST vector modifier into a semantic ABI shape. */
+CallArgumentVectorShape call_vector_shape(
+    const std::optional<syntax_ast::AstSyntax>& vector_type) {
+  if (!vector_type)
+    return CallArgumentVectorShape::Scalar;
+  if (vector_type->text == ".v2")
+    return CallArgumentVectorShape::V2;
+  if (vector_type->text == ".v4")
+    return CallArgumentVectorShape::V4;
+  return CallArgumentVectorShape::Invalid;
+}
+
+/** Return a modeled scalar identity without treating unknown source as valid. */
+base::ScalarType call_scalar_type(std::string_view spelling) {
+  const auto* metadata = base::find_scalar_type_metadata(spelling);
+  return metadata ? metadata->type : base::ScalarType::Invalid;
+}
+
+/** Return a valid contract constant without reinterpreting invalid source data. */
+std::optional<uint64_t> contract_constant(
+    const std::optional<declaration_semantics::NormalizedNumericValue>& value) {
+  if (!value)
+    return std::nullopt;
+  if (const auto* constant = std::get_if<uint64_t>(&*value))
+    return *constant;
   return std::nullopt;
-}
-
-std::optional<PointedStateSpace> pointed_state_space(
-    const std::optional<std::string>& spelling) {
-  if (!spelling)
-    return std::nullopt;
-  if (*spelling == ".local")
-    return PointedStateSpace::Local;
-  if (*spelling == ".shared")
-    return PointedStateSpace::Shared;
-  if (*spelling == ".global")
-    return PointedStateSpace::Global;
-  if (*spelling == ".const")
-    return PointedStateSpace::Constant;
-  return std::nullopt;
-}
-
-std::optional<uint64_t> unsigned_value(std::string_view spelling) {
-  if (!spelling.empty() && (spelling.back() == 'u' || spelling.back() == 'U'))
-    spelling.remove_suffix(1);
-  uint64_t value = 0;
-  const auto [end, error] = std::from_chars(
-      spelling.data(), spelling.data() + spelling.size(), value);
-  if (spelling.empty() || error != std::errc{} ||
-      end != spelling.data() + spelling.size()) {
-    return std::nullopt;
-  }
-  return value;
-}
-
-std::optional<uint64_t> contract_array_size(
-    const declaration_semantics::FunctionParameterContract& contract) {
-  if (!contract.array_extent || contract.array_extent->empty() ||
-      contract.array_extent->front() != '#') {
-    return std::nullopt;
-  }
-  return unsigned_value(std::string_view{*contract.array_extent}.substr(1));
 }
 
 CallArgumentProperties call_argument_properties(
     const declaration_semantics::FunctionParameterContract& contract) {
-  const auto scalar = declaration_semantics::parameterScalarType(contract.type);
-  const uint64_t natural_alignment = scalar ? base::scalar_size_of(*scalar) : 1;
+  const auto alignment = contract_constant(contract.alignment);
+  const auto array_size = contract_constant(contract.array_extent);
+  const auto pointer_alignment = contract_constant(contract.pointer_alignment);
+  const bool invalid_contract = !alignment ||
+                                (contract.array_extent && !array_size) ||
+                                (contract.is_pointer && !pointer_alignment);
+  if (invalid_contract) {
+    return {
+        .state_space = CallArgumentStateSpace::Invalid,
+        .scalar_type = contract.scalar_type,
+        .vector_shape = CallArgumentVectorShape::Scalar,
+        .type_spelling = contract.type_spelling,
+        .is_array = contract.is_array,
+    };
+  }
   CallArgumentProperties properties{
-      .state_space = *call_state_space(contract.state_space),
-      .type_spelling = contract.type,
-      .array_alignment = contract.alignment
-                             ? unsigned_value(*contract.alignment).value_or(natural_alignment)
-                             : natural_alignment,
+      .state_space = contract.state_space,
+      .scalar_type = contract.scalar_type,
+      .vector_shape = CallArgumentVectorShape::Scalar,
+      .type_spelling = contract.type_spelling,
+      .array_alignment = *alignment,
       .is_array = contract.is_array,
-      .array_size = contract_array_size(contract),
+      .array_size = array_size,
   };
   if (contract.is_pointer) {
-    const uint64_t pointer_alignment =
-        contract.pointer_alignment
-            ? unsigned_value(*contract.pointer_alignment).value_or(4)
-            : 4;
     properties.pointer = {
-        .pointed_state_space = pointed_state_space(contract.pointer_space),
-        .pointed_alignment = pointer_alignment,
+        .pointed_state_space = contract.pointed_state_space,
+        .pointed_alignment = *pointer_alignment,
     };
   }
   return properties;
@@ -135,10 +135,10 @@ CallArgumentProperties call_argument_properties(
     const syntax_ast::AstVariableDeclarator& declarator,
     const binding::Symbol& symbol) {
   return {
-      .state_space = *call_state_space(declaration.state_space),
-      .type_spelling = declaration.vector_type ? declaration.vector_type->text +
-                                                     " " + declaration.type.text
-                                               : declaration.type.text,
+      .state_space = call_state_space(declaration.state_space),
+      .scalar_type = call_scalar_type(declaration.type.text),
+      .vector_shape = call_vector_shape(declaration.vector_type),
+      .type_spelling = declaration.type.text,
       .array_alignment = symbol.address_alignment.value_or(1),
       .is_array = !declarator.array_dimensions.empty(),
       .array_size = array_size(declarator),
@@ -362,8 +362,9 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     const bool omitted_unsized_input =
         kind == "input" && !formals.empty() &&
         actual_count == formals.size() - 1 && formals.back().is_array &&
-        !formals.back().array_extent && formals.back().type == ".b8" &&
-        formals.back().state_space == syntax_ast::AstStateSpace::Parameter;
+        !formals.back().array_extent &&
+        formals.back().scalar_type == base::ScalarType::B8 &&
+        formals.back().state_space == CallArgumentStateSpace::Parameter;
     if (actual_count != formals.size() && !omitted_unsized_input) {
       diagnostics.push_back(ResolveDiagnostic{
           .range = actuals == nullptr ? target_range : actuals->range,
@@ -393,7 +394,9 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
         }
         actual_properties = {
             .state_space = CallArgumentStateSpace::Register,
-            .type_spelling = formals[index].type,
+            .scalar_type = formals[index].scalar_type,
+            .vector_shape = CallArgumentVectorShape::Scalar,
+            .type_spelling = formals[index].type_spelling,
         };
       } else {
         const auto& identifier =

@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
@@ -32,6 +33,16 @@ size_t diagnosticCount(const CheckedModule& result,
   return std::ranges::count_if(
       result.diagnostics,
       [kind](const auto& diagnostic) { return diagnostic.kind == kind; });
+}
+
+/** Return a normalized constant when the contract field is not structural. */
+std::optional<uint64_t> contractConstant(
+    const std::optional<NormalizedNumericValue>& value) {
+  if (!value)
+    return std::nullopt;
+  if (const auto* constant = std::get_if<uint64_t>(&*value))
+    return *constant;
+  return std::nullopt;
 }
 
 TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
@@ -795,16 +806,19 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_EQ(prototype_signature, functionSignature(definition));
   ASSERT_EQ(prototype_signature.return_parameters.size(), 1u);
   const auto& result = prototype_signature.return_parameters[0];
-  EXPECT_EQ(result.state_space, syntax_ast::AstStateSpace::Parameter);
-  EXPECT_EQ(result.alignment, "16");
-  EXPECT_EQ(result.type, ".u32");
+  EXPECT_EQ(result.state_space,
+            call_argument_compatibility::CallArgumentStateSpace::Parameter);
+  EXPECT_EQ(contractConstant(result.alignment), 16u);
+  EXPECT_EQ(result.scalar_type, base::ScalarType::U32);
+  EXPECT_EQ(result.type_spelling, ".u32");
   const auto& address = prototype_signature.parameters[0];
   EXPECT_FALSE(address.is_pointer);
-  EXPECT_EQ(address.type, ".u64");
+  EXPECT_EQ(address.scalar_type, base::ScalarType::U64);
+  EXPECT_EQ(contractConstant(address.alignment), 8u);
   ASSERT_EQ(prototype_signature.parameters.size(), 2u);
   const auto& values = prototype_signature.parameters[1];
   EXPECT_TRUE(values.is_array);
-  EXPECT_EQ(values.array_extent, "#4");
+  EXPECT_EQ(contractConstant(values.array_extent), 4u);
   const FunctionSignature kernel_signature =
       functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
   EXPECT_TRUE(kernel_signature.is_entry);
@@ -822,6 +836,44 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_TRUE(functionSignature(noreturn_prototype).is_noreturn);
   EXPECT_TRUE(
       checkDeclarations(*module, binding::bindSymbols(*module).table).empty());
+}
+
+/** Invalid numeric fields retain distinct structural keys for redeclaration checks. */
+TEST(PtxDeclarationSemantics, RetainsInvalidParameterContractStructure) {
+  PtxSyntaxParser parser(R"ptx(
+.func f(.param .align 3 .u32 value);
+.func f(.param .align 5 .u32 value) { ret; }
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  const auto& declaration =
+      std::get<syntax_ast::AstFunction>(module->items[0]);
+  const auto& definition = std::get<syntax_ast::AstFunction>(module->items[1]);
+  const auto declaration_signature = functionSignature(declaration);
+  const auto definition_signature = functionSignature(definition);
+  ASSERT_EQ(declaration_signature.parameters.size(), 1u);
+  ASSERT_EQ(definition_signature.parameters.size(), 1u);
+  const auto* first_key = std::get_if<InvalidStructuralKey>(
+      &*declaration_signature.parameters.front().alignment);
+  const auto* second_key = std::get_if<InvalidStructuralKey>(
+      &*definition_signature.parameters.front().alignment);
+  ASSERT_NE(first_key, nullptr);
+  ASSERT_NE(second_key, nullptr);
+  EXPECT_EQ(first_key->value, "3");
+  EXPECT_EQ(second_key->value, "5");
+  EXPECT_NE(declaration_signature, definition_signature);
+
+  const auto diagnostics =
+      checkDeclarations(*module, binding::bindSymbols(*module).table);
+  EXPECT_EQ(std::ranges::count_if(diagnostics, [](const auto& diagnostic) {
+              return diagnostic.kind == DeclarationDiagnosticKind::InvalidAlignment;
+            }),
+            2u);
+  EXPECT_EQ(std::ranges::count_if(diagnostics, [](const auto& diagnostic) {
+              return diagnostic.kind ==
+                     DeclarationDiagnosticKind::IncompatibleRedeclaration;
+            }),
+            1u);
 }
 
 TEST(PtxDeclarationSemantics, RejectsIncompatibleRedeclarationsAndDefinitions) {

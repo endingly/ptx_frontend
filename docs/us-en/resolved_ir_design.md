@@ -172,6 +172,15 @@ formal-typed literals, and enforces function-local `.param` qualification,
 predication, and staging adjacency. The generated checker remains responsible
 for one resolved instruction and target-aware descriptor rules.
 
+`<ptx_frontend/semantic/ptx_function_contract.hpp>` exposes the canonical
+function-signature contract without a Syntax AST dependency. Its parameter
+contracts use semantic state-space and pointer-space enums, `ScalarType` and a
+typed vector shape, retained invalid spelling for diagnostics, and optional
+tagged numeric values: omitted, validated constants, or invalid structural
+keys. Direct-call ABI validation consumes those normalized values without
+reparsing alignment text or the former array-extent string protocol; invalid
+structural data is never silently replaced by a default.
+
 Call-staging adjacency follows the executable instruction sequence within the
 current lexical body. Ordinary variable declarations, `.loc`, and `.pragma` do
 not interrupt argument stores before a call or return loads after it. Labels,

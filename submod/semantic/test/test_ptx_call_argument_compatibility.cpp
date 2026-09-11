@@ -9,7 +9,12 @@ using Compatibility = CallArgumentCompatibility;
 using StateSpace = CallArgumentStateSpace;
 
 CallArgumentProperties scalar(StateSpace state_space = StateSpace::Register) {
-  return {.state_space = state_space, .type_spelling = ".u32"};
+  return {
+      .state_space = state_space,
+      .scalar_type = base::ScalarType::U32,
+      .vector_shape = CallArgumentVectorShape::Scalar,
+      .type_spelling = ".u32",
+  };
 }
 
 TEST(CallArgumentCompatibility, AcceptsCompatibleScalarAndVectorValues) {
@@ -18,10 +23,14 @@ TEST(CallArgumentCompatibility, AcceptsCompatibleScalarAndVectorValues) {
   EXPECT_EQ(checkCallArgumentCompatibility(formal, actual),
             Compatibility::Compatible);
 
-  formal.type_spelling = ".v4 .u32";
-  actual.type_spelling = ".v4 .u32";
+  formal.vector_shape = CallArgumentVectorShape::V4;
+  actual.vector_shape = CallArgumentVectorShape::V4;
   EXPECT_EQ(checkCallArgumentCompatibility(formal, actual),
             Compatibility::Compatible);
+
+  actual.vector_shape = CallArgumentVectorShape::V2;
+  EXPECT_EQ(checkCallArgumentCompatibility(formal, actual),
+            Compatibility::TypeMismatch);
 }
 
 TEST(CallArgumentCompatibility, ReportsUnsupportedCallStateSpaces) {
@@ -45,7 +54,7 @@ TEST(CallArgumentCompatibility, DefaultsPointerAlignmentToFourBytes) {
 TEST(CallArgumentCompatibility, ReportsTypeAndArrayMismatches) {
   const auto formal = scalar();
   auto actual = scalar();
-  actual.type_spelling = ".u64";
+  actual.scalar_type = base::ScalarType::U64;
   EXPECT_EQ(checkCallArgumentCompatibility(formal, actual),
             Compatibility::TypeMismatch);
 
@@ -59,6 +68,8 @@ TEST(CallArgumentCompatibility, ReportsTypeAndArrayMismatches) {
 TEST(CallArgumentCompatibility, ChecksParameterByteArrays) {
   CallArgumentProperties formal{
       .state_space = StateSpace::Parameter,
+      .scalar_type = base::ScalarType::B8,
+      .vector_shape = CallArgumentVectorShape::Scalar,
       .type_spelling = ".b8",
       .array_alignment = 16,
       .is_array = true,
@@ -86,6 +97,8 @@ TEST(CallArgumentCompatibility, ChecksParameterByteArrays) {
 TEST(CallArgumentCompatibility, AcceptsSizedActualForUnsizedArrayFormal) {
   const CallArgumentProperties formal{
       .state_space = StateSpace::Parameter,
+      .scalar_type = base::ScalarType::B8,
+      .vector_shape = CallArgumentVectorShape::Scalar,
       .type_spelling = ".b8",
       .array_alignment = 8,
       .is_array = true,
@@ -138,6 +151,18 @@ TEST(CallArgumentCompatibility, GenericFormalPointerAcceptsConcreteActualSpace) 
   };
   EXPECT_EQ(checkCallArgumentCompatibility(formal, actual),
             Compatibility::Compatible);
+}
+
+/** Invalid pointed-state values cannot compare as a compatible ABI contract. */
+TEST(CallArgumentCompatibility, RejectsInvalidPointedStateSpaces) {
+  auto formal = scalar();
+  auto actual = formal;
+  formal.pointer = PointerProperties{
+      .pointed_state_space = PointedStateSpace::Invalid,
+  };
+  actual.pointer = formal.pointer;
+  EXPECT_EQ(checkCallArgumentCompatibility(formal, actual),
+            Compatibility::PointedStateSpaceMismatch);
 }
 
 }  // namespace

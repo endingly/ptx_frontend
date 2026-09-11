@@ -555,42 +555,98 @@ bool isValidAlignment(std::string_view text) {
   return value && (*value & (*value - 1)) == 0;
 }
 
-/** Normalize known effective alignment while retaining invalid source for diagnostics. */
-std::optional<std::string> parameterAlignmentContract(
+/** Normalize alignment while retaining structurally distinct invalid source. */
+std::optional<NormalizedNumericValue> parameterAlignmentContract(
     const std::optional<syntax_ast::AstSyntax>& explicit_alignment,
     std::optional<uint64_t> default_alignment) {
   if (explicit_alignment) {
     const auto value = positiveCount(explicit_alignment->text);
-    return value ? std::to_string(*value) : explicit_alignment->text;
+    return value && isValidAlignment(explicit_alignment->text)
+               ? std::optional<NormalizedNumericValue>{*value}
+               : std::optional<NormalizedNumericValue>{
+                     InvalidStructuralKey{explicit_alignment->text}};
   }
-  return default_alignment ? std::optional{std::to_string(*default_alignment)}
-                           : std::nullopt;
+  return default_alignment
+             ? std::optional<NormalizedNumericValue>{*default_alignment}
+             : std::nullopt;
+}
+
+/** Return the modeled scalar identity while retaining unmodeled spellings separately. */
+base::ScalarType parameterContractScalarType(std::string_view spelling) {
+  const auto* metadata = base::find_scalar_type_metadata(spelling);
+  return metadata ? metadata->type : base::ScalarType::Invalid;
+}
+
+/** Translate AST state space without defaulting unknown constructed values. */
+call_argument_compatibility::CallArgumentStateSpace parameterStateSpace(
+    syntax_ast::AstStateSpace state_space) {
+  using call_argument_compatibility::CallArgumentStateSpace;
+  switch (state_space) {
+    case syntax_ast::AstStateSpace::Register:
+      return CallArgumentStateSpace::Register;
+    case syntax_ast::AstStateSpace::Parameter:
+      return CallArgumentStateSpace::Parameter;
+    case syntax_ast::AstStateSpace::Local:
+      return CallArgumentStateSpace::Local;
+    case syntax_ast::AstStateSpace::Shared:
+      return CallArgumentStateSpace::Shared;
+    case syntax_ast::AstStateSpace::Global:
+      return CallArgumentStateSpace::Global;
+    case syntax_ast::AstStateSpace::Constant:
+      return CallArgumentStateSpace::Constant;
+  }
+  return CallArgumentStateSpace::Invalid;
+}
+
+/** Translate an optional pointed space without collapsing invalid source to generic. */
+std::optional<call_argument_compatibility::PointedStateSpace>
+parameterPointedStateSpace(
+    const std::optional<syntax_ast::AstSyntax>& pointer_space) {
+  using call_argument_compatibility::PointedStateSpace;
+  if (!pointer_space)
+    return std::nullopt;
+  if (pointer_space->text == ".local")
+    return PointedStateSpace::Local;
+  if (pointer_space->text == ".shared")
+    return PointedStateSpace::Shared;
+  if (pointer_space->text == ".global")
+    return PointedStateSpace::Global;
+  if (pointer_space->text == ".const")
+    return PointedStateSpace::Constant;
+  return PointedStateSpace::Invalid;
+}
+
+/** Normalize an array extent or preserve its invalid structural identity. */
+NormalizedNumericValue parameterArrayExtentContract(
+    const AstConstantExpression& expression) {
+  const ExpressionInfo value = classifyExpression(expression, nullptr);
+  if (const auto extent = nonnegativeIntegerValue(value))
+    return *extent;
+  return InvalidStructuralKey{expressionKey(expression)};
 }
 
 FunctionParameterContract parameterContract(
     const syntax_ast::AstFunctionParameter& parameter) {
-  const auto syntax_text =
-      [](const auto& syntax) -> std::optional<std::string> {
-    return syntax ? std::optional<std::string>{syntax->text} : std::nullopt;
-  };
-  const auto scalar = parameterScalarType(parameter.type.text);
+  const base::ScalarType scalar = parameterContractScalarType(parameter.type.text);
   const std::optional<uint64_t> natural_alignment =
-      scalar ? std::optional<uint64_t>{base::scalar_size_of(*scalar)}
-      : parameter.type.text == ".pred" ? std::optional<uint64_t>{1}
-      : parameter.type.text == ".f16x2" ? std::optional<uint64_t>{4}
-                                        : std::nullopt;
+      scalar != base::ScalarType::Invalid
+          ? std::optional<uint64_t>{base::scalar_size_of(scalar)}
+          : std::nullopt;
   return {
-      .state_space = parameter.state_space,
-      .alignment = parameterAlignmentContract(parameter.alignment, natural_alignment),
-      .type = parameter.type.text,
+      .state_space = parameterStateSpace(parameter.state_space),
+      .alignment =
+          parameterAlignmentContract(parameter.alignment, natural_alignment),
+      .scalar_type = scalar,
+      .type_spelling = parameter.type.text,
       .is_pointer = parameter.is_pointer,
-      .pointer_space = syntax_text(parameter.pointer_space),
+      .pointed_state_space = parameterPointedStateSpace(parameter.pointer_space),
       .pointer_alignment = parameterAlignmentContract(
           parameter.pointer_alignment,
           parameter.is_pointer ? std::optional<uint64_t>{4} : std::nullopt),
       .is_array = parameter.is_array,
       .array_extent = parameter.array_size
-                          ? std::optional{dimensionKey(*parameter.array_size)}
+                          ? std::optional{parameterArrayExtentContract(
+                                *parameter.array_size)}
                           : std::nullopt,
   };
 }

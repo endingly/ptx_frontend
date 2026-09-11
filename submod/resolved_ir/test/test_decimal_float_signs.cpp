@@ -136,7 +136,10 @@ TEST(DecimalFloatSigns, ResolvesSourceCallLiteralsAgainstFloatingFormals) {
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 
-  const declaration_semantics::FunctionParameterContract f32{.type = ".f32"};
+  const declaration_semantics::FunctionParameterContract f32{
+      .scalar_type = base::ScalarType::F32,
+      .type_spelling = ".f32",
+  };
   const auto negative_zero_instruction = parseImmediate("-0.0");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(negative_zero_instruction);
   const auto& negative_zero = immediateOperand(*negative_zero_instruction);

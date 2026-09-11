@@ -3074,13 +3074,12 @@ std::expected<WithLocs<ResolvedImmediate>, ResolveDiagnostic>
 resolve_call_literal(
     const ResolvedCallLiteral& literal, SourceRange range,
     const declaration_semantics::FunctionParameterContract& formal) {
-  const auto type = scalar_type_from_ptx_name(formal.type);
-  if (!type) {
+  if (formal.scalar_type == ScalarType::Invalid) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = fmt::format(
             "Call literal '{}' has unsupported formal scalar type '{}'.",
-            literal.spelling, formal.type),
+            literal.spelling, formal.type_spelling),
     });
   }
   const syntax_ast::AstImmediate immediate{
@@ -3088,7 +3087,7 @@ resolve_call_literal(
       .kind = literal.kind,
   };
   // Call arguments retain their formal-parameter representability contract.
-  auto resolved = resolve_immediate_value(immediate, *type, true);
+  auto resolved = resolve_immediate_value(immediate, formal.scalar_type, true);
   if (!resolved)
     return std::unexpected(resolved.error());
   return WithLocs<ResolvedImmediate>{std::move(*resolved), range};

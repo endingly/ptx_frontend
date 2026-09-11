@@ -134,6 +134,13 @@ call-context 工作：它取得 canonical prototype/definition signature，检�
 adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor
 规则。
 
+`<ptx_frontend/semantic/ptx_function_contract.hpp>` 提供不依赖 Syntax AST 的 canonical
+function-signature contract。其 parameter contract 使用 semantic state-space 与 pointer-space
+enum、`ScalarType` 和 typed vector shape，以及只为诊断保留的 invalid spelling；数值字段是
+optional tagged value：omitted、已验证 constant 或 invalid structural key。direct-call ABI
+直接消费这些 normalized value，不再重解析 alignment text 或旧 array-extent string protocol；
+invalid structural data 绝不会被静默替换为 default。
+
 call-staging 邻接性按当前词法 body 的执行指令序列检查。普通变量声明、`.loc` 和
 `.pragma` 不打断 call 前的参数 store 或 call 后的返回值 load。标签、嵌套 block 及
 call/branch metadata 仍是扫描边界；嵌套 body 使用自身 symbol scope 独立检查。

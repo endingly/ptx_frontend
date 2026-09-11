@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.28.0)
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Select optional manifest dependencies before project() loads the vcpkg toolchain.
+option(PTX_FRONTEND_BUILD_BENCHMARKS "Build frontend performance benchmarks" OFF)
+if(PTX_FRONTEND_BUILD_BENCHMARKS)
+    list(APPEND VCPKG_MANIFEST_FEATURES benchmarks)
+    list(REMOVE_DUPLICATES VCPKG_MANIFEST_FEATURES)
+endif()
+
 project(ptx_frontend VERSION 0.0.1 LANGUAGES C CXX)
 
 include(GNUInstallDirs)

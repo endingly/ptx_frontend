@@ -65,6 +65,28 @@ program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_
 Parameterized name 可用于任意 state space，但不能同时声明 array 或 initializer。原先
 只允许 `.reg` 的限制已移除，公共 CST/AST 字段也统一命名为 `parameterized_count`。
 
+## Lookup index 与紧凑 group
+
+表仍以拥有字符串的 `symbols` vector 作为稳定 `SymbolId` 的唯一来源；另外维护与 scope
+对齐的私有 index，其 key 也独立拥有：ordinary exact name、parameterized exact base，以及
+parameterized base 的 prefix trie。lookup 因此在当前 scope 先查 ordinary exact name，再只查
+可能成为 query spelling prefix 的 parameterized base，之后才走向 parent scope。这保持了
+“current-scope ordinary、current-scope parameterized、parent”的既有优先级。debug metadata
+有意不进入这些 lexical index。
+当 scope 只有一个 parameterized group 时，lookup 在 ordinary-name probe 之后直接检查
+该 group 的 member，省去 prefix trie 的开销，但不改变边界、canonical suffix 或 parent fallback。
+
+Parameterized overlap check 使用按 canonical spelling decomposition 建立的稀疏 32-bit member
+range trie。它定位与新 base/count 有关的已有 explicit name、已有 group base 与 group 的
+first-member spelling，并为 diagnostic 保留最先存储的 overlap identity；现有的 name-set-
+overlap predicate 仍是最终事实来源。index 不会展开逻辑 member：count 很大的 declaration
+只消耗与 spelling 长度及固定 32-bit trie path 成比例的存储，而不与 count 成比例。index key
+和 trie storage 都由表拥有，所以 `symbols` vector 增长以及支持的 table copy/move 都不会留下
+悬空的 borrowed name key。
+
+[扩展性基准](../../submod/resolved_ir/benchmark/README.md) 分别记录 parser、binding、
+直接 lookup 和 module resolution 的测量结果，并包含 compact group 对照及生成 PTX 语料。
+
 ## Reference binding
 
 binding pass 会访问：

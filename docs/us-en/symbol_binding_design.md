@@ -79,6 +79,35 @@ Parameterized names are valid in every state space, but cannot also declare an
 array or initializer. The previous `.reg`-only restriction was removed, and
 the public CST/AST field is now consistently named `parameterized_count`.
 
+## Lookup indexes and compact groups
+
+The table retains its owning `symbols` vector as the source of stable
+`SymbolId` values. It additionally keeps private, scope-aligned indexes with
+their own string keys: ordinary exact names, parameterized exact bases, and a
+prefix trie for parameterized bases. Lookup therefore checks the current
+scope's ordinary exact name, then only parameterized bases that can prefix the
+queried spelling, before moving to the parent scope. This preserves the
+current-scope ordinary, current-scope parameterized, then parent precedence.
+Debug metadata is deliberately excluded from these lexical indexes.
+When a scope has just one parameterized group, lookup checks that group's
+member directly after the ordinary-name probe, avoiding prefix-trie overhead
+without changing bounds, canonical suffix handling, or parent fallback.
+
+Parameterized overlap checking uses a sparse 32-bit member-range trie keyed
+by canonical spelling decompositions. It identifies existing explicit names,
+existing group bases, and group first-member spellings relevant to the new
+base/count, then retains the first stored overlapping identity for the
+diagnostic. The existing name-set-overlap predicate remains authoritative.
+The indexes store no logical members: a declaration with a very large count
+uses storage proportional to its spelling and the fixed 32-bit trie paths,
+not to its count. Index keys and trie storage are owned by the table, so
+`symbols` vector growth and supported table copies or moves cannot leave
+borrowed name keys dangling.
+
+The [scaling benchmark](../../submod/resolved_ir/benchmark/README.md) records
+separate parser, binding, direct-lookup, and module-resolution measurements,
+including compact-group controls and a generated PTX corpus input.
+
 ## Reference binding
 
 The pass visits:

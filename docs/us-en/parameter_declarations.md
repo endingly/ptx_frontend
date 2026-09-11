@@ -29,6 +29,11 @@ its result is a type classification, not validation of context or availability.
 Instruction alternate formats such as `.bf16` and `.tf32` do not become legal
 declaration types by retaining their spelling. `.reg` formals retain their
 existing separate signature/address path; they are not `.param` table entries.
+Within the owning function body, register-space input and return formals are
+resolved as typed register operands and retain their lexical symbol identities.
+Parameter-space formals remain data objects: use an instruction appropriate to
+their parameter address or storage semantics rather than an arithmetic register
+operand.
 
 ## Alignment, pointers, and size
 

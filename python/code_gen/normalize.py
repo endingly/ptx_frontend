@@ -1391,7 +1391,8 @@ def _normalize_immediate_multiple_of_constraint(
         )
     operand_name, divisor = raw["operand"], raw["divisor"]
     _validate_immediate_constraint_operand(
-        raw_variant, layouts, operand_name, "immediate_multiple_of"
+        raw_variant, layouts, operand_name, "immediate_multiple_of",
+        allowed_kinds=("imm", "reg_or_imm"),
     )
     _validate_uint64(raw_variant, "immediate_multiple_of", "divisor", divisor)
     if divisor <= 0:

@@ -26,6 +26,10 @@
 分类，不表示上下文或版本已通过验证。`.bf16`、`.tf32` 等 instruction alternate format
 不会因为 spelling 被保留就成为合法 declaration type。`.reg` formal 继续使用既有
 signature/address 路径，不属于 `.param` 声明表。
+在所属 function body 中，register-space input / return formal 会作为带类型的 register
+operand resolve，并保留 lexical symbol identity。parameter-space formal 仍是 data object；
+应使用符合其 parameter address 或 storage semantics 的 instruction，而不是将其作为
+arithmetic register operand。
 
 ## Alignment、pointer 与大小
 

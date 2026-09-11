@@ -712,7 +712,11 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
   }
 
   const binding::Symbol& symbol = context.symbols.symbol(lookup->symbol);
-  if (symbol.kind != binding::SymbolKind::Variable ||
+  const bool register_valued_role =
+      symbol.kind == binding::SymbolKind::Variable ||
+      symbol.kind == binding::SymbolKind::InputParameter ||
+      symbol.kind == binding::SymbolKind::ReturnParameter;
+  if (!register_valued_role ||
       symbol.state_space != syntax_ast::AstStateSpace::Register) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,

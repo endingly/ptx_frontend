@@ -421,7 +421,9 @@ Do not invent variants for layout differences: `bar.sync a` and
 ## Immediate operand constraints
 
 Variant-level `constraints` can impose executable integer rules on a named
-`kind: imm` operand:
+operand. Depending on the constraint kind, it may be `kind: imm` or
+`kind: reg_or_imm`; a `reg_or_imm` rule applies only when the source is a known
+immediate:
 
 ```yaml
 constraints:
@@ -433,8 +435,11 @@ constraints:
 `immediate_value` is one non-empty, duplicate-free allowlist per variant.
 `immediate_range` may occur once per operand and has an inclusive `minimum`
 and an optional inclusive `maximum`; omitting `maximum` means no upper bound.
-`immediate_multiple_of` is one divisor rule per variant. These descriptors may
-be combined when their named operands make that meaningful.
+`immediate_multiple_of` is one divisor rule per variant. Like
+`immediate_range`, it may name an `imm` or `reg_or_imm` operand: the generated
+checker evaluates known immediates and leaves dynamically unknown register
+values to runtime. These descriptors may be combined when their named operands
+make that meaningful.
 
 All configured values use the generated `uint64_t` domain: an actual YAML
 integer in `0..18446744073709551615` (`2^64 - 1`). Negative values, Boolean
@@ -443,15 +448,14 @@ The normalizer validates every `immediate_value.values[index]` before duplicate
 checking, validates `minimum`, present `maximum`, and `divisor` with the same
 rule, rejects `maximum < minimum`, and requires `divisor > 0`.
 
-The operand reference is deliberately variant-wide, not layout-local. For
-each of the three constraint kinds, the named operand must exist in **every**
-operand layout of the variant and must be `kind: imm` in each one. A missing
-operand or a `reg`/`reg_or_imm` occurrence in even one named layout is a
-normalization error that identifies the variant, constraint kind, operand, and
-layout. Do not work around this with a layout-local constraint DSL or a runtime
-"missing operand means skip" rule. If a future instruction genuinely needs a
-layout-specific rule, it needs a new explicitly designed contract; it must not
-weaken this invariant.
+The operand reference is deliberately variant-wide, not layout-local. It must
+occur in at least one operand layout; layouts that omit it do not produce a
+missing-field error. Where it occurs, `immediate_value` requires `kind: imm`,
+while `immediate_range` and `immediate_multiple_of` accept `kind: imm` or
+`kind: reg_or_imm`. A `reg` occurrence is a normalization error that identifies
+the variant, constraint kind, operand, and layout. This permits optional
+operands while preserving immediate-only rules where their value contract
+requires one.
 
 The current frozen `setmaxnreg.inc.sync.aligned.u32` form illustrates a range
 plus divisibility rule:

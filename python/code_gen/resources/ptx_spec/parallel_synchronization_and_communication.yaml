@@ -555,6 +555,9 @@ instructions:
             availability:
               ptx: "2.0"
               sm: 20
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_sync
 
         examples:
@@ -585,6 +588,9 @@ instructions:
             operands: $bar_sync_barrier
           - name: barrier_and_thread_count
             operands: $bar_sync_barrier_and_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_sync
 
         examples:
@@ -610,6 +616,10 @@ instructions:
             value: true
             token: ".arrive"
         operands: $bar_sync_barrier_and_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: thread_count, minimum: 1}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_arrive
 
         examples:
@@ -634,6 +644,10 @@ instructions:
             value: true
             token: ".arrive"
         operands: $bar_sync_barrier_and_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: thread_count, minimum: 1}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_arrive
 
         examples:
@@ -673,6 +687,9 @@ instructions:
             operands: $bar_red_popc_without_thread_count
           - name: with_thread_count
             operands: $bar_red_popc_with_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_red_popc
 
         examples:
@@ -715,6 +732,9 @@ instructions:
             operands: $bar_red_popc_without_thread_count
           - name: with_thread_count
             operands: $bar_red_popc_with_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_red_popc
 
         examples:
@@ -754,6 +774,9 @@ instructions:
             operands: $bar_red_pred_without_thread_count
           - name: with_thread_count
             operands: $bar_red_pred_with_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_red_and
 
         examples:
@@ -794,6 +817,9 @@ instructions:
             operands: $bar_red_pred_without_thread_count
           - name: with_thread_count
             operands: $bar_red_pred_with_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_red_and
 
         examples:
@@ -833,6 +859,9 @@ instructions:
             operands: $bar_red_pred_without_thread_count
           - name: with_thread_count
             operands: $bar_red_pred_with_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_red_or
 
         examples:
@@ -873,6 +902,9 @@ instructions:
             operands: $bar_red_pred_without_thread_count
           - name: with_thread_count
             operands: $bar_red_pred_with_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
         rule: parallel_sync_and_communication.bar_red_or
 
         examples:

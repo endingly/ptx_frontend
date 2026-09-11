@@ -61,6 +61,10 @@ program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_
 以及两个不同 base 的 parameterized declaration，只要展开后存在同 scope 成员重叠，都会
 产生带 previous range 的 duplicate diagnostic；parameterized base 本身不属于展开集合，
 所以 `name<2>` 与 explicit `name` 仍是两个不同 symbol。
+ordinary/ordinary 只比较两个 literal spelling；ordinary/group 用 ordinary spelling
+匹配 group 的成员；group/group 只比较生成出的成员。非法的 zero-count group 没有成员，
+不会产生 overlap candidate；同 base 的 compact declaration 仍沿用 exact-declaration
+duplicate policy。
 
 Parameterized name 可用于任意 state space，但不能同时声明 array 或 initializer。原先
 只允许 `.reg` 的限制已移除，公共 CST/AST 字段也统一命名为 `parameterized_count`。
@@ -84,9 +88,9 @@ bound identity 的 consumer 暴露同 scope 的 exact index；它不走 parent�
 每个 symbol 重扫全部 instruction/initializer reference。
 
 Parameterized overlap check 使用按 canonical spelling decomposition 建立的稀疏 32-bit member
-range trie。它定位与新 base/count 有关的已有 explicit name、已有 group base 与 group 的
-first-member spelling，并为 diagnostic 保留最先存储的 overlap identity；现有的 name-set-
-overlap predicate 仍是最终事实来源。index 不会展开逻辑 member：count 很大的 declaration
+range trie。它定位与新 base/count 有关的已有 explicit name 和 nonempty group 的
+first-member spelling，并为 diagnostic 保留最先存储的 overlap identity；group base 因不属于
+member 而不进入此 index，现有的 name-set-overlap predicate 仍是最终事实来源。index 不会展开逻辑 member：count 很大的 declaration
 只消耗与 spelling 长度及固定 32-bit trie path 成比例的存储，而不与 count 成比例。index key
 和 trie storage 都由表拥有，所以 `symbols` vector 增长以及支持的 table copy/move 都不会留下
 悬空的 borrowed name key。

@@ -72,8 +72,8 @@ TEST(SymbolTableIndexLifetime, SurvivesGrowthCopyAndMove) {
   expectIndexedLookups(move_assigned, scope);
 }
 
-/** Preserve legacy base-name overlap diagnostics in either declaration order. */
-TEST(SymbolTableIndexLifetime, RetainsParameterizedBaseOverlapDiagnostics) {
+/** Group bases are not members, so digit-ending group bases can be disjoint. */
+TEST(SymbolTableIndexLifetime, DoesNotTreatParameterizedBasesAsMembers) {
   for (const std::string_view declarations :
        {".reg .u32 %r<1>; .reg .u32 %r0<1>;",
         ".reg .u32 %r0<1>; .reg .u32 %r<1>;"}) {
@@ -83,18 +83,12 @@ TEST(SymbolTableIndexLifetime, RetainsParameterizedBaseOverlapDiagnostics) {
     ASSERT_TRUE(parsed.has_value());
     ASSERT_TRUE(parsed.diagnostics.empty());
     const auto bound = bindSymbols(*parsed);
-    ASSERT_EQ(bound.diagnostics.size(), 1u);
-    EXPECT_EQ(bound.diagnostics.front().kind,
-              BindDiagnosticKind::DuplicateSymbol);
-    EXPECT_TRUE(bound.diagnostics.front().previous_range.has_value());
-    EXPECT_NE(
-        bound.diagnostics.front().message.find("overlapping symbol names"),
-        std::string::npos);
+    EXPECT_TRUE(bound.diagnostics.empty());
   }
 }
 
-/** Invalid zero-count groups retain their legacy overlap and count diagnostics. */
-TEST(SymbolTableIndexLifetime, RetainsZeroCountOverlapDiagnostics) {
+/** Invalid zero-count groups have no members and therefore no overlap diagnostics. */
+TEST(SymbolTableIndexLifetime, ZeroCountGroupsDoNotCreateOverlapCandidates) {
   for (const std::string_view declarations :
        {".reg .u32 %r<1>; .reg .u32 %r0<0>;",
         ".reg .u32 %r0<0>; .reg .u32 %r<1>;"}) {
@@ -113,8 +107,28 @@ TEST(SymbolTableIndexLifetime, RetainsZeroCountOverlapDiagnostics) {
       duplicate_count += diagnostic.kind == BindDiagnosticKind::DuplicateSymbol;
     }
     EXPECT_EQ(invalid_count, 1u);
-    EXPECT_EQ(duplicate_count, 1u);
+    EXPECT_EQ(duplicate_count, 0u);
   }
+}
+
+/** Keep the sparse overlap index correct at the highest valid member number. */
+TEST(SymbolTableIndexLifetime, DetectsHighestRepresentableParameterizedMember) {
+  constexpr std::string_view source = R"ptx(
+.entry indexed() {
+  .reg .u32 %r<4294967295>;
+  .reg .u32 %r4294967294;
+  .reg .u32 %r4294967295;
+  ret;
+}
+)ptx";
+  PtxSyntaxParser parser(source);
+  const auto parsed = parser.parseModule();
+  ASSERT_TRUE(parsed.has_value());
+  ASSERT_TRUE(parsed.diagnostics.empty());
+  const auto bound = bindSymbols(*parsed);
+  ASSERT_EQ(bound.diagnostics.size(), 1u);
+  EXPECT_EQ(bound.diagnostics.front().kind, BindDiagnosticKind::DuplicateSymbol);
+  EXPECT_TRUE(bound.diagnostics.front().previous_range.has_value());
 }
 
 }  // namespace

@@ -1411,7 +1411,8 @@ resolve_vector_special_register(const syntax_ast::AstOperand& operand) {
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
-    const syntax_ast::AstImmediate& immediate, ScalarType type);
+    const syntax_ast::AstImmediate& immediate, ScalarType type,
+    bool require_target_range = false);
 
 std::expected<std::optional<ResolvedAddressOffset>, ResolveDiagnostic>
 resolve_address_offset(const syntax_ast::AstAddress& address) {
@@ -1419,7 +1420,8 @@ resolve_address_offset(const syntax_ast::AstAddress& address) {
     return std::nullopt;
 
   auto value =
-      resolve_immediate_value(address.offset->magnitude, ScalarType::S64);
+      resolve_immediate_value(address.offset->magnitude, ScalarType::S64,
+                              true);
   if (!value)
     return std::unexpected(value.error());
   return ResolvedAddressOffset{
@@ -1584,7 +1586,8 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     }
   } else {
     const auto& immediate = std::get<syntax_ast::AstImmediate>(address->base);
-    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U64);
+    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U64,
+                                                  true);
     if (!immediate_base)
       return std::unexpected(immediate_base.error());
     base = std::move(*immediate_base);
@@ -1634,7 +1637,7 @@ std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
-    std::string_view text, bool negative) {
+    std::string_view text, bool negative, bool require_target_range = false) {
   using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
@@ -1663,22 +1666,39 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
         immediate,
         fmt::format("Invalid integer literal '{}'.", immediate.syntax.text)));
 
-  uint64_t limit = bit_mask;
-  if (kind == base::ScalarKind::Signed) {
-    limit = negative ? (uint64_t{1} << (bit_width - 1))
-                     : (uint64_t{1} << (bit_width - 1)) - 1;
+  const bool source_is_unsigned =
+      text.ends_with('u') || text.ends_with('U') ||
+      *magnitude > static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+  const uint64_t source_bits = negative ? uint64_t{0} - *magnitude : *magnitude;
+  const bool source_is_negative =
+      !source_is_unsigned && std::bit_cast<int64_t>(source_bits) < 0;
+  if (require_target_range) {
+    const uint64_t positive_limit =
+        kind == base::ScalarKind::Signed
+            ? (uint64_t{1} << (bit_width - 1)) - 1
+            : bit_mask;
+    const uint64_t negative_limit =
+        kind == base::ScalarKind::Signed
+            ? uint64_t{1} << (bit_width - 1)
+            : bit_mask;
+    const bool representable =
+        source_is_negative
+            ? uint64_t{0} - source_bits <= negative_limit
+            : source_bits <= positive_limit;
+    if (!representable) {
+      return std::unexpected(invalid_immediate(
+          immediate,
+          fmt::format(
+              "Integer literal '{}' is out of range for scalar type '{}'.",
+              immediate.syntax.text, to_string(type))));
+    }
   }
-  if (*magnitude > limit) {
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format(
-            "Integer literal '{}' is out of range for scalar type '{}'.",
-            immediate.syntax.text, to_string(type))));
-  }
-
-  const uint64_t bits =
-      negative ? (uint64_t{0} - *magnitude) & bit_mask : *magnitude;
-  return ResolvedImmediate{.bits = bits, .type = type, .is_negative = negative};
+  return ResolvedImmediate{
+      .bits = source_bits & bit_mask,
+      .type = type,
+      .is_negative = source_is_negative,
+      .integer_source_bits = source_bits,
+  };
 }
 
 /**
@@ -1819,7 +1839,8 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
-    const syntax_ast::AstImmediate& immediate, ScalarType type) {
+    const syntax_ast::AstImmediate& immediate, ScalarType type,
+    bool require_target_range) {
   std::string_view text = immediate.syntax.text;
   bool negative = false;
   if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
@@ -1830,7 +1851,8 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
   switch (immediate.kind) {
     case syntax_ast::AstImmediateKind::DecimalInteger:
     case syntax_ast::AstImmediateKind::HexInteger:
-      return resolve_integer_literal(immediate, type, text, negative);
+      return resolve_integer_literal(immediate, type, text, negative,
+                                     require_target_range);
     case syntax_ast::AstImmediateKind::F32Hex:
       return resolve_float_bits_literal(immediate, type, text, negative, 32);
     case syntax_ast::AstImmediateKind::F64Hex:
@@ -1844,7 +1866,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
 
 std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     const syntax_ast::AstOperand& operand, ScalarType type,
-    const ResolveContext* context) {
+    const ResolveContext* context, bool require_target_range = false) {
   if (const auto* identifier =
           std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
     auto register_ref = resolve_register(operand, context);
@@ -1854,7 +1876,8 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
                               identifier->syntax.range};
   }
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
-    auto value = resolve_immediate_value(*immediate, type);
+    auto value = resolve_immediate_value(*immediate, type,
+                                         require_target_range);
     if (!value)
       return std::unexpected(value.error());
     return WithLocs<RegOrImm>{RegOrImm{*value}, immediate->syntax.range};
@@ -2109,7 +2132,10 @@ resolve_tensor_coordinate(
       }
       immediate_type = *type;
     }
-    auto value = resolve_immediate_value(immediate, *immediate_type);
+    auto value = resolve_immediate_value(
+        immediate, *immediate_type,
+        binding.type_expression.kind ==
+            checker::OperandTypeExpressionKind::FixedScalar);
     if (!value)
       return std::unexpected(value.error());
     locations.push_back(immediate.syntax.range);
@@ -2614,7 +2640,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           type_for_operand(binding, fields, immediate->syntax.range);
       if (!type)
         return std::unexpected(type.error());
-      auto value = resolve_immediate_value(*immediate, *type);
+      auto value = resolve_immediate_value(
+          *immediate, *type,
+          binding.type_expression.kind ==
+              checker::OperandTypeExpressionKind::FixedScalar);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{WithLocs<ResolvedImmediate>{
@@ -2625,7 +2654,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      auto value = resolve_reg_or_imm(operand, *type, context);
+      auto value = resolve_reg_or_imm(
+          operand, *type, context,
+          binding.type_expression.kind ==
+              checker::OperandTypeExpressionKind::FixedScalar);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -2967,7 +2999,8 @@ resolve_call_literal(
       .syntax = {.text = literal.spelling, .range = range},
       .kind = literal.kind,
   };
-  auto resolved = resolve_immediate_literal(immediate, *type);
+  // Call arguments retain their formal-parameter representability contract.
+  auto resolved = resolve_immediate_value(immediate, *type, true);
   if (!resolved)
     return std::unexpected(resolved.error());
   return WithLocs<ResolvedImmediate>{std::move(*resolved), range};

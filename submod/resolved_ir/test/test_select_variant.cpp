@@ -3274,7 +3274,7 @@ TEST(ResolveAdd, RejectsPredicateInGeneralRegisterSlot) {
             "Expected a non-predicate register, got '%p1'.");
 }
 
-TEST(ResolveImmediateLiteral, SupportsIntegerSuffixesAndTargetWidth) {
+TEST(ResolveImmediateLiteral, ConvertsEvaluatedIntegerSourcesAtTheUseWidth) {
   const auto decimal = parse_immediate("123U");
   EXPECT_EQ(decimal.kind, syntax_ast::AstImmediateKind::DecimalInteger);
   const auto decimal_value =
@@ -3302,13 +3302,23 @@ TEST(ResolveImmediateLiteral, SupportsIntegerSuffixesAndTargetWidth) {
       << negative_unsigned.error().message;
   EXPECT_EQ(negative_unsigned->bits, 0xffffU);
 
-  const auto out_of_range = parse_immediate("65536");
-  const auto rejected =
-      resolve_immediate_literal(out_of_range, ScalarType::U16);
-  ASSERT_FALSE(rejected.has_value());
-  EXPECT_EQ(rejected.error().range, out_of_range.syntax.range);
-  EXPECT_EQ(rejected.error().message,
-            "Integer literal '65536' is out of range for scalar type 'U16'.");
+  const auto narrowed = resolve_immediate_literal(parse_immediate("65536"),
+                                                  ScalarType::U16);
+  ASSERT_TRUE(narrowed.has_value()) << narrowed.error().message;
+  EXPECT_EQ(narrowed->bits, 0U);
+  EXPECT_EQ(narrowed->integer_source_bits, 65536U);
+
+  const auto signed_word = resolve_immediate_literal(
+      parse_immediate("0xffffffff"), ScalarType::S32);
+  ASSERT_TRUE(signed_word.has_value()) << signed_word.error().message;
+  EXPECT_EQ(signed_word->bits, 0xffffffffU);
+  EXPECT_EQ(signed_word->integer_source_bits, 0xffffffffU);
+
+  const auto unsigned_word = resolve_immediate_literal(
+      parse_immediate("4294967296"), ScalarType::U32);
+  ASSERT_TRUE(unsigned_word.has_value()) << unsigned_word.error().message;
+  EXPECT_EQ(unsigned_word->bits, 0U);
+  EXPECT_EQ(unsigned_word->integer_source_bits, 4294967296U);
 }
 
 /**
@@ -3348,31 +3358,82 @@ TEST(ResolveImmediateLiteral,
   EXPECT_TRUE(negative->is_negative);
 }
 
-/**
- * @brief Preserves scalar range rules at signed and uint64 octal boundaries.
- */
-TEST(ResolveImmediateLiteral, EnforcesOctalSignedAndUint64Boundaries) {
+/** @brief Retains evaluated 64-bit values while rejecting decoder overflow. */
+TEST(ResolveImmediateLiteral, RetainsIntegerSourceBitsAndRejectsOverflow) {
   const auto signed_limit =
       resolve_immediate_literal(parse_immediate("0177"), ScalarType::S8);
   ASSERT_TRUE(signed_limit.has_value()) << signed_limit.error().message;
   EXPECT_EQ(signed_limit->bits, 0x7fU);
+  EXPECT_EQ(signed_limit->integer_source_bits, 127U);
 
-  const auto signed_overflow =
+  const auto narrowed_octal =
       resolve_immediate_literal(parse_immediate("0200"), ScalarType::S8);
-  ASSERT_FALSE(signed_overflow.has_value());
-  EXPECT_EQ(signed_overflow.error().message,
-            "Integer literal '0200' is out of range for scalar type 'S8'.");
+  ASSERT_TRUE(narrowed_octal.has_value()) << narrowed_octal.error().message;
+  EXPECT_EQ(narrowed_octal->bits, 0x80U);
+  EXPECT_EQ(narrowed_octal->integer_source_bits, 128U);
+  EXPECT_FALSE(narrowed_octal->is_negative);
 
   const auto uint64_limit = resolve_immediate_literal(
       parse_immediate("01777777777777777777777"), ScalarType::U64);
   ASSERT_TRUE(uint64_limit.has_value()) << uint64_limit.error().message;
   EXPECT_EQ(uint64_limit->bits, std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(uint64_limit->integer_source_bits,
+            std::numeric_limits<uint64_t>::max());
 
   const auto uint64_overflow = resolve_immediate_literal(
       parse_immediate("02000000000000000000000"), ScalarType::U64);
   ASSERT_FALSE(uint64_overflow.has_value());
   EXPECT_EQ(uint64_overflow.error().message,
             "Invalid integer literal '02000000000000000000000'.");
+}
+
+/** @brief Normalizes integer minus zero without changing unsigned wraparound. */
+TEST(ResolveImmediateLiteral, NormalizesIntegerMinusZeroAndUnsignedNegation) {
+  for (const auto spelling : {"0", "+0", "-0", "-0U", "-0x0", "-0x0U"}) {
+    SCOPED_TRACE(spelling);
+    const auto resolved =
+        resolve_immediate_literal(parse_immediate(spelling), ScalarType::U32);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    EXPECT_EQ(resolved->bits, 0U);
+    EXPECT_EQ(resolved->integer_source_bits, 0U);
+    EXPECT_FALSE(resolved->is_negative);
+  }
+
+  const auto signed_negative =
+      resolve_immediate_literal(parse_immediate("-1"), ScalarType::U32);
+  ASSERT_TRUE(signed_negative.has_value()) << signed_negative.error().message;
+  EXPECT_TRUE(signed_negative->is_negative);
+  EXPECT_EQ(signed_negative->integer_source_bits,
+            std::numeric_limits<uint64_t>::max());
+
+  const auto unsigned_negation = resolve_immediate_literal(
+      parse_immediate("-18446744073709551615U"), ScalarType::U32);
+  ASSERT_TRUE(unsigned_negation.has_value()) << unsigned_negation.error().message;
+  EXPECT_FALSE(unsigned_negation->is_negative);
+  EXPECT_EQ(unsigned_negation->integer_source_bits, 1U);
+  EXPECT_EQ(unsigned_negation->bits, 1U);
+
+  const auto negative_unsigned_one =
+      resolve_immediate_literal(parse_immediate("-1U"), ScalarType::U32);
+  ASSERT_TRUE(negative_unsigned_one.has_value())
+      << negative_unsigned_one.error().message;
+  EXPECT_FALSE(negative_unsigned_one->is_negative);
+  EXPECT_EQ(negative_unsigned_one->integer_source_bits,
+            std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(negative_unsigned_one->bits, 0xffffffffU);
+}
+
+/** @brief Keeps fixed scalar control operands out of ordinary narrowing. */
+TEST(ResolveBar, RejectsOutOfRangeFixedScalarImmediates) {
+  for (const auto literal : {"4294967296", "-1U"}) {
+    SCOPED_TRACE(literal);
+    const auto resolved = resolve<Bar>(
+        parse_instruction(std::string("bar.sync ") + literal + ";"));
+    ASSERT_FALSE(resolved.has_value());
+    EXPECT_EQ(resolved.error().message,
+              std::string("Integer literal '") + literal +
+                  "' is out of range for scalar type 'U32'.");
+  }
 }
 
 /**
@@ -3506,6 +3567,20 @@ TEST(ResolveImmediateLiteral, NarrowsAtIeeeBoundariesAndPreservesExactPayloads) 
   EXPECT_EQ(widened_nan->bits, 0x7ff8000020000000ULL);
 }
 
+/** @brief Keeps floating negative zero independent of integer normalization. */
+TEST(ResolveImmediateLiteral, PreservesFloatingNegativeZero) {
+  const auto negative_zero = parse_immediate("-0.0");
+  const auto f32 = resolve_immediate_literal(negative_zero, ScalarType::F32);
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  EXPECT_EQ(f32->bits, 0x80000000U);
+  EXPECT_FALSE(f32->integer_source_bits.has_value());
+
+  const auto f64 = resolve_immediate_literal(negative_zero, ScalarType::F64);
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  EXPECT_EQ(f64->bits, 0x8000000000000000ULL);
+  EXPECT_FALSE(f64->integer_source_bits.has_value());
+}
+
 TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
   const declaration_semantics::FunctionParameterContract u16{.type = ".u16"};
   const auto typed_immediate = parse_immediate("42");
@@ -3515,7 +3590,9 @@ TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
       typed_immediate.syntax.range, u16);
   ASSERT_TRUE(typed.has_value()) << typed.error().message;
   EXPECT_EQ(typed->value,
-            (ResolvedImmediate{.bits = 42, .type = ScalarType::U16}));
+            (ResolvedImmediate{.bits = 42,
+                               .type = ScalarType::U16,
+                               .integer_source_bits = 42}));
   EXPECT_EQ(typed->locs, std::vector{typed_immediate.syntax.range});
 
   const auto overflow_immediate = parse_immediate("65536");

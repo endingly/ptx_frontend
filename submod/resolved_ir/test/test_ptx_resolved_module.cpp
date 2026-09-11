@@ -414,6 +414,50 @@ TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
   EXPECT_EQ(mov_immediate.bits, 0xffffffffU);
 }
 
+/** Verifies ordinary data operands narrow evaluated 64-bit integer sources. */
+TEST(ResolvedModule, ConvertsOrdinaryIntegerDataImmediatesAndMinusZero) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0;
+  .reg .u32 %u<2>;
+  mov.s32 %s0, 0xffffffff;
+  mov.u32 %u0, 4294967296;
+  mov.u32 %u1, -0;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& signed_word = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[0])).src.value);
+  EXPECT_EQ(signed_word.bits, 0xffffffffU);
+  EXPECT_EQ(signed_word.integer_source_bits, 0xffffffffU);
+  const auto& zero_word = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
+  EXPECT_EQ(zero_word.bits, 0U);
+  EXPECT_EQ(zero_word.integer_source_bits, 4294967296U);
+  const auto& minus_zero = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[2])).src.value);
+  EXPECT_EQ(minus_zero.bits, 0U);
+  EXPECT_EQ(minus_zero.integer_source_bits, 0U);
+  EXPECT_FALSE(minus_zero.is_negative);
+}
+
+/** Keeps address offsets in their strict signed 64-bit domain. */
+TEST(ResolvedModule, RejectsOutOfRangeAddressOffsetBeforeNarrowing) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 base;
+.entry kernel() {
+  .reg .u32 %r0;
+  ld.u32 %r0, [base+9223372036854775808];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().front().message,
+            "Integer literal '9223372036854775808' is out of range for scalar type 'S64'.");
+}
+
 TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
   const auto ast = parseModule(R"ptx(
 .func device() {

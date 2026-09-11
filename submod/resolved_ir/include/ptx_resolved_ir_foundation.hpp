@@ -238,6 +238,7 @@ struct OperandView {
   OperandShape actual_shape;
   std::optional<ScalarType> immediate_type;
   std::optional<uint64_t> immediate_bits;
+  /** Numerical negativity of the evaluated signed integer source. */
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
   bool is_sink = false;
@@ -259,6 +260,8 @@ struct OperandView {
   std::optional<AvailabilityDescriptor> value_availability;
   std::string_view value_name{};
   std::span<const SourceRange> locations;
+  /** Evaluated 64-bit integer bits before the operand use narrows them. */
+  std::optional<uint64_t> integer_source_bits;
 };
 /** Borrowed target properties used by checker availability validation. */
 struct TargetInfo {
@@ -454,10 +457,16 @@ struct ResolvedRegisterOrSink {
   std::optional<ResolvedRegisterRef> register_ref;
   bool operator==(const ResolvedRegisterOrSink&) const = default;
 };
+/** A typed immediate retaining both use-width and integer-source values. */
 struct ResolvedImmediate {
+  /** Bits after conversion to the scalar type selected by this operand use. */
   uint64_t bits;
+  /** Scalar type selected by this operand use. */
   ScalarType type;
+  /** True only when the evaluated integer source is signed and negative. */
   bool is_negative = false;
+  /** Evaluated 64-bit integer bits, absent for floating-point immediates. */
+  std::optional<uint64_t> integer_source_bits;
   bool operator==(const ResolvedImmediate&) const = default;
 };
 struct ResolvedRegisterVector {

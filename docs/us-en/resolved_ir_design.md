@@ -197,14 +197,20 @@ Modifier primitives include `bool`, `ScalarType`, and `RoundingMode`; the latter
 turns `.rn/.rz/.rm/.rp` into statically checkable values instead of runtime
 strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 `ResolvedPredicate`, `ResolvedBranchTarget`, `ResolvedSpecialRegisterRef`,
-`ResolvedFunctionRef`, `ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
-and `ScalarType`, so the checker never has to reinterpret literal text.
+`ResolvedFunctionRef`, `ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores use-width bits
+and `ScalarType`. Integer forms also retain evaluated 64-bit source bits and
+numerical signed-negativity, so fixed-control checks never reinterpret literal
+text or trust a narrowed value.
 
 `AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
-integers, including their optional `U` suffix, are range-checked against the
-target integer or bit type. Negative values are stored in `bits` as the
-target-width two's-complement representation rather than being unconditionally
-extended to 64 bits. Decimal floats currently convert to `F32` and `F64`, while
+integers, including their optional `U` suffix, first evaluate in the PTX
+64-bit signed/unsigned source domain; unary minus preserves that source type
+and unsigned negation wraps. Ordinary modifier-driven data uses retain the low
+target-width bits, while fixed-scalar instruction controls, call literals checked
+against formal parameter types, and address offsets
+retain strict target-width representability. A signed `-0` is numerically zero,
+whereas floating negative zero retains its IEEE sign bit. Decimal floats
+currently convert to `F32` and `F64`, while
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
 respectively. Other floating formats require explicit quantization rules and
 must not silently take the integer path.

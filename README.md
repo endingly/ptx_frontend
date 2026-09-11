@@ -289,9 +289,12 @@ layout as a stable pre-1.0 ABI. See the
 the instruction database or generator.
 
 `instructions/ptx_spec` is a source-tree compatibility symlink. Installed
-packages also expose `ptx_spec` (the public PTX data) and `codegen` (the
-generator plus its runtime resources) CMake components; consumers supply their
-own backend mapping when generating C++.
+packages expose only `ptx_spec`, the public PTX data, as a non-target CMake
+component. The frontend generator, its runtime resources, and the repository
+C++ backend mapping are source-build implementation details; downstream
+projects that generate C++ supply their own backend mapping. See the
+[installed CMake component contract](docs/us-en/cmake_components.md) for the
+public Python model and the intentional exclusions.
 
 ## Repository layout
 

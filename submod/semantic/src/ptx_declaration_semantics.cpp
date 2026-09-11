@@ -660,26 +660,6 @@ bool isOpaqueObjectType(std::string_view type) {
   return type == ".texref" || type == ".samplerref" || type == ".surfref";
 }
 
-/** Return whether a known scalar spelling is restricted to instruction formats. */
-bool isInstructionOnlyScalarType(std::string_view type) {
-  return type == ".u8x4" || type == ".u16x2" || type == ".s8x4" ||
-         type == ".s16x2" || type == ".f32x2" || type == ".bf16" ||
-         type == ".bf16x2" || type == ".e4m3" || type == ".e5m2" ||
-         type == ".e4m3x2" || type == ".e5m2x2" || type == ".tf32";
-}
-
-/** Classify one fundamental scalar spelling admitted by a `.reg` declaration. */
-std::optional<base::ScalarType> registerDeclarationScalarType(
-    std::string_view type) noexcept {
-  if (const auto scalar = parameterScalarType(type))
-    return scalar;
-  if (type == ".f16x2")
-    return base::ScalarType::F16x2;
-  if (type == ".pred")
-    return base::ScalarType::Pred;
-  return std::nullopt;
-}
-
 bool initializerTypeAccepts(std::string_view type,
                             ExpressionCategory category) {
   if (category == ExpressionCategory::Address)
@@ -1913,15 +1893,20 @@ class Checker {
     if (declaration.state_space != syntax_ast::AstStateSpace::Register)
       return;
 
-    const auto scalar = registerDeclarationScalarType(declaration.type.text);
-    if (!scalar) {
-      const auto kind = isInstructionOnlyScalarType(declaration.type.text)
+    const auto* metadata =
+        base::find_scalar_type_metadata(declaration.type.text);
+    if (!metadata || metadata->register_declaration_usage ==
+                         base::ScalarDeclarationUsage::InstructionOnly) {
+      const bool is_instruction_only =
+          metadata && metadata->register_declaration_usage ==
+                          base::ScalarDeclarationUsage::InstructionOnly;
+      const auto kind = is_instruction_only
                             ? DeclarationDiagnosticKind::
                                   UnsupportedRegisterDeclarationType
                             : DeclarationDiagnosticKind::
                                   UnknownRegisterDeclarationType;
       diagnose(kind, declaration.type.range,
-               isInstructionOnlyScalarType(declaration.type.text)
+               is_instruction_only
                    ? fmt::format("Register declaration type '{}' is an "
                                  "instruction-only packed or alternate "
                                  "format.",
@@ -1940,7 +1925,7 @@ class Checker {
                "Register declaration vectors must use .v2 or .v4.");
       return;
     }
-    if (*scalar == base::ScalarType::Pred) {
+    if (metadata->type == base::ScalarType::Pred) {
       diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
                declaration.vector_type->range,
                "Predicate register declarations must be scalar.");
@@ -1948,7 +1933,7 @@ class Checker {
     }
     const uint64_t vector_width =
         declaration.vector_type->text == ".v2" ? 2 : 4;
-    if (base::scalar_size_of(*scalar) * vector_width > 16) {
+    if (metadata->size_bytes * vector_width > 16) {
       diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
                declaration.vector_type->range,
                "Non-predicate register vectors may not exceed 128 bits.");

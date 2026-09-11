@@ -10,6 +10,7 @@
 #include <variant>
 #include <vector>
 
+#include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
@@ -122,6 +123,55 @@ TEST(RegisterDeclarations, RejectsInstructionOnlyFormatsAtDeclarationTime) {
       continue;
     EXPECT_EQ(diagnostic.range.start.column, 8u);
     EXPECT_NE(diagnostic.message.find("instruction-only"), std::string::npos);
+  }
+}
+
+/** Every modeled scalar spelling has the declaration classification in base metadata. */
+TEST(RegisterDeclarations, ClassifiesEveryModeledScalarFromBaseMetadata) {
+  const auto metadata = base::scalar_type_metadata();
+  const auto scalar_types = magic_enum::enum_values<base::ScalarType>();
+  ASSERT_EQ(metadata.size(), scalar_types.size() - 1);
+
+  for (const auto scalar_type : scalar_types) {
+    if (scalar_type == base::ScalarType::Invalid)
+      continue;
+    const auto* scalar_metadata = base::find_scalar_type_metadata(scalar_type);
+    ASSERT_NE(scalar_metadata, nullptr)
+        << magic_enum::enum_name(scalar_type);
+
+    std::string source = ".entry scalar_declaration() { .reg ";
+    source += scalar_metadata->source_spelling;
+    source += " %value; ret; }";
+    const auto ast = parseModule(source);
+    ASSERT_TRUE(ast) << scalar_metadata->source_spelling;
+    const auto* function =
+        std::get_if<syntax_ast::AstFunction>(&ast->items.front());
+    ASSERT_NE(function, nullptr);
+    const auto* declaration = std::get_if<syntax_ast::AstVariableDeclaration>(
+        &function->body.front());
+    ASSERT_NE(declaration, nullptr);
+
+    const auto binding = binding::bindSymbols(*ast);
+    const auto diagnostics =
+        declaration_semantics::checkDeclarations(*ast, binding.table);
+    EXPECT_EQ(declarationCount(
+                  diagnostics,
+                  declaration_semantics::DeclarationDiagnosticKind::
+                      UnknownRegisterDeclarationType),
+              0u)
+        << scalar_metadata->source_spelling;
+    if (scalar_metadata->register_declaration_usage ==
+        base::ScalarDeclarationUsage::Fundamental) {
+      EXPECT_TRUE(diagnostics.empty()) << scalar_metadata->source_spelling;
+      continue;
+    }
+    ASSERT_EQ(diagnostics.size(), 1u) << scalar_metadata->source_spelling;
+    EXPECT_EQ(diagnostics.front().kind,
+              declaration_semantics::DeclarationDiagnosticKind::
+                  UnsupportedRegisterDeclarationType)
+        << scalar_metadata->source_spelling;
+    EXPECT_EQ(diagnostics.front().range, declaration->type.range)
+        << scalar_metadata->source_spelling;
   }
 }
 

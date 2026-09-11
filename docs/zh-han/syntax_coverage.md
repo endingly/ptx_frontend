@@ -4,6 +4,8 @@
 
 本矩阵描述 parser 已实现的行为，并不表示已经完整支持 PTX ISA。语法基准为 NVIDIA
 [PTX ISA 文档](https://docs.nvidia.com/cuda/parallel-thread-execution/)。
+[核心 opcode 完整性审计](core_opcode_completeness_audit.md) 将此 frontend 边界与
+archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name 的证据分开记录。
 
 | 范围 | 状态 | 当前实现子集 |
 | --- | --- | --- |

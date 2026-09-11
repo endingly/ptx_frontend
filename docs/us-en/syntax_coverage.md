@@ -5,6 +5,9 @@
 This matrix describes implemented parser behavior. It is not a claim of full
 PTX ISA support. The reference grammar is NVIDIA's
 [PTX ISA documentation](https://docs.nvidia.com/cuda/parallel-thread-execution/).
+The [core opcode completeness audit](core_opcode_completeness_audit.md)
+separates this frontend boundary from the archived PTX 9.3 and pinned-simulator
+execution evidence for eleven commonly used operation names.
 
 | Area | Status | Implemented subset |
 | --- | --- | --- |

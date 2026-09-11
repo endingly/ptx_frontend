@@ -542,6 +542,11 @@ std::optional<uint64_t> positiveCount(std::string_view text) {
   return count;
 }
 
+bool isValidAlignment(std::string_view text) {
+  const auto value = positiveCount(text);
+  return value && (*value & (*value - 1)) == 0;
+}
+
 /** Normalize known effective alignment while retaining invalid source for diagnostics. */
 std::optional<std::string> parameterAlignmentContract(
     const std::optional<syntax_ast::AstSyntax>& explicit_alignment,
@@ -582,12 +587,52 @@ FunctionParameterContract parameterContract(
   };
 }
 
+/** Return the natural alignment for a storage layout modeled by resolution. */
+std::optional<uint64_t> naturalStorageAlignment(
+    const syntax_ast::AstVariableDeclaration& declaration) {
+  auto scalar = parameterScalarType(declaration.type.text);
+  if (!scalar && declaration.type.text == ".f16x2")
+    scalar = base::ScalarType::F16x2;
+  if (!scalar)
+    return std::nullopt;
+  const uint64_t scalar_bytes = base::scalar_size_of(*scalar);
+  if (scalar_bytes == 0)
+    return std::nullopt;
+
+  uint64_t lanes = 1;
+  if (declaration.vector_type) {
+    if (declaration.vector_type->text == ".v2")
+      lanes = 2;
+    else if (declaration.vector_type->text == ".v4")
+      lanes = 4;
+    else
+      return std::nullopt;
+  }
+  if (scalar_bytes > 16 / lanes)
+    return std::nullopt;
+  return scalar_bytes * lanes;
+}
+
+/** Normalize storage alignment only when its omitted natural value is known. */
+std::optional<std::string> variableAlignmentContract(
+    const syntax_ast::AstVariableDeclaration& declaration) {
+  if (declaration.alignment) {
+    const auto value = positiveCount(declaration.alignment->text);
+    return value && isValidAlignment(declaration.alignment->text)
+               ? std::optional{std::to_string(*value)}
+               : std::optional{declaration.alignment->text};
+  }
+  const auto natural_alignment = naturalStorageAlignment(declaration);
+  return natural_alignment ? std::optional{std::to_string(*natural_alignment)}
+                           : std::nullopt;
+}
+
 std::string variableSignature(
     const syntax_ast::AstVariableDeclaration& declaration,
     const syntax_ast::AstVariableDeclarator& declarator) {
   std::string signature = fmt::format(
       "variable:{}:{}:{}:{}:{}", static_cast<int>(declaration.state_space),
-      declaration.alignment ? integerSyntaxKey(*declaration.alignment) : "-",
+      variableAlignmentContract(declaration).value_or("-"),
       optionalSyntaxKey(declaration.vector_type), declaration.type.text,
       declarator.parameterized_count ? integerSyntaxKey(*declarator.parameterized_count)
                                      : "-");
@@ -620,11 +665,6 @@ bool initializerTypeAccepts(std::string_view type,
            type.starts_with(".tf") || type.starts_with(".e");
   }
   return false;
-}
-
-bool isValidAlignment(std::string_view text) {
-  const auto value = positiveCount(text);
-  return value && (*value & (*value - 1)) == 0;
 }
 
 class Checker {

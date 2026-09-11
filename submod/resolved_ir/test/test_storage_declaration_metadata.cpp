@@ -51,6 +51,17 @@ const ResolvedStorageDeclaration& storageNamed(const ResolvedModule& module,
   return *match;
 }
 
+/** Return every source declaration occurrence for one bound storage symbol. */
+std::vector<const ResolvedStorageDeclaration*> storageOccurrencesNamed(
+    const ResolvedModule& module, std::string_view name) {
+  std::vector<const ResolvedStorageDeclaration*> occurrences;
+  for (const auto& declaration : module.storage_declarations) {
+    if (module.symbols.symbol(declaration.symbol_id).name == name)
+      occurrences.push_back(&declaration);
+  }
+  return occurrences;
+}
+
 /** Report whether resolution retained a declaration-stage diagnostic category. */
 bool hasDeclarationKind(const ModuleResolveDiagnostics& diagnostics,
                         declaration_semantics::DeclarationDiagnosticKind kind) {
@@ -426,6 +437,51 @@ TEST(ResolvedStorageDeclarations, PreservesExternalRedeclarationOccurrences) {
   EXPECT_NE(definition.symbol_id, first_external.symbol_id);
   EXPECT_EQ(definition.declaration_kind, StorageDeclarationKind::Definition);
   EXPECT_EQ(definition.linkage, binding::SymbolLinkage::None);
+}
+
+/** Mixed implicit and explicit external alignment retains occurrence provenance. */
+TEST(ResolvedStorageDeclarations,
+     NormalizesNaturalExternalAlignmentWithoutCollapsingDeclarations) {
+  const auto resolved = resolveSource(R"ptx(
+.extern .global .u32 scalar;
+.extern .global .align 4 .u32 scalar;
+.extern .global .align 8 .u64 word;
+.extern .global .u64 word;
+.extern .global .u8 bytes[32];
+.extern .global .align 1 .u8 bytes[32];
+.extern .global .align 8 .v2 .u32 pair[4];
+.extern .global .v2 .u32 pair[4];
+.extern .global .v4 .u32 quad[3];
+.extern .global .align 16 .v4 .u32 quad[3];
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+
+  /** Expected effective alignment and explicitness order for one symbol. */
+  struct AlignmentCase {
+    std::string_view name;
+    uint64_t alignment;
+    bool first_is_explicit;
+  };
+  constexpr std::array cases{
+      AlignmentCase{"scalar", 4u, false}, AlignmentCase{"word", 8u, true},
+      AlignmentCase{"bytes", 1u, false},  AlignmentCase{"pair", 8u, true},
+      AlignmentCase{"quad", 16u, false},
+  };
+  for (const auto& expected : cases) {
+    const auto occurrences = storageOccurrencesNamed(*resolved, expected.name);
+    ASSERT_EQ(occurrences.size(), 2u) << expected.name;
+    EXPECT_EQ(occurrences[0]->symbol_id, occurrences[1]->symbol_id)
+        << expected.name;
+    EXPECT_NE(occurrences[0]->range, occurrences[1]->range) << expected.name;
+    for (const auto* occurrence : occurrences)
+      EXPECT_EQ(occurrence->alignment, expected.alignment) << expected.name;
+    EXPECT_EQ(occurrences[0]->explicit_alignment.has_value(),
+              expected.first_is_explicit)
+        << expected.name;
+    EXPECT_EQ(occurrences[1]->explicit_alignment.has_value(),
+              !expected.first_is_explicit)
+        << expected.name;
+  }
 }
 
 /** Flattened initializer entries retain byte offsets and distinguish implicit fill. */

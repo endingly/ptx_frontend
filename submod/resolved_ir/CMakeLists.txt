@@ -24,6 +24,10 @@ target_link_libraries(
 )
 add_dependencies(resolved_ir resolved_ir_codegen)
 
+if(PTX_FRONTEND_BUILD_BENCHMARKS)
+    add_subdirectory(benchmark)
+endif()
+
 install(
     DIRECTORY "${PTX_RESOLVED_IR_GENERATED_PUBLIC_INCLUDE_DIR}/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"

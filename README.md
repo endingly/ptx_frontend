@@ -172,6 +172,21 @@ without repeating the C++ or Python test suites. The library-only
 See the [CI workflow and cache contract](.github/CONTRIBUTING.md)
 for scope and local smoke commands.
 
+### Optional performance benchmarks
+
+Google Benchmark is available through the optional vcpkg `benchmarks` feature.
+`PTX_FRONTEND_BUILD_BENCHMARKS` defaults to `OFF`; enabling it selects that
+feature before vcpkg configuration and builds the benchmark executable without
+adding benchmark dependencies to the installed frontend package.
+
+```sh
+cmake --preset ci-linux-gcc-release -DPTX_FRONTEND_BUILD_BENCHMARKS=ON
+cmake --build --preset ci-linux-gcc-release --target frontend_symbol_table_scaling
+```
+
+See [benchmark usage and methodology](submod/resolved_ir/benchmark/README.md)
+for filtering, result export, and comparisons against installed revisions.
+
 ## Use after installing
 
 Build and install the package into the configured prefix:

@@ -12,15 +12,16 @@
 
 #include <fmt/format.h>
 
-#include <ptx_frontend/base/ptx_special_register.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
+#include <ptx_frontend/base/ptx_special_register.hpp>
 
 namespace ptx_frontend::binding {
 namespace {
 
 std::optional<uint32_t> parseParameterizedIndex(std::string_view base,
                                                 std::string_view name) {
-  if (!name.starts_with(base) || name.size() == base.size())
+  if (base.size() >= name.size() || name.size() - base.size() > 10 ||
+      !name.starts_with(base))
     return std::nullopt;
   const std::string_view suffix = name.substr(base.size());
   if (suffix.size() > 1 && suffix.front() == '0')
@@ -66,10 +67,128 @@ bool symbolNameSetsOverlap(const Symbol& existing, std::string_view name,
          parameterizedNameContains(name, *parameterized_count, existing_first);
 }
 
-bool isMetadataSymbol(SymbolKind kind) {
-  return kind == SymbolKind::DebugFile ||
-         kind == SymbolKind::DebugStringLabel;
+}  // namespace
+
+void SymbolTable::keepEarliest(std::optional<SymbolId>& destination,
+                               SymbolId candidate) {
+  if (!destination || candidate.value < destination->value)
+    destination = candidate;
 }
+
+size_t SymbolTable::SourceRangeHash::operator()(
+    const SourceRange& range) const noexcept {
+  size_t result = std::hash<int32_t>{}(range.start.line);
+  const auto combine = [&result](int32_t value) {
+    result ^= std::hash<int32_t>{}(value) + 0x9e3779b9u + (result << 6u) +
+              (result >> 2u);
+  };
+  combine(range.start.column);
+  combine(range.end.line);
+  combine(range.end.column);
+  return result;
+}
+
+void SymbolTable::indexMemberNumber(NumericMemberIndex& index, uint32_t member,
+                                    SymbolId symbol) {
+  uint32_t node = 0;
+  keepEarliest(index.nodes[node].earliest_symbol, symbol);
+  for (int bit = 31; bit >= 0; --bit) {
+    const auto branch = static_cast<size_t>((member >> bit) & 1u);
+    const std::optional<uint32_t> child = index.nodes[node].children[branch];
+    if (!child) {
+      const uint32_t next = static_cast<uint32_t>(index.nodes.size());
+      index.nodes[node].children[branch] = next;
+      index.nodes.push_back({});
+      node = next;
+    } else {
+      node = *child;
+    }
+    keepEarliest(index.nodes[node].earliest_symbol, symbol);
+  }
+}
+
+std::optional<SymbolId> SymbolTable::earliestMemberBelow(
+    const NumericMemberIndex& index, uint32_t limit) {
+  if (limit == 0 || index.nodes.empty())
+    return std::nullopt;
+
+  std::optional<SymbolId> result;
+  uint32_t node = 0;
+  for (int bit = 31; bit >= 0; --bit) {
+    const auto branch = static_cast<size_t>((limit >> bit) & 1u);
+    if (branch != 0 && index.nodes[node].children[0]) {
+      keepEarliest(
+          result, *index.nodes[*index.nodes[node].children[0]].earliest_symbol);
+    }
+    const std::optional<uint32_t>& next = index.nodes[node].children[branch];
+    if (!next)
+      return result;
+    node = *next;
+  }
+  return result;
+}
+
+void SymbolTable::indexParameterizedBase(ParameterizedPrefixIndex& index,
+                                         std::string_view base,
+                                         SymbolId symbol) {
+  uint32_t node = 0;
+  for (const char character : base) {
+    uint32_t next;
+    if (const auto found = index.nodes[node].children.find(character);
+        found != index.nodes[node].children.end()) {
+      next = found->second;
+    } else {
+      next = static_cast<uint32_t>(index.nodes.size());
+      index.nodes[node].children.emplace(character, next);
+      index.nodes.push_back({});
+    }
+    node = next;
+  }
+  keepEarliest(index.nodes[node].symbol, symbol);
+}
+
+std::optional<SymbolId> SymbolTable::parameterizedContaining(
+    const ParameterizedPrefixIndex& index, const std::vector<Symbol>& symbols,
+    std::string_view spelling) {
+  if (index.nodes.empty())
+    return std::nullopt;
+
+  std::optional<SymbolId> result;
+  uint32_t node = 0;
+  for (const char character : spelling) {
+    const auto found = index.nodes[node].children.find(character);
+    if (found == index.nodes[node].children.end())
+      break;
+    node = found->second;
+    if (!index.nodes[node].symbol)
+      continue;
+    const Symbol& candidate = symbols[index.nodes[node].symbol->value];
+    const auto member = parseParameterizedIndex(candidate.name, spelling);
+    if (member && candidate.parameterized_count &&
+        *member < *candidate.parameterized_count) {
+      keepEarliest(result, candidate.id);
+    }
+  }
+  return result;
+}
+
+void SymbolTable::indexMemberSpelling(ScopeNameIndex& index,
+                                      std::string_view spelling,
+                                      SymbolId symbol) {
+  const size_t first_base_length =
+      std::max<size_t>(1, spelling.size() > 10 ? spelling.size() - 10 : 1);
+  for (size_t base_length = first_base_length; base_length < spelling.size();
+       ++base_length) {
+    const std::string_view base = spelling.substr(0, base_length);
+    const auto member = parseParameterizedIndex(base, spelling);
+    if (!member)
+      continue;
+    const auto insertion = index.member_prefixes.try_emplace(std::string{base});
+    indexMemberNumber(insertion.first->second, *member, symbol);
+  }
+}
+
+namespace {
 
 std::optional<uint64_t> parseDebugFileId(std::string_view text) {
   return base::parseIntegerMagnitude(text);
@@ -90,17 +209,15 @@ SymbolLinkage linkageFromSpelling(std::string_view spelling) {
 }
 
 std::optional<uint64_t> scalarAlignment(std::string_view type) {
-  if (type == ".u8" || type == ".s8" || type == ".b8" ||
-      type == ".pred")
+  if (type == ".u8" || type == ".s8" || type == ".b8" || type == ".pred")
     return 1;
-  if (type == ".u16" || type == ".s16" || type == ".b16" ||
-      type == ".f16" || type == ".bf16")
+  if (type == ".u16" || type == ".s16" || type == ".b16" || type == ".f16" ||
+      type == ".bf16")
     return 2;
-  if (type == ".u32" || type == ".s32" || type == ".b32" ||
-      type == ".f32" || type == ".f16x2" || type == ".tf32")
+  if (type == ".u32" || type == ".s32" || type == ".b32" || type == ".f32" ||
+      type == ".f16x2" || type == ".tf32")
     return 4;
-  if (type == ".u64" || type == ".s64" || type == ".b64" ||
-      type == ".f64")
+  if (type == ".u64" || type == ".s64" || type == ".b64" || type == ".f64")
     return 8;
   if (type == ".b128")
     return 16;
@@ -194,8 +311,8 @@ std::optional<ScopeId> SymbolTable::functionScope(SourceRange range) const {
 
 std::optional<ScopeId> SymbolTable::blockScope(ScopeId parent,
                                                SourceRange range) const {
-  const auto found = std::ranges::find_if(
-      scopes_, [parent, range](const Scope& scope) {
+  const auto found =
+      std::ranges::find_if(scopes_, [parent, range](const Scope& scope) {
         return scope.kind == ScopeKind::Block && scope.parent == parent &&
                scope.range == range;
       });
@@ -205,25 +322,48 @@ std::optional<ScopeId> SymbolTable::blockScope(ScopeId parent,
 std::optional<SymbolLookup> SymbolTable::lookup(ScopeId scope_id,
                                                 std::string_view name) const {
   for (;;) {
-    for (const Symbol& candidate : symbols_) {
-      if (candidate.scope != scope_id || isMetadataSymbol(candidate.kind))
-        continue;
-      if (!candidate.parameterized_count && candidate.name == name)
-        return SymbolLookup{candidate.id, std::nullopt};
+    const ScopeNameIndex& index = scope_name_indexes_.at(scope_id.value);
+    if (const auto ordinary = index.ordinary_exact.find(name);
+        ordinary != index.ordinary_exact.end()) {
+      return SymbolLookup{ordinary->second, std::nullopt};
     }
-    for (const Symbol& candidate : symbols_) {
-      if (candidate.scope != scope_id || isMetadataSymbol(candidate.kind) ||
-          !candidate.parameterized_count)
-        continue;
-      const auto index = parseParameterizedIndex(candidate.name, name);
-      if (index && *index < *candidate.parameterized_count)
-        return SymbolLookup{candidate.id, *index};
+    // A single compact group needs no prefix traversal or candidate ordering.
+    if (index.parameterized_exact.size() == 1) {
+      const Symbol& symbol =
+          symbols_[index.parameterized_exact.begin()->second.value];
+      const auto member = parseParameterizedIndex(symbol.name, name);
+      if (member && symbol.parameterized_count &&
+          *member < *symbol.parameterized_count)
+        return SymbolLookup{symbol.id, *member};
+    } else if (const auto parameterized = parameterizedContaining(
+                   index.parameterized_prefixes, symbols_, name)) {
+      const Symbol& symbol = symbols_[parameterized->value];
+      return SymbolLookup{*parameterized,
+                          parseParameterizedIndex(symbol.name, name)};
     }
     const Scope& current = scope(scope_id);
     if (!current.parent)
       return std::nullopt;
     scope_id = *current.parent;
   }
+}
+
+std::optional<SymbolId> SymbolTable::exactDeclaration(
+    ScopeId scope, std::string_view name, bool parameterized) const {
+  const ScopeNameIndex& index = scope_name_indexes_.at(scope.value);
+  const auto& declarations = parameterized ? index.parameterized_exact
+                                           : index.ordinary_exact;
+  const auto found = declarations.find(name);
+  return found == declarations.end() ? std::nullopt
+                                     : std::optional<SymbolId>{found->second};
+}
+
+const SymbolReference* SymbolTable::initializerReference(
+    SourceRange range) const noexcept {
+  const auto found = initializer_reference_indexes_.find(range);
+  if (found == initializer_reference_indexes_.end())
+    return nullptr;
+  return &references_[found->second];
 }
 
 struct SymbolTableBuilder {
@@ -243,6 +383,7 @@ struct SymbolTableBuilder {
         .owner = std::nullopt,
         .range = std::nullopt,
     });
+    result.table.scope_name_indexes_.emplace_back();
   }
 
   /** Associate a declaration's range with its scope, not its canonical symbol. */
@@ -256,6 +397,7 @@ struct SymbolTableBuilder {
         .owner = owner,
         .range = range,
     });
+    result.table.scope_name_indexes_.emplace_back();
     Symbol& symbol = result.table.symbols_[owner.value];
     if (!symbol.owned_scope || prefer_as_owned_scope)
       symbol.owned_scope = id;
@@ -271,21 +413,63 @@ struct SymbolTableBuilder {
         .owner = std::nullopt,
         .range = range,
     });
+    result.table.scope_name_indexes_.emplace_back();
     return id;
   }
 
   std::optional<SymbolId> exactSymbol(
       ScopeId scope, std::string_view name,
       std::optional<uint32_t> parameterized_count) const {
-    for (const Symbol& symbol : result.table.symbols_) {
-      if (!isMetadataSymbol(symbol.kind) && symbol.scope == scope &&
-          symbol.name == name &&
-          symbol.parameterized_count.has_value() ==
-              parameterized_count.has_value()) {
-        return symbol.id;
-      }
+    const SymbolTable::ScopeNameIndex& index =
+        result.table.scope_name_indexes_.at(scope.value);
+    const auto& exact =
+        parameterized_count ? index.parameterized_exact : index.ordinary_exact;
+    const auto found = exact.find(name);
+    return found == exact.end() ? std::nullopt
+                                : std::optional<SymbolId>{found->second};
+  }
+
+  /** Find the earliest same-scope declaration matching the overlap predicate. */
+  std::optional<SymbolId> overlappingSymbol(
+      ScopeId scope, std::string_view name,
+      std::optional<uint32_t> parameterized_count) const {
+    const SymbolTable::ScopeNameIndex& index =
+        result.table.scope_name_indexes_.at(scope.value);
+    std::optional<SymbolId> result_symbol;
+    if (!parameterized_count)
+      return SymbolTable::parameterizedContaining(index.parameterized_prefixes,
+                                                  result.table.symbols_, name);
+
+    if (const auto containing = SymbolTable::parameterizedContaining(
+            index.parameterized_prefixes, result.table.symbols_, name))
+      SymbolTable::keepEarliest(result_symbol, *containing);
+    const std::string first_member = std::string{name} + "0";
+    if (const auto containing = SymbolTable::parameterizedContaining(
+            index.parameterized_prefixes, result.table.symbols_, first_member))
+      SymbolTable::keepEarliest(result_symbol, *containing);
+    if (const auto members = index.member_prefixes.find(name);
+        members != index.member_prefixes.end()) {
+      if (const auto member = SymbolTable::earliestMemberBelow(
+              members->second, *parameterized_count))
+        SymbolTable::keepEarliest(result_symbol, *member);
     }
-    return std::nullopt;
+    return result_symbol;
+  }
+
+  /** Add one non-metadata declaration to its scope-local owned indexes. */
+  void indexSymbol(const Symbol& symbol) {
+    SymbolTable::ScopeNameIndex& index =
+        result.table.scope_name_indexes_.at(symbol.scope.value);
+    if (!symbol.parameterized_count) {
+      index.ordinary_exact.emplace(symbol.name, symbol.id);
+      SymbolTable::indexMemberSpelling(index, symbol.name, symbol.id);
+      return;
+    }
+    index.parameterized_exact.emplace(symbol.name, symbol.id);
+    SymbolTable::indexParameterizedBase(index.parameterized_prefixes,
+                                        symbol.name, symbol.id);
+    SymbolTable::indexMemberSpelling(index, symbol.name, symbol.id);
+    SymbolTable::indexMemberSpelling(index, symbol.name + "0", symbol.id);
   }
 
   SymbolId addSymbol(
@@ -312,21 +496,20 @@ struct SymbolTableBuilder {
       return *previous;
     }
 
-    for (const Symbol& existing : result.table.symbols_) {
-      if (isMetadataSymbol(existing.kind) || existing.scope != scope ||
-          !symbolNameSetsOverlap(existing, name, parameterized_count)) {
-        continue;
+    if (const auto overlap =
+            overlappingSymbol(scope, name, parameterized_count)) {
+      const Symbol& existing = result.table.symbol(*overlap);
+      if (symbolNameSetsOverlap(existing, name, parameterized_count)) {
+        result.diagnostics.push_back(BindDiagnostic{
+            .kind = BindDiagnosticKind::DuplicateSymbol,
+            .range = declaration_range,
+            .previous_range = existing.declaration_range,
+            .message = fmt::format(
+                "Declarations '{}' and '{}' produce overlapping symbol names "
+                "in the same scope.",
+                name, existing.name),
+        });
       }
-      result.diagnostics.push_back(BindDiagnostic{
-          .kind = BindDiagnosticKind::DuplicateSymbol,
-          .range = declaration_range,
-          .previous_range = existing.declaration_range,
-          .message = fmt::format(
-              "Declarations '{}' and '{}' produce overlapping symbol names "
-              "in the same scope.",
-              name, existing.name),
-      });
-      break;
     }
 
     const SymbolId id{static_cast<uint32_t>(result.table.symbols_.size())};
@@ -347,11 +530,12 @@ struct SymbolTableBuilder {
         .function_is_entry = function_is_entry,
         .canonical_function = std::nullopt,
     });
+    indexSymbol(result.table.symbols_.back());
     return id;
   }
 
   std::optional<SymbolId> findMetadataSymbol(SymbolKind kind,
-                                              std::string_view name) const {
+                                             std::string_view name) const {
     for (const Symbol& symbol : result.table.symbols_) {
       if (symbol.scope == result.table.moduleScope() && symbol.kind == kind &&
           symbol.name == name) {
@@ -362,17 +546,15 @@ struct SymbolTableBuilder {
   }
 
   SymbolId addMetadataSymbol(SymbolKind kind, std::string_view name,
-                             SourceRange declaration_range,
-                             bool idempotent) {
+                             SourceRange declaration_range, bool idempotent) {
     if (const auto previous = findMetadataSymbol(kind, name)) {
       if (!idempotent) {
         result.diagnostics.push_back(BindDiagnostic{
             .kind = BindDiagnosticKind::DuplicateSymbol,
             .range = declaration_range,
-            .previous_range =
-                result.table.symbol(*previous).declaration_range,
-            .message = fmt::format("Duplicate symbol '{}' in debug metadata.",
-                                   name),
+            .previous_range = result.table.symbol(*previous).declaration_range,
+            .message =
+                fmt::format("Duplicate symbol '{}' in debug metadata.", name),
         });
       }
       return *previous;
@@ -417,7 +599,8 @@ struct SymbolTableBuilder {
       return std::nullopt;
     const auto count =
         base::parseIntegerMagnitude(declarator.parameterized_count->text);
-    if (!count || *count == 0 || *count > std::numeric_limits<uint32_t>::max()) {
+    if (!count || *count == 0 ||
+        *count > std::numeric_limits<uint32_t>::max()) {
       result.diagnostics.push_back(BindDiagnostic{
           .kind = BindDiagnosticKind::InvalidParameterizedCount,
           .range = declarator.parameterized_count->range,
@@ -482,29 +665,26 @@ struct SymbolTableBuilder {
   }
 
   void collectFunction(const syntax_ast::AstFunction& function) {
-    const SymbolId function_symbol =
-        addSymbol(result.table.moduleScope(), SymbolKind::Function,
-                  function.name.syntax.text, function.name.syntax.range,
-                  linkage(function.qualifiers, function.range), std::nullopt,
-                  std::nullopt, std::nullopt, std::nullopt, true,
-                  function.is_entry);
-    const ScopeId function_scope =
-        addFunctionScope(function_symbol, function.range, !function.is_prototype);
+    const SymbolId function_symbol = addSymbol(
+        result.table.moduleScope(), SymbolKind::Function,
+        function.name.syntax.text, function.name.syntax.range,
+        linkage(function.qualifiers, function.range), std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, true, function.is_entry);
+    const ScopeId function_scope = addFunctionScope(
+        function_symbol, function.range, !function.is_prototype);
     functions.push_back(FunctionContext{&function, function_scope});
 
     for (const auto& parameter : function.return_parameters) {
       addSymbol(function_scope, SymbolKind::ReturnParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
-                SymbolLinkage::None, parameter.state_space,
-                parameter.type.text,
+                SymbolLinkage::None, parameter.state_space, parameter.type.text,
                 declarationAlignment(parameter.alignment, std::nullopt,
                                      parameter.type.text));
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
-                SymbolLinkage::None, parameter.state_space,
-                parameter.type.text,
+                SymbolLinkage::None, parameter.state_space, parameter.type.text,
                 declarationAlignment(parameter.alignment, std::nullopt,
                                      parameter.type.text));
     }
@@ -516,11 +696,10 @@ struct SymbolTableBuilder {
                                     alias.aliasee.syntax.text, std::nullopt);
     if (!target || result.table.symbol(*target).kind != SymbolKind::Function)
       return;
-    const SymbolId alias_symbol =
-        addSymbol(result.table.moduleScope(), SymbolKind::Function,
-                  alias.alias.syntax.text, alias.alias.syntax.range,
-                  SymbolLinkage::None, std::nullopt, std::nullopt,
-                  std::nullopt, std::nullopt, true, false);
+    const SymbolId alias_symbol = addSymbol(
+        result.table.moduleScope(), SymbolKind::Function,
+        alias.alias.syntax.text, alias.alias.syntax.range, SymbolLinkage::None,
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt, true, false);
     Symbol& symbol = result.table.symbols_[alias_symbol.value];
     if (symbol.kind == SymbolKind::Function)
       symbol.canonical_function = *target;
@@ -538,8 +717,7 @@ struct SymbolTableBuilder {
       } else if (const auto* prototype =
                      std::get_if<syntax_ast::AstCallPrototype>(&item)) {
         addSymbol(function_scope, SymbolKind::CallPrototype,
-                  prototype->label.syntax.text,
-                  prototype->label.syntax.range);
+                  prototype->label.syntax.text, prototype->label.syntax.range);
       } else if (const auto* targets =
                      std::get_if<syntax_ast::AstCallTargets>(&item)) {
         addSymbol(function_scope, SymbolKind::CallTargetSet,
@@ -549,8 +727,7 @@ struct SymbolTableBuilder {
         addSymbol(function_scope, SymbolKind::BranchTargetSet,
                   targets->label.syntax.text, targets->label.syntax.range);
       } else if (const auto* block =
-                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
-                         &item);
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
                  block != nullptr && *block) {
         collectBody((*block)->body, function_scope,
                     addBlockScope(lexical_scope, (*block)->range));
@@ -580,6 +757,10 @@ struct SymbolTableBuilder {
         .classification = classification,
         .target = target,
     });
+    if (kind == ReferenceKind::Initializer) {
+      result.table.initializer_reference_indexes_.try_emplace(
+          identifier.syntax.range, result.table.references_.size() - 1);
+    }
     if (classification == ReferenceClassification::Unresolved) {
       result.diagnostics.push_back(BindDiagnostic{
           .kind = BindDiagnosticKind::UnresolvedReference,
@@ -598,8 +779,7 @@ struct SymbolTableBuilder {
     std::optional<SymbolId> target;
     if (kind == ReferenceKind::DebugFile) {
       if (const auto id = parseDebugFileId(syntax.text)) {
-        target = findMetadataSymbol(SymbolKind::DebugFile,
-                                    std::to_string(*id));
+        target = findMetadataSymbol(SymbolKind::DebugFile, std::to_string(*id));
       }
     } else {
       target = findMetadataSymbol(SymbolKind::DebugStringLabel, syntax.text);
@@ -627,8 +807,7 @@ struct SymbolTableBuilder {
   }
 
   void bindLoc(ScopeId scope, const syntax_ast::AstLocDirective& directive) {
-    addMetadataReference(scope, ReferenceKind::DebugFile,
-                         directive.file_index);
+    addMetadataReference(scope, ReferenceKind::DebugFile, directive.file_index);
     if (!directive.inline_context)
       return;
     addMetadataReference(scope, ReferenceKind::DebugFunctionName,
@@ -820,11 +999,12 @@ struct SymbolTableBuilder {
               const SymbolKind kind =
                   result.table.symbol(reference.target->symbol).kind;
               diagnoseInvalidTarget(
-                  reference, kind == SymbolKind::CallPrototype ||
-                                 kind == SymbolKind::CallTargetSet,
+                  reference,
+                  kind == SymbolKind::CallPrototype ||
+                      kind == SymbolKind::CallTargetSet,
                   fmt::format("Call target set '{}' must name a "
                               ".callprototype or .calltargets declaration.",
-                                value.name.syntax.text));
+                              value.name.syntax.text));
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstBranchTargetSet>) {
@@ -834,8 +1014,9 @@ struct SymbolTableBuilder {
               const Symbol& symbol =
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
-                  reference, symbol.kind == SymbolKind::BranchTargetSet &&
-                                 symbol.scope == function_scope,
+                  reference,
+                  symbol.kind == SymbolKind::BranchTargetSet &&
+                      symbol.scope == function_scope,
                   fmt::format("Branch target set '{}' must name a "
                               ".branchtargets declaration in the current "
                               "function.",
@@ -848,8 +1029,9 @@ struct SymbolTableBuilder {
               const Symbol& symbol =
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
-                  reference, symbol.kind == SymbolKind::Label &&
-                                 symbol.scope == function_scope,
+                  reference,
+                  symbol.kind == SymbolKind::Label &&
+                      symbol.scope == function_scope,
                   fmt::format("Branch target '{}' must name a label in the "
                               "current function.",
                               value.name.syntax.text));
@@ -898,8 +1080,7 @@ struct SymbolTableBuilder {
                      std::get_if<syntax_ast::AstLocDirective>(&item)) {
         bindLoc(lexical_scope, *loc);
       } else if (const auto* block =
-                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
-                         &item);
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
                  block != nullptr && *block) {
         const auto block_scope =
             result.table.blockScope(lexical_scope, (*block)->range);

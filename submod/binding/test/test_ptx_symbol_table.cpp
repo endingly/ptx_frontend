@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <ptx_frontend/base/ptx_special_register.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
@@ -153,6 +154,110 @@ start:
   ASSERT_TRUE(label->target.has_value());
   EXPECT_EQ(table.symbol(label->target->symbol).kind,
             binding::SymbolKind::Label);
+}
+
+/** Exact declaration lookup remains local and distinguishes compact bases. */
+TEST(PtxSymbolTable, ExactDeclarationPreservesLocalCompactIdentity) {
+  PtxSyntaxParser parser(R"ptx(
+.file 1 "source.ptx"
+.global .u32 value;
+.entry kernel() {
+  .reg .u32 %r<2>;
+  {
+    .local .u32 value;
+    .shared .u32 %r<3>;
+  }
+}
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value());
+  ASSERT_TRUE(module.diagnostics.empty());
+  const auto binding_result = binding::bindSymbols(*module);
+  ASSERT_TRUE(binding_result.diagnostics.empty());
+  const auto& table = binding_result.table;
+
+  const auto kernel = table.lookup(table.moduleScope(), "kernel");
+  ASSERT_TRUE(kernel.has_value());
+  const auto function_scope = table.symbol(kernel->symbol).owned_scope;
+  ASSERT_TRUE(function_scope.has_value());
+  const auto block = std::ranges::find_if(
+      table.scopes(), [function_scope](const binding::Scope& scope) {
+        return scope.kind == binding::ScopeKind::Block &&
+               scope.parent == function_scope;
+      });
+  ASSERT_NE(block, table.scopes().end());
+
+  const auto module_value =
+      table.exactDeclaration(table.moduleScope(), "value", false);
+  const auto function_register =
+      table.exactDeclaration(*function_scope, "%r", true);
+  const auto block_value = table.exactDeclaration(block->id, "value", false);
+  const auto block_register = table.exactDeclaration(block->id, "%r", true);
+  ASSERT_TRUE(module_value.has_value());
+  ASSERT_TRUE(function_register.has_value());
+  ASSERT_TRUE(block_value.has_value());
+  ASSERT_TRUE(block_register.has_value());
+  EXPECT_FALSE(table.exactDeclaration(*function_scope, "value", false));
+  EXPECT_FALSE(table.exactDeclaration(block->id, "%r", false));
+  EXPECT_FALSE(table.exactDeclaration(table.moduleScope(), "1", false));
+  EXPECT_NE(*function_register, *block_register);
+  EXPECT_EQ(table.symbol(*module_value).scope, table.moduleScope());
+  EXPECT_EQ(table.symbol(*block_value).scope, block->id);
+  EXPECT_EQ(table.symbol(*function_register).parameterized_count, 2u);
+  EXPECT_EQ(table.symbol(*block_register).parameterized_count, 3u);
+}
+
+/** Initializer occurrence indexing retains first unresolved references after copying. */
+TEST(PtxSymbolTable, InitializerReferenceIndexRetainsFirstUnresolvedRange) {
+  PtxSyntaxParser parser(R"ptx(
+.global .u64 target;
+.global .u64 first = missing;
+.global .u64 second = target;
+)ptx");
+  auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value());
+  ASSERT_TRUE(module.diagnostics.empty());
+  auto* first_declaration =
+      std::get_if<syntax_ast::AstVariableDeclaration>(&module->items[1]);
+  auto* second_declaration =
+      std::get_if<syntax_ast::AstVariableDeclaration>(&module->items[2]);
+  ASSERT_NE(first_declaration, nullptr);
+  ASSERT_NE(second_declaration, nullptr);
+  auto* first_expression = std::get_if<syntax_ast::AstConstantExpression>(
+      &first_declaration->declarators[0].initializer->value);
+  auto* second_expression = std::get_if<syntax_ast::AstConstantExpression>(
+      &second_declaration->declarators[0].initializer->value);
+  ASSERT_NE(first_expression, nullptr);
+  ASSERT_NE(second_expression, nullptr);
+  auto* first_symbol =
+      std::get_if<syntax_ast::AstConstantSymbol>(&first_expression->node);
+  auto* second_symbol =
+      std::get_if<syntax_ast::AstConstantSymbol>(&second_expression->node);
+  ASSERT_NE(first_symbol, nullptr);
+  ASSERT_NE(second_symbol, nullptr);
+  second_symbol->name.syntax.range = first_symbol->name.syntax.range;
+
+  const auto bound = binding::bindSymbols(*module);
+  ASSERT_FALSE(bound.diagnostics.empty());
+  const binding::SymbolReference* first = bound.table.initializerReference(
+      first_symbol->name.syntax.range);
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first->spelling, "missing");
+  EXPECT_FALSE(first->target.has_value());
+
+  auto copied = bound.table;
+  const binding::SymbolReference* copied_first = copied.initializerReference(
+      first_symbol->name.syntax.range);
+  ASSERT_NE(copied_first, nullptr);
+  EXPECT_EQ(copied_first->spelling, "missing");
+  EXPECT_FALSE(copied_first->target.has_value());
+
+  auto moved = std::move(copied);
+  const binding::SymbolReference* moved_first = moved.initializerReference(
+      first_symbol->name.syntax.range);
+  ASSERT_NE(moved_first, nullptr);
+  EXPECT_EQ(moved_first->spelling, "missing");
+  EXPECT_FALSE(moved_first->target.has_value());
 }
 
 TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {

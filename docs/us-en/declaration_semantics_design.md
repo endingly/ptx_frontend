@@ -46,8 +46,12 @@ overflowing list is diagnosed.
 Scalar leaves distinguish integer, floating, and symbol-address expressions.
 Integer and floating expressions must match their destination type category,
 while an address may initialize only `.u32` or `.u64`. An initializer symbol
-must name a function or a `.global`/`.const` variable. `generic()` and the mask
-form are treated as initializer operators rather than ordinary calls.
+must name a function or a non-opaque `.global`/`.const` variable. `.texref`,
+`.samplerref`, and `.surfref` identities cannot become initializer addresses,
+including through `generic()`, byte-mask, or arithmetic wrappers. `generic()`
+and the mask form are treated as initializer operators rather than ordinary
+calls; this restriction does not affect the permitted `mov` retrieval of an
+opaque handle.
 
 ## Redeclarations
 

@@ -37,8 +37,10 @@ initializer 的 brace nesting 必须与 array 维数一致；vector declaration 
 
 scalar leaf 区分 integer、floating 和 symbol address expression。整数与浮点 expression
 必须进入相应类型类别，symbol address 只能初始化 `.u32/.u64`；initializer symbol 必须
-指向 function 或 `.global/.const` variable。`generic()` 与 mask operator 作为 initializer
-operator 处理，而不是普通 function call。
+指向 function 或非 opaque 的 `.global/.const` variable。`.texref`、`.samplerref` 与
+`.surfref` identity 不能成为 initializer address，即使经由 `generic()`、byte-mask 或算术
+wrapper 也不例外。`generic()` 与 mask operator 作为 initializer operator 处理，而不是普通
+function call；该限制不影响允许的 opaque handle `mov` retrieval。
 
 ## Redeclaration
 

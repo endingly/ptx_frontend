@@ -647,8 +647,8 @@ bool isUnsupportedInitializerType(std::string_view type) {
   return type == ".f16" || type == ".f16x2" || type == ".pred";
 }
 
-/** Return whether a spelling denotes an opaque parameter identity. */
-bool isOpaqueParameterType(std::string_view type) {
+/** Return whether a declaration spelling names an opaque PTX object identity. */
+bool isOpaqueObjectType(std::string_view type) {
   return type == ".texref" || type == ".samplerref" || type == ".surfref";
 }
 
@@ -1486,7 +1486,7 @@ class Checker {
       return;
     }
 
-    if (isOpaqueParameterType(parameter.type.text)) {
+    if (isOpaqueObjectType(parameter.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                parameter.type.range,
                "Opaque .texref/.samplerref/.surfref parameters are not "
@@ -1812,7 +1812,7 @@ class Checker {
                "frontend.");
       return;
     }
-    if (isOpaqueParameterType(declaration.type.text)) {
+    if (isOpaqueObjectType(declaration.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                declaration.type.range,
                "Opaque .texref/.samplerref/.surfref parameters are not "
@@ -2076,14 +2076,15 @@ class Checker {
             const bool allowed_variable =
                 symbol.kind == binding::SymbolKind::Variable &&
                 (symbol.state_space == syntax_ast::AstStateSpace::Global ||
-                 symbol.state_space == syntax_ast::AstStateSpace::Constant);
+                 symbol.state_space == syntax_ast::AstStateSpace::Constant) &&
+                (!symbol.type || !isOpaqueObjectType(*symbol.type));
             if (symbol.kind != binding::SymbolKind::Function &&
                 !allowed_variable) {
               diagnose(DeclarationDiagnosticKind::InvalidInitializerExpression,
                        value.name.syntax.range,
                        fmt::format(
                            "Initializer symbol '{}' must name a function or a "
-                           ".global/.const variable.",
+                           "non-opaque .global/.const variable.",
                            value.name.syntax.text));
             } else if (symbol.kind == binding::SymbolKind::Function) {
               const auto prior = symbols_.hasPriorDeclaration(

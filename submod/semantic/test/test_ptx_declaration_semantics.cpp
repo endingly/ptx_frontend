@@ -49,6 +49,38 @@ TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
   EXPECT_TRUE(result.diagnostics.empty());
 }
 
+/** Opaque object handles cannot become initializer addresses through wrappers. */
+TEST(PtxDeclarationSemantics, RejectsOpaqueObjectInitializerSymbols) {
+  const CheckedModule result = check(R"ptx(
+.global .texref texture;
+.global .samplerref sampler;
+.global .surfref surface;
+.global .u32 global_data;
+.const .u32 constant_data;
+.func helper() { ret; }
+.global .u64 direct = texture;
+.global .u64 generic_sampler = generic(sampler);
+.global .u8 masked_surface = 0xff(surface + 1);
+.global .u64 global_address = global_data;
+.global .u64 constant_address = generic(constant_data);
+.global .u8 function_address = 0xff(helper);
+)ptx");
+
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(result,
+                            DeclarationDiagnosticKind::InvalidInitializerExpression),
+            3u);
+  for (const int32_t line : {8, 9, 10}) {
+    EXPECT_TRUE(std::ranges::any_of(result.diagnostics,
+                                    [line](const auto& diagnostic) {
+                                      return diagnostic.kind ==
+                                                 DeclarationDiagnosticKind::
+                                                     InvalidInitializerExpression &&
+                                             diagnostic.range.start.line == line;
+                                    }));
+  }
+}
+
 TEST(PtxDeclarationSemantics, ValidatesM11DirectiveBoundaries) {
   const CheckedModule result = check(R"ptx(
 .version 8.0

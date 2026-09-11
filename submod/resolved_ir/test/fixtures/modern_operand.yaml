@@ -77,6 +77,50 @@ instructions:
             minimum: 0
             maximum: 7
 
+  - opcode: synthetic_optional_immediate
+    variants:
+      - name: synthetic_optional_immediate_constraints
+        availability: {ptx: "9.3", sm: 0}
+        operand_layouts:
+          - name: without_constraints
+            operands:
+              - name: dst
+                kind: reg
+                role: dst
+                access: write
+          - name: with_constraints
+            operands:
+              - name: dst
+                kind: reg
+                role: dst
+                access: write
+              - name: mode
+                kind: imm
+                role: src
+                access: read
+                type: u32
+              - name: count
+                kind: reg_or_imm
+                role: src
+                access: read
+                type: u32
+              - name: stride
+                kind: reg_or_imm
+                role: src
+                access: read
+                type: u32
+        constraints:
+          - kind: immediate_value
+            operand: mode
+            values: [4]
+          - kind: immediate_range
+            operand: count
+            minimum: 1
+            maximum: 7
+          - kind: immediate_multiple_of
+            operand: stride
+            divisor: 4
+
   - opcode: synthetic_uint64_immediate
     variants:
       - name: synthetic_uint64_immediate_bounds

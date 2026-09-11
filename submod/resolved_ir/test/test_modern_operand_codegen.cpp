@@ -226,6 +226,46 @@ TEST(ModernOperandCodegen, ChecksImmediateRangeInEachOperandLayout) {
   }
 }
 
+/** Generated checkers skip every immediate rule in an omitted-operand layout. */
+TEST(ModernOperandCodegen, SkipsOptionalImmediateConstraintsInAbsentLayout) {
+  for (const std::string_view source : {
+           "synthetic_optional_immediate %r0;",
+           "synthetic_optional_immediate %r0, 4, 1, 8;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto instruction = resolve<SyntheticOptionalImmediate>(*ast);
+    ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 0},
+        .instruction_range = ast->range,
+    };
+    EXPECT_TRUE(checker::check(*instruction, context).has_value()) << source;
+  }
+
+  for (const std::string_view source : {
+           "synthetic_optional_immediate %r0, 3, 1, 8;",
+           "synthetic_optional_immediate %r0, 4, 0, 8;",
+           "synthetic_optional_immediate %r0, 4, 1, 6;",
+       }) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto instruction = resolve<SyntheticOptionalImmediate>(*ast);
+    ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 0},
+        .instruction_range = ast->range,
+    };
+    const auto rejected = checker::check(*instruction, context);
+    ASSERT_FALSE(rejected.has_value()) << source;
+    ASSERT_EQ(rejected.error().size(), 1u);
+    EXPECT_EQ(rejected.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+}
+
 TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
   const auto module = resolveModule(parseModule(R"ptx(
 .version 9.3

@@ -1935,6 +1935,10 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     case syntax_ast::AstImmediateKind::DecimalFloat:
       return resolve_decimal_float_literal(immediate, type,
                                            immediate.syntax.text);
+    case syntax_ast::AstImmediateKind::WarpSize:
+      // PTX defines WARP_SZ as the signed source integer constant 32.
+      return resolve_integer_literal(immediate, type, "32", negative,
+                                     require_target_range);
   }
   throw ResolveException("Unknown AstImmediateKind.");
 }

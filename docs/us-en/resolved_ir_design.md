@@ -206,7 +206,10 @@ text or trust a narrowed value.
 integers, including their optional `U` suffix, first evaluate in the PTX
 64-bit signed/unsigned source domain; unary minus preserves that source type
 and unsigned negation wraps. Ordinary data uses retain the low target-width
-bits. The generated operand descriptor independently selects narrowing or
+bits. `WARP_SZ` is the source-defined signed integer constant `32`, including
+in ordinary instruction-immediate positions; it is not a query of a target's
+physical warp width. The generated operand descriptor independently selects
+narrowing or
 strict target-width representability for each semantic use; a fixed scalar type
 expresses provenance only. Generated range, exact-value, and multiple-of
 controls compare preserved source bits, while unconstrained controls opt into

@@ -165,7 +165,9 @@ fixed-control checker 不必重新解释 literal 文本，也不会信任已经�
 `AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/octal/hex（包括可选 `U`
 后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source
 type，而 unsigned negation 按该宽度回绕。ordinary data use 随后保留 target width 的低位。
-generated operand descriptor 为每个 semantic use 独立选择截断或严格 target-width
+`WARP_SZ` 是 source 定义的 signed integer constant `32`，也可用于普通
+instruction-immediate position；它不是对 target physical warp width 的查询。generated
+operand descriptor 为每个 semantic use 独立选择截断或严格 target-width
 representability；fixed scalar type 只表达 provenance。generated range、exact-value 与
 multiple-of control 比较保留的 source bits，而无约束的 control 显式选择严格 conversion。
 按 formal parameter type 检查的 call literal 与 address offset 继续执行严格的 target-width

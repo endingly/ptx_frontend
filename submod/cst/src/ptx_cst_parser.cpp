@@ -49,6 +49,7 @@ bool isImmediate(TokenKind kind) {
     case TokenKind::F32Hex:
     case TokenKind::F64Hex:
     case TokenKind::F64:
+    case TokenKind::WarpSz:
       return true;
     default:
       return false;
@@ -127,7 +128,7 @@ bool isVariableStateSpace(TokenKind kind) {
 }
 
 bool isConstantLiteral(TokenKind kind) {
-  return isImmediate(kind) || kind == TokenKind::WarpSz;
+  return isImmediate(kind);
 }
 
 bool isConstantUnaryOperator(TokenKind kind) {

@@ -1178,6 +1178,22 @@ TEST(PtxCstParser, UnterminatedCommentOnlyTerminatesAndRoundTrips) {
   EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
 }
 
+/** Unterminated CRLF block comments retain their lexer diagnostic position. */
+TEST(PtxCstParser, UnterminatedCrLfBlockCommentReportsCorrectRange) {
+  constexpr std::string_view source =
+      ".entry k() { ret;\r\n/* first\r\nlast";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{2, 1}, SourcePos{3, 5}}));
+  EXPECT_EQ(result.diagnostics.back().range,
+            (SourceRange{SourcePos{3, 5}, SourcePos{3, 5}}));
+  EXPECT_EQ(result->sourceText(), source);
+}
+
 /** An unterminated trailing comment must not discard an already parsed function. */
 TEST(PtxCstParser,
      UnterminatedCommentAfterModulePrefixTerminatesAndRoundTrips) {

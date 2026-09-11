@@ -119,7 +119,9 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
                             BEGIN(INITIAL);
                             return TokenKind::BlockComment;
                         }
-<BLOCK_COMMENT>.|\n     { yyextra->block_comment_text.append(yytext, yyleng); }
+<BLOCK_COMMENT>\r\n|\r|\n|. {
+                            yyextra->block_comment_text.append(yytext, yyleng);
+                        }
 <BLOCK_COMMENT><<EOF>>  {
                             yylval->sv = yyextra->block_comment_text;
                             yylval->range = SourceRange{

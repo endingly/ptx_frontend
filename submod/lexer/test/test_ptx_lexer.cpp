@@ -596,11 +596,52 @@ TEST(PtxLexerNew, SkipsLineAndBlockComments) {
   expect_token(toks[15], TokenKind::Semicolon, ";");
 }
 
+/** Block-comment line endings advance once and retain exact trivia ranges. */
+TEST(PtxLexerNew, PreservesMixedLineEndingsInsideBlockComments) {
+  PtxLexer lexer("/* first\r\nsecond\rlast\nend */\r\n// line\radd");
+
+  const auto add = lexer.next();
+  ASSERT_EQ(add.kind, TokenKind::Ident);
+  EXPECT_EQ(add.text, "add");
+  EXPECT_EQ(add.range, (SourceRange{SourcePos{6, 1}, SourcePos{6, 4}}));
+  ASSERT_EQ(add.leading_trivia.size(), 4u);
+  EXPECT_EQ(add.leading_trivia[0].kind, TriviaKind::BlockComment);
+  EXPECT_EQ(add.leading_trivia[0].text,
+            "/* first\r\nsecond\rlast\nend */");
+  EXPECT_EQ(add.leading_trivia[0].range,
+            (SourceRange{SourcePos{1, 1}, SourcePos{4, 7}}));
+  EXPECT_EQ(add.leading_trivia[1].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(add.leading_trivia[1].text, "\r\n");
+  EXPECT_EQ(add.leading_trivia[1].range,
+            (SourceRange{SourcePos{4, 7}, SourcePos{5, 1}}));
+  EXPECT_EQ(add.leading_trivia[2].kind, TriviaKind::LineComment);
+  EXPECT_EQ(add.leading_trivia[2].text, "// line");
+  EXPECT_EQ(add.leading_trivia[2].range,
+            (SourceRange{SourcePos{5, 1}, SourcePos{5, 8}}));
+  EXPECT_EQ(add.leading_trivia[3].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(add.leading_trivia[3].text, "\r");
+  EXPECT_EQ(add.leading_trivia[3].range,
+            (SourceRange{SourcePos{5, 8}, SourcePos{6, 1}}));
+}
+
 TEST(PtxLexerNew, UnterminatedBlockCommentReturnsError) {
   auto toks = lex_all("add.s32 %r1, %r2, %r3; /* unterminated");
 
   ASSERT_GE(toks.size(), 1u);
   EXPECT_EQ(toks.back().kind, TokenKind::Error);
+}
+
+/** Unterminated block comments coalesce CRLF while preserving their full range. */
+TEST(PtxLexerNew, UnterminatedBlockCommentPreservesMixedLineEndingRange) {
+  PtxLexer lexer("/* first\r\nsecond\rlast\nend");
+  const auto error = lexer.next();
+  ASSERT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.text, "/* first\r\nsecond\rlast\nend");
+  EXPECT_EQ(error.range, (SourceRange{SourcePos{1, 1}, SourcePos{4, 4}}));
+
+  const auto eof = lexer.next();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  EXPECT_EQ(eof.range, (SourceRange{SourcePos{4, 4}, SourcePos{4, 4}}));
 }
 
 /** Preserve an unterminated comment once, then keep direct reads at EOF. */

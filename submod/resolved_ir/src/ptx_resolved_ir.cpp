@@ -1418,21 +1418,54 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     bool require_target_range = false);
 
+/** Select whether an address consumer imposes memory-offset source limits. */
+enum class AddressImmediateDomain : uint8_t { General, MemoryOperand };
+
+/**
+ * Resolve an address offset while retaining its signed-64-bit IR magnitude.
+ *
+ * Bracketed memory addresses additionally constrain the effective signed
+ * offset, after combining the address operator with a lexical literal sign,
+ * to the PTX signed-32-bit source domain.  Other consumers retain their
+ * wider relocation-addend contract.
+ */
 std::expected<std::optional<ResolvedAddressOffset>, ResolveDiagnostic>
-resolve_address_offset(const syntax_ast::AstAddress& address) {
+resolve_address_offset(const syntax_ast::AstAddress& address,
+                       AddressImmediateDomain domain =
+                           AddressImmediateDomain::General) {
   if (!address.offset)
     return std::nullopt;
 
-  auto value =
-      resolve_immediate_value(address.offset->magnitude, ScalarType::S64,
-                              true);
+  const bool memory_operand = domain == AddressImmediateDomain::MemoryOperand;
+  auto value = resolve_immediate_value(address.offset->magnitude,
+                                       ScalarType::S64, true);
   if (!value)
     return std::unexpected(value.error());
+  const bool subtract = address.offset->operation ==
+                        syntax_ast::AstAddressOffset::Operator::Subtract;
+  if (memory_operand) {
+    const uint64_t source_bits = value->integer_source_bits.value_or(value->bits);
+    const uint64_t magnitude =
+        value->is_negative ? uint64_t{0} - source_bits : source_bits;
+    const bool effective_negative = subtract != value->is_negative;
+    const uint64_t maximum_magnitude =
+        effective_negative ? uint64_t{1} << 31 : (uint64_t{1} << 31) - 1;
+    if (magnitude > maximum_magnitude) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = address.offset->magnitude.syntax.range,
+          .message = fmt::format(
+              "Address offset magnitude '{}' is outside the signed 32-bit "
+              "range for its '{}' operator.",
+              address.offset->magnitude.syntax.text,
+              effective_negative ? "-" : "+"),
+      });
+    }
+    // ResolvedAddressOffset retains the spelling's operation separately, so
+    // retain its magnitude representation while validating the signed PTX domain.
+  }
   return ResolvedAddressOffset{
-      .operation = address.offset->operation ==
-                           syntax_ast::AstAddressOffset::Operator::Subtract
-                       ? ResolvedAddressOffsetOperator::Subtract
-                       : ResolvedAddressOffsetOperator::Add,
+      .operation = subtract ? ResolvedAddressOffsetOperator::Subtract
+                            : ResolvedAddressOffsetOperator::Add,
       .value = std::move(*value),
   };
 }
@@ -1619,14 +1652,23 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     }
   } else {
     const auto& immediate = std::get<syntax_ast::AstImmediate>(address->base);
-    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U64,
+    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U32,
                                                   true);
     if (!immediate_base)
       return std::unexpected(immediate_base.error());
+    if (immediate_base->is_negative) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = immediate.syntax.range,
+          .message = fmt::format(
+              "Immediate address '{}' must be an unsigned 32-bit value.",
+              immediate.syntax.text),
+      });
+    }
     base = std::move(*immediate_base);
   }
 
-  auto offset = resolve_address_offset(*address);
+  auto offset = resolve_address_offset(*address,
+                                       AddressImmediateDomain::MemoryOperand);
   if (!offset)
     return std::unexpected(offset.error());
 

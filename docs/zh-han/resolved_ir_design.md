@@ -238,7 +238,12 @@ integer 或 bit-size declaration：floating declaration 和 `.b128` 会在投影
 之前被拒绝。这既保留了 PTX 对较窄 integer/bit declaration 的地址 extension/truncation，
 也不会把已知的 floating register 当作未知地址。没有 declaration 的 standalone resolution
 缺少类型事实，因此仍将 address base 延后处理。其可选 offset 保留加减 operator 和解析后的
-signed 64-bit value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
+magnitude。带方括号的 memory address 使用 PTX 的 unsigned 32-bit immediate base，以及在
+应用该 operator 后的 signed 32-bit offset domain：`-2147483648` 由 subtraction magnitude
+`2147483648` 表示。未加方括号的 `mov symbol+offset` 保留 symbol-address 与 relocation
+consumer 使用的独立 signed 64-bit addend domain。共享 IR 仍将 offset magnitude 保存为
+signed 64-bit value；32-bit 规则是 source form 的 legality check，而不是对 relocation domain
+的缩窄。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
 addressable data-symbol 或 formal-parameter base 的地址值；
 scalar 与 braced-vector `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
 bound-symbol base。每个 opcode 使用 `GenericScalar`、`ExplicitScalar`、`GenericVector`

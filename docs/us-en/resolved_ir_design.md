@@ -308,8 +308,14 @@ and `.b128` are rejected before checker projection. This preserves PTX address
 extension/truncation for narrower integer/bit declarations without treating a
 known floating register as an unknown address. Declaration-free standalone
 resolution has no type fact and therefore keeps the address base deferred. Its
-optional offset retains the add/subtract operator and a parsed signed 64-bit
-value.
+optional offset retains the add/subtract operator and magnitude. A bracketed
+memory address uses PTX's unsigned 32-bit immediate base and signed 32-bit
+offset domain after that operator is applied: `-2147483648` is represented by
+a subtraction magnitude of `2147483648`. Unbracketed `mov symbol+offset`
+retains the separate signed 64-bit addend domain used by symbol-address and
+relocation consumers. The shared IR continues to retain offset magnitudes as
+signed 64-bit values; the 32-bit rule is a source-form legality check rather
+than a relocation-domain narrowing.
 A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
 address value restricted to an addressable data-symbol or formal-parameter
 base. Scalar and braced-vector `ld`/`st` require bracketed dereference and

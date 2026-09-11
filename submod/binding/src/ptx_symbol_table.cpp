@@ -46,20 +46,21 @@ bool parameterizedNameContains(std::string_view base, uint32_t count,
 
 bool symbolNameSetsOverlap(const Symbol& existing, std::string_view name,
                            std::optional<uint32_t> parameterized_count) {
-  if (existing.parameterized_count &&
-      parameterizedNameContains(existing.name, *existing.parameterized_count,
-                                name)) {
-    return true;
+  if (!existing.parameterized_count) {
+    if (!parameterized_count)
+      return existing.name == name;
+    return parameterizedNameContains(name, *parameterized_count,
+                                     existing.name);
   }
-  if (parameterized_count &&
-      parameterizedNameContains(name, *parameterized_count, existing.name)) {
-    return true;
-  }
-  if (!existing.parameterized_count || !parameterized_count)
+  if (!parameterized_count)
+    return parameterizedNameContains(existing.name,
+                                     *existing.parameterized_count, name);
+
+  if (*existing.parameterized_count == 0 || *parameterized_count == 0)
     return false;
 
-  // For distinct bases, an overlap can only begin at the zero element of one
-  // of the two parameterized declarations.
+  // Neither group base is a member.  If two nonempty groups overlap, the
+  // first member of one group is contained by the other group.
   const std::string existing_first = existing.name + "0";
   const std::string candidate_first = std::string{name} + "0";
   return parameterizedNameContains(existing.name, *existing.parameterized_count,
@@ -440,9 +441,9 @@ struct SymbolTableBuilder {
       return SymbolTable::parameterizedContaining(index.parameterized_prefixes,
                                                   result.table.symbols_, name);
 
-    if (const auto containing = SymbolTable::parameterizedContaining(
-            index.parameterized_prefixes, result.table.symbols_, name))
-      SymbolTable::keepEarliest(result_symbol, *containing);
+    if (*parameterized_count == 0)
+      return std::nullopt;
+
     const std::string first_member = std::string{name} + "0";
     if (const auto containing = SymbolTable::parameterizedContaining(
             index.parameterized_prefixes, result.table.symbols_, first_member))
@@ -468,8 +469,8 @@ struct SymbolTableBuilder {
     index.parameterized_exact.emplace(symbol.name, symbol.id);
     SymbolTable::indexParameterizedBase(index.parameterized_prefixes,
                                         symbol.name, symbol.id);
-    SymbolTable::indexMemberSpelling(index, symbol.name, symbol.id);
-    SymbolTable::indexMemberSpelling(index, symbol.name + "0", symbol.id);
+    if (*symbol.parameterized_count != 0)
+      SymbolTable::indexMemberSpelling(index, symbol.name + "0", symbol.id);
   }
 
   SymbolId addSymbol(

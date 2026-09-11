@@ -158,12 +158,19 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 `ResolvedRegisterRef`、`ResolvedImmediate`、`ResolvedPredicate`、
 `ResolvedBranchTarget`、`ResolvedSpecialRegisterRef`、`ResolvedFunctionRef`、`ResolvedSymbolRef`、
 `ResolvedAddress`、`ResolvedMovSource` 与 `RegOrImm`。
-`ResolvedImmediate` 保存整数 bits 和 `ScalarType`，因此 checker 不必
-重新解释 literal 文本。
+`ResolvedImmediate` 保存 use-width bits 和 `ScalarType`。integer form 还会
+保留求值后的 64-bit source bits 与数值上的 signed-negative 性质，因此
+fixed-control checker 不必重新解释 literal 文本，也不会信任已经窄化的值。
 
 `AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/octal/hex（包括可选 `U`
-后缀）按目标整数或 bit type 的位宽做范围检查；负数以该目标宽度的二进制补码存入
-`bits`，不会再无条件扩展为 64 位。decimal float 目前支持转换至 `F32` 与 `F64`；
+后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source
+type，而 unsigned negation 按该宽度回绕。ordinary data use 随后保留 target width 的低位。
+generated operand descriptor 为每个 semantic use 独立选择截断或严格 target-width
+representability；fixed scalar type 只表达 provenance。generated range、exact-value 与
+multiple-of control 比较保留的 source bits，而无约束的 control 显式选择严格 conversion。
+按 formal parameter type 检查的 call literal 与 address offset 继续执行严格的 target-width
+representability 检查。signed `-0` 在数值上是 zero，而 floating negative
+zero 保留其 IEEE sign bit。decimal float 目前支持转换至 `F32` 与 `F64`；
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
 其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
 

@@ -395,5 +395,52 @@ TEST(ResolvedModule, ChecksM13ClusterlaunchcontrolBoundaryMatrix) {
   EXPECT_EQ(no_family.error().front().range, multicast_instruction.range);
 }
 
+/** Exercises integer zero normalization through generated mbarrier checking. */
+TEST(ResolvedModule, ChecksMbarrierParityIntegerSourceValues) {
+  const auto check_parity = [](std::string_view literal, bool expected_valid,
+                               bool expect_resolution_failure = false) {
+    const std::string source = R"ptx(
+.version 8.0
+.target sm_80
+.address_size 64
+.shared .align 8 .b64 mb;
+.entry k() {
+  .reg .pred %p;
+  mbarrier.test_wait.parity.shared.b64 %p, [mb], )ptx" +
+                               std::string{literal} + ";\n}\n";
+    const auto ast = parseModule(source);
+    const auto resolved = resolveModule(ast);
+    const auto& instruction = std::get<syntax_ast::AstInstruction>(
+        std::get<syntax_ast::AstFunction>(ast.items.back()).body.back());
+    if (!expected_valid) {
+      ASSERT_FALSE(resolved.has_value());
+      EXPECT_EQ(resolved.error().front().range,
+                std::get<syntax_ast::AstImmediate>(instruction.operands.back())
+                    .syntax.range);
+      if (expect_resolution_failure) {
+        EXPECT_FALSE(resolved.error().front().checker_kind.has_value());
+        EXPECT_EQ(resolved.error().front().message,
+                  "Integer literal '4294967296' is out of range for scalar type 'U32'.");
+      } else {
+        EXPECT_EQ(resolved.error().front().checker_kind,
+                  checker::CheckDiagnosticKind::ImmediateValueMismatch);
+      }
+      return;
+    }
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    const auto checked = checker::check(
+        std::get<Mbarrier>(resolved->functions.front().body.front()),
+        checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 80},
+                         .instruction_range = instruction.range});
+    EXPECT_EQ(checked.has_value(), expected_valid) << literal;
+  };
+
+  for (const auto literal : {"0", "+0", "-0", "-0U", "-0x0", "-0x0U", "1"})
+    check_parity(literal, true);
+  for (const auto literal : {"2", "-1"})
+    check_parity(literal, false);
+  check_parity("4294967296", false);
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

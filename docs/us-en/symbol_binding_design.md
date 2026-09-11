@@ -74,6 +74,11 @@ declaration that overlaps an explicit name, or another parameterized
 declaration with a different base, produces a same-scope duplicate diagnostic
 with the previous range. The base itself is not a generated member, so
 `name<2>` and an explicit `name` remain distinct symbols.
+Ordinary/ordinary comparisons use the two literal spellings; ordinary/group
+comparisons test the ordinary spelling against the group's members; and
+group/group comparisons test only generated members. Zero-count invalid groups
+have no members and do not create overlap candidates, while same-base compact
+declarations retain the exact-declaration duplicate policy.
 
 Parameterized names are valid in every state space, but cannot also declare an
 array or initializer. The previous `.reg`-only restriction was removed, and
@@ -103,10 +108,11 @@ record even when it is unresolved; declaration semantics and storage lowering
 therefore do not rescan all instruction and initializer references per symbol.
 
 Parameterized overlap checking uses a sparse 32-bit member-range trie keyed
-by canonical spelling decompositions. It identifies existing explicit names,
-existing group bases, and group first-member spellings relevant to the new
-base/count, then retains the first stored overlapping identity for the
-diagnostic. The existing name-set-overlap predicate remains authoritative.
+by canonical spelling decompositions. It identifies existing explicit names
+and nonempty group first-member spellings relevant to the new base/count, then
+retains the first stored overlapping identity for the diagnostic. Group bases
+are excluded because they are not members; the existing name-set-overlap
+predicate remains authoritative.
 The indexes store no logical members: a declaration with a very large count
 uses storage proportional to its spelling and the fixed 32-bit trie paths,
 not to its count. Index keys and trie storage are owned by the table, so

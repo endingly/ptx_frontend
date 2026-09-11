@@ -64,6 +64,7 @@ operand_patterns:
       access: read
       type: u32
       register_width: same_width
+      immediate_conversion: require_target_range
 
   mapa_generic:
     - name: dst
@@ -86,6 +87,7 @@ operand_patterns:
       access: read
       type: u32
       register_width: same_width
+      immediate_conversion: require_target_range
 
   getctarank_shared_cluster:
     - name: dst
@@ -1611,6 +1613,7 @@ instructions:
             role: src
             access: read
             type: u32
+            immediate_conversion: require_target_range
         rule: data_movement.cp_async_wait_group
         constraints:
           - kind: immediate_range

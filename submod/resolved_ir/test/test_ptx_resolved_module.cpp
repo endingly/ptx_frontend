@@ -414,6 +414,50 @@ TEST(ResolvedModule, ResolvesNegativeUnsignedImmediatesAtTargetWidth) {
   EXPECT_EQ(mov_immediate.bits, 0xffffffffU);
 }
 
+/** Verifies ordinary data operands narrow evaluated 64-bit integer sources. */
+TEST(ResolvedModule, ConvertsOrdinaryIntegerDataImmediatesAndMinusZero) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.entry kernel() {
+  .reg .s32 %s0;
+  .reg .u32 %u<2>;
+  mov.s32 %s0, 0xffffffff;
+  mov.u32 %u0, 4294967296;
+  mov.u32 %u1, -0;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto& signed_word = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[0])).src.value);
+  EXPECT_EQ(signed_word.bits, 0xffffffffU);
+  EXPECT_EQ(signed_word.integer_source_bits, 0xffffffffU);
+  const auto& zero_word = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[1])).src.value);
+  EXPECT_EQ(zero_word.bits, 0U);
+  EXPECT_EQ(zero_word.integer_source_bits, 4294967296U);
+  const auto& minus_zero = std::get<ResolvedImmediate>(
+      scalarMovOperands(std::get<Mov>(body[2])).src.value);
+  EXPECT_EQ(minus_zero.bits, 0U);
+  EXPECT_EQ(minus_zero.integer_source_bits, 0U);
+  EXPECT_FALSE(minus_zero.is_negative);
+}
+
+/** Keeps address offsets in their strict signed 64-bit domain. */
+TEST(ResolvedModule, RejectsOutOfRangeAddressOffsetBeforeNarrowing) {
+  const auto ast = parseModule(R"ptx(
+.global .u32 base;
+.entry kernel() {
+  .reg .u32 %r0;
+  ld.u32 %r0, [base+9223372036854775808];
+}
+)ptx");
+  const auto resolved = resolveModule(ast);
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_EQ(resolved.error().front().message,
+            "Integer literal '9223372036854775808' is out of range for scalar type 'S64'.");
+}
+
 TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
   const auto ast = parseModule(R"ptx(
 .func device() {
@@ -1645,6 +1689,16 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitGroupSlice) {
   ASSERT_FALSE(negative_checked.has_value());
   EXPECT_EQ(negative_checked.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
+
+  for (const auto literal : {"-1U", "4294967296"}) {
+    const auto out_of_range = resolveModule(parseModule(
+        std::string(".entry kernel() { cp.async.wait_group ") + literal + "; }"));
+    SCOPED_TRACE(literal);
+    ASSERT_FALSE(out_of_range.has_value());
+    EXPECT_EQ(out_of_range.error().front().message,
+              std::string("Integer literal '") + literal +
+                  "' is out of range for scalar type 'U32'.");
+  }
   const auto missing_operand = resolveModule(parseModule(R"ptx(
 .entry kernel() { cp.async.wait_group; }
 )ptx"));
@@ -3582,6 +3636,15 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierExpectTxSemanticsAndSpaces) {
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::AddressAlignmentMismatch);
   }
+
+  const auto out_of_range_tx_count = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 shared_value;
+.entry kernel() { mbarrier.expect_tx.shared.b64 [shared_value], 4294967296; }
+)ptx"));
+  ASSERT_FALSE(out_of_range_tx_count.has_value());
+  EXPECT_FALSE(out_of_range_tx_count.error().front().checker_kind.has_value());
+  EXPECT_EQ(out_of_range_tx_count.error().front().message,
+            "Integer literal '4294967296' is out of range for scalar type 'U32'.");
 }
 
 TEST(ResolvedModule, ResolvesAndChecksMbarrierCompleteTxSemanticsAndSpaces) {
@@ -3772,6 +3835,18 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveForms) {
   ASSERT_FALSE(cluster_register.has_value());
   EXPECT_NE(cluster_register.error().front().message.find("requires the '_' sink"),
             std::string::npos);
+
+  for (const std::string_view source : {
+           ".shared .align 8 .b64 shared_value; .entry kernel() { mbarrier.arrive.expect_tx.release.cta.shared.b64 _, [shared_value], 4294967296; }",
+           ".shared .align 8 .b64 shared_value; .entry kernel() { mbarrier.arrive.expect_tx.release.cluster.shared.b64 _, [shared_value], 4294967296; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto out_of_range = resolveModule(parseModule(source));
+    ASSERT_FALSE(out_of_range.has_value());
+    EXPECT_FALSE(out_of_range.error().front().checker_kind.has_value());
+    EXPECT_EQ(out_of_range.error().front().message,
+              "Integer literal '4294967296' is out of range for scalar type 'U32'.");
+  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksMbarrierArriveDropForms) {
@@ -4146,6 +4221,15 @@ TEST(ResolvedModule, ResolvesAndChecksMbarrierTryWaitBasicForms) {
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
   }
+  const auto out_of_range_time_hint = resolveModule(parseModule(R"ptx(
+.shared .align 8 .b64 shared_value;
+.entry kernel() { .reg .pred %p0; .reg .b64 %state;
+  mbarrier.try_wait.shared::cta.b64 %p0, [shared_value], %state, 4294967296; }
+)ptx"));
+  ASSERT_FALSE(out_of_range_time_hint.has_value());
+  EXPECT_FALSE(out_of_range_time_hint.error().front().checker_kind.has_value());
+  EXPECT_EQ(out_of_range_time_hint.error().front().message,
+            "Integer literal '4294967296' is out of range for scalar type 'U32'.");
 }
 
 TEST(ResolvedModule, ResolvesAndChecksMbarrierWaitPhaseAndReportForms) {
@@ -4439,6 +4523,18 @@ TEST(ResolvedModule, ResolvesAndChecksMapaClusterAddressSlices) {
   ASSERT_FALSE(bad_check.has_value());
   EXPECT_EQ(bad_check.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
+
+  for (const std::string_view source : {
+           ".entry kernel() { .reg .u32 %r<2>; mapa.u32 %r0, %r1, 4294967296; }",
+           ".entry kernel() { .reg .u32 %r<2>; mapa.shared::cluster.u32 %r0, %r1, 4294967296; }",
+       }) {
+    SCOPED_TRACE(source);
+    const auto out_of_range = resolveModule(parseModule(source));
+    ASSERT_FALSE(out_of_range.has_value());
+    EXPECT_FALSE(out_of_range.error().front().checker_kind.has_value());
+    EXPECT_EQ(out_of_range.error().front().message,
+              "Integer literal '4294967296' is out of range for scalar type 'U32'.");
+  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksGetctarankClusterAddressSlices) {

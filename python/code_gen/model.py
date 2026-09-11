@@ -22,6 +22,13 @@ class OperandRegisterWidthPolicy(str, Enum):
     EQUAL_OR_WIDER = "equal_or_wider"
 
 
+class OperandImmediateConversionPolicy(str, Enum):
+    """How a decoded integer immediate is converted at one operand use."""
+
+    NARROW = "narrow"
+    REQUIRE_TARGET_RANGE = "require_target_range"
+
+
 class OperandVectorTypePolicy(str, Enum):
     """How an instruction type maps onto a register-vector operand."""
 
@@ -200,6 +207,9 @@ class OperandSpec:
     type_expression: OperandTypeExpression | None = None
     register_width_policy: OperandRegisterWidthPolicy = (
         OperandRegisterWidthPolicy.SAME_WIDTH
+    )
+    immediate_conversion_policy: OperandImmediateConversionPolicy = (
+        OperandImmediateConversionPolicy.NARROW
     )
     state_space_values: tuple[OperandStateSpaceValue, ...] = ()
     state_space_expression: OperandStateSpaceExpression | None = None

@@ -224,6 +224,29 @@ TEST(ResolvedStorageDeclarations, PreservesValidAndDeferredIntegerConstants) {
   EXPECT_EQ(std::get<StorageConstant>(masked.initializer[0].value).bits, 255u);
 }
 
+/** Verifies declaration conversion matches ordinary instruction low-word use. */
+TEST(ResolvedStorageDeclarations, ConvertsIntegerSourcesAtStorageElementWidth) {
+  const auto resolved = resolveSource(R"ptx(
+.global .s32 signed_decimal = 4294967295;
+.global .s32 signed_hex = 0xffffffff;
+.global .u32 unsigned_decimal = 4294967296;
+.global .u32 unsigned_hex = 0x100000000;
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  for (const auto name : {"signed_decimal", "signed_hex"}) {
+    const auto& declaration = storageNamed(*resolved, name);
+    ASSERT_EQ(declaration.initializer.size(), 1u);
+    EXPECT_EQ(std::get<StorageConstant>(declaration.initializer.front().value).bits,
+              0xffffffffU);
+  }
+  for (const auto name : {"unsigned_decimal", "unsigned_hex"}) {
+    const auto& declaration = storageNamed(*resolved, name);
+    ASSERT_EQ(declaration.initializer.size(), 1u);
+    EXPECT_EQ(std::get<StorageConstant>(declaration.initializer.front().value).bits,
+              0U);
+  }
+}
+
 /** Metadata owns values needed after both the syntax tree and source disappear. */
 TEST(ResolvedStorageDeclarations, RetainsAddressableDeclarationsWithoutAst) {
   std::optional<ResolvedModule> resolved_module;

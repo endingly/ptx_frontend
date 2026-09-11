@@ -52,6 +52,19 @@ const OperandView* find_operand(std::span<const OperandView> operands,
   return it == operands.end() ? nullptr : &*it;
 }
 
+/**
+ * Return the evaluated integer value used by fixed immediate constraints.
+ *
+ * Integer source bits precede a data operand's width conversion, so a source
+ * value that narrows to an allowed bit pattern cannot satisfy a control rule.
+ * @pre `operand.immediate_bits` is engaged.
+ */
+std::pair<uint64_t, bool> integer_constraint_value(
+    const OperandView& operand) noexcept {
+  return {operand.integer_source_bits.value_or(*operand.immediate_bits),
+          operand.immediate_is_negative.value_or(false)};
+}
+
 void append_value_availability_diagnostics(const OperandView& operand,
                                            const Context& context,
                                            CheckDiagnostics& diagnostics) {
@@ -1217,7 +1230,8 @@ CheckResult check_address_alignment(
                      "immediate field.",
       }});
     }
-    required = *immediate->immediate_bits;
+    required = immediate->integer_source_bits.value_or(
+        *immediate->immediate_bits);
   } else if (required == 0) {
     const FieldView* type = find_field(fields, descriptor.type_field_id);
     const FieldView* vector =
@@ -1409,7 +1423,8 @@ CheckResult check_immediate_value(
             descriptor.operand_field_id),
     }});
   }
-  if (std::ranges::find(descriptor.allowed_values, *operand->immediate_bits) !=
+  const auto [value, negative] = integer_constraint_value(*operand);
+  if (!negative && std::ranges::find(descriptor.allowed_values, value) !=
       descriptor.allowed_values.end()) {
     return {};
   }
@@ -1418,7 +1433,7 @@ CheckResult check_immediate_value(
       .range = diagnostic_range(operand->locations, context),
       .message = fmt::format("Immediate operand '{}' has unsupported value {}.",
                              descriptor.operand_field_id,
-                             *operand->immediate_bits),
+                             value),
   }});
 }
 
@@ -1450,8 +1465,8 @@ CheckResult check_immediate_multiple_of(
                                descriptor.operand_field_id),
     }});
   }
-  if (!operand->immediate_is_negative.value_or(false) &&
-      *operand->immediate_bits % descriptor.divisor == 0) {
+  const auto [value, negative] = integer_constraint_value(*operand);
+  if (!negative && value % descriptor.divisor == 0) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
@@ -1460,7 +1475,7 @@ CheckResult check_immediate_multiple_of(
       .message = fmt::format("Immediate operand '{}' has value {} that is not a "
                              "multiple of {}.",
                              descriptor.operand_field_id,
-                             *operand->immediate_bits, descriptor.divisor),
+                             value, descriptor.divisor),
   }});
 }
 
@@ -1487,10 +1502,10 @@ CheckResult check_immediate_range(
                                descriptor.operand_field_id),
     }});
   }
-  if (!operand->immediate_is_negative.value_or(false) &&
-      *operand->immediate_bits >= descriptor.minimum &&
+  const auto [value, negative] = integer_constraint_value(*operand);
+  if (!negative && value >= descriptor.minimum &&
       (!descriptor.has_maximum ||
-       *operand->immediate_bits <= descriptor.maximum)) {
+       value <= descriptor.maximum)) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
@@ -1498,7 +1513,7 @@ CheckResult check_immediate_range(
       .range = diagnostic_range(operand->locations, context),
       .message = fmt::format(
           "Immediate operand '{}' has value {} outside the supported range.",
-          descriptor.operand_field_id, *operand->immediate_bits),
+          descriptor.operand_field_id, value),
   }});
 }
 

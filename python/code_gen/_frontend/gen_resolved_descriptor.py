@@ -446,6 +446,10 @@ def _emit_operand_binding_descriptor(
         CppDomain.REGISTER_WIDTH_POLICIES,
         binding.register_width_policy.value,
     )
+    immediate_conversion_policy = cpp_value(
+        CppDomain.IMMEDIATE_CONVERSION_POLICIES,
+        binding.immediate_conversion_policy.value,
+    )
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
               .type_expression = {_emit_type_expression_descriptor(binding.type_expression)},
@@ -453,6 +457,7 @@ def _emit_operand_binding_descriptor(
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 
 

@@ -52,6 +52,7 @@ class CppDomain(str, Enum):
     PROXY_KIND_PAIRS = "proxy_kind_pairs"
     PARAMETER_DIRECTIONS = "parameter_directions"
     REGISTER_WIDTH_POLICIES = "register_width_policies"
+    IMMEDIATE_CONVERSION_POLICIES = "immediate_conversion_policies"
     MODIFIER_VALUE_CPP_TYPES = (  # YAML: domains.modifier_value_cpp_types
         "modifier_value_cpp_types"
     )

@@ -227,6 +227,25 @@ variant. The schema retains `same_as(...)`, `one_of(...)`, and
 `same_size_as(...)` as future syntax, but the normalizer explicitly rejects
 them as unsupported.
 
+`immediate_conversion` is a separate use contract for integer immediates. It
+defaults to `narrow`, which retains the low bits of the resolved scalar width
+after decoding the 64-bit source. Use `require_target_range` only where a
+semantic operand must be representable at that width:
+
+```yaml
+- name: barrier
+  kind: reg_or_imm
+  role: barrier
+  access: read
+  type: u32
+  immediate_conversion: require_target_range
+```
+
+It is independent of `type`: fixed scalar types and modifier-derived types may
+each use either conversion. Bounded control operands should instead reuse a
+generated range, exact-value, or multiple-of constraint when that fully states
+their rule; those constraints compare the original decoded source bits.
+
 An address operand may similarly derive its required state space from an
 active `kind: state_space` modifier:
 
@@ -449,13 +468,14 @@ Thus `192` is valid while `23`, `257`, and `25` are rejected. `bfe.u32` and
 `bfi.b32` each use two independent inclusive ranges, `offset` and `width`,
 both `0..255`; both operands are immediate operands in their only layout.
 
-At resolution time an integer immediate carries its scalar type, raw width
-limited bits, and a signed-source marker. For example, a signed `-1` has the
-two's-complement raw bits for its operand width and keeps `is_negative`; it is
-not converted to an abstract signed integer before checker rules run. Range
-and multiple-of checks reject that negative marker before comparing or taking
-a remainder. Exact-value checks intentionally compare raw bits, so an allowlist
-is a bit-value contract. Floating immediates resolve to IEEE raw bits: decimal
+At resolution time an integer immediate carries its scalar type, use-width
+bits, evaluated 64-bit source bits, and numerical signed-negativity. The
+source is signed unless it has `U`/`u` or exceeds `INT64_MAX`; unary minus
+preserves that type and wraps unsigned values. Range, multiple-of, and
+exact-value checks require a nonnegative source and compare original source
+bits, so a nonzero value that narrows to an allowed target-width bit pattern
+cannot satisfy a fixed control rule. A signed `-0` therefore behaves as zero.
+Floating immediates resolve to IEEE raw bits: decimal
 forms require `f32` or `f64`, and `0f...`/`0d...` are unsigned 32-/64-bit
 bit-pattern literals that require exactly `f32`/`f64` and cannot have a sign.
 Consequently these constraints are integer-domain rules; do not use their
@@ -475,10 +495,10 @@ and source-program errors distinguishable.
 operand_patterns:
   bar_sync_immediate_barrier:
     - {name: barrier, kind: imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
   bar_sync_barrier:
     - {name: barrier, kind: reg_or_imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
 
 instructions:
   - opcode: bar

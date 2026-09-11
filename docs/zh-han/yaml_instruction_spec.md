@@ -200,6 +200,23 @@ type-expression 函数是 `modifier(name)`：它读取当前 variant 的 active 
 schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为未来语法，但
 normalizer 会明确报错表示尚未支持。
 
+`immediate_conversion` 是 integer immediate 独立的 use contract。其默认值 `narrow`
+会在解码 64-bit source 后保留 resolved scalar width 的低位。仅当语义 operand 必须能由
+该宽度表示时才使用 `require_target_range`：
+
+```yaml
+- name: barrier
+  kind: reg_or_imm
+  role: barrier
+  access: read
+  type: u32
+  immediate_conversion: require_target_range
+```
+
+它独立于 `type`：fixed scalar type 与 modifier-derived type 都可选择任一 conversion。
+若 bounded control operand 的规则可由 generated range、exact-value 或 multiple-of constraint
+完整表达，应复用这些 constraint；它们比较原始 decoded source bits。
+
 address operand 也可以从 active `kind: state_space` modifier 派生所要求的
 state space：
 
@@ -393,11 +410,12 @@ constraints:
 独立的 inclusive range：`offset` 和 `width` 均为 `0..255`；两个 operand 在各自唯一的
 layout 中都是 immediate operand。
 
-resolver 中，integer immediate 携带 scalar type、受 operand width 限制的 raw bits，以及
-源端 signed marker。例如 signed `-1` 的 raw bits 是该 operand width 下的 two's-complement，
-同时保留 `is_negative`；checker rule 运行前不会把它转换成抽象 signed integer。range 和
-multiple-of 会先拒绝 negative marker，再比较或取余。exact-value 则有意比较 raw bits，
-所以 allowlist 是 bit-value contract。floating immediate 解析为 IEEE raw bits：decimal form
+resolver 中，integer immediate 携带 scalar type、use-width bits、求值后的 64-bit source bits，
+以及数值上的 signed-negative 性质。source 在没有 `U`/`u` 且不超过 `INT64_MAX` 时为 signed；
+unary minus 保留该 type，而 unsigned value 按该宽度回绕。range、multiple-of 与 exact-value
+都要求 source 为 nonnegative，并比较原始 source bits；因此非零 source 即使窄化为允许的
+target-width bit pattern，也不能满足 fixed control rule。signed `-0` 因而等同 zero。
+floating immediate 解析为 IEEE raw bits：decimal form
 要求 `f32` 或 `f64`，`0f...`/`0d...` 分别是 unsigned 32-/64-bit bit-pattern literal，
 必须恰好使用 `f32`/`f64`，且不能带符号。因此这些 constraint 是 integer-domain rule；不要
 用看似数值的 bounds 表达 floating-point ordering。
@@ -414,10 +432,10 @@ configuration error 与 source-program error。
 operand_patterns:
   bar_sync_immediate_barrier:
     - {name: barrier, kind: imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
   bar_sync_barrier:
     - {name: barrier, kind: reg_or_imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
 
 instructions:
   - opcode: bar

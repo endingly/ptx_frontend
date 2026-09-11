@@ -278,7 +278,7 @@ class SymbolTable {
   [[nodiscard]] static std::optional<SymbolId> parameterizedContaining(
       const ParameterizedPrefixIndex& index, const std::vector<Symbol>& symbols,
       std::string_view spelling);
-  /** Index every valid base/member decomposition of one stored spelling. */
+  /** Index every valid base/member decomposition of one actual member spelling. */
   static void indexMemberSpelling(ScopeNameIndex& index,
                                   std::string_view spelling, SymbolId symbol);
 

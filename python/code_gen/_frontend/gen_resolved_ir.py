@@ -1343,6 +1343,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .immediate_is_negative = {object_name}.{field.name}.value.is_negative,
                   .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
+                  .integer_source_bits = {object_name}.{field.name}.value.integer_source_bits,
               }}"""
     if field.value_cpp_type == "ResolvedPredicate":
         return f"""              OperandView{{
@@ -1507,6 +1508,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .immediate_is_negative = immediate->is_negative,
                       .register_type = std::nullopt,
                       .locations = {object_name}.{field.name}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
                   }};
                 }}
                 const auto& register_ref =
@@ -1552,6 +1554,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       .immediate_is_negative = immediate->is_negative,
                       .register_type = std::nullopt,
                       .locations = {object_name}.{field.name}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
                   }};
                 }}
                 if (const auto* register_ref =

@@ -1290,6 +1290,77 @@ TEST(ResolvedIrChecker, RejectsZeroImmediateMultipleDivisor) {
   EXPECT_EQ(checked.error().front().kind, CheckDiagnosticKind::RuleViolation);
 }
 
+/** Verifies fixed rules consume integer source bits before use-width narrowing. */
+TEST(ResolvedIrChecker, PreservesIntegerSourceBitsForFixedConstraints) {
+  static constexpr std::array<uint64_t, 1> allowed_values{0};
+  constexpr VariantDescriptor::ImmediateValueDescriptor value_descriptor{
+      .operand_field_id = "control",
+      .allowed_values = allowed_values,
+  };
+  constexpr VariantDescriptor::ImmediateRangeDescriptor range_descriptor{
+      .operand_field_id = "control",
+      .minimum = 0,
+      .has_maximum = true,
+      .maximum = 1,
+  };
+  constexpr VariantDescriptor::ImmediateMultipleOfDescriptor multiple_descriptor{
+      .operand_field_id = "control",
+      .divisor = 3,
+  };
+  PtxSyntaxParser high_word_parser("mov.u32 %r0, 4294967296;");
+  const auto high_word_ast = high_word_parser.parseInstruction();
+  ASSERT_TRUE(high_word_ast.has_value()) << high_word_ast.diagnostics.front().message;
+  const auto high_word = resolve_immediate_literal(
+      std::get<syntax_ast::AstImmediate>(high_word_ast->operands.back()),
+      ScalarType::U32);
+  ASSERT_TRUE(high_word.has_value()) << high_word.error().message;
+  EXPECT_EQ(high_word->bits, 0U);
+  ASSERT_TRUE(high_word->integer_source_bits.has_value());
+  OperandView control{
+      .field_id = "control",
+      .actual_shape = OperandShape::Immediate,
+      .immediate_type = ScalarType::U32,
+      .immediate_bits = high_word->bits,
+      .immediate_is_negative = high_word->is_negative,
+      .integer_source_bits = high_word->integer_source_bits,
+  };
+  const auto operands = std::span<const OperandView>{&control, 1};
+  EXPECT_FALSE(check_immediate_value(value_descriptor, operands,
+                                     Context{.instruction_range = kInstructionRange})
+                   .has_value());
+  EXPECT_FALSE(check_immediate_range(range_descriptor, operands,
+                                     Context{.instruction_range = kInstructionRange})
+                   .has_value());
+
+  EXPECT_FALSE(check_immediate_multiple_of(
+                   multiple_descriptor, operands,
+                   Context{.instruction_range = kInstructionRange})
+                   .has_value());
+
+  PtxSyntaxParser minus_zero_parser("mov.u32 %r0, -0;");
+  const auto minus_zero_ast = minus_zero_parser.parseInstruction();
+  ASSERT_TRUE(minus_zero_ast.has_value())
+      << minus_zero_ast.diagnostics.front().message;
+  const auto minus_zero = resolve_immediate_literal(
+      std::get<syntax_ast::AstImmediate>(minus_zero_ast->operands.back()),
+      ScalarType::U32);
+  ASSERT_TRUE(minus_zero.has_value()) << minus_zero.error().message;
+  EXPECT_FALSE(minus_zero->is_negative);
+  control.immediate_bits = minus_zero->bits;
+  control.immediate_is_negative = minus_zero->is_negative;
+  control.integer_source_bits = minus_zero->integer_source_bits;
+  EXPECT_TRUE(check_immediate_value(value_descriptor, operands,
+                                    Context{.instruction_range = kInstructionRange})
+                  .has_value());
+  EXPECT_TRUE(check_immediate_range(range_descriptor, operands,
+                                    Context{.instruction_range = kInstructionRange})
+                  .has_value());
+  EXPECT_TRUE(check_immediate_multiple_of(
+                  multiple_descriptor, operands,
+                  Context{.instruction_range = kInstructionRange})
+                  .has_value());
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedBfeAvailabilityAndImmediateRanges) {
   for (const auto source : {"bfe.u32 %r0, %r1, 0, 8;",
                             "bfe.u32 %r0, %r1, 255, 255;"}) {
@@ -2816,6 +2887,14 @@ TEST(ResolvedIrChecker, ChecksStaticAddressAlignment) {
   EXPECT_TRUE(
       check_address_alignment(dynamic_descriptor, {}, copy_operands, context)
           .has_value());
+  copy_operands[2].integer_source_bits = 16;
+  EXPECT_EQ(
+      check_address_alignment(dynamic_descriptor, {}, copy_operands, context)
+          .error()
+          .front()
+          .kind,
+      CheckDiagnosticKind::AddressAlignmentMismatch);
+  copy_operands[2].integer_source_bits.reset();
   copy_operands[0].address_alignment = 4;
   EXPECT_EQ(
       check_address_alignment(dynamic_descriptor, {}, copy_operands, context)

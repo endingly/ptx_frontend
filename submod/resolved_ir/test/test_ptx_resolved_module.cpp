@@ -8914,6 +8914,32 @@ done:
   EXPECT_TRUE(checker::check(brx, supported).has_value());
 }
 
+TEST(ResolvedModule, RejectsIndexedBranchTargetSetDeclaredAfterUse) {
+  const auto ast = parseModule(R"ptx(
+.version 6.0
+.target sm_30
+.entry kernel() {
+  .reg .u32 %index;
+  brx.idx %index, targets;
+  targets: .branchtargets done;
+done:
+  ret;
+}
+)ptx");
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_FALSE(resolved.has_value());
+  EXPECT_TRUE(std::ranges::any_of(
+      resolved.error(), [](const ResolveDiagnostic& diagnostic) {
+        return diagnostic.declaration_kind ==
+                   declaration_semantics::DeclarationDiagnosticKind::
+                       UnresolvedMetadataTarget &&
+               diagnostic.message.find("must be defined before") !=
+                   std::string::npos;
+      }));
+}
+
 TEST(ResolvedModule, IndexedBranchRequiresU32IndexRegister) {
   const auto ast = parseModule(R"ptx(
 .entry kernel() {

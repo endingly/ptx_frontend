@@ -46,7 +46,9 @@ generated modifier field 与 opcode 公共字段保留。
 `brx.idx{.uni} index, tlist` 是独立的 PTX 6.0 / SM 30 opcode。其 index 是 `.u32`
 register，`tlist` resolve 为 `ResolvedBranchTargetSet`，保留当前 function `.branchtargets`
 的 `SymbolId`；standalone resolution 仅保留 spelling。它不会展开 target entry 或构建 CFG；
-`bra` 仍只支持 direct form。
+在 module 中 `.branchtargets` declaration 必须在同一 function 的 lexical traversal 内早于
+其 use；其中 member label 仍可 forward reference。direct `bra` target 仍允许 forward
+reference，且 `bra` 仍只支持 direct form。
 
 `call` 现在使用非 `Flat` 的 `Call` layout algorithm。一个 generated direct variant 固定有
 三种 payload layout：仅 target、target 加可变 input group、return group 加 target 加 input

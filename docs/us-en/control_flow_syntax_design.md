@@ -60,7 +60,10 @@ a generated modifier field and an opcode-common field respectively.
 is a `.u32` register and its `tlist` resolves as `ResolvedBranchTargetSet`,
 which retains the current-function `.branchtargets` `SymbolId`; standalone
 resolution retains the spelling. It does not expand target entries or build a
-control-flow graph. `bra` remains direct-only.
+control-flow graph. In a module, the `.branchtargets` declaration must occur
+earlier in the same function's lexical traversal; its member labels may still
+refer forward. Direct `bra` targets remain forward-referenceable. `bra` remains
+direct-only.
 
 `call` now uses the non-`Flat` `Call` layout algorithm. One generated direct
 variant has exactly three fixed payload layouts: target only, target plus the

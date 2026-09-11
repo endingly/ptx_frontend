@@ -60,6 +60,11 @@ low eight bits. Arithmetic after extraction is rejected rather than reordered.
 Symbol identity follows lexical binding, including same-named declarations in
 inner scopes. Function references may be bare or byte-masked; generic conversion
 and address arithmetic on function references are rejected.
+For a function-address initializer, the referenced function spelling must have
+an earlier declaration occurrence; a later definition found by two-pass binding
+does not make the use legal. Compatible prototypes and definitions still share
+their stable identity, while an alias must itself have been declared before an
+initializer uses that alias spelling.
 Neither unresolved external symbols nor function references receive fabricated
 addresses. Downstream consumers resolve these references against their own
 linking/allocation model, without reparsing initializer text.

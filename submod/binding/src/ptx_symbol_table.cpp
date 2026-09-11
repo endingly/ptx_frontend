@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 #include <fmt/format.h>
@@ -367,6 +368,32 @@ const SymbolReference* SymbolTable::initializerReference(
   return &references_[found->second];
 }
 
+const SymbolReference* SymbolTable::branchTargetSetReference(
+    SourceRange range) const noexcept {
+  const auto found = branch_target_set_reference_indexes_.find(range);
+  if (found == branch_target_set_reference_indexes_.end())
+    return nullptr;
+  return &references_[found->second];
+}
+
+std::optional<bool> SymbolTable::hasPriorDeclaration(
+    SymbolId symbol, SourceRange use) const noexcept {
+  const auto use_order = source_orders_.find(use);
+  if (use_order == source_orders_.end() ||
+      symbol.value >= declaration_occurrences_.size()) {
+    return std::nullopt;
+  }
+  const auto& occurrences = declaration_occurrences_[symbol.value];
+  bool unknown_occurrence_order = false;
+  for (const SymbolDeclarationOccurrence& occurrence : occurrences) {
+    if (occurrence.lexical_order &&
+        *occurrence.lexical_order < use_order->second)
+      return true;
+    unknown_occurrence_order |= !occurrence.lexical_order.has_value();
+  }
+  return unknown_occurrence_order ? std::nullopt : std::optional{false};
+}
+
 struct SymbolTableBuilder {
   struct FunctionContext {
     const syntax_ast::AstFunction* function{};
@@ -375,6 +402,9 @@ struct SymbolTableBuilder {
 
   SymbolBinding result;
   std::vector<FunctionContext> functions;
+  std::unordered_set<SourceRange, SymbolTable::SourceRangeHash>
+      ambiguous_source_orders;
+  uint32_t next_source_order{};
 
   SymbolTableBuilder() {
     result.table.scopes_.push_back(Scope{
@@ -385,6 +415,131 @@ struct SymbolTableBuilder {
         .range = std::nullopt,
     });
     result.table.scope_name_indexes_.emplace_back();
+  }
+
+  /** Record one source event unless a duplicate range makes its order ambiguous. */
+  void indexSourceRange(SourceRange range) {
+    if (ambiguous_source_orders.contains(range))
+      return;
+    const auto [iterator, inserted] =
+        result.table.source_orders_.try_emplace(range, next_source_order++);
+    if (!inserted) {
+      result.table.source_orders_.erase(iterator);
+      ambiguous_source_orders.insert(range);
+    }
+  }
+
+  /** Index symbol references in a constant expression in lexical traversal order. */
+  void indexConstantExpression(
+      const syntax_ast::AstConstantExpression& expression) {
+    std::visit(
+        [this](const auto& value) {
+          using Value = std::remove_cvref_t<decltype(value)>;
+          if constexpr (std::same_as<Value, syntax_ast::AstConstantSymbol>) {
+            indexSourceRange(value.name.syntax.range);
+          } else if constexpr (std::same_as<
+                                   Value,
+                                   syntax_ast::AstConstantParenthesized>) {
+            indexConstantExpression(*value.expression);
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstConstantCall>) {
+            indexConstantExpression(*value.callee);
+            indexConstantExpression(*value.argument);
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstConstantCast> ||
+                               std::same_as<Value,
+                                            syntax_ast::AstConstantUnary>) {
+            indexConstantExpression(*value.operand);
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstConstantBinary>) {
+            indexConstantExpression(*value.left);
+            indexConstantExpression(*value.right);
+          } else if constexpr (std::same_as<
+                                   Value, syntax_ast::AstConstantConditional>) {
+            indexConstantExpression(*value.condition);
+            indexConstantExpression(*value.true_expression);
+            indexConstantExpression(*value.false_expression);
+          }
+        },
+        expression.node);
+  }
+
+  /** Index initializer symbol use sites in one declaration before later items. */
+  void indexVariableInitializers(
+      const syntax_ast::AstVariableDeclaration& declaration) {
+    for (const auto& declarator : declaration.declarators) {
+      if (!declarator.initializer)
+        continue;
+      const auto index_initializer =
+          [this](const auto& self,
+                 const syntax_ast::AstInitializer& initializer) -> void {
+        if (const auto* expression =
+                std::get_if<syntax_ast::AstConstantExpression>(
+                    &initializer.value)) {
+          indexConstantExpression(*expression);
+        } else {
+          const auto& elements =
+              std::get<syntax_ast::AstInitializerList>(initializer.value)
+                  .elements;
+          for (const auto& element : elements)
+            self(self, element);
+        }
+      };
+      index_initializer(index_initializer, *declarator.initializer);
+    }
+  }
+
+  /** Index declaration/use events in a function body, including nested blocks. */
+  void indexBodySourceOrder(
+      const std::vector<syntax_ast::AstFunctionBodyItem>& body) {
+    for (const auto& item : body) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+        indexVariableInitializers(*declaration);
+      } else if (const auto* targets =
+                     std::get_if<syntax_ast::AstBranchTargets>(&item)) {
+        indexSourceRange(targets->label.syntax.range);
+      } else if (const auto* instruction =
+                     std::get_if<syntax_ast::AstInstruction>(&item)) {
+        for (const auto& operand : instruction->operands) {
+          if (const auto* target_set =
+                  std::get_if<syntax_ast::AstBranchTargetSet>(&operand))
+            indexSourceRange(target_set->name.syntax.range);
+        }
+      } else if (const auto* block =
+                     std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
+                 block != nullptr && *block) {
+        indexBodySourceOrder((*block)->body);
+      }
+    }
+  }
+
+  /** Build a unique lexical-order index without deriving order from coordinates. */
+  void indexSourceOrder(const syntax_ast::AstModule& module) {
+    for (const auto& item : module.items) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+        indexVariableInitializers(*declaration);
+      } else if (const auto* function =
+                     std::get_if<syntax_ast::AstFunction>(&item)) {
+        indexSourceRange(function->name.syntax.range);
+        indexBodySourceOrder(function->body);
+      }
+    }
+  }
+
+  /** Retain a declaration occurrence independently of its canonical SymbolId. */
+  void recordDeclarationOccurrence(SymbolId symbol, SourceRange range) {
+    if (symbol.value >= result.table.declaration_occurrences_.size())
+      throw std::logic_error("Symbol occurrence has no stable identity.");
+    const auto order = result.table.source_orders_.find(range);
+    result.table.declaration_occurrences_[symbol.value].push_back(
+        SymbolDeclarationOccurrence{
+            .symbol = symbol,
+            .range = range,
+            .lexical_order = order == result.table.source_orders_.end()
+                                 ? std::nullopt
+                                 : std::optional{order->second}});
   }
 
   /** Associate a declaration's range with its scope, not its canonical symbol. */
@@ -531,6 +686,7 @@ struct SymbolTableBuilder {
         .function_is_entry = function_is_entry,
         .canonical_function = std::nullopt,
     });
+    result.table.declaration_occurrences_.emplace_back();
     indexSymbol(result.table.symbols_.back());
     return id;
   }
@@ -568,6 +724,7 @@ struct SymbolTableBuilder {
         .name = std::string{name},
         .declaration_range = declaration_range,
     });
+    result.table.declaration_occurrences_.emplace_back();
     return id;
   }
 
@@ -673,6 +830,7 @@ struct SymbolTableBuilder {
         std::nullopt, std::nullopt, std::nullopt, true, function.is_entry);
     const ScopeId function_scope = addFunctionScope(
         function_symbol, function.range, !function.is_prototype);
+    recordDeclarationOccurrence(function_symbol, function.name.syntax.range);
     functions.push_back(FunctionContext{&function, function_scope});
 
     for (const auto& parameter : function.return_parameters) {
@@ -725,8 +883,10 @@ struct SymbolTableBuilder {
                   targets->label.syntax.text, targets->label.syntax.range);
       } else if (const auto* targets =
                      std::get_if<syntax_ast::AstBranchTargets>(&item)) {
-        addSymbol(function_scope, SymbolKind::BranchTargetSet,
-                  targets->label.syntax.text, targets->label.syntax.range);
+        const SymbolId target_set =
+            addSymbol(function_scope, SymbolKind::BranchTargetSet,
+                      targets->label.syntax.text, targets->label.syntax.range);
+        recordDeclarationOccurrence(target_set, targets->label.syntax.range);
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
                  block != nullptr && *block) {
@@ -760,6 +920,9 @@ struct SymbolTableBuilder {
     });
     if (kind == ReferenceKind::Initializer) {
       result.table.initializer_reference_indexes_.try_emplace(
+          identifier.syntax.range, result.table.references_.size() - 1);
+    } else if (kind == ReferenceKind::BranchTargetSet) {
+      result.table.branch_target_set_reference_indexes_.try_emplace(
           identifier.syntax.range, result.table.references_.size() - 1);
     }
     if (classification == ReferenceClassification::Unresolved) {
@@ -1093,6 +1256,7 @@ struct SymbolTableBuilder {
   }
 
   SymbolBinding build(const syntax_ast::AstModule& module) {
+    indexSourceOrder(module);
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {

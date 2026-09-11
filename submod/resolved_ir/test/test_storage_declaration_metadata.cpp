@@ -742,6 +742,32 @@ TEST(ResolvedStorageDeclarations, RetainsDirectAndMaskedFunctionRelocations) {
   }
 }
 
+/** Function-address relocation legality retains declaration occurrence order. */
+TEST(ResolvedStorageDeclarations,
+     RejectsFunctionAddressBeforeItsFirstDeclaration) {
+  const auto rejected = resolveSource(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .u64 targets[1] = { later };
+.func later() { ret; }
+)ptx");
+  ASSERT_FALSE(rejected.has_value());
+  EXPECT_TRUE(hasDeclarationKind(
+      rejected.error(), declaration_semantics::DeclarationDiagnosticKind::
+                            FunctionAddressBeforeDeclaration));
+
+  const auto accepted = resolveSource(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.func declared();
+.global .u64 targets[1] = { declared };
+.func declared() { ret; }
+)ptx");
+  ASSERT_TRUE(accepted.has_value()) << accepted.error().front().message;
+}
+
 /** Relocations retain the initializer's lexical binding rather than its spelling. */
 TEST(ResolvedStorageDeclarations, RetainsScopedInitializerSymbolIdentity) {
   const auto scoped = resolveSource(R"ptx(

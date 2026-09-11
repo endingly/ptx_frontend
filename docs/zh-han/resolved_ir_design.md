@@ -32,10 +32,12 @@ normal module indirect call 会保留已绑定的 target 与 metadata identity�
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
 公共 model 入口是 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`，
-只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
+它依次聚合手写 foundation、生成的 instruction struct 与 `ResolvedInstruction` union、以及手写
+module container。`ptx_resolved_ir_module.hpp` 只直接包含 foundation 和生成的 instruction
+surface，因此固定 module field 可在不修改 generator 的情况下用 C++ 演进，且 headers 保持无环。
+这些头只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
 instruction checker 实现接口。解析入口位于 `ptx_resolved_ir_resolution.hpp`，
 检查入口位于 `ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 保留为兼容聚合头。
-生成的 model 包含 foundation 而非聚合头，避免循环包含。
 
 公共层还提供了一个与具体 opcode 无关的边界：
 

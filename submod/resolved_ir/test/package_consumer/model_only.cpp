@@ -11,5 +11,10 @@ int main() {
       .role = ParameterDeclarationRole::EntryInput,
   };
   ResolvedCallLiteral literal{.spelling = "0"};
-  return parameter.symbol_id.value == 1 && literal.spelling == "0" ? 0 : 1;
+  ResolvedModule module{};
+  module.functions.emplace_back();
+  return parameter.symbol_id.value == 1 && literal.spelling == "0" &&
+                 module.functions.size() == 1
+             ? 0
+             : 1;
 }

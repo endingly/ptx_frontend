@@ -3662,22 +3662,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn("using ResolvedInstruction = std::variant<", source)
-        self.assertIn("struct ResolvedLabelPosition {", source)
-        self.assertIn("struct ResolvedFunction {", source)
-        self.assertIn("struct ResolvedModule {", source)
-        self.assertIn(
-            "std::vector<ResolvedStorageDeclaration> storage_declarations;",
-            source,
-        )
-        self.assertIn("binding::SymbolTable symbols;", source)
-        self.assertIn("std::string source_identity;", source)
-        self.assertIn("binding::SymbolId symbol_id;", source)
-        self.assertIn("std::size_t instruction_offset;", source)
-        self.assertIn("std::vector<ResolvedLabelPosition> label_positions;", source)
+        self.assertNotIn("struct ResolvedLabelPosition {", source)
+        self.assertNotIn("struct ResolvedFunction {", source)
+        self.assertNotIn("struct ResolvedModule {", source)
         self.assertNotIn("resolveInstruction(", source)
         self.assertNotIn("resolveModule(", source)
-        self.assertIn("binding::ScopeId declaration_scope;", source)
-        self.assertIn("std::string source_identity;", source)
+        self.assertNotIn("binding::ScopeId declaration_scope;", source)
+        self.assertNotIn("std::string source_identity;", source)
         self.assertIn("enum class VariantType {", source)
         self.assertIn("struct IntegerNoSat {", source)
         self.assertIn("ResolvedOperandLayoutTag operand_layout;", source)

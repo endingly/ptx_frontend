@@ -59,6 +59,7 @@ foreach(_header IN ITEMS
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp"
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp"
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp"
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp"
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp"
         "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp")

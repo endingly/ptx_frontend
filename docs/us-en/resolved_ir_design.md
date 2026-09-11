@@ -39,12 +39,16 @@ reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
 The public model entry point is
-`<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It contains owned data
+`<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It aggregates the
+handwritten foundation, the generated instruction structs and
+`ResolvedInstruction` union, and handwritten module containers in that order.
+`ptx_resolved_ir_module.hpp` directly includes only the foundation and generated
+instruction surface, so fixed module fields can evolve in C++ without changing
+the generator and the headers remain acyclic. These headers contain owned data
 and read-only descriptors without requiring the complete Syntax AST, resolver
 helpers, or instruction-checker implementation. Resolution is exposed through
 `ptx_resolved_ir_resolution.hpp`, checking through `ptx_resolved_ir_checker.hpp`;
-`ptx_resolved_ir.hpp` remains the compatibility aggregate. The generated model
-includes its foundation, not the aggregate, so these headers do not form a cycle.
+`ptx_resolved_ir.hpp` remains the compatibility aggregate.
 
 The public layer also provides an opcode-independent boundary:
 

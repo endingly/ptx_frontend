@@ -966,13 +966,7 @@ resolve_storage_declarations(const syntax_ast::AstModule& module,
   std::vector<ResolvedStorageDeclaration> declarations;
   std::vector<DeclarationDiagnostic> diagnostics;
   const auto version = module_version(module);
-  std::vector<binding::ScopeId> function_scopes;
-  for (const binding::Scope& scope : symbols.scopes()) {
-    if (scope.kind == binding::ScopeKind::Function)
-      function_scopes.push_back(scope.id);
-  }
 
-  size_t function_index = 0;
   for (const auto& item : module.items) {
     if (const auto* declaration =
             std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
@@ -982,13 +976,14 @@ resolve_storage_declarations(const syntax_ast::AstModule& module,
       }
     } else if (const auto* function =
                    std::get_if<syntax_ast::AstFunction>(&item)) {
-      if (function_index >= function_scopes.size()) {
+      const auto function_scope = symbols.functionScope(function->range);
+      if (!function_scope) {
         diagnose(diagnostics,
                  DeclarationDiagnosticKind::UnsupportedStorageDeclaration,
                  function->range, "Function has no bound lexical scope.");
         continue;
       }
-      resolve_body(function->body, function_scopes[function_index++], symbols,
+      resolve_body(function->body, *function_scope, symbols,
                    version, declarations, diagnostics);
     }
   }

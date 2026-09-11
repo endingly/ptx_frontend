@@ -31,7 +31,13 @@ payload 或 ABI。generated `Call::Direct` 现有三个额外的 `IndirectCall` 
 normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
-生成的公共层还提供了一个与具体 opcode 无关的边界：
+公共 model 入口是 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`，
+只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
+instruction checker 实现接口。解析入口位于 `ptx_resolved_ir_resolution.hpp`，
+检查入口位于 `ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 保留为兼容聚合头。
+生成的 model 包含 foundation 而非聚合头，避免循环包含。
+
+公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
 using ResolvedInstruction =
@@ -43,6 +49,44 @@ resolveInstruction(const syntax_ast::AstInstruction& ast);
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
+
+各模块入口的成功契约明确区分如下：
+
+| 入口 | 成功含义 |
+| --- | --- |
+| `resolveModuleOnly(ast)` | binding、declaration semantics、指令解析、call ABI/staging 检查通过；不运行末尾的 instruction/directive checker。 |
+| `resolveAndValidateModule(ast)` | 解析与末尾检查通过，每个受检区域都有已识别 source target 和 PTX version；缺少上下文时报错。 |
+| `resolveModule(ast)` | 保留兼容行为：解析并检查上下文可用的区域，仍接受 targetless fragment。 |
+| `validateModule(ast, module, policy)` | source 对应关系和显式策略下的 instruction/directive 检查通过，默认 `RequireCompleteContext`；module 必须已经通过解析。 |
+| `checkModuleAvailability(ast, module)` | `AvailableContext` 策略的兼容包装；虽然历史名称是 availability，实际在有上下文的区域运行完整 instruction checker。 |
+
+resolve-only 仍会在源码提供相关 version/target 时检查声明可用性，不是绕过非法声明的入口。
+binding、声明形状/类型规则、operand resolution 与 call ABI/staging 属于解析阶段。
+末尾的 generated checker 负责其余指令约束（包括不依赖 target 的 layout/type 关系），
+以及 PTX/SM/profile availability。因此 resolve-only 不保证所有 target-independent
+指令约束都已通过；全部验证保证均限于当前建模的指令和声明子集。
+每条 `.target` 替换 active source context，未知 target 也会清除此前已识别的 target。
+函数头、嵌套 body declaration 和局部 call prototype 使用所属函数所在的 source region，
+不与 lowering 阶段的 deployment target 选择混用。
+显式 validation catalog 包含不具有现代 capability 的历史 `sm_13` 与 `sm_20`，以一致检查 PTX 6.0
+的 `sm_20`/`sm_30` 声明边界；不会因此接受任意数字形式的 target spelling。
+
+`ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
+`SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；
+解析、storage 收集和声明检查通过此关联查找，不再配对独立遍历的下标。
+`instruction_ranges` 与 `instruction_opcodes` 为每条展平指令拥有一条记录；
+`source_target` 与 `source_version` 保存原始源码上下文，`source_identity` 拥有不依赖位置的
+语法身份，用于检查对应关系。
+`ResolvedModule::source_identity` 还覆盖 module declaration、alias 和 address size，
+避免改变 global 类型或 initializer 后静默复用另一份源码的指令绑定。
+
+验证通过 `ModuleSourceMismatch` 明确拒绝缺失、额外、含糊或结构不同的函数/指令关联。
+仍允许使用另行解析、函数体等价但行号变化并替换 target/version 的 AST；
+影响解析语义的 directive 仍须匹配。验证会重新绑定传入 AST 并重复 declaration semantics，
+包括新 source context 下的声明可用性。重复等价声明必须能唯一识别对应 occurrence，不会按顺序静默配对。
+指令诊断使用 IR 拥有的原始 range，directive 诊断使用传入 AST 的位置。
+严格验证缺少上下文时返回 `MissingValidationContext`。原始 module directive 仍需要 AST；
+这不代表提供无需 AST 的完整模块序列化契约。
 
 `ResolveDiagnostic` 拥有 message 和 source range 的值。模块解析保留原阶段的
 `binding_kind`、`declaration_kind` 或 `checker_kind`，以及主位置 `range` 和 binding
@@ -361,6 +405,11 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 
 `checker::check<T>` 是每个 opcode 的生成 wrapper，公共 checker 至少检查：
 
+- 每个 projected dynamic modifier value 是否属于已选 variant 生成的 semantic domain。此检查
+  不依赖 source location 或 modifier 在源码中是否出现：省略 optional modifier 时检查该字段声明的
+  default；越出 domain 的编辑后 value 即使没有 provenance 也仍然非法，诊断 range 回退至
+  instruction range。
+  `ModifierValueDomainMismatch` 表示 value 不在该 domain 内。
 - variant、已选 operand layout 与实际 modifier value 的最低 PTX 版本、SM 版本与 target family；
 - layout tag 的范围；
 - layout tag/payload 一致性；
@@ -373,6 +422,15 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
   register、immediate 与 standalone base 的未知 space 不推断。
 - 由 generated operand constraint 描述的 explicit `.param` input/return direction 与
   function-context availability；方向错误优先于上下文 availability。
+
+单条 instruction 的 `checker::check<T>` 由调用方提供 `checker::Context::target` 与
+`instruction_range`；编辑字段没有保留 source provenance 时，后者是稳定的 diagnostic range 回退。
+
+semantic-domain membership 与 target availability 是两个独立问题。domain 由 normalized variant
+modifier values 及各 optional field 自身的 default 得出，不从 availability entry 推断，也不会笼统
+接受 enum sentinel。availability 保持现有 source-presence 行为，因为省略的 default 不必与显式
+spelling 具有相同的 PTX 或 SM 要求。因此 legal value 可以通过 domain membership，但仍因 target
+availability 被拒绝。
 
 生成的 vector projection 可接收调用方手工构造或修改的公开 IR，无需另行预验证
 向量长度。`OperandView::vector_arity` 保留原始 width/元素数量，对固定容量元素数组

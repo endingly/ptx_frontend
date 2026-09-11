@@ -1842,7 +1842,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>',
+            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>',
+            source,
+        )
+        self.assertIn(
+            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>',
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)

@@ -64,8 +64,23 @@ decides whether the redeclaration is legal:
   definitions report diagnostics carrying the previous source range;
 - an `.extern .func` must be a prototype and cannot have a body.
 
-Explicit alignments, parameterized counts, and ABI-preserve counts compare by
-decoded integer value, so equivalent octal and decimal spellings match.
+Redeclaration alignment compares its effective value while retaining source
+provenance and ranges on every declaration occurrence. For modeled fundamental
+storage, an omitted alignment is the scalar byte size (also for scalar arrays)
+or the complete `.v2`/`.v4` element width (also for arrays of vectors). An
+explicit valid alignment compares by decoded integer value, so equivalent octal
+and decimal spellings match. Unsupported layouts and invalid alignment syntax
+do not receive an inferred default. Parameterized counts and ABI-preserve
+counts likewise compare by decoded integer value.
+
+Verification note: CUDA 13.1 `ptxas` V13.1.115 accepted both declaration orders
+for `.version 8.0` / `.target sm_80` / `.address_size 64` fixtures containing
+matching implicit and explicit scalar, scalar-array, byte-array, `.v2 .u32`,
+and `.v4 .u32` external declarations. For the `g` scalar fixture, whole-program
+compilation emitted exactly `ptxas warning : Unresolved extern variable 'g' in
+whole program compilation, ignoring extern qualifier`; the comparison is
+therefore successful with that warning, not warning-free. The same assembler
+rejected `.align 3` with `Alignment must be a power of two`.
 
 Every function prototype and definition still owns a lexical scope. The
 function symbol's `owned_scope` prefers the definition scope, so module

@@ -38,7 +38,15 @@ module indirect calls preserve the bound target and metadata identities, then
 reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
-The generated public layer also provides an opcode-independent boundary:
+The public model entry point is
+`<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It contains owned data
+and read-only descriptors without requiring the complete Syntax AST, resolver
+helpers, or instruction-checker implementation. Resolution is exposed through
+`ptx_resolved_ir_resolution.hpp`, checking through `ptx_resolved_ir_checker.hpp`;
+`ptx_resolved_ir.hpp` remains the compatibility aggregate. The generated model
+includes its foundation, not the aggregate, so these headers do not form a cycle.
+
+The public layer also provides an opcode-independent boundary:
 
 ```cpp
 using ResolvedInstruction =
@@ -50,6 +58,56 @@ resolveInstruction(const syntax_ast::AstInstruction& ast);
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
+
+The module entry points have distinct success contracts:
+
+| Entry point | Success means |
+| --- | --- |
+| `resolveModuleOnly(ast)` | Binding, declaration semantics, instruction resolution, and call-ABI/staging checks passed. It does not run the final instruction/directive checker. |
+| `resolveAndValidateModule(ast)` | Resolution and final checking passed, with a recognized source target and PTX version for each checked region. Missing context is an error. |
+| `resolveModule(ast)` | Compatibility behavior: resolution plus final checks where context is available; targetless fragments remain accepted. |
+| `validateModule(ast, module, policy)` | Source correspondence and final instruction/directive checks passed under the explicit policy (default: `RequireCompleteContext`). The module must already have passed resolution. |
+| `checkModuleAvailability(ast, module)` | Compatibility wrapper for validation with `AvailableContext`; despite its historical name, it runs the full instruction checker in contextualized regions. |
+
+Resolution-only still enforces declaration availability when its source contains
+the relevant version/target; it is not a bypass for malformed declarations.
+Binding, declaration shape/type rules, operand resolution, and call ABI/staging
+belong to resolution. The final generated checker owns remaining instruction
+constraints (including target-independent layout/type relationships) as well as
+PTX/SM/profile availability. Thus resolution-only does not guarantee that all
+target-independent instruction constraints passed. All validation guarantees
+are limited to the currently modeled instruction and declaration subset.
+Each `.target` replaces the active source context, including clearing a previous
+recognized target when the new spelling is unknown. Function headers, nested
+body declarations, and local call prototypes use their containing function's
+source region. This is separate from choosing a deployment target for lowering.
+The explicit validation catalog includes historical `sm_13` and `sm_20` with no modern
+capabilities, allowing the PTX 6.0 `sm_20`/`sm_30` declaration boundary to be
+checked consistently; arbitrary numeric target spellings remain unrecognized.
+
+`ResolvedFunction::declaration_scope` identifies a declaration occurrence:
+a prototype and definition may share a `SymbolId` but have different scopes.
+Binding retains the declaration range and exposes `functionScope(range)`;
+resolution, storage collection, and declaration checking use that association
+instead of pairing independent traversal indices. `instruction_ranges` and
+`instruction_opcodes` own one entry per flattened instruction. `source_target`
+and `source_version` retain the original source context, and `source_identity`
+owns a location-independent syntax identity used to check correspondence.
+`ResolvedModule::source_identity` additionally covers module declarations,
+aliases, and address size, so changing a global's type or initializer cannot
+silently reuse instruction bindings from another source.
+
+Validation rejects missing, extra, ambiguous, or structurally different
+function/instruction associations with `ModuleSourceMismatch`. It still accepts
+a separately parsed equivalent function body with shifted line numbers and
+different target/version. Resolution-significant directives must still match.
+Validation rebinds the supplied AST and repeats declaration semantics, including
+availability under its replacement source context. Duplicate equivalent
+declarations need an unambiguous occurrence match; they are not silently paired
+by order. Instruction diagnostics use the IR's original owned ranges, while
+directive diagnostics refer to the supplied AST. Missing strict-validation
+context is reported as `MissingValidationContext`. Raw module directives still
+require an AST; this is not an AST-free complete-module serialization contract.
 
 `ResolveDiagnostic` owns its message and source ranges. Module resolution
 preserves the originating `binding_kind`, `declaration_kind`, or `checker_kind`,
@@ -448,6 +506,13 @@ descriptors do not redo resolve bindings.
 
 Each generated `checker::check<T>` wrapper uses common checking for:
 
+- membership of every projected dynamic modifier value in the selected
+  variant's generated semantic domain. This check is independent of source
+  locations and modifier spelling-presence: an omitted optional modifier is
+  checked using that field's declared default, while an out-of-domain edited
+  value with no provenance remains invalid and uses the instruction range as
+  its diagnostic fallback. `ModifierValueDomainMismatch` reports a value
+  outside this domain.
 - minimum PTX version, SM version, and target family for the variant, selected operand layout, and actual modifier value;
 - layout-tag bounds;
 - layout-tag/payload agreement;
@@ -463,6 +528,18 @@ Each generated `checker::check<T>` wrapper uses common checking for:
 - explicit `.param` input/return direction and function-context availability
   from the generated operand constraint; direction mismatches take precedence
   over that contextual availability.
+
+The caller supplies `checker::Context::target` and `instruction_range` for a
+single-instruction check. The latter is the stable fallback diagnostic range
+when the edited field has no retained source provenance.
+
+Semantic-domain membership and target availability are separate questions. The
+domain is derived from the normalized variant modifier values together with the
+individual optional field default; it is not inferred from availability entries,
+and it does not admit a blanket enum sentinel. Availability keeps its existing
+source-presence behavior, because an omitted default need not have the same PTX
+or SM requirement as an explicitly spelled value. Therefore a legal value can
+pass domain membership yet still fail its target availability check.
 
 Generated vector projections also accept caller-constructed or mutated public
 IR without requiring a separate vector-size preverification pass. They retain

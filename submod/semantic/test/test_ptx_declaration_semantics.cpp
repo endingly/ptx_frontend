@@ -136,6 +136,94 @@ TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
   }
 }
 
+/** External storage redeclarations compare known natural and written alignments. */
+TEST(PtxDeclarationSemantics,
+     NormalizesNaturalExternalStorageAlignmentInEitherDeclarationOrder) {
+  /** One implicit/explicit external declaration pair and its expected default. */
+  struct AlignmentCase {
+    std::string_view omitted;
+    std::string_view explicit_alignment;
+  };
+  constexpr std::array cases{
+      AlignmentCase{".extern .global .u32 scalar;\n",
+                    ".extern .global .align 4 .u32 scalar;\n"},
+      AlignmentCase{".extern .global .u64 word;\n",
+                    ".extern .global .align 8 .u64 word;\n"},
+      AlignmentCase{".extern .global .u32 values[8];\n",
+                    ".extern .global .align 4 .u32 values[8];\n"},
+      AlignmentCase{".extern .global .u8 bytes[32];\n",
+                    ".extern .global .align 1 .u8 bytes[32];\n"},
+      AlignmentCase{".extern .global .v2 .u32 pair[4];\n",
+                    ".extern .global .align 8 .v2 .u32 pair[4];\n"},
+      AlignmentCase{".extern .global .v4 .u32 quad[3];\n",
+                    ".extern .global .align 16 .v4 .u32 quad[3];\n"},
+      AlignmentCase{".extern .global .u32 octal;\n",
+                    ".extern .global .align 04 .u32 octal;\n"},
+  };
+
+  for (const auto& alignment : cases) {
+    for (const bool reverse : std::array{false, true}) {
+      const std::string source = reverse
+                                     ? std::string{alignment.explicit_alignment} +
+                                           std::string{alignment.omitted}
+                                     : std::string{alignment.omitted} +
+                                           std::string{alignment.explicit_alignment};
+      const CheckedModule result = check(source);
+      EXPECT_TRUE(result.binding.diagnostics.empty()) << source;
+      EXPECT_EQ(diagnosticCount(result,
+                                DeclarationDiagnosticKind::IncompatibleRedeclaration),
+                0u)
+          << source;
+      EXPECT_TRUE(result.diagnostics.empty()) << source;
+    }
+  }
+}
+
+/** Existing identical and equivalently explicit external declarations remain valid. */
+TEST(PtxDeclarationSemantics, RetainsMatchingExternalStorageAlignmentControls) {
+  const CheckedModule result = check(R"ptx(
+.extern .global .u32 omitted;
+.extern .global .u32 omitted;
+.extern .global .align 4 .u32 numeric;
+.extern .global .align 04 .u32 numeric;
+)ptx");
+  EXPECT_TRUE(result.binding.diagnostics.empty());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
+/** Alignment normalization does not weaken invalid or unrelated redeclaration checks. */
+TEST(PtxDeclarationSemantics,
+     RetainsInvalidAndIncompatibleStorageRedeclarationControls) {
+  /** One source fixture and the diagnostic category it must preserve. */
+  struct RejectedCase {
+    std::string_view source;
+    DeclarationDiagnosticKind kind;
+  };
+  constexpr std::array cases{
+      RejectedCase{".extern .global .u32 invalid_alignment;\n"
+                   ".extern .global .align 3 .u32 invalid_alignment;\n",
+                   DeclarationDiagnosticKind::InvalidAlignment},
+      RejectedCase{".extern .global .pred unknown;\n"
+                   ".extern .global .align 1 .pred unknown;\n",
+                   DeclarationDiagnosticKind::IncompatibleRedeclaration},
+      RejectedCase{".extern .global .u32 shaped[4];\n"
+                   ".extern .global .align 4 .u32 shaped[5];\n",
+                   DeclarationDiagnosticKind::IncompatibleRedeclaration},
+      RejectedCase{".extern .global .u32 changed_type;\n"
+                   ".extern .global .align 8 .u64 changed_type;\n",
+                   DeclarationDiagnosticKind::IncompatibleRedeclaration},
+      RejectedCase{".extern .global .u32 linkage;\n"
+                   ".visible .global .align 4 .u32 linkage;\n",
+                   DeclarationDiagnosticKind::IncompatibleRedeclaration},
+      RejectedCase{".global .u32 definition;\n.global .u32 definition;\n",
+                   DeclarationDiagnosticKind::MultipleDefinitions},
+  };
+  for (const auto& rejected : cases) {
+    const CheckedModule result = check(rejected.source);
+    EXPECT_GT(diagnosticCount(result, rejected.kind), 0u) << rejected.source;
+  }
+}
+
 TEST(PtxDeclarationSemantics, ValidatesArrayDimensionsAndInitializerShape) {
   const CheckedModule result = check(R"ptx(
 .global .u32 too_many[2] = {1, 2, 3};
@@ -394,6 +482,58 @@ TEST(PtxDeclarationSemantics, ValidatesParameterAvailabilityBoundaries) {
     EXPECT_TRUE(result.binding.diagnostics.empty()) << source;
     EXPECT_TRUE(result.diagnostics.empty()) << source;
   }
+}
+
+/** Parameter availability follows the target active at each function source range. */
+TEST(PtxDeclarationSemantics, UsesEffectiveTargetForParameterAvailability) {
+  const CheckedModule upgraded = check(R"ptx(
+.version 6.0
+.target sm_20
+.func early() { ret; }
+.target sm_30
+.func late(.param .b8 payload[]) { ret; }
+)ptx");
+  EXPECT_TRUE(upgraded.binding.diagnostics.empty());
+  EXPECT_TRUE(upgraded.diagnostics.empty());
+
+  const CheckedModule downgraded = check(R"ptx(
+.version 6.0
+.target sm_30
+.func early() { ret; }
+.target sm_20
+.func late(.param .b8 payload[]) { ret; }
+)ptx");
+  EXPECT_TRUE(downgraded.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                downgraded,
+                DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+            1u);
+
+  const CheckedModule nested_downgraded = check(R"ptx(
+.version 6.0
+.target sm_30
+.func early() { ret; }
+.target sm_13
+.func late() {
+  .param .u32 staging;
+  indirect: .callprototype _ (.param .u32 argument);
+  ret;
+}
+)ptx");
+  EXPECT_TRUE(nested_downgraded.binding.diagnostics.empty());
+  EXPECT_EQ(diagnosticCount(
+                nested_downgraded,
+                DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+            2u);
+
+  const CheckedModule unknown_target = check(R"ptx(
+.version 6.0
+.target sm_20
+.target sm_123a
+.func late(.param .b8 payload[]) { ret; }
+)ptx");
+  EXPECT_TRUE(unknown_target.binding.diagnostics.empty());
+  EXPECT_TRUE(unknown_target.diagnostics.empty());
 }
 
 /** Entry parameter byte limits account for alignment and checked arithmetic. */

@@ -324,7 +324,11 @@ A register operand may also select an explicit width policy:
   register_width: equal_or_wider
 ```
 
-`register_width` defaults to `same_width`. The normalizer rejects the non-default
+`register_width` defaults to `same_width`, which permits compatible fundamental
+types at the same width. `exact` instead requires identical declaration-type
+enums; reserve it for explicit format restrictions, not ordinary operands with
+a fixed width. See [register declaration compatibility](register_type_policy.md)
+for the normative source and regression boundary. The normalizer rejects the non-default
 `equal_or_wider` value on a non-register operand or an operand without a type
 expression, preventing a silent no-op. `reg_vector` operands may also use this
 policy, applying it to each vector element. The resolved operand descriptor

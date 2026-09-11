@@ -33,6 +33,9 @@ parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别
 `SymbolLinkage` 直接记录 `.extern/.visible/.weak`；function symbol 通过 `owned_scope` 指向其
 function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
+每个 function scope 同时拥有该次声明的 `SourceRange`。`functionScope(range)` 返回唯一
+匹配的 occurrence；缺失或含糊时返回空值。调用者无需对齐 function 与 scope vector 的遍历，
+处理 prototype 局部 parameter 时也不能用 `owned_scope` 取代此 occurrence identity。
 
 同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
 因此 block declaration 可以遮蔽 outer/module symbol，sibling block 彼此不可见；label 和

@@ -14,7 +14,9 @@ from .gen_resolved_checker_descriptor import (
 from .gen_resolved_descriptor import generate_resolved_descriptor_source
 from .gen_resolved_ir import (
     generate_resolved_dispatch_source,
+    generate_resolved_ir_checker_declarations_header,
     generate_resolved_ir_header,
+    generate_resolved_ir_resolution_declarations_header,
     generate_resolved_ir_source,
 )
 from .gen_resolved_value_domains import generate_resolved_value_domain_header
@@ -55,11 +57,17 @@ def main() -> None:
     generated_files = [
         output_dir / "private/resolved_value_domains.gen.hpp",
         output_dir / "public/resolved_ir.gen.hpp",
+        output_dir / "public/resolved_ir_resolution.gen.hpp",
+        output_dir / "public/resolved_ir_checker.gen.hpp",
         output_dir / "private/resolved_ir_dispatch.gen.cpp",
     ]
     generate_resolved_value_domain_header(backend, output_path=generated_files[0])
     generate_resolved_ir_header(database, output_path=generated_files[1])
-    generate_resolved_dispatch_source(database, output_path=generated_files[2])
+    generate_resolved_ir_resolution_declarations_header(
+        database, output_path=generated_files[2])
+    generate_resolved_ir_checker_declarations_header(
+        database, output_path=generated_files[3])
+    generate_resolved_dispatch_source(database, output_path=generated_files[4])
     for category in instruction_categories(database):
         output_path = resolved_ir_category_source_path(output_dir, category)
         generate_resolved_ir_source(database, category=category, output_path=output_path)
@@ -102,6 +110,8 @@ def expected_generated_files(database: CodegenDatabase, output_dir: Path) -> tup
     return (
         output_dir / "private/resolved_value_domains.gen.hpp",
         output_dir / "public/resolved_ir.gen.hpp",
+        output_dir / "public/resolved_ir_resolution.gen.hpp",
+        output_dir / "public/resolved_ir_checker.gen.hpp",
         output_dir / "private/resolved_ir_dispatch.gen.cpp",
         *(resolved_ir_category_source_path(output_dir, category) for category in instruction_categories(database)),
         output_dir / "private/syntax_descriptor.gen.cpp",

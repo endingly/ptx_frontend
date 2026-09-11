@@ -107,8 +107,17 @@ void append_value_availability_diagnostics(const OperandView& operand,
   }
 }
 
+/** Restrict shared typed-value comparison to generated modifier descriptors. */
+template <typename Descriptor>
+concept ModifierValueDescriptor =
+    std::same_as<std::remove_cvref_t<Descriptor>,
+                 ModifierValueAvailabilityDescriptor> ||
+    std::same_as<std::remove_cvref_t<Descriptor>, ModifierValueDomainDescriptor>;
+
+/** Compare one generated typed modifier value with a projected resolved value. */
+template <ModifierValueDescriptor Descriptor>
 bool matches_modifier_value(
-    const ModifierValueAvailabilityDescriptor& descriptor,
+    const Descriptor& descriptor,
     const ModifierValueView& actual) noexcept {
   if (descriptor.kind_id != actual.kind_id ||
       descriptor.value_kind != actual.value_kind) {
@@ -1067,6 +1076,31 @@ CheckResult check_modifier_value_availability(
     }
   }
 
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_modifier_value_domain(
+    std::span<const ModifierValueDomainDescriptor> descriptors,
+    std::span<const ModifierValueView> actual_values, const Context& context) {
+  CheckDiagnostics diagnostics;
+  for (const ModifierValueView& actual : actual_values) {
+    const auto it = std::ranges::find_if(
+        descriptors, [&actual](const ModifierValueDomainDescriptor& entry) {
+          return matches_modifier_value(entry, actual);
+        });
+    if (it != descriptors.end())
+      continue;
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = diagnostic_range(actual.locations, context),
+        .message = fmt::format(
+            "Modifier '{}' has a value outside the selected instruction variant's "
+            "semantic domain.",
+            actual.kind_id),
+    });
+  }
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));

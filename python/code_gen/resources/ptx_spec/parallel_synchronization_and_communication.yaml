@@ -150,7 +150,7 @@ operand_patterns:
       role: dst
       access: write
       type: b32
-      register_width: exact
+      register_width: same_width
     - name: predicate
       kind: pred
       role: predicate
@@ -168,20 +168,20 @@ operand_patterns:
       role: dst
       access: write
       type: b32
-      register_width: exact
+      register_width: same_width
     - name: src
       kind: reg
       role: src
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: membermask
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   match_all_sync_without_predicate:
     - name: dst
@@ -189,20 +189,20 @@ operand_patterns:
       role: dst
       access: write
       type: b32
-      register_width: exact
+      register_width: same_width
     - name: src
       kind: reg
       role: src
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: membermask
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   match_sync_with_predicate:
     - name: dst
@@ -210,7 +210,7 @@ operand_patterns:
       role: dst
       access: write
       type: b32
-      register_width: exact
+      register_width: same_width
       allow_destination_sink: true
       allow_predicate_sink: true
     - name: src
@@ -219,13 +219,13 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: membermask
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   redux_sync:
     - name: dst
@@ -234,20 +234,20 @@ operand_patterns:
       access: write
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: src
       kind: reg
       role: src
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: membermask
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_init:
     - name: address
@@ -260,7 +260,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_inval:
     - name: address
@@ -280,7 +280,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_arrive_cta:
     - name: state
@@ -316,7 +316,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_arrive_cluster:
     - name: state
@@ -352,7 +352,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_arrive_expect_tx_cta:
     - name: state
@@ -373,7 +373,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_arrive_expect_tx_cluster:
     - name: state
@@ -394,7 +394,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_test_wait_token:
     - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
@@ -415,7 +415,7 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mbarrier_try_wait_token_hint:
     - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
@@ -427,7 +427,7 @@ operand_patterns:
       type: b64
       register_width: exact
       mbarrier_state_token_form: register
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
 
   mbarrier_try_wait_parity_hint:
     - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
@@ -437,8 +437,8 @@ operand_patterns:
       role: src
       access: read
       type: u32
-      register_width: exact
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+      register_width: same_width
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
 
   mbarrier_wait_token_report_predicate:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
@@ -452,34 +452,34 @@ operand_patterns:
   mbarrier_wait_parity_report_predicate:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
-    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
   mbarrier_wait_parity_report_predicate_value:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
-    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
   mbarrier_try_wait_token_report_predicate_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
   mbarrier_try_wait_token_report_predicate_value_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
   mbarrier_try_wait_parity_report_predicate_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
-    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
   mbarrier_try_wait_parity_report_predicate_value_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
-    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: exact}
+    - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
   fence_proxy_acquire:
     - {name: address, kind: addr, role: addr, access: read, state_space: [global]}
     - {name: size, kind: imm, role: src, access: read, type: u32}
@@ -495,11 +495,11 @@ operand_patterns:
       role: dst
       access: write
       type: b32
-      register_width: exact
+      register_width: same_width
       vector: {kind: vector, arity: [4], type_policy: element, allow_sink: true}
     - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
   clusterlaunchcontrol_query_cancel_scalar:
-    - {name: ctaid, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: ctaid, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
     - {name: response, kind: reg, role: src, access: read, type: b128, register_width: exact}
 instructions:
   - opcode: bar
@@ -1231,7 +1231,7 @@ instructions:
             role: dst
             access: write
             type: b32
-            register_width: exact
+            register_width: same_width
         rule: parallel_sync_and_communication.activemask
 
         examples:
@@ -1457,7 +1457,7 @@ instructions:
             role: src
             access: read
             type: u32
-            register_width: exact
+            register_width: same_width
 
   - opcode: mbarrier
     section: "9.7.14.16.12"
@@ -2394,7 +2394,7 @@ instructions:
           - {name: layout, kind: mbarrier_layout, domain: mbarrier_layouts, presence: optional, values: [{value: layout::v0, availability: {ptx: "9.3", sm: 90}}], default: layout::v0}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         operands:
-          - {name: count, kind: reg, role: dst, access: write, type: u32, register_width: exact}
+          - {name: count, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
           - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
       - name: mbarrier_check_layout_generic_v0
         section: "9.7.14.16.21"

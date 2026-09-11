@@ -286,7 +286,9 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
   register_width: equal_or_wider
 ```
 
-`register_width` 默认为 `same_width`。normalizer 会拒绝在非 register operand 或没有 type
+`register_width` 默认为 `same_width`，允许同宽兼容基础类型。`exact` 则要求声明类型枚举
+相同，应保留给显式格式限制，而非仅位宽固定的普通 operand。规范来源及回归边界见
+[寄存器声明兼容性](register_type_policy.md)。normalizer 会拒绝在非 register operand 或没有 type
 expression 的 operand 上使用非默认 `equal_or_wider`，避免 constraint 静默失效；`reg_vector`
 operand 也可使用该 policy，并逐元素检查。resolved operand descriptor 保存该 policy，不生成
 runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source，以及 legacy

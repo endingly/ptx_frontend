@@ -1,4 +1,6 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include "ptx_module_source_context.hpp"
+#include "ptx_source_identity.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -9,31 +11,6 @@
 
 namespace ptx_frontend::resolved_ir {
 namespace {
-
-std::optional<checker::PtxVersion> module_version(
-    const syntax_ast::AstModule& module) {
-  for (const auto& item : module.items) {
-    const auto* version = std::get_if<syntax_ast::AstVersionDirective>(&item);
-    if (version == nullptr)
-      continue;
-    const std::string_view text = version->version.text;
-    const size_t dot = text.find('.');
-    if (dot == std::string_view::npos)
-      return std::nullopt;
-    checker::PtxVersion result;
-    const auto parse = [](std::string_view value, uint16_t& output) {
-      const auto [end, error] =
-          std::from_chars(value.data(), value.data() + value.size(), output);
-      return !value.empty() && error == std::errc{} &&
-             end == value.data() + value.size();
-    };
-    if (!parse(text.substr(0, dot), result.major) ||
-        !parse(text.substr(dot + 1), result.minor))
-      return std::nullopt;
-    return result;
-  }
-  return std::nullopt;
-}
 
 checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
                                              uint32_t minimum_sm = 0,
@@ -186,44 +163,174 @@ void check_body_directives(
   }
 }
 
-void check_instruction_body(
+/** Flatten syntax only to verify the owned source map, never to index checks. */
+void collect_instructions(
     const std::vector<syntax_ast::AstFunctionBodyItem>& ast_body,
-    const ResolvedFunction& function, const checker::TargetInfo& target,
-    size_t& resolved_index, checker::CheckDiagnostics& diagnostics) {
+    std::vector<const syntax_ast::AstInstruction*>& instructions) {
   for (const auto& item : ast_body) {
     if (const auto* instruction =
             std::get_if<syntax_ast::AstInstruction>(&item)) {
-      if (resolved_index >= function.body.size())
-        return;
-      const checker::Context context{
-          .target = target,
-          .instruction_range = instruction->range,
-      };
-      const auto result = std::visit(
-          [&context](const auto& resolved) {
-            return checker::check(resolved, context);
-          },
-          function.body[resolved_index++]);
-      if (!result)
-        diagnostics.insert(diagnostics.end(), result.error().begin(),
-                           result.error().end());
+      instructions.push_back(instruction);
     } else if (const auto* block =
                    std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
                block != nullptr && *block) {
-      check_instruction_body((*block)->body, function, target, resolved_index,
-                             diagnostics);
+      collect_instructions((*block)->body, instructions);
     }
+  }
+}
+
+/** Match structural source identity; exact ranges only disambiguate duplicates. */
+const ResolvedFunction* source_function(
+    const syntax_ast::AstFunction& function, const ResolvedModule& module) {
+  const std::string identity = detail::function_source_identity(function);
+  const ResolvedFunction* match = nullptr;
+  const ResolvedFunction* exact = nullptr;
+  size_t count = 0;
+  size_t exact_count = 0;
+  for (const auto& candidate : module.functions) {
+    if (candidate.source_identity != identity)
+      continue;
+    match = &candidate;
+    ++count;
+    if (candidate.range == function.range) {
+      exact = &candidate;
+      ++exact_count;
+    }
+  }
+  return count == 1 ? match : exact_count == 1 ? exact : nullptr;
+}
+
+/** Require an unambiguous declaration and instruction association before checks. */
+checker::CheckResult check_source_associations(
+    const syntax_ast::AstModule& ast, const ResolvedModule& module) {
+  checker::CheckDiagnostics diagnostics;
+  /** Report malformed or unrelated IR as a structured checker failure. */
+  const auto mismatch = [&](SourceRange range, std::string_view message) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
+        .range = range,
+        .message = std::string(message),
+    });
+  };
+  if (module.source_identity != detail::module_source_identity(ast)) {
+    mismatch(ast.range, "Syntax and IR module identities differ.");
+    return std::unexpected(std::move(diagnostics));
+  }
+  std::vector<bool> matched(module.functions.size(), false);
+  for (const auto& item : ast.items) {
+    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+    if (!function)
+      continue;
+    const auto* candidate = source_function(*function, module);
+    if (!candidate) {
+      mismatch(function->range, "Syntax function has no unique resolved declaration.");
+      continue;
+    }
+    const size_t match = static_cast<size_t>(candidate - module.functions.data());
+    if (matched[match]) {
+      mismatch(function->range, "Syntax declarations share the same IR function.");
+      continue;
+    }
+    matched[match] = true;
+    const auto& resolved = module.functions[match];
+    const auto scope = module.symbols.functionScope(resolved.range);
+    if (!scope || *scope != resolved.declaration_scope ||
+        resolved.name != function->name.syntax.text ||
+        resolved.is_entry != function->is_entry ||
+        resolved.is_prototype != function->is_prototype ||
+        module.symbols.scope(*scope).owner != resolved.symbol_id) {
+      mismatch(function->range, "Syntax and IR function identities differ.");
+      continue;
+    }
+    std::vector<const syntax_ast::AstInstruction*> instructions;
+    collect_instructions(function->body, instructions);
+    if (instructions.size() != resolved.body.size() ||
+        resolved.instruction_ranges.size() != resolved.body.size() ||
+        resolved.instruction_opcodes.size() != resolved.body.size()) {
+      mismatch(function->range, "Syntax, IR, and instruction source-map counts differ.");
+      continue;
+    }
+    for (size_t i = 0; i < instructions.size(); ++i) {
+      const auto opcode = std::visit(
+          [](const auto& instruction) {
+            return instruction.get_resolved_descriptor().opcode_name;
+          }, resolved.body[i]);
+      if (instructions[i]->opcode.syntax.text != resolved.instruction_opcodes[i] ||
+          opcode != resolved.instruction_opcodes[i]) {
+        mismatch(instructions[i]->range, "Syntax and IR instruction identities differ.");
+      }
+    }
+  }
+  if (std::ranges::find(matched, false) != matched.end())
+    mismatch(module.range, "IR contains a function without a syntax declaration.");
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+  return {};
+}
+
+/** Check every IR instruction using its owned source location. */
+void check_instruction_body(const ResolvedFunction& function,
+                            const checker::TargetInfo& target,
+                            checker::CheckDiagnostics& diagnostics) {
+  for (size_t i = 0; i < function.body.size(); ++i) {
+    const checker::Context context{
+        .target = target,
+        .instruction_range = function.instruction_ranges[i],
+    };
+    const auto result = std::visit(
+        [&context](const auto& resolved) {
+          return checker::check(resolved, context);
+        }, function.body[i]);
+    if (!result)
+      diagnostics.insert(diagnostics.end(), result.error().begin(),
+                         result.error().end());
   }
 }
 
 }  // namespace
 
-checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
-                                             const ResolvedModule& module) {
-  const auto version = module_version(ast);
+checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
+                                    const ResolvedModule& module,
+                                    ModuleValidationPolicy policy) {
+  if (auto associations = check_source_associations(ast, module); !associations)
+    return associations;
+  const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  // Retargeting must not bypass version/target-sensitive declaration rules.
+  const auto rebound = binding::bindSymbols(ast);
+  for (const auto& diagnostic : rebound.diagnostics) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
+        .range = diagnostic.range,
+        .message = diagnostic.message,
+    });
+  }
+  for (const auto& diagnostic :
+       declaration_semantics::checkDeclarations(ast, rebound.table)) {
+    using DeclarationKind = declaration_semantics::DeclarationDiagnosticKind;
+    const bool availability =
+        diagnostic.kind == DeclarationKind::UnsupportedKernelResourcePtxVersion ||
+        diagnostic.kind == DeclarationKind::UnsupportedDirectivePtxVersion ||
+        diagnostic.kind == DeclarationKind::UnsupportedParameterDeclaration;
+    diagnostics.push_back({
+        .kind = availability ? checker::CheckDiagnosticKind::UnsupportedAvailability
+                             : checker::CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic.range,
+        .message = diagnostic.message,
+    });
+  }
   std::optional<checker::TargetInfo> active_target;
-  size_t function_index = 0;
+  /** Strict validation may not silently skip a source region without context. */
+  const auto require_context = [&](SourceRange range) {
+    if (!active_target && policy == ModuleValidationPolicy::RequireCompleteContext)
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::MissingValidationContext,
+          .range = range,
+          .message = "Complete validation requires a PTX version and a recognized source target.",
+      });
+  };
+  if (!version && policy == ModuleValidationPolicy::RequireCompleteContext)
+    require_context(ast.range);
 
   for (const auto& item : ast.items) {
     if (const auto* target =
@@ -251,17 +358,19 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
       }
     } else if (const auto* variable =
                    std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+      require_context(variable->range);
       if (active_target)
         check_attributes(variable->attributes, *active_target, diagnostics);
     } else if (const auto* alias =
                    std::get_if<syntax_ast::AstAliasDirective>(&item)) {
+      require_context(alias->range);
       if (active_target)
         append_requirement(diagnostics,
                            directive_availability(DirectiveAvailability::Alias),
                            *active_target, alias->range, ".alias");
     } else if (const auto* function =
                    std::get_if<syntax_ast::AstFunction>(&item)) {
-      const size_t resolved_index = function_index++;
+      require_context(function->range);
       if (!active_target)
         continue;
       check_attributes(function->attributes, *active_target, diagnostics);
@@ -280,16 +389,18 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
                            *active_target, resource.range,
                            resource_name(resource.kind));
       check_body_directives(function->body, *active_target, diagnostics);
-      if (resolved_index < module.functions.size()) {
-        size_t instruction_index = 0;
-        check_instruction_body(function->body, module.functions[resolved_index],
-                               *active_target, instruction_index, diagnostics);
-      }
+      check_instruction_body(*source_function(*function, module), *active_target,
+                             diagnostics);
     }
   }
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
+}
+
+checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
+                                             const ResolvedModule& module) {
+  return validateModule(ast, module, ModuleValidationPolicy::AvailableContext);
 }
 
 }  // namespace ptx_frontend::resolved_ir

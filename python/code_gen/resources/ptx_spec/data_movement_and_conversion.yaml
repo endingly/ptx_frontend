@@ -49,21 +49,21 @@ operand_patterns:
       access: write
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: src
       kind: cluster_address
       role: src
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
       state_space: [shared]
     - name: rank
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   mapa_generic:
     - name: dst
@@ -72,20 +72,20 @@ operand_patterns:
       access: write
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: src
       kind: reg
       role: src
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
     - name: rank
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-      register_width: exact
+      register_width: same_width
 
   getctarank_shared_cluster:
     - name: dst
@@ -100,7 +100,7 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
       state_space: [shared]
 
   getctarank_generic:
@@ -116,7 +116,7 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
-      register_width: exact
+      register_width: same_width
 
   mov_pred:
     - name: dst
@@ -171,13 +171,13 @@ operand_patterns:
       register_width: equal_or_wider
 
   cvt_rn_f32_s32:
-    - {name: dst, kind: reg, role: dst, access: write, type: f32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: f32, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: s32, register_width: equal_or_wider}
 
   cvt_rn_f16x2_f32:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: f32, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: f32, register_width: exact}
+    - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f32, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f32, register_width: same_width}
 
   cvt_pack_sat_u8_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
@@ -386,7 +386,7 @@ operand_patterns:
 
   isspacep_global_u64:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src, kind: reg, role: src, access: read, type: u64, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: u64, register_width: same_width}
 
   shfl_sync_idx:
     - name: dst

@@ -356,6 +356,7 @@ class ResolvedVariant:
     modifier_fields: tuple[ResolvedField, ...]
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
+    modifier_value_domains: tuple["ResolvedModifierValueDomain", ...]
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
@@ -406,6 +407,21 @@ class ResolvedModifierValueAvailability:
     value_cpp_type: str
     value: str | bool | int
     availability: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class ResolvedModifierValueDomain:
+    """One semantic modifier value admitted by a selected resolved variant.
+
+    This AST-free descriptor deliberately excludes target requirements: domain
+    membership answers whether a value belongs to the variant, while the
+    separate availability descriptor answers whether that legal value is
+    supported by a particular target profile.
+    """
+
+    source_kind_id: str
+    value_cpp_type: str
+    value: str | bool | int
 
 
 @dataclass(frozen=True)
@@ -583,6 +599,11 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             )
         ),
         operand_layouts=operand_layouts,
+        modifier_value_domains=tuple(
+            _build_modifier_value_domain(modifier, value)
+            for modifier in active_modifiers
+            for value in _modifier_domain_values(modifier)
+        ),
         modifier_value_availabilities=tuple(
             _build_modifier_value_availability(modifier, value)
             for modifier in variant.modifiers
@@ -995,6 +1016,45 @@ def _build_modifier_value_availability(
         value_cpp_type=value_cpp_type,
         value=value.value,
         availability=tuple(value.availability.items()),
+    )
+
+
+def _modifier_domain_values(
+    modifier: ModifierSpec,
+) -> tuple[ModifierValueSpec, ...]:
+    """Return all semantic values admitted by one normalized modifier field.
+
+    YAML ``values`` define spelling-selectable values. A flag's spelling
+    implies ``true`` even though it has no value list, and an optional field's
+    normalized default is also a legal resolved value when syntax omits it.
+    """
+
+    values = list(modifier.values)
+    if not values:
+        if modifier.value is not None:
+            values.append(ModifierValueSpec(value=modifier.value))
+        elif modifier.kind == "flag":
+            values.append(ModifierValueSpec(value=True))
+    if modifier.presence == "optional":
+        if modifier.default is None:
+            raise ValueError(
+                f"optional modifier {modifier.name!r} has no normalized default"
+            )
+        if all(value.value != modifier.default for value in values):
+            values.append(ModifierValueSpec(value=modifier.default))
+    return tuple(values)
+
+
+def _build_modifier_value_domain(
+    modifier: ModifierSpec, value: ModifierValueSpec
+) -> ResolvedModifierValueDomain:
+    """Build one typed semantic-domain entry using common value validation."""
+
+    availability = _build_modifier_value_availability(modifier, value)
+    return ResolvedModifierValueDomain(
+        source_kind_id=availability.source_kind_id,
+        value_cpp_type=availability.value_cpp_type,
+        value=availability.value,
     )
 
 

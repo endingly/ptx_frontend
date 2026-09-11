@@ -53,8 +53,20 @@ module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再�
   诊断；
 - `.extern .func` 只能是 prototype，不能带 body。
 
-显式 alignment、parameterized count 和 ABI-preserve count 按解码后的整数值比较，
-因此等值的八进制与十进制拼写相匹配。
+redeclaration 的 alignment 按 effective value 比较，但每个 declaration occurrence
+仍保留 source provenance 与 range。对于已建模的 fundamental storage，省略的
+alignment 是 scalar byte size（scalar array 也相同），或完整 `.v2`/`.v4` element
+width（vector array 也相同）。显式且有效的 alignment 按解码后的整数值比较，
+因此等值的八进制与十进制拼写相匹配。unsupported layout 与 invalid alignment syntax
+不会被猜测出 default。parameterized count 和 ABI-preserve count 也按解码后的整数值比较。
+
+验证注记：CUDA 13.1 `ptxas` V13.1.115 接受 `.version 8.0` / `.target sm_80` /
+`.address_size 64` fixture 中 scalar、scalar-array、byte-array、`.v2 .u32` 与 `.v4
+.u32` external declaration 的 matching implicit/explicit form，且两种 declaration
+order 都成功。对于 `g` scalar fixture，whole-program compilation 精确给出警告
+`ptxas warning : Unresolved extern variable 'g' in whole program compilation, ignoring
+extern qualifier`；因此该比较是带此警告的成功，而非 warning-free。相同 assembler 以
+`Alignment must be a power of two` 拒绝 `.align 3`。
 
 function prototype 与 definition 各自仍拥有 lexical scope。function symbol 的
 `owned_scope` 优先指向 definition scope，从而使后续 module resolution 使用 definition

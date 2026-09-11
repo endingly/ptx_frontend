@@ -45,6 +45,8 @@ execute_process(COMMAND ${_install_command} COMMAND_ERROR_IS_FATAL ANY)
 
 foreach(_header IN ITEMS
         "${_install_dir}/include/resolved_ir.gen.hpp"
+        "${_install_dir}/include/resolved_ir_resolution.gen.hpp"
+        "${_install_dir}/include/resolved_ir_checker.gen.hpp"
         "${_install_dir}/include/ptx_frontend/common/source_loc.hpp"
         "${_install_dir}/include/ptx_frontend/base/base.hpp"
         "${_install_dir}/include/ptx_frontend/lexer/ptx_lexer.hpp"
@@ -53,7 +55,13 @@ foreach(_header IN ITEMS
         "${_install_dir}/include/ptx_frontend/binding/ptx_symbol_table.hpp"
         "${_install_dir}/include/ptx_frontend/semantic/ptx_call_argument_compatibility.hpp"
         "${_install_dir}/include/ptx_frontend/semantic/ptx_declaration_semantics.hpp"
-        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir.hpp")
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp"
+        "${_install_dir}/include/ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp")
     if(NOT EXISTS "${_header}")
         message(FATAL_ERROR "Public header was not installed: ${_header}")
     endif()

@@ -4,6 +4,8 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
 #include "ptx_storage_declarations.hpp"
+#include "ptx_module_source_context.hpp"
+#include "ptx_source_identity.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -783,6 +785,9 @@ void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
       check_call_abi(*instruction, symbols, context.scope, signatures,
                      call_argument_properties, diagnostics);
       resolved_function.body.push_back(std::move(*resolved));
+      resolved_function.instruction_ranges.push_back(instruction->range);
+      resolved_function.instruction_opcodes.emplace_back(
+          instruction->opcode.syntax.text);
     } else if (const auto* label =
                    std::get_if<syntax_ast::AstLabel>(&body_item)) {
       const binding::ScopeId function_scope =
@@ -815,7 +820,7 @@ void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
 
 }  // namespace
 
-std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     const syntax_ast::AstModule& ast) {
   binding::SymbolBinding binding_result = binding::bindSymbols(ast);
 
@@ -856,20 +861,19 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
 
   FunctionSignatureIndex signatures;
   CallArgumentPropertyIndex call_argument_properties;
-  std::vector<binding::ScopeId> function_scopes;
-  for (const binding::Scope& scope : binding_result.table.scopes()) {
-    if (scope.kind == binding::ScopeKind::Function)
-      function_scopes.push_back(scope.id);
-  }
-  size_t function_index = 0;
+  /** Declaration ranges distinguish prototypes from their shared definition. */
+  const auto declaration_scope = [&](const syntax_ast::AstFunction& function) {
+    const auto scope = binding_result.table.functionScope(function.range);
+    if (!scope)
+      throw ResolveException(
+          "Bound module has no unique scope for syntax function declaration.");
+    return *scope;
+  };
   for (const syntax_ast::AstModuleItem& item : ast.items) {
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
-    if (function_index >= function_scopes.size())
-      throw ResolveException(
-          "Bound module has no function scope for syntax function.");
-    const binding::ScopeId scope = function_scopes[function_index++];
+    const binding::ScopeId scope = declaration_scope(*function);
     const auto lookup = binding_result.table.lookup(
         binding_result.table.moduleScope(), function->name.syntax.text);
     if (!lookup)
@@ -879,29 +883,29 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     index_function_call_arguments(*function, binding_result.table, scope,
                                   call_argument_properties);
   }
-  function_index = 0;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
-    if (function_index >= function_scopes.size())
-      throw ResolveException(
-          "Bound module has no function scope for syntax function.");
     index_function_metadata_signatures(*function, binding_result.table,
-                                       function_scopes[function_index++],
+                                       declaration_scope(*function),
                                        signatures);
   }
 
   std::vector<ResolvedFunction> functions;
-  function_index = 0;
+  const auto version = detail::module_version(ast);
+  std::optional<std::string> active_target;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
+    if (const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item)) {
+      active_target.reset();
+      if (!target->targets.empty())
+        active_target = std::string(target->targets.front().text);
+      continue;
+    }
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
-    if (function_index >= function_scopes.size())
-      throw ResolveException(
-          "Bound module has no function scope for syntax function.");
-    const binding::ScopeId scope = function_scopes[function_index++];
+    const binding::ScopeId scope = declaration_scope(*function);
 
     const auto lookup = binding_result.table.lookup(
         binding_result.table.moduleScope(), function->name.syntax.text);
@@ -927,6 +931,10 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
         .is_entry = function->is_entry,
         .is_prototype = function->is_prototype,
         .range = function->range,
+        .declaration_scope = scope,
+        .source_target = active_target,
+        .source_version = version,
+        .source_identity = detail::function_source_identity(*function),
     };
     /** Append header declarations in return-list then input-list order. */
     const auto append_parameters =
@@ -967,8 +975,19 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
       .functions = std::move(functions),
       .range = ast.range,
       .storage_declarations = std::move(*storage),
+      .source_identity = detail::module_source_identity(ast),
   };
-  const auto availability = checkModuleAvailability(ast, module);
+  return module;
+}
+
+namespace {
+/** Resolve once, then apply the caller's explicit validation-context policy. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolve_and_check(
+    const syntax_ast::AstModule& ast, ModuleValidationPolicy policy) {
+  auto module = resolveModuleOnly(ast);
+  if (!module)
+    return module;
+  const auto availability = validateModule(ast, *module, policy);
   if (!availability) {
     ModuleResolveDiagnostics availability_diagnostics;
     availability_diagnostics.reserve(availability.error().size());
@@ -981,6 +1000,17 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
     return std::unexpected(std::move(availability_diagnostics));
   }
   return module;
+}
+}  // namespace
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
+    const syntax_ast::AstModule& ast) {
+  return resolve_and_check(ast, ModuleValidationPolicy::AvailableContext);
+}
+
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveAndValidateModule(
+    const syntax_ast::AstModule& ast) {
+  return resolve_and_check(ast, ModuleValidationPolicy::RequireCompleteContext);
 }
 
 }  // namespace ptx_frontend::resolved_ir

@@ -37,6 +37,8 @@ struct CatalogEntry {
 // Keep this an explicit validation allowlist: do not infer profiles by number
 // or flavor suffix from lexically valid target spellings.
 constexpr CatalogEntry kTargetProfiles[]{
+    {"sm_13", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_20", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_30", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_80", kNoEnabledFamilyFeatures, kSm80Capabilities},
     {"sm_90", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},

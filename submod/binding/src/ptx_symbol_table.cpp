@@ -1,4 +1,5 @@
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 #include <algorithm>
 #include <array>
@@ -178,6 +179,19 @@ const Symbol& SymbolTable::symbol(SymbolId id) const {
   return symbols_.at(id.value);
 }
 
+/** Find the unique declaration scope, including distinct prototype scopes. */
+std::optional<ScopeId> SymbolTable::functionScope(SourceRange range) const {
+  std::optional<ScopeId> result;
+  for (const Scope& candidate : scopes_) {
+    if (candidate.kind != ScopeKind::Function || candidate.range != range)
+      continue;
+    if (result)
+      return std::nullopt;
+    result = candidate.id;
+  }
+  return result;
+}
+
 std::optional<ScopeId> SymbolTable::blockScope(ScopeId parent,
                                                SourceRange range) const {
   const auto found = std::ranges::find_if(
@@ -231,14 +245,16 @@ struct SymbolTableBuilder {
     });
   }
 
-  ScopeId addFunctionScope(SymbolId owner, bool prefer_as_owned_scope) {
+  /** Associate a declaration's range with its scope, not its canonical symbol. */
+  ScopeId addFunctionScope(SymbolId owner, SourceRange range,
+                           bool prefer_as_owned_scope) {
     const ScopeId id{static_cast<uint32_t>(result.table.scopes_.size())};
     result.table.scopes_.push_back(Scope{
         .id = id,
         .kind = ScopeKind::Function,
         .parent = result.table.moduleScope(),
         .owner = owner,
-        .range = std::nullopt,
+        .range = range,
     });
     Symbol& symbol = result.table.symbols_[owner.value];
     if (!symbol.owned_scope || prefer_as_owned_scope)
@@ -473,7 +489,7 @@ struct SymbolTableBuilder {
                   std::nullopt, std::nullopt, std::nullopt, true,
                   function.is_entry);
     const ScopeId function_scope =
-        addFunctionScope(function_symbol, !function.is_prototype);
+        addFunctionScope(function_symbol, function.range, !function.is_prototype);
     functions.push_back(FunctionContext{&function, function_scope});
 
     for (const auto& parameter : function.return_parameters) {

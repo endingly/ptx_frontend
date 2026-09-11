@@ -542,6 +542,11 @@ std::optional<uint64_t> positiveCount(std::string_view text) {
   return count;
 }
 
+bool isValidAlignment(std::string_view text) {
+  const auto value = positiveCount(text);
+  return value && (*value & (*value - 1)) == 0;
+}
+
 /** Normalize known effective alignment while retaining invalid source for diagnostics. */
 std::optional<std::string> parameterAlignmentContract(
     const std::optional<syntax_ast::AstSyntax>& explicit_alignment,
@@ -582,12 +587,52 @@ FunctionParameterContract parameterContract(
   };
 }
 
+/** Return the natural alignment for a storage layout modeled by resolution. */
+std::optional<uint64_t> naturalStorageAlignment(
+    const syntax_ast::AstVariableDeclaration& declaration) {
+  auto scalar = parameterScalarType(declaration.type.text);
+  if (!scalar && declaration.type.text == ".f16x2")
+    scalar = base::ScalarType::F16x2;
+  if (!scalar)
+    return std::nullopt;
+  const uint64_t scalar_bytes = base::scalar_size_of(*scalar);
+  if (scalar_bytes == 0)
+    return std::nullopt;
+
+  uint64_t lanes = 1;
+  if (declaration.vector_type) {
+    if (declaration.vector_type->text == ".v2")
+      lanes = 2;
+    else if (declaration.vector_type->text == ".v4")
+      lanes = 4;
+    else
+      return std::nullopt;
+  }
+  if (scalar_bytes > 16 / lanes)
+    return std::nullopt;
+  return scalar_bytes * lanes;
+}
+
+/** Normalize storage alignment only when its omitted natural value is known. */
+std::optional<std::string> variableAlignmentContract(
+    const syntax_ast::AstVariableDeclaration& declaration) {
+  if (declaration.alignment) {
+    const auto value = positiveCount(declaration.alignment->text);
+    return value && isValidAlignment(declaration.alignment->text)
+               ? std::optional{std::to_string(*value)}
+               : std::optional{declaration.alignment->text};
+  }
+  const auto natural_alignment = naturalStorageAlignment(declaration);
+  return natural_alignment ? std::optional{std::to_string(*natural_alignment)}
+                           : std::nullopt;
+}
+
 std::string variableSignature(
     const syntax_ast::AstVariableDeclaration& declaration,
     const syntax_ast::AstVariableDeclarator& declarator) {
   std::string signature = fmt::format(
       "variable:{}:{}:{}:{}:{}", static_cast<int>(declaration.state_space),
-      declaration.alignment ? integerSyntaxKey(*declaration.alignment) : "-",
+      variableAlignmentContract(declaration).value_or("-"),
       optionalSyntaxKey(declaration.vector_type), declaration.type.text,
       declarator.parameterized_count ? integerSyntaxKey(*declarator.parameterized_count)
                                      : "-");
@@ -622,20 +667,15 @@ bool initializerTypeAccepts(std::string_view type,
   return false;
 }
 
-bool isValidAlignment(std::string_view text) {
-  const auto value = positiveCount(text);
-  return value && (*value & (*value - 1)) == 0;
-}
-
 class Checker {
  public:
   explicit Checker(const binding::SymbolTable& symbols) : symbols_(symbols) {}
 
   std::vector<DeclarationDiagnostic> run(const syntax_ast::AstModule& module) {
     const auto module_version = modulePtxVersion(module);
-    const auto module_sm = moduleSmVersion(module);
+    const auto function_targets = functionTargetContexts(module);
     checkRedeclarations(module);
-    checkControlFlowMetadata(module, module_version, module_sm);
+    checkControlFlowMetadata(module_version, function_targets);
     checkKernelResources(module);
     checkM11Directives(module);
     for (const auto& item : module.items) {
@@ -651,9 +691,13 @@ class Checker {
         }
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
-        checkFunctionParameters(*function, module_version, module_sm);
+        const auto context = std::ranges::find_if(
+            function_targets, [function](const FunctionTargetContext& candidate) {
+              return candidate.function == function;
+            });
+        checkFunctionParameters(*function, module_version, context->target_sm);
         checkFunctionBodyDeclarations(function->body, module_version,
-                                      module_sm);
+                                      context->target_sm);
       }
     }
     return std::move(diagnostics_);
@@ -681,6 +725,14 @@ class Checker {
     uint16_t major{};
     uint16_t minor{};
     constexpr auto operator<=>(const PtxVersion&) const = default;
+  };
+
+  /** Effective target information for one source function declaration. */
+  struct FunctionTargetContext {
+    /** Function whose complete header and body share this target context. */
+    const syntax_ast::AstFunction* function{};
+    /** Active supported target architecture, or no target validation context. */
+    std::optional<uint32_t> target_sm;
   };
 
   /** Lexical role that determines the declaration rules for a parameter. */
@@ -973,19 +1025,35 @@ class Checker {
     return std::nullopt;
   }
 
-  /** Return the architecture number from the first recognized module target. */
-  std::optional<uint32_t> moduleSmVersion(
-      const syntax_ast::AstModule& module) const {
+  /** Return the supported architecture selected by one target directive. */
+  static std::optional<uint32_t> targetSmVersion(
+      const syntax_ast::AstTargetDirective& target) {
+    if (target.targets.empty())
+      return std::nullopt;
+    const auto profile = base::find_target_profile(target.targets.front().text);
+    return profile ? std::optional{profile->identity.architecture.number}
+                   : std::nullopt;
+  }
+
+  /** Associate each function with the target directive active at its source range. */
+  static std::vector<FunctionTargetContext> functionTargetContexts(
+      const syntax_ast::AstModule& module) {
+    std::optional<uint32_t> active_target;
+    std::vector<FunctionTargetContext> contexts;
     for (const auto& item : module.items) {
-      const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item);
-      if (target == nullptr || target->targets.empty())
-        continue;
-      const auto identity =
-          base::parse_target_identity(target->targets.front().text);
-      if (identity)
-        return identity->architecture.number;
+      if (const auto* target =
+              std::get_if<syntax_ast::AstTargetDirective>(&item)) {
+        // An empty or unsupported target intentionally clears prior context.
+        active_target = targetSmVersion(*target);
+      } else if (const auto* function =
+                     std::get_if<syntax_ast::AstFunction>(&item)) {
+        contexts.push_back(FunctionTargetContext{
+            .function = function,
+            .target_sm = active_target,
+        });
+      }
     }
-    return std::nullopt;
+    return contexts;
   }
 
   void requirePtx(std::optional<PtxVersion> module_version, PtxVersion required,
@@ -1590,29 +1658,18 @@ class Checker {
     }
   }
 
-  void checkControlFlowMetadata(const syntax_ast::AstModule& module,
-                                std::optional<PtxVersion> module_version,
-                                std::optional<uint32_t> module_sm) {
+  void checkControlFlowMetadata(std::optional<PtxVersion> module_version,
+                                const std::vector<FunctionTargetContext>&
+                                    function_targets) {
     std::unordered_map<std::string, SeenFunction> seen_functions;
-    std::vector<binding::ScopeId> function_scopes;
-    for (const auto& scope : symbols_.scopes()) {
-      if (scope.kind == binding::ScopeKind::Function)
-        function_scopes.push_back(scope.id);
-    }
-    size_t function_index = 0;
-    for (const auto& item : module.items) {
-      const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
-      if (function == nullptr)
-        continue;
+    for (const FunctionTargetContext& context : function_targets) {
+      const auto* function = context.function;
       seen_functions.try_emplace(function->name.syntax.text,
                                  SeenFunction{functionSignature(*function)});
-      const auto scope = function_index < function_scopes.size()
-                             ? std::optional{function_scopes[function_index]}
-                             : std::nullopt;
-      ++function_index;
+      const auto scope = symbols_.functionScope(function->range);
       if (scope)
         checkControlFlowMetadataBody(function->body, *scope, seen_functions,
-                                     module_version, module_sm);
+                                     module_version, context.target_sm);
     }
   }
 

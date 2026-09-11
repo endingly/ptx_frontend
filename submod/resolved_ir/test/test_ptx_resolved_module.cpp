@@ -261,7 +261,7 @@ TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
 .entry kernel() {
   .reg .f32 %f<2>;
   .reg .f16 %h0;
-  .reg .bf16 %bf0;
+  .reg .b16 %bf0;
 )ptx";
   const auto append_instruction = [&](std::string_view opcode,
                                       std::string_view rounding,
@@ -10108,7 +10108,7 @@ TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .version 9.2
 .entry kernel() {
-  .reg .u8x4 %r<3>;
+  .reg .b32 %r<3>;
   add.u8x4 %r0, %r1, %r2;
 }
 )ptx"));
@@ -10118,7 +10118,7 @@ TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
 .version 9.2
 .target sm_120f
 .entry kernel() {
-  .reg .u8x4 %r<3>;
+  .reg .b32 %r<3>;
   add.u8x4 %r0, %r1, %r2;
 }
 )ptx"), *resolved);
@@ -10128,7 +10128,7 @@ TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
 .version 9.2
 .target sm_100f
 .entry kernel() {
-  .reg .u8x4 %r<3>;
+  .reg .b32 %r<3>;
   add.u8x4 %r0, %r1, %r2;
 }
 )ptx"));

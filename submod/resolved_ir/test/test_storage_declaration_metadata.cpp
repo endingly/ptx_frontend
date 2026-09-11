@@ -431,13 +431,38 @@ TEST(ResolvedStorageDeclarations,
 TEST(ResolvedStorageDeclarations, RetainsManagedAndUnifiedAttributes) {
   const auto resolved = resolveSource(R"ptx(
 .version 8.0
+.target sm_90
+.address_size 64
 .global .attribute(.managed, .unified(0x1, 2)) .u32 attributed;
+.func .attribute(.unified(0xffffffffffffffffU, 0)) function_uuid() {}
+.func .attribute(.unified(0, 18446744073709551615)) prototype_uuid();
 )ptx");
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& attributed = storageNamed(*resolved, "attributed");
   EXPECT_TRUE(attributed.is_managed);
   EXPECT_EQ(attributed.unified_id, (std::array<uint64_t, 2>{1u, 2u}));
+}
+
+/** Module resolution preserves exact-token `.unified` overflow diagnostics. */
+TEST(ResolvedStorageDeclarations, RejectsOverflowingUnifiedAttributeTokens) {
+  const auto rejected = resolveSource(R"ptx(
+.version 8.0
+.target sm_90
+.address_size 64
+.global .attribute(.unified(18446744073709551616, 0)) .u32 variable_uuid;
+.func .attribute(.unified(0, 0x10000000000000000U)) function_uuid() {}
+)ptx");
+  ASSERT_FALSE(rejected.has_value());
+  for (const int32_t line : {5, 6}) {
+    EXPECT_TRUE(std::ranges::any_of(
+        rejected.error(), [line](const ResolveDiagnostic& diagnostic) {
+          return diagnostic.declaration_kind ==
+                     declaration_semantics::DeclarationDiagnosticKind::
+                         InvalidIntegerLiteral &&
+                 diagnostic.range.start.line == line;
+        }));
+  }
 }
 
 /** Compatible external declarations retain identity while preserving each range. */

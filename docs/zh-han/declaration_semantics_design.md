@@ -42,6 +42,15 @@ scalar leaf 区分 integer、floating 和 symbol address expression。整数与�
 wrapper 也不例外。`generic()` 与 mask operator 作为 initializer operator 处理，而不是普通
 function call；该限制不影响允许的 opaque handle `mov` retrieval。
 
+## Unified UUID attribute
+
+对于已建模的 `.unified(upper, lower)` attribute，declaration semantics 将两个 direct
+integer token 都解码为精确的 unsigned 64-bit UUID half。十进制、前导零八进制、十六进制及
+支持的 unsigned suffix 沿用 integer-literal rule；overflow 会指向出错 token，而不会截断。
+该检查同样适用于合法的 global variable 与 device function definition/prototype，并发生在
+storage metadata 或未来 function metadata backend 消费该值之前。placement、PTX-version 与
+target check 仍是独立的 declaration rule。
+
 ## Redeclaration
 
 module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再由本 pass 判断是否合法：

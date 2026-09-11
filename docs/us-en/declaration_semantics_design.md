@@ -53,6 +53,17 @@ and the mask form are treated as initializer operators rather than ordinary
 calls; this restriction does not affect the permitted `mov` retrieval of an
 opaque handle.
 
+## Unified UUID attributes
+
+For modeled `.unified(upper, lower)` attributes, declaration semantics decodes
+both direct integer tokens as exact unsigned 64-bit UUID halves. Decimal,
+leading-zero octal, hexadecimal, and the supported unsigned suffix share the
+integer-literal rules; overflow diagnoses the offending token rather than
+truncating it. This applies uniformly to eligible global variables and device
+function definitions or prototypes before storage metadata or a future function
+metadata backend consumes the value. Placement, PTX-version, and target checks
+remain separate declaration rules.
+
 ## Redeclarations
 
 Binding first maps same-name module items to a stable `SymbolId`; this pass then

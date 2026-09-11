@@ -68,17 +68,25 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
 }
 
 /** Report an integer spelling that cannot be decoded without truncation. */
-void reportInvalidIntegerLiteral(
-    DiagnosticSink diagnostics, const syntax_ast::AstImmediate& literal) {
+void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
+                                 std::string_view spelling,
+                                 SourceRange range) {
   if (diagnostics == nullptr)
     return;
   diagnostics->push_back(DeclarationDiagnostic{
       .kind = DeclarationDiagnosticKind::InvalidIntegerLiteral,
-      .range = literal.syntax.range,
+      .range = range,
       .message = fmt::format("Integer literal '{}' is not representable as "
                              "a uint64_t value.",
-                             literal.syntax.text),
+                             spelling),
   });
+}
+
+/** Report an invalid integer immediate at its source-token range. */
+void reportInvalidIntegerLiteral(
+    DiagnosticSink diagnostics, const syntax_ast::AstImmediate& literal) {
+  reportInvalidIntegerLiteral(diagnostics, literal.syntax.text,
+                              literal.syntax.range);
 }
 
 std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
@@ -1114,6 +1122,15 @@ class Checker {
                                });
   }
 
+  /** Validate both source tokens of a `.unified` UUID without truncation. */
+  void checkUnifiedAttributeValues(const syntax_ast::AstAttribute& attribute) {
+    for (const auto& value : attribute.values) {
+      if (!unsignedIntegerLiteral(value.text)) {
+        reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
+      }
+    }
+  }
+
   void checkM11Directives(const syntax_ast::AstModule& module) {
     const auto module_version = modulePtxVersion(module);
     std::unordered_map<std::string, SourceRange> seen_aliases;
@@ -1144,6 +1161,8 @@ class Checker {
         requirePtx(module_version, is_managed ? PtxVersion{4, 0}
                                                : PtxVersion{8, 0},
                    attribute.range, is_managed ? ".managed" : ".unified");
+        if (!is_managed)
+          checkUnifiedAttributeValues(attribute);
         if (function ? !is_managed
                      : state_space == syntax_ast::AstStateSpace::Global) {
           continue;

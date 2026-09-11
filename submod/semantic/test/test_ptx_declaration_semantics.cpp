@@ -147,6 +147,66 @@ TEST(PtxDeclarationSemantics, CanonicalizesEquivalentM11HeaderValues) {
             0u);
 }
 
+/** `.unified` UUID halves use exact unsigned 64-bit source-token decoding. */
+TEST(PtxDeclarationSemantics, ValidatesUnifiedAttributeUuidHalves) {
+  const CheckedModule accepted = check(R"ptx(
+.version 8.0
+.target sm_90
+.address_size 64
+.global .attribute(.unified(0, 0xffffffffffffffffU)) .u32 global_uuid;
+.func .attribute(.unified(18446744073709551615U, 0x0)) definition_uuid() {}
+.func .attribute(.unified(0x0, 18446744073709551615)) prototype_uuid();
+)ptx");
+  EXPECT_TRUE(accepted.binding.diagnostics.empty());
+  EXPECT_TRUE(accepted.diagnostics.empty());
+
+  PtxSyntaxParser parser(R"ptx(
+.version 8.0
+.target sm_90
+.address_size 64
+.func .attribute(.unified(18446744073709551616, 0)) decimal_upper() {}
+.func .attribute(.unified(0, 0x10000000000000000)) hexadecimal_lower() {}
+.func .attribute(.unified(0x10000000000000000U, 0)) hexadecimal_upper();
+.func .attribute(.unified(0, 18446744073709551616U)) decimal_lower();
+.global .attribute(.unified(18446744073709551616, 0)) .u32 variable_upper;
+)ptx");
+  auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  ASSERT_TRUE(module.diagnostics.empty());
+  const auto binding = binding::bindSymbols(*module);
+  ASSERT_TRUE(binding.diagnostics.empty());
+  const auto diagnostics = checkDeclarations(*module, binding.table);
+
+  std::vector<SourceRange> expected_ranges;
+  for (const auto& item : module->items) {
+    if (const auto* function = std::get_if<syntax_ast::AstFunction>(&item)) {
+      expected_ranges.push_back(function->attributes.front().values[
+          function->name.syntax.text == "decimal_upper" ||
+                  function->name.syntax.text == "hexadecimal_upper"
+              ? 0
+              : 1]
+                                    .range);
+    } else if (const auto* declaration =
+                   std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+      expected_ranges.push_back(declaration->attributes.front().values.front().range);
+    }
+  }
+  ASSERT_EQ(expected_ranges.size(), 5u);
+  for (const SourceRange expected : expected_ranges) {
+    EXPECT_TRUE(std::ranges::any_of(
+        diagnostics, [expected](const DeclarationDiagnostic& diagnostic) {
+          return diagnostic.kind == DeclarationDiagnosticKind::InvalidIntegerLiteral &&
+                 diagnostic.range == expected;
+        }));
+  }
+  EXPECT_EQ(std::ranges::count_if(
+                diagnostics, [](const DeclarationDiagnostic& diagnostic) {
+                  return diagnostic.kind ==
+                         DeclarationDiagnosticKind::InvalidIntegerLiteral;
+                }),
+            expected_ranges.size());
+}
+
 /** Redeclaration identity compares integer values across octal and decimal spellings. */
 TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
   for (const std::string count : {"8", "16"}) {

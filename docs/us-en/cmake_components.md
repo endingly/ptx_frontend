@@ -2,6 +2,12 @@
 
 The installed `ptx_frontend` CMake package exposes the C++ target components and one non-target data component: `ptx_spec`.
 
+Each C++ component has the stable public target name
+`ptx_frontend::<component>` both after `find_package` and when the source tree
+is embedded with `add_subdirectory`. The underlying source-build targets use
+the `ptx_frontend_` prefix, so they do not collide with generic target names in
+the parent project; those implementation names are not a public API.
+
 ## `ptx_spec`
 
 Consumers can request the generic PTX ISA specification with:

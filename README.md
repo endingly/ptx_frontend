@@ -229,6 +229,10 @@ target_compile_features(example PRIVATE cxx_std_23)
 target_link_libraries(example PRIVATE ptx_frontend::ptx_frontend)
 ```
 
+The project keeps its internal component targets project-prefixed, so an
+embedded build can retain generic parent target names such as `common` or
+`lexer`. Consumers should link the stable `ptx_frontend::<component>` aliases.
+
 A minimal parse-and-resolve example:
 
 ```cpp

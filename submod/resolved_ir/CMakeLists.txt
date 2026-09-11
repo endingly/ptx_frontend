@@ -1,28 +1,29 @@
 include(generate_ptx_frontend)
 
 file(GLOB_RECURSE resolved_ir_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(resolved_ir STATIC
+add_library(ptx_frontend_resolved_ir STATIC
     ${resolved_ir_srcs}
     ${PTX_RESOLVED_IR_GENERATED_SRCS}
 )
-add_library(ptx_frontend::resolved_ir ALIAS resolved_ir)
+set_property(TARGET ptx_frontend_resolved_ir PROPERTY EXPORT_NAME resolved_ir)
+add_library(ptx_frontend::resolved_ir ALIAS ptx_frontend_resolved_ir)
 register_headers(
-    resolved_ir
+    ptx_frontend_resolved_ir
     resolved_ir
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_include_directories(
-    resolved_ir
+    ptx_frontend_resolved_ir
     PUBLIC $<BUILD_INTERFACE:${PTX_RESOLVED_IR_GENERATED_PUBLIC_INCLUDE_DIR}>
     PRIVATE ${PTX_RESOLVED_IR_GENERATED_PRIVATE_INCLUDE_DIR}
 )
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(
-    resolved_ir
+    ptx_frontend_resolved_ir
     PUBLIC ptx_frontend::base ptx_frontend::binding ptx_frontend::syntax
            ptx_frontend::common ptx_frontend::semantic fmt::fmt
 )
-add_dependencies(resolved_ir resolved_ir_codegen)
+add_dependencies(ptx_frontend_resolved_ir resolved_ir_codegen)
 
 if(PTX_FRONTEND_BUILD_BENCHMARKS)
     add_subdirectory(benchmark)
@@ -42,7 +43,7 @@ if(BUILD_TESTING)
     find_package(GTest CONFIG REQUIRED)
     target_link_libraries(
         test_resolved_ir
-        PRIVATE GTest::gtest GTest::gtest_main resolved_ir
+        PRIVATE GTest::gtest GTest::gtest_main ptx_frontend::resolved_ir
     )
     gtest_discover_tests(test_resolved_ir)
 
@@ -91,7 +92,7 @@ if(BUILD_TESTING)
         modern_operand_resolved_ir_codegen)
     target_include_directories(modern_operand_resolved_ir_generated
         PUBLIC "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
-               "$<TARGET_PROPERTY:resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
+               "$<TARGET_PROPERTY:ptx_frontend_resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
         PRIVATE "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}")
     target_link_libraries(modern_operand_resolved_ir_generated
         PRIVATE ptx_frontend::base ptx_frontend::binding ptx_frontend::syntax
@@ -101,7 +102,7 @@ if(BUILD_TESTING)
         $<TARGET_OBJECTS:modern_operand_resolved_ir_generated>)
     target_include_directories(modern_operand_resolved_ir
         PUBLIC "${PTX_MODERN_OPERAND_TEST_GENERATED_PUBLIC}"
-               "$<TARGET_PROPERTY:resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
+               "$<TARGET_PROPERTY:ptx_frontend_resolved_ir,INTERFACE_INCLUDE_DIRECTORIES>"
         PRIVATE "${PTX_MODERN_OPERAND_TEST_GENERATED_PRIVATE}")
     target_link_libraries(modern_operand_resolved_ir
         PUBLIC ptx_frontend::base ptx_frontend::binding ptx_frontend::syntax
@@ -151,6 +152,24 @@ set(magic_enum_DIR [==[${magic_enum_DIR}]==] CACHE PATH \"\" FORCE)
 set(GTest_DIR [==[${GTest_DIR}]==] CACHE PATH \"\" FORCE)
 set(CMAKE_PREFIX_PATH [==[${CMAKE_PREFIX_PATH}]==] CACHE STRING \"\" FORCE)
 ")
+    add_test(
+        NAME ptx_frontend.embedded_parent
+        COMMAND "${CMAKE_COMMAND}"
+            "-DPTX_FRONTEND_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DPTX_BINARY_DIR=${CMAKE_BINARY_DIR}"
+            "-DPTX_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
+            "-DPTX_CMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+            "-DPTX_CMAKE_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+            "-DPTX_CMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "-DPTX_CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+            "-DPTX_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+            "-DPTX_CMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+            "-DPTX_CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "-DPTX_PYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DPTX_FMT_DIR=${fmt_DIR}"
+            "-DPTX_MAGIC_ENUM_DIR=${magic_enum_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/test/embedded_parent/run_test.cmake"
+    )
     # Keep the full acceptance and opt-in smoke on the same installed API client.
     set(_package_consumer_command
         "${CMAKE_COMMAND}"

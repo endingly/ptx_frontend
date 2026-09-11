@@ -54,14 +54,14 @@ install_project_targets(
     NAMESPACE ptx_frontend
     TARGETS
         ptx_frontend
-        common
-        base
-        lexer
-        cst
-        syntax
-        binding
-        semantic
-        resolved_ir
+        ptx_frontend_common
+        ptx_frontend_base
+        ptx_frontend_lexer
+        ptx_frontend_cst
+        ptx_frontend_syntax
+        ptx_frontend_binding
+        ptx_frontend_semantic
+        ptx_frontend_resolved_ir
     COMPONENTS
         ptx_frontend
         common

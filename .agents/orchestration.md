@@ -66,8 +66,8 @@ bounded scan into an unbounded review by default.
 | Primary: architecture, escalations, final acceptance | `gpt-6-astra` | Preserve the session setting | This document |
 | Optional independent technical review | `gpt-5.6-sol` | `high` | [Technical review](#independent-technical-review) |
 | Routine issue delivery and deep debugging | `gpt-5.6-terra` | `high` | [Terra](terra.md) |
-| Bounded evidence scans, independent verification, Git | `gpt-5.6-luna` | `medium`; `high` for judgment-heavy verification | [Luna](luna.md) |
-| Optional narrow coding worker | `gpt-5.3-codex-spark` | `medium`; `high` only for a specific need | [Spark](gpt-5.3-codex-spark.md) |
+| Bounded evidence scans, independent verification, Git | `gpt-5.6-luna` | `xhigh` for judgment-heavy verification | [Luna](luna.md) |
+| Optional narrow coding worker | `gpt-5.3-codex-spark` | `high` only for a specific need | [Spark](gpt-5.3-codex-spark.md) |
 
 These are preferences, not assertions that every session offers these models.
 Check the actual tool's supported model list before assigning an override.

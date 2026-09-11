@@ -75,6 +75,19 @@ void SymbolTable::keepEarliest(std::optional<SymbolId>& destination,
     destination = candidate;
 }
 
+size_t SymbolTable::SourceRangeHash::operator()(
+    const SourceRange& range) const noexcept {
+  size_t result = std::hash<int32_t>{}(range.start.line);
+  const auto combine = [&result](int32_t value) {
+    result ^= std::hash<int32_t>{}(value) + 0x9e3779b9u + (result << 6u) +
+              (result >> 2u);
+  };
+  combine(range.start.column);
+  combine(range.end.line);
+  combine(range.end.column);
+  return result;
+}
+
 void SymbolTable::indexMemberNumber(NumericMemberIndex& index, uint32_t member,
                                     SymbolId symbol) {
   uint32_t node = 0;
@@ -333,6 +346,24 @@ std::optional<SymbolLookup> SymbolTable::lookup(ScopeId scope_id,
       return std::nullopt;
     scope_id = *current.parent;
   }
+}
+
+std::optional<SymbolId> SymbolTable::exactDeclaration(
+    ScopeId scope, std::string_view name, bool parameterized) const {
+  const ScopeNameIndex& index = scope_name_indexes_.at(scope.value);
+  const auto& declarations = parameterized ? index.parameterized_exact
+                                           : index.ordinary_exact;
+  const auto found = declarations.find(name);
+  return found == declarations.end() ? std::nullopt
+                                     : std::optional<SymbolId>{found->second};
+}
+
+const SymbolReference* SymbolTable::initializerReference(
+    SourceRange range) const noexcept {
+  const auto found = initializer_reference_indexes_.find(range);
+  if (found == initializer_reference_indexes_.end())
+    return nullptr;
+  return &references_[found->second];
 }
 
 struct SymbolTableBuilder {
@@ -726,6 +757,10 @@ struct SymbolTableBuilder {
         .classification = classification,
         .target = target,
     });
+    if (kind == ReferenceKind::Initializer) {
+      result.table.initializer_reference_indexes_.try_emplace(
+          identifier.syntax.range, result.table.references_.size() - 1);
+    }
     if (classification == ReferenceClassification::Unresolved) {
       result.diagnostics.push_back(BindDiagnostic{
           .kind = BindDiagnosticKind::UnresolvedReference,

@@ -166,15 +166,9 @@ std::optional<uint64_t> unsigned_value(std::string_view text) {
 std::optional<binding::SymbolId> declaration_symbol(
     const binding::SymbolTable& symbols, binding::ScopeId scope,
     const syntax_ast::AstVariableDeclarator& declarator) {
-  const bool parameterized = declarator.parameterized_count.has_value();
-  const auto found = std::ranges::find_if(
-      symbols.symbols(), [&](const binding::Symbol& symbol) {
-        return symbol.scope == scope &&
-               symbol.name == declarator.name.syntax.text &&
-               symbol.parameterized_count.has_value() == parameterized;
-      });
-  return found == symbols.symbols().end() ? std::nullopt
-                                          : std::optional{found->id};
+  return symbols.exactDeclaration(
+      scope, declarator.name.syntax.text,
+      declarator.parameterized_count.has_value());
 }
 
 /** Find the nearest owning function for a lexical declaration scope. */
@@ -407,12 +401,9 @@ std::optional<StorageRelocation> symbol_relocation(
     const binding::SymbolTable& symbols,
     const std::optional<PtxVersion>& version,
     std::vector<DeclarationDiagnostic>& diagnostics) {
-  const auto reference = std::ranges::find_if(
-      symbols.references(), [&](const binding::SymbolReference& candidate) {
-        return candidate.kind == binding::ReferenceKind::Initializer &&
-               candidate.range == symbol.name.syntax.range;
-      });
-  if (reference == symbols.references().end() || !reference->target) {
+  const binding::SymbolReference* reference =
+      symbols.initializerReference(symbol.name.syntax.range);
+  if (reference == nullptr || !reference->target) {
     diagnose(diagnostics,
              DeclarationDiagnosticKind::UnsupportedStorageInitializer,
              symbol.name.syntax.range,

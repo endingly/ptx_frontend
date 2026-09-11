@@ -148,16 +148,9 @@ CallArgumentProperties call_argument_properties(
 std::optional<binding::SymbolId> declared_symbol(
     const binding::SymbolTable& symbols, binding::ScopeId scope,
     const syntax_ast::AstVariableDeclarator& declarator) {
-  const bool parameterized = declarator.parameterized_count.has_value();
-  const auto found = std::ranges::find_if(symbols.symbols(),
-                                          [&](const binding::Symbol& symbol) {
-    return symbol.scope == scope &&
-           symbol.name == declarator.name.syntax.text &&
-           symbol.parameterized_count.has_value() == parameterized;
-  });
-  if (found == symbols.symbols().end())
-    return std::nullopt;
-  return found->id;
+  return symbols.exactDeclaration(
+      scope, declarator.name.syntax.text,
+      declarator.parameterized_count.has_value());
 }
 
 binding::ScopeId block_scope(const binding::SymbolTable& symbols,

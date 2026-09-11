@@ -47,6 +47,21 @@ std::optional<SymbolLookup> linearLookup(const SymbolTable& table, ScopeId scope
   }
 }
 
+/** Independently retain exact local declaration matching as an oracle. */
+std::optional<SymbolId> linearExactDeclaration(const SymbolTable& table,
+                                               ScopeId scope,
+                                               std::string_view name,
+                                               bool parameterized) {
+  for (const Symbol& symbol : table.symbols()) {
+    if (symbol.scope == scope && symbol.kind != SymbolKind::DebugFile &&
+        symbol.kind != SymbolKind::DebugStringLabel && symbol.name == name &&
+        symbol.parameterized_count.has_value() == parameterized) {
+      return symbol.id;
+    }
+  }
+  return std::nullopt;
+}
+
 /** Test represented membership without using the production overlap helpers. */
 bool memberOf(std::string_view base, uint32_t count, std::string_view name) {
   if (!name.starts_with(base) || name.size() == base.size())
@@ -92,6 +107,7 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
   for (int function = 0; function < 4; ++function) {
     source += ".entry k" + std::to_string(function) + "() {\n";
     source += ".reg .u32 child<10>;\n.reg .u32 outer;\n";
+    source += ".reg .u32 zero<0>;\n";
     for (int group = 0; group < 16; ++group) {
       const std::string base = "%r" + std::to_string(group) + "_";
       source += ".reg .u32 " + base + "<12>;\n";
@@ -109,10 +125,18 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
   const auto bound = bindSymbols(*parsed);
   // Overlapping declarations are intentionally retained to test first-ID wins.
   ASSERT_FALSE(bound.diagnostics.empty());
+  std::vector<const BindDiagnostic*> duplicate_diagnostics;
+  size_t invalid_parameterized_count = 0;
   for (const auto& diagnostic : bound.diagnostics) {
+    if (diagnostic.kind == BindDiagnosticKind::InvalidParameterizedCount) {
+      ++invalid_parameterized_count;
+      continue;
+    }
     EXPECT_EQ(diagnostic.kind, BindDiagnosticKind::DuplicateSymbol);
     EXPECT_TRUE(diagnostic.previous_range.has_value());
+    duplicate_diagnostics.push_back(&diagnostic);
   }
+  EXPECT_EQ(invalid_parameterized_count, 4u);
   size_t overlap_count = 0;
   for (const auto& current : bound.table.symbols()) {
     for (const auto& previous : bound.table.symbols()) {
@@ -123,14 +147,14 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
           previous.kind == SymbolKind::DebugStringLabel ||
           !overlaps(previous, current))
         continue;
-      ASSERT_LT(overlap_count, bound.diagnostics.size());
-      const auto& diagnostic = bound.diagnostics[overlap_count++];
+      ASSERT_LT(overlap_count, duplicate_diagnostics.size());
+      const BindDiagnostic& diagnostic = *duplicate_diagnostics[overlap_count++];
       EXPECT_EQ(diagnostic.range, current.declaration_range);
       EXPECT_EQ(diagnostic.previous_range, previous.declaration_range);
       break;
     }
   }
-  EXPECT_EQ(overlap_count, bound.diagnostics.size());
+  EXPECT_EQ(overlap_count, duplicate_diagnostics.size());
 
   std::vector<std::string> queries{"missing", "metadata_only", "1", "child3",
                                    "sibling", "outer10"};
@@ -153,6 +177,17 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
       if (expected) {
         EXPECT_EQ(actual->symbol, expected->symbol);
         EXPECT_EQ(actual->parameterized_index, expected->parameterized_index);
+      }
+    }
+    for (const auto& query : queries) {
+      for (const bool parameterized : {false, true}) {
+        SCOPED_TRACE(query);
+        SCOPED_TRACE(scope.id.value);
+        SCOPED_TRACE(parameterized);
+        const auto expected = linearExactDeclaration(
+            bound.table, scope.id, query, parameterized);
+        EXPECT_EQ(bound.table.exactDeclaration(scope.id, query, parameterized),
+                  expected);
       }
     }
   }

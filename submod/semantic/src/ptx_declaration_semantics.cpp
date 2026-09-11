@@ -744,7 +744,13 @@ class Checker {
     CallPrototypeReturn,
   };
 
+  using LabelIndex =
+      std::unordered_map<uint32_t,
+                         std::unordered_map<std::string_view, SourceRange>>;
+
   const binding::SymbolTable& symbols_;
+  /** Lazily built first label ranges; string views borrow immutable symbols_. */
+  std::optional<LabelIndex> labels_by_function_;
   std::vector<DeclarationDiagnostic> diagnostics_;
   std::unordered_map<std::string, SeenDeclaration> declarations_;
 
@@ -757,6 +763,19 @@ class Checker {
         .previous_range = previous,
         .message = std::move(message),
     });
+  }
+
+  /** Build the function-label cache only when branch metadata requires it. */
+  void indexBranchLabels() {
+    if (labels_by_function_)
+      return;
+    labels_by_function_.emplace();
+    for (const binding::Symbol& symbol : symbols_.symbols()) {
+      if (symbol.kind != binding::SymbolKind::Label)
+        continue;
+      labels_by_function_->operator[](symbol.scope.value)
+          .emplace(symbol.name, symbol.declaration_range);
+    }
   }
 
   void rememberDeclaration(
@@ -1310,18 +1329,15 @@ class Checker {
   void checkBranchTargets(
       binding::ScopeId function_scope,
       const syntax_ast::AstBranchTargets& targets) {
-    std::unordered_map<std::string_view, SourceRange> labels;
-    for (const binding::Symbol& symbol : symbols_.symbols()) {
-      if (symbol.scope == function_scope &&
-          symbol.kind == binding::SymbolKind::Label) {
-        labels.emplace(symbol.name, symbol.declaration_range);
-      }
-    }
+    indexBranchLabels();
+    const auto index = labels_by_function_->find(function_scope.value);
+    const auto* labels = index == labels_by_function_->end()
+                             ? nullptr
+                             : &index->second;
 
-    const auto check_label = [this, function_scope, &labels](
+    const auto check_label = [this, function_scope, labels](
                                  std::string_view name, SourceRange range) {
-      const auto label = labels.find(name);
-      if (label == labels.end()) {
+      if (labels == nullptr || labels->find(name) == labels->end()) {
         const auto bound = symbols_.lookup(function_scope, name);
         if (bound) {
           diagnose(DeclarationDiagnosticKind::InvalidMetadataTarget, range,
@@ -1354,12 +1370,14 @@ class Checker {
       }
 
       uint64_t matched = 0;
-      for (const auto& entry : labels) {
-        const auto index =
-            compactLabelIndex(target.name.syntax.text, entry.first);
-        if (!index || *index >= *count)
-          continue;
-        ++matched;
+      if (labels != nullptr) {
+        for (const auto& entry : *labels) {
+          const auto index =
+              compactLabelIndex(target.name.syntax.text, entry.first);
+          if (!index || *index >= *count)
+            continue;
+          ++matched;
+        }
       }
       if (matched != *count) {
         diagnose(DeclarationDiagnosticKind::UnresolvedMetadataTarget,
@@ -1929,13 +1947,9 @@ class Checker {
   /** Return the binding target recorded for this exact initializer token. */
   std::optional<binding::SymbolLookup> initializerTarget(
       SourceRange range) const {
-    const auto reference = std::ranges::find_if(
-        symbols_.references(),
-        [range](const binding::SymbolReference& candidate) {
-          return candidate.kind == binding::ReferenceKind::Initializer &&
-                 candidate.range == range;
-        });
-    if (reference == symbols_.references().end())
+    const binding::SymbolReference* reference =
+        symbols_.initializerReference(range);
+    if (reference == nullptr)
       return std::nullopt;
     return reference->target;
   }

@@ -93,6 +93,15 @@ When a scope has just one parameterized group, lookup checks that group's
 member directly after the ordinary-name probe, avoiding prefix-trie overhead
 without changing bounds, canonical suffix handling, or parent fallback.
 
+`exactDeclaration(scope, spelling, parameterized)` exposes the corresponding
+same-scope exact index for consumers that associate an AST declarator with its
+bound identity. It neither walks parents nor treats a generated compact member
+as a declaration. Metadata remains excluded, and a legal redeclaration retains
+the first stable `SymbolId`. `initializerReference(range)` similarly indexes
+only initializer references by their exact source range, retaining the first
+record even when it is unresolved; declaration semantics and storage lowering
+therefore do not rescan all instruction and initializer references per symbol.
+
 Parameterized overlap checking uses a sparse 32-bit member-range trie keyed
 by canonical spelling decompositions. It identifies existing explicit names,
 existing group bases, and group first-member spellings relevant to the new

@@ -76,6 +76,13 @@ parameterized base 的 prefix trie。lookup 因此在当前 scope 先查 ordinar
 当 scope 只有一个 parameterized group 时，lookup 在 ordinary-name probe 之后直接检查
 该 group 的 member，省去 prefix trie 的开销，但不改变边界、canonical suffix 或 parent fallback。
 
+`exactDeclaration(scope, spelling, parameterized)` 为需要将 AST declarator 关联到其
+bound identity 的 consumer 暴露同 scope 的 exact index；它不走 parent，也不把 compact group
+生成的 member 当作 declaration。metadata 仍被排除，合法 redeclaration 保留第一个稳定
+`SymbolId`。`initializerReference(range)` 则仅按精确 source range 索引 initializer reference，
+即使首条记录是 unresolved 也会保留它，因此 declaration semantics 和 storage lowering 不必为
+每个 symbol 重扫全部 instruction/initializer reference。
+
 Parameterized overlap check 使用按 canonical spelling decomposition 建立的稀疏 32-bit member
 range trie。它定位与新 base/count 有关的已有 explicit name、已有 group base 与 group 的
 first-member spelling，并为 diagnostic 保留最先存储的 overlap identity；现有的 name-set-

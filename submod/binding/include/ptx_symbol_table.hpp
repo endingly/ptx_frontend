@@ -168,6 +168,28 @@ class SymbolTable {
   [[nodiscard]] std::optional<SymbolLookup> lookup(ScopeId scope,
                                                    std::string_view name) const;
 
+  /**
+   * Return the first non-metadata declaration with this exact spelling and
+   * parameterized form in ``scope``.
+   *
+   * This does not interpret generated parameterized members and never walks a
+   * parent scope.  It is therefore suitable for associating an AST declarator
+   * with its bound exact declaration identity.  Legal redeclarations retain
+   * the first stable identity.
+   */
+  [[nodiscard]] std::optional<SymbolId> exactDeclaration(
+      ScopeId scope, std::string_view name, bool parameterized) const;
+
+  /**
+   * Return the first initializer reference recorded at ``range``.
+   *
+   * The returned reference may be unresolved.  Its pointer remains valid until
+   * this table is moved, assigned, or destroyed.  Other reference kinds are
+   * deliberately excluded.
+   */
+  [[nodiscard]] const SymbolReference* initializerReference(
+      SourceRange range) const noexcept;
+
  private:
   friend struct SymbolTableBuilder;
 
@@ -188,6 +210,12 @@ class SymbolTable {
                                   std::string_view right) const noexcept {
       return left == right;
     }
+  };
+
+  /** Hash a source range for the initializer-reference occurrence index. */
+  struct SourceRangeHash {
+    /** Return a stable hash of both endpoints of a source range. */
+    [[nodiscard]] size_t operator()(const SourceRange& range) const noexcept;
   };
 
   /** A compact binary trie node for a range of decimal member indices. */
@@ -257,6 +285,9 @@ class SymbolTable {
   std::vector<Scope> scopes_;
   std::vector<Symbol> symbols_;
   std::vector<SymbolReference> references_;
+  /** First initializer reference by exact source range; values index references_. */
+  std::unordered_map<SourceRange, size_t, SourceRangeHash>
+      initializer_reference_indexes_;
   /** Scope-aligned owned accelerators; never borrow Symbol::name storage. */
   std::vector<ScopeNameIndex> scope_name_indexes_;
 };

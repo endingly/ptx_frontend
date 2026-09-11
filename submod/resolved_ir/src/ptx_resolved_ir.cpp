@@ -2134,8 +2134,8 @@ resolve_tensor_coordinate(
     }
     auto value = resolve_immediate_value(
         immediate, *immediate_type,
-        binding.type_expression.kind ==
-            checker::OperandTypeExpressionKind::FixedScalar);
+        binding.immediate_conversion_policy ==
+            checker::ImmediateConversionPolicy::RequireTargetRange);
     if (!value)
       return std::unexpected(value.error());
     locations.push_back(immediate.syntax.range);
@@ -2642,8 +2642,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(type.error());
       auto value = resolve_immediate_value(
           *immediate, *type,
-          binding.type_expression.kind ==
-              checker::OperandTypeExpressionKind::FixedScalar);
+          binding.immediate_conversion_policy ==
+              checker::ImmediateConversionPolicy::RequireTargetRange);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{WithLocs<ResolvedImmediate>{
@@ -2656,8 +2656,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(type.error());
       auto value = resolve_reg_or_imm(
           operand, *type, context,
-          binding.type_expression.kind ==
-              checker::OperandTypeExpressionKind::FixedScalar);
+          binding.immediate_conversion_policy ==
+              checker::ImmediateConversionPolicy::RequireTargetRange);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

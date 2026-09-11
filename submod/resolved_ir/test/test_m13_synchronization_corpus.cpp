@@ -439,7 +439,7 @@ TEST(ResolvedModule, ChecksMbarrierParityIntegerSourceValues) {
     check_parity(literal, true);
   for (const auto literal : {"2", "-1"})
     check_parity(literal, false);
-  check_parity("4294967296", false, true);
+  check_parity("4294967296", false);
 }
 
 }  // namespace

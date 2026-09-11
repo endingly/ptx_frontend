@@ -122,6 +122,8 @@ enum class OperandTypeExpressionKind : uint8_t {
   FixedScalar,
   ModifierField
 };
+/** Integer conversion selected by a semantic operand use after source decode. */
+enum class ImmediateConversionPolicy : uint8_t { Narrow, RequireTargetRange };
 /** A PTX ISA version represented without syntax-AST ownership. */
 struct PtxVersion {
   uint16_t major = 0;
@@ -205,6 +207,9 @@ struct OperandDescriptor {
   std::span<const AddressStateSpaceDescriptor> allowed_address_state_spaces;
   std::string_view state_space_modifier_field_id{};
   ParameterAddressConstraint parameter_constraint;
+  /** Independent conversion contract; type provenance does not select it. */
+  ImmediateConversionPolicy immediate_conversion_policy =
+      ImmediateConversionPolicy::Narrow;
 };
 struct FieldView {
   std::string_view field_id;

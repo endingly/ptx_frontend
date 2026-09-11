@@ -1631,6 +1631,64 @@ TEST(ResolveNot, SelectsB32VariantAndAcceptsImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
 }
 
+/**
+ * Fixed b32 operand type provenance must not impose a source-range conversion.
+ * These generated data uses preserve the full decoded source for later
+ * diagnostics while retaining their low 32 bits as the operand value.
+ */
+TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
+  const auto and_boundary =
+      resolve<And>(parse_instruction("and.b32 %r0, %r1, 4294967295;"));
+  ASSERT_TRUE(and_boundary.has_value()) << and_boundary.error().message;
+  const auto* and_b32 = std::get_if<And::B32>(&and_boundary->variant);
+  ASSERT_NE(and_b32, nullptr);
+  const auto* and_immediate = std::get_if<ResolvedImmediate>(&and_b32->src2.value);
+  ASSERT_NE(and_immediate, nullptr);
+  EXPECT_EQ(and_immediate->bits, 0xffffffffU);
+  EXPECT_EQ(and_immediate->integer_source_bits, 0xffffffffU);
+
+  const auto and_resolved =
+      resolve<And>(parse_instruction("and.b32 %r0, %r1, 4294967296;"));
+  ASSERT_TRUE(and_resolved.has_value()) << and_resolved.error().message;
+  and_b32 = std::get_if<And::B32>(&and_resolved->variant);
+  ASSERT_NE(and_b32, nullptr);
+  and_immediate = std::get_if<ResolvedImmediate>(&and_b32->src2.value);
+  ASSERT_NE(and_immediate, nullptr);
+  EXPECT_EQ(and_immediate->bits, 0U);
+  EXPECT_EQ(and_immediate->integer_source_bits, 0x100000000ULL);
+
+  const auto or_resolved =
+      resolve<Or>(parse_instruction("or.b32 %r0, %r1, 0x100000000;"));
+  ASSERT_TRUE(or_resolved.has_value()) << or_resolved.error().message;
+  const auto* or_b32 = std::get_if<Or::B32>(&or_resolved->variant);
+  ASSERT_NE(or_b32, nullptr);
+  const auto* or_immediate = std::get_if<ResolvedImmediate>(&or_b32->src2.value);
+  ASSERT_NE(or_immediate, nullptr);
+  EXPECT_EQ(or_immediate->bits, 0U);
+  EXPECT_EQ(or_immediate->integer_source_bits, 0x100000000ULL);
+
+  const auto xor_resolved =
+      resolve<Xor>(parse_instruction("xor.b32 %r0, %r1, 4294967296;"));
+  ASSERT_TRUE(xor_resolved.has_value()) << xor_resolved.error().message;
+  const auto* xor_b32 = std::get_if<Xor::B32>(&xor_resolved->variant);
+  ASSERT_NE(xor_b32, nullptr);
+  const auto* xor_immediate = std::get_if<ResolvedImmediate>(&xor_b32->src2.value);
+  ASSERT_NE(xor_immediate, nullptr);
+  EXPECT_EQ(xor_immediate->bits, 0U);
+  EXPECT_EQ(xor_immediate->integer_source_bits, 0x100000000ULL);
+
+  const auto not_resolved =
+      resolve<Not>(parse_instruction("not.b32 %r0, 0xffffffffffffffff;"));
+  ASSERT_TRUE(not_resolved.has_value()) << not_resolved.error().message;
+  const auto* not_b32 = std::get_if<Not::B32>(&not_resolved->variant);
+  ASSERT_NE(not_b32, nullptr);
+  const auto* not_immediate = std::get_if<ResolvedImmediate>(&not_b32->src.value);
+  ASSERT_NE(not_immediate, nullptr);
+  EXPECT_EQ(not_immediate->bits, 0xffffffffU);
+  EXPECT_EQ(not_immediate->integer_source_bits,
+            std::numeric_limits<uint64_t>::max());
+}
+
 TEST(ResolveShl, SelectsB32VariantAndAcceptsImmediateAmount) {
   const auto ast = parse_instruction("shl.b32 %r0, %r1, 1;");
   const auto resolved = resolve<Shl>(ast);

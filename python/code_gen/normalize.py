@@ -19,6 +19,7 @@ from .model import (
     ModifierValueSpec,
     OperandLayoutSpec,
     OperandLayoutKind,
+    OperandImmediateConversionPolicy,
     OperandParameterConstraint,
     OperandRegisterWidthPolicy,
     OperandSpec,
@@ -284,6 +285,23 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
                 "requires a type expression"
             )
 
+    try:
+        immediate_conversion_policy = OperandImmediateConversionPolicy(
+            raw.get("immediate_conversion", "narrow")
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"operand {raw['name']!r}: unsupported immediate_conversion "
+            f"{raw.get('immediate_conversion')!r}"
+        ) from error
+    if (immediate_conversion_policy
+            is OperandImmediateConversionPolicy.REQUIRE_TARGET_RANGE and
+            raw["kind"] not in {"imm", "reg_or_imm", "tensor_coordinate"}):
+        raise ValueError(
+            f"operand {raw['name']!r}: require_target_range immediate_conversion "
+            "requires an immediate-capable operand"
+        )
+
     state_space_values, state_space_expression = _normalize_operand_state_space(
         raw.get("state_space")
     )
@@ -312,6 +330,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         access=raw.get("access"),
         type_expression=type_expression,
         register_width_policy=register_width_policy,
+        immediate_conversion_policy=immediate_conversion_policy,
         state_space_values=state_space_values,
         state_space_expression=state_space_expression,
         parameter_constraint=parameter_constraint,

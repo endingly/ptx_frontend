@@ -204,6 +204,12 @@ domains:
       same_width: base::ScalarTypeSizePolicy::SameWidth
       equal_or_wider: base::ScalarTypeSizePolicy::EqualOrWider
 
+  immediate_conversion_policies:
+    cpp_type: check_end::ImmediateConversionPolicy
+    values:
+      Narrow: check_end::ImmediateConversionPolicy::Narrow
+      RequireTargetRange: check_end::ImmediateConversionPolicy::RequireTargetRange
+
   modifier_value_cpp_types:
     cpp_type: CppType
     values:

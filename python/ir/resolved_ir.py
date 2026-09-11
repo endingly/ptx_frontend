@@ -30,6 +30,7 @@ from ptx_frontend.code_gen.model import (
     ModifierSpec,
     ModifierValueSpec,
     OperandParameterConstraint,
+    OperandImmediateConversionPolicy,
     OperandRegisterWidthPolicy,
     OperandSpec,
     OperandStateSpaceExpression,
@@ -155,6 +156,13 @@ class ResolvedRegisterWidthPolicy(Enum):
     EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
+
+
+class ResolvedImmediateConversionPolicy(Enum):
+    """Descriptor-facing integer conversion behavior for an operand use."""
+
+    NARROW = "Narrow"
+    REQUIRE_TARGET_RANGE = "RequireTargetRange"
 
 
 class ResolvedVectorTypePolicy(Enum):
@@ -442,6 +450,7 @@ class ResolvedOperandBinding:
     target_field_id: str
     type_expression: ResolvedOperandTypeExpression
     register_width_policy: ResolvedRegisterWidthPolicy
+    immediate_conversion_policy: ResolvedImmediateConversionPolicy
     role: ResolvedOperandRole
     access: ResolvedOperandAccess
     allowed_shapes: tuple[ResolvedOperandShape, ...]
@@ -1103,6 +1112,12 @@ def _build_operand_layout(
                 ),
                 register_width_policy=ResolvedRegisterWidthPolicy(
                     operand.register_width_policy.value
+                ),
+                immediate_conversion_policy=ResolvedImmediateConversionPolicy(
+                    "".join(
+                        part.title()
+                        for part in operand.immediate_conversion_policy.value.split("_")
+                    )
                 ),
                 role=_require_operand_role(field),
                 access=_require_operand_access(field),

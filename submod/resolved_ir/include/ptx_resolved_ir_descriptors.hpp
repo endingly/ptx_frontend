@@ -12,6 +12,7 @@ using OperandShape = checker::OperandShape;
 using OperandRole = checker::OperandRole;
 using OperandAccess = checker::OperandAccess;
 using OperandTypeExpressionKind = checker::OperandTypeExpressionKind;
+using ImmediateConversionPolicy = checker::ImmediateConversionPolicy;
 using TypeExpressionDescriptor = checker::TypeExpressionDescriptor;
 enum class OperandSyntaxShape : uint16_t {
   Identifier = 1 << 0,

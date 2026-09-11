@@ -34,6 +34,7 @@ from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.ir.resolved_ir import (
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
+    ResolvedImmediateConversionPolicy,
     ResolvedOperandAccess,
     ResolvedOperandRole,
     ResolvedOperandShape,
@@ -52,6 +53,7 @@ from ptx_frontend.code_gen.model import (
     ModifierSpec,
     ModifierValueSpec,
     OperandLayoutSpec,
+    OperandImmediateConversionPolicy,
     OperandSpec,
     OperandTypeExpression,
     OperandTypeExpressionKind,
@@ -896,6 +898,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
+            [
+                binding.immediate_conversion_policy
+                for binding in variants["Sync"].operand_layouts[2].bindings
+            ],
+            [ResolvedImmediateConversionPolicy.REQUIRE_TARGET_RANGE] * 2,
+        )
+        self.assertEqual(
             [layout.layout_id for layout in variants["RedPopcU32"].operand_layouts],
             ["without_thread_count", "with_thread_count"],
         )
@@ -919,6 +928,77 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             dict(variants["WarpSync"].availability),
             {"ptx": "6.0", "sm": 30},
+        )
+
+    def test_immediate_conversion_is_independent_of_type_expression(self) -> None:
+        """Fixed and modifier-derived types can select either conversion use."""
+
+        instruction = from_instruction_spec(
+            InstructionSpec(
+                opcode="conversion_test",
+                variants=(
+                    VariantSpec(
+                        name="conversion_test_default",
+                        availability={"ptx": "1.0", "sm": 0},
+                        modifiers=(
+                            ModifierSpec(
+                                name="type",
+                                kind="type",
+                                presence="required",
+                                domain="scalar_types",
+                                values=(ModifierValueSpec(value="u32"),),
+                            ),
+                        ),
+                        operand_layouts=(
+                            OperandLayoutSpec(
+                                name="default",
+                                operands=(
+                                    OperandSpec(
+                                        name="fixed_data",
+                                        kind="imm",
+                                        role="src",
+                                        access="read",
+                                        type_expression=OperandTypeExpression(
+                                            OperandTypeExpressionKind.FIXED_SCALAR,
+                                            scalar_type="b32",
+                                        ),
+                                    ),
+                                    OperandSpec(
+                                        name="strict_dynamic",
+                                        kind="reg_or_imm",
+                                        role="src",
+                                        access="read",
+                                        type_expression=OperandTypeExpression(
+                                            OperandTypeExpressionKind.MODIFIER,
+                                            modifier_name="type",
+                                        ),
+                                        immediate_conversion_policy=(
+                                            OperandImmediateConversionPolicy.REQUIRE_TARGET_RANGE
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        )
+        bindings = instruction.variants[0].operand_layouts[0].bindings
+        self.assertEqual(
+            bindings[0].type_expression.kind,
+            ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
+        )
+        self.assertEqual(
+            bindings[0].immediate_conversion_policy,
+            ResolvedImmediateConversionPolicy.NARROW,
+        )
+        self.assertEqual(
+            bindings[1].type_expression.kind,
+            ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+        )
+        self.assertEqual(
+            bindings[1].immediate_conversion_policy,
+            ResolvedImmediateConversionPolicy.REQUIRE_TARGET_RANGE,
         )
 
     def test_barrier_cluster_model_defaults_and_availability(self) -> None:
@@ -3903,6 +3983,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn(
             ".register_width_policy = base::ScalarTypeSizePolicy::SameWidth,",
+            source,
+        )
+        self.assertIn(
+            ".immediate_conversion_policy = "
+            "check_end::ImmediateConversionPolicy::Narrow,",
+            source,
+        )
+        self.assertIn(
+            ".immediate_conversion_policy = "
+            "check_end::ImmediateConversionPolicy::RequireTargetRange,",
             source,
         )
         self.assertIn(".direction = ParameterDirection::Input,", source)

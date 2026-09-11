@@ -227,6 +227,25 @@ variant. The schema retains `same_as(...)`, `one_of(...)`, and
 `same_size_as(...)` as future syntax, but the normalizer explicitly rejects
 them as unsupported.
 
+`immediate_conversion` is a separate use contract for integer immediates. It
+defaults to `narrow`, which retains the low bits of the resolved scalar width
+after decoding the 64-bit source. Use `require_target_range` only where a
+semantic operand must be representable at that width:
+
+```yaml
+- name: barrier
+  kind: reg_or_imm
+  role: barrier
+  access: read
+  type: u32
+  immediate_conversion: require_target_range
+```
+
+It is independent of `type`: fixed scalar types and modifier-derived types may
+each use either conversion. Bounded control operands should instead reuse a
+generated range, exact-value, or multiple-of constraint when that fully states
+their rule; those constraints compare the original decoded source bits.
+
 An address operand may similarly derive its required state space from an
 active `kind: state_space` modifier:
 
@@ -476,10 +495,10 @@ and source-program errors distinguishable.
 operand_patterns:
   bar_sync_immediate_barrier:
     - {name: barrier, kind: imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
   bar_sync_barrier:
     - {name: barrier, kind: reg_or_imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
 
 instructions:
   - opcode: bar

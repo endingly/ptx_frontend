@@ -14,6 +14,7 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
 
   bar_sync_barrier:
     - name: barrier
@@ -21,6 +22,7 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
   bar_warp_sync_membermask:
     - name: membermask
       kind: reg_or_imm
@@ -33,11 +35,13 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: thread_count
       kind: reg_or_imm
       role: thread_count
       access: read
       type: u32
+      immediate_conversion: require_target_range
   bar_red_popc_without_thread_count:
     - name: dst
       kind: reg
@@ -49,6 +53,7 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: predicate
       kind: pred_or_not
       role: predicate
@@ -65,11 +70,13 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: thread_count
       kind: reg_or_imm
       role: thread_count
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: predicate
       kind: pred_or_not
       role: predicate
@@ -86,6 +93,7 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: predicate
       kind: pred_or_not
       role: predicate
@@ -102,11 +110,13 @@ operand_patterns:
       role: barrier
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: thread_count
       kind: reg_or_imm
       role: thread_count
       access: read
       type: u32
+      immediate_conversion: require_target_range
     - name: predicate
       kind: pred_or_not
       role: predicate
@@ -281,6 +291,7 @@ operand_patterns:
       access: read
       type: u32
       register_width: same_width
+      immediate_conversion: require_target_range
 
   mbarrier_arrive_cta:
     - name: state
@@ -374,6 +385,7 @@ operand_patterns:
       access: read
       type: u32
       register_width: same_width
+      immediate_conversion: require_target_range
 
   mbarrier_arrive_expect_tx_cluster:
     - name: state
@@ -395,6 +407,7 @@ operand_patterns:
       access: read
       type: u32
       register_width: same_width
+      immediate_conversion: require_target_range
 
   mbarrier_test_wait_token:
     - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
@@ -427,7 +440,7 @@ operand_patterns:
       type: b64
       register_width: exact
       mbarrier_state_token_form: register
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width, immediate_conversion: require_target_range}
 
   mbarrier_try_wait_parity_hint:
     - {name: wait_complete, kind: pred, role: dst, access: write, type: pred}
@@ -438,7 +451,7 @@ operand_patterns:
       access: read
       type: u32
       register_width: same_width
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width, immediate_conversion: require_target_range}
 
   mbarrier_wait_token_report_predicate:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
@@ -462,24 +475,24 @@ operand_patterns:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width, immediate_conversion: require_target_range}
   mbarrier_try_wait_token_report_predicate_value_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: state, kind: mbarrier_state_token, role: src, access: read, type: b64, register_width: exact, mbarrier_state_token_form: register}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width, immediate_conversion: require_target_range}
   mbarrier_try_wait_parity_report_predicate_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width, immediate_conversion: require_target_range}
   mbarrier_try_wait_parity_report_predicate_value_hint:
     - {name: wait_complete_report_predicate, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: report_value, kind: reg, role: dst, access: write, type: b8, register_width: exact}
     - {name: address, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: phase_parity, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
-    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+    - {name: time_hint, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width, immediate_conversion: require_target_range}
   fence_proxy_acquire:
     - {name: address, kind: addr, role: addr, access: read, state_space: [global]}
     - {name: size, kind: imm, role: src, access: read, type: u32}

@@ -200,6 +200,23 @@ type-expression 函数是 `modifier(name)`：它读取当前 variant 的 active 
 schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为未来语法，但
 normalizer 会明确报错表示尚未支持。
 
+`immediate_conversion` 是 integer immediate 独立的 use contract。其默认值 `narrow`
+会在解码 64-bit source 后保留 resolved scalar width 的低位。仅当语义 operand 必须能由
+该宽度表示时才使用 `require_target_range`：
+
+```yaml
+- name: barrier
+  kind: reg_or_imm
+  role: barrier
+  access: read
+  type: u32
+  immediate_conversion: require_target_range
+```
+
+它独立于 `type`：fixed scalar type 与 modifier-derived type 都可选择任一 conversion。
+若 bounded control operand 的规则可由 generated range、exact-value 或 multiple-of constraint
+完整表达，应复用这些 constraint；它们比较原始 decoded source bits。
+
 address operand 也可以从 active `kind: state_space` modifier 派生所要求的
 state space：
 
@@ -415,10 +432,10 @@ configuration error 与 source-program error。
 operand_patterns:
   bar_sync_immediate_barrier:
     - {name: barrier, kind: imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
   bar_sync_barrier:
     - {name: barrier, kind: reg_or_imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
 
 instructions:
   - opcode: bar

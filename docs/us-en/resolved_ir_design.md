@@ -205,10 +205,14 @@ text or trust a narrowed value.
 `AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
 integers, including their optional `U` suffix, first evaluate in the PTX
 64-bit signed/unsigned source domain; unary minus preserves that source type
-and unsigned negation wraps. Ordinary modifier-driven data uses retain the low
-target-width bits, while fixed-scalar instruction controls, call literals checked
-against formal parameter types, and address offsets
-retain strict target-width representability. A signed `-0` is numerically zero,
+and unsigned negation wraps. Ordinary data uses retain the low target-width
+bits. The generated operand descriptor independently selects narrowing or
+strict target-width representability for each semantic use; a fixed scalar type
+expresses provenance only. Generated range, exact-value, and multiple-of
+controls compare preserved source bits, while unconstrained controls opt into
+strict conversion explicitly. Call literals checked against formal parameter
+types and address offsets retain strict target-width representability. A signed
+`-0` is numerically zero,
 whereas floating negative zero retains its IEEE sign bit. Decimal floats
 currently convert to `F32` and `F64`, while
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`

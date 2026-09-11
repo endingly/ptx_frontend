@@ -770,6 +770,15 @@ $defs:
           - equal_or_wider
         default: same_width
 
+      immediate_conversion:
+        description: >
+          Integer conversion selected by this operand use after 64-bit source
+          decoding. The default narrows to the resolved scalar width;
+          require_target_range rejects a source not representable at that width.
+        type: string
+        enum: [narrow, require_target_range]
+        default: narrow
+
       allow_destination_sink:
         description: "Whether '_' is accepted as the data half of a shfl_dest pair."
         type: boolean

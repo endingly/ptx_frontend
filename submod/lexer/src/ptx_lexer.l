@@ -80,7 +80,7 @@ WS              [ \t\r\n]+
 LINE_CMT        "//"[^\n\r]*
 
 ID_START        [A-Za-z_$%]
-ID_CONT         [A-Za-z0-9_$%]
+ID_CONT         [A-Za-z0-9_$]
 IDENT           {ID_START}{ID_CONT}*
 
 DOT_ATOM        [A-Za-z0-9_$%]+

@@ -179,12 +179,20 @@ the numeric radix. Integer decoding treats a leading zero as octal (`010` is
 Ordinary identifiers use the following shape:
 
 ```text
-[A-Za-z_$%][A-Za-z0-9_$%]*
+[A-Za-z_$%][A-Za-z0-9_$]*
 ```
 
 They are emitted as `TokenKind::Ident`. This category includes instruction
 names, registers, special registers, labels, symbols, and target names such as
 `sm_80`.
+
+Percent is permitted only as the leading character of a percent-prefixed
+identifier; it is not an identifier continuation character. Thus an internal
+percent terminates the preceding identifier and begins a new leading-percent
+identifier when followed by a valid continuation. A standalone `%` remains the
+`TokenKind::Percent` remainder operator. The lexer also keeps `_` as an
+`Ident` token for the designated sink and call-prototype-placeholder contexts;
+those context-specific meanings are decided after lexing.
 
 Keeping instruction names generic avoids changing the lexer whenever PTX adds
 an instruction.

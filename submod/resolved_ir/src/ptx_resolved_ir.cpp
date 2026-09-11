@@ -1418,23 +1418,81 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     bool require_target_range = false);
 
+/** Select whether an address consumer imposes memory-offset source limits. */
+enum class AddressImmediateDomain : uint8_t { General, MemoryOperand };
+
+/**
+ * Resolve an address offset while retaining its signed-64-bit IR magnitude.
+ *
+ * Bracketed memory addresses additionally constrain the effective signed
+ * offset, after combining the address operator with a lexical literal sign,
+ * to the PTX signed-32-bit source domain.  Other consumers retain their
+ * wider relocation-addend contract.
+ */
 std::expected<std::optional<ResolvedAddressOffset>, ResolveDiagnostic>
-resolve_address_offset(const syntax_ast::AstAddress& address) {
+resolve_address_offset(const syntax_ast::AstAddress& address,
+                       AddressImmediateDomain domain =
+                           AddressImmediateDomain::General) {
   if (!address.offset)
     return std::nullopt;
 
-  auto value =
-      resolve_immediate_value(address.offset->magnitude, ScalarType::S64,
-                              true);
+  const bool memory_operand = domain == AddressImmediateDomain::MemoryOperand;
+  auto value = resolve_immediate_value(address.offset->magnitude,
+                                       ScalarType::S64, true);
   if (!value)
     return std::unexpected(value.error());
+  const bool subtract = address.offset->operation ==
+                        syntax_ast::AstAddressOffset::Operator::Subtract;
+  if (memory_operand) {
+    const uint64_t source_bits = value->integer_source_bits.value_or(value->bits);
+    const uint64_t magnitude =
+        value->is_negative ? uint64_t{0} - source_bits : source_bits;
+    const bool effective_negative = subtract != value->is_negative;
+    const uint64_t maximum_magnitude =
+        effective_negative ? uint64_t{1} << 31 : (uint64_t{1} << 31) - 1;
+    if (magnitude > maximum_magnitude) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = address.offset->magnitude.syntax.range,
+          .message = fmt::format(
+              "Address offset magnitude '{}' is outside the signed 32-bit "
+              "range for its '{}' operator.",
+              address.offset->magnitude.syntax.text,
+              effective_negative ? "-" : "+"),
+      });
+    }
+    // ResolvedAddressOffset retains the spelling's operation separately, so
+    // retain its magnitude representation while validating the signed PTX domain.
+  }
   return ResolvedAddressOffset{
-      .operation = address.offset->operation ==
-                           syntax_ast::AstAddressOffset::Operator::Subtract
-                       ? ResolvedAddressOffsetOperator::Subtract
-                       : ResolvedAddressOffsetOperator::Add,
+      .operation = subtract ? ResolvedAddressOffsetOperator::Subtract
+                            : ResolvedAddressOffsetOperator::Add,
       .value = std::move(*value),
   };
+}
+
+/** Return whether a declared register can hold a PTX address value. */
+bool is_address_register_type(ScalarType type) {
+  const auto kind = scalar_kind(type);
+  return (kind == base::ScalarKind::Unsigned ||
+          kind == base::ScalarKind::Signed || kind == base::ScalarKind::Bit) &&
+         scalar_size_of(type) <= sizeof(uint64_t);
+}
+
+/** Reject a bound address base whose declaration cannot represent an address. */
+std::expected<void, ResolveDiagnostic> check_address_register_type(
+    const ResolvedRegisterRef& register_ref, SourceRange range) {
+  if (register_ref.declared_type &&
+      is_address_register_type(*register_ref.declared_type))
+    return {};
+  return std::unexpected(ResolveDiagnostic{
+      .range = range,
+      .message = fmt::format(
+          "Address register '{}' has invalid declared type '{}'; expected an "
+          "integer or bit-size type no wider than 64 bits.",
+          register_ref.spelling,
+          register_ref.declared_type ? to_string(*register_ref.declared_type)
+                                     : "unknown"),
+  });
 }
 
 enum class FormalParameterAddressPolicy : uint8_t {
@@ -1567,6 +1625,10 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
                                    *context, identifier->syntax.range);
         if (!register_ref)
           return std::unexpected(register_ref.error());
+        if (auto type_check = check_address_register_type(
+                *register_ref, identifier->syntax.range);
+            !type_check)
+          return std::unexpected(type_check.error());
         base = std::move(*register_ref);
       } else {
         auto symbol = resolve_data_symbol(
@@ -1590,14 +1652,23 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     }
   } else {
     const auto& immediate = std::get<syntax_ast::AstImmediate>(address->base);
-    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U64,
+    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U32,
                                                   true);
     if (!immediate_base)
       return std::unexpected(immediate_base.error());
+    if (immediate_base->is_negative) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = immediate.syntax.range,
+          .message = fmt::format(
+              "Immediate address '{}' must be an unsigned 32-bit value.",
+              immediate.syntax.text),
+      });
+    }
     base = std::move(*immediate_base);
   }
 
-  auto offset = resolve_address_offset(*address);
+  auto offset = resolve_address_offset(*address,
+                                       AddressImmediateDomain::MemoryOperand);
   if (!offset)
     return std::unexpected(offset.error());
 
@@ -1822,6 +1893,15 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                     immediate.syntax.text, to_string(type))));
   }
 
+  if (!text.empty() && text.front() == '+') {
+    text.remove_prefix(1);
+    if (text.empty() || text.front() == '+' || text.front() == '-') {
+      return std::unexpected(invalid_immediate(
+          immediate, fmt::format("Invalid decimal floating literal '{}'.",
+                                 immediate.syntax.text)));
+    }
+  }
+
   double value = 0.0;
   const auto [end, error] =
       std::from_chars(text.data(), text.data() + text.size(), value,
@@ -1864,6 +1944,10 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     case syntax_ast::AstImmediateKind::DecimalFloat:
       return resolve_decimal_float_literal(immediate, type,
                                            immediate.syntax.text);
+    case syntax_ast::AstImmediateKind::WarpSize:
+      // PTX defines WARP_SZ as the signed source integer constant 32.
+      return resolve_integer_literal(immediate, type, "32", negative,
+                                     require_target_range);
   }
   throw ResolveException("Unknown AstImmediateKind.");
 }

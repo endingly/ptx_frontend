@@ -18,6 +18,8 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include "../src/ptx_storage_declarations.hpp"
+
 namespace ptx_frontend::resolved_ir {
 namespace {
 
@@ -429,13 +431,38 @@ TEST(ResolvedStorageDeclarations,
 TEST(ResolvedStorageDeclarations, RetainsManagedAndUnifiedAttributes) {
   const auto resolved = resolveSource(R"ptx(
 .version 8.0
+.target sm_90
+.address_size 64
 .global .attribute(.managed, .unified(0x1, 2)) .u32 attributed;
+.func .attribute(.unified(0xffffffffffffffffU, 0)) function_uuid() {}
+.func .attribute(.unified(0, 18446744073709551615)) prototype_uuid();
 )ptx");
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& attributed = storageNamed(*resolved, "attributed");
   EXPECT_TRUE(attributed.is_managed);
   EXPECT_EQ(attributed.unified_id, (std::array<uint64_t, 2>{1u, 2u}));
+}
+
+/** Module resolution preserves exact-token `.unified` overflow diagnostics. */
+TEST(ResolvedStorageDeclarations, RejectsOverflowingUnifiedAttributeTokens) {
+  const auto rejected = resolveSource(R"ptx(
+.version 8.0
+.target sm_90
+.address_size 64
+.global .attribute(.unified(18446744073709551616, 0)) .u32 variable_uuid;
+.func .attribute(.unified(0, 0x10000000000000000U)) function_uuid() {}
+)ptx");
+  ASSERT_FALSE(rejected.has_value());
+  for (const int32_t line : {5, 6}) {
+    EXPECT_TRUE(std::ranges::any_of(
+        rejected.error(), [line](const ResolveDiagnostic& diagnostic) {
+          return diagnostic.declaration_kind ==
+                     declaration_semantics::DeclarationDiagnosticKind::
+                         InvalidIntegerLiteral &&
+                 diagnostic.range.start.line == line;
+        }));
+  }
 }
 
 /** Compatible external declarations retain identity while preserving each range. */
@@ -597,6 +624,62 @@ TEST(ResolvedStorageDeclarations, RetainsGenericSymbolRelocation) {
   EXPECT_EQ(masked->addend_bits, 1u);
   EXPECT_EQ(masked->byte_mask, 0xffu);
   EXPECT_EQ(addresses.initializer[2].byte_offset, 16u);
+}
+
+/** Opaque object identities cannot become storage-initializer relocations. */
+TEST(ResolvedStorageDeclarations, RejectsOpaqueObjectInitializerRelocations) {
+  constexpr std::array rejected_fixtures{
+      std::string_view{
+          ".global .texref texture;\n.global .u64 address = texture;"},
+      std::string_view{
+          ".global .samplerref sampler;\n"
+          ".global .u64 address = generic(sampler);"},
+      std::string_view{
+          ".global .surfref surface;\n"
+          ".global .u8 address = 0xff(surface + 1);"},
+  };
+  for (const std::string_view fixture : rejected_fixtures) {
+    const auto rejected = resolveSource(std::string{fixture});
+    EXPECT_FALSE(rejected.has_value());
+    if (!rejected) {
+      EXPECT_TRUE(hasDeclarationKind(
+          rejected.error(), declaration_semantics::DeclarationDiagnosticKind::
+                                InvalidInitializerExpression));
+    }
+
+    PtxSyntaxParser parser(fixture);
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast.has_value());
+    ASSERT_TRUE(ast.diagnostics.empty());
+    const auto binding_result = binding::bindSymbols(*ast);
+    ASSERT_TRUE(binding_result.diagnostics.empty());
+    const auto storage =
+        resolve_storage_declarations(*ast, binding_result.table);
+    EXPECT_FALSE(storage.has_value());
+    if (!storage) {
+      EXPECT_TRUE(std::ranges::any_of(
+          storage.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   declaration_semantics::DeclarationDiagnosticKind::
+                       UnsupportedStorageInitializer;
+          }));
+    }
+  }
+
+  const auto handle_retrieval = resolveSource(R"ptx(
+.global .texref texture;
+.global .samplerref sampler;
+.global .surfref surface;
+.entry kernel() {
+  .reg .b64 texture_handle, sampler_handle, surface_handle;
+  mov.u64 texture_handle, texture;
+  mov.u64 sampler_handle, sampler;
+  mov.u64 surface_handle, surface;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(handle_retrieval.has_value())
+      << handle_retrieval.error().front().message;
 }
 
 /** Version gates preserve state-space and byte-mask relocation interpretation. */

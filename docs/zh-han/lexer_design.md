@@ -168,11 +168,17 @@ Lexer 可以识别：
 普通标识符符合以下形式：
 
 ```text
-[A-Za-z_$%][A-Za-z0-9_$%]*
+[A-Za-z_$%][A-Za-z0-9_$]*
 ```
 
 它们被输出为 `TokenKind::Ident`。该类别包括指令名、寄存器、特殊寄存器、
 label、symbol，以及 `sm_80` 这样的 target 名称。
+
+百分号只允许作为 percent-prefixed identifier 的首字符，不能作为 identifier 的
+后续字符。因此内部百分号会结束前一个 identifier；若其后接合法后续字符，则开始一个新的
+leading-percent identifier。独立的 `%` 仍是 `TokenKind::Percent` 余数运算符。
+lexer 同时保留 `_` 的 `Ident` token，以支持指定的 sink 与 call-prototype placeholder
+上下文；这些依赖上下文的含义在词法分析之后才决定。
 
 将指令名称保持为通用标识符，可以避免 PTX 每增加一条指令就修改 lexer。
 

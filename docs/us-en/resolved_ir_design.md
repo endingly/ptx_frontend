@@ -206,7 +206,10 @@ text or trust a narrowed value.
 integers, including their optional `U` suffix, first evaluate in the PTX
 64-bit signed/unsigned source domain; unary minus preserves that source type
 and unsigned negation wraps. Ordinary data uses retain the low target-width
-bits. The generated operand descriptor independently selects narrowing or
+bits. `WARP_SZ` is the source-defined signed integer constant `32`, including
+in ordinary instruction-immediate positions; it is not a query of a target's
+physical warp width. The generated operand descriptor independently selects
+narrowing or
 strict target-width representability for each semantic use; a fixed scalar type
 expresses provenance only. Generated range, exact-value, and multiple-of
 controls compare preserved source bits, while unconstrained controls opt into
@@ -214,7 +217,9 @@ strict conversion explicitly. Call literals checked against formal parameter
 types and address offsets retain strict target-width representability. A signed
 `-0` is numerically zero,
 whereas floating negative zero retains its IEEE sign bit. Decimal floats
-currently convert to `F32` and `F64`, while
+currently convert to `F32` and `F64`; a single leading `+` is normalized only
+at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
+their normal floating semantics. Raw `0f`/`0d` bit-pattern rules are unchanged.
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
 respectively. Other floating formats require explicit quantization rules and
 must not silently take the integer path.
@@ -302,8 +307,20 @@ Standalone resolution cannot tell whether an unbound name denotes data or a
 function, so it remains a `ResolvedSymbolRef` with no identity.
 
 A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
-`ResolvedImmediate`, and `ResolvedSymbolRef`. Its optional offset retains the
-add/subtract operator and a parsed signed 64-bit value.
+`ResolvedImmediate`, and `ResolvedSymbolRef`. A bound register base must be an
+integer or bit-size declaration no wider than 64 bits: floating declarations
+and `.b128` are rejected before checker projection. This preserves PTX address
+extension/truncation for narrower integer/bit declarations without treating a
+known floating register as an unknown address. Declaration-free standalone
+resolution has no type fact and therefore keeps the address base deferred. Its
+optional offset retains the add/subtract operator and magnitude. A bracketed
+memory address uses PTX's unsigned 32-bit immediate base and signed 32-bit
+offset domain after that operator is applied: `-2147483648` is represented by
+a subtraction magnitude of `2147483648`. Unbracketed `mov symbol+offset`
+retains the separate signed 64-bit addend domain used by symbol-address and
+relocation consumers. The shared IR continues to retain offset magnitudes as
+signed 64-bit values; the 32-bit rule is a source-form legality check rather
+than a relocation-domain narrowing.
 A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
 address value restricted to an addressable data-symbol or formal-parameter
 base. Scalar and braced-vector `ld`/`st` require bracketed dereference and

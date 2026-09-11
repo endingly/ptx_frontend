@@ -261,7 +261,7 @@ TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
 .entry kernel() {
   .reg .f32 %f<2>;
   .reg .f16 %h0;
-  .reg .bf16 %bf0;
+  .reg .b16 %bf0;
 )ptx";
   const auto append_instruction = [&](std::string_view opcode,
                                       std::string_view rounding,
@@ -6777,8 +6777,67 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
       std::get<Ld::GenericScalar>(std::get<Ld>(body[3]).variant).address.value;
   const auto& immediate_base =
       std::get<ResolvedImmediate>(immediate_address.base);
-  EXPECT_EQ(immediate_base.type, ScalarType::U64);
+  EXPECT_EQ(immediate_base.type, ScalarType::U32);
   EXPECT_EQ(immediate_base.bits, 240u);
+}
+
+/** Bound address bases accept integer/bit declarations and reject other known types. */
+TEST(ResolvedModule, ValidatesBoundAddressRegisterTypes) {
+  constexpr std::array valid_types = {".b8",  ".u8",  ".s8",  ".b16",
+                                      ".u16", ".s16", ".b32", ".u32",
+                                      ".s32", ".b64", ".u64", ".s64"};
+  for (const std::string_view type : valid_types) {
+    const auto resolved = resolveModule(parseModule(
+        ".version 9.3\n.target sm_80\n.address_size 64\n.entry kernel() { .reg " +
+        std::string(type) +
+        " %addr; .reg .u32 %value; ld.global.u32 %value, [%addr]; "
+        "st.global.u32 [%addr], %value; }"));
+    ASSERT_TRUE(resolved.has_value())
+        << type << ": " << resolved.error().front().message;
+  }
+
+  constexpr std::array invalid_types = {
+      std::pair{".f16", ScalarType::F16}, std::pair{".f16x2", ScalarType::F16x2},
+      std::pair{".f32", ScalarType::F32}, std::pair{".f64", ScalarType::F64},
+      std::pair{".b128", ScalarType::B128},
+  };
+  for (const auto [spelling, scalar] : invalid_types) {
+    for (const std::string_view use : {
+             "ld.global.u32 %value, [%addr];",
+             "st.global.u32 [%addr], %value;",
+             "mbarrier.init.b64 [%addr], 1;",
+         }) {
+      const auto ast = parseModule(
+          ".entry kernel() { .reg " + std::string(spelling) +
+          " %addr; .reg .u32 %value; " + std::string(use) + " }");
+      const auto resolved = resolveModule(ast);
+      ASSERT_FALSE(resolved.has_value()) << spelling << ": " << use;
+      EXPECT_EQ(
+          resolved.error().front().message,
+          "Address register '%addr' has invalid declared type '" +
+              base::to_string(scalar) +
+              "'; expected an integer or bit-size type no wider than 64 bits.");
+
+      const auto& function =
+          std::get<syntax_ast::AstFunction>(ast.items.front());
+      const auto& instruction =
+          std::get<syntax_ast::AstInstruction>(function.body.back());
+      const auto address = std::ranges::find_if(
+          instruction.operands, [](const syntax_ast::AstOperand& operand) {
+            return std::holds_alternative<syntax_ast::AstAddress>(operand);
+          });
+      ASSERT_NE(address, instruction.operands.end());
+      const auto& base = std::get<syntax_ast::AstIdentifierRef>(
+          std::get<syntax_ast::AstAddress>(*address).base);
+      EXPECT_EQ(resolved.error().front().range, base.syntax.range);
+    }
+  }
+
+  PtxSyntaxParser standalone_parser("ld.global.u32 %r0, [%rd0];");
+  const auto standalone_ast = standalone_parser.parseInstruction();
+  ASSERT_TRUE(standalone_ast.has_value())
+      << standalone_ast.diagnostics.front().message;
+  EXPECT_TRUE(resolveInstruction(*standalone_ast).has_value());
 }
 
 /**
@@ -6832,13 +6891,117 @@ TEST(ResolvedModule, ResolvesOctalImmediateAndAddressOffsets) {
       std::get<Ld::GenericScalar>(std::get<Ld>(body[3]).variant).address.value;
   const auto& absolute_base =
       std::get<ResolvedImmediate>(absolute_address.base);
-  EXPECT_EQ(absolute_base.type, ScalarType::U64);
+  EXPECT_EQ(absolute_base.type, ScalarType::U32);
   EXPECT_EQ(absolute_base.bits, 8U);
   ASSERT_TRUE(absolute_address.offset.has_value());
   EXPECT_EQ(absolute_address.offset->operation,
             ResolvedAddressOffsetOperator::Add);
   EXPECT_EQ(absolute_address.offset->value.type, ScalarType::S64);
   EXPECT_EQ(absolute_address.offset->value.bits, 8U);
+}
+
+/**
+ * Memory addresses use unsigned bases and signed offsets in their PTX domains.
+ */
+TEST(ResolvedModule, ValidatesMemoryAddressImmediateDomains) {
+  const auto resolved = resolveModule(parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .b8 storage;
+.entry kernel() {
+  .reg .b8 %value;
+  .reg .u64 %rd;
+  ld.global.b8 %value, [0];
+  ld.global.b8 %value, [-0];
+  ld.global.b8 %value, [4294967295];
+  ld.global.b8 %value, [0xffffffffU];
+  ld.global.b8 %value, [%rd+2147483647];
+  ld.global.b8 %value, [%rd-2147483648];
+  ld.global.b8 %value, [%rd+0x7fffffff];
+  ld.global.b8 %value, [%rd-0x80000000];
+  mov.u64 %rd, storage+4294967296;
+}
+)ptx"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 9u);
+
+  const auto& maximum_absolute = std::get<Ld::ExplicitScalar>(
+      std::get<Ld>(body[2]).variant).address.value;
+  EXPECT_EQ(std::get<ResolvedImmediate>(maximum_absolute.base).type,
+            ScalarType::U32);
+  EXPECT_EQ(std::get<ResolvedImmediate>(maximum_absolute.base).bits,
+            4294967295u);
+
+  for (const size_t index : {size_t{4}, size_t{5}, size_t{6}, size_t{7}}) {
+    const auto& address = std::get<Ld::ExplicitScalar>(
+        std::get<Ld>(body[index]).variant).address.value;
+    ASSERT_TRUE(address.offset.has_value());
+    EXPECT_EQ(address.offset->value.type, ScalarType::S64);
+  }
+  const auto& negative_minimum = std::get<Ld::ExplicitScalar>(
+      std::get<Ld>(body[5]).variant).address.value;
+  EXPECT_EQ(negative_minimum.offset->operation,
+            ResolvedAddressOffsetOperator::Subtract);
+  EXPECT_EQ(negative_minimum.offset->value.bits, 2147483648u);
+
+  const auto& mov_address = std::get<ResolvedAddress>(
+      scalarMovOperands(std::get<Mov>(body[8])).src.value);
+  ASSERT_TRUE(mov_address.offset.has_value());
+  EXPECT_EQ(mov_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(mov_address.offset->value.bits, 4294967296u);
+
+  constexpr std::array rejected = {
+      std::pair<std::string_view, std::string_view>{
+          "[4294967296]",
+          "Integer literal '4294967296' is out of range for scalar type 'U32'."},
+      std::pair<std::string_view, std::string_view>{
+          "[0x100000000]",
+          "Integer literal '0x100000000' is out of range for scalar type 'U32'."},
+      std::pair<std::string_view, std::string_view>{
+          "[-1]", "Immediate address '-1' must be an unsigned 32-bit value."},
+      std::pair<std::string_view, std::string_view>{
+          "[-1U]",
+          "Integer literal '-1U' is out of range for scalar type 'U32'."},
+      std::pair<std::string_view, std::string_view>{
+          "[%rd+2147483648]",
+          "Address offset magnitude '2147483648' is outside the signed 32-bit "
+          "range for its '+' operator."},
+      std::pair<std::string_view, std::string_view>{
+          "[%rd-2147483649]",
+          "Address offset magnitude '2147483649' is outside the signed 32-bit "
+          "range for its '-' operator."},
+      std::pair<std::string_view, std::string_view>{
+          "[%rd-0x80000001]",
+          "Address offset magnitude '0x80000001' is outside the signed 32-bit "
+          "range for its '-' operator."},
+      std::pair<std::string_view, std::string_view>{
+          "[%rd+0x80000000]",
+          "Address offset magnitude '0x80000000' is outside the signed 32-bit "
+          "range for its '+' operator."},
+  };
+  for (const auto [address, expected] : rejected) {
+    const auto invalid_ast = parseModule(
+        ".version 9.3\n.target sm_80\n.address_size 64\n.entry kernel() { "
+        ".reg .b8 %value; .reg .u64 %rd; ld.global.b8 %value, " +
+        std::string(address) + "; }");
+    const auto& invalid_function =
+        std::get<syntax_ast::AstFunction>(invalid_ast.items.back());
+    const auto& invalid_instruction =
+        std::get<syntax_ast::AstInstruction>(invalid_function.body.back());
+    const auto& invalid_address =
+        std::get<syntax_ast::AstAddress>(invalid_instruction.operands.back());
+    const auto expected_range =
+        invalid_address.offset
+            ? invalid_address.offset->magnitude.syntax.range
+            : std::get<syntax_ast::AstImmediate>(invalid_address.base)
+                  .syntax.range;
+    const auto invalid = resolveModule(invalid_ast);
+    ASSERT_FALSE(invalid.has_value()) << address;
+    EXPECT_EQ(invalid.error().front().message, expected);
+    EXPECT_EQ(invalid.error().front().range, expected_range);
+  }
 }
 
 TEST(ResolvedModule, ChecksGenericLoadAvailability) {
@@ -9945,7 +10108,7 @@ TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
   const auto resolved = resolveModule(parseModule(R"ptx(
 .version 9.2
 .entry kernel() {
-  .reg .u8x4 %r<3>;
+  .reg .b32 %r<3>;
   add.u8x4 %r0, %r1, %r2;
 }
 )ptx"));
@@ -9955,7 +10118,7 @@ TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
 .version 9.2
 .target sm_120f
 .entry kernel() {
-  .reg .u8x4 %r<3>;
+  .reg .b32 %r<3>;
   add.u8x4 %r0, %r1, %r2;
 }
 )ptx"), *resolved);
@@ -9965,7 +10128,7 @@ TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
 .version 9.2
 .target sm_100f
 .entry kernel() {
-  .reg .u8x4 %r<3>;
+  .reg .b32 %r<3>;
   add.u8x4 %r0, %r1, %r2;
 }
 )ptx"));

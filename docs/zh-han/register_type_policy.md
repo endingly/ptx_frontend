@@ -12,6 +12,15 @@ bit-size 寄存器可承载同宽兼容的整数或浮点 operand，同宽有符
 generated checker 按 descriptor policy 检查已绑定寄存器声明；仅 resolve 成功不表示
 整个模块的指令均通过 checking。
 
+declaration semantics 还会验证每个 `.reg` 的 type token，即使该寄存器从未被使用。
+允许的基础 declaration type 为 `.s8/.s16/.s32/.s64`、`.u8/.u16/.u32/.u64`、
+`.b8/.b16/.b32/.b64/.b128`、`.f16`、`.f16x2`、`.f32`、`.f64` 以及 scalar `.pred`。
+已识别的 packed 或 alternate instruction format（例如 `.bf16`、`.tf32` 和已建模的
+packed 拼写）会报告为 instruction-only；未识别的拼写会报告为 unknown。CST 仍保持
+permissive。non-predicate `.v2`/`.v4` 寄存器最大为 128 bit，predicate 寄存器必须
+是 scalar。这些 declaration rule 保留合法 `.reg` function formal 及 parameterized
+register group。
+
 ## 规范来源记录
 
 工程规范版本为 PTX ISA 9.3。本次依据

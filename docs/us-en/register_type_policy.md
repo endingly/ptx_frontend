@@ -16,6 +16,16 @@ Resolution still builds the same IR; generated checking applies the descriptor
 policy to bound register declarations. Resolving a module alone is not a claim
 that its instructions pass checking.
 
+Declaration semantics separately validates every `.reg` type token, including
+an unused register. Its fundamental declaration types are `.s8/.s16/.s32/.s64`,
+`.u8/.u16/.u32/.u64`, `.b8/.b16/.b32/.b64/.b128`, `.f16`, `.f16x2`, `.f32`,
+`.f64`, and scalar `.pred`. A recognized packed or alternate instruction format
+(`.bf16`, `.tf32`, and the modeled packed spellings, for example) is diagnosed
+as instruction-only; an unrecognized spelling is diagnosed as unknown. This
+does not make the CST restrictive. Non-predicate `.v2`/`.v4` registers are
+limited to 128 bits, while predicate registers are scalar. These declaration
+rules preserve valid `.reg` function formals and parameterized register groups.
+
 ## Normative source ledger
 
 The project specification is PTX ISA 9.3. This correction uses the

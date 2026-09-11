@@ -68,17 +68,25 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
 }
 
 /** Report an integer spelling that cannot be decoded without truncation. */
-void reportInvalidIntegerLiteral(
-    DiagnosticSink diagnostics, const syntax_ast::AstImmediate& literal) {
+void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
+                                 std::string_view spelling,
+                                 SourceRange range) {
   if (diagnostics == nullptr)
     return;
   diagnostics->push_back(DeclarationDiagnostic{
       .kind = DeclarationDiagnosticKind::InvalidIntegerLiteral,
-      .range = literal.syntax.range,
+      .range = range,
       .message = fmt::format("Integer literal '{}' is not representable as "
                              "a uint64_t value.",
-                             literal.syntax.text),
+                             spelling),
   });
+}
+
+/** Report an invalid integer immediate at its source-token range. */
+void reportInvalidIntegerLiteral(
+    DiagnosticSink diagnostics, const syntax_ast::AstImmediate& literal) {
+  reportInvalidIntegerLiteral(diagnostics, literal.syntax.text,
+                              literal.syntax.range);
 }
 
 std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
@@ -647,9 +655,29 @@ bool isUnsupportedInitializerType(std::string_view type) {
   return type == ".f16" || type == ".f16x2" || type == ".pred";
 }
 
-/** Return whether a spelling denotes an opaque parameter identity. */
-bool isOpaqueParameterType(std::string_view type) {
+/** Return whether a declaration spelling names an opaque PTX object identity. */
+bool isOpaqueObjectType(std::string_view type) {
   return type == ".texref" || type == ".samplerref" || type == ".surfref";
+}
+
+/** Return whether a known scalar spelling is restricted to instruction formats. */
+bool isInstructionOnlyScalarType(std::string_view type) {
+  return type == ".u8x4" || type == ".u16x2" || type == ".s8x4" ||
+         type == ".s16x2" || type == ".f32x2" || type == ".bf16" ||
+         type == ".bf16x2" || type == ".e4m3" || type == ".e5m2" ||
+         type == ".e4m3x2" || type == ".e5m2x2" || type == ".tf32";
+}
+
+/** Classify one fundamental scalar spelling admitted by a `.reg` declaration. */
+std::optional<base::ScalarType> registerDeclarationScalarType(
+    std::string_view type) noexcept {
+  if (const auto scalar = parameterScalarType(type))
+    return scalar;
+  if (type == ".f16x2")
+    return base::ScalarType::F16x2;
+  if (type == ".pred")
+    return base::ScalarType::Pred;
+  return std::nullopt;
 }
 
 bool initializerTypeAccepts(std::string_view type,
@@ -1094,6 +1122,15 @@ class Checker {
                                });
   }
 
+  /** Validate both source tokens of a `.unified` UUID without truncation. */
+  void checkUnifiedAttributeValues(const syntax_ast::AstAttribute& attribute) {
+    for (const auto& value : attribute.values) {
+      if (!unsignedIntegerLiteral(value.text)) {
+        reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
+      }
+    }
+  }
+
   void checkM11Directives(const syntax_ast::AstModule& module) {
     const auto module_version = modulePtxVersion(module);
     std::unordered_map<std::string, SourceRange> seen_aliases;
@@ -1124,6 +1161,8 @@ class Checker {
         requirePtx(module_version, is_managed ? PtxVersion{4, 0}
                                                : PtxVersion{8, 0},
                    attribute.range, is_managed ? ".managed" : ".unified");
+        if (!is_managed)
+          checkUnifiedAttributeValues(attribute);
         if (function ? !is_managed
                      : state_space == syntax_ast::AstStateSpace::Global) {
           continue;
@@ -1466,7 +1505,7 @@ class Checker {
       return;
     }
 
-    if (isOpaqueParameterType(parameter.type.text)) {
+    if (isOpaqueObjectType(parameter.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                parameter.type.range,
                "Opaque .texref/.samplerref/.surfref parameters are not "
@@ -1792,7 +1831,7 @@ class Checker {
                "frontend.");
       return;
     }
-    if (isOpaqueParameterType(declaration.type.text)) {
+    if (isOpaqueObjectType(declaration.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                declaration.type.range,
                "Opaque .texref/.samplerref/.surfref parameters are not "
@@ -1868,8 +1907,57 @@ class Checker {
     }
   }
 
+  /** Validate the type and vector shape PTX permits for one `.reg` declaration. */
+  void checkRegisterDeclaration(
+      const syntax_ast::AstVariableDeclaration& declaration) {
+    if (declaration.state_space != syntax_ast::AstStateSpace::Register)
+      return;
+
+    const auto scalar = registerDeclarationScalarType(declaration.type.text);
+    if (!scalar) {
+      const auto kind = isInstructionOnlyScalarType(declaration.type.text)
+                            ? DeclarationDiagnosticKind::
+                                  UnsupportedRegisterDeclarationType
+                            : DeclarationDiagnosticKind::
+                                  UnknownRegisterDeclarationType;
+      diagnose(kind, declaration.type.range,
+               isInstructionOnlyScalarType(declaration.type.text)
+                   ? fmt::format("Register declaration type '{}' is an "
+                                 "instruction-only packed or alternate "
+                                 "format.",
+                                 declaration.type.text)
+                   : fmt::format("Unknown register declaration type '{}'.",
+                                 declaration.type.text));
+      return;
+    }
+
+    if (!declaration.vector_type)
+      return;
+    if (declaration.vector_type->text != ".v2" &&
+        declaration.vector_type->text != ".v4") {
+      diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
+               declaration.vector_type->range,
+               "Register declaration vectors must use .v2 or .v4.");
+      return;
+    }
+    if (*scalar == base::ScalarType::Pred) {
+      diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
+               declaration.vector_type->range,
+               "Predicate register declarations must be scalar.");
+      return;
+    }
+    const uint64_t vector_width =
+        declaration.vector_type->text == ".v2" ? 2 : 4;
+    if (base::scalar_size_of(*scalar) * vector_width > 16) {
+      diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
+               declaration.vector_type->range,
+               "Non-predicate register vectors may not exceed 128 bits.");
+    }
+  }
+
   void checkVariableDeclaration(
       const syntax_ast::AstVariableDeclaration& declaration) {
+    checkRegisterDeclaration(declaration);
     for (const auto& declarator : declaration.declarators) {
       std::vector<std::optional<uint64_t>> extents;
       extents.reserve(declarator.array_dimensions.size() +
@@ -2007,14 +2095,15 @@ class Checker {
             const bool allowed_variable =
                 symbol.kind == binding::SymbolKind::Variable &&
                 (symbol.state_space == syntax_ast::AstStateSpace::Global ||
-                 symbol.state_space == syntax_ast::AstStateSpace::Constant);
+                 symbol.state_space == syntax_ast::AstStateSpace::Constant) &&
+                (!symbol.type || !isOpaqueObjectType(*symbol.type));
             if (symbol.kind != binding::SymbolKind::Function &&
                 !allowed_variable) {
               diagnose(DeclarationDiagnosticKind::InvalidInitializerExpression,
                        value.name.syntax.range,
                        fmt::format(
                            "Initializer symbol '{}' must name a function or a "
-                           ".global/.const variable.",
+                           "non-opaque .global/.const variable.",
                            value.name.syntax.text));
             } else if (symbol.kind == binding::SymbolKind::Function) {
               const auto prior = symbols_.hasPriorDeclaration(

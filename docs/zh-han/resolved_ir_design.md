@@ -165,12 +165,16 @@ fixed-control checker 不必重新解释 literal 文本，也不会信任已经�
 `AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/octal/hex（包括可选 `U`
 后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source
 type，而 unsigned negation 按该宽度回绕。ordinary data use 随后保留 target width 的低位。
-generated operand descriptor 为每个 semantic use 独立选择截断或严格 target-width
+`WARP_SZ` 是 source 定义的 signed integer constant `32`，也可用于普通
+instruction-immediate position；它不是对 target physical warp width 的查询。generated
+operand descriptor 为每个 semantic use 独立选择截断或严格 target-width
 representability；fixed scalar type 只表达 provenance。generated range、exact-value 与
 multiple-of control 比较保留的 source bits，而无约束的 control 显式选择严格 conversion。
 按 formal parameter type 检查的 call literal 与 address offset 继续执行严格的 target-width
 representability 检查。signed `-0` 在数值上是 zero，而 floating negative
 zero 保留其 IEEE sign bit。decimal float 目前支持转换至 `F32` 与 `F64`；
+单个 leading `+` 只在 decimal decoding 时规范化，而 leading `-`、signed zero 与
+exponent sign 保持通常的 floating semantics。raw `0f`/`0d` bit-pattern rule 不变。
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
 其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
 
@@ -233,8 +237,17 @@ register、data symbol 与 address expression，避免这些 identifier 形状�
 空 identity 的 `ResolvedSymbolRef`。
 
 `ResolvedAddress` 的 base 是 `ResolvedRegisterRef`、`ResolvedImmediate` 或
-`ResolvedSymbolRef` 的 variant，可选 offset 保留加减 operator 和解析后的 signed 64-bit
-value。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
+`ResolvedSymbolRef` 的 variant。已绑定的 register base 必须是宽度不超过 64 bit 的
+integer 或 bit-size declaration：floating declaration 和 `.b128` 会在投影至 checker
+之前被拒绝。这既保留了 PTX 对较窄 integer/bit declaration 的地址 extension/truncation，
+也不会把已知的 floating register 当作未知地址。没有 declaration 的 standalone resolution
+缺少类型事实，因此仍将 address base 延后处理。其可选 offset 保留加减 operator 和解析后的
+magnitude。带方括号的 memory address 使用 PTX 的 unsigned 32-bit immediate base，以及在
+应用该 operator 后的 signed 32-bit offset domain：`-2147483648` 由 subtraction magnitude
+`2147483648` 表示。未加方括号的 `mov symbol+offset` 保留 symbol-address 与 relocation
+consumer 使用的独立 signed 64-bit addend domain。共享 IR 仍将 offset magnitude 保存为
+signed 64-bit value；32-bit 规则是 source form 的 legality check，而不是对 relocation domain
+的缩窄。32/64-bit integer 或 bit-size `mov d, symbol+offset` 使用未加方括号且限定为
 addressable data-symbol 或 formal-parameter base 的地址值；
 scalar 与 braced-vector `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
 bound-symbol base。每个 opcode 使用 `GenericScalar`、`ExplicitScalar`、`GenericVector`

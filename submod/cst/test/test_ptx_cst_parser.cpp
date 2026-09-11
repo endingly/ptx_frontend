@@ -118,6 +118,45 @@ TEST(PtxCstParser, RoundTripsUnmodifiedModuleTokenBufferByteForByte) {
   EXPECT_EQ(final_trivia.back().text, "\n   ");
 }
 
+/** Internal-percent spellings recover without discarding a valid following entry. */
+TEST(PtxCstParser, RecoversInternalPercentIdentifiersBeforeValidEntry) {
+  constexpr std::string_view source = R"ptx(.version 9.3
+.target sm_80
+.address_size 64
+.global .u32 bad%name = 1;
+.entry k() {
+  .reg .u32 %r<2>;
+  mov.u32 %r0, %r%tmp;
+  ret;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].range, (SourceRange{{4, 17}, {4, 22}}));
+  EXPECT_EQ(result.diagnostics[1].range, (SourceRange{{7, 18}, {7, 22}}));
+  ASSERT_EQ(result->module()->items.size(), 7u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(
+      result->module()->items[3]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(
+      result->module()->items[4]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(
+      result->module()->items[5]));
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.back());
+  ASSERT_EQ(function.body.size(), 5u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(function.body[1]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(function.body[2]));
+  const auto& recovered_instruction =
+      std::get<syntax_cst::CstInstruction>(function.body[3]);
+  EXPECT_EQ(result->token(recovered_instruction.opcode).text, "%tmp");
+  const auto& ret = std::get<syntax_cst::CstInstruction>(function.body.back());
+  EXPECT_EQ(result->token(ret.opcode).text, "ret");
+}
+
 TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {
   PtxCstParser parser("ld.weak.u32 %r0, [%rd0];");
 

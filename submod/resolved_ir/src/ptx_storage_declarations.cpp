@@ -157,6 +157,11 @@ std::optional<StorageOpaqueType> opaque_type(std::string_view spelling) {
   return std::nullopt;
 }
 
+/** Return whether a bound variable has an opaque PTX object declaration type. */
+bool is_opaque_object(const binding::Symbol& symbol) {
+  return symbol.type && opaque_type(*symbol.type).has_value();
+}
+
 /** Decode a source magnitude independently of its declaration's range policy. */
 std::optional<uint64_t> unsigned_value(std::string_view text) {
   return base::parseIntegerMagnitude(text);
@@ -424,6 +429,7 @@ std::optional<StorageRelocation> symbol_relocation(
     }
     address_kind = StorageAddressKind::Function;
   } else if (target.kind != binding::SymbolKind::Variable ||
+             is_opaque_object(target) ||
              (target.state_space != syntax_ast::AstStateSpace::Global &&
               target.state_space != syntax_ast::AstStateSpace::Constant)) {
     diagnose(diagnostics,

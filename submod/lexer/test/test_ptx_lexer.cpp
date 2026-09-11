@@ -442,6 +442,34 @@ TEST(PtxLexerNew, RegisterDeclarationSnippet) {
   expect_token(toks[6], TokenKind::Semicolon, ";");
 }
 
+/** Internal percent signs terminate user identifiers without rejecting valid prefixes. */
+TEST(PtxLexerNew, SplitsInternalPercentIdentifiersAtNewLeadingPercentNames) {
+  const auto toks = lex_all("bad%name %r%tmp");
+
+  ASSERT_EQ(toks.size(), 4u);
+  expect_token(toks[0], TokenKind::Ident, "bad");
+  expect_token(toks[1], TokenKind::Ident, "%name");
+  expect_token(toks[2], TokenKind::Ident, "%r");
+  expect_token(toks[3], TokenKind::Ident, "%tmp");
+  EXPECT_EQ(toks[0].range, (SourceRange{{1, 1}, {1, 4}}));
+  EXPECT_EQ(toks[1].range, (SourceRange{{1, 4}, {1, 9}}));
+  EXPECT_EQ(toks[2].range, (SourceRange{{1, 10}, {1, 12}}));
+  EXPECT_EQ(toks[3].range, (SourceRange{{1, 12}, {1, 16}}));
+}
+
+/** Leading-percent, dollar, and underscore spellings retain their lexical class. */
+TEST(PtxLexerNew, PreservesValidUserIdentifierPrefixes) {
+  const auto toks = lex_all("%r1 $name _name foo$bar");
+
+  ASSERT_EQ(toks.size(), 4u);
+  for (const auto& token : toks)
+    EXPECT_EQ(token.kind, TokenKind::Ident) << token.text;
+  expect_token(toks[0], TokenKind::Ident, "%r1");
+  expect_token(toks[1], TokenKind::Ident, "$name");
+  expect_token(toks[2], TokenKind::Ident, "_name");
+  expect_token(toks[3], TokenKind::Ident, "foo$bar");
+}
+
 TEST(PtxLexerNew, LoadInstructionWithDeclarationLikeModifier) {
   auto toks = lex_all("ld.global.u32 %r1, [%rd1];");
 
@@ -498,6 +526,12 @@ TEST(PtxLexerNew, ConstantExpressionOperatorsUseDedicatedTokens) {
   ASSERT_EQ(toks.size(), expected.size());
   for (std::size_t i = 0; i < expected.size(); ++i)
     EXPECT_EQ(toks[i].kind, expected[i]) << "text=" << toks[i].text;
+
+  const auto remainder = lex_all("7 % 4");
+  ASSERT_EQ(remainder.size(), 3u);
+  expect_token(remainder[0], TokenKind::Decimal, "7");
+  expect_token(remainder[1], TokenKind::Percent, "%");
+  expect_token(remainder[2], TokenKind::Decimal, "4");
 }
 
 // -----------------------------------------------------------------------------

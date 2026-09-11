@@ -119,6 +119,12 @@ enum class DeclarationDiagnosticKind : uint8_t {
   InvalidIntegerLiteral,
   /** A function address was used before its declaration occurrence. */
   FunctionAddressBeforeDeclaration,
+  /** A `.reg` declaration type token is not a recognized PTX scalar spelling. */
+  UnknownRegisterDeclarationType,
+  /** A recognized instruction-only scalar spelling was used in `.reg`. */
+  UnsupportedRegisterDeclarationType,
+  /** A `.reg` declaration uses a predicate or vector shape PTX does not allow. */
+  InvalidRegisterDeclarationShape,
 };
 
 struct DeclarationDiagnostic {

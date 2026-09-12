@@ -232,6 +232,11 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               value.exclamation_token.has_value(),
               lowerIdentifier(cst, {value.name}),
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstNegatedImmediate>) {
+          return syntax_ast::AstNegatedImmediate{
+              lowerImmediate(cst, value.immediate),
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value, syntax_cst::CstImmediate>) {
           return lowerImmediate(cst, value);
         } else if constexpr (std::same_as<Value, syntax_cst::CstAddress>) {
@@ -257,9 +262,14 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                 lowerImmediate(cst, value.offset->magnitude),
                 cst.sourceRange(value.offset->token_range)};
           }
-          return syntax_ast::AstAddress{std::move(base), std::move(offset),
-                                        value.left_bracket.has_value(),
-                                        cst.sourceRange(value.token_range)};
+          return syntax_ast::AstAddress{
+              std::move(base),
+              std::move(offset),
+              value.left_bracket.has_value(),
+              value.unified_token.has_value(),
+              value.unified_token ? cst.token(*value.unified_token).range
+                                  : SourceRange{},
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>) {
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),

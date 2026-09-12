@@ -81,6 +81,13 @@ TEST(ControlFlowSyntaxShape, ExposesDedicatedDescriptorFacingKinds) {
       << predicate_pair.diagnostics.front().message;
   EXPECT_EQ(check_end::get_operand_syntax_shape(predicate_pair->operands[0]),
             check_end::OperandSyntaxShape::RegisterPredicatePair);
+
+  PtxSyntaxParser negated_constant_parser("mov.pred %p0, !1;");
+  const auto negated_constant = negated_constant_parser.parseInstruction();
+  ASSERT_TRUE(negated_constant.has_value())
+      << negated_constant.diagnostics.front().message;
+  EXPECT_EQ(check_end::get_operand_syntax_shape(negated_constant->operands[1]),
+            check_end::OperandSyntaxShape::NegatedImmediate);
 }
 
 syntax_ast::AstInstruction parse_instruction(std::string_view source) {
@@ -1855,62 +1862,62 @@ TEST(ResolveSet, RejectsUnfrozenDtypeStypeAndBooleanForms) {
   }
 }
 
-TEST(ResolveSetp, SelectsFrozenLtU32Variants) {
+TEST(ResolveSetp, SelectsCompleteUnsignedVariants) {
   const auto simple_ast = parse_instruction("setp.lt.u32 %p0, %r0, 16;");
   const auto simple = resolve<Setp>(simple_ast);
   ASSERT_TRUE(simple.has_value()) << simple.error().message;
-  const auto* lt = std::get_if<Setp::LtU32>(&simple->variant);
+  const auto* lt = std::get_if<Setp::Unsigned>(&simple->variant);
   ASSERT_NE(lt, nullptr);
   EXPECT_EQ(lt->comparison.value, ComparisonOperator::Lt);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(lt->src2.value));
 
   const auto combined_ast =
       parse_instruction("setp.lt.and.u32 %p0, %r0, 16, !%p1;");
   const auto combined = resolve<Setp>(combined_ast);
   ASSERT_TRUE(combined.has_value()) << combined.error().message;
-  const auto* lt_and = std::get_if<Setp::LtAndU32>(&combined->variant);
+  const auto* lt_and = std::get_if<Setp::UnsignedBoolean>(&combined->variant);
   ASSERT_NE(lt_and, nullptr);
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
-  EXPECT_TRUE(lt_and->combine.value.negated);
+  const auto& operands =
+      std::get<Setp::UnsignedBoolean::SingleOperands>(lt_and->operands);
+  EXPECT_TRUE(std::get<ResolvedPredicate>(operands.combine.value).negated);
 }
 
-TEST(ResolveSetp, SelectsM12GeS32Variant) {
+TEST(ResolveSetp, SelectsCompleteSignedVariant) {
   const auto resolved =
       resolve<Setp>(parse_instruction("setp.ge.s32 %p0, %r0, -1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* ge = std::get_if<Setp::GeS32>(&resolved->variant);
+  const auto* ge = std::get_if<Setp::Signed>(&resolved->variant);
   ASSERT_NE(ge, nullptr);
   EXPECT_EQ(ge->comparison.value, ComparisonOperator::Ge);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(ge->src2.value));
 }
 
-TEST(ResolveSetp, SelectsFrozenDualPredicateVariants) {
+TEST(ResolveSetp, SelectsCompleteDualPredicateVariants) {
   const auto equality_ast = parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
   const auto equality = resolve<Setp>(equality_ast);
   ASSERT_TRUE(equality.has_value()) << equality.error().message;
-  const auto* eq = std::get_if<Setp::EqU32Pair>(&equality->variant);
+  const auto* eq = std::get_if<Setp::Unsigned>(&equality->variant);
   ASSERT_NE(eq, nullptr);
   EXPECT_EQ(eq->comparison.value, ComparisonOperator::Eq);
-  EXPECT_EQ(eq->dst.value.first.register_ref.spelling, "%p0");
-  EXPECT_EQ(eq->dst.value.second.register_ref.spelling, "%p1");
 
   const auto combined_ast =
       parse_instruction("setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;");
   const auto combined = resolve<Setp>(combined_ast);
   ASSERT_TRUE(combined.has_value()) << combined.error().message;
-  const auto* lt_and = std::get_if<Setp::LtAndS32Pair>(&combined->variant);
+  const auto* lt_and = std::get_if<Setp::SignedBoolean>(&combined->variant);
   ASSERT_NE(lt_and, nullptr);
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
-  EXPECT_FALSE(lt_and->combine.value.negated);
-  EXPECT_EQ(lt_and->combine.value.register_ref.spelling, "%p2");
+  const auto& operands =
+      std::get<Setp::SignedBoolean::PairOperands>(lt_and->operands);
+  const auto& combine = std::get<ResolvedPredicate>(operands.combine.value);
+  EXPECT_FALSE(combine.negated);
+  EXPECT_EQ(combine.register_ref.spelling, "%p2");
 }
 
 TEST(ResolveSetp, RejectsUnfrozenDualPredicateForms) {
   for (const auto source : {
-           "setp.eq.u32 %p0|_, %r0, %r1;",
-           "setp.lt.and.s32 %p0|%p1, %s0, %s1, !%p2;",
+           "setp.eq.u32 _|_, %r0, %r1;",
        }) {
     const auto selected = resolve<Setp>(parse_instruction(source));
     SCOPED_TRACE(source);
@@ -1922,11 +1929,12 @@ TEST(ResolveSetp, RejectsUnfrozenDualPredicateForms) {
   EXPECT_FALSE(non_predicate.has_value());
 }
 
-TEST(ResolveSetp, RejectsUnfrozenGeS32Forms) {
+TEST(ResolveSetp, RejectsIllegalCompleteForms) {
   for (const auto source : {
-           "setp.ge.u32 %p0, %r0, %r1;",
-           "setp.ge.and.s32 %p0, %r0, %r1, %p1;",
-           "setp.ge.s32 %p0|%p1, %r0, %r1;",
+           "setp.lo.s32 %p0, %r0, %r1;",
+           "setp.equ.u32 %p0, %r0, %r1;",
+           "setp.ftz.f64 %p0, %fd0, %fd1;",
+           "setp.eq.f16x2 %p0, %r0, %r1;",
            "setp.ge.s32 %r0, %r1, %r2;",
        }) {
     const auto selected = resolve<Setp>(parse_instruction(source));
@@ -2036,10 +2044,9 @@ TEST(ResolveMul, SelectsM12WideS32Variant) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(wide->src2.value));
 }
 
-TEST(ResolveMul, RejectsUnfrozenVariants) {
+TEST(ResolveMul, RejectsIllegalWide64Variants) {
   for (const auto source :
-       {"mul.u32 %r0, %r1, %r2;", "mul.lo.s32 %r0, %r1, %r2;",
-        "mul.wide.s64 %rd0, %r1, %r2;"}) {
+       {"mul.u32 %r0, %r1, %r2;", "mul.wide.s64 %rd0, %r1, %r2;"}) {
     const auto selected = selectVariant<Mul>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -2050,25 +2057,28 @@ TEST(ResolveMul, SelectsFrozenRnF32Variant) {
   const auto resolved =
       resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Mul::RnF32>(&resolved->variant), nullptr);
-  EXPECT_EQ(Mul::RnF32::rounding, RoundingMode::Rn);
+  const auto* mul = std::get_if<Mul::RnF32>(&resolved->variant);
+  ASSERT_NE(mul, nullptr);
+  EXPECT_EQ(mul->rounding.value, RoundingMode::Rn);
   EXPECT_EQ(Mul::RnF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMul, RejectsUnfrozenFloatingVariants) {
+TEST(ResolveMul, RejectsIllegalFloatingModifierCombinations) {
   for (const auto source :
-       {"mul.f32 %f0, %f1, %f2;", "mul.rz.f32 %f0, %f1, %f2;",
-        "mul.rn.f64 %fd0, %fd1, %fd2;"}) {
+       {"mul.sat.f64 %fd0, %fd1, %fd2;", "mul.sat.f32x2 %rd0, %rd1, %rd2;"}) {
     const auto selected = selectVariant<Mul>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
 }
 
-TEST(ResolveMul, RejectsImmediateFloatingOperand) {
+TEST(ResolveMul, SelectsImmediateFloatingOperand) {
   const auto resolved =
       resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
-  ASSERT_FALSE(resolved.has_value());
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto* mul = std::get_if<Mul::RnF32>(&resolved->variant);
+  ASSERT_NE(mul, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src1.value));
 }
 
 TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
@@ -2781,13 +2791,13 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
       parse_instruction("ld.global.nc.L1::no_allocate.u32 %r0, [%rd0];");
   const auto resolved = resolve<Ld>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant),
-            nullptr);
+  const auto* no_allocate =
+      std::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant);
+  ASSERT_NE(no_allocate, nullptr);
   EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::state_space, MemoryStateSpace::Global);
   EXPECT_TRUE(Ld::GlobalNcL1NoAllocateU32::nc);
-  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::eviction_priority,
-            EvictionPriority::NoAllocate);
-  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::type, ScalarType::U32);
+  EXPECT_EQ(no_allocate->eviction_priority.value, EvictionPriority::NoAllocate);
+  EXPECT_EQ(no_allocate->type.value, ScalarType::U32);
 
   const auto dispatched = resolveInstruction(ast);
   ASSERT_TRUE(dispatched.has_value()) << dispatched.error().message;
@@ -2795,9 +2805,14 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
 
   for (const auto source : {
            "ld.global.L1::no_allocate.u32 %r0, [%rd0];",
-           "ld.global.nc.L2::evict_first.u32 %r0, [%rd0];",
            "ld.global.nc.L1::evict_first.u32 %r0, [%rd0];",
            "ld.global.nc.L1::no_allocate.b32 %r0, [%rd0];",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_TRUE(selectVariant<Ld>(parse_instruction(source)).has_value());
+  }
+  for (const auto source : {
+           "ld.global.nc.L2::evict_first.u32 %r0, [%rd0];",
            "ld.global.ca.nc.L1::no_allocate.u32 %r0, [%rd0];",
        }) {
     SCOPED_TRACE(source);
@@ -3180,7 +3195,7 @@ TEST(ResolvedDescriptorAdd, OwnsResolvedFieldBindings) {
   const auto& descriptor = Add::get_resolved_descriptor();
 
   ASSERT_EQ(descriptor.opcode_name, "add");
-  ASSERT_EQ(descriptor.variants.size(), 9U);
+  ASSERT_EQ(descriptor.variants.size(), 11U);
 
   const auto packed_optional_sat_it =
       std::ranges::find_if(descriptor.variants, [](const auto& variant) {

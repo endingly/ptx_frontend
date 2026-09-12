@@ -3,6 +3,7 @@
 #include <expected>
 #include <optional>
 #include <source_location>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -74,6 +75,8 @@ struct ResolveContext {
   binding::ScopeId scope;
   std::optional<binding::ScopeId> function_scope;
   bool function_is_entry{};
+  /** Bound storage identities carrying a PTX `.unified` attribute. */
+  std::span<const binding::SymbolId> unified_storage_symbols;
 };
 
 /** Constrain generated instruction records to their public descriptor accessors. */

@@ -244,6 +244,10 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
         } else if constexpr (std::same_as<Node, syntax_ast::AstImmediate>) {
           tag(output, "operand-immediate");
           immediate(output, node);
+        } else if constexpr (std::same_as<Node,
+                                          syntax_ast::AstNegatedImmediate>) {
+          tag(output, "operand-negated-immediate");
+          immediate(output, node.immediate);
         } else if constexpr (std::same_as<Node, syntax_ast::AstAddress>) {
           tag(output, "operand-address");
           number(output, node.bracketed);

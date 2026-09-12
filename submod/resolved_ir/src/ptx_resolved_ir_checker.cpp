@@ -152,6 +152,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.cache_operator == actual.cache_operator;
     case ModifierValueKind::EvictionPriority:
       return descriptor.eviction_priority == actual.eviction_priority;
+    case ModifierValueKind::PrefetchSize:
+      return descriptor.prefetch_size == actual.prefetch_size;
     case ModifierValueKind::VectorArity:
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:
@@ -510,6 +512,16 @@ CheckResult check_operands(
               "Resolved operand '{}' has a shape not accepted by this "
               "instruction layout.",
               descriptor.target_field_id),
+      });
+    }
+    if (operand->actual_shape == OperandShape::PredicatePair &&
+        !operand->predicate_pair_has_destination) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format("Predicate-pair operand '{}' must retain at "
+                                 "least one destination.",
+                                 descriptor.target_field_id),
       });
     }
     if (operand->is_sink) {
@@ -1138,14 +1150,19 @@ CheckResult check_memory_consistency(
       descriptor.mmio_field_id.empty()
           ? nullptr
           : find_field(fields, descriptor.mmio_field_id);
-  const FieldView* cache_field = find_field(fields, descriptor.cache_field_id);
+  const FieldView* cache_field =
+      descriptor.cache_field_id.empty()
+          ? nullptr
+          : find_field(fields, descriptor.cache_field_id);
   const OperandView* address =
       find_operand(operands, descriptor.address_field_id);
   if (semantics_field == nullptr || scope_field == nullptr ||
-      cache_field == nullptr || address == nullptr ||
-      !semantics_field->memory_consistency || !scope_field->memory_scope ||
-      !cache_field->cache_operator ||
-      (mmio_field != nullptr && !mmio_field->bool_value)) {
+      address == nullptr || !semantics_field->memory_consistency ||
+      !scope_field->memory_scope ||
+      (!descriptor.cache_field_id.empty() &&
+       (cache_field == nullptr || !cache_field->cache_operator)) ||
+      (!descriptor.mmio_field_id.empty() &&
+       (mmio_field == nullptr || !mmio_field->bool_value))) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
@@ -1157,8 +1174,8 @@ CheckResult check_memory_consistency(
   const MemoryConsistency semantics = *semantics_field->memory_consistency;
   const MemoryScope scope = *scope_field->memory_scope;
   const bool mmio = mmio_field != nullptr && *mmio_field->bool_value;
-  const bool cached =
-      *cache_field->cache_operator != CacheOperator::Unspecified;
+  const bool cached = cache_field != nullptr && *cache_field->cache_operator !=
+                                                    CacheOperator::Unspecified;
   CheckDiagnostics diagnostics;
   const auto violation = [&](const FieldView& field, std::string_view message) {
     diagnostics.push_back(CheckDiagnostic{
@@ -1171,6 +1188,16 @@ CheckResult check_memory_consistency(
   const bool scoped = semantics == MemoryConsistency::Relaxed ||
                       semantics == MemoryConsistency::Acquire ||
                       semantics == MemoryConsistency::Release;
+  const FieldView* type_field = find_field(fields, descriptor.type_field_id);
+  if (scope == MemoryScope::Sys && type_field != nullptr &&
+      type_field->scalar_type && *type_field->scalar_type == ScalarType::B128 &&
+      context.target.ptx_version < PtxVersion{8, 4}) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = diagnostic_range(type_field->locations, context),
+        .message = "The .sys scope with .b128 requires PTX ISA >= 8.4.",
+    });
+  }
   if (scoped != (scope != MemoryScope::None)) {
     violation(scoped ? *semantics_field : *scope_field,
               scoped ? "Memory semantics requires an explicit scope."
@@ -1195,6 +1222,10 @@ CheckResult check_memory_consistency(
   const bool volatile_local = semantics == MemoryConsistency::Volatile &&
                               state_space == MemoryStateSpace::Local;
   const bool strong = scoped || semantics == MemoryConsistency::Volatile;
+  if (strong && address->address_unified) {
+    violation(*semantics_field,
+              "An .unified address is only valid with weak memory semantics.");
+  }
   if (strong && state_space && !known_global_or_shared && !volatile_local) {
     violation(
         *semantics_field,
@@ -1210,8 +1241,21 @@ CheckResult check_memory_consistency(
     });
   }
   if (mmio) {
-    if (semantics != MemoryConsistency::Relaxed || scope != MemoryScope::Sys) {
-      violation(*mmio_field, "mmio requires .relaxed.sys semantics.");
+    const auto mmio_semantic = std::ranges::find_if(
+        descriptor.mmio_semantics, [semantics](const auto& candidate) {
+          return candidate.semantics == semantics;
+        });
+    if (mmio_semantic == descriptor.mmio_semantics.end() ||
+        scope != MemoryScope::Sys) {
+      violation(*mmio_field,
+                "mmio requires a descriptor-admitted semantic and .sys scope.");
+    } else if (!is_available(mmio_semantic->availability, context.target)) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedAvailability,
+          .range = diagnostic_range(semantics_field->locations, context),
+          .message = "The selected mmio memory semantic is unavailable for the "
+                     "target.",
+      });
     }
     if (state_space && *state_space != MemoryStateSpace::Global) {
       violation(*mmio_field,
@@ -1220,6 +1264,84 @@ CheckResult check_memory_consistency(
     }
   }
 
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_unified_address_suffix(const VariantDescriptor& descriptor,
+                                         std::span<const FieldView> fields,
+                                         std::span<const OperandView> operands,
+                                         const Context& context) {
+  CheckDiagnostics diagnostics;
+  for (const OperandView& operand : operands) {
+    if (operand.address_unified && !descriptor.permits_unified_address) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand.locations, context),
+          .message = "This instruction form does not admit an .unified address "
+                     "suffix.",
+      });
+    }
+    if (operand.address_unified) {
+      if (context.target.ptx_version < PtxVersion{8, 0}) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+            .range = diagnostic_range(operand.locations, context),
+            .message = "The .unified address suffix requires PTX ISA >= 8.0.",
+        });
+      }
+      if (context.target.sm_version < 90) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+            .range = diagnostic_range(operand.locations, context),
+            .message = "The .unified address suffix requires SM >= 90.",
+        });
+      }
+      std::optional<MemoryStateSpace> effective_space =
+          operand.address_state_space;
+      for (const FieldView& field : fields) {
+        if (field.memory_state_space) {
+          effective_space = *field.memory_state_space;
+          break;
+        }
+      }
+      if (effective_space && *effective_space != MemoryStateSpace::Global &&
+          *effective_space != MemoryStateSpace::Generic) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = diagnostic_range(operand.locations, context),
+            .message = "The .unified address suffix requires a global or "
+                       "generic address.",
+        });
+      }
+    }
+    if (descriptor.unified_address_access ==
+            VariantDescriptor::UnifiedAddressAccess::Read &&
+        operand.address_declaration_is_unified &&
+        *operand.address_declaration_is_unified != operand.address_unified) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand.locations, context),
+          .message = *operand.address_declaration_is_unified
+                         ? "An address of a .unified declaration requires an "
+                           ".unified suffix."
+                         : "An .unified address suffix requires a .unified "
+                           "declaration.",
+      });
+    }
+    if (descriptor.unified_address_access ==
+            VariantDescriptor::UnifiedAddressAccess::Write &&
+        operand.address_declaration_is_unified &&
+        *operand.address_declaration_is_unified) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand.locations, context),
+          .message = "A .unified declaration is read-only and cannot be a "
+                     "store address.",
+      });
+    }
+  }
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
@@ -1332,9 +1454,9 @@ CheckResult check_memory_vector(
 
   const size_t payload_bits = static_cast<size_t>(vector->vector_arity) *
                               scalar_size_of(*type->scalar_type) * 8u;
-  const bool modern_candidate = vector->vector_arity > 4 ||
-                                payload_bits > 128 ||
-                                vector->vector_sink_count != 0;
+  const bool modern_candidate =
+      descriptor.require_modern || vector->vector_arity > 4 ||
+      payload_bits > 128 || vector->vector_sink_count != 0;
   if (!modern_candidate)
     return {};
 
@@ -1346,6 +1468,17 @@ CheckResult check_memory_vector(
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = vector_range,
         .message = "Modern memory vectors require an exact 256-bit payload.",
+    });
+  }
+  const bool legal_modern_shape =
+      (vector->vector_arity == 8 && scalar_size_of(*type->scalar_type) == 4) ||
+      (vector->vector_arity == 4 && scalar_size_of(*type->scalar_type) == 8);
+  if (!legal_modern_shape) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = vector_range,
+        .message = "Modern memory vectors allow only .v8 32-bit or .v4 64-bit "
+                   "elements.",
     });
   }
 

@@ -379,9 +379,19 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
   if (!close)
     return std::unexpected(close.error());
   last = *close;
+  std::optional<TokenId> unified;
+  if (token(peek()).kind == TokenKind::DotIdent &&
+      token(peek()).text == ".unified") {
+    unified = consume();
+    last = *unified;
+  }
 
-  return syntax_cst::CstOperand{syntax_cst::CstAddress{
-      open, std::move(base), std::move(offset), *close, {first, last + 1}}};
+  return syntax_cst::CstOperand{syntax_cst::CstAddress{open,
+                                                       std::move(base),
+                                                       std::move(offset),
+                                                       *close,
+                                                       unified,
+                                                       {first, last + 1}}};
 }
 
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
@@ -585,6 +595,20 @@ std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseOperand() {
   if (token(peek()).kind == TokenKind::Exclamation) {
     const TokenId exclamation = consume();
+    if (atImmediateStart()) {
+      auto immediate = parseImmediate();
+      if (!immediate)
+        return std::unexpected(immediate.error());
+      if (!isIntegerLiteral(token(immediate->literal).kind) &&
+          token(immediate->literal).kind != TokenKind::WarpSz) {
+        return std::unexpected(CstParseDiagnostic{
+            token(immediate->literal).range,
+            "expected integer predicate constant after '!'"});
+      }
+      const TokenId last = immediate->token_range.last;
+      return syntax_cst::CstOperand{syntax_cst::CstNegatedImmediate{
+          exclamation, std::move(*immediate), {exclamation, last}}};
+    }
     auto name = expect(TokenKind::Ident, "predicate operand");
     if (!name)
       return std::unexpected(name.error());
@@ -637,6 +661,7 @@ PtxCstParser::parseOperand() {
         syntax_cst::CstAddress{std::nullopt,
                                base,
                                std::move(offset),
+                               std::nullopt,
                                std::nullopt,
                                {*identifier, last + 1}}};
   }

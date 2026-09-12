@@ -87,6 +87,31 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32}
 
+  binary_wide_u16:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u16}
+
+  binary_wide_s16:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s16}
+
+  binary_b16_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+
+  binary_b32_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+
+  binary_b64_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b64, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b64, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b64, register_width: exact}
+
   ternary_arith:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
@@ -769,12 +794,13 @@ instructions:
 
   - opcode: mul
     section: "9.7.3.5"
-    doc: "Frozen round-to-nearest single-precision multiply."
-    syntax: "mul.rn.f32 dst, src1, src2"
-    operands: $binary_float_register
+    doc: "Single-, double-, and packed single-precision multiply."
+    syntax: >-
+      mul{.rnd}{.ftz}{.sat}.f32 | mul{.rnd}{.ftz}.f32x2 |
+      mul{.rnd}.f64 dst, src1, src2
+    operands: $binary_float_scalar
     variants:
       - name: mul_rn_f32
-        description: "Register-only round-to-nearest single-precision multiply."
         availability:
           ptx: "1.0"
           sm: 0
@@ -782,16 +808,99 @@ instructions:
           - name: rounding
             kind: rounding
             domain: rounding_modes
-            presence: fixed
-            value: rn
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: f32
+            presence: optional
+            default: rn
+            values:
+              - rn
+              - rz
+              - value: rm
+                availability: {ptx: "1.0", sm: 20}
+              - value: rp
+                availability: {ptx: "1.0", sm: 20}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
+          - {ptx: "mul.f32 %f0, %f1, 1.0;", valid: true}
           - ptx: "mul.rn.f32 %f0, %f1, %f2;"
             valid: true
+          - {ptx: "mul.rz.ftz.sat.f32 %f0, %f1, %f2;", valid: true}
+
+      - name: mul_f32x2
+        operands: $binary_b64_register_exact
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [$rounding_modes]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32x2}
+        examples:
+          - {ptx: "mul.f32x2 %rd0, %rd1, %rd2;", valid: true}
+          - {ptx: "mul.rp.ftz.f32x2 %rd0, %rd1, %rd2;", valid: true}
+
+      - name: mul_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [$rounding_modes]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: sat, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "mul.f64 %fd0, %fd1, 1.0;", valid: true}
+          - {ptx: "mul.rm.f64 %fd0, %fd1, %fd2;", valid: true}
+
+  - opcode: mul
+    section: "9.7.4.3"
+    doc: "Half-precision and bfloat multiply."
+    syntax: "mul{.rn}{.ftz}{.sat}.{f16|f16x2} | mul{.rn}.{bf16|bf16x2} dst, src1, src2"
+    variants:
+      - name: mul_half
+        operands: $binary_float_register
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "mul.f16 %h0, %h1, %h2;", valid: true}
+          - {ptx: "mul.rn.ftz.sat.f16 %h0, %h1, %h2;", valid: true}
+
+      - name: mul_half_x2
+        operands: $binary_b32_register_exact
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "mul.f16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "mul.rn.ftz.sat.f16x2 %r0, %r1, %r2;", valid: true}
+
+      - name: mul_bfloat
+        operands: $binary_b16_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: sat, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "mul.bf16 %h0, %h1, %h2;", valid: true}
+          - {ptx: "mul.rn.bf16 %h0, %h1, %h2;", valid: true}
+
+      - name: mul_bfloat_x2
+        operands: $binary_b32_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: sat, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "mul.bf16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "mul.rn.bf16x2 %r0, %r1, %r2;", valid: true}
 
   - opcode: fma
     section: "9.7.3.6"
@@ -1111,8 +1220,8 @@ instructions:
 
   - opcode: mul
     section: "9.7.1.3"
-    doc: "Frozen low, high, and wide 32-bit integer multiply."
-    syntax: "mul.lo.u32 | mul.hi.u32 | mul.wide.u32 | mul.wide.s32 dst, src1, src2"
+    doc: "Low, high, and wide integer multiply."
+    syntax: "mul.{hi|lo}.{u16|u32|u64|s16|s32|s64} | mul.wide.{u16|u32|s16|s32} dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: mul_lo_u32
@@ -1123,6 +1232,41 @@ instructions:
         examples:
           - {ptx: "mul.lo.u32 %r0, %r1, 7;", valid: true}
 
+      - name: mul_lo_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}
+        examples: [{ptx: "mul.lo.u16 %h0, %h1, 7;", valid: true}]
+
+      - name: mul_lo_u64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples: [{ptx: "mul.lo.u64 %rd0, %rd1, 7;", valid: true}]
+
+      - name: mul_lo_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}
+        examples: [{ptx: "mul.lo.s16 %h0, %h1, -7;", valid: true}]
+
+      - name: mul_lo_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples: [{ptx: "mul.lo.s32 %r0, %r1, -7;", valid: true}]
+
+      - name: mul_lo_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        examples: [{ptx: "mul.lo.s64 %rd0, %rd1, -7;", valid: true}]
+
       - name: mul_hi_u32
         availability: {ptx: "1.0", sm: 0}
         modifiers:
@@ -1130,6 +1274,41 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "mul.hi.u32 %r0, %r1, %r2;", valid: true}
+
+      - name: mul_hi_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}
+        examples: [{ptx: "mul.hi.u16 %h0, %h1, %h2;", valid: true}]
+
+      - name: mul_hi_u64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples: [{ptx: "mul.hi.u64 %rd0, %rd1, %rd2;", valid: true}]
+
+      - name: mul_hi_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}
+        examples: [{ptx: "mul.hi.s16 %h0, %h1, %h2;", valid: true}]
+
+      - name: mul_hi_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples: [{ptx: "mul.hi.s32 %r0, %r1, %r2;", valid: true}]
+
+      - name: mul_hi_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        examples: [{ptx: "mul.hi.s64 %rd0, %rd1, %rd2;", valid: true}]
 
       - name: mul_wide_u32
         operands: $binary_wide_u32
@@ -1148,6 +1327,22 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         examples:
           - {ptx: "mul.wide.s32 %rd0, %r1, %r2;", valid: true}
+
+      - name: mul_wide_u16
+        operands: $binary_wide_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}
+        examples: [{ptx: "mul.wide.u16 %r0, %h1, %h2;", valid: true}]
+
+      - name: mul_wide_s16
+        operands: $binary_wide_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}
+        examples: [{ptx: "mul.wide.s16 %r0, %h1, %h2;", valid: true}]
 
   - opcode: mad
     section: "9.7.1.4"
@@ -1430,3 +1625,99 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         examples:
           - {ptx: "brev.b32 %r0, %r1;", valid: true}
+
+  - opcode: add
+    section: "9.7.2.1"
+    doc: "Extended-precision arithmetic with an explicit implicit CC.CF contract."
+    syntax: "add.cc.{u32|s32|u64|s64} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: add_cc_32
+        availability: {ptx: "1.2", sm: 0}
+        condition_code_effect: carry_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: add_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+
+  - opcode: addc
+    section: "9.7.2.2"
+    doc: "Extended-precision arithmetic with an explicit implicit CC.CF contract."
+    syntax: "addc{.cc}.{u32|s32|u64|s64} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: addc_plain_32
+        availability: {ptx: "1.2", sm: 0}
+        condition_code_effect: carry_in
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: addc_plain_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_in
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+      - name: addc_cc_32
+        availability: {ptx: "1.2", sm: 0}
+        condition_code_effect: carry_in_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: addc_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_in_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+
+  - opcode: sub
+    section: "9.7.2.3"
+    doc: "Extended-precision arithmetic with an explicit implicit CC.CF contract."
+    syntax: "sub.cc.{u32|s32|u64|s64} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: sub_cc_32
+        availability: {ptx: "1.2", sm: 0}
+        condition_code_effect: borrow_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: sub_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: borrow_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+
+  - opcode: subc
+    section: "9.7.2.4"
+    doc: "Extended-precision arithmetic with an explicit implicit CC.CF contract."
+    syntax: "subc{.cc}.{u32|s32|u64|s64} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: subc_plain_32
+        availability: {ptx: "1.2", sm: 0}
+        condition_code_effect: borrow_in
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: subc_plain_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: borrow_in
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+      - name: subc_cc_32
+        availability: {ptx: "1.2", sm: 0}
+        condition_code_effect: borrow_in_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: subc_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: borrow_in_out
+        modifiers:
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}

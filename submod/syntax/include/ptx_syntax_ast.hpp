@@ -46,6 +46,12 @@ struct AstImmediate {
   AstImmediateKind kind = AstImmediateKind::DecimalInteger;
 };
 
+/** An integer instruction operand complemented as a predicate constant. */
+struct AstNegatedImmediate {
+  AstImmediate immediate;
+  SourceRange range;
+};
+
 struct AstAddressOffset {
   enum class Operator : uint8_t { Add, Subtract };
 
@@ -59,6 +65,10 @@ struct AstAddress {
   std::variant<AstIdentifierRef, AstImmediate> base;
   std::optional<AstAddressOffset> offset;
   bool bracketed{};
+  /** PTX `.unified` address suffix independent of declaration attributes. */
+  bool unified{};
+  /** Suffix location; empty when `unified` is false. */
+  SourceRange unified_range;
   SourceRange range;
 };
 
@@ -116,8 +126,8 @@ struct AstRegisterPredicatePair {
 
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand =
-    std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
-                 AstAddress, AstVectorMember, AstVectorPack,
+    std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
+                 AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
                  AstCallParameterList, AstCallTarget, AstCallTargetSet,
                  AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
 

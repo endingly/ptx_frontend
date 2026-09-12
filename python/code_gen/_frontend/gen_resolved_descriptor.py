@@ -214,6 +214,22 @@ def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
                   .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
                   .cache_operator = {cache_operator},
               }}"""
+    if default.value_cpp_type == "EvictionPriority" and isinstance(
+        default.value, str
+    ):
+        value = cpp_value(CppDomain.EVICTION_PRIORITIES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "EvictionPriority")},
+                  .eviction_priority = {value},
+              }}"""
+    if default.value_cpp_type == "PrefetchSize" and isinstance(
+        default.value, str
+    ):
+        value = cpp_value(CppDomain.PREFETCH_SIZES, default.value)
+        return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "PrefetchSize")},
+                  .prefetch_size = {value},
+              }}"""
     if default.value_cpp_type == "MemoryStateSpace" and isinstance(
         default.value, str
     ):
@@ -486,6 +502,7 @@ def _emit_resolved_variant_descriptor(variant: ResolvedVariant) -> str:
     name = to_file_stem(variant.variant_id)
     return f"""          check_end::ResolvedVariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
+              .condition_code_effect = {variant.condition_code_cpp_value},
               .fields = {name}_fields,
               .modifier_bindings = {name}_modifier_bindings,
               .operand_layouts = {name}_operand_layouts,

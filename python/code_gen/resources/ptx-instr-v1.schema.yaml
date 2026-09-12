@@ -386,6 +386,7 @@ $defs:
       - evict_normal
       - evict_first
       - evict_last
+      - evict_unchanged
       - no_allocate
 
   prefetch_size:
@@ -643,6 +644,8 @@ $defs:
     enum:
       - reg
       - pred
+      - pred_or_sink
+      - pred_source
       - pred_or_sreg
       - pred_or_not
       - sreg
@@ -657,6 +660,7 @@ $defs:
       - reg_or_sink
       - shfl_dest
       - pred_pair
+      - pred_pair_or_sink
       - mov_scalar_src
       - cluster_address
       - vector_reg
@@ -1302,6 +1306,20 @@ $defs:
       state_space_modifier:
         $ref: "#/$defs/schema_identifier"
 
+      mmio_semantics:
+        type: array
+        items:
+          oneOf:
+            - $ref: "#/$defs/schema_identifier"
+            - type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                value:
+                  $ref: "#/$defs/schema_identifier"
+                availability:
+                  $ref: "#/$defs/availability"
+
       type_modifier:
         $ref: "#/$defs/schema_identifier"
 
@@ -1310,6 +1328,10 @@ $defs:
 
       vector_operand:
         $ref: "#/$defs/schema_identifier"
+
+      require_modern:
+        description: "Require a modern 256-bit memory vector for this constraint."
+        type: boolean
 
       immediate_operand:
         $ref: "#/$defs/schema_identifier"
@@ -1455,6 +1477,11 @@ $defs:
       - availability
 
     properties:
+      condition_code_effect:
+        description: "Implicit CC.CF access when the predicated instruction executes."
+        type: string
+        enum: [none, carry_out, carry_in, carry_in_out, borrow_out, borrow_in, borrow_in_out]
+
       name:
         $ref: "#/$defs/schema_identifier"
 
@@ -1530,6 +1557,18 @@ $defs:
 
       rule:
         $ref: "#/$defs/semantic_rule"
+
+      permits_unified_address:
+        description: "Whether this variant admits a bracket-address `.unified` suffix."
+        type: boolean
+
+      unified_address_access:
+        description: >
+          Declaration-level operation policy for a known `.unified` address:
+          `read` requires the suffix, `write` rejects the read-only declaration,
+          and `none` permits address construction without either rule.
+        type: string
+        enum: [none, read, write]
 
       constraints:
         type: array

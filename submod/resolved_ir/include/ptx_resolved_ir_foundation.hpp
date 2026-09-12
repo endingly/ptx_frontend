@@ -25,6 +25,21 @@
 
 namespace ptx_frontend::resolved_ir {
 
+/**
+ * Implicit CC.CF access for an executed instruction. Predication gates both
+ * explicit results and this effect. Incoming CC.CF is not preserved by calls.
+ * Carry and borrow interpret the same architectural bit, not separate state.
+ */
+enum class ConditionCodeEffect : uint8_t {
+  None,
+  CarryOut,
+  CarryIn,
+  CarryInOut,
+  BorrowOut,
+  BorrowIn,
+  BorrowInOut,
+};
+
 /** State-space identity used by resolved modifiers and effective addresses. */
 enum class MemoryStateSpace : uint8_t {
   Invalid,
@@ -68,6 +83,7 @@ using base::MbarrierLayout;
 using base::MbarrierPhaseType;
 using base::MemoryConsistency;
 using base::MemoryScope;
+using base::PrefetchSize;
 using base::ProxyKindPair;
 using base::RoundingMode;
 using base::ScalarType;
@@ -216,6 +232,7 @@ struct FieldView {
   std::optional<bool> bool_value;
   std::optional<CacheOperator> cache_operator;
   std::optional<EvictionPriority> eviction_priority;
+  std::optional<PrefetchSize> prefetch_size;
   std::optional<ScalarType> scalar_type;
   std::optional<ComparisonOperator> comparison_operator;
   std::optional<BooleanOperator> boolean_operator;
@@ -247,11 +264,16 @@ struct OperandView {
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
   bool is_sink = false;
+  /** Whether a predicate-pair value retains at least one destination lane. */
+  bool predicate_pair_has_destination = true;
   std::array<ScalarType, 2> predicate_pair_types{};
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
   std::optional<MemoryStateSpace> address_state_space;
   std::optional<uint64_t> address_alignment;
+  bool address_unified = false;
+  /** Known only for declaration-bound address bases. */
+  std::optional<bool> address_declaration_is_unified;
   EnclosingFunctionKind enclosing_function_kind =
       EnclosingFunctionKind::Unknown;
   ParameterDirection parameter_direction = ParameterDirection::None;
@@ -288,6 +310,7 @@ enum class ModifierValueKind : uint8_t {
   BooleanOperator,
   CacheOperator,
   EvictionPriority,
+  PrefetchSize,
   VectorArity,
   MemoryStateSpace,
   MemoryConsistency,
@@ -307,6 +330,7 @@ struct ModifierValueAvailabilityDescriptor {
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   EvictionPriority eviction_priority = EvictionPriority::Invalid;
+  PrefetchSize prefetch_size = PrefetchSize::None;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
@@ -330,6 +354,7 @@ struct ModifierValueDomainDescriptor {
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   EvictionPriority eviction_priority = EvictionPriority::Invalid;
+  PrefetchSize prefetch_size = PrefetchSize::None;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
@@ -349,6 +374,7 @@ struct ModifierValueView {
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   EvictionPriority eviction_priority = EvictionPriority::Invalid;
+  PrefetchSize prefetch_size = PrefetchSize::None;
   VectorArity vector_arity = VectorArity::Invalid;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   MemoryConsistency memory_consistency = MemoryConsistency::Omitted;
@@ -370,13 +396,25 @@ struct VariantDescriptor {
   std::span<const OperandTypeCompatibilityDescriptor>
       operand_type_compatibilities;
   std::string_view rule_id;
+  /** Whether a bracket-address `.unified` suffix is legal for this variant. */
+  bool permits_unified_address = false;
+  /** Operation contract applied to known `.unified` declaration addresses. */
+  enum class UnifiedAddressAccess : uint8_t { None, Read, Write };
+  UnifiedAddressAccess unified_address_access = UnifiedAddressAccess::None;
+  /** One MMIO semantic alternative and its target requirement. */
+  struct MmioSemanticDescriptor {
+    MemoryConsistency semantics = MemoryConsistency::Omitted;
+    AvailabilityDescriptor availability;
+  };
   struct MemoryConsistencyDescriptor {
     std::string_view semantics_field_id;
     std::string_view scope_field_id;
     std::string_view mmio_field_id;
     std::string_view cache_field_id;
     std::string_view address_field_id;
+    std::string_view type_field_id;
     std::string_view state_space_field_id;
+    std::span<const MmioSemanticDescriptor> mmio_semantics;
   } memory_consistency;
   std::span<const AddressAlignmentConstraint> address_alignments;
   struct MemoryVectorDescriptor {
@@ -385,6 +423,8 @@ struct VariantDescriptor {
     std::string_view address_field_id;
     std::string_view state_space_field_id;
     AvailabilityDescriptor availability;
+    /** Require a PTX 8.8 256-bit vector rather than legacy vector forms. */
+    bool require_modern = false;
   } memory_vector;
   struct ImmediateValueDescriptor {
     std::string_view operand_field_id;
@@ -418,6 +458,7 @@ using base::MbarrierLayout;
 using base::MbarrierPhaseType;
 using base::MemoryConsistency;
 using base::MemoryScope;
+using base::PrefetchSize;
 using base::ProxyKindPair;
 using base::RoundingMode;
 using base::ScalarType;
@@ -499,8 +540,22 @@ struct ResolvedSpecialRegisterRef {
   std::optional<base::VectorComponent> component;
   bool operator==(const ResolvedSpecialRegisterRef&) const = default;
 };
+
+/** Canonical truth value of an integer predicate-source constant. */
+struct ResolvedPredicateConstant {
+  bool value{};
+  bool operator==(const ResolvedPredicateConstant&) const = default;
+};
+
+/** A predicate special-register source with its source-level complement. */
+struct ResolvedPredicateSpecialRegister {
+  ResolvedSpecialRegisterRef register_ref;
+  bool negated{};
+  bool operator==(const ResolvedPredicateSpecialRegister&) const = default;
+};
 using ResolvedPredicateSource =
-    std::variant<ResolvedPredicate, ResolvedSpecialRegisterRef>;
+    std::variant<ResolvedPredicate, ResolvedPredicateSpecialRegister,
+                 ResolvedPredicateConstant>;
 struct ResolvedVectorRegisterRef {
   ResolvedRegisterRef register_ref;
   bool operator==(const ResolvedVectorRegisterRef&) const = default;
@@ -570,6 +625,8 @@ struct ResolvedSymbolRef {
   std::optional<uint64_t> address_alignment;
   /** Target requirement contributed by this address value, if any. */
   std::optional<checker::AvailabilityDescriptor> address_availability;
+  /** Declaration metadata needed for AST-free `.unified` validation. */
+  std::optional<bool> declaration_is_unified;
   bool operator==(const ResolvedSymbolRef&) const = default;
 };
 enum class ResolvedAddressOffsetOperator : uint8_t { Add, Subtract };
@@ -589,6 +646,10 @@ struct ResolvedAddress {
       EnclosingFunctionKind::Unknown;
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
+  /** True when source spelled the bracket-address `.unified` suffix. */
+  bool unified = false;
+  /** Suffix provenance for checker diagnostics. */
+  SourceRange unified_range;
   bool operator==(const ResolvedAddress&) const = default;
 };
 struct ResolvedOperandLayoutTag {
@@ -609,6 +670,20 @@ struct ResolvedPredicatePair {
   ResolvedPredicate first;
   ResolvedPredicate second;
   bool operator==(const ResolvedPredicatePair&) const = default;
+};
+/** A predicate destination that may intentionally discard its result. */
+struct ResolvedPredicateOrSink {
+  /** Present only when source did not spell the PTX discard sink `_`. */
+  std::optional<ResolvedPredicate> predicate;
+  bool operator==(const ResolvedPredicateOrSink&) const = default;
+};
+/** A two-lane predicate destination that may discard exactly one lane. */
+struct ResolvedPredicatePairOrSink {
+  /** First comparison result, absent only for the PTX discard sink `_`. */
+  std::optional<ResolvedPredicate> first;
+  /** Complement comparison result, absent only for the PTX discard sink `_`. */
+  std::optional<ResolvedPredicate> second;
+  bool operator==(const ResolvedPredicatePairOrSink&) const = default;
 };
 using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,

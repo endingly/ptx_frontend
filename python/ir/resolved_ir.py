@@ -19,6 +19,7 @@ from ptx_frontend.code_gen.cpp_backend import (
     cpp_value,
 )
 from ptx_frontend.code_gen.model import (
+    ConditionCodeEffect,
     AddressAlignmentConstraint,
     ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
@@ -61,6 +62,7 @@ class ResolvedValueKind(Enum):
     BOOLEAN_OPERATOR = "BooleanOperator"
     CACHE_OPERATOR = "CacheOperator"
     EVICTION_PRIORITY = "EvictionPriority"
+    PREFETCH_SIZE = "PrefetchSize"
     MEMORY_CONSISTENCY = "MemoryConsistency"
     MEMORY_SCOPE = "MemoryScope"
     VECTOR_ARITY = "VectorArity"
@@ -71,6 +73,7 @@ class ResolvedValueKind(Enum):
     PROXY_KIND_PAIR = "ProxyKindPair"
     REGISTER = "Register"
     PREDICATE = "Predicate"
+    PREDICATE_OR_SINK = "PredicateOrSink"
     PREDICATE_SOURCE = "PredicateSource"
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
@@ -91,6 +94,7 @@ class ResolvedValueKind(Enum):
     CALL_ARGUMENTS = "CallArguments"
     SHFL_DESTINATION = "ShflDestination"
     PREDICATE_PAIR = "PredicatePair"
+    PREDICATE_PAIR_OR_SINK = "PredicatePairOrSink"
     MBARRIER_STATE_TOKEN = "MbarrierStateToken"
 
 
@@ -206,7 +210,9 @@ class ResolvedMemoryConsistencyConstraint:
     mmio_field_id: str
     cache_field_id: str
     address_field_id: str
+    type_field_id: str
     state_space_field_id: str | None = None
+    mmio_semantics: tuple[tuple[str, tuple[tuple[str, Any], ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -229,6 +235,7 @@ class ResolvedMemoryVectorConstraint:
     address_field_id: str
     availability: tuple[tuple[str, Any], ...]
     state_space_field_id: str | None = None
+    require_modern: bool = False
 
 
 @dataclass(frozen=True)
@@ -323,6 +330,10 @@ class ResolvedField:
             self.constant_value, str
         ):
             return cpp_value(CppDomain.EVICTION_PRIORITIES, self.constant_value)
+        if self.value_cpp_type == "PrefetchSize" and isinstance(
+            self.constant_value, str
+        ):
+            return cpp_value(CppDomain.PREFETCH_SIZES, self.constant_value)
         if self.value_cpp_type == "MemoryStateSpace" and isinstance(
             self.constant_value, str
         ):
@@ -368,6 +379,8 @@ class ResolvedVariant:
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
     memory_consistency: ResolvedMemoryConsistencyConstraint | None
+    permits_unified_address: bool
+    unified_address_access: str
     address_alignments: tuple[ResolvedAddressAlignmentConstraint, ...]
     memory_vector: ResolvedMemoryVectorConstraint | None
     immediate_value: ResolvedImmediateValueConstraint | None
@@ -375,6 +388,16 @@ class ResolvedVariant:
     immediate_multiple_of: ResolvedImmediateMultipleOfConstraint | None
     availability: tuple[tuple[str, Any], ...]
     rule: str | None
+
+    condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
+
+    @property
+    def condition_code_cpp_value(self) -> str:
+        """Qualified C++ enumerator for this variant's canonical CC effect."""
+
+        return "ConditionCodeEffect::" + file_stem_to_pascal_case(
+            self.condition_code_effect.value
+        )
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -503,6 +526,7 @@ _OPERAND_ALLOWED_SHAPES = {
     "reg_or_sink": (ResolvedOperandShape.REGISTER,),
     "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
     "pred_pair": (ResolvedOperandShape.PREDICATE_PAIR,),
+    "pred_pair_or_sink": (ResolvedOperandShape.PREDICATE_PAIR,),
     "mov_scalar_src": (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
@@ -518,8 +542,14 @@ _OPERAND_ALLOWED_SHAPES = {
     "vector_reg": (ResolvedOperandShape.VECTOR,),
     "vector_sreg": (ResolvedOperandShape.VECTOR,),
     "pred": (ResolvedOperandShape.PREDICATE,),
+    "pred_or_sink": (ResolvedOperandShape.PREDICATE,),
+    "pred_source": (
+        ResolvedOperandShape.PREDICATE,
+        ResolvedOperandShape.IMMEDIATE,
+    ),
     "pred_or_sreg": (
         ResolvedOperandShape.PREDICATE,
+        ResolvedOperandShape.IMMEDIATE,
         ResolvedOperandShape.SPECIAL_REGISTER,
     ),
     "pred_or_not": (ResolvedOperandShape.PREDICATE,),
@@ -595,6 +625,7 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
 
     return ResolvedVariant(
         variant_id=variant.name,
+        condition_code_effect=variant.condition_code_effect,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,
         modifier_bindings=tuple(
@@ -628,6 +659,8 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             variant.memory_consistency,
             {field.source_name: field.name for field in modifier_fields},
         ),
+        permits_unified_address=variant.permits_unified_address,
+        unified_address_access=variant.unified_address_access,
         address_alignments=tuple(
             _build_address_alignment_constraint(
                 constraint,
@@ -667,11 +700,19 @@ def _build_memory_consistency_constraint(
             if constraint.mmio_modifier is not None
             else ""
         ),
-        cache_field_id=modifier_field_ids[constraint.cache_modifier],
+        cache_field_id=(
+            modifier_field_ids[constraint.cache_modifier]
+            if constraint.cache_modifier is not None else ""
+        ),
         address_field_id=constraint.address_operand,
+        type_field_id=modifier_field_ids[constraint.type_modifier],
         state_space_field_id=(
             modifier_field_ids[constraint.state_space_modifier]
             if constraint.state_space_modifier is not None else None
+        ),
+        mmio_semantics=tuple(
+            (str(value.value), tuple(value.availability.items()))
+            for value in constraint.mmio_semantics
         ),
     )
 
@@ -712,6 +753,7 @@ def _build_memory_vector_constraint(
             modifier_field_ids[constraint.state_space_modifier]
             if constraint.state_space_modifier is not None else None
         ),
+        require_modern=constraint.require_modern,
     )
 
 
@@ -950,6 +992,16 @@ def _build_modifier_value_availability(
         if value.value not in cpp_domain(CppDomain.EVICTION_PRIORITIES).values:
             raise ValueError(
                 f"modifier {modifier.name!r}: unsupported eviction priority "
+                f"value {value.value!r}"
+            )
+    if value_cpp_type == "PrefetchSize":
+        if not isinstance(value.value, str):
+            raise ValueError(
+                f"modifier {modifier.name!r}: prefetch size value must be a string"
+            )
+        if value.value not in cpp_domain(CppDomain.PREFETCH_SIZES).values:
+            raise ValueError(
+                f"modifier {modifier.name!r}: unsupported prefetch size "
                 f"value {value.value!r}"
             )
     if value_cpp_type == "VectorArity":

@@ -42,6 +42,13 @@ struct CstPredicateOperand {
   CstTokenRange token_range;
 };
 
+/** An integer instruction operand complemented with a leading ``!``. */
+struct CstNegatedImmediate {
+  TokenId exclamation_token{};
+  CstImmediate immediate;
+  CstTokenRange token_range;
+};
+
 struct CstAddressOffset {
   TokenId operator_token{};
   CstImmediate magnitude;
@@ -55,6 +62,8 @@ struct CstAddress {
   CstAddressBase base;
   std::optional<CstAddressOffset> offset;
   std::optional<TokenId> right_bracket;
+  /** Optional `.unified` suffix token following a bracketed memory address. */
+  std::optional<TokenId> unified_token;
   CstTokenRange token_range;
 };
 
@@ -118,10 +127,10 @@ struct CstRegisterPredicatePair {
 };
 
 using CstOperand =
-    std::variant<CstIdentifier, CstPredicateOperand, CstImmediate, CstAddress,
-                 CstVectorMember, CstVectorPack, CstCallParameterList,
-                 CstCallTarget, CstCallTargetSet, CstBranchTarget,
-                 CstBranchTargetSet, CstRegisterPredicatePair>;
+    std::variant<CstIdentifier, CstPredicateOperand, CstNegatedImmediate,
+                 CstImmediate, CstAddress, CstVectorMember, CstVectorPack,
+                 CstCallParameterList, CstCallTarget, CstCallTargetSet,
+                 CstBranchTarget, CstBranchTargetSet, CstRegisterPredicatePair>;
 
 struct CstOperandElement {
   CstOperand operand;

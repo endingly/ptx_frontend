@@ -148,6 +148,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 "add_integer_no_sat",
                 "add_sat",
                 "add_packed_optional_sat",
+                "add_cc_32",
+                "add_cc_64",
             ],
         )
 
@@ -276,6 +278,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET.value, 1 << 7)
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
+        self.assertEqual(OperandSyntaxShape.NEGATED_IMMEDIATE.value, 1 << 12)
 
     def test_register_predicate_pair_uses_dedicated_single_operand_shape(self) -> None:
         variant = self.shfl_descriptor.variants[0]
@@ -306,7 +309,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             | OperandSyntaxShape.ADDRESS
             | OperandSyntaxShape.VECTOR_MEMBER,
         )
-        vector_layout = descriptor.variants[1].operand_layouts[0]
+        vector_layout = descriptor.variants[2].operand_layouts[0]
         self.assertEqual(
             [slot.allowed_syntax_shapes for slot in vector_layout.slots],
             [OperandSyntaxShape.IDENTIFIER_REF, OperandSyntaxShape.IDENTIFIER_REF],
@@ -372,6 +375,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 "sub_mixed_f32",
                 "sub_integer_no_sat",
                 "sub_optional_sat",
+                "sub_cc_32",
+                "sub_cc_64",
             ],
         )
 

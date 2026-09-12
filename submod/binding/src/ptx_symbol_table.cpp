@@ -1091,7 +1091,9 @@ struct SymbolTableBuilder {
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstPredicateOperand>) {
             addReference(scope, ReferenceKind::Predicate, value.name);
-          } else if constexpr (std::same_as<Value, syntax_ast::AstImmediate>) {
+          } else if constexpr (std::same_as<Value, syntax_ast::AstImmediate> ||
+                               std::same_as<Value,
+                                            syntax_ast::AstNegatedImmediate>) {
             return;
           } else if constexpr (std::same_as<Value, syntax_ast::AstAddress>) {
             if (const auto* identifier =

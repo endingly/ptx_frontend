@@ -136,6 +136,19 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         ):
             self.assertTrue(list(self.operand_validator.iter_errors(operand)))
 
+    def test_predicate_sources_accept_integer_constants_and_negation(self) -> None:
+        source_shapes = (
+            OperandSyntaxShape.IDENTIFIER_REF
+            | OperandSyntaxShape.IMMEDIATE
+            | OperandSyntaxShape.PREDICATE
+            | OperandSyntaxShape.NEGATED_IMMEDIATE
+        )
+        self.assertEqual(
+            OPERAND_SYNTAX_SHAPES["pred_or_sreg"],
+            source_shapes,
+        )
+        self.assertEqual(OPERAND_SYNTAX_SHAPES["pred_source"], source_shapes)
+
     def test_normalizer_rejects_relational_and_element_kind_errors(self) -> None:
         for operand in (
             _operand("descriptor", "desc", type_tag="tag_"),

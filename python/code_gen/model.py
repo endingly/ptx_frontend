@@ -7,6 +7,18 @@ from enum import Enum
 from typing import Any
 
 
+class ConditionCodeEffect(str, Enum):
+    """Implicit CC.CF interpretation and access when an instruction executes."""
+
+    NONE = "none"
+    CARRY_OUT = "carry_out"
+    CARRY_IN = "carry_in"
+    CARRY_IN_OUT = "carry_in_out"
+    BORROW_OUT = "borrow_out"
+    BORROW_IN = "borrow_in"
+    BORROW_IN_OUT = "borrow_in_out"
+
+
 class OperandTypeExpressionKind(Enum):
     """The supported source-level ways to determine an operand scalar type."""
 
@@ -88,10 +100,12 @@ class MemoryConsistencyConstraint:
 
     semantics_modifier: str
     scope_modifier: str
-    cache_modifier: str
+    cache_modifier: str | None
     address_operand: str
+    type_modifier: str
     mmio_modifier: str | None = None
     state_space_modifier: str | None = None
+    mmio_semantics: tuple[ModifierValueSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -114,6 +128,7 @@ class MemoryVectorConstraint:
     address_operand: str
     availability: dict[str, Any] = field(default_factory=dict)
     state_space_modifier: str | None = None
+    require_modern: bool = False
 
 
 @dataclass(frozen=True)
@@ -261,9 +276,12 @@ class VariantSpec:
     availability: dict[str, Any]
     modifiers: tuple[ModifierSpec, ...]
     operand_layouts: tuple[OperandLayoutSpec, ...]
+    condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     rule: str | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None
+    permits_unified_address: bool = False
+    unified_address_access: str = "none"
     address_alignments: tuple[AddressAlignmentConstraint, ...] = ()
     memory_vector: MemoryVectorConstraint | None = None
     immediate_value: ImmediateValueConstraint | None = None

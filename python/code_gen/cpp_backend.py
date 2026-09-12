@@ -40,6 +40,7 @@ class CppDomain(str, Enum):
     BOOLEAN_OPERATORS = "boolean_operators"
     CACHE_OPERATORS = "cache_operators"  # YAML: domains.cache_operators
     EVICTION_PRIORITIES = "eviction_priorities"
+    PREFETCH_SIZES = "prefetch_sizes"
     MEMORY_CONSISTENCIES = "memory_consistencies"
     MEMORY_SCOPES = "memory_scopes"
     VECTOR_ARITIES = "vector_arities"

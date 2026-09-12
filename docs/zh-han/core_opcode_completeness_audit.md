@@ -33,18 +33,20 @@ execution 列有意使用狭窄的历史基线：
 
 ## 可复现的 frontend-model 证据
 
-载入 canonical `ptx-instr/v1` database 后共有 69 个 instruction name。下表列出相关项，
+载入 canonical `ptx-instr/v1` database 后共有 71 个 instruction name。下表列出相关项，
 以便审阅已审计的 model boundary，而不把 YAML 复制成手工维护的 ledger。
 
 | Opcode | YAML variant 数 | 从 canonical database 载入的 variant/layout 边界 |
 | --- | ---: | --- |
-| `mov` | 3 | scalar（scalar/pack/unpack layout）、`v4.u32`、predicate |
-| `add` | 9 | f32/f32x2/f64、half、bfloat、mixed f32、integer、saturating、packed saturating |
-| `sub` | 8 | f32/f32x2/f64、half、bfloat、mixed f32、integer、optional saturating |
-| `mul` | 5 | `rn.f32`、`lo.u32`、`hi.u32`、`wide.u32`、`wide.s32` |
-| `setp` | 5 | `lt.u32`、`ge.s32`、`lt.and.u32`、`eq.u32` pair、`lt.and.s32` pair |
-| `ld` | 7 | generic/explicit scalar 与 vector、两个 global cache-hint form、global noncoherent L1 no-allocate |
-| `st` | 6 | generic/explicit scalar 与 vector，加两个 global cache-hint form |
+| `mov` | 4 | scalar（含 `.b16/.b32/.b64` pack/unpack）、`.b128` pack/unpack、`v4.u32`、predicate |
+| `add` | 11 | 普通形式与 [carry-out](carry_coverage.md) |
+| `addc` | 4 | [carry-in 与可选 carry-out](carry_coverage.md) |
+| `sub` | 10 | 普通形式与 [borrow-out](carry_coverage.md) |
+| `subc` | 4 | [borrow-in 与可选 borrow-out](carry_coverage.md) |
+| `mul` | 23 | [MUL 覆盖](mul_coverage.md) |
+| `setp` | 18 | [SETP 覆盖](setp_coverage.md) |
+| `ld` | 40 | [LD 与 noncoherent load 覆盖](ld_coverage.md) |
+| `st` | 24 | [ST 覆盖](st_coverage.md) |
 | `bar` | 11 | CTA sync/arrive/reduction spelling 与 warp sync layout |
 | `bra` | 1 | 带可选 `.uni` 的 direct branch |
 | `exit` | 1 | bare exit |
@@ -66,7 +68,7 @@ negative diagnostic 约束。
 from pathlib import Path
 from ptx_frontend.code_gen.database import load_codegen_database
 
-wanted = {"mov", "add", "sub", "mul", "setp", "ld", "st", "bar", "bra", "exit", "fma"}
+wanted = {"mov", "add", "addc", "sub", "subc", "mul", "setp", "ld", "st", "bar", "bra", "exit", "fma"}
 database = load_codegen_database(spec_dir=Path("python/code_gen/resources/ptx_spec"))
 for instruction in database.instructions:
     if instruction.opcode in wanted:
@@ -82,13 +84,13 @@ PY
 
 | Opcode 与主要 PTX 9.3 section | 已覆盖的 frontend family | 具体差集与结论 | 固定 execution 边界 |
 | --- | --- | --- | --- |
-| `mov`: [普通 move](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-mov) 与 [pack/unpack](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-mov-2) | 已建模 `.pred`、scalar `.b16/.b32/.b64`、`.u16/.u32/.u64`、`.s16/.s32/.s64`、`.f32/.f64`、register/immediate/address/function/supported-special-register source，以及 2/4 element bit pack/unpack。`mov.v4.u32` 只用于 [§10](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#special-registers-clusterid) 所列 four-element cluster special register，并非 §9.7.9.3/§9.7.9.4 的一般 `.v4` modifier。 | manual 只允许 `.b128` 用于 pack/unpack，但 common scalar variant 也接收 `.b128`，这是需修复的 over-admission。合法 negated `mov.pred` source 在 resolution 前被拒绝；[#126](https://github.com/endingly/ptx_frontend/issues/126) 负责。故 MOV 非 frontend-complete。 | 历史 scalar execution 仅 `b32`/`u32`/`b64`，且 special-register read 很窄。[ptxsim#21](https://github.com/endingly/ptxsim/issues/21) 负责 whole-op execution。 |
-| `add`: [integer](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-add)、[floating](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-add)、[half/bfloat](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-add)、[mixed](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-add) | 已建模全部 regular-manual family：integer scalar/packed 及合法 `.sat`；f32/f32x2/f64 rounding 与 `.ftz`/`.sat`；f16/f16x2/bf16/bf16x2；以及 mixed `.f32.{f16,bf16}`。每 form 表示其 availability。 | **Frontend 结论：对四个 ordinary `add` section 完整。** [`add.cc`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions-add-cc) 与 [`addc`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions-addc) 是独立命名且有状态的 operation，不计入。 | pin 执行全部 9 个 projected regular form/23 条 type path；carry state 明确排除。 |
-| `sub`: [integer](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-sub)、[floating](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-sub)、[half/bfloat](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-sub)、[mixed](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-sub) | 已建模所有 regular-manual integer、f32/f32x2/f64、f16/f16x2/bf16/bf16x2 与 mixed `.f32.{f16,bf16}` family，含其合法 rounding/FTZ/saturation 边界。 | **Frontend 结论：对四个 ordinary `sub` section 完整。** [`sub.cc`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions-sub-cc) 与 [`subc`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions-subc) 是独立 condition-code operation。 | pin 执行全部 8 个 projected regular form/17 条 type path；borrow state 排除。 |
-| `mul`: [integer](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-mul)、[floating](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mul)、[half/bfloat](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-mul) | 仅建模 `lo.u32`、`hi.u32`、`wide.u32`、`wide.s32` 与 register-only `rn.f32`。 | 缺少 `u16/u64/s16/s32/s64` 的 `.hi/.lo` form，和 `.wide.u16/.wide.s16`；`.wide.u64/.wide.s64` 不是合法 PTX form，因此刻意不要求。也缺少 f32 default-rounding spelling `mul.f32`、directed rounding、`.ftz`、`.sat`、f32x2、f64，以及全部 f16/f16x2/bf16/bf16x2 form 与合法 `.rn/.ftz/.sat`。**非 frontend-complete。** | pin 也仅执行相同 5 个 form。 |
-| `setp`: [ordinary](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#comparison-and-selection-instructions-setp) 与 [half](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-comparison-instructions-setp) | 仅建模五个 example：`lt.u32`、`ge.s32`、`lt.and.u32`、`eq.u32` pair、`lt.and.s32` pair。 | 缺少 ordinary `.b16/.b32/.b64`、其他 integer、f32/f64 type；完整 `eq/ne/lt/le/gt/ge/lo/ls/hi/hs/equ/neu/ltu/leu/gtu/geu/num/nan` compare set；optional `.and/.or/.xor`、negated combine predicate、single/pair sink destination 与 f32 `.ftz`；也缺少全部 f16/f16x2/bf16/bf16x2 family。**非 frontend-complete。** | pin 只执行同样五个 form。 |
-| `ld`: [ld](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-ld) 与 [ld.global.nc](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-ld-global-nc) | scalar 加 v2/v4 与受约束 v8/v4-64 vector layout 覆盖 `.b8/.b16/.b32/.b64`、signed/unsigned 8–64、f32/f64；generic 与 `.const/.global/.local/.param{::entry,::func}/.shared`；以及 selected weak/volatile/relaxed/acquire、scope、cache、alignment 和两个 cache-hint variant。 | 缺少 `.b128`、`.shared::cta/.shared::cluster`、完整 legal L1/L2 eviction、prefetch-size、cache-policy、`.unified` 与 `ld.global.nc` type/cache/vector matrix，以及 MMIO/consistency/scope/cache 的完整 legality cross-product。**非 frontend-complete。** | 仅 ordinary transfer；没有完整 ordering、MMIO、cache/noncoherent 或 function-parameter resource。 |
-| `st`: [st](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st) | 对应 modeled `ld` scalar/vector type subset、generic/explicit space、selected semantics/scope/cache、alignment 与两个 cache-hint variant。 | 缺少 `.b128`、`.shared::cta/.shared::cluster`、legal L1/L2 eviction/cache-policy cross-product、`.unified` 及完整 volatile/relaxed/release/MMIO/scope legality matrix。**非 frontend-complete。** | 仅 ordinary transfer；[ptxsim#24](https://github.com/endingly/ptxsim/issues/24) 负责 whole `ld`/`st` execution。 |
+| `mov`: [普通 move](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-mov) 与 [pack/unpack](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-mov-2) | 已建模 `.pred`、scalar `.b16/.b32/.b64`、`.u16/.u32/.u64`、`.s16/.s32/.s64`、`.f32/.f64`、register/immediate/address/function/supported-special-register source，以及 2/4 element bit pack/unpack。`Mov::Scalar` 保留 scalar 及 `.b16/.b32/.b64` pack/unpack layout；只有 fixed-type `Mov::B128PackUnpack` 接收 `.b128`。`mov.pred` 接收 plain 或 negated predicate register、规范化为 Boolean 值的整数谓词常量，以及 plain 或 negated predicate special register；destination 仍必须是未取反 predicate register。`mov.v4.u32` 只用于 [§10](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#special-registers-clusterid) 所列 four-element cluster special register，并非 §9.7.9.3/§9.7.9.4 的一般 `.v4` modifier。 | **Frontend 结论：已建模的 ordinary move 与 pack/unpack form 保持 PTX 的 type 与 negation 边界。**fixed `.b128` variant 阻止 scalar `.b128`，同时保留既有较窄 pack/unpack layout 的 public contract。 | 历史 scalar execution 仅 `b32`/`u32`/`b64`，且 special-register read 很窄。[ptxsim#21](https://github.com/endingly/ptxsim/issues/21) 负责 whole-op execution。 |
+| `add`: [integer](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-add)、[floating](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-add)、[half/bfloat](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-add)、[mixed](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-add) | 已建模全部 regular-manual family：integer scalar/packed 及合法 `.sat`；f32/f32x2/f64 rounding 与 `.ftz`/`.sat`；f16/f16x2/bf16/bf16x2；以及 mixed `.f32.{f16,bf16}`。每 form 表示其 availability。 | 普通算术章节已建模。独立的扩展精度 add/`addc` 契约见[进位/借位覆盖](carry_coverage.md)，具有类型化隐式状态影响和单独的目标可用性测试。 | pin 执行全部 9 个 projected regular form/23 条 type path；carry state 明确排除。 |
+| `sub`: [integer](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-sub)、[floating](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-sub)、[half/bfloat](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-sub)、[mixed](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-sub) | 已建模所有 regular-manual integer、f32/f32x2/f64、f16/f16x2/bf16/bf16x2 与 mixed `.f32.{f16,bf16}` family，含其合法 rounding/FTZ/saturation 边界。 | 普通算术章节已建模。独立的扩展精度 sub/`subc` 契约见[进位/借位覆盖](carry_coverage.md)，具有类型化隐式状态影响和单独的目标可用性测试。 | pin 执行全部 8 个 projected regular form/17 条 type path；borrow state 排除。 |
+| `mul`: [integer](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-mul)、[floating](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mul)、[half/bfloat](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-mul) | 当前 canonical schema 已建模 [MUL 覆盖](mul_coverage.md) 中描述的整数和浮点形式。 | 修饰符、操作数、目标可用性及下游再验证边界见 [MUL 覆盖](mul_coverage.md)。 | 历史 pin 仅执行原先的 5 个 form。 |
+| `setp`: [ordinary](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#comparison-and-selection-instructions-setp) 与 [half](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-comparison-instructions-setp) | 当前 canonical schema 已建模 [SETP 覆盖](setp_coverage.md) 中描述的整数和浮点形式。 | 修饰符、操作数、目标可用性及下游再验证边界见 [SETP 覆盖](setp_coverage.md)。 | pin 只执行同样五个 form。 |
+| `ld`: [ld](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-ld) 与 [ld.global.nc](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-ld-global-nc) | Canonical family 及其目标/操作数边界见 [LD 覆盖](ld_coverage.md)。 | 生成模型覆盖文档列出的修饰符组合、地址来源及 public-IR 再验证；runtime semantics 仍单独负责。 | 仅 ordinary transfer；没有完整 ordering、MMIO、cache/noncoherent 或 function-parameter resource。 |
+| `st`: [st](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st) | Canonical family 及其目标/操作数边界见 [ST 覆盖](st_coverage.md)。 | 生成模型覆盖文档列出的修饰符组合、地址来源及 public-IR 再验证；runtime semantics 仍单独负责。 | 仅 ordinary transfer；[ptxsim#24](https://github.com/endingly/ptxsim/issues/24) 负责 whole `ld`/`st` execution。 |
 | `bar`: [CTA `bar`/`barrier`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-bar) 与 [warp sync](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-bar-warp-sync) | `bar{.cta}.sync`、`arrive`、`red.popc.u32`、`red.{and,or}.pred`、其 immediate/register 和 required/omitted-count layout、negated reduction predicate 与 `bar.warp.sync` 均已建模并保留 availability。 | **Frontend 结论：对 `bar` 与 `bar.warp.sync` 完整。** `barrier{.cta}`（其 `.aligned` semantic 独立）、`barrier.cluster`、asynchronous barrier 与 `mbarrier` 是独立命名 operation，不计入。 | pin 执行相应 warp/CTA/reduction form，但这不是 hardware proof。 |
 | `bra`: [direct branch](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-bra) | 已建模并检查 label target、optional `.uni` 与 ordinary/negated predicate guard。 | **Frontend 结论：对 direct `bra` 完整。** `brx.idx`、call、return 是独立命名 control-flow operation。 | pin 为 direct branch family 更新 authoritative PC。 |
 | `exit`: [exit](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-exit) | 已建模 sole bare form 与 ordinary predicate guard。 | **Frontend 结论：对 `exit` 完整。** `ret` 与 `trap` 是独立 opcode。 | pin 处理 conditional exit 与 barrier release；未测 hardware 行为。 |
@@ -99,19 +101,21 @@ PY
 已有的下游 tracker 分别是 whole-op `mov` 的 [ptxsim#21](https://github.com/endingly/ptxsim/issues/21)、
 `ld`/`st` execution 的 [ptxsim#24](https://github.com/endingly/ptxsim/issues/24)，以及 whole-op
 execution claim enforcement 的 [ptxsim#23](https://github.com/endingly/ptxsim/issues/23)。frontend
-[#126](https://github.com/endingly/ptx_frontend/issues/126) 是已经存在的具体 `mov.pred`
-syntax/layout blocker。
+[#126](https://github.com/endingly/ptx_frontend/issues/126) 记录历史的具体 `mov.pred`
+syntax/layout gap；当前 canonical schema 已接收 negated predicate source，同时仍不接收
+negated destination。
 
 #51 的 whole-operation frontend follow-up 已完成关联，且没有拆成 variant ticket：
 
 1. [#132](https://github.com/endingly/ptx_frontend/issues/132) 负责 carry/condition-code
    `add.cc`/`addc` 与 `sub.cc`/`subc` 的 implicit-state contract；
-2. [#127](https://github.com/endingly/ptx_frontend/issues/127) 限制 MOV `.b128` 的
-   scalar-layout over-admission；[#126](https://github.com/endingly/ptx_frontend/issues/126)
-   仍是独立已建单的 negated-predicate defect；
-3. [#128](https://github.com/endingly/ptx_frontend/issues/128) 补齐超出当前 5 个 form 的 PTX
+2. [#127](https://github.com/endingly/ptx_frontend/issues/127) 记录 MOV 先前 `.b128` 的
+   scalar-layout over-admission；它与
+   [#126](https://github.com/endingly/ptx_frontend/issues/126) 一起由当前
+   scalar/pack-unpack variant split 处理；
+3. [#128](https://github.com/endingly/ptx_frontend/issues/128) 补齐超出原先 5 个 form 的 PTX
    9.3 `mul` model/check；
-4. [#129](https://github.com/endingly/ptx_frontend/issues/129) 补齐超出当前 5 个 form 的 PTX
+4. [#129](https://github.com/endingly/ptx_frontend/issues/129) 补齐超出原先 5 个 form 的 PTX
    9.3 `setp` model/check；以及
 5. [#130](https://github.com/endingly/ptx_frontend/issues/130) 和
    [#131](https://github.com/endingly/ptx_frontend/issues/131) 分别负责 `ld`、`st` 的逐 form

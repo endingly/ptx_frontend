@@ -11,6 +11,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedFieldStorage,
     ResolvedInstruction,
+    ResolvedModifierDefault,
     ResolvedOperandLayout,
     ResolvedVariant,
     from_instruction_spec,
@@ -22,7 +23,8 @@ from ptx_frontend.ir.resolved_ir import (
 _REFERENCE_FIELD_TYPES = frozenset({
     "ResolvedRegisterRef", "ResolvedMbarrierStateToken",
     "ResolvedRegisterOrSink", "RegOrImm", "ResolvedShflSyncDestination",
-    "ResolvedPredicatePair", "ResolvedMovSource", "ResolvedPredicate",
+    "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
+    "ResolvedPredicateOrSink", "ResolvedMovSource", "ResolvedPredicate",
     "ResolvedPredicateSource", "ResolvedBranchTarget", "ResolvedBranchTargetSet",
     "ResolvedVectorRegisterRef", "ResolvedSymbolRef", "ResolvedAddress",
     "ResolvedRegisterVector", "ResolvedTensorCoordinate", "ResolvedFunctionRef",
@@ -31,6 +33,7 @@ _REFERENCE_FIELD_TYPES = frozenset({
 _REFERENCE_FREE_FIELD_TYPES = frozenset({
     "bool", "ScalarType", "RoundingMode", "ComparisonOperator",
     "BooleanOperator", "CacheOperator", "EvictionPriority",
+    "PrefetchSize",
     "MemoryConsistency", "MemoryScope", "VectorArity", "MemoryStateSpace",
     "MbarrierPhaseType", "MbarrierLayout", "AsyncProxyKind", "ProxyKindPair",
     "ResolvedImmediate", "ResolvedSpecialRegisterRef", "ResolvedVectorSpecialRegisterRef",
@@ -736,6 +739,13 @@ def _emit_cross_rule_checks(
     """Emit a variant's cross-rule checks in a fixed order."""
 
     checks = ""
+    checks += f"""            const auto unified_address_check = check_unified_address_suffix(
+                {checker_variant_expr}, fields, operands, context);
+            if (!unified_address_check) {{
+              diagnostics.insert(diagnostics.end(), unified_address_check.error().begin(),
+                                 unified_address_check.error().end());
+            }}
+"""
     if variant.memory_consistency is not None:
         checks += f"""            const auto consistency_check = check_memory_consistency(
                 {checker_variant_expr}.memory_consistency, fields, operands, context);
@@ -869,6 +879,10 @@ def _emit_check_modifier_view(
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.value_cpp_type == "EvictionPriority" else "std::nullopt"
         )
+        prefetch_size = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.value_cpp_type == "PrefetchSize" else "std::nullopt"
+        )
         locations = "std::span<const SourceRange>{}"
     else:
         bool_value = (
@@ -930,12 +944,17 @@ def _emit_check_modifier_view(
             f"selected.{field.name}.value"
             if field.value_cpp_type == "EvictionPriority" else "std::nullopt"
         )
+        prefetch_size = (
+            f"selected.{field.name}.value"
+            if field.value_cpp_type == "PrefetchSize" else "std::nullopt"
+        )
         locations = f"selected.{field.name}.locs"
     return f"""              FieldView{{
                   .field_id = "{field.name}",
                   .bool_value = {bool_value},
                   .cache_operator = {cache_operator},
                   .eviction_priority = {eviction_priority},
+                  .prefetch_size = {prefetch_size},
                   .scalar_type = {scalar_type},
                   .comparison_operator = {comparison_operator},
                   .boolean_operator = {boolean_operator},
@@ -949,6 +968,34 @@ def _emit_check_modifier_view(
                   .proxy_kind_pair = {proxy_kind_pair},
                   .locations = {locations},
               }}"""
+
+
+def _modifier_default_cpp_value(default: ResolvedModifierDefault) -> str:
+    """Return the normalized C++ expression for an optional modifier default."""
+
+    if default.value_cpp_type == "bool" and type(default.value) is bool:
+        return "true" if default.value else "false"
+    domains = {
+        "ScalarType": CppDomain.SCALAR_TYPES,
+        "RoundingMode": CppDomain.ROUNDING_MODES,
+        "CacheOperator": CppDomain.CACHE_OPERATORS,
+        "EvictionPriority": CppDomain.EVICTION_PRIORITIES,
+        "PrefetchSize": CppDomain.PREFETCH_SIZES,
+        "MemoryStateSpace": CppDomain.MEMORY_STATE_SPACES,
+        "MemoryConsistency": CppDomain.MEMORY_CONSISTENCIES,
+        "MemoryScope": CppDomain.MEMORY_SCOPES,
+        "MbarrierPhaseType": CppDomain.MBARRIER_PHASE_TYPES,
+        "MbarrierLayout": CppDomain.MBARRIER_LAYOUTS,
+        "AsyncProxyKind": CppDomain.ASYNC_PROXY_KINDS,
+        "ProxyKindPair": CppDomain.PROXY_KIND_PAIRS,
+    }
+    domain = domains.get(default.value_cpp_type)
+    if domain is not None and isinstance(default.value, str):
+        return cpp_value(domain, default.value)
+    raise ValueError(
+        f"unsupported modifier default {default.value!r} for "
+        f"{default.value_cpp_type}"
+    )
 
 
 def _emit_check_modifier_value_view(
@@ -1049,6 +1096,21 @@ def _emit_check_modifier_value_view(
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
         eviction_priority = (
+            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+            else f"selected.{field.name}.value"
+        )
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+        memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    elif field.value_cpp_type == "PrefetchSize":
+        value_kind = cpp_value(
+            CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "PrefetchSize"
+        )
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        prefetch_size = (
             f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
             if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
             else f"selected.{field.name}.value"
@@ -1186,6 +1248,16 @@ def _emit_check_modifier_value_view(
         is_present = "true"
     else:
         is_present = f"!selected.{field.name}.locs.empty()"
+        binding = next(
+            binding
+            for binding in variant.modifier_bindings
+            if binding.target_field_id == field.name
+        )
+        if binding.default_value is not None:
+            default_value = _modifier_default_cpp_value(binding.default_value)
+            is_present += (
+                f" || selected.{field.name}.value != {default_value}"
+            )
     if field.value_cpp_type != "RoundingMode":
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
     if field.value_cpp_type != "ComparisonOperator":
@@ -1196,6 +1268,8 @@ def _emit_check_modifier_value_view(
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
     if field.value_cpp_type != "EvictionPriority":
         eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
+    if field.value_cpp_type != "PrefetchSize":
+        prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
     if field.value_cpp_type != "VectorArity":
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     if field.value_cpp_type != "MemoryStateSpace":
@@ -1222,6 +1296,7 @@ def _emit_check_modifier_value_view(
                   .boolean_operator = {boolean_operator},
                   .cache_operator = {cache_operator},
                   .eviction_priority = {eviction_priority},
+                  .prefetch_size = {prefetch_size},
                   .vector_arity = {vector_arity},
                   .memory_state_space = {memory_state_space},
                   .memory_consistency = {memory_consistency},
@@ -1403,6 +1478,15 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or(ScalarType::Invalid), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or(ScalarType::Invalid)}},
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedPredicatePairOrSink":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
+                  .immediate_type = std::nullopt,
+                  .predicate_pair_has_destination = static_cast<bool>({object_name}.{field.name}.value.first) || static_cast<bool>({object_name}.{field.name}.value.second),
+                  .predicate_pair_types = {{{object_name}.{field.name}.value.first ? {object_name}.{field.name}.value.first->register_ref.declared_type.value_or(ScalarType::Invalid) : ScalarType::Invalid, {object_name}.{field.name}.value.second ? {object_name}.{field.name}.value.second->register_ref.declared_type.value_or(ScalarType::Invalid) : ScalarType::Invalid}},
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedImmediate":
         return f"""              OperandView{{
                   .field_id = "{field.name}",
@@ -1422,19 +1506,36 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
+    if field.value_cpp_type == "ResolvedPredicateOrSink":
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
+                  .immediate_type = std::nullopt,
+                  .register_type = {object_name}.{field.name}.value.predicate ? {object_name}.{field.name}.value.predicate->register_ref.declared_type : std::nullopt,
+                  .is_sink = !{object_name}.{field.name}.value.predicate,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_cpp_type == "ResolvedPredicateSource":
         return f"""              [&]() -> OperandView {{
                 const auto& source = {object_name}.{field.name}.value;
                 if (const auto* special =
-                        std::get_if<ResolvedSpecialRegisterRef>(&source)) {{
-                  const auto info = base::metadata(special->id);
+                        std::get_if<ResolvedPredicateSpecialRegister>(&source)) {{
+                  const auto info = base::metadata(special->register_ref.id);
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "SpecialRegister")},
                       .special_register_type = info.element_type,
-                      .special_register_id = special->id,
+                      .special_register_id = special->register_ref.id,
                       .value_availability = special_register_availability(info),
-                      .value_name = special->spelling,
+                      .value_name = special->register_ref.spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (std::holds_alternative<ResolvedPredicateConstant>(source)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
+                      .immediate_type = ScalarType::Pred,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
@@ -1531,6 +1632,9 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     parameter_direction = ParameterDirection::CallArgument;
                   }}
                 }}
+                const std::optional<bool> declaration_is_unified =
+                    symbol == nullptr ? std::nullopt
+                                      : symbol->declaration_is_unified;
                 std::optional<uint64_t> address_alignment;
                 const auto low_bit = [](uint64_t value) {{
                   return value == 0 ? uint64_t{{0}} : value & (~value + 1);
@@ -1557,6 +1661,8 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = std::nullopt,
                   .address_state_space = effective_state_space,
                   .address_alignment = address_alignment,
+                  .address_unified = {object_name}.{field.name}.value.unified,
+                  .address_declaration_is_unified = declaration_is_unified,
                   .enclosing_function_kind =
                       {object_name}.{field.name}.value.enclosing_function_kind,
                   .parameter_direction = parameter_direction,
@@ -1745,6 +1851,9 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant) -> str:
     return f"""\
   // YAML: {variant.variant_id}
   struct {variant.cpp_name} {{
+    /** Implicit CC.CF effect, gated by the enclosing execution predicate. */
+    inline static constexpr ConditionCodeEffect condition_code_effect =
+        {variant.condition_code_cpp_value};
     ResolvedOperandLayoutTag operand_layout;
 {body}
   }};"""

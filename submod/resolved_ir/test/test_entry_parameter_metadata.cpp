@@ -350,7 +350,7 @@ TEST(ResolvedParameterDeclarations, UsesNaturalArrayAlignmentForCalls) {
 /** Entry pointer values can be loaded and passed through ordinary device formals. */
 TEST(ResolvedParameterDeclarations, PassesEntryPointerValuesToDeviceFunctions) {
   const auto resolved = resolveSource(R"ptx(
-.version 8.0
+.version 8.3
 .target sm_80
 .func target(.param .u64 address);
 .entry caller(.param .u64 .ptr .global .align 16 pointer) {

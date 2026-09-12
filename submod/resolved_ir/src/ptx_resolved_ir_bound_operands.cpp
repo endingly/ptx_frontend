@@ -398,6 +398,70 @@ resolve_predicate_pair(const syntax_ast::AstOperand& operand,
   return result;
 }
 
+/** Resolve one predicate destination that may use PTX's single `_` sink. */
+std::expected<WithLocs<ResolvedPredicateOrSink>, ResolveDiagnostic>
+resolve_predicate_or_sink(const syntax_ast::AstOperand& operand,
+                          const ResolveContext* context) {
+  if (const auto* identifier =
+          std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+      identifier != nullptr && identifier->syntax.text == "_") {
+    return WithLocs<ResolvedPredicateOrSink>{
+        ResolvedPredicateOrSink{.predicate = std::nullopt},
+        identifier->syntax.range};
+  }
+  auto predicate = resolve_predicate(operand, context);
+  if (!predicate)
+    return std::unexpected(predicate.error());
+  WithLocs<ResolvedPredicateOrSink> result{
+      ResolvedPredicateOrSink{.predicate = std::move(predicate->value)},
+      syntax_ast::sourceRange(operand)};
+  result.locs = std::move(predicate->locs);
+  return result;
+}
+
+/** Resolve a predicate pair that permits one, but never both, `_` destinations. */
+std::expected<WithLocs<ResolvedPredicatePairOrSink>, ResolveDiagnostic>
+resolve_predicate_pair_or_sink(const syntax_ast::AstOperand& operand,
+                               const ResolveContext* context) {
+  const auto* pair =
+      std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
+  if (pair == nullptr) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a predicate-pair operand.",
+    });
+  }
+  if (pair->dst.syntax.text == "_" && pair->predicate.syntax.text == "_") {
+    return std::unexpected(ResolveDiagnostic{
+        .range = pair->range,
+        .message =
+            "A predicate-pair destination must retain at least one output.",
+    });
+  }
+  std::optional<ResolvedPredicate> first;
+  if (pair->dst.syntax.text != "_") {
+    auto resolved = resolve_predicate_identifier(
+        pair->dst, false, pair->dst.syntax.range, context);
+    if (!resolved)
+      return std::unexpected(resolved.error());
+    first = std::move(resolved->value);
+  }
+  std::optional<ResolvedPredicate> second;
+  if (pair->predicate.syntax.text != "_") {
+    auto resolved = resolve_predicate_identifier(
+        pair->predicate, false, pair->predicate.syntax.range, context);
+    if (!resolved)
+      return std::unexpected(resolved.error());
+    second = std::move(resolved->value);
+  }
+  WithLocs<ResolvedPredicatePairOrSink> result{
+      ResolvedPredicatePairOrSink{.first = std::move(first),
+                                  .second = std::move(second)},
+      pair->range};
+  result.locs = {pair->dst.syntax.range, pair->predicate.syntax.range};
+  return result;
+}
+
 std::expected<WithLocs<ResolvedBranchTarget>, ResolveDiagnostic>
 resolve_branch_target(const syntax_ast::AstOperand& operand,
                       const ResolveContext* context) {
@@ -771,13 +835,54 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
       range};
 }
 
+/** Resolve and canonicalize one integer predicate constant. */
+std::expected<ResolvedPredicateConstant, ResolveDiagnostic>
+resolve_predicate_constant(const syntax_ast::AstImmediate& immediate,
+                           bool negated) {
+  auto resolved = resolve_immediate_value(immediate, ScalarType::B64);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  const bool truth = resolved->bits != 0;
+  return ResolvedPredicateConstant{.value = negated ? !truth : truth};
+}
+
+/** Resolve a predicate source with optional special-register admission. */
 std::expected<WithLocs<ResolvedPredicateSource>, ResolveDiagnostic>
 resolve_predicate_source(const syntax_ast::AstOperand& operand,
+                         bool allow_special_register,
                          const ResolveContext* context) {
   const auto range = syntax_ast::sourceRange(operand);
-  if (std::holds_alternative<syntax_ast::AstIdentifierRef>(operand) ||
-      std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
-    auto special = resolve_special_register(operand);
+  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
+    auto constant = resolve_predicate_constant(*immediate, false);
+    if (!constant)
+      return std::unexpected(constant.error());
+    return WithLocs<ResolvedPredicateSource>{
+        ResolvedPredicateSource{std::move(*constant)}, range};
+  }
+  if (const auto* negated =
+          std::get_if<syntax_ast::AstNegatedImmediate>(&operand)) {
+    auto constant = resolve_predicate_constant(negated->immediate, true);
+    if (!constant)
+      return std::unexpected(constant.error());
+    return WithLocs<ResolvedPredicateSource>{
+        ResolvedPredicateSource{std::move(*constant)}, range};
+  }
+
+  std::optional<syntax_ast::AstOperand> special_operand;
+  bool special_negated = false;
+  if (allow_special_register &&
+      (std::holds_alternative<syntax_ast::AstIdentifierRef>(operand) ||
+       std::holds_alternative<syntax_ast::AstVectorMember>(operand))) {
+    special_operand = operand;
+  } else if (allow_special_register) {
+    if (const auto* predicate =
+            std::get_if<syntax_ast::AstPredicateOperand>(&operand)) {
+      special_operand = syntax_ast::AstOperand{predicate->name};
+      special_negated = predicate->negated;
+    }
+  }
+  if (special_operand) {
+    auto special = resolve_special_register(*special_operand);
     if (special) {
       if (base::metadata(special->value.id).element_type !=
           base::ScalarType::Pred) {
@@ -789,10 +894,13 @@ resolve_predicate_source(const syntax_ast::AstOperand& operand,
         });
       }
       return WithLocs<ResolvedPredicateSource>{
-          ResolvedPredicateSource{std::move(special->value)}, range};
+          ResolvedPredicateSource{ResolvedPredicateSpecialRegister{
+              .register_ref = std::move(special->value),
+              .negated = special_negated}},
+          range};
     }
     const auto* identifier =
-        std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+        std::get_if<syntax_ast::AstIdentifierRef>(&*special_operand);
     if (identifier == nullptr || base::lookup(identifier->syntax.text))
       return std::unexpected(special.error());
   }
@@ -966,6 +1074,9 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
   resolved.declaration_kind = symbol.kind;
   resolved.declaration_state_space = symbol.state_space;
   resolved.address_state_space = symbol.state_space;
+  resolved.declaration_is_unified =
+      std::ranges::find(context->unified_storage_symbols, lookup->symbol) !=
+      context->unified_storage_symbols.end();
   if (symbol.kind == binding::SymbolKind::InputParameter ||
       symbol.kind == binding::SymbolKind::ReturnParameter) {
     // A direct formal-parameter memory address stays in .param.  Only mov
@@ -1090,6 +1201,8 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
               context == nullptr           ? EnclosingFunctionKind::Unknown
               : context->function_is_entry ? EnclosingFunctionKind::Entry
                                            : EnclosingFunctionKind::Device,
+          .unified = address->unified,
+          .unified_range = address->unified_range,
       },
       address->range};
 }
@@ -1700,8 +1813,18 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::PredicateOrSink: {
+      auto value = resolve_predicate_or_sink(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::PredicateSource: {
-      auto value = resolve_predicate_source(operand, context);
+      auto value = resolve_predicate_source(
+          operand,
+          allows_shape(binding.allowed_shapes,
+                       checker::OperandShape::SpecialRegister),
+          context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -1750,6 +1873,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::PredicatePair: {
       auto value = resolve_predicate_pair(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::PredicatePairOrSink: {
+      auto value = resolve_predicate_pair_or_sink(operand, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -1867,6 +1996,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::BooleanOperator:
     case ResolvedValueKind::CacheOperator:
     case ResolvedValueKind::EvictionPriority:
+    case ResolvedValueKind::PrefetchSize:
     case ResolvedValueKind::MemoryConsistency:
     case ResolvedValueKind::MemoryScope:
     case ResolvedValueKind::VectorArity:

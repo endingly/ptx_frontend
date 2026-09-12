@@ -17,6 +17,8 @@ OperandSyntaxShape get_operand_syntax_shape(
           return OperandSyntaxShape::Identifier;
         else if constexpr (std::same_as<Item, syntax_ast::AstImmediate>)
           return OperandSyntaxShape::Immediate;
+        else if constexpr (std::same_as<Item, syntax_ast::AstNegatedImmediate>)
+          return OperandSyntaxShape::NegatedImmediate;
         else if constexpr (std::same_as<Item, syntax_ast::AstPredicateOperand>)
           return OperandSyntaxShape::Predicate;
         else if constexpr (std::same_as<Item, syntax_ast::AstAddress>)

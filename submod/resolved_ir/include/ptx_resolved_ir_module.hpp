@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -89,8 +90,12 @@ enum class ResolvedFunctionAttributeKind : uint8_t { Managed, Unified };
 struct ResolvedFunctionAttribute {
   /** Semantic attribute category. */
   ResolvedFunctionAttributeKind kind{};
-  /** Attribute operands retained as owned source-independent values. */
-  std::vector<std::string> values;
+  /**
+   * `.unified` UUID halves in PTX operand order: [0] is upper 64 bits and [1]
+   * is lower 64 bits. No byte order or host-address interpretation is applied.
+   * A finalized attribute with kind Unified must provide this payload.
+   */
+  std::optional<std::array<uint64_t, 2>> unified_id;
   /** Source provenance of this attribute. */
   SourceRange range;
 };

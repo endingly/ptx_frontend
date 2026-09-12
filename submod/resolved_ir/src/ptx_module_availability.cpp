@@ -781,18 +781,10 @@ void check_function_contract_integrity(const ResolvedFunction& function,
           "Resolved function repeats the .unified attribute.");
     }
     unified = true;
-    if (attribute.values.size() != 2) {
+    if (!attribute.unified_id) {
       append_model_mismatch(
           diagnostics, attribute.range,
-          "Resolved .unified attribute needs two UUID halves.");
-    }
-    for (const auto& value : attribute.values) {
-      if (!base::parseIntegerMagnitude(value)) {
-        append_model_mismatch(
-            diagnostics, attribute.range,
-            "Resolved .unified attribute has a non-numeric value.");
-        break;
-      }
+          "Resolved .unified attribute has no typed UUID payload.");
     }
   }
   if (function.contract.signature.is_entry != function.is_entry ||

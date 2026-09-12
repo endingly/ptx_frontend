@@ -1,5 +1,6 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 
+#include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
@@ -8,6 +9,7 @@
 #include "ptx_storage_declarations.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <limits>
 #include <ranges>
@@ -231,6 +233,18 @@ std::optional<ResolvedAbiPreservationContract> resolve_abi_contract(
   };
 }
 
+/** Decode `.unified` source operands into upper/lower PTX UUID halves. */
+std::optional<std::array<uint64_t, 2>> resolve_unified_id(
+    const syntax_ast::AstAttribute& attribute) {
+  if (attribute.values.size() != 2)
+    return std::nullopt;
+  const auto upper = base::parseIntegerMagnitude(attribute.values[0].text);
+  const auto lower = base::parseIntegerMagnitude(attribute.values[1].text);
+  if (!upper || !lower)
+    return std::nullopt;
+  return std::array<uint64_t, 2>{*upper, *lower};
+}
+
 /** Convert a function attribute into owned semantic data without AST lifetime. */
 ResolvedFunctionAttribute resolve_function_attribute(
     const syntax_ast::AstAttribute& attribute) {
@@ -240,8 +254,8 @@ ResolvedFunctionAttribute resolve_function_attribute(
                   : ResolvedFunctionAttributeKind::Unified,
       .range = attribute.range,
   };
-  for (const auto& value : attribute.values)
-    resolved.values.emplace_back(value.text);
+  if (resolved.kind == ResolvedFunctionAttributeKind::Unified)
+    resolved.unified_id = resolve_unified_id(attribute);
   return resolved;
 }
 

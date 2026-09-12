@@ -1,4 +1,7 @@
+#include <array>
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -92,9 +95,9 @@ int check_owned_module_handoff() {
   {
     const std::string source = R"ptx(
 .version 8.0
-.target sm_80
+.target sm_90
 .address_size 64
-.func callee(.reg .u32 input) { ret; }
+.func .attribute(.unified(0, 01777777777777777777777U)) callee(.reg .u32 input) { ret; }
 .entry caller() {
   .reg .u32 %value;
   call callee, (7);
@@ -115,6 +118,8 @@ int check_owned_module_handoff() {
       module->header.regions[1].address_size_bits != 64 ||
       module->functions.size() != 2 || !ir::validateModule(*module))
     return 32;
+  if (module->functions.front().contract.attributes.size() != 1)
+    return 33;
   const auto& call = std::get<ir::Call>(module->functions[1].body.front());
   const auto& operands = std::get<ir::Call::Direct::TargetInputOperands>(
       std::get<ir::Call::Direct>(call.variant).operands);
@@ -130,6 +135,8 @@ int check_owned_module_handoff() {
           std::get<ir::Call::Direct>(register_call.variant).operands);
   const auto& register_actual = std::get<ir::ResolvedCallParameterRef>(
       register_operands.arguments.value.values.front().value);
+  const auto& callee_attribute =
+      module->functions.front().contract.attributes.front();
   if (literal == nullptr || !literal->value ||
       literal->kind != ptx_frontend::base::LiteralCategory::DecimalInteger ||
       signature_space != ptx_frontend::call_argument_compatibility::
@@ -137,7 +144,11 @@ int check_owned_module_handoff() {
       register_actual.state_space !=
           ptx_frontend::base::DeclarationStateSpace::Register ||
       literal->value->type != ptx_frontend::base::ScalarType::U32 ||
-      literal->value->bits != 7)
+      literal->value->bits != 7 ||
+      callee_attribute.kind != ir::ResolvedFunctionAttributeKind::Unified ||
+      !callee_attribute.unified_id ||
+      *callee_attribute.unified_id !=
+          std::array<uint64_t, 2>{0u, std::numeric_limits<uint64_t>::max()})
     return 33;
   auto mutated = *module;
   auto& changed = std::get<ir::Call::Direct::TargetInputOperands>(
@@ -149,6 +160,10 @@ int check_owned_module_handoff() {
   changed_literal.value->type = ptx_frontend::base::ScalarType::U16;
   if (ir::validateModule(mutated))
     return 34;
+  auto missing_uuid = *module;
+  missing_uuid.functions.front().contract.attributes.front().unified_id.reset();
+  if (ir::validateModule(missing_uuid))
+    return 35;
   auto malformed_return = *module;
   auto& ret = std::get<ir::Ret>(malformed_return.functions[1].body.at(2));
   std::get<ir::Ret::Bare>(ret.variant).operand_layout.value = 99;
@@ -158,7 +173,7 @@ int check_owned_module_handoff() {
           ir::checker::CheckDiagnosticKind::InvalidOperandLayoutTag ||
       invalid_return.error().front().range !=
           malformed_return.functions[1].instruction_ranges.at(2))
-    return 35;
+    return 36;
   constexpr std::string_view defaulted_source = R"ptx(
 .version 8.0
 .target sm_80
@@ -167,13 +182,13 @@ int check_owned_module_handoff() {
   ptx_frontend::PtxSyntaxParser defaulted_parser(defaulted_source);
   auto defaulted_ast = defaulted_parser.parseModule();
   if (!defaulted_ast || !defaulted_ast.diagnostics.empty())
-    return 36;
+    return 37;
   auto defaulted = ir::resolveModule(*defaulted_ast);
   if (!defaulted || defaulted->header.regions.size() != 2 ||
       defaulted->header.regions[1].address_size_bits != 32 ||
       defaulted->header.regions[1].address_size_provenance !=
           ir::SourceConfigurationProvenance::Defaulted)
-    return 37;
+    return 38;
   return 0;
 }
 

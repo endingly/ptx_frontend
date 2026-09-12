@@ -106,6 +106,12 @@ ABI-preservation contract、numeric resource value、cluster dimension（包括�
 有序 bound/canonical function 及共享 signature；`.callprototype` 拥有
 signature 与 ABI/noreturn suffix。上述记录及其 source range 在 AST 销毁后仍有效。
 
+`ResolvedFunctionAttribute::values` 已从 source spelling 存储迁移为可选的 typed
+`unified_id` payload。对 `.attribute(.unified(uuid1, uuid2))`，`(*unified_id)[0]` 是
+UUID `uuid1`（upper 64 bits），`(*unified_id)[1]` 是 UUID `uuid2`（lower 64 bits）；不发生
+byte-order 或 host-address conversion。malformed source UUID token 仍保留为 declaration
+diagnostic，而 AST-free validation 会拒绝缺少该 typed payload 的 `.unified` attribute。
+
 成功的 direct、alias 或 metadata-backed call 会将 module literal 保存为 formal-driven 的
 `ResolvedImmediate`。没有 module call contract 的 standalone instruction 可保留没有 value 的
 `ResolvedCallLiteral`；consumer 不得猜测 type。已声明的 external module call 仍保留 signature

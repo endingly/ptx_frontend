@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -101,6 +102,15 @@ constexpr std::string_view k_attribute_module_fixture = R"ptx(
 .version 9.3
 .target sm_90
 .func .attribute(.unified(1, 2)) attributed() { ret; }
+)ptx";
+
+/** Equivalent `.unified` UUID spellings cover every supported integer radix. */
+constexpr std::string_view k_attribute_uuid_equivalence_fixture = R"ptx(
+.version 8.0
+.target sm_90
+.func .attribute(.unified(0, 18446744073709551615U)) decimal_uuid() { ret; }
+.func .attribute(.unified(0x0U, 0xffffffffffffffff)) hexadecimal_uuid() { ret; }
+.func .attribute(.unified(00, 01777777777777777777777U)) octal_uuid() { ret; }
 )ptx";
 
 /** A valid no-return ABI fixture supplies both distinct preservation suffixes. */
@@ -502,7 +512,7 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedResourceContracts) {
   kernel.contract.signature.is_entry = original_signature_entry;
 }
 
-/** Function attributes retain only one numeric `.unified` contract. */
+/** Function attributes retain only one typed `.unified` UUID contract. */
 TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionAttributes) {
   std::optional<ResolvedModule> owned;
   {
@@ -524,7 +534,7 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionAttributes) {
   ASSERT_EQ(function.contract.attributes.size(), 1u);
   ResolvedFunctionAttribute& attribute = function.contract.attributes.front();
   ASSERT_EQ(attribute.kind, ResolvedFunctionAttributeKind::Unified);
-  ASSERT_EQ(attribute.values.size(), 2u);
+  ASSERT_EQ(attribute.unified_id, (std::array<uint64_t, 2>{1u, 2u}));
 
   const auto original_kind = attribute.kind;
   attribute.kind = ResolvedFunctionAttributeKind::Managed;
@@ -546,16 +556,76 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionAttributes) {
                               ModuleValidationPolicy::RequireCompleteContext);
   restored_attribute.kind = original_kind;
 
-  const auto original_values = restored_attribute.values;
-  restored_attribute.values.pop_back();
+  const auto original_id = restored_attribute.unified_id;
+  restored_attribute.unified_id.reset();
   expect_owned_model_mismatch(*owned,
                               ModuleValidationPolicy::RequireCompleteContext);
-  restored_attribute.values = original_values;
+  restored_attribute.unified_id = original_id;
+}
 
-  restored_attribute.values.front() = "not-a-number";
-  expect_owned_model_mismatch(*owned,
-                              ModuleValidationPolicy::RequireCompleteContext);
-  restored_attribute.values = original_values;
+/** UUID source spellings normalize to typed halves after parser state dies. */
+TEST(OwnedModuleHandoff, RetainsTypedUnifiedUuidAfterInputDies) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_attribute_uuid_equivalence_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Source fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  constexpr std::array<uint64_t, 2> expected_uuid{
+      0u, std::numeric_limits<uint64_t>::max()};
+  ASSERT_EQ(owned->functions.size(), 3u);
+  for (const ResolvedFunction& function : owned->functions) {
+    ASSERT_EQ(function.contract.attributes.size(), 1u);
+    const ResolvedFunctionAttribute& attribute =
+        function.contract.attributes.front();
+    EXPECT_EQ(attribute.kind, ResolvedFunctionAttributeKind::Unified);
+    EXPECT_EQ(attribute.unified_id, expected_uuid);
+  }
+  expect_owned_validation_success(
+      *owned, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** Overflowing function UUID tokens preserve declaration diagnostics. */
+TEST(OwnedModuleHandoff, RetainsUnifiedUuidOverflowDiagnostics) {
+  constexpr std::string_view source = R"ptx(
+.version 8.0
+.target sm_90
+.func .attribute(.unified(18446744073709551616, 0)) decimal_upper() { ret; }
+.func .attribute(.unified(0, 0x10000000000000000U)) hexadecimal_lower() { ret; }
+)ptx";
+  const auto parsed = parse_owned_module_fixture(source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModuleOnly(*parsed);
+  ASSERT_FALSE(resolved.has_value());
+
+  std::vector<SourceRange> expected_ranges;
+  for (const auto& item : parsed->items) {
+    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+    if (function == nullptr)
+      continue;
+    const size_t invalid_index =
+        function->name.syntax.text == "decimal_upper" ? 0u : 1u;
+    expected_ranges.push_back(
+        function->attributes.front().values[invalid_index].range);
+  }
+  ASSERT_EQ(expected_ranges.size(), 2u);
+  for (const SourceRange expected : expected_ranges) {
+    EXPECT_TRUE(std::ranges::any_of(
+        resolved.error(), [expected](const ResolveDiagnostic& diagnostic) {
+          return diagnostic.declaration_kind ==
+                     declaration_semantics::DeclarationDiagnosticKind::
+                         InvalidIntegerLiteral &&
+                 diagnostic.range == expected;
+        }));
+  }
 }
 
 /** Duplicated function flags and ABI suffix variants remain internally coherent. */

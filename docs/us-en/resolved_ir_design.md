@@ -136,6 +136,14 @@ bound/canonical functions plus their common signature; `.callprototype` owns
 its signature and ABI/noreturn suffixes. These records and their source ranges
 remain valid after AST destruction.
 
+`ResolvedFunctionAttribute::values` has migrated from source spelling storage
+to the typed optional `unified_id` payload. For `.attribute(.unified(uuid1,
+uuid2))`, `(*unified_id)[0]` is UUID `uuid1` (upper 64 bits) and
+`(*unified_id)[1]` is UUID `uuid2` (lower 64 bits); no byte-order or
+host-address conversion occurs.
+Malformed source UUID tokens remain declaration diagnostics, while AST-free
+validation rejects a retained `.unified` attribute without that typed payload.
+
 Module call literals are formal-driven `ResolvedImmediate` values after a
 successful direct, alias, or metadata-backed call check. A standalone
 instruction without a module call contract may retain a `ResolvedCallLiteral`

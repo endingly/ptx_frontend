@@ -251,16 +251,23 @@ ISA 曾扩宽的读取形式属于指令语义，不属于寄存器自身：`mov
 `.b64/.u64/.s64/.f64`。checker 按 PTX 基础类型规则接受同宽 bit-size/任意基础类型和
 signed/unsigned integer 组合，但仍拒绝 integer/float 混用；`.f64` 值另携带 SM 13 门槛。
 
-`mov.pred` 使用独立 variant，因为两端字段都是 `ResolvedPredicate`，与分类后的 scalar source
-结构不同。module resolution 要求 source/destination 都绑定到未取反的 `.pred` register，并保存
-稳定 `SymbolId`；standalone resolution 仍接受无需声明上下文的 numbered predicate register。
+`mov.pred` 使用独立 variant，因为 destination 是 `ResolvedPredicate`，而 source 是
+`ResolvedPredicateSource`，与分类后的 scalar source 结构不同。module resolution 要求 destination 绑定到未取反的 `.pred` register，但接受 plain 或
+negated predicate source，并保留其 negation 与稳定 `SymbolId`。source 也可以是保存规范化
+Boolean 值的 `ResolvedPredicateConstant`，或同时保留 special-register reference 与
+negation 的 `ResolvedPredicateSpecialRegister`。整数常量以非零为 true，再应用可选的
+`!` 取反；常量不伪造 `SymbolId`。SETP 使用的 canonical `pred_source` shape 接收
+predicate register 和整数常量及其取反形式；MOV 的 `pred_or_sreg` 还接收 predicate
+special register。两种 shape 都不接收浮点常量。standalone resolution 仍接受无需声明
+上下文的 numbered predicate register。
 
-scalar 与 vector `mov` 共享同一动态 type modifier variant，因为 `.b16/.b32/.b64` 的
-modifier 形式相同；三种 operand layout 分别表示 scalar、pack 与 unpack，不建立重复 variant。
-`ResolvedRegisterVector` 保存 2/4 个可选 `ResolvedRegisterRef`，空元素表示 destination-only `_`
-sink。resolver 与 checker 都要求 bit-size instruction type、vector 总位宽等于 instruction
-位宽，并拒绝 source sink、全 sink destination 与 sub-byte element。`.b128` 仅由 pack/unpack
-layout 接受，并携带 PTX 8.3 / SM 70 modifier-value availability。
+`Mov::Scalar` 负责 scalar 动态 type modifier：`.b16/.u16/.s16`、
+`.b32/.u32/.s32/.f32` 与 `.b64/.u64/.s64/.f64`，并保留既有的
+`.b16/.b32/.b64` pack/unpack layout。`Mov::B128PackUnpack` 是具有 fixed `.b128` 的独立生成
+public variant，只用于 vector pack/unpack。`ResolvedRegisterVector` 保存 2/4 个可选
+`ResolvedRegisterRef`，空元素表示 destination-only `_` sink。resolver 与 checker 都要求
+bit-size instruction type、vector 总位宽等于 instruction 位宽，并拒绝 source sink、全 sink
+destination 与 sub-byte element。`Mov::B128PackUnpack` 携带 PTX 8.3 / SM 70 availability。
 
 `ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
 device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
@@ -523,6 +530,6 @@ instruction 约束仍不属于当前 ABI。
 
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call
-metadata、scalar `.b128` 与 wider `.b128` register 所需的 declaration-type availability 仍不在
-本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
+metadata、由生成的 `Mov::Scalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register
+所需的 declaration-type availability 仍不在本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。

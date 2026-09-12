@@ -112,6 +112,21 @@ enum class ComparisonOperator : uint8_t {
   Eq,
   Lt,
   Ge,
+  Ne,
+  Le,
+  Gt,
+  Lo,
+  Ls,
+  Hi,
+  Hs,
+  Equ,
+  Neu,
+  Ltu,
+  Leu,
+  Gtu,
+  Geu,
+  Num,
+  Nan,
 };
 
 /** Semantic value of a PTX predicate-combine operator modifier. */
@@ -141,6 +156,15 @@ enum class EvictionPriority : uint8_t {
   EvictFirst,
   EvictLast,
   NoAllocate,
+  EvictUnchanged,
+};
+
+/** Byte count requested by a PTX L2 prefetch qualifier. */
+enum class PrefetchSize : uint8_t {
+  None = 0,
+  Bytes64,
+  Bytes128,
+  Bytes256,
 };
 
 /** Source-level memory-consistency qualifier for ld/st.  Omitted is kept

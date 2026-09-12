@@ -88,9 +88,10 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
   };
   EXPECT_TRUE(
       checker::check(std::get<Mov>(*explicit_cluster), supported).has_value());
-  const auto& special_source = std::get<ResolvedSpecialRegisterRef>(
+  const auto& special_source = std::get<ResolvedPredicateSpecialRegister>(
       std::get<Mov::Pred>(std::get<Mov>(*explicit_cluster).variant).src.value);
-  EXPECT_EQ(special_source.id, base::lookup("%is_explicit_cluster")->id);
+  EXPECT_EQ(special_source.register_ref.id,
+            base::lookup("%is_explicit_cluster")->id);
   auto old_ptx = supported;
   old_ptx.target.ptx_version = {7, 7};
   const auto rejected =

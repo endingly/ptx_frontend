@@ -95,6 +95,11 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         for variant in instruction.variants
         if variant.address_alignments
     )
+    mmio_semantic_definitions = "\n\n".join(
+        _emit_mmio_semantic_descriptors(variant)
+        for variant in instruction.variants
+        if variant.memory_consistency is not None
+    )
     variants = ",\n".join(
         _emit_variant_descriptor(variant) for variant in instruction.variants
     )
@@ -112,6 +117,8 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 {immediate_range_definitions}
 
 {address_alignment_definitions}
+
+{mmio_semantic_definitions}
 
   static constexpr std::array<checker::VariantDescriptor, {len(instruction.variants)}>
       variants = {{
@@ -150,7 +157,9 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .mmio_field_id = "{consistency.mmio_field_id}",
                   .cache_field_id = "{consistency.cache_field_id}",
                   .address_field_id = "{consistency.address_field_id}",
+                  .type_field_id = "{consistency.type_field_id}",
                   .state_space_field_id = "{consistency.state_space_field_id or ""}",
+                  .mmio_semantics = {variant.cpp_name}_mmio_semantics,
               }},'''
     vector = variant.memory_vector
     memory_vector = ""
@@ -162,6 +171,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .address_field_id = "{vector.address_field_id}",
                   .state_space_field_id = "{vector.state_space_field_id or ""}",
                   .availability = {_emit_availability(dict(vector.availability))},
+                  .require_modern = {str(vector.require_modern).lower()},
               }},'''
     immediate_value = ""
     if variant.immediate_value is not None:
@@ -191,6 +201,8 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
               .operand_type_compatibilities =
                   {variant.cpp_name}_operand_type_compatibilities,
               .rule_id = "{rule_id}",
+              .permits_unified_address = {str(variant.permits_unified_address).lower()},
+              .unified_address_access = checker::VariantDescriptor::UnifiedAddressAccess::{variant.unified_address_access.title()},
 {memory_consistency}
 {_emit_address_alignment_descriptor(variant)}
 {memory_vector}
@@ -198,6 +210,24 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
 {immediate_multiple_of}
 {immediate_ranges}
           }}"""
+
+
+def _emit_mmio_semantic_descriptors(variant: ResolvedVariant) -> str:
+    """Emit the target-qualified semantic alternatives permitted with MMIO."""
+
+    consistency = variant.memory_consistency
+    assert consistency is not None
+    entries = ",\n".join(
+        f'''          checker::VariantDescriptor::MmioSemanticDescriptor{{
+              .semantics = {cpp_value(CppDomain.MEMORY_CONSISTENCIES, value)},
+              .availability = {_emit_availability(dict(availability))},
+          }}'''
+        for value, availability in consistency.mmio_semantics
+    )
+    return f"""  static constexpr std::array<checker::VariantDescriptor::MmioSemanticDescriptor, {len(consistency.mmio_semantics)}>
+      {variant.cpp_name}_mmio_semantics = {{{{
+{entries}
+      }}}};"""
 
 
 def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
@@ -342,6 +372,13 @@ def _emit_modifier_value_descriptor(
         rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
         cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
         vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    elif entry.value_cpp_type == "PrefetchSize":
+        prefetch_size = cpp_value(CppDomain.PREFETCH_SIZES, str(entry.value))
+        bool_value = "false"
+        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
     elif entry.value_cpp_type == "VectorArity":
         vector_arity = cpp_value(CppDomain.VECTOR_ARITIES, str(entry.value))
         bool_value = "false"
@@ -424,6 +461,7 @@ def _emit_modifier_value_descriptor(
               .boolean_operator = {boolean_operator if entry.value_cpp_type == "BooleanOperator" else cpp_default(CppDomain.BOOLEAN_OPERATORS)},
               .cache_operator = {cache_operator},
               .eviction_priority = {eviction_priority if entry.value_cpp_type == "EvictionPriority" else cpp_default(CppDomain.EVICTION_PRIORITIES)},
+              .prefetch_size = {prefetch_size if entry.value_cpp_type == "PrefetchSize" else cpp_default(CppDomain.PREFETCH_SIZES)},
               .vector_arity = {vector_arity},
               .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
               .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},

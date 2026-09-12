@@ -785,6 +785,18 @@ TEST(PtxSyntaxParser, LowersRegisterDeclarationsAndLabels) {
       std::holds_alternative<syntax_ast::AstInstruction>(function.body[2]));
 }
 
+/** Negated integer operands lower to their dedicated semantic syntax leaf. */
+TEST(PtxSyntaxParser, LowersNegatedIntegerInstructionOperands) {
+  PtxSyntaxParser parser("mov.pred %p0, !-1;");
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  ASSERT_EQ(result->operands.size(), 2u);
+  const auto* negated =
+      std::get_if<syntax_ast::AstNegatedImmediate>(&result->operands[1]);
+  ASSERT_NE(negated, nullptr);
+  EXPECT_EQ(negated->immediate.syntax.text, "-1");
+}
+
 TEST(PtxSyntaxParser, LowersModuleAndFunctionVariableDeclarations) {
   constexpr std::string_view source =
       ".visible .global .align 16 .v4 .f32 values[2][3];\n"

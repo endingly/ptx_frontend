@@ -2819,12 +2819,18 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperChecksLayoutAvailability) {
 }
 
 TEST(ResolvedIrChecker, ChecksGeneratedMemoryConsistencyCrossRules) {
+  static constexpr std::array kMmioSemantics{
+      VariantDescriptor::MmioSemanticDescriptor{
+          .semantics = MemoryConsistency::Relaxed,
+      },
+  };
   constexpr VariantDescriptor::MemoryConsistencyDescriptor descriptor{
       .semantics_field_id = "semantics",
       .scope_field_id = "scope",
       .mmio_field_id = "mmio",
       .cache_field_id = "cache",
       .address_field_id = "address",
+      .mmio_semantics = kMmioSemantics,
   };
   const Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 90},
@@ -2852,12 +2858,35 @@ TEST(ResolvedIrChecker, ChecksGeneratedMemoryConsistencyCrossRules) {
       {.field_id = "semantics",
        .memory_consistency = MemoryConsistency::Relaxed},
       {.field_id = "scope", .memory_scope = MemoryScope::Sys},
-      {.field_id = "mmio", .bool_value = true},
+      {.field_id = "mmio", .bool_value = false},
       {.field_id = "cache", .cache_operator = CacheOperator::Unspecified},
   };
   EXPECT_TRUE(check_memory_consistency(descriptor, valid_fields, global_address,
                                        context)
                   .has_value());
+  const FieldView missing_cache_fields[] = {
+      {.field_id = "semantics",
+       .memory_consistency = MemoryConsistency::Relaxed},
+      {.field_id = "scope", .memory_scope = MemoryScope::Sys},
+      {.field_id = "mmio", .bool_value = false},
+  };
+  const auto missing_cache = check_memory_consistency(
+      descriptor, missing_cache_fields, global_address, context);
+  ASSERT_FALSE(missing_cache.has_value());
+  EXPECT_EQ(missing_cache.error().front().kind,
+            CheckDiagnosticKind::RuleViolation);
+
+  const FieldView missing_mmio_fields[] = {
+      {.field_id = "semantics",
+       .memory_consistency = MemoryConsistency::Relaxed},
+      {.field_id = "scope", .memory_scope = MemoryScope::Sys},
+      {.field_id = "cache", .cache_operator = CacheOperator::Unspecified},
+  };
+  const auto missing_mmio = check_memory_consistency(
+      descriptor, missing_mmio_fields, global_address, context);
+  ASSERT_FALSE(missing_mmio.has_value());
+  EXPECT_EQ(missing_mmio.error().front().kind,
+            CheckDiagnosticKind::RuleViolation);
 
   constexpr VariantDescriptor::MemoryConsistencyDescriptor vector_descriptor{
       .semantics_field_id = "semantics",

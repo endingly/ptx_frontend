@@ -26,10 +26,11 @@ The frontend currently provides:
   type/shape, checked byte extent, alignment, linkage, and typed initializer
   constants/relocations. External unsized storage remains size-unknown; the
   frontend does not allocate memory or choose per-CTA/per-thread layouts;
-- generated resolution and checking for YAML-modelled bare `ret`/`exit`/`trap` (with ordinary predicate guards accepted), fixed `and.b32`/`or.b32`/`xor.b32`/`not.b32`/`shl.b32`/`shr.u32`/`mul.lo.u32`/`mul.rn.f32`/`mad.lo.u32`/`div.u32`, the complete [PTX 9.3 FMA family](docs/us-en/fma_coverage.md), frozen `setp.lt{.and}.u32` single-predicate forms, `selp.u32`, register-only `cvta{.to}.global.u64`, `cvt.s32.u32`/`cvt.rn.f32.f64`/`cvt.rn.f32.u32`/`cvt.rzi.u32.f32`, `bra`, `brx.idx`, `add`,
-  `sub`, `bar`, selected `mov` forms, generic/basic-explicit scalar `ld`/`st` across
-  the 14 `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`,
-  `.f32/.f64` types, plus legacy `.v2/.v4` braced-vector `ld`/`st` and the
+- generated resolution and checking for YAML-modelled bare `ret`/`exit`/`trap` (with ordinary predicate guards accepted), fixed `and.b32`/`or.b32`/`xor.b32`/`not.b32`/`shl.b32`/`shr.u32`/`mad.lo.u32`/`div.u32`, the complete [PTX 9.3 MUL family](docs/us-en/mul_coverage.md) and [PTX 9.3 FMA family](docs/us-en/fma_coverage.md), the [PTX 9.3 SETP family](docs/us-en/setp_coverage.md) and [extended-precision carry/borrow forms](docs/us-en/carry_coverage.md), `selp.u32`, register-only `cvta{.to}.global.u64`, `cvt.s32.u32`/`cvt.rn.f32.f64`/`cvt.rn.f32.u32`/`cvt.rzi.u32.f32`, `bra`, `brx.idx`, `add`,
+  `sub`, `bar`, selected `mov` forms, the [LD/NC](docs/us-en/ld_coverage.md) and
+  [ST](docs/us-en/st_coverage.md) families across scalar `.b8/.b16/.b32/.b64/.b128`,
+  `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64` types,
+  plus legacy `.v2/.v4` braced-vector `ld`/`st` and the
   PTX 8.8/SM 100 256-bit modern forms (`.v8` × 32-bit or `.v4` × 64-bit);
   modern vectors require global space when known and permit partial `_` sinks,
   while legacy vectors remain limited to 128 bits and reject sinks. Legacy `ld`
@@ -38,8 +39,9 @@ The frontend currently provides:
   `.wb/.cg/.cs/.wt`, explicit `.const/.global/.local/.param/.shared` loads,
   and explicit `.global/.local/.param/.shared` stores, including data-driven
   `.weak/.volatile/.relaxed.scope/.acquire.scope/.release.scope` consistency
-  qualifiers and PTX 8.2 `.mmio.relaxed.sys` (legacy vectors intentionally
-  exclude mmio),
+  qualifiers, PTX 8.2 `.mmio.relaxed.sys`, and PTX 9.3 MMIO acquire/release
+  (vectors exclude MMIO), shared sub-qualifiers, cache eviction/hint/prefetch
+  combinations, and typed load-side `.unified` address validation;
   generic bound-space policies, exact explicit bound-symbol address-space
   checks, and input/return direction checks for bound `.param` addresses;
   operand register compatibility permits PTX's wider load destination/store

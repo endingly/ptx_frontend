@@ -1322,11 +1322,11 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   ASSERT_EQ(resolved->functions[1].body.size(), 7u);
 
   const checker::Context old_context{
-      .target = {.ptx_version = {1, 5}, .sm_version = 10},
+      .target = {.ptx_version = {8, 2}, .sm_version = 70},
       .instruction_range = ast.range,
   };
   const checker::Context supported_context{
-      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+      .target = {.ptx_version = {8, 3}, .sm_version = 70},
       .instruction_range = ast.range,
   };
 
@@ -1336,7 +1336,11 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   EXPECT_EQ(kernel_explicit.state_space.value, MemoryStateSpace::Parameter);
   EXPECT_EQ(kernel_explicit.address.value.enclosing_function_kind,
             EnclosingFunctionKind::Entry);
-  EXPECT_TRUE(checker::check(kernel_load, old_context).has_value());
+  const auto old_kernel_load = checker::check(kernel_load, old_context);
+  ASSERT_FALSE(old_kernel_load.has_value());
+  EXPECT_EQ(old_kernel_load.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(checker::check(kernel_load, supported_context).has_value());
 
   const auto& syntax_device = std::get<syntax_ast::AstFunction>(ast.items[2]);
   const auto& syntax_first_load =
@@ -1357,11 +1361,8 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   const auto expect_old_target = [&](const auto& instruction) {
     const auto checked = checker::check(instruction, old_context);
     ASSERT_FALSE(checked.has_value());
-    ASSERT_EQ(checked.error().size(), 2u);
     EXPECT_EQ(checked.error()[0].kind,
               checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-    EXPECT_EQ(checked.error()[1].kind,
-              checker::CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(checker::check(instruction, supported_context).has_value());
   };
   expect_old_target(device_load);
@@ -1370,7 +1371,7 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   expect_old_target(std::get<St>(resolved->functions[1].body[3]));
 
   const auto expect_direction_mismatch = [&](const auto& instruction) {
-    const auto checked = checker::check(instruction, old_context);
+    const auto checked = checker::check(instruction, supported_context);
     ASSERT_FALSE(checked.has_value());
     ASSERT_EQ(checked.error().size(), 1u);
     EXPECT_EQ(checked.error().front().kind,
@@ -1379,8 +1380,8 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   expect_direction_mismatch(std::get<Ld>(resolved->functions[1].body[4]));
   expect_direction_mismatch(std::get<St>(resolved->functions[1].body[5]));
 
-  const auto wrong_space =
-      checker::check(std::get<Ld>(resolved->functions[1].body[6]), old_context);
+  const auto wrong_space = checker::check(
+      std::get<Ld>(resolved->functions[1].body[6]), supported_context);
   ASSERT_FALSE(wrong_space.has_value());
   ASSERT_EQ(wrong_space.error().size(), 1u);
   EXPECT_EQ(wrong_space.error().front().kind,
@@ -1410,19 +1411,20 @@ TEST(ResolvedModule, ChecksStandaloneExplicitParameterAvailability) {
             EnclosingFunctionKind::Unknown);
 
   const checker::Context old_context{
-      .target = {.ptx_version = {1, 5}, .sm_version = 10},
+      .target = {.ptx_version = {8, 2}, .sm_version = 70},
   };
-  EXPECT_TRUE(checker::check(resolved_load, old_context).has_value());
+  const auto old_load = checker::check(resolved_load, old_context);
+  ASSERT_FALSE(old_load.has_value());
+  EXPECT_EQ(old_load.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   const auto old_store = checker::check(resolved_store, old_context);
   ASSERT_FALSE(old_store.has_value());
-  ASSERT_EQ(old_store.error().size(), 2u);
   EXPECT_EQ(old_store.error()[0].kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-  EXPECT_EQ(old_store.error()[1].kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
   auto supported_context = old_context;
-  supported_context.target = {.ptx_version = {2, 0}, .sm_version = 20};
+  supported_context.target = {.ptx_version = {8, 3}, .sm_version = 70};
+  EXPECT_TRUE(checker::check(resolved_load, supported_context).has_value());
   EXPECT_TRUE(checker::check(resolved_store, supported_context).has_value());
 }
 
@@ -1728,8 +1730,8 @@ TEST(ResolvedModule, RejectsInvalidMovRegisterVectorForms) {
   const auto scalar_b128 = resolve_source("mov.b128 %q0, %q0;");
   ASSERT_FALSE(scalar_b128.has_value());
   EXPECT_EQ(scalar_b128.error().front().message,
-            "The .b128 mov type is available only for vector pack or unpack "
-            "forms.");
+            "Operands do not match any layout of instruction variant "
+            "'B128PackUnpack'.");
 
   const auto sub_byte = resolve_source("mov.b16 %r0, {%b0, %b1, %b2, %b3};");
   ASSERT_FALSE(sub_byte.has_value());
@@ -2182,21 +2184,18 @@ TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
   EXPECT_EQ(call_operands.return_value.value.symbol_id, return_staging->symbol);
 
   const checker::Context old_context{
-      .target = {.ptx_version = {1, 5}, .sm_version = 10},
+      .target = {.ptx_version = {8, 2}, .sm_version = 70},
       .instruction_range = ast.range,
   };
   const checker::Context supported_context{
-      .target = {.ptx_version = {2, 0}, .sm_version = 20},
+      .target = {.ptx_version = {8, 3}, .sm_version = 70},
       .instruction_range = ast.range,
   };
   const auto expect_availability = [&](const auto& instruction) {
     const auto checked = checker::check(instruction, old_context);
     ASSERT_FALSE(checked.has_value());
-    ASSERT_EQ(checked.error().size(), 2u);
     EXPECT_EQ(checked.error()[0].kind,
               checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-    EXPECT_EQ(checked.error()[1].kind,
-              checker::CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(checker::check(instruction, supported_context).has_value());
   };
   expect_availability(store);

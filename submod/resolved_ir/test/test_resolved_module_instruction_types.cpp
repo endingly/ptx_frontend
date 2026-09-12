@@ -282,14 +282,16 @@ TEST(ResolvedModule, ChecksSetpLtU32OperandTypes) {
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
       std::get<Setp>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Setp::LtU32>(instruction.variant);
+  const auto& variant = std::get<Setp::Unsigned>(instruction.variant);
+  const auto& operands =
+      std::get<Setp::Unsigned::SingleOperands>(variant.operands);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
-  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+  EXPECT_EQ(checked.error().front().range, operands.src1.locs.front());
 }
 
 TEST(ResolvedModule, ChecksSetpGeS32OperandTypes) {
@@ -303,7 +305,7 @@ TEST(ResolvedModule, ChecksSetpGeS32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& instruction =
       std::get<Setp>(valid->functions.front().body.front());
-  EXPECT_TRUE(std::holds_alternative<Setp::GeS32>(instruction.variant));
+  EXPECT_TRUE(std::holds_alternative<Setp::Signed>(instruction.variant));
   EXPECT_TRUE(checker::check(instruction, context).has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -314,12 +316,14 @@ TEST(ResolvedModule, ChecksSetpGeS32OperandTypes) {
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& invalid_instruction =
       std::get<Setp>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Setp::GeS32>(invalid_instruction.variant);
+  const auto& variant = std::get<Setp::Signed>(invalid_instruction.variant);
+  const auto& operands =
+      std::get<Setp::Signed::SingleOperands>(variant.operands);
   const auto checked = checker::check(invalid_instruction, context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
-  EXPECT_EQ(checked.error().front().range, variant.src1.locs.front());
+  EXPECT_EQ(checked.error().front().range, operands.src1.locs.front());
 }
 
 TEST(ResolvedModule, ChecksSetpDualPredicateOperandTypes) {
@@ -338,15 +342,17 @@ TEST(ResolvedModule, ChecksSetpDualPredicateOperandTypes) {
   }
 
   auto instruction = std::get<Setp>(valid->functions.front().body.front());
-  auto& variant = std::get<Setp::EqU32Pair>(instruction.variant);
-  variant.dst.value.second.register_ref.declared_type = ScalarType::U32;
+  auto& variant = std::get<Setp::Unsigned>(instruction.variant);
+  auto& operands = std::get<Setp::Unsigned::PairOperands>(variant.operands);
+  ASSERT_TRUE(operands.dst.value.second.has_value());
+  operands.dst.value.second->register_ref.declared_type = ScalarType::U32;
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
-  EXPECT_EQ(checked.error().front().range, variant.dst.locs[1]);
+  EXPECT_EQ(checked.error().front().range, operands.dst.locs[1]);
 }
 
 TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {

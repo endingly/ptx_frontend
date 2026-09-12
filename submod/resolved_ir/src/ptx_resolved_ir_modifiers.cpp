@@ -148,6 +148,24 @@ resolve_eviction_priority(const syntax_ast::AstModifier& modifier) {
   return WithLocs<EvictionPriority>{*value, modifier.syntax.range};
 }
 
+std::optional<PrefetchSize> prefetch_size_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kPrefetchSizes, spelling);
+}
+
+std::expected<WithLocs<PrefetchSize>, ResolveDiagnostic> resolve_prefetch_size(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value = prefetch_size_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown prefetch size '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<PrefetchSize>{*value, modifier.syntax.range};
+}
+
 std::optional<MemoryConsistency> memory_consistency_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kMemoryConsistencies, spelling);
@@ -256,6 +274,8 @@ std::expected<WithLocs<VectorArity>, ResolveDiagnostic> resolve_vector_arity(
 
 std::optional<MemoryStateSpace> memory_state_space_from_ptx_name(
     std::string_view spelling) {
+  if (spelling == ".shared::cta" || spelling == ".shared::cluster")
+    return MemoryStateSpace::Shared;
   return lookup_ptx_suffix(generated_detail::kMemoryStateSpaces, spelling);
 }
 
@@ -302,6 +322,7 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(comparison_operator,
 PTX_DEFINE_TYPED_MODIFIER_PARSER(boolean_operator, resolve_boolean_operator)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(cache_operator, resolve_cache_operator)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(eviction_priority, resolve_eviction_priority)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(prefetch_size, resolve_prefetch_size)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_consistency, resolve_memory_consistency)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_scope, resolve_memory_scope)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(vector_arity, resolve_vector_arity)
@@ -334,6 +355,9 @@ PTX_DEFINE_MODIFIER_DEFAULT(scalar_type, ScalarType, scalar_type,
 PTX_DEFINE_MODIFIER_DEFAULT(rounding_mode, RoundingMode, rounding_mode,
                             value.rounding_mode != RoundingMode::Invalid)
 PTX_DEFINE_MODIFIER_DEFAULT(cache_operator, CacheOperator, cache_operator, true)
+PTX_DEFINE_MODIFIER_DEFAULT(eviction_priority, EvictionPriority,
+                            eviction_priority, true)
+PTX_DEFINE_MODIFIER_DEFAULT(prefetch_size, PrefetchSize, prefetch_size, true)
 PTX_DEFINE_MODIFIER_DEFAULT(memory_consistency, MemoryConsistency,
                             memory_consistency, true)
 PTX_DEFINE_MODIFIER_DEFAULT(memory_scope, MemoryScope, memory_scope, true)
@@ -394,8 +418,10 @@ struct ModifierDomainMapping {
     "boolean-operator", UnsupportedDomain)                                    \
   X(CacheOperator, CacheOperator, parse_cache_operator_modifier,              \
     default_cache_operator_modifier, "cache-operator", Supported)             \
-  X(EvictionPriority, None, parse_eviction_priority_modifier, nullptr,        \
-    "eviction-priority", UnsupportedDomain)                                   \
+  X(EvictionPriority, EvictionPriority, parse_eviction_priority_modifier,     \
+    default_eviction_priority_modifier, "eviction-priority", Supported)       \
+  X(PrefetchSize, PrefetchSize, parse_prefetch_size_modifier,                 \
+    default_prefetch_size_modifier, "prefetch size", Supported)               \
   X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,  \
     default_memory_consistency_modifier, "memory-consistency", Supported)     \
   X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                    \

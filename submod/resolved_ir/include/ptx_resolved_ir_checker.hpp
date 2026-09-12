@@ -97,6 +97,11 @@ CheckResult check_modifier_value_domain(
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor&,
     std::span<const FieldView>, std::span<const OperandView>, const Context&);
+/** Reject `.unified` address suffixes not explicitly admitted by a variant. */
+CheckResult check_unified_address_suffix(const VariantDescriptor&,
+                                         std::span<const FieldView>,
+                                         std::span<const OperandView>,
+                                         const Context&);
 /** Check a generated natural-alignment rule when an address is statically known. */
 CheckResult check_address_alignment(const AddressAlignmentConstraint&,
                                     std::span<const FieldView>,

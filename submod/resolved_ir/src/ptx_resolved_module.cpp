@@ -1169,6 +1169,10 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     return std::unexpected(std::move(diagnostics));
   }
   ResolvedModuleHeader header = resolve_module_header(ast);
+  std::vector<binding::SymbolId> unified_storage_symbols;
+  for (const ResolvedStorageDeclaration& declaration : *storage)
+    if (declaration.unified_id)
+      unified_storage_symbols.push_back(declaration.symbol_id);
 
   FunctionSignatureIndex signatures;
   CallArgumentPropertyIndex call_argument_properties;
@@ -1238,6 +1242,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
         .scope = scope,
         .function_scope = scope,
         .function_is_entry = function->is_entry,
+        .unified_storage_symbols = unified_storage_symbols,
     };
     ResolvedFunction resolved_function{
         .symbol_id = symbol.id,

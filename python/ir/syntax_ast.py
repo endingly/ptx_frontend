@@ -49,6 +49,7 @@ class OperandSyntaxShape(IntFlag):
     BRANCH_TARGET = 1 << 9
     BRANCH_TARGET_SET = 1 << 10
     REGISTER_PREDICATE_PAIR = 1 << 11
+    NEGATED_IMMEDIATE = 1 << 12
 
 
 class OperandLayoutKind(Enum):
@@ -137,6 +138,7 @@ OPERAND_SYNTAX_SHAPES = {
     "reg_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
     "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+    "pred_pair_or_sink": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
     "mov_scalar_src": (
         OperandSyntaxShape.IDENTIFIER_REF
         | OperandSyntaxShape.IMMEDIATE
@@ -149,7 +151,19 @@ OPERAND_SYNTAX_SHAPES = {
     "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
     "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred_or_sreg": OperandSyntaxShape.IDENTIFIER_REF,
+    "pred_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
+    "pred_source": (
+        OperandSyntaxShape.IDENTIFIER_REF
+        | OperandSyntaxShape.IMMEDIATE
+        | OperandSyntaxShape.PREDICATE
+        | OperandSyntaxShape.NEGATED_IMMEDIATE
+    ),
+    "pred_or_sreg": (
+        OperandSyntaxShape.IDENTIFIER_REF
+        | OperandSyntaxShape.IMMEDIATE
+        | OperandSyntaxShape.PREDICATE
+        | OperandSyntaxShape.NEGATED_IMMEDIATE
+    ),
     "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
     "label": OperandSyntaxShape.BRANCH_TARGET,
     "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,

@@ -7,6 +7,7 @@ from typing import Any
 
 from .load_yaml import expand_value_refs
 from .model import (
+    ConditionCodeEffect,
     AddressAlignmentConstraint,
     ImmediateMultipleOfConstraint,
     ImmediateRangeConstraint,
@@ -180,6 +181,14 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raw.get("role") != "dst" or raw.get("access") != "write"
     ):
         raise ValueError("reg_or_sink must be a write destination")
+    if raw["kind"] == "pred_or_sink" and (
+        raw.get("role") != "dst" or raw.get("access") != "write"
+    ):
+        raise ValueError("pred_or_sink must be a write destination")
+    if raw["kind"] == "pred_pair_or_sink" and (
+        raw.get("role") != "dst" or raw.get("access") != "write"
+    ):
+        raise ValueError("pred_pair_or_sink must be a write destination")
     type_tag = raw.get("type_tag")
     if raw["kind"] in {"descriptor", "typed_token"}:
         if (not isinstance(type_tag, str) or
@@ -995,6 +1004,16 @@ def _normalize_operand_type_compatibilities(
     return tuple(result)
 
 
+def _normalize_unified_address_access(raw_variant: Mapping[str, Any]) -> str:
+    """Validate and return the declaration-level unified-address policy."""
+    access = raw_variant.get("unified_address_access", "none")
+    if access not in {"none", "read", "write"}:
+        raise ValueError(
+            "unified_address_access must be one of 'none', 'read', or 'write'"
+        )
+    return str(access)
+
+
 def _normalize_memory_consistency_constraint(
     raw_variant: dict[str, Any], modifiers: tuple[ModifierSpec, ...],
     layouts: tuple[OperandLayoutSpec, ...]
@@ -1014,8 +1033,8 @@ def _normalize_memory_consistency_constraint(
         )
     raw = matches[0]
     required = {
-        "semantics_modifier", "scope_modifier", "cache_modifier",
-        "address_operand",
+        "semantics_modifier", "scope_modifier",
+        "address_operand", "type_modifier",
     }
     missing = required - raw.keys()
     if missing:
@@ -1049,13 +1068,22 @@ def _normalize_memory_consistency_constraint(
     expected_kinds = {
         "semantics_modifier": "semantics",
         "scope_modifier": "scope",
-        "cache_modifier": "cache",
+        "type_modifier": "type",
     }
     for key, expected_kind in expected_kinds.items():
         if modifiers_by_name[raw[key]].kind != expected_kind:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_consistency {key} "
                 f"must name a {expected_kind!r} modifier"
+            )
+    cache_modifier = raw.get("cache_modifier")
+    if cache_modifier is not None:
+        if cache_modifier not in modifier_names or (
+            modifiers_by_name[cache_modifier].kind != "cache"
+        ):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: memory_consistency "
+                "cache_modifier must name an active 'cache' modifier"
             )
     mmio_modifier = raw.get("mmio_modifier")
     if mmio_modifier is not None:
@@ -1083,13 +1111,37 @@ def _normalize_memory_consistency_constraint(
             f"variant {raw_variant['name']!r}: memory_consistency "
             "state_space_modifier must name a state_space modifier"
         )
+    raw_mmio_semantics = raw.get("mmio_semantics", ())
+    if raw_mmio_semantics and mmio_modifier is None:
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency "
+            "mmio_semantics requires mmio_modifier"
+        )
+    if not isinstance(raw_mmio_semantics, (list, tuple)):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency "
+            "mmio_semantics must be a list"
+        )
+    mmio_semantics = _normalize_modifier_values(
+        list(raw_mmio_semantics), {}
+    )
+    semantic_values = {
+        value.value for value in modifiers_by_name[raw["semantics_modifier"]].values
+    }
+    if any(value.value not in semantic_values for value in mmio_semantics):
+        raise ValueError(
+            f"variant {raw_variant['name']!r}: memory_consistency "
+            "mmio_semantics must be admitted by semantics_modifier"
+        )
     return MemoryConsistencyConstraint(
         semantics_modifier=raw["semantics_modifier"],
         scope_modifier=raw["scope_modifier"],
-        cache_modifier=raw["cache_modifier"],
+        cache_modifier=cache_modifier,
         address_operand=raw["address_operand"],
+        type_modifier=raw["type_modifier"],
         mmio_modifier=mmio_modifier,
         state_space_modifier=raw.get("state_space_modifier"),
+        mmio_semantics=mmio_semantics,
     )
 
 
@@ -1273,6 +1325,7 @@ def _normalize_memory_vector_constraint(
         address_operand=raw["address_operand"],
         availability=normalize_availability(availability),
         state_space_modifier=state_space_modifier,
+        require_modern=bool(raw.get("require_modern", False)),
     )
 
 
@@ -1501,6 +1554,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             variants.append(
                 VariantSpec(
                     name=raw_variant["name"],
+                    condition_code_effect=ConditionCodeEffect(
+                        raw_variant.get("condition_code_effect", "none")
+                    ),
                     availability=normalize_availability(raw_variant["availability"]),
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
@@ -1513,6 +1569,12 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     ),
                     memory_consistency=_normalize_memory_consistency_constraint(
                         raw_variant, modifiers, operand_layouts
+                    ),
+                    permits_unified_address=bool(
+                        raw_variant.get("permits_unified_address", False)
+                    ),
+                    unified_address_access=_normalize_unified_address_access(
+                        raw_variant
                     ),
                     address_alignments=_normalize_address_alignment_constraints(
                         raw_variant, modifiers, operand_layouts

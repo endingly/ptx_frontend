@@ -72,8 +72,23 @@ domains:
     runtime_lookup: ptx_suffix
     values:
       eq: ComparisonOperator::Eq
+      ne: ComparisonOperator::Ne
       lt: ComparisonOperator::Lt
+      le: ComparisonOperator::Le
+      gt: ComparisonOperator::Gt
       ge: ComparisonOperator::Ge
+      lo: ComparisonOperator::Lo
+      ls: ComparisonOperator::Ls
+      hi: ComparisonOperator::Hi
+      hs: ComparisonOperator::Hs
+      equ: ComparisonOperator::Equ
+      neu: ComparisonOperator::Neu
+      ltu: ComparisonOperator::Ltu
+      leu: ComparisonOperator::Leu
+      gtu: ComparisonOperator::Gtu
+      geu: ComparisonOperator::Geu
+      num: ComparisonOperator::Num
+      nan: ComparisonOperator::Nan
 
   boolean_operators:
     cpp_type: BooleanOperator
@@ -103,10 +118,22 @@ domains:
     default: EvictionPriority::Invalid
     runtime_lookup: ptx_suffix
     values:
+      invalid: EvictionPriority::Invalid
       evict_normal: EvictionPriority::EvictNormal
       evict_first: EvictionPriority::EvictFirst
       evict_last: EvictionPriority::EvictLast
+      evict_unchanged: EvictionPriority::EvictUnchanged
       no_allocate: EvictionPriority::NoAllocate
+
+  prefetch_sizes:
+    cpp_type: PrefetchSize
+    default: PrefetchSize::None
+    runtime_lookup: ptx_suffix
+    values:
+      none: PrefetchSize::None
+      L2::64B: PrefetchSize::Bytes64
+      L2::128B: PrefetchSize::Bytes128
+      L2::256B: PrefetchSize::Bytes256
 
   memory_consistencies:
     cpp_type: MemoryConsistency
@@ -220,6 +247,7 @@ domains:
       boolean_op: BooleanOperator
       cache: CacheOperator
       eviction_priority: EvictionPriority
+      prefetch_size: PrefetchSize
       semantics: MemoryConsistency
       scope: MemoryScope
       vector: VectorArity
@@ -238,11 +266,14 @@ domains:
       reg_or_sink: ResolvedRegisterOrSink
       shfl_dest: ResolvedShflSyncDestination
       pred_pair: ResolvedPredicatePair
+      pred_pair_or_sink: ResolvedPredicatePairOrSink
       mov_scalar_src: ResolvedMovSource
       cluster_address: ResolvedMovSource
       vector_reg: ResolvedVectorRegisterRef
       vector_sreg: ResolvedVectorSpecialRegisterRef
       pred: ResolvedPredicate
+      pred_or_sink: ResolvedPredicateOrSink
+      pred_source: ResolvedPredicateSource
       pred_or_sreg: ResolvedPredicateSource
       pred_or_not: ResolvedPredicate
       label: ResolvedBranchTarget
@@ -272,6 +303,7 @@ domains:
       BooleanOperator: BooleanOperator
       CacheOperator: CacheOperator
       EvictionPriority: EvictionPriority
+      PrefetchSize: PrefetchSize
       MemoryConsistency: MemoryConsistency
       MemoryScope: MemoryScope
       VectorArity: VectorArity
@@ -284,11 +316,13 @@ domains:
       MbarrierStateToken: ResolvedMbarrierStateToken
       RegisterOrSink: ResolvedRegisterOrSink
       Predicate: ResolvedPredicate
+      PredicateOrSink: ResolvedPredicateOrSink
       PredicateSource: ResolvedPredicateSource
       Immediate: ResolvedImmediate
       RegOrImm: RegOrImm
       ShflDestination: ResolvedShflSyncDestination
       PredicatePair: ResolvedPredicatePair
+      PredicatePairOrSink: ResolvedPredicatePairOrSink
       MovSource: ResolvedMovSource
       VectorRegister: ResolvedVectorRegisterRef
       VectorSpecialRegister: ResolvedVectorSpecialRegisterRef
@@ -344,6 +378,7 @@ domains:
       BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
       BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
       REGISTER_PREDICATE_PAIR: check_end::OperandSyntaxShape::RegisterPredicatePair
+      NEGATED_IMMEDIATE: check_end::OperandSyntaxShape::NegatedImmediate
 
   resolved_value_kinds:
     cpp_type: check_end::ResolvedValueKind
@@ -355,6 +390,7 @@ domains:
       BooleanOperator: check_end::ResolvedValueKind::BooleanOperator
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
       EvictionPriority: check_end::ResolvedValueKind::EvictionPriority
+      PrefetchSize: check_end::ResolvedValueKind::PrefetchSize
       MemoryConsistency: check_end::ResolvedValueKind::MemoryConsistency
       MemoryScope: check_end::ResolvedValueKind::MemoryScope
       VectorArity: check_end::ResolvedValueKind::VectorArity
@@ -366,12 +402,14 @@ domains:
       MbarrierStateToken: check_end::ResolvedValueKind::MbarrierStateToken
       Register: check_end::ResolvedValueKind::Register
       Predicate: check_end::ResolvedValueKind::Predicate
+      PredicateOrSink: check_end::ResolvedValueKind::PredicateOrSink
       PredicateSource: check_end::ResolvedValueKind::PredicateSource
       Immediate: check_end::ResolvedValueKind::Immediate
       RegOrImm: check_end::ResolvedValueKind::RegOrImm
       RegisterOrSink: check_end::ResolvedValueKind::RegisterOrSink
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
       PredicatePair: check_end::ResolvedValueKind::PredicatePair
+      PredicatePairOrSink: check_end::ResolvedValueKind::PredicatePairOrSink
       MovSource: check_end::ResolvedValueKind::MovSource
       VectorRegister: check_end::ResolvedValueKind::VectorRegister
       VectorSpecialRegister: check_end::ResolvedValueKind::VectorSpecialRegister
@@ -439,6 +477,8 @@ domains:
       ScalarType: check_end::ResolvedModifierDefaultKind::ScalarType
       RoundingMode: check_end::ResolvedModifierDefaultKind::RoundingMode
       CacheOperator: check_end::ResolvedModifierDefaultKind::CacheOperator
+      EvictionPriority: check_end::ResolvedModifierDefaultKind::EvictionPriority
+      PrefetchSize: check_end::ResolvedModifierDefaultKind::PrefetchSize
       MemoryConsistency: check_end::ResolvedModifierDefaultKind::MemoryConsistency
       MemoryScope: check_end::ResolvedModifierDefaultKind::MemoryScope
       MemoryStateSpace: check_end::ResolvedModifierDefaultKind::MemoryStateSpace
@@ -457,6 +497,7 @@ domains:
       BooleanOperator: checker::ModifierValueKind::BooleanOperator
       CacheOperator: checker::ModifierValueKind::CacheOperator
       EvictionPriority: checker::ModifierValueKind::EvictionPriority
+      PrefetchSize: checker::ModifierValueKind::PrefetchSize
       MemoryConsistency: checker::ModifierValueKind::MemoryConsistency
       MemoryScope: checker::ModifierValueKind::MemoryScope
       VectorArity: checker::ModifierValueKind::VectorArity

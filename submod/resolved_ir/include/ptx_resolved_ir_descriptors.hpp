@@ -26,7 +26,8 @@ enum class OperandSyntaxShape : uint16_t {
   CallTargetSet = 1 << 8,
   BranchTarget = 1 << 9,
   BranchTargetSet = 1 << 10,
-  RegisterPredicatePair = 1 << 11
+  RegisterPredicatePair = 1 << 11,
+  NegatedImmediate = 1 << 12
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {
@@ -43,6 +44,7 @@ enum class ResolvedValueKind : uint8_t {
   BooleanOperator,
   CacheOperator,
   EvictionPriority,
+  PrefetchSize,
   MemoryConsistency,
   MemoryScope,
   VectorArity,
@@ -53,12 +55,14 @@ enum class ResolvedValueKind : uint8_t {
   ProxyKindPair,
   Register,
   Predicate,
+  PredicateOrSink,
   PredicateSource,
   Immediate,
   RegOrImm,
   RegisterOrSink,
   ShflDestination,
   PredicatePair,
+  PredicatePairOrSink,
   MovSource,
   VectorRegister,
   VectorSpecialRegister,
@@ -124,6 +128,8 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   ScalarType,
   RoundingMode,
   CacheOperator,
+  EvictionPriority,
+  PrefetchSize,
   MemoryConsistency,
   MemoryScope,
   MemoryStateSpace,
@@ -139,6 +145,9 @@ struct ResolvedModifierDefaultDescriptor {
   base::ScalarType scalar_type = base::ScalarType::Invalid;
   base::RoundingMode rounding_mode = base::RoundingMode::Invalid;
   base::CacheOperator cache_operator = base::CacheOperator::Unspecified;
+  /** Typed omission or selected value for an eviction-priority slot. */
+  base::EvictionPriority eviction_priority = base::EvictionPriority::Invalid;
+  base::PrefetchSize prefetch_size = base::PrefetchSize::None;
   MemoryStateSpace memory_state_space = MemoryStateSpace::Invalid;
   base::MbarrierPhaseType mbarrier_phase_type =
       base::MbarrierPhaseType::Primary;
@@ -162,6 +171,8 @@ struct ResolvedOperandLayoutDescriptor {
 };
 struct ResolvedVariantDescriptor {
   std::string_view variant_name;
+  /** Variant-local implicit state effect; None for ordinary arithmetic. */
+  ConditionCodeEffect condition_code_effect = ConditionCodeEffect::None;
   std::span<const ResolvedFieldDescriptor> fields;
   std::span<const ResolvedModifierBindingDescriptor> modifier_bindings;
   std::span<const ResolvedOperandLayoutDescriptor> operand_layouts;

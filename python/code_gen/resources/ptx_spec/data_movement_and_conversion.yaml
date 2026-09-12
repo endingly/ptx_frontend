@@ -25,6 +25,7 @@ type_sets:
 
 value_sets:
   ld_cache_operators: [ca, cg, cs, lu, cv]
+  ld_nc_cache_operators: [ca, cg, cs]
   st_cache_operators: [wb, cg, cs, wt]
 
 operand_patterns:
@@ -307,6 +308,27 @@ operand_patterns:
       access: read
       type: b64
 
+  ld_scalar_cache_policy:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # Cache-policy loads permit unresolved generic registers, but a known
+      # provenance must be global.
+      state_space: [global]
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
   ld_explicit_scalar_global:
     - name: dst
       kind: reg
@@ -321,6 +343,21 @@ operand_patterns:
       access: read
       state_space:
         expr: modifier(state_space)
+
+  ld_scalar_global:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # This is a generic spelling; unknown register provenance remains valid.
+      state_space: [global]
 
   prefetch_global:
     - name: address
@@ -471,6 +508,105 @@ operand_patterns:
           ptx: "2.0"
           sm: 20
 
+  ld_explicit_vector_global:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+
+  ld_explicit_vector_cache_policy_global:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  ld_vector_cache_policy:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # Cache-policy loads permit unresolved generic registers, but a known
+      # provenance must be global.
+      state_space: [global]
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  ld_vector_global:
+    - name: dst
+      kind: reg_vector
+      role: dst
+      access: write
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # This is a generic spelling; unknown register provenance remains valid.
+      state_space: [global]
+
   st_scalar:
     - name: address
       kind: addr
@@ -485,12 +621,51 @@ operand_patterns:
         expr: modifier(type)
       register_width: equal_or_wider
 
+  st_scalar_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # This generic spelling retains unknown register provenance but rejects a
+      # statically known non-global address.
+      state_space: [global]
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+
   st_vector:
     - name: address
       kind: addr
       role: addr
       access: read
       state_space: [global, local, shared]
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+
+  st_vector_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # This generic spelling retains unknown register provenance but rejects a
+      # statically known non-global address.
+      state_space: [global]
     - name: src
       kind: reg_vector
       role: src
@@ -533,6 +708,55 @@ operand_patterns:
         allow_sink: true
         sink_payload_bits: 256
 
+  st_explicit_vector_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+
+  st_explicit_vector_cache_policy_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+        expr: modifier(state_space)
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
   st_explicit_scalar:
     - name: address
       kind: addr
@@ -567,6 +791,51 @@ operand_patterns:
       type:
         expr: modifier(type)
       register_width: equal_or_wider
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  st_scalar_cache_policy_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global]
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+    - name: cache_policy
+      kind: reg
+      role: src
+      access: read
+      type: b64
+
+  st_vector_cache_policy_global:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space: [global]
+    - name: src
+      kind: reg_vector
+      role: src
+      access: read
+      type:
+        expr: modifier(type)
+      register_width: equal_or_wider
+      vector:
+        kind: vector
+        arity:
+          expr: modifier(vector)
+        type_policy: element
+        allow_sink: true
+        sink_payload_bits: 256
     - name: cache_policy
       kind: reg
       role: src
@@ -825,10 +1094,6 @@ instructions:
               - b64
               - u64
               - s64
-              - value: b128
-                availability:
-                  ptx: "8.3"
-                  sm: 70
               - value: f64
                 availability:
                   ptx: "1.0"
@@ -892,6 +1157,10 @@ instructions:
             valid: true
           - ptx: "mov.b32 %r0, %laneid;"
             valid: true
+          - ptx: "mov.b32 %r0, {%h0, %h1};"
+            valid: true
+          - ptx: "mov.b64 {%r0, _}, %rd0;"
+            valid: true
           - ptx: "mov.f32 %f0, 0f3f800000;"
             valid: true
           - ptx: "mov.u64 %rd0, global_value;"
@@ -906,10 +1175,24 @@ instructions:
             valid: true
           - ptx: "mov.f64 %fd0, 0d3ff0000000000000;"
             valid: true
-          - ptx: "mov.b32 %r0, {%h0, %h1};"
-            valid: true
-          - ptx: "mov.b64 {%r0, _}, %rd0;"
-            valid: true
+
+      - name: mov_b128_pack_unpack
+        availability:
+          ptx: "8.3"
+          sm: 70
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: fixed
+            value: b128
+        operand_layouts:
+          - name: pack
+            operands: $mov_pack
+          - name: unpack
+            operands: $mov_unpack
+        rule: data_movement.mov
+        examples:
           - ptx: "mov.b128 %b0, {%rd0, %rd1};"
             valid: true
 
@@ -1013,6 +1296,8 @@ instructions:
 
     variants:
       - name: ld_generic_scalar
+        permits_unified_address: true
+        unified_address_access: read
         availability:
           ptx: "2.0"
           sm: 20
@@ -1071,6 +1356,7 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - f64
         modifier_order_aliases:
           - [semantics, scope, mmio, cache, type]
@@ -1083,6 +1369,11 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
+            mmio_semantics:
+              - relaxed
+              - value: acquire
+                availability: {ptx: "9.3", sm: 75}
           - kind: address_alignment
             address_operand: address
             type_modifier: type
@@ -1094,6 +1385,8 @@ instructions:
             valid: true
 
       - name: ld_explicit_scalar
+        permits_unified_address: true
+        unified_address_access: read
         availability:
           ptx: "1.0"
           sm: 0
@@ -1105,7 +1398,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [const, global, local, param, param::entry, param::func, shared]
+            values: [const, global, local, param, {value: param::entry, availability: {ptx: "8.3"}}, {value: param::func, availability: {ptx: "8.3"}}, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -1120,11 +1413,13 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - value: f64
                 availability:
                   ptx: "1.0"
                   sm: 13
         modifier_order_aliases:
+          - [state_space, mmio, semantics, scope, cache, type]
           - [state_space, cache, semantics, scope, mmio, type]
         operands: $ld_explicit_scalar
         rule: data_movement.ld_explicit
@@ -1135,7 +1430,12 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
             state_space_modifier: state_space
+            mmio_semantics:
+              - relaxed
+              - value: acquire
+                availability: {ptx: "9.3", sm: 75}
           - kind: address_alignment
             address_operand: address
             type_modifier: type
@@ -1146,71 +1446,372 @@ instructions:
           - ptx: "ld.shared.u32 %r0, [shared_value];"
             valid: true
 
-      - name: ld_global_u32_l1_evict
-        availability: {ptx: "7.4", sm: 70}
+      - name: ld_shared_cta_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.8", sm: 30}
         modifiers:
-          - name: state_space
-            kind: state_space
-            domain: state_spaces
-            presence: fixed
-            value: global
-          - name: eviction_priority
-            kind: eviction_priority
-            domain: eviction_priorities
-            presence: required
-            values:
-              - value: evict_first
-                token: .L1::evict_first
-              - value: evict_last
-                token: .L1::evict_last
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: u32
+          - *memory_mmio
+          - *ld_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cta}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_cache_operators], default: unspecified}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
         operands: $ld_explicit_scalar_global
         rule: data_movement.ld_explicit
         constraints:
-          - kind: address_alignment
-            address_operand: address
-            type_modifier: type
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, mmio_modifier: mmio, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space, mmio_semantics: [relaxed, {value: acquire, availability: {ptx: "9.3", sm: 75}}]}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
+      - name: ld_shared_cluster_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - *memory_mmio
+          - *ld_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cluster}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_cache_operators], default: unspecified}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, mmio_modifier: mmio, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space, mmio_semantics: [relaxed, {value: acquire, availability: {ptx: "9.3", sm: 75}}]}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
 
-        examples:
-          - ptx: "ld.global.L1::evict_first.u32 %r0, [global_value];"
-            valid: true
-          - ptx: "ld.global.L1::evict_last.u32 %r0, [global_value];"
-            valid: true
+      - name: ld_shared_cta_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - *ld_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cta}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_cache_operators], default: unspecified}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v2, v4, v8]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_shared_cluster_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - *ld_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cluster}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_cache_operators], default: unspecified}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v2, v4, v8]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      # The cache-control language is partitioned by required syntax so that
+      # optional modifiers do not create overlapping generated variants.
+      - name: ld_global_l2_evict_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "8.8", sm: 100}
+        modifiers:
+          - &global_state {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - &ld_ordered_semantics {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {ptx: "6.0", sm: 70}}, {value: relaxed, availability: {ptx: "6.0", sm: 70}}, {value: acquire, availability: {ptx: "6.0", sm: 70}}], default: omitted}
+          - *memory_scope
+          - &l1_optional {name: l1_eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: optional, values: [{value: evict_normal, token: .L1::evict_normal}, {value: evict_unchanged, token: .L1::evict_unchanged}, {value: evict_first, token: .L1::evict_first}, {value: evict_last, token: .L1::evict_last}, {value: no_allocate, token: .L1::no_allocate}], default: invalid}
+          - &l2_required {name: l2_eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: required, values: [{value: evict_normal, token: .L2::evict_normal}, {value: evict_first, token: .L2::evict_first}, {value: evict_last, token: .L2::evict_last}]}
+          - &prefetch_optional {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B, availability: {sm: 75}}, {value: L2::128B, token: .L2::128B, availability: {sm: 75}}, {value: L2::256B, token: .L2::256B, availability: {sm: 80}}], default: none}
+          - &memory_vector_modifier {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v2, v4, v8]}
+          - &memory_type_modifier {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        modifier_order_aliases:
+          - [semantics, scope, state_space, l1_eviction_priority, l2_eviction_priority, prefetch_size, vector, type]
+          - [state_space, semantics, scope, l2_eviction_priority, l1_eviction_priority, prefetch_size, vector, type]
+          - [semantics, scope, state_space, l2_eviction_priority, l1_eviction_priority, prefetch_size, vector, type]
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - &ld_global_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - &ld_vector_alignment {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - &ld_global_modern_vector {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}, require_modern: true}
+
+      - name: ld_l2_evict_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "8.8", sm: 100}
+        modifiers:
+          - *ld_ordered_semantics
+          - *memory_scope
+          - *l1_optional
+          - *l2_required
+          - *prefetch_optional
+          - *memory_vector_modifier
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, l2_eviction_priority, l1_eviction_priority, prefetch_size, vector, type]
+        operands: $ld_vector_global
+        rule: data_movement.ld_generic
+        constraints:
+          - &ld_generic_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, address_operand: address, type_modifier: type}
+          - *ld_vector_alignment
+          - &ld_generic_modern_vector {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, availability: {ptx: "8.8", sm: 100}, require_modern: true}
+
+      - name: ld_global_l1_l2_cache_hint_prefetch_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "8.8", sm: 100}
+        modifiers:
+          - *global_state
+          - *ld_ordered_semantics
+          - *memory_scope
+          - *l1_optional
+          - *l2_required
+          - &cache_hint {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - *prefetch_optional
+          - *memory_vector_modifier
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, state_space, l1_eviction_priority, l2_eviction_priority, cache_hint, prefetch_size, vector, type]
+          - [state_space, semantics, scope, l2_eviction_priority, l1_eviction_priority, cache_hint, prefetch_size, vector, type]
+          - [semantics, scope, state_space, l2_eviction_priority, l1_eviction_priority, cache_hint, prefetch_size, vector, type]
+        operands: $ld_explicit_vector_cache_policy_global
+        rule: data_movement.ld_explicit
+        constraints: [*ld_global_consistency, *ld_vector_alignment, *ld_global_modern_vector]
+
+      - name: ld_l2_evict_cache_hint_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "8.8", sm: 100}
+        modifiers:
+          - *ld_ordered_semantics
+          - *memory_scope
+          - *l1_optional
+          - *l2_required
+          - *cache_hint
+          - *prefetch_optional
+          - *memory_vector_modifier
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, l2_eviction_priority, l1_eviction_priority, cache_hint, prefetch_size, vector, type]
+        operands: $ld_vector_cache_policy
+        rule: data_movement.ld_generic
+        constraints: [*ld_generic_consistency, *ld_vector_alignment, *ld_generic_modern_vector]
+
+      - name: ld_global_u32_l1_evict
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 70}
+        modifiers:
+          - *global_state
+          - *ld_ordered_semantics
+          - *memory_scope
+          - &l1_required {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: required, values: [{value: evict_normal, token: .L1::evict_normal}, {value: evict_unchanged, token: .L1::evict_unchanged}, {value: evict_first, token: .L1::evict_first}, {value: evict_last, token: .L1::evict_last}, {value: no_allocate, token: .L1::no_allocate}]}
+          - *prefetch_optional
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, prefetch_size, type]
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints: [*ld_global_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_l1_evict_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *l1_required, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, prefetch_size, vector, type]
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_global_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_l1_evict_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*ld_ordered_semantics, *memory_scope, *l1_required, *prefetch_optional, *memory_type_modifier]
+        operands: $ld_scalar_global
+        rule: data_movement.ld_generic
+        constraints: [*ld_generic_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_l1_evict_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*ld_ordered_semantics, *memory_scope, *l1_required, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_vector_global
+        rule: data_movement.ld_generic
+        constraints:
+          - *ld_generic_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_global_l1_cache_hint_prefetch_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, cache_hint, prefetch_size, type]
+        operands: $ld_explicit_scalar_cache_policy
+        rule: data_movement.ld_explicit
+        constraints: [*ld_global_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_l1_cache_hint_prefetch_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, cache_hint, prefetch_size, vector, type]
+        operands: $ld_explicit_vector_cache_policy_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_global_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_l1_cache_hint_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_type_modifier]
+        operands: $ld_scalar_cache_policy
+        rule: data_movement.ld_generic
+        constraints: [*ld_generic_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_l1_cache_hint_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_vector_cache_policy
+        rule: data_movement.ld_generic
+        constraints:
+          - *ld_generic_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, availability: {ptx: "8.8", sm: 100}}
 
       - name: ld_global_u32_l2_cache_hint
+        permits_unified_address: true
+        unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers:
-          - name: state_space
-            kind: state_space
-            domain: state_spaces
-            presence: fixed
-            value: global
-          - name: cache_hint
-            kind: flag
-            presence: fixed
-            value: true
-            token: .L2::cache_hint
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: u32
+          - *global_state
+          - *ld_ordered_semantics
+          - *memory_scope
+          - &ld_cache_optional {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_cache_operators], default: unspecified}
+          - *cache_hint
+          - *prefetch_optional
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, state_space, cache, cache_hint, prefetch_size, type]
         operands: $ld_explicit_scalar_cache_policy
         rule: data_movement.ld_explicit
         constraints:
-          - kind: address_alignment
-            address_operand: address
-            type_modifier: type
+          - &ld_global_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
 
-        examples:
-          - ptx: "ld.global.L2::cache_hint.u32 %r0, [global_value], %rd0;"
-            valid: true
+      - name: ld_global_l2_cache_hint_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *ld_cache_optional, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, cache, cache_hint, prefetch_size, vector, type]
+        operands: $ld_explicit_vector_cache_policy_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_global_cached_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
 
+      - name: ld_l2_cache_hint_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*ld_ordered_semantics, *memory_scope, *ld_cache_optional, *cache_hint, *prefetch_optional, *memory_type_modifier]
+        operands: $ld_scalar_cache_policy
+        rule: data_movement.ld_generic
+        constraints:
+          - &ld_generic_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
+
+      - name: ld_l2_cache_hint_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*ld_ordered_semantics, *memory_scope, *ld_cache_optional, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_vector_cache_policy
+        rule: data_movement.ld_generic
+        constraints:
+          - *ld_generic_cached_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_global_l2_prefetch_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 75}
+        modifiers:
+          - *global_state
+          - *ld_semantics
+          - *memory_scope
+          - *ld_cache_optional
+          - &prefetch_required {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B, availability: {sm: 80}}]}
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, state_space, cache, prefetch_size, type]
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints: [*ld_global_cached_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_l2_prefetch_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 75}
+        modifiers: [*global_state, *ld_semantics, *memory_scope, *ld_cache_optional, *prefetch_required, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, cache, prefetch_size, vector, type]
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_global_cached_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_l2_prefetch_scalar
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 75}
+        modifiers: [*ld_semantics, *memory_scope, *ld_cache_optional, *prefetch_required, *memory_type_modifier]
+        operands: $ld_scalar_global
+        rule: data_movement.ld_generic
+        constraints: [*ld_generic_cached_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_l2_prefetch_vector
+        permits_unified_address: true
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 75}
+        modifiers: [*ld_semantics, *memory_scope, *ld_cache_optional, *prefetch_required, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_vector_global
+        rule: data_movement.ld_generic
+        constraints:
+          - *ld_generic_cached_consistency
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, availability: {ptx: "8.8", sm: 100}}
       - name: ld_generic_vector
+        permits_unified_address: true
+        unified_address_access: read
         availability:
           ptx: "2.0"
           sm: 20
@@ -1239,6 +1840,7 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - f64
         operands: $ld_vector
         rule: data_movement.ld_generic
@@ -1248,6 +1850,7 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
           - kind: address_alignment
             address_operand: address
             type_modifier: type
@@ -1267,6 +1870,8 @@ instructions:
             valid: true
 
       - name: ld_explicit_vector
+        permits_unified_address: true
+        unified_address_access: read
         availability:
           ptx: "1.0"
           sm: 0
@@ -1277,7 +1882,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [const, global, local, param, param::entry, param::func, shared]
+            values: [const, global, local, param, {value: param::entry, availability: {ptx: "8.3"}}, {value: param::func, availability: {ptx: "8.3"}}, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -1300,6 +1905,7 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - value: f64
                 availability:
                   ptx: "1.0"
@@ -1314,6 +1920,7 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
             state_space_modifier: state_space
           - kind: address_alignment
             address_operand: address
@@ -1334,24 +1941,131 @@ instructions:
 
   - opcode: ld
     section: "9.7.9.9"
-    doc: "Frozen non-coherent global u32 load with L1 no-allocate priority."
-    syntax: "ld.global.nc.L1::no_allocate.u32 dst, [address]"
-    operands: $ld_explicit_scalar_global
+    doc: "Non-coherent global loads with scalar and vector cache-control families."
+    syntax: "ld.global{.ca|.cg|.cs}.nc{.L1::*}{.L2::*}{.v2|.v4|.v8}.type dst, [address]{, cache_policy}"
     variants:
-      - name: ld_global_nc_l1_no_allocate_u32
-        description: "Register-only global non-coherent u32 load with L1 no-allocate."
-        availability: {ptx: "7.4", sm: 70}
+      - name: ld_global_nc_scalar
+        unified_address_access: read
+        availability: {ptx: "3.1", sm: 32}
         modifiers:
           - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_nc_cache_operators], default: unspecified}
           - {name: nc, kind: flag, presence: fixed, value: true, token: .nc}
-          - {name: eviction_priority, kind: eviction_priority, domain: eviction_priorities, presence: fixed, value: no_allocate, token: .L1::no_allocate}
-          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_nc_vector
+        unified_address_access: read
+        availability: {ptx: "3.1", sm: 32}
+        modifiers:
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: global}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_nc_cache_operators], default: unspecified}
+          - {name: nc, kind: flag, presence: fixed, value: true, token: .nc}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v2, v4, v8]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $ld_explicit_vector_global
         rule: data_movement.ld_explicit
         constraints:
-          - {kind: address_alignment, address_operand: address, type_modifier: type}
-        examples:
-          - {ptx: "ld.global.nc.L1::no_allocate.u32 %r0, [global_value];", valid: true}
+          - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
 
+      - name: ld_global_nc_l2_evict
+        unified_address_access: read
+        availability: {ptx: "8.8", sm: 100}
+        modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_optional, *l2_required, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_vector_alignment
+          - *ld_global_modern_vector
+
+      - name: ld_global_nc_l2_evict_cache_hint_vector
+        unified_address_access: read
+        availability: {ptx: "8.8", sm: 100}
+        modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_optional, *l2_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_explicit_vector_cache_policy_global
+        rule: data_movement.ld_explicit
+        constraints: [*ld_vector_alignment, *ld_global_modern_vector]
+
+      - name: ld_global_nc_l1_no_allocate_u32
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_required, *prefetch_optional, *memory_type_modifier]
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_nc_l1_evict_vector
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_required, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_global_nc_l1_cache_hint_scalar
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_required, *cache_hint, *prefetch_optional, *memory_type_modifier]
+        operands: $ld_explicit_scalar_cache_policy
+        rule: data_movement.ld_explicit
+        constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_nc_l1_cache_hint_prefetch_legacy_vector
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_explicit_vector_cache_policy_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_global_nc_cache_hint_scalar
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - *global_state
+          - &ld_nc_cache_optional {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$ld_nc_cache_operators], default: unspecified}
+          - {name: nc, kind: flag, presence: fixed, value: true, token: .nc}
+          - *cache_hint
+          - *prefetch_optional
+          - *memory_type_modifier
+        operands: $ld_explicit_scalar_cache_policy
+        rule: data_movement.ld_explicit
+        constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_nc_cache_hint_vector
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *ld_nc_cache_optional, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_explicit_vector_cache_policy_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: ld_global_nc_l2_prefetch_scalar
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 75}
+        modifiers: [*global_state, *ld_nc_cache_optional, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *prefetch_required, *memory_type_modifier]
+        operands: $ld_explicit_scalar_global
+        rule: data_movement.ld_explicit
+        constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: ld_global_nc_l2_prefetch_vector
+        unified_address_access: read
+        availability: {ptx: "7.4", sm: 75}
+        modifiers: [*global_state, *ld_nc_cache_optional, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *prefetch_required, *memory_vector_modifier, *memory_type_modifier]
+        operands: $ld_explicit_vector_global
+        rule: data_movement.ld_explicit
+        constraints:
+          - *ld_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: dst, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
   - opcode: ldu
     section: "9.7.9.10"
     doc: "Uniform load, limited to the scalar explicit-global .u32 form."
@@ -1706,6 +2420,7 @@ instructions:
 
     variants:
       - name: st_generic_scalar
+        unified_address_access: write
         availability:
           ptx: "2.0"
           sm: 20
@@ -1733,6 +2448,7 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - f64
         modifier_order_aliases:
           - [semantics, scope, mmio, cache, type]
@@ -1745,6 +2461,11 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
+            mmio_semantics:
+              - relaxed
+              - value: release
+                availability: {ptx: "9.3", sm: 75}
           - kind: address_alignment
             address_operand: address
             type_modifier: type
@@ -1754,6 +2475,7 @@ instructions:
             valid: true
 
       - name: st_explicit_scalar
+        unified_address_access: write
         availability:
           ptx: "1.0"
           sm: 0
@@ -1765,7 +2487,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [global, local, param, param::func, shared]
+            values: [global, local, param, {value: param::func, availability: {ptx: "8.3"}}, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -1780,11 +2502,13 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - value: f64
                 availability:
                   ptx: "1.0"
                   sm: 13
         modifier_order_aliases:
+          - [state_space, mmio, semantics, scope, cache, type]
           - [state_space, cache, semantics, scope, mmio, type]
         operands: $st_explicit_scalar
         rule: data_movement.st_explicit
@@ -1795,7 +2519,12 @@ instructions:
             mmio_modifier: mmio
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
             state_space_modifier: state_space
+            mmio_semantics:
+              - relaxed
+              - value: release
+                availability: {ptx: "9.3", sm: 75}
           - kind: address_alignment
             address_operand: address
             type_modifier: type
@@ -1806,71 +2535,257 @@ instructions:
           - ptx: "st.local.u32 [local_value], %r0;"
             valid: true
 
-      - name: st_global_u32_l1_evict
-        availability: {ptx: "7.4", sm: 70}
+      - name: st_shared_cta_scalar
+        unified_address_access: write
+        availability: {ptx: "7.8", sm: 30}
         modifiers:
-          - name: state_space
-            kind: state_space
-            domain: state_spaces
-            presence: fixed
-            value: global
-          - name: eviction_priority
-            kind: eviction_priority
-            domain: eviction_priorities
-            presence: required
-            values:
-              - value: evict_first
-                token: .L1::evict_first
-              - value: evict_last
-                token: .L1::evict_last
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: u32
+          - *memory_mmio
+          - *st_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cta}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$st_cache_operators], default: unspecified}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
         operands: $st_explicit_scalar_global
         rule: data_movement.st_explicit
         constraints:
-          - kind: address_alignment
-            address_operand: address
-            type_modifier: type
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, mmio_modifier: mmio, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space, mmio_semantics: [relaxed, {value: release, availability: {ptx: "9.3", sm: 75}}]}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
+      - name: st_shared_cluster_scalar
+        unified_address_access: write
+        availability: {any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - *memory_mmio
+          - *st_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cluster}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$st_cache_operators], default: unspecified}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $st_explicit_scalar_global
+        rule: data_movement.st_explicit
+        constraints:
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, mmio_modifier: mmio, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space, mmio_semantics: [relaxed, {value: release, availability: {ptx: "9.3", sm: 75}}]}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
 
-        examples:
-          - ptx: "st.global.L1::evict_first.u32 [global_value], %r0;"
-            valid: true
-          - ptx: "st.global.L1::evict_last.u32 [global_value], %r0;"
-            valid: true
+      - name: st_shared_cta_vector
+        unified_address_access: write
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - *st_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cta}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$st_cache_operators], default: unspecified}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v2, v4, v8]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $st_explicit_vector_global
+        rule: data_movement.st_explicit
+        constraints:
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: st_shared_cluster_vector
+        unified_address_access: write
+        availability: {any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]}
+        modifiers:
+          - *st_semantics
+          - *memory_scope
+          - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: shared, token: .shared::cluster}
+          - {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$st_cache_operators], default: unspecified}
+          - {name: vector, kind: vector, domain: vector_arities, presence: required, values: [v2, v4, v8]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [$ld_st_scalar_types, {value: b128, availability: {ptx: "8.3", sm: 70}}, f64]}
+        operands: $st_explicit_vector_global
+        rule: data_movement.st_explicit
+        constraints:
+          - {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: st_global_l2_evict_vector
+        unified_address_access: write
+        availability: {ptx: "8.8", sm: 100}
+        modifiers:
+          - *global_state
+          - &st_ordered_semantics {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {ptx: "6.0", sm: 70}}, {value: relaxed, availability: {ptx: "6.0", sm: 70}}, {value: release, availability: {ptx: "6.0", sm: 70}}], default: omitted}
+          - *memory_scope
+          - *l1_optional
+          - *l2_required
+          - *memory_vector_modifier
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, state_space, l1_eviction_priority, l2_eviction_priority, vector, type]
+        operands: $st_explicit_vector_global
+        rule: data_movement.st_explicit
+        constraints:
+          - &st_global_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - &st_vector_alignment {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
+          - &st_global_modern_vector {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}, require_modern: true}
+
+      - name: st_l2_evict_vector
+        unified_address_access: write
+        availability: {ptx: "8.8", sm: 100}
+        modifiers: [*st_ordered_semantics, *memory_scope, *l1_optional, *l2_required, *memory_vector_modifier, *memory_type_modifier]
+        operands: $st_vector_global
+        rule: data_movement.st_generic
+        constraints:
+          - &st_generic_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, address_operand: address, type_modifier: type}
+          - *st_vector_alignment
+          - &st_generic_modern_vector {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, availability: {ptx: "8.8", sm: 100}, require_modern: true}
+
+      - name: st_global_l1_l2_cache_hint_vector
+        unified_address_access: write
+        availability: {ptx: "8.8", sm: 100}
+        modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_optional, *l2_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, l1_eviction_priority, l2_eviction_priority, cache_hint, vector, type]
+        operands: $st_explicit_vector_cache_policy_global
+        rule: data_movement.st_explicit
+        constraints: [*st_global_consistency, *st_vector_alignment, *st_global_modern_vector]
+
+      - name: st_l2_evict_cache_hint_vector
+        unified_address_access: write
+        availability: {ptx: "8.8", sm: 100}
+        modifiers: [*st_ordered_semantics, *memory_scope, *l1_optional, *l2_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
+        operands: $st_vector_cache_policy_global
+        rule: data_movement.st_generic
+        constraints: [*st_generic_consistency, *st_vector_alignment, *st_generic_modern_vector]
+
+      - name: st_global_u32_l1_evict
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_required, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, type]
+        operands: $st_explicit_scalar_global
+        rule: data_movement.st_explicit
+        constraints: [*st_global_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: st_global_l1_evict_vector
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_required, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, vector, type]
+        operands: $st_explicit_vector_global
+        rule: data_movement.st_explicit
+        constraints:
+          - *st_global_consistency
+          - *st_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: st_l1_evict_scalar
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*st_ordered_semantics, *memory_scope, *l1_required, *memory_type_modifier]
+        operands: $st_scalar_global
+        rule: data_movement.st_generic
+        constraints: [*st_generic_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: st_l1_evict_vector
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 70}
+        modifiers: [*st_ordered_semantics, *memory_scope, *l1_required, *memory_vector_modifier, *memory_type_modifier]
+        operands: $st_vector_global
+        rule: data_movement.st_generic
+        constraints:
+          - *st_generic_consistency
+          - *st_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, availability: {ptx: "8.8", sm: 100}}
+
+      - name: st_global_l1_cache_hint_scalar
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, cache_hint, type]
+        operands: $st_explicit_scalar_cache_policy
+        rule: data_movement.st_explicit
+        constraints: [*st_global_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: st_global_l1_cache_hint_vector
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, eviction_priority, cache_hint, vector, type]
+        operands: $st_explicit_vector_cache_policy_global
+        rule: data_movement.st_explicit
+        constraints:
+          - *st_global_consistency
+          - *st_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
+
+      - name: st_l1_cache_hint_scalar
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_type_modifier]
+        operands: $st_scalar_cache_policy_global
+        rule: data_movement.st_generic
+        constraints: [*st_generic_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
+
+      - name: st_l1_cache_hint_vector
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
+        operands: $st_vector_cache_policy_global
+        rule: data_movement.st_generic
+        constraints:
+          - *st_generic_consistency
+          - *st_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, availability: {ptx: "8.8", sm: 100}}
 
       - name: st_global_u32_l2_cache_hint
+        unified_address_access: write
         availability: {ptx: "7.4", sm: 80}
         modifiers:
-          - name: state_space
-            kind: state_space
-            domain: state_spaces
-            presence: fixed
-            value: global
-          - name: cache_hint
-            kind: flag
-            presence: fixed
-            value: true
-            token: .L2::cache_hint
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: u32
+          - *global_state
+          - *st_ordered_semantics
+          - *memory_scope
+          - &st_cache_optional {name: cache, kind: cache, domain: cache_operators, presence: optional, values: [$st_cache_operators], default: unspecified}
+          - *cache_hint
+          - *memory_type_modifier
+        modifier_order_aliases:
+          - [semantics, scope, state_space, cache, cache_hint, type]
         operands: $st_explicit_scalar_cache_policy
         rule: data_movement.st_explicit
         constraints:
-          - kind: address_alignment
-            address_operand: address
-            type_modifier: type
+          - &st_global_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
 
-        examples:
-          - ptx: "st.global.L2::cache_hint.u32 [global_value], %r0, %rd0;"
-            valid: true
+      - name: st_global_l2_cache_hint_vector
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *st_cache_optional, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
+        modifier_order_aliases:
+          - [semantics, scope, state_space, cache, cache_hint, vector, type]
+        operands: $st_explicit_vector_cache_policy_global
+        rule: data_movement.st_explicit
+        constraints:
+          - *st_global_cached_consistency
+          - *st_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, state_space_modifier: state_space, availability: {ptx: "8.8", sm: 100}}
 
+      - name: st_l2_cache_hint_scalar
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*st_ordered_semantics, *memory_scope, *st_cache_optional, *cache_hint, *memory_type_modifier]
+        operands: $st_scalar_cache_policy_global
+        rule: data_movement.st_generic
+        constraints:
+          - &st_generic_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type}
+          - {kind: address_alignment, address_operand: address, type_modifier: type}
+
+      - name: st_l2_cache_hint_vector
+        unified_address_access: write
+        availability: {ptx: "7.4", sm: 80}
+        modifiers: [*st_ordered_semantics, *memory_scope, *st_cache_optional, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
+        operands: $st_vector_cache_policy_global
+        rule: data_movement.st_generic
+        constraints:
+          - *st_generic_cached_consistency
+          - *st_vector_alignment
+          - {kind: memory_vector, type_modifier: type, vector_operand: src, address_operand: address, availability: {ptx: "8.8", sm: 100}}
       - name: st_generic_vector
+        unified_address_access: write
         availability:
           ptx: "2.0"
           sm: 20
@@ -1899,6 +2814,7 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - f64
         operands: $st_vector
         rule: data_movement.st_generic
@@ -1908,6 +2824,7 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
           - kind: address_alignment
             address_operand: address
             type_modifier: type
@@ -1927,6 +2844,7 @@ instructions:
             valid: true
 
       - name: st_explicit_vector
+        unified_address_access: write
         availability:
           ptx: "1.0"
           sm: 0
@@ -1937,7 +2855,7 @@ instructions:
             kind: state_space
             domain: state_spaces
             presence: required
-            values: [global, local, param, param::func, shared]
+            values: [global, local, param, {value: param::func, availability: {ptx: "8.3"}}, shared]
           - name: cache
             kind: cache
             domain: cache_operators
@@ -1960,6 +2878,7 @@ instructions:
             presence: required
             values:
               - $ld_st_scalar_types
+              - {value: b128, availability: {ptx: "8.3", sm: 70}}
               - value: f64
                 availability:
                   ptx: "1.0"
@@ -1974,6 +2893,7 @@ instructions:
             scope_modifier: scope
             cache_modifier: cache
             address_operand: address
+            type_modifier: type
             state_space_modifier: state_space
           - kind: address_alignment
             address_operand: address

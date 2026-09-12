@@ -327,21 +327,31 @@ fundamental-type compatibility: a same-width bit type agrees with any
 fundamental type, signed and unsigned integers agree, and integer/float mixes
 remain invalid. The `.f64` value additionally carries its SM 13 requirement.
 
-`mov.pred` has a separate variant because both fields are
-`ResolvedPredicate`, structurally unlike the classified scalar source. Module
-resolution requires unnegated `.pred` registers for source and destination and
-retains stable `SymbolId` values; standalone resolution continues to accept
-numbered predicate registers without declaration context.
+`mov.pred` has a separate variant because its destination is a
+`ResolvedPredicate` and its source is a `ResolvedPredicateSource`, structurally
+unlike the classified scalar source. Module
+resolution requires an unnegated `.pred` destination, but accepts a plain or
+negated predicate source and retains its negation and stable `SymbolId` value.
+The source may instead be a `ResolvedPredicateConstant` holding a canonical
+Boolean value, or a `ResolvedPredicateSpecialRegister` retaining both the special
+register reference and negation. Integer constants normalize nonzero to true;
+an optional `!` then inverts that value. Constants have no synthetic `SymbolId`.
+The canonical `pred_source` shape used by SETP accepts predicate registers and
+integer constants, including negation; MOV's `pred_or_sreg` additionally accepts
+predicate special registers. Neither shape admits floating constants.
+Standalone resolution continues to accept numbered predicate registers without
+declaration context.
 
-Scalar and vector `mov` share one dynamic type-modifier variant because their
-`.b16/.b32/.b64` modifier forms are identical. Three operand layouts represent
-scalar, pack, and unpack forms without duplicate variants. `ResolvedRegisterVector`
-stores two or four optional `ResolvedRegisterRef` elements; an empty element is
-the destination-only `_` sink. Resolution and checking require a bit-size
+`Mov::Scalar` owns the scalar dynamic type modifier
+`.b16/.u16/.s16`, `.b32/.u32/.s32/.f32`, and `.b64/.u64/.s64/.f64`, including
+the established `.b16/.b32/.b64` pack and unpack layouts.
+`Mov::B128PackUnpack` is a distinct generated public variant with fixed
+`.b128` for vector pack/unpack only. `ResolvedRegisterVector` stores two or
+four optional `ResolvedRegisterRef` elements; an empty element is the
+destination-only `_` sink. Resolution and checking require a bit-size
 instruction type, equal total vector/instruction widths, no source sink, at
-least one real destination register, and no sub-byte element. `.b128` is
-accepted only by pack/unpack layouts and carries PTX 8.3 / SM 70 modifier-value
-availability.
+least one real destination register, and no sub-byte element.
+`Mov::B128PackUnpack` carries PTX 8.3 / SM 70 availability.
 
 `ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
 and the `.func`/`.entry` classification. A device-function address uses the
@@ -663,8 +673,8 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
-by module resolution. Scalar `.b128` and
-declaration-type availability for wider `.b128` registers remain outside this
-slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
+by module resolution. Scalar `.b128` is rejected by the generated `Mov::Scalar`
+type domain; declaration-type availability for wider `.b128` registers remains
+outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are
 covered here.

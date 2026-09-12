@@ -1575,5 +1575,26 @@ TEST(PtxCstParser, RejectsInitializersInUnsupportedDeclarations) {
   }
 }
 
+/** Negated predicate constants retain their exclamation and integer tokens. */
+TEST(PtxCstParser, ParsesNegatedIntegerInstructionOperands) {
+  constexpr std::string_view sources[] = {"mov.pred %p0, !0;",
+                                          "mov.pred %p0, !-1;"};
+  for (const auto source : sources) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseInstruction();
+    ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+    const auto* instruction = result->instruction();
+    ASSERT_NE(instruction, nullptr);
+    ASSERT_EQ(instruction->operands.size(), 2u);
+    const auto* negated = std::get_if<syntax_cst::CstNegatedImmediate>(
+        &instruction->operands[1].operand);
+    ASSERT_NE(negated, nullptr);
+    EXPECT_EQ(result->token(negated->exclamation_token).text, "!");
+    EXPECT_EQ(result->token(negated->immediate.literal).text,
+              source.ends_with("!-1;") ? "1" : "0");
+    EXPECT_EQ(negated->immediate.sign.has_value(), source.ends_with("!-1;"));
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend

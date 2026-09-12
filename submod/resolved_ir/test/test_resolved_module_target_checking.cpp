@@ -50,7 +50,8 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
                             ? "PTX source did not produce a syntax instruction."
                             : ast.diagnostics.front().message);
       return std::expected<ResolvedInstruction, ResolveDiagnostic>{
-          std::unexpected(ResolveDiagnostic{.message = "instruction parse failed"})};
+          std::unexpected(
+              ResolveDiagnostic{.message = "instruction parse failed"})};
     }
     return resolveInstruction(*ast);
   };
@@ -78,19 +79,17 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
 
   const auto explicit_cluster =
       resolve_scalar("mov.pred %p0, %is_explicit_cluster;");
-  ASSERT_TRUE(explicit_cluster.has_value())
-      << explicit_cluster.error().message;
+  ASSERT_TRUE(explicit_cluster.has_value()) << explicit_cluster.error().message;
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::Context supported{
       .target = checker::TargetInfo{.ptx_version = {7, 8},
                                     .sm_version = 90,
                                     .capabilities = cluster_capabilities},
   };
-  EXPECT_TRUE(checker::check(std::get<Mov>(*explicit_cluster), supported)
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(std::get<Mov>(*explicit_cluster), supported).has_value());
   const auto& special_source = std::get<ResolvedSpecialRegisterRef>(
-      std::get<Mov::Pred>(std::get<Mov>(*explicit_cluster).variant)
-          .src.value);
+      std::get<Mov::Pred>(std::get<Mov>(*explicit_cluster).variant).src.value);
   EXPECT_EQ(special_source.id, base::lookup("%is_explicit_cluster")->id);
   auto old_ptx = supported;
   old_ptx.target.ptx_version = {7, 7};
@@ -186,7 +185,7 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
   mov.v4.u32 %r0, {};
 }}
 )ptx",
-                                                 declaration, source));
+                                                declaration, source));
     if (!parsed || !parsed.diagnostics.empty()) {
       ADD_FAILURE() << (parsed.diagnostics.empty()
                             ? "PTX source did not produce a syntax module."
@@ -242,8 +241,7 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto unavailable = checkModuleAvailability(*parsed_module_2,
-                                                   *resolved);
+  const auto unavailable = checkModuleAvailability(*parsed_module_2, *resolved);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 2u);
   for (const auto& diagnostic : unavailable.error()) {
@@ -260,8 +258,7 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
-  const auto supported = checkModuleAvailability(*parsed_module_3,
-                                                 *resolved);
+  const auto supported = checkModuleAvailability(*parsed_module_3, *resolved);
   EXPECT_TRUE(supported.has_value());
 
   const auto parsed_module_4 = parseModule(R"ptx(
@@ -273,8 +270,7 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
-  const auto unknown = checkModuleAvailability(*parsed_module_4,
-                                               *resolved);
+  const auto unknown = checkModuleAvailability(*parsed_module_4, *resolved);
   ASSERT_FALSE(unknown.has_value());
   ASSERT_EQ(unknown.error().size(), 1u);
   EXPECT_EQ(unknown.error().front().kind,
@@ -299,8 +295,8 @@ TEST(ResolvedModule, KeepsClusterModuleMetadataBoundToSm90AndCapability) {
 .entry maximum() .maxclusterrank 8 { ret; }
 .entry clustered() .reqntid 1 .reqnctapercluster 1 .blocksareclusters { ret; }
 )ptx";
-  const auto parsed_module_1 = parseModule(
-      std::string(".version 9.0\n") + std::string(body));
+  const auto parsed_module_1 =
+      parseModule(std::string(".version 9.0\n") + std::string(body));
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto resolved = resolveModule(*parsed_module_1);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
@@ -311,12 +307,10 @@ TEST(ResolvedModule, KeepsClusterModuleMetadataBoundToSm90AndCapability) {
 
   const auto sm90a = for_target("sm_90a");
   ASSERT_MODULE_PARSE_SUCCEEDS(sm90a);
-  EXPECT_TRUE(checkModuleAvailability(*sm90a, *resolved)
-                  .has_value());
+  EXPECT_TRUE(checkModuleAvailability(*sm90a, *resolved).has_value());
   const auto sm90 = for_target("sm_90");
   ASSERT_MODULE_PARSE_SUCCEEDS(sm90);
-  EXPECT_TRUE(checkModuleAvailability(*sm90, *resolved)
-                  .has_value());
+  EXPECT_TRUE(checkModuleAvailability(*sm90, *resolved).has_value());
   const auto sm80 = for_target("sm_80");
   ASSERT_MODULE_PARSE_SUCCEEDS(sm80);
   const auto checked = checkModuleAvailability(*sm80, *resolved);
@@ -358,7 +352,8 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
         [&target, &ast](const auto& resolved_instruction) {
           return checker::check(
               resolved_instruction,
-              checker::Context{.target = target, .instruction_range = ast.range});
+              checker::Context{.target = target,
+                               .instruction_range = ast.range});
         },
         instruction);
   };
@@ -374,7 +369,8 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   for (const auto& instruction : body)
     EXPECT_TRUE(check(instruction, supported).has_value());
 
-  const checker::TargetInfo no_cluster{.ptx_version = {8, 6}, .sm_version = 100};
+  const checker::TargetInfo no_cluster{.ptx_version = {8, 6},
+                                       .sm_version = 100};
   for (const auto& instruction : body) {
     const auto checked = check(instruction, no_cluster);
     ASSERT_FALSE(checked.has_value());
@@ -383,7 +379,9 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   }
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const checker::TargetInfo synthetic_sm80{
-      .ptx_version = {8, 6}, .sm_version = 80, .capabilities = cluster_capabilities};
+      .ptx_version = {8, 6},
+      .sm_version = 80,
+      .capabilities = cluster_capabilities};
   for (const auto& instruction : body) {
     const auto checked = check(instruction, synthetic_sm80);
     ASSERT_FALSE(checked.has_value());
@@ -400,10 +398,11 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto cta = resolveModule(*parsed_module_2);
   ASSERT_TRUE(cta.has_value()) << cta.error().front().message;
-  EXPECT_TRUE(checker::check(
-                  std::get<Mbarrier>(cta->functions.front().body.front()),
-                  checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}})
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(
+          std::get<Mbarrier>(cta->functions.front().body.front()),
+          checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}})
+          .has_value());
 }
 
 TEST(ResolvedModule, AppliesFamilyProfilesThroughProductionAvailability) {
@@ -579,8 +578,7 @@ TEST(ResolvedModule, ChecksNestedInstructionModuleAvailability) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto unavailable = checkModuleAvailability(*parsed_module_2,
-                                                   *resolved);
+  const auto unavailable = checkModuleAvailability(*parsed_module_2, *resolved);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -602,8 +600,7 @@ TEST(ResolvedModule, ChecksAttributeModuleTargetAvailability) {
 .global .attribute(.unified(1, 2)) .u32 managed;
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto sm80 = checkModuleAvailability(*parsed_module_2,
-                                            *resolved);
+  const auto sm80 = checkModuleAvailability(*parsed_module_2, *resolved);
   ASSERT_FALSE(sm80.has_value());
   ASSERT_EQ(sm80.error().size(), 1u);
   EXPECT_EQ(sm80.error().front().kind,
@@ -615,8 +612,7 @@ TEST(ResolvedModule, ChecksAttributeModuleTargetAvailability) {
 .global .attribute(.unified(1, 2)) .u32 managed;
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
-  const auto sm90 = checkModuleAvailability(*parsed_module_3,
-                                            *resolved);
+  const auto sm90 = checkModuleAvailability(*parsed_module_3, *resolved);
   EXPECT_TRUE(sm90.has_value());
 
   const auto parsed_module_4 = parseModule(R"ptx(
@@ -625,8 +621,7 @@ TEST(ResolvedModule, ChecksAttributeModuleTargetAvailability) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
   const auto unknown_without_version =
-      checkModuleAvailability(*parsed_module_4,
-                              *resolved);
+      checkModuleAvailability(*parsed_module_4, *resolved);
   ASSERT_FALSE(unknown_without_version.has_value());
   ASSERT_EQ(unknown_without_version.error().size(), 1u);
   EXPECT_EQ(unknown_without_version.error().front().kind,

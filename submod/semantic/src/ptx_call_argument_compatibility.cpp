@@ -26,7 +26,8 @@ bool isVectorShape(CallArgumentVectorShape shape) {
 }  // namespace
 
 CallArgumentCompatibility checkCallArgumentCompatibility(
-    const CallArgumentProperties& formal, const CallArgumentProperties& actual) {
+    const CallArgumentProperties& formal,
+    const CallArgumentProperties& actual) {
   if (!isCallStateSpace(formal.state_space) ||
       (formal.is_array &&
        formal.state_space != CallArgumentStateSpace::Parameter)) {

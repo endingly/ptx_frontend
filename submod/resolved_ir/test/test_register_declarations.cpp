@@ -34,11 +34,12 @@ std::optional<syntax_ast::AstModule> parseModule(std::string_view source) {
 
 /** Count declaration diagnostics of one precise semantic category. */
 size_t declarationCount(
-    const std::vector<declaration_semantics::DeclarationDiagnostic>& diagnostics,
+    const std::vector<declaration_semantics::DeclarationDiagnostic>&
+        diagnostics,
     declaration_semantics::DeclarationDiagnosticKind kind) {
-  return std::ranges::count_if(
-      diagnostics,
-      [kind](const auto& diagnostic) { return diagnostic.kind == kind; });
+  return std::ranges::count_if(diagnostics, [kind](const auto& diagnostic) {
+    return diagnostic.kind == kind;
+  });
 }
 
 /** Unknown `.reg` types fail before either used or unused operands are resolved. */
@@ -61,12 +62,12 @@ TEST(RegisterDeclarations, RejectsUnknownTypesAtTheirDeclarationTokens) {
   const auto diagnostics =
       declaration_semantics::checkDeclarations(*ast, binding.table);
 
-  EXPECT_EQ(declarationCount(
-                diagnostics, declaration_semantics::DeclarationDiagnosticKind::
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
                                  UnknownRegisterDeclarationType),
             2u);
-  EXPECT_EQ(declarationCount(
-                diagnostics, declaration_semantics::DeclarationDiagnosticKind::
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
                                  UnsupportedRegisterDeclarationType),
             0u);
   std::vector<uint32_t> type_columns;
@@ -84,7 +85,8 @@ TEST(RegisterDeclarations, RejectsUnknownTypesAtTheirDeclarationTokens) {
   const auto resolved = resolveModule(*ast);
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(std::ranges::count_if(
-                resolved.error(), [](const auto& diagnostic) {
+                resolved.error(),
+                [](const auto& diagnostic) {
                   return diagnostic.declaration_kind ==
                          declaration_semantics::DeclarationDiagnosticKind::
                              UnknownRegisterDeclarationType;
@@ -109,12 +111,12 @@ TEST(RegisterDeclarations, RejectsInstructionOnlyFormatsAtDeclarationTime) {
   const auto diagnostics =
       declaration_semantics::checkDeclarations(*ast, binding.table);
 
-  EXPECT_EQ(declarationCount(
-                diagnostics, declaration_semantics::DeclarationDiagnosticKind::
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
                                  UnsupportedRegisterDeclarationType),
             5u);
-  EXPECT_EQ(declarationCount(
-                diagnostics, declaration_semantics::DeclarationDiagnosticKind::
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
                                  UnknownRegisterDeclarationType),
             0u);
   for (const auto& diagnostic : diagnostics) {
@@ -136,8 +138,7 @@ TEST(RegisterDeclarations, ClassifiesEveryModeledScalarFromBaseMetadata) {
     if (scalar_type == base::ScalarType::Invalid)
       continue;
     const auto* scalar_metadata = base::find_scalar_type_metadata(scalar_type);
-    ASSERT_NE(scalar_metadata, nullptr)
-        << magic_enum::enum_name(scalar_type);
+    ASSERT_NE(scalar_metadata, nullptr) << magic_enum::enum_name(scalar_type);
 
     std::string source = ".entry scalar_declaration() { .reg ";
     source += scalar_metadata->source_spelling;
@@ -154,11 +155,11 @@ TEST(RegisterDeclarations, ClassifiesEveryModeledScalarFromBaseMetadata) {
     const auto binding = binding::bindSymbols(*ast);
     const auto diagnostics =
         declaration_semantics::checkDeclarations(*ast, binding.table);
-    EXPECT_EQ(declarationCount(
-                  diagnostics,
-                  declaration_semantics::DeclarationDiagnosticKind::
-                      UnknownRegisterDeclarationType),
-              0u)
+    EXPECT_EQ(
+        declarationCount(diagnostics,
+                         declaration_semantics::DeclarationDiagnosticKind::
+                             UnknownRegisterDeclarationType),
+        0u)
         << scalar_metadata->source_spelling;
     if (scalar_metadata->register_declaration_usage ==
         base::ScalarDeclarationUsage::Fundamental) {
@@ -190,8 +191,8 @@ TEST(RegisterDeclarations, ValidatesPredicateAndVectorShapes) {
   const auto diagnostics =
       declaration_semantics::checkDeclarations(*ast, binding.table);
 
-  EXPECT_EQ(declarationCount(
-                diagnostics, declaration_semantics::DeclarationDiagnosticKind::
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
                                  InvalidRegisterDeclarationShape),
             3u);
   for (const auto& diagnostic : diagnostics) {
@@ -222,14 +223,13 @@ TEST(RegisterDeclarations, RejectsExternallyConstructedVectorWidths) {
   const auto binding = binding::bindSymbols(*ast);
   const auto diagnostics =
       declaration_semantics::checkDeclarations(*ast, binding.table);
-  EXPECT_EQ(declarationCount(
-                diagnostics, declaration_semantics::DeclarationDiagnosticKind::
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
                                  InvalidRegisterDeclarationShape),
             1u);
   ASSERT_EQ(diagnostics.size(), 1u);
   EXPECT_EQ(diagnostics.front().range, declaration->vector_type->range);
-  EXPECT_NE(diagnostics.front().message.find(".v2 or .v4"),
-            std::string::npos);
+  EXPECT_NE(diagnostics.front().message.find(".v2 or .v4"), std::string::npos);
 }
 
 /** Parser grammar keeps compact register groups distinct from arrays and initializers. */

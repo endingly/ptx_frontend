@@ -41,6 +41,9 @@ jobs:
         id: setup
         uses: ./.github/actions/setup-linux
 
+      - name: Check tracked handwritten C++ formatting
+        run: python3 .github/scripts/check_clang_format.py --clang-format clang-format-21
+
       - name: Restore compiler cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:

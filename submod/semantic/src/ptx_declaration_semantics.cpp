@@ -1,7 +1,7 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
-#include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
+#include <ptx_frontend/base/ptx_target.hpp>
 
 #include <algorithm>
 #include <array>
@@ -61,7 +61,7 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
       .bits = *value,
       .type = explicitly_unsigned ||
                       *value > static_cast<uint64_t>(
-                                  std::numeric_limits<int64_t>::max())
+                                   std::numeric_limits<int64_t>::max())
                   ? ExpressionInfo::IntegerType::Unsigned
                   : ExpressionInfo::IntegerType::Signed,
   };
@@ -69,8 +69,7 @@ std::optional<ExpressionInfo::IntegerValue> parseIntegerLiteral(
 
 /** Report an integer spelling that cannot be decoded without truncation. */
 void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
-                                 std::string_view spelling,
-                                 SourceRange range) {
+                                 std::string_view spelling, SourceRange range) {
   if (diagnostics == nullptr)
     return;
   diagnostics->push_back(DeclarationDiagnostic{
@@ -83,8 +82,8 @@ void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
 }
 
 /** Report an invalid integer immediate at its source-token range. */
-void reportInvalidIntegerLiteral(
-    DiagnosticSink diagnostics, const syntax_ast::AstImmediate& literal) {
+void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
+                                 const syntax_ast::AstImmediate& literal) {
   reportInvalidIntegerLiteral(diagnostics, literal.syntax.text,
                               literal.syntax.range);
 }
@@ -101,13 +100,18 @@ std::optional<uint64_t> languageCode(std::string_view spelling) {
       return static_cast<char>(std::tolower(character));
     });
     static constexpr std::array<std::pair<std::string_view, uint64_t>, 9>
-        names = {{{"unknown", 0}, {"ptx", 3}, {"nvvm", 4},
-                  {"cuda c++", 5}, {"cuda c++ tile", 6}, {"tile ir", 7},
-                  {"python-cutile", 8}, {"fortran", 9}, {"optix", 10}}};
+        names = {{{"unknown", 0},
+                  {"ptx", 3},
+                  {"nvvm", 4},
+                  {"cuda c++", 5},
+                  {"cuda c++ tile", 6},
+                  {"tile ir", 7},
+                  {"python-cutile", 8},
+                  {"fortran", 9},
+                  {"optix", 10}}};
     const auto found = std::ranges::find_if(
         names, [&name](const auto& entry) { return entry.first == name; });
-    return found == names.end() ? std::nullopt
-                                : std::optional{found->second};
+    return found == names.end() ? std::nullopt : std::optional{found->second};
   }
   const auto code = unsignedIntegerLiteral(spelling);
   return code && *code <= 10 ? code : std::nullopt;
@@ -267,8 +271,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
 ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
                               DiagnosticSink diagnostics) {
   const ExpressionInfo left = classifyExpression(*binary.left, diagnostics);
-  const ExpressionInfo right =
-      classifyExpression(*binary.right, diagnostics);
+  const ExpressionInfo right = classifyExpression(*binary.right, diagnostics);
   using Operator = AstConstantBinaryOperator;
 
   const bool comparison = binary.operation == Operator::Less ||
@@ -627,7 +630,8 @@ NormalizedNumericValue parameterArrayExtentContract(
 
 FunctionParameterContract parameterContract(
     const syntax_ast::AstFunctionParameter& parameter) {
-  const base::ScalarType scalar = parameterContractScalarType(parameter.type.text);
+  const base::ScalarType scalar =
+      parameterContractScalarType(parameter.type.text);
   const std::optional<uint64_t> natural_alignment =
       scalar != base::ScalarType::Invalid
           ? std::optional<uint64_t>{base::scalar_size_of(scalar)}
@@ -639,7 +643,8 @@ FunctionParameterContract parameterContract(
       .scalar_type = scalar,
       .type_spelling = parameter.type.text,
       .is_pointer = parameter.is_pointer,
-      .pointed_state_space = parameterPointedStateSpace(parameter.pointer_space),
+      .pointed_state_space =
+          parameterPointedStateSpace(parameter.pointer_space),
       .pointer_alignment = parameterAlignmentContract(
           parameter.pointer_alignment,
           parameter.is_pointer ? std::optional<uint64_t>{4} : std::nullopt),
@@ -698,8 +703,9 @@ std::string variableSignature(
       "variable:{}:{}:{}:{}:{}", static_cast<int>(declaration.state_space),
       variableAlignmentContract(declaration).value_or("-"),
       optionalSyntaxKey(declaration.vector_type), declaration.type.text,
-      declarator.parameterized_count ? integerSyntaxKey(*declarator.parameterized_count)
-                                     : "-");
+      declarator.parameterized_count
+          ? integerSyntaxKey(*declarator.parameterized_count)
+          : "-");
   for (const auto& dimension : declarator.array_dimensions) {
     signature += "|d:";
     signature += dimension.size ? dimensionKey(*dimension.size) : "-";
@@ -756,7 +762,8 @@ class Checker {
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         const auto context = std::ranges::find_if(
-            function_targets, [function](const FunctionTargetContext& candidate) {
+            function_targets,
+            [function](const FunctionTargetContext& candidate) {
               return candidate.function == function;
             });
         checkFunctionParameters(*function, module_version, context->target_sm);
@@ -947,7 +954,8 @@ class Checker {
     };
     const auto same_suffix = [](const auto& lhs, const auto& rhs) {
       return lhs.has_value() == rhs.has_value() &&
-             (!lhs || integerSyntaxKey(lhs->count) == integerSyntaxKey(rhs->count));
+             (!lhs ||
+              integerSyntaxKey(lhs->count) == integerSyntaxKey(rhs->count));
     };
     const auto same_language = [](const auto& lhs, const auto& rhs) {
       if (lhs.has_value() != rhs.has_value())
@@ -976,8 +984,8 @@ class Checker {
       return std::nullopt;
     PtxVersion version;
     const auto parse = [](std::string_view value, uint16_t& output) {
-      const auto [end, error] = std::from_chars(
-          value.data(), value.data() + value.size(), output);
+      const auto [end, error] =
+          std::from_chars(value.data(), value.data() + value.size(), output);
       return !value.empty() && error == std::errc{} &&
              end == value.data() + value.size();
     };
@@ -987,8 +995,7 @@ class Checker {
     return version;
   }
 
-  static PtxVersion minimumPtxVersion(
-      syntax_ast::AstKernelResourceKind kind) {
+  static PtxVersion minimumPtxVersion(syntax_ast::AstKernelResourceKind kind) {
     switch (kind) {
       case syntax_ast::AstKernelResourceKind::MaxNreg:
       case syntax_ast::AstKernelResourceKind::MaxNtid:
@@ -1048,13 +1055,14 @@ class Checker {
         if (module_version &&
             *module_version < minimumPtxVersion(resource.kind)) {
           const PtxVersion required = minimumPtxVersion(resource.kind);
-          diagnose(DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion,
-                   resource.range,
-                   fmt::format("{} requires PTX ISA >= {}.{}, but module PTX "
-                               "ISA is {}.{}.",
-                               kernelResourceName(resource.kind), required.major,
-                               required.minor, module_version->major,
-                               module_version->minor));
+          diagnose(
+              DeclarationDiagnosticKind::UnsupportedKernelResourcePtxVersion,
+              resource.range,
+              fmt::format("{} requires PTX ISA >= {}.{}, but module PTX "
+                          "ISA is {}.{}.",
+                          kernelResourceName(resource.kind), required.major,
+                          required.minor, module_version->major,
+                          module_version->minor));
         }
         if (resource.kind == syntax_ast::AstKernelResourceKind::MaxNtid ||
             resource.kind == syntax_ast::AstKernelResourceKind::ReqNtid) {
@@ -1152,10 +1160,9 @@ class Checker {
 
   static bool hasResource(const syntax_ast::AstFunction& function,
                           syntax_ast::AstKernelResourceKind kind) {
-    return std::ranges::any_of(function.resources,
-                               [kind](const auto& resource) {
-                                 return resource.kind == kind;
-                               });
+    return std::ranges::any_of(
+        function.resources,
+        [kind](const auto& resource) { return resource.kind == kind; });
   }
 
   /** Validate both source tokens of a `.unified` UUID without truncation. */
@@ -1194,8 +1201,8 @@ class Checker {
                    attribute.range, "Duplicate .attribute member.");
         }
         repeated = true;
-        requirePtx(module_version, is_managed ? PtxVersion{4, 0}
-                                               : PtxVersion{8, 0},
+        requirePtx(module_version,
+                   is_managed ? PtxVersion{4, 0} : PtxVersion{8, 0},
                    attribute.range, is_managed ? ".managed" : ".unified");
         if (!is_managed)
           checkUnifiedAttributeValues(attribute);
@@ -1229,7 +1236,8 @@ class Checker {
         }
         const auto targets = functions_named(alias->aliasee.syntax.text);
         const auto target = std::ranges::find_if(
-            targets, [](const auto* function) { return !function->is_prototype; });
+            targets,
+            [](const auto* function) { return !function->is_prototype; });
         if (target == targets.end() || (*target)->is_entry ||
             declarationLinkage((*target)->qualifiers) ==
                 binding::SymbolLinkage::Weak) {
@@ -1261,8 +1269,8 @@ class Checker {
         }
       } else if (const auto* function =
                      std::get_if<syntax_ast::AstFunction>(&item)) {
-        check_attributes(function->attributes, syntax_ast::AstStateSpace::Global,
-                         true);
+        check_attributes(function->attributes,
+                         syntax_ast::AstStateSpace::Global, true);
         if (function->noreturn_directive) {
           requirePtx(module_version, {6, 4},
                      function->noreturn_directive->range, ".noreturn");
@@ -1285,8 +1293,9 @@ class Checker {
                      ".blocksareclusters");
           if (!hasResource(*function,
                            syntax_ast::AstKernelResourceKind::ReqNtid) ||
-              !hasResource(*function, syntax_ast::AstKernelResourceKind::
-                                         ReqNctaPerCluster)) {
+              !hasResource(
+                  *function,
+                  syntax_ast::AstKernelResourceKind::ReqNctaPerCluster)) {
             diagnose(DeclarationDiagnosticKind::InvalidDeclarationDirective,
                      function->blocks_are_clusters->range,
                      ".blocksareclusters requires .reqntid and "
@@ -1303,20 +1312,23 @@ class Checker {
             }
           }
         }
-        const auto check_body = [&](const auto& self, const auto& body) -> void {
+        const auto check_body = [&](const auto& self,
+                                    const auto& body) -> void {
           for (const auto& body_item : body) {
             if (const auto* declaration =
-                    std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
-              check_attributes(declaration->attributes, declaration->state_space,
-                               false);
+                    std::get_if<syntax_ast::AstVariableDeclaration>(
+                        &body_item)) {
+              check_attributes(declaration->attributes,
+                               declaration->state_space, false);
             } else if (const auto* prototype =
-                    std::get_if<syntax_ast::AstCallPrototype>(&body_item)) {
+                           std::get_if<syntax_ast::AstCallPrototype>(
+                               &body_item)) {
               if (prototype->noreturn_directive)
                 requirePtx(module_version, {6, 4},
                            prototype->noreturn_directive->range, ".noreturn");
               if (prototype->abi_preserve)
-                requirePtx(module_version, {9, 0}, prototype->abi_preserve->range,
-                           ".abi_preserve");
+                requirePtx(module_version, {9, 0},
+                           prototype->abi_preserve->range, ".abi_preserve");
               if (prototype->abi_preserve_control)
                 requirePtx(module_version, {9, 0},
                            prototype->abi_preserve_control->range,
@@ -1340,8 +1352,8 @@ class Checker {
     std::unordered_map<std::string, SourceRange> seen_targets;
     std::optional<FirstCallTarget> first_target;
     for (const auto& target : targets.targets) {
-      const auto [duplicate, inserted] = seen_targets.emplace(
-          target.syntax.text, target.syntax.range);
+      const auto [duplicate, inserted] =
+          seen_targets.emplace(target.syntax.text, target.syntax.range);
       if (!inserted) {
         diagnose(DeclarationDiagnosticKind::DuplicateMetadataTarget,
                  target.syntax.range,
@@ -1401,14 +1413,12 @@ class Checker {
    * Repeated explicit and compact destinations are legal and retain their AST
    * ordering; this check only validates each destination independently.
    */
-  void checkBranchTargets(
-      binding::ScopeId function_scope,
-      const syntax_ast::AstBranchTargets& targets) {
+  void checkBranchTargets(binding::ScopeId function_scope,
+                          const syntax_ast::AstBranchTargets& targets) {
     indexBranchLabels();
     const auto index = labels_by_function_->find(function_scope.value);
-    const auto* labels = index == labels_by_function_->end()
-                             ? nullptr
-                             : &index->second;
+    const auto* labels =
+        index == labels_by_function_->end() ? nullptr : &index->second;
 
     const auto check_label = [this, function_scope, labels](
                                  std::string_view name, SourceRange range) {
@@ -1569,12 +1579,14 @@ class Checker {
       const bool is_call_prototype =
           context == ParameterContext::CallPrototypeInput ||
           context == ParameterContext::CallPrototypeReturn;
-      diagnose(is_call_prototype ? DeclarationDiagnosticKind::InvalidCallPrototype
-                                 : DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
-               parameter.range,
-               is_call_prototype
-                   ? "A .callprototype array parameter must use .param state space."
-                   : "Array parameters must use .param state space.");
+      diagnose(
+          is_call_prototype
+              ? DeclarationDiagnosticKind::InvalidCallPrototype
+              : DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+          parameter.range,
+          is_call_prototype
+              ? "A .callprototype array parameter must use .param state space."
+              : "Array parameters must use .param state space.");
       return;
     }
     if (parameter.is_array && !parameter.array_size) {
@@ -1751,9 +1763,9 @@ class Checker {
     }
   }
 
-  void checkControlFlowMetadata(std::optional<PtxVersion> module_version,
-                                const std::vector<FunctionTargetContext>&
-                                    function_targets) {
+  void checkControlFlowMetadata(
+      std::optional<PtxVersion> module_version,
+      const std::vector<FunctionTargetContext>& function_targets) {
     std::unordered_map<std::string, SeenFunction> seen_functions;
     for (const FunctionTargetContext& context : function_targets) {
       const auto* function = context.function;
@@ -1956,11 +1968,10 @@ class Checker {
       const bool is_instruction_only =
           metadata && metadata->register_declaration_usage ==
                           base::ScalarDeclarationUsage::InstructionOnly;
-      const auto kind = is_instruction_only
-                            ? DeclarationDiagnosticKind::
-                                  UnsupportedRegisterDeclarationType
-                            : DeclarationDiagnosticKind::
-                                  UnknownRegisterDeclarationType;
+      const auto kind =
+          is_instruction_only
+              ? DeclarationDiagnosticKind::UnsupportedRegisterDeclarationType
+              : DeclarationDiagnosticKind::UnknownRegisterDeclarationType;
       diagnose(kind, declaration.type.range,
                is_instruction_only
                    ? fmt::format("Register declaration type '{}' is an "

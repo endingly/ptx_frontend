@@ -8,9 +8,9 @@
 
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include "resolved_ir.gen.hpp"
 #include "test_syntax_parse_helpers.hpp"
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -81,9 +81,10 @@ TEST(ModernOperandCodegen, ResolvesAndChecksSyntheticPrimitive) {
 
   auto& primitive = std::get<SyntheticModern::Primitive>(instruction->variant);
   ASSERT_EQ(primitive.coordinate.locs.size(), 2u);
-  EXPECT_EQ(primitive.coordinate.locs[0],
-            std::get<syntax_ast::AstIdentifierRef>(coordinate_syntax.elements[0])
-                .syntax.range);
+  EXPECT_EQ(
+      primitive.coordinate.locs[0],
+      std::get<syntax_ast::AstIdentifierRef>(coordinate_syntax.elements[0])
+          .syntax.range);
   EXPECT_EQ(primitive.coordinate.locs[1],
             std::get<syntax_ast::AstImmediate>(coordinate_syntax.elements[1])
                 .syntax.range);
@@ -119,9 +120,9 @@ TEST(ModernOperandCodegen, ChecksModuleBoundCoordinateElementTypes) {
   ASSERT_TRUE(correct.has_value()) << correct.error().front().message;
   const SyntheticModern& correct_instruction = syntheticInstruction(*correct);
   const auto& correct_primitive = syntheticPrimitive(correct_instruction);
-  EXPECT_TRUE(checker::check(correct_instruction,
-                             syntheticContext(correct_primitive))
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(correct_instruction, syntheticContext(correct_primitive))
+          .has_value());
 }
 
 /** Real generated projections must retain oversized counts instead of wrapping. */
@@ -141,7 +142,8 @@ TEST(ModernOperandCodegen, RejectsMutatedVectorProjectionCounts) {
       SCOPED_TRACE(std::string{coordinate ? "coordinate " : "fragment "} +
                    std::to_string(count));
       auto instruction = *original;
-      auto& primitive = std::get<SyntheticModern::Primitive>(instruction.variant);
+      auto& primitive =
+          std::get<SyntheticModern::Primitive>(instruction.variant);
       if (coordinate) {
         const auto element = primitive.coordinate.value.elements.front();
         primitive.coordinate.value.elements.resize(count, element);
@@ -167,13 +169,15 @@ TEST(ModernOperandCodegen, RejectsMutatedVectorProjectionCounts) {
 
 TEST(ModernOperandCodegen, ChecksAllModernFragmentElementTypes) {
   for (const size_t wrong_index : {size_t{0}, size_t{8}, size_t{63}}) {
-    const auto wrong_ast = parseModule(syntheticModule("%r0", fragmentPack(wrong_index)));
+    const auto wrong_ast =
+        parseModule(syntheticModule("%r0", fragmentPack(wrong_index)));
     ASSERT_MODULE_PARSE_SUCCEEDS(wrong_ast);
     const auto wrong = resolveModule(*wrong_ast);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const SyntheticModern& instruction = syntheticInstruction(*wrong);
     const auto& primitive = syntheticPrimitive(instruction);
-    const auto rejected = checker::check(instruction, syntheticContext(primitive));
+    const auto rejected =
+        checker::check(instruction, syntheticContext(primitive));
     ASSERT_FALSE(rejected.has_value());
     ASSERT_EQ(rejected.error().size(), 1u);
     EXPECT_EQ(rejected.error().front().kind,
@@ -188,7 +192,8 @@ TEST(ModernOperandCodegen, ChecksAllModernFragmentElementTypes) {
   ASSERT_TRUE(correct.has_value()) << correct.error().front().message;
   const SyntheticModern& instruction = syntheticInstruction(*correct);
   const auto& primitive = syntheticPrimitive(instruction);
-  EXPECT_TRUE(checker::check(instruction, syntheticContext(primitive)).has_value());
+  EXPECT_TRUE(
+      checker::check(instruction, syntheticContext(primitive)).has_value());
 }
 
 TEST(ModernOperandCodegen, ChecksImmediateRangeInEachOperandLayout) {
@@ -281,10 +286,10 @@ TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
   ASSERT_MODULE_PARSE_SUCCEEDS(module_ast);
   const auto module = resolveModule(*module_ast);
   ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  const auto& default_instruction = std::get<SyntheticMbarrierDomain>(
-      module->functions.front().body[0]);
-  const auto& defaults = std::get<SyntheticMbarrierDomain::Defaults>(
-      default_instruction.variant);
+  const auto& default_instruction =
+      std::get<SyntheticMbarrierDomain>(module->functions.front().body[0]);
+  const auto& defaults =
+      std::get<SyntheticMbarrierDomain::Defaults>(default_instruction.variant);
   EXPECT_EQ(defaults.phase_type.value, MbarrierPhaseType::Primary);
   EXPECT_EQ(defaults.layout.value, MbarrierLayout::V0);
   ASSERT_TRUE(defaults.state.value.register_ref.has_value());
@@ -298,10 +303,10 @@ TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
   };
   EXPECT_TRUE(checker::check(default_instruction, context).has_value());
 
-  const auto& explicit_instruction = std::get<SyntheticMbarrierDomain>(
-      module->functions.front().body[1]);
-  const auto& explicit_values = std::get<SyntheticMbarrierDomain::Defaults>(
-      explicit_instruction.variant);
+  const auto& explicit_instruction =
+      std::get<SyntheticMbarrierDomain>(module->functions.front().body[1]);
+  const auto& explicit_values =
+      std::get<SyntheticMbarrierDomain::Defaults>(explicit_instruction.variant);
   EXPECT_EQ(explicit_values.phase_type.value, MbarrierPhaseType::Conditional);
   EXPECT_EQ(explicit_values.layout.value, MbarrierLayout::V1);
   const checker::Context old_context{
@@ -312,7 +317,8 @@ TEST(ModernOperandCodegen, ResolvesMbarrierDomainDefaultsAndToken) {
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 2u);
   for (const auto& diagnostic : unavailable.error())
-    EXPECT_EQ(diagnostic.kind, checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_EQ(diagnostic.kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
 
   const auto wrong_type_ast = parseModule(R"ptx(
 .version 9.3
@@ -357,8 +363,7 @@ TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(sm90a_module_ast);
   const auto sm90a_module = resolveModule(*sm90a_module_ast);
-  ASSERT_TRUE(sm90a_module.has_value())
-      << sm90a_module.error().front().message;
+  ASSERT_TRUE(sm90a_module.has_value()) << sm90a_module.error().front().message;
 
   const auto sm90a_ast = parseModule(R"ptx(
 .version 8.0
@@ -412,7 +417,8 @@ TEST(ModernOperandCodegen, AppliesExactTargetsThroughModuleAvailability) {
             checker::CheckDiagnosticKind::UnsupportedAvailability);
 }
 
-TEST(ModernOperandCodegen, AppliesEnabledFamilyFeaturesThroughModuleAvailability) {
+TEST(ModernOperandCodegen,
+     AppliesEnabledFamilyFeaturesThroughModuleAvailability) {
   const auto module_ast = parseModule(R"ptx(
 .version 9.3
 .entry kernel() { synthetic_sm100f_feature; }
@@ -430,8 +436,7 @@ TEST(ModernOperandCodegen, AppliesEnabledFamilyFeaturesThroughModuleAvailability
       ADD_FAILURE() << (ast.diagnostics.empty()
                             ? "PTX source did not produce a syntax module."
                             : ast.diagnostics.front().message);
-      return checker::CheckResult{
-          std::unexpected(checker::CheckDiagnostics{})};
+      return checker::CheckResult{std::unexpected(checker::CheckDiagnostics{})};
     }
     return checkModuleAvailability(*ast, *module);
   };
@@ -441,14 +446,17 @@ TEST(ModernOperandCodegen, AppliesEnabledFamilyFeaturesThroughModuleAvailability
   EXPECT_TRUE(check_for_target("sm_103a").has_value());
   EXPECT_TRUE(check_for_target("sm_103f").has_value());
 
-  for (const std::string_view target : {"sm_100", "sm_103", "sm_90a", "sm_120f"}) {
+  for (const std::string_view target :
+       {"sm_100", "sm_103", "sm_90a", "sm_120f"}) {
     const auto rejected = check_for_target(target);
     ASSERT_FALSE(rejected.has_value()) << target;
     EXPECT_TRUE(std::ranges::any_of(
-        rejected.error(), [](const checker::CheckDiagnostic& diagnostic) {
+        rejected.error(),
+        [](const checker::CheckDiagnostic& diagnostic) {
           return diagnostic.kind ==
                  checker::CheckDiagnosticKind::UnsupportedTargetFamily;
-        })) << target;
+        }))
+        << target;
   }
 }
 
@@ -471,8 +479,7 @@ TEST(ModernOperandCodegen,
       ADD_FAILURE() << (ast.diagnostics.empty()
                             ? "PTX source did not produce a syntax module."
                             : ast.diagnostics.front().message);
-      return checker::CheckResult{
-          std::unexpected(checker::CheckDiagnostics{})};
+      return checker::CheckResult{std::unexpected(checker::CheckDiagnostics{})};
     }
     return checkModuleAvailability(*ast, *module);
   };
@@ -485,10 +492,12 @@ TEST(ModernOperandCodegen,
     const auto rejected = check_for_target(target);
     ASSERT_FALSE(rejected.has_value()) << target;
     EXPECT_TRUE(std::ranges::any_of(
-        rejected.error(), [](const checker::CheckDiagnostic& diagnostic) {
+        rejected.error(),
+        [](const checker::CheckDiagnostic& diagnostic) {
           return diagnostic.kind ==
                  checker::CheckDiagnosticKind::UnsupportedTargetFamily;
-        })) << target;
+        }))
+        << target;
   }
 }
 

@@ -79,8 +79,9 @@ void append_value_availability_diagnostics(const OperandView& operand,
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = range,
-        .message = fmt::format("Operand value '{}' has no matching availability clause.",
-                               operand.value_name),
+        .message = fmt::format(
+            "Operand value '{}' has no matching availability clause.",
+            operand.value_name),
     });
     return;
   }
@@ -125,13 +126,13 @@ template <typename Descriptor>
 concept ModifierValueDescriptor =
     std::same_as<std::remove_cvref_t<Descriptor>,
                  ModifierValueAvailabilityDescriptor> ||
-    std::same_as<std::remove_cvref_t<Descriptor>, ModifierValueDomainDescriptor>;
+    std::same_as<std::remove_cvref_t<Descriptor>,
+                 ModifierValueDomainDescriptor>;
 
 /** Compare one generated typed modifier value with a projected resolved value. */
 template <ModifierValueDescriptor Descriptor>
-bool matches_modifier_value(
-    const Descriptor& descriptor,
-    const ModifierValueView& actual) noexcept {
+bool matches_modifier_value(const Descriptor& descriptor,
+                            const ModifierValueView& actual) noexcept {
   if (descriptor.kind_id != actual.kind_id ||
       descriptor.value_kind != actual.value_kind) {
     return false;
@@ -202,7 +203,8 @@ void append_address_constraint_availability_diagnostics(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = range,
-        .message = fmt::format("{} has no matching availability clause.", constraint),
+        .message =
+            fmt::format("{} has no matching availability clause.", constraint),
     });
     return;
   }
@@ -220,9 +222,9 @@ void append_address_constraint_availability_diagnostics(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedSmVersion,
         .range = range,
-        .message = fmt::format(
-            "{} requires SM >= {}, but target SM is {}.", constraint,
-            availability.minimum_sm_version, context.target.sm_version),
+        .message = fmt::format("{} requires SM >= {}, but target SM is {}.",
+                               constraint, availability.minimum_sm_version,
+                               context.target.sm_version),
     });
   }
   if (!availability.required_family.empty() &&
@@ -237,7 +239,8 @@ void append_address_constraint_availability_diagnostics(
   }
 }
 
-std::string_view parameter_direction_name(ParameterDirection direction) noexcept {
+std::string_view parameter_direction_name(
+    ParameterDirection direction) noexcept {
   switch (direction) {
     case ParameterDirection::None:
       return "unknown";
@@ -275,12 +278,14 @@ void append_parameter_qualifier_diagnostics(
 
   bool mismatch = false;
   if (operand.parameter_qualifier == ParameterAddressQualifier::Entry) {
-    mismatch = operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
-               operand.parameter_direction == ParameterDirection::Return ||
-               operand.parameter_direction == ParameterDirection::CallArgument;
+    mismatch =
+        operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
+        operand.parameter_direction == ParameterDirection::Return ||
+        operand.parameter_direction == ParameterDirection::CallArgument;
   } else {
-    mismatch = operand.enclosing_function_kind == EnclosingFunctionKind::Entry &&
-               operand.parameter_direction == ParameterDirection::Input;
+    mismatch =
+        operand.enclosing_function_kind == EnclosingFunctionKind::Entry &&
+        operand.parameter_direction == ParameterDirection::Input;
   }
   if (!mismatch)
     return;
@@ -317,12 +322,12 @@ void append_parameter_address_diagnostics(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::ParameterDirectionMismatch,
         .range = diagnostic_range(operand.locations, context),
-        .message = fmt::format(
-            "Address operand '{}' refers to a {} parameter but the "
-            "instruction requires a {} parameter address.",
-            descriptor.target_field_id,
-            parameter_direction_name(operand.parameter_direction),
-            parameter_direction_name(constraint.direction)),
+        .message =
+            fmt::format("Address operand '{}' refers to a {} parameter but the "
+                        "instruction requires a {} parameter address.",
+                        descriptor.target_field_id,
+                        parameter_direction_name(operand.parameter_direction),
+                        parameter_direction_name(constraint.direction)),
     });
     return;
   }
@@ -331,8 +336,8 @@ void append_parameter_address_diagnostics(
       operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
       operand.parameter_direction == ParameterDirection::CallArgument) {
     append_address_constraint_availability_diagnostics(
-        constraint.function_availability, "Parameter address", operand,
-        context, diagnostics);
+        constraint.function_availability, "Parameter address", operand, context,
+        diagnostics);
   }
 }
 
@@ -356,7 +361,8 @@ bool is_available(const AvailabilityDescriptor& availability,
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;
            ++capability) {
-        if (!has_capability(target.capabilities, clause.capabilities[capability])) {
+        if (!has_capability(target.capabilities,
+                            clause.capabilities[capability])) {
           capabilities_match = false;
           break;
         }
@@ -395,8 +401,9 @@ CheckResult check_availability(const VariantDescriptor& variant,
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = context.instruction_range,
-        .message = fmt::format("Instruction variant '{}' has no matching availability clause.",
-                               variant.variant_name),
+        .message = fmt::format(
+            "Instruction variant '{}' has no matching availability clause.",
+            variant.variant_name),
     }});
   }
 
@@ -474,9 +481,9 @@ CheckResult check_operands(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::InvalidVectorOperand,
         .range = diagnostic_range(operand.locations, context),
-        .message = fmt::format(
-            "Vector operand '{}' has an unsupported element count.",
-            operand.field_id),
+        .message =
+            fmt::format("Vector operand '{}' has an unsupported element count.",
+                        operand.field_id),
     });
   }
   if (!diagnostics.empty())
@@ -532,8 +539,8 @@ CheckResult check_operands(
               return !allows_shape(descriptor.allowed_element_shapes,
                                    element_shape);
             });
-        if (mismatched != operand->vector_element_shapes.begin() +
-                              operand->vector_arity) {
+        if (mismatched !=
+            operand->vector_element_shapes.begin() + operand->vector_arity) {
           diagnostics.push_back(CheckDiagnostic{
               .kind = CheckDiagnosticKind::UnsupportedOperandShape,
               .range = range,
@@ -578,12 +585,10 @@ CheckResult check_operands(
         }
       }
     }
-    append_parameter_qualifier_diagnostics(descriptor, *operand,
-                                           selected_state_space, context,
-                                           diagnostics);
-    append_parameter_address_diagnostics(descriptor, *operand,
-                                         selected_state_space, context,
-                                         diagnostics);
+    append_parameter_qualifier_diagnostics(
+        descriptor, *operand, selected_state_space, context, diagnostics);
+    append_parameter_address_diagnostics(
+        descriptor, *operand, selected_state_space, context, diagnostics);
 
     if (!descriptor.allowed_address_state_spaces.empty() &&
         operand->address_state_space) {
@@ -603,8 +608,9 @@ CheckResult check_operands(
                 state_space_name(*operand->address_state_space)),
         });
       } else {
-        const std::string constraint_name = fmt::format(
-            "Address state space '.{}'", state_space_name(allowed->state_space));
+        const std::string constraint_name =
+            fmt::format("Address state space '.{}'",
+                        state_space_name(allowed->state_space));
         append_address_constraint_availability_diagnostics(
             allowed->availability, constraint_name, *operand, context,
             diagnostics);
@@ -706,14 +712,13 @@ CheckResult check_operands(
             [&](ScalarType element_type) {
               // Standalone operands have no declaration to establish a type.
               return element_type != ScalarType::Invalid &&
-                     !scalar_types_compatible(
-                         element_type, expected_type,
-                         descriptor.register_width_policy);
+                     !scalar_types_compatible(element_type, expected_type,
+                                              descriptor.register_width_policy);
             });
-        if (mismatched != operand->vector_element_types.begin() +
-                              operand->vector_arity) {
-          const size_t index =
-              static_cast<size_t>(mismatched - operand->vector_element_types.begin());
+        if (mismatched !=
+            operand->vector_element_types.begin() + operand->vector_arity) {
+          const size_t index = static_cast<size_t>(
+              mismatched - operand->vector_element_types.begin());
           diagnostics.push_back(CheckDiagnostic{
               .kind = CheckDiagnosticKind::OperandTypeMismatch,
               .range = index < operand->locations.size()
@@ -791,8 +796,7 @@ CheckResult check_operands(
             .message = fmt::format(
                 "Vector operand '{}' payload width ({} bits) exceeds the "
                 "supported {} bit limit.",
-                descriptor.target_field_id,
-                vector_payload_bits,
+                descriptor.target_field_id, vector_payload_bits,
                 kMaxRegisterVectorPayloadBits),
         });
         continue;
@@ -815,10 +819,11 @@ CheckResult check_operands(
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::InvalidVectorOperand,
             .range = range,
-            .message = fmt::format(
-                "Vector operand '{}' uses the '_' sink with {} bits; {} bits are required.",
-                descriptor.target_field_id, vector_payload_bits,
-                descriptor.vector_sink_payload_bits),
+            .message =
+                fmt::format("Vector operand '{}' uses the '_' sink with {} "
+                            "bits; {} bits are required.",
+                            descriptor.target_field_id, vector_payload_bits,
+                            descriptor.vector_sink_payload_bits),
         });
         continue;
       }
@@ -862,9 +867,8 @@ CheckResult check_operands(
             operand->vector_element_types.begin() + operand->vector_arity,
             [&](ScalarType element_type) {
               return element_type != ScalarType::Invalid &&
-                     !scalar_types_compatible(
-                         element_type, expected_type,
-                         descriptor.register_width_policy);
+                     !scalar_types_compatible(element_type, expected_type,
+                                              descriptor.register_width_policy);
             });
         if (mismatched !=
             operand->vector_element_types.begin() + operand->vector_arity) {
@@ -894,8 +898,7 @@ CheckResult check_operands(
               expected_type_source, to_string(expected_type)),
       });
     } else if (operand->register_type &&
-               !scalar_types_compatible(*operand->register_type,
-                                        expected_type,
+               !scalar_types_compatible(*operand->register_type, expected_type,
                                         descriptor.register_width_policy)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
@@ -978,7 +981,8 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = context.instruction_range,
-        .message = fmt::format("Operand layout '{}' of instruction variant '{}' has no matching availability clause.",
+        .message = fmt::format("Operand layout '{}' of instruction variant "
+                               "'{}' has no matching availability clause.",
                                layout.layout_name, variant.variant_name),
     }});
   }
@@ -1052,8 +1056,9 @@ CheckResult check_modifier_value_availability(
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedAvailability,
           .range = range,
-          .message = fmt::format("Modifier '{}' has no matching availability clause.",
-                                 actual.kind_id),
+          .message =
+              fmt::format("Modifier '{}' has no matching availability clause.",
+                          actual.kind_id),
       });
       continue;
     }
@@ -1108,10 +1113,10 @@ CheckResult check_modifier_value_domain(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
         .range = diagnostic_range(actual.locations, context),
-        .message = fmt::format(
-            "Modifier '{}' has a value outside the selected instruction variant's "
-            "semantic domain.",
-            actual.kind_id),
+        .message = fmt::format("Modifier '{}' has a value outside the selected "
+                               "instruction variant's "
+                               "semantic domain.",
+                               actual.kind_id),
     });
   }
   if (diagnostics.empty())
@@ -1129,11 +1134,13 @@ CheckResult check_memory_consistency(
   const FieldView* semantics_field =
       find_field(fields, descriptor.semantics_field_id);
   const FieldView* scope_field = find_field(fields, descriptor.scope_field_id);
-  const FieldView* mmio_field = descriptor.mmio_field_id.empty()
-                                    ? nullptr
-                                    : find_field(fields, descriptor.mmio_field_id);
+  const FieldView* mmio_field =
+      descriptor.mmio_field_id.empty()
+          ? nullptr
+          : find_field(fields, descriptor.mmio_field_id);
   const FieldView* cache_field = find_field(fields, descriptor.cache_field_id);
-  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_field_id);
   if (semantics_field == nullptr || scope_field == nullptr ||
       cache_field == nullptr || address == nullptr ||
       !semantics_field->memory_consistency || !scope_field->memory_scope ||
@@ -1142,14 +1149,16 @@ CheckResult check_memory_consistency(
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = "Generated memory-consistency descriptor has missing fields.",
+        .message =
+            "Generated memory-consistency descriptor has missing fields.",
     }});
   }
 
   const MemoryConsistency semantics = *semantics_field->memory_consistency;
   const MemoryScope scope = *scope_field->memory_scope;
   const bool mmio = mmio_field != nullptr && *mmio_field->bool_value;
-  const bool cached = *cache_field->cache_operator != CacheOperator::Unspecified;
+  const bool cached =
+      *cache_field->cache_operator != CacheOperator::Unspecified;
   CheckDiagnostics diagnostics;
   const auto violation = [&](const FieldView& field, std::string_view message) {
     diagnostics.push_back(CheckDiagnostic{
@@ -1165,34 +1174,39 @@ CheckResult check_memory_consistency(
   if (scoped != (scope != MemoryScope::None)) {
     violation(scoped ? *semantics_field : *scope_field,
               scoped ? "Memory semantics requires an explicit scope."
-                     : "Memory scope is only valid with relaxed, acquire, or release semantics.");
+                     : "Memory scope is only valid with relaxed, acquire, or "
+                       "release semantics.");
   }
   if (cached && (semantics == MemoryConsistency::Volatile || scoped || mmio)) {
     violation(*cache_field,
-              "Cache operator is not valid with volatile, ordered, or mmio memory semantics.");
+              "Cache operator is not valid with volatile, ordered, or mmio "
+              "memory semantics.");
   }
 
   std::optional<MemoryStateSpace> state_space = address->address_state_space;
   if (!descriptor.state_space_field_id.empty()) {
-    const FieldView* field = find_field(fields, descriptor.state_space_field_id);
+    const FieldView* field =
+        find_field(fields, descriptor.state_space_field_id);
     if (field != nullptr && field->memory_state_space)
       state_space = *field->memory_state_space;
   }
-  const bool known_global_or_shared =
-      state_space == MemoryStateSpace::Global || state_space == MemoryStateSpace::Shared;
+  const bool known_global_or_shared = state_space == MemoryStateSpace::Global ||
+                                      state_space == MemoryStateSpace::Shared;
   const bool volatile_local = semantics == MemoryConsistency::Volatile &&
                               state_space == MemoryStateSpace::Local;
   const bool strong = scoped || semantics == MemoryConsistency::Volatile;
   if (strong && state_space && !known_global_or_shared && !volatile_local) {
-    violation(*semantics_field,
-              "Strong memory semantics require a global or shared address space.");
+    violation(
+        *semantics_field,
+        "Strong memory semantics require a global or shared address space.");
   }
   if (volatile_local && context.target.ptx_version < PtxVersion{9, 1}) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
         .range = diagnostic_range(semantics_field->locations, context),
-        .message = fmt::format("volatile.local requires PTX ISA >= 9.1, but target PTX ISA is {}.",
-                               format_version(context.target.ptx_version)),
+        .message = fmt::format(
+            "volatile.local requires PTX ISA >= 9.1, but target PTX ISA is {}.",
+            format_version(context.target.ptx_version)),
     });
   }
   if (mmio) {
@@ -1201,7 +1215,8 @@ CheckResult check_memory_consistency(
     }
     if (state_space && *state_space != MemoryStateSpace::Global) {
       violation(*mmio_field,
-                "mmio requires a global address space when the address space is known.");
+                "mmio requires a global address space when the address space "
+                "is known.");
     }
   }
 
@@ -1230,8 +1245,8 @@ CheckResult check_address_alignment(
                      "immediate field.",
       }});
     }
-    required = immediate->integer_source_bits.value_or(
-        *immediate->immediate_bits);
+    required =
+        immediate->integer_source_bits.value_or(*immediate->immediate_bits);
   } else if (required == 0) {
     const FieldView* type = find_field(fields, descriptor.type_field_id);
     const FieldView* vector =
@@ -1302,8 +1317,10 @@ CheckResult check_memory_vector(
     return {};
 
   const FieldView* type = find_field(fields, descriptor.type_field_id);
-  const OperandView* vector = find_operand(operands, descriptor.vector_field_id);
-  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  const OperandView* vector =
+      find_operand(operands, descriptor.vector_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_field_id);
   if (type == nullptr || vector == nullptr || address == nullptr ||
       !type->scalar_type || vector->actual_shape != OperandShape::Vector) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
@@ -1313,8 +1330,8 @@ CheckResult check_memory_vector(
     }});
   }
 
-  const size_t payload_bits =
-      static_cast<size_t>(vector->vector_arity) * scalar_size_of(*type->scalar_type) * 8u;
+  const size_t payload_bits = static_cast<size_t>(vector->vector_arity) *
+                              scalar_size_of(*type->scalar_type) * 8u;
   const bool modern_candidate = vector->vector_arity > 4 ||
                                 payload_bits > 128 ||
                                 vector->vector_sink_count != 0;
@@ -1322,7 +1339,8 @@ CheckResult check_memory_vector(
     return {};
 
   CheckDiagnostics diagnostics;
-  const SourceRange& vector_range = diagnostic_range(vector->locations, context);
+  const SourceRange& vector_range =
+      diagnostic_range(vector->locations, context);
   if (payload_bits != 256) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -1335,11 +1353,13 @@ CheckResult check_memory_vector(
   const FieldView* state_space_field = nullptr;
   if (!descriptor.state_space_field_id.empty()) {
     state_space_field = find_field(fields, descriptor.state_space_field_id);
-    if (state_space_field == nullptr || !state_space_field->memory_state_space) {
+    if (state_space_field == nullptr ||
+        !state_space_field->memory_state_space) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::RuleViolation,
           .range = context.instruction_range,
-          .message = "Generated memory-vector descriptor has an invalid state-space field.",
+          .message = "Generated memory-vector descriptor has an invalid "
+                     "state-space field.",
       });
     } else {
       state_space = *state_space_field->memory_state_space;
@@ -1351,7 +1371,8 @@ CheckResult check_memory_vector(
         .range = state_space_field != nullptr
                      ? diagnostic_range(state_space_field->locations, context)
                      : diagnostic_range(address->locations, context),
-        .message = "Modern memory vectors require a global address space when known.",
+        .message =
+            "Modern memory vectors require a global address space when known.",
     });
   }
 
@@ -1365,7 +1386,8 @@ CheckResult check_memory_vector(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = vector_range,
-        .message = "Modern memory vectors have no matching availability clause.",
+        .message =
+            "Modern memory vectors have no matching availability clause.",
     });
     return std::unexpected(std::move(diagnostics));
   }
@@ -1373,10 +1395,10 @@ CheckResult check_memory_vector(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
         .range = vector_range,
-        .message = fmt::format(
-            "Modern memory vectors require PTX ISA >= {}, but target PTX ISA is {}.",
-            format_version(availability.minimum_ptx_version),
-            format_version(context.target.ptx_version)),
+        .message = fmt::format("Modern memory vectors require PTX ISA >= {}, "
+                               "but target PTX ISA is {}.",
+                               format_version(availability.minimum_ptx_version),
+                               format_version(context.target.ptx_version)),
     });
   }
   if (context.target.sm_version < availability.minimum_sm_version) {
@@ -1394,8 +1416,9 @@ CheckResult check_memory_vector(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = vector_range,
-        .message = fmt::format("Modern memory vectors require target family '{}'.",
-                               availability.required_family),
+        .message =
+            fmt::format("Modern memory vectors require target family '{}'.",
+                        availability.required_family),
     });
   }
 
@@ -1418,22 +1441,21 @@ CheckResult check_immediate_value(
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = fmt::format(
-            "Immediate-value constraint references missing immediate operand '{}'.",
-            descriptor.operand_field_id),
+        .message = fmt::format("Immediate-value constraint references missing "
+                               "immediate operand '{}'.",
+                               descriptor.operand_field_id),
     }});
   }
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && std::ranges::find(descriptor.allowed_values, value) !=
-      descriptor.allowed_values.end()) {
+                       descriptor.allowed_values.end()) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::ImmediateValueMismatch,
       .range = diagnostic_range(operand->locations, context),
       .message = fmt::format("Immediate operand '{}' has unsupported value {}.",
-                             descriptor.operand_field_id,
-                             value),
+                             descriptor.operand_field_id, value),
   }});
 }
 
@@ -1450,9 +1472,10 @@ CheckResult check_immediate_multiple_of(
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = fmt::format("Immediate-multiple constraint for '{}' has zero "
-                               "divisor.",
-                               descriptor.operand_field_id),
+        .message =
+            fmt::format("Immediate-multiple constraint for '{}' has zero "
+                        "divisor.",
+                        descriptor.operand_field_id),
     }});
   }
   // A register operand is dynamically unknown; the generated divisibility
@@ -1464,9 +1487,10 @@ CheckResult check_immediate_multiple_of(
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = fmt::format("Immediate-multiple constraint references missing "
-                               "immediate operand '{}'.",
-                               descriptor.operand_field_id),
+        .message =
+            fmt::format("Immediate-multiple constraint references missing "
+                        "immediate operand '{}'.",
+                        descriptor.operand_field_id),
     }});
   }
   const auto [value, negative] = integer_constraint_value(*operand);
@@ -1476,10 +1500,10 @@ CheckResult check_immediate_multiple_of(
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::ImmediateValueMismatch,
       .range = diagnostic_range(operand->locations, context),
-      .message = fmt::format("Immediate operand '{}' has value {} that is not a "
-                             "multiple of {}.",
-                             descriptor.operand_field_id,
-                             value, descriptor.divisor),
+      .message =
+          fmt::format("Immediate operand '{}' has value {} that is not a "
+                      "multiple of {}.",
+                      descriptor.operand_field_id, value, descriptor.divisor),
   }});
 }
 
@@ -1508,8 +1532,7 @@ CheckResult check_immediate_range(
   }
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value >= descriptor.minimum &&
-      (!descriptor.has_maximum ||
-       value <= descriptor.maximum)) {
+      (!descriptor.has_maximum || value <= descriptor.maximum)) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{

@@ -7,10 +7,10 @@
 #include <type_traits>
 #include <utility>
 
+#include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
-#include <ptx_frontend/binding/ptx_symbol_table.hpp>
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -107,7 +107,8 @@ again:
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), binding.diagnostics.size());
   for (size_t index = 0; index < binding.diagnostics.size(); ++index)
-    expectBindingProjection(resolved.error()[index], binding.diagnostics[index]);
+    expectBindingProjection(resolved.error()[index],
+                            binding.diagnostics[index]);
 
   EXPECT_EQ(resolved.error()[0].binding_kind,
             binding::BindDiagnosticKind::DuplicateSymbol);
@@ -138,7 +139,8 @@ TEST(ModuleDiagnostics, OrdersBindingThenDeclarationSemanticsDiagnostics) {
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(),
             binding.diagnostics.size() + declarations.size());
-  expectBindingProjection(resolved.error().front(), binding.diagnostics.front());
+  expectBindingProjection(resolved.error().front(),
+                          binding.diagnostics.front());
   expectDeclarationProjection(resolved.error().back(), declarations.front());
   EXPECT_EQ(resolved.error().back().declaration_kind,
             declaration_semantics::DeclarationDiagnosticKind::
@@ -168,7 +170,8 @@ TEST(ModuleDiagnostics, ProjectsStorageOnlyDeclarationDiagnostic) {
 }
 
 /** Availability checker categories and locations survive module resolution. */
-TEST(ModuleDiagnostics, ProjectsCheckerDiagnosticForRecognizedTargetAndVersion) {
+TEST(ModuleDiagnostics,
+     ProjectsCheckerDiagnosticForRecognizedTargetAndVersion) {
   constexpr std::string_view unchecked_source = R"ptx(
 .version 0.9
 .entry kernel() {
@@ -221,8 +224,7 @@ TEST(ModuleDiagnostics, NativeResolutionFailureDefaultsToResolutionStage) {
 }
 )ptx");
   ASSERT_TRUE(ast);
-  const auto& function =
-      std::get<syntax_ast::AstFunction>(ast->items.front());
+  const auto& function = std::get<syntax_ast::AstFunction>(ast->items.front());
   const auto& instruction =
       std::get<syntax_ast::AstInstruction>(function.body.back());
   const auto resolved = resolveModule(*ast);

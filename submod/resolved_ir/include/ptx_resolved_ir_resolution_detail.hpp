@@ -53,10 +53,11 @@ struct ResolvedInstructionFields {
 
 /** Restrict helper lookups to alternatives held by the scratch field variant. */
 template <typename T>
-concept ResolvedFieldType = requires { typename WithLocs<T>; } &&
-    []<typename... Alternatives>(std::variant<Alternatives...>*) {
-      return (std::same_as<WithLocs<T>, Alternatives> || ...);
-    }(static_cast<ResolvedFieldValue*>(nullptr));
+concept ResolvedFieldType = requires {
+  typename WithLocs<T>;
+} && []<typename... Alternatives>(std::variant<Alternatives...>*) {
+  return (std::same_as<WithLocs<T>, Alternatives> || ...);
+}(static_cast<ResolvedFieldValue*>(nullptr));
 
 using ActualModifierTable =
     std::unordered_map<std::string, const syntax_ast::AstModifier*>;

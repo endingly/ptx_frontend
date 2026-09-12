@@ -114,9 +114,10 @@ std::optional<CacheOperator> cache_operator_from_ptx_name(
   return lookup_ptx_suffix(generated_detail::kCacheOperators, spelling);
 }
 
-std::expected<WithLocs<CacheOperator>, ResolveDiagnostic> resolve_cache_operator(
-    const syntax_ast::AstModifier& modifier) {
-  const auto cache_operator = cache_operator_from_ptx_name(modifier.syntax.text);
+std::expected<WithLocs<CacheOperator>, ResolveDiagnostic>
+resolve_cache_operator(const syntax_ast::AstModifier& modifier) {
+  const auto cache_operator =
+      cache_operator_from_ptx_name(modifier.syntax.text);
   if (!cache_operator) {
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
@@ -176,7 +177,8 @@ std::expected<WithLocs<MemoryScope>, ResolveDiagnostic> resolve_memory_scope(
   if (!value) {
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
-        .message = fmt::format("Unknown memory scope '{}'.", modifier.syntax.text),
+        .message =
+            fmt::format("Unknown memory scope '{}'.", modifier.syntax.text),
     });
   }
   return WithLocs<MemoryScope>{*value, modifier.syntax.range};
@@ -184,8 +186,8 @@ std::expected<WithLocs<MemoryScope>, ResolveDiagnostic> resolve_memory_scope(
 
 std::expected<WithLocs<MbarrierPhaseType>, ResolveDiagnostic>
 resolve_mbarrier_phase_type(const syntax_ast::AstModifier& modifier) {
-  const auto value = lookup_ptx_suffix(
-      generated_detail::kMbarrierPhaseTypes, modifier.syntax.text);
+  const auto value = lookup_ptx_suffix(generated_detail::kMbarrierPhaseTypes,
+                                       modifier.syntax.text);
   if (!value)
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
@@ -202,8 +204,8 @@ resolve_mbarrier_layout(const syntax_ast::AstModifier& modifier) {
   if (!value)
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
-        .message = fmt::format("Unknown mbarrier layout '{}'.",
-                               modifier.syntax.text),
+        .message =
+            fmt::format("Unknown mbarrier layout '{}'.", modifier.syntax.text),
     });
   return WithLocs<MbarrierLayout>{*value, modifier.syntax.range};
 }
@@ -215,8 +217,8 @@ resolve_async_proxy_kind(const syntax_ast::AstModifier& modifier) {
   if (!value)
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
-        .message = fmt::format("Unknown async proxy kind '{}'.",
-                               modifier.syntax.text),
+        .message =
+            fmt::format("Unknown async proxy kind '{}'.", modifier.syntax.text),
     });
   return WithLocs<AsyncProxyKind>{*value, modifier.syntax.range};
 }
@@ -228,8 +230,8 @@ resolve_proxy_kind_pair(const syntax_ast::AstModifier& modifier) {
   if (!value)
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
-        .message = fmt::format("Unknown proxy kind pair '{}'.",
-                               modifier.syntax.text),
+        .message =
+            fmt::format("Unknown proxy kind pair '{}'.", modifier.syntax.text),
     });
   return WithLocs<ProxyKindPair>{*value, modifier.syntax.range};
 }
@@ -264,9 +266,8 @@ resolve_memory_state_space(const syntax_ast::AstModifier& modifier) {
   if (!state_space) {
     return std::unexpected(ResolveDiagnostic{
         .range = modifier.syntax.range,
-        .message =
-            fmt::format("Unknown memory state space '{}'.",
-                        modifier.syntax.text),
+        .message = fmt::format("Unknown memory state space '{}'.",
+                               modifier.syntax.text),
     });
   }
   return WithLocs<MemoryStateSpace>{*state_space, modifier.syntax.range};
@@ -287,11 +288,11 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> parse_bool_modifier(
   return ResolvedFieldValue{WithLocs<bool>{true, modifier.syntax.range}};
 }
 
-#define PTX_DEFINE_TYPED_MODIFIER_PARSER(name, resolver)                    \
-  /** Parse the named modifier domain into its erased field value. */         \
-  std::expected<ResolvedFieldValue, ResolveDiagnostic> parse_##name##_modifier( \
-      const syntax_ast::AstModifier& modifier) {                              \
-    return as_modifier_field_value(resolver(modifier));                        \
+#define PTX_DEFINE_TYPED_MODIFIER_PARSER(name, resolver)              \
+  /** Parse the named modifier domain into its erased field value. */ \
+  std::expected<ResolvedFieldValue, ResolveDiagnostic>                \
+  parse_##name##_modifier(const syntax_ast::AstModifier& modifier) {  \
+    return as_modifier_field_value(resolver(modifier));               \
   }
 
 PTX_DEFINE_TYPED_MODIFIER_PARSER(scalar_type, resolve_scalar_type)
@@ -304,8 +305,7 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(eviction_priority, resolve_eviction_priority)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_consistency, resolve_memory_consistency)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_scope, resolve_memory_scope)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(vector_arity, resolve_vector_arity)
-PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_state_space,
-                                 resolve_memory_state_space)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_state_space, resolve_memory_state_space)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_phase_type,
                                  resolve_mbarrier_phase_type)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_layout, resolve_mbarrier_layout)
@@ -320,13 +320,13 @@ std::optional<ResolvedFieldValue> default_bool_modifier(
   return ResolvedFieldValue{WithLocs<bool>{value.bool_value}};
 }
 
-#define PTX_DEFINE_MODIFIER_DEFAULT(name, type, member, valid)                \
-  /** Build the named optional-modifier default when its value is valid. */    \
-  std::optional<ResolvedFieldValue> default_##name##_modifier(                \
-      const check_end::ResolvedModifierDefaultDescriptor& value) {            \
-    if (!(valid))                                                               \
-      return std::nullopt;                                                      \
-    return ResolvedFieldValue{WithLocs<type>{value.member}};                  \
+#define PTX_DEFINE_MODIFIER_DEFAULT(name, type, member, valid)              \
+  /** Build the named optional-modifier default when its value is valid. */ \
+  std::optional<ResolvedFieldValue> default_##name##_modifier(              \
+      const check_end::ResolvedModifierDefaultDescriptor& value) {          \
+    if (!(valid))                                                           \
+      return std::nullopt;                                                  \
+    return ResolvedFieldValue{WithLocs<type>{value.member}};                \
   }
 
 PTX_DEFINE_MODIFIER_DEFAULT(scalar_type, ScalarType, scalar_type,
@@ -339,7 +339,8 @@ PTX_DEFINE_MODIFIER_DEFAULT(memory_consistency, MemoryConsistency,
 PTX_DEFINE_MODIFIER_DEFAULT(memory_scope, MemoryScope, memory_scope, true)
 PTX_DEFINE_MODIFIER_DEFAULT(memory_state_space, MemoryStateSpace,
                             memory_state_space,
-                            value.memory_state_space != MemoryStateSpace::Invalid)
+                            value.memory_state_space !=
+                                MemoryStateSpace::Invalid)
 PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_phase_type, MbarrierPhaseType,
                             mbarrier_phase_type, true)
 PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_layout, MbarrierLayout, mbarrier_layout,
@@ -359,10 +360,10 @@ enum class ModifierDefaultPolicy : uint8_t {
 };
 
 /** Type-erased parser for one modifier value domain. */
-using ModifierParser = std::expected<ResolvedFieldValue, ResolveDiagnostic> (*) (
+using ModifierParser = std::expected<ResolvedFieldValue, ResolveDiagnostic> (*)(
     const syntax_ast::AstModifier&);
 /** Type-erased materializer for one generated optional-modifier default. */
-using ModifierDefaultBuilder = std::optional<ResolvedFieldValue> (*) (
+using ModifierDefaultBuilder = std::optional<ResolvedFieldValue> (*)(
     const check_end::ResolvedModifierDefaultDescriptor&);
 
 /** Complete mechanical association for one modifier value domain. */
@@ -380,42 +381,43 @@ struct ModifierDomainMapping {
 };
 
 /** One private table owns modifier kind, parser, and default associations. */
-#define PTX_MODIFIER_DOMAIN_TABLE(X)                                           \
-  X(Bool, Bool, parse_bool_modifier, default_bool_modifier, "boolean", Supported) \
-  X(ScalarType, ScalarType, parse_scalar_type_modifier,                        \
+#define PTX_MODIFIER_DOMAIN_TABLE(X)                                          \
+  X(Bool, Bool, parse_bool_modifier, default_bool_modifier, "boolean",        \
+    Supported)                                                                \
+  X(ScalarType, ScalarType, parse_scalar_type_modifier,                       \
     default_scalar_type_modifier, "scalar-type", Supported)                   \
-  X(RoundingMode, RoundingMode, parse_rounding_mode_modifier,                  \
-    default_rounding_mode_modifier, "rounding-mode", Supported)                \
-  X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,     \
+  X(RoundingMode, RoundingMode, parse_rounding_mode_modifier,                 \
+    default_rounding_mode_modifier, "rounding-mode", Supported)               \
+  X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,    \
     "comparison-operator", UnsupportedDomain)                                 \
-  X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,           \
+  X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,          \
     "boolean-operator", UnsupportedDomain)                                    \
-  X(CacheOperator, CacheOperator, parse_cache_operator_modifier,               \
+  X(CacheOperator, CacheOperator, parse_cache_operator_modifier,              \
     default_cache_operator_modifier, "cache-operator", Supported)             \
-  X(EvictionPriority, None, parse_eviction_priority_modifier, nullptr,         \
+  X(EvictionPriority, None, parse_eviction_priority_modifier, nullptr,        \
     "eviction-priority", UnsupportedDomain)                                   \
-  X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,   \
+  X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,  \
     default_memory_consistency_modifier, "memory-consistency", Supported)     \
-  X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                     \
+  X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                    \
     default_memory_scope_modifier, "memory-scope", Supported)                 \
-  X(VectorArity, None, parse_vector_arity_modifier, nullptr, "vector-arity", \
-    NonModifierDomain)                                                         \
-  X(MemoryStateSpace, MemoryStateSpace, parse_memory_state_space_modifier,     \
-    default_memory_state_space_modifier, "memory-state-space", Supported)    \
-  X(MbarrierPhaseType, MbarrierPhaseType, parse_mbarrier_phase_type_modifier,  \
-    default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)  \
-  X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,            \
-    default_mbarrier_layout_modifier, "mbarrier layout", Supported)          \
-  X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,           \
+  X(VectorArity, None, parse_vector_arity_modifier, nullptr, "vector-arity",  \
+    NonModifierDomain)                                                        \
+  X(MemoryStateSpace, MemoryStateSpace, parse_memory_state_space_modifier,    \
+    default_memory_state_space_modifier, "memory-state-space", Supported)     \
+  X(MbarrierPhaseType, MbarrierPhaseType, parse_mbarrier_phase_type_modifier, \
+    default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)   \
+  X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,           \
+    default_mbarrier_layout_modifier, "mbarrier layout", Supported)           \
+  X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,          \
     default_async_proxy_kind_modifier, "async proxy", Supported)              \
-  X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,              \
+  X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,             \
     default_proxy_kind_pair_modifier, "proxy pair", Supported)
 
 /** Number of contiguous modifier domains at the start of ResolvedValueKind. */
 constexpr size_t kModifierDomainCount =
     static_cast<size_t>(ResolvedValueKind::Register);
 static_assert(kModifierDomainCount ==
-              static_cast<size_t>(ResolvedValueKind::ProxyKindPair) + 1,
+                  static_cast<size_t>(ResolvedValueKind::ProxyKindPair) + 1,
               "ResolvedValueKind modifier domains must remain contiguous; "
               "extend PTX_MODIFIER_DOMAIN_TABLE for a new modifier kind.");
 
@@ -430,13 +432,13 @@ static_assert(kModifierDomainTableRows == kModifierDomainCount,
 consteval std::array<ModifierDomainMapping, kModifierDomainCount>
 make_modifier_domain_mappings() {
   std::array<ModifierDomainMapping, kModifierDomainCount> mappings{};
-#define PTX_ASSIGN_MODIFIER_DOMAIN(row_kind, row_default_kind, row_parser,     \
-                                   row_builder, row_name, row_policy)          \
-  mappings[static_cast<size_t>(ResolvedValueKind::row_kind)] = {               \
-      .default_kind = ResolvedModifierDefaultKind::row_default_kind,           \
-      .parser = row_parser,                                                     \
-      .default_builder = row_builder,                                           \
-      .diagnostic_name = row_name,                                              \
+#define PTX_ASSIGN_MODIFIER_DOMAIN(row_kind, row_default_kind, row_parser, \
+                                   row_builder, row_name, row_policy)      \
+  mappings[static_cast<size_t>(ResolvedValueKind::row_kind)] = {           \
+      .default_kind = ResolvedModifierDefaultKind::row_default_kind,       \
+      .parser = row_parser,                                                \
+      .default_builder = row_builder,                                      \
+      .diagnostic_name = row_name,                                         \
       .default_policy = ModifierDefaultPolicy::row_policy};
   PTX_MODIFIER_DOMAIN_TABLE(PTX_ASSIGN_MODIFIER_DOMAIN)
 #undef PTX_ASSIGN_MODIFIER_DOMAIN
@@ -477,7 +479,6 @@ ParameterAddressQualifier parameter_address_qualifier_from_modifier(
     return ParameterAddressQualifier::Function;
   return ParameterAddressQualifier::Default;
 }
-
 
 struct ModifierBindingAttempt {
   std::optional<ActualModifierTable> modifiers;
@@ -640,7 +641,6 @@ const SyntaxModifierDescriptor& find_syntax_modifier_descriptor(
   return *it;
 }
 
-
 ResolvedFieldValue resolve_default_modifier_value(
     const ResolvedFieldDescriptor& field,
     const ResolvedModifierBindingDescriptor& binding) {
@@ -679,9 +679,9 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_modifier_value(
     const syntax_ast::AstModifier& modifier) {
   const auto* domain = modifier_domain_mapping(field.value_kind);
   if (domain == nullptr) {
-    throw ResolveException(fmt::format(
-        "Modifier '{}' has a non-modifier resolved value kind.",
-        modifier.syntax.text));
+    throw ResolveException(
+        fmt::format("Modifier '{}' has a non-modifier resolved value kind.",
+                    modifier.syntax.text));
   }
   return domain->parser(modifier);
 }
@@ -721,7 +721,8 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
   }
 
   for (const auto& modifier : ast.modifiers) {
-    if (!detail::is_known_modifier_spelling(instruction, modifier.syntax.text)) {
+    if (!detail::is_known_modifier_spelling(instruction,
+                                            modifier.syntax.text)) {
       return std::unexpected(ResolveDiagnostic{
           .range = modifier.syntax.range,
           .message =

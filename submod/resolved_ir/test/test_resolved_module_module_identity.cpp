@@ -226,11 +226,11 @@ branches: .branchtargets label;
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto function_scope =
-      *resolved->symbols.symbol(resolved->functions.front().symbol_id).owned_scope;
+      *resolved->symbols.symbol(resolved->functions.front().symbol_id)
+           .owned_scope;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
-  const auto& branch = std::get<Bra::Direct>(
-      std::get<Bra>(body[0]).variant);
+  const auto& branch = std::get<Bra::Direct>(std::get<Bra>(body[0]).variant);
   ASSERT_TRUE(branch.target.value.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*branch.target.value.symbol_id).scope,
             function_scope);
@@ -372,10 +372,11 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   ASSERT_TRUE(timer_resolved.has_value()) << timer_resolved.error().message;
   const auto& timer_mov = std::get<Mov>(*timer_resolved);
   const checker::Context timer_too_old_ptx{
-      .target = checker::TargetInfo{
-          .ptx_version = checker::PtxVersion{3, 0},
-          .sm_version = 30,
-      },
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{3, 0},
+              .sm_version = 30,
+          },
       .instruction_range = timer_ast->range,
   };
   const auto timer_ptx_rejected = checker::check(timer_mov, timer_too_old_ptx);
@@ -445,9 +446,10 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
 
   constexpr std::array spellings{
       "%reserved_smem_offset_begin", "%reserved_smem_offset_end",
-      "%reserved_smem_offset_cap", "%reserved_smem_offset_0",
-      "%reserved_smem_offset_1", "%total_smem_size", "%dynamic_smem_size",
-      "%aggr_smem_size", "%current_graph_exec",
+      "%reserved_smem_offset_cap",   "%reserved_smem_offset_0",
+      "%reserved_smem_offset_1",     "%total_smem_size",
+      "%dynamic_smem_size",          "%aggr_smem_size",
+      "%current_graph_exec",
   };
   for (size_t index = 0; index < spellings.size(); ++index) {
     const auto& special = std::get<ResolvedSpecialRegisterRef>(
@@ -482,12 +484,11 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
            AvailabilityBoundary{7, {8, 1}, {8, 0}, 90},
            AvailabilityBoundary{8, {8, 0}, {7, 9}, 50},
        }) {
-    EXPECT_TRUE(check_at(boundary.instruction, boundary.supported,
-                         boundary.minimum_sm)
-                    .has_value());
-    const auto ptx_rejected = check_at(boundary.instruction,
-                                       boundary.too_old_ptx,
-                                       boundary.minimum_sm);
+    EXPECT_TRUE(
+        check_at(boundary.instruction, boundary.supported, boundary.minimum_sm)
+            .has_value());
+    const auto ptx_rejected = check_at(
+        boundary.instruction, boundary.too_old_ptx, boundary.minimum_sm);
     ASSERT_FALSE(ptx_rejected.has_value());
     const auto info = base::metadata(
         std::get<ResolvedSpecialRegisterRef>(
@@ -532,14 +533,12 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
 
   PtxSyntaxParser vector_parser("mov.u32 %r0, %tid;");
   const auto vector_ast = vector_parser.parseInstruction();
-  ASSERT_TRUE(vector_ast.has_value())
-      << vector_ast.diagnostics.front().message;
+  ASSERT_TRUE(vector_ast.has_value()) << vector_ast.diagnostics.front().message;
   const auto vector_resolved = resolveInstruction(*vector_ast);
   ASSERT_FALSE(vector_resolved.has_value());
   EXPECT_EQ(vector_resolved.error().message,
             "Special register '%tid' is a vector; select a scalar component.");
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

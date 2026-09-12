@@ -50,8 +50,7 @@ bool symbolNameSetsOverlap(const Symbol& existing, std::string_view name,
   if (!existing.parameterized_count) {
     if (!parameterized_count)
       return existing.name == name;
-    return parameterizedNameContains(name, *parameterized_count,
-                                     existing.name);
+    return parameterizedNameContains(name, *parameterized_count, existing.name);
   }
   if (!parameterized_count)
     return parameterizedNameContains(existing.name,
@@ -353,8 +352,8 @@ std::optional<SymbolLookup> SymbolTable::lookup(ScopeId scope_id,
 std::optional<SymbolId> SymbolTable::exactDeclaration(
     ScopeId scope, std::string_view name, bool parameterized) const {
   const ScopeNameIndex& index = scope_name_indexes_.at(scope.value);
-  const auto& declarations = parameterized ? index.parameterized_exact
-                                           : index.ordinary_exact;
+  const auto& declarations =
+      parameterized ? index.parameterized_exact : index.ordinary_exact;
   const auto found = declarations.find(name);
   return found == declarations.end() ? std::nullopt
                                      : std::optional<SymbolId>{found->second};

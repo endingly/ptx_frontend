@@ -15,7 +15,8 @@ namespace ptx_frontend::resolved_ir {
 namespace {
 
 /** Return the immediate source held by a scalar move instruction. */
-const ResolvedImmediate& scalarMovImmediate(const ResolvedInstruction& instruction) {
+const ResolvedImmediate& scalarMovImmediate(
+    const ResolvedInstruction& instruction) {
   const auto& mov = std::get<Mov>(instruction);
   const auto& scalar = std::get<Mov::Scalar>(mov.variant);
   const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
@@ -77,7 +78,8 @@ TEST(WarpSizeLiteral, PublicLiteralEntryPointUsesSignedSourceConstant) {
       .kind = syntax_ast::AstImmediateKind::WarpSize,
   };
 
-  const auto signed_value = resolve_immediate_literal(immediate, ScalarType::S16);
+  const auto signed_value =
+      resolve_immediate_literal(immediate, ScalarType::S16);
   ASSERT_TRUE(signed_value.has_value()) << signed_value.error().message;
   EXPECT_EQ(signed_value->bits, 32u);
   EXPECT_EQ(signed_value->integer_source_bits, 32u);
@@ -104,8 +106,9 @@ TEST(WarpSizeLiteral, PublicLiteralEntryPointUsesSignedSourceConstant) {
   const auto incompatible =
       resolve_immediate_literal(immediate, ScalarType::F32);
   ASSERT_FALSE(incompatible.has_value());
-  EXPECT_EQ(incompatible.error().message,
-            "Integer literal 'WARP_SZ' is incompatible with scalar type 'F32'.");
+  EXPECT_EQ(
+      incompatible.error().message,
+      "Integer literal 'WARP_SZ' is incompatible with scalar type 'F32'.");
 }
 
 /** Keep instruction-specific immediate restrictions after WARP_SZ materialization. */

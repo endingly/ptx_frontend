@@ -76,10 +76,9 @@ class PtxCstParser {
   [[nodiscard]] CstParseDiagnostic depthLimitExceeded(
       TokenId id, std::string_view tree_kind) const;
   [[nodiscard]] bool atImmediateStart();
-  [[nodiscard]] RecoveryResult recover(
-      TokenId first,
-      const CstParseDiagnostic& diagnostic,
-      RecoveryContext context);
+  [[nodiscard]] RecoveryResult recover(TokenId first,
+                                       const CstParseDiagnostic& diagnostic,
+                                       RecoveryContext context);
 
   std::expected<TokenId, CstParseDiagnostic> expect(TokenKind kind,
                                                     std::string_view name);
@@ -144,8 +143,7 @@ class PtxCstParser {
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
   parseSectionDirective();
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(
-      std::vector<TokenId> qualifiers,
-      TokenId first_token,
+      std::vector<TokenId> qualifiers, TokenId first_token,
       CstParseDiagnostics& diagnostics);
 
   PtxLexer lexer_;

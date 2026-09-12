@@ -141,9 +141,9 @@ SyntaxModuleParseResult parse_owned_module_fixture(std::string_view source) {
 }
 
 /** Require AST-free validation to reject one deliberately malformed owned module. */
-void expect_owned_model_mismatch(const ResolvedModule& module,
-                                 ModuleValidationPolicy policy =
-                                     ModuleValidationPolicy::AvailableContext) {
+void expect_owned_model_mismatch(
+    const ResolvedModule& module,
+    ModuleValidationPolicy policy = ModuleValidationPolicy::AvailableContext) {
   const auto validation = validateModule(module, policy);
   ASSERT_FALSE(validation.has_value());
   ASSERT_FALSE(validation.error().empty());
@@ -157,8 +157,8 @@ void expect_owned_validation_kind(const ResolvedModule& module,
                                   checker::CheckDiagnosticKind kind) {
   const auto validation = validateModule(module, policy);
   ASSERT_FALSE(validation.has_value());
-  const auto diagnostic = std::ranges::find(
-      validation.error(), kind, &checker::CheckDiagnostic::kind);
+  const auto diagnostic = std::ranges::find(validation.error(), kind,
+                                            &checker::CheckDiagnostic::kind);
   EXPECT_NE(diagnostic, validation.error().end());
 }
 
@@ -239,8 +239,7 @@ TEST(OwnedModuleHandoff, RetainsContractsAndTypedCallsAfterInputDies) {
   EXPECT_EQ(local.scalar_type, base::ScalarType::U32);
   EXPECT_EQ(local.alignment, 8u);
   EXPECT_TRUE(local.explicit_alignment);
-  EXPECT_EQ(local.array_extents,
-            (std::vector<std::optional<uint64_t>>{2u}));
+  EXPECT_EQ(local.array_extents, (std::vector<std::optional<uint64_t>>{2u}));
   EXPECT_EQ(local.byte_extent, 8u);
 
   ASSERT_EQ(kernel.call_target_sets.size(), 1u);
@@ -292,8 +291,8 @@ TEST(OwnedModuleHandoff, RetainsContractsAndTypedCallsAfterInputDies) {
   EXPECT_EQ(indirect_literal.value->bits, 8u);
 
   EXPECT_TRUE(validateModule(module, ModuleValidationPolicy::AvailableContext));
-  const auto strict_validation = validateModule(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  const auto strict_validation =
+      validateModule(module, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(strict_validation.has_value());
   ASSERT_FALSE(strict_validation.error().empty());
   EXPECT_EQ(strict_validation.error().front().kind,
@@ -316,8 +315,8 @@ TEST(OwnedModuleHandoff, ValidatesCompleteContextWithoutAst) {
   }
 
   ASSERT_TRUE(owned.has_value());
-  const auto validation = validateModule(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  const auto validation =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_TRUE(validation.has_value())
       << (validation.has_value() || validation.error().empty()
               ? "Owned fixture did not validate."
@@ -344,8 +343,8 @@ TEST(OwnedModuleHandoff, RejectsMutatedGeneratedOperandMemberIdentities) {
   ASSERT_EQ(module.functions.size(), 1u);
   ResolvedFunction& kernel = module.functions.front();
   ASSERT_EQ(kernel.body.size(), 2u);
-  ASSERT_TRUE(validateModule(
-      module, ModuleValidationPolicy::RequireCompleteContext));
+  ASSERT_TRUE(
+      validateModule(module, ModuleValidationPolicy::RequireCompleteContext));
 
   Mov& mov = std::get<Mov>(kernel.body.front());
   Mov::Scalar& scalar = std::get<Mov::Scalar>(mov.variant);
@@ -357,20 +356,20 @@ TEST(OwnedModuleHandoff, RejectsMutatedGeneratedOperandMemberIdentities) {
 
   const auto original_parameterized_index = source.parameterized_index;
   source.parameterized_index = 2u;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   source.parameterized_index = original_parameterized_index;
 
   const auto original_symbol_id = source.symbol_id;
   source.symbol_id = kernel.symbol_id;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   source.symbol_id = original_symbol_id;
 
-  source.symbol_id = binding::SymbolId{
-      .value = std::numeric_limits<uint32_t>::max()};
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  source.symbol_id =
+      binding::SymbolId{.value = std::numeric_limits<uint32_t>::max()};
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   source.symbol_id = original_symbol_id;
 }
 
@@ -389,9 +388,9 @@ TEST(OwnedModuleHandoff, RejectsUnknownOrVersionlessHeaderTargetWithoutAst) {
     unknown_target.emplace(std::move(*resolved));
   }
   ASSERT_TRUE(unknown_target.has_value());
-  expect_owned_validation_kind(
-      *unknown_target, ModuleValidationPolicy::RequireCompleteContext,
-      checker::CheckDiagnosticKind::UnknownTarget);
+  expect_owned_validation_kind(*unknown_target,
+                               ModuleValidationPolicy::RequireCompleteContext,
+                               checker::CheckDiagnosticKind::UnknownTarget);
 
   std::optional<ResolvedModule> missing_version;
   {
@@ -435,29 +434,28 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedHeaderProvenance) {
 
   const auto original_version_provenance = target.version_provenance;
   target.version_provenance = SourceConfigurationProvenance::Defaulted;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   target.version_provenance = original_version_provenance;
 
   const auto original_target_provenance = target.target_provenance;
   target.target_provenance = SourceConfigurationProvenance::Defaulted;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   target.target_provenance = original_target_provenance;
 
   const auto original_address_size = target.address_size_bits;
   const auto original_address_provenance = target.address_size_provenance;
   target.address_size_bits = 64u;
   target.address_size_provenance = SourceConfigurationProvenance::Defaulted;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   target.address_size_bits = original_address_size;
   target.address_size_provenance = original_address_provenance;
 
-  target.version_provenance =
-      static_cast<SourceConfigurationProvenance>(255);
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  target.version_provenance = static_cast<SourceConfigurationProvenance>(255);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   target.version_provenance = original_version_provenance;
 }
 
@@ -483,23 +481,23 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedResourceContracts) {
   ASSERT_EQ(kernel.contract.resources.size(), 2u);
 
   kernel.contract.resources.push_back(kernel.contract.resources.front());
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   kernel.contract.resources.pop_back();
 
   const auto original_kind = kernel.contract.resources.front().kind;
   kernel.contract.resources.front().kind =
       static_cast<ResolvedKernelResourceKind>(255);
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   kernel.contract.resources.front().kind = original_kind;
 
   const bool original_is_entry = kernel.is_entry;
   const bool original_signature_entry = kernel.contract.signature.is_entry;
   kernel.is_entry = false;
   kernel.contract.signature.is_entry = false;
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   kernel.is_entry = original_is_entry;
   kernel.contract.signature.is_entry = original_signature_entry;
 }
@@ -530,13 +528,13 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionAttributes) {
 
   const auto original_kind = attribute.kind;
   attribute.kind = ResolvedFunctionAttributeKind::Managed;
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   attribute.kind = original_kind;
 
   function.contract.attributes.push_back(attribute);
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   function.contract.attributes.pop_back();
 
   // ``push_back`` may have reallocated the vector, so reacquire its surviving
@@ -544,19 +542,19 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionAttributes) {
   ResolvedFunctionAttribute& restored_attribute =
       function.contract.attributes.front();
   restored_attribute.kind = static_cast<ResolvedFunctionAttributeKind>(255);
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   restored_attribute.kind = original_kind;
 
   const auto original_values = restored_attribute.values;
   restored_attribute.values.pop_back();
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   restored_attribute.values = original_values;
 
   restored_attribute.values.front() = "not-a-number";
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   restored_attribute.values = original_values;
 }
 
@@ -585,36 +583,36 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionContractFlags) {
 
   const bool original_is_entry = function.is_entry;
   function.is_entry = !original_is_entry;
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   function.is_entry = original_is_entry;
 
   const bool original_noreturn = function.contract.is_noreturn;
   function.contract.is_noreturn = !original_noreturn;
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   function.contract.is_noreturn = original_noreturn;
 
   const auto original_returns = function.contract.signature.return_parameters;
   ASSERT_FALSE(function.contract.signature.parameters.empty());
   function.contract.signature.return_parameters.push_back(
       function.contract.signature.parameters.front());
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   function.contract.signature.return_parameters = original_returns;
 
   const bool original_preserve_variant =
       function.contract.abi_preserve->control_registers;
   function.contract.abi_preserve->control_registers = true;
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   function.contract.abi_preserve->control_registers = original_preserve_variant;
 
   const bool original_control_variant =
       function.contract.abi_preserve_control->control_registers;
   function.contract.abi_preserve_control->control_registers = false;
-  expect_owned_model_mismatch(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
   function.contract.abi_preserve_control->control_registers =
       original_control_variant;
 }
@@ -650,25 +648,26 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
   ASSERT_TRUE(target_only.target.value.symbol_id.has_value());
   const auto original_target = target_only.target.value.symbol_id;
   target_only.target.value.symbol_id = formal.symbol_id;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   target_only.target.value.symbol_id = original_target;
   EXPECT_EQ(original_target, no_args.symbol_id);
 
   ASSERT_EQ(returns_u32.contract.signature.return_parameters.size(), 1u);
-  const auto original_returns = returns_u32.contract.signature.return_parameters;
+  const auto original_returns =
+      returns_u32.contract.signature.return_parameters;
   returns_u32.contract.signature.return_parameters.push_back(
       returns_u32.contract.signature.return_parameters.front());
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   returns_u32.contract.signature.return_parameters = original_returns;
 
   const auto original_return_type =
       returns_u32.contract.signature.return_parameters.front().scalar_type;
   returns_u32.contract.signature.return_parameters.front().scalar_type =
       base::ScalarType::U64;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   returns_u32.contract.signature.return_parameters.front().scalar_type =
       original_return_type;
 
@@ -680,8 +679,8 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
   ASSERT_EQ(parameter_actual.declared_type, base::ScalarType::U32);
   const auto original_parameter_type = parameter_actual.declared_type;
   parameter_actual.declared_type = base::ScalarType::U64;
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   parameter_actual.declared_type = original_parameter_type;
 
   auto& metadata_call = std::get<Call::Direct::TargetInputMetadataOperands>(
@@ -690,15 +689,15 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
   ASSERT_EQ(caller.call_prototypes.size(), 1u);
   const auto original_prototypes = caller.call_prototypes;
   caller.call_prototypes.clear();
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   caller.call_prototypes = original_prototypes;
 
   const auto original_prototype_signature =
       caller.call_prototypes.front().signature;
   caller.call_prototypes.front().signature.parameters.clear();
-  expect_owned_model_mismatch(
-      module, ModuleValidationPolicy::RequireCompleteContext);
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
   caller.call_prototypes.front().signature = original_prototype_signature;
 
   ResolvedFunction& trailing = module.functions[4];

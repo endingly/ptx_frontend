@@ -17,8 +17,7 @@ OperandSyntaxShape get_operand_syntax_shape(
           return OperandSyntaxShape::Identifier;
         else if constexpr (std::same_as<Item, syntax_ast::AstImmediate>)
           return OperandSyntaxShape::Immediate;
-        else if constexpr (std::same_as<Item,
-                                        syntax_ast::AstPredicateOperand>)
+        else if constexpr (std::same_as<Item, syntax_ast::AstPredicateOperand>)
           return OperandSyntaxShape::Predicate;
         else if constexpr (std::same_as<Item, syntax_ast::AstAddress>)
           return OperandSyntaxShape::Address;
@@ -26,15 +25,13 @@ OperandSyntaxShape get_operand_syntax_shape(
           return OperandSyntaxShape::VectorPack;
         else if constexpr (std::same_as<Item, syntax_ast::AstVectorMember>)
           return OperandSyntaxShape::VectorMember;
-        else if constexpr (std::same_as<Item,
-                                        syntax_ast::AstCallParameterList>)
+        else if constexpr (std::same_as<Item, syntax_ast::AstCallParameterList>)
           return OperandSyntaxShape::Group;
         else if constexpr (std::same_as<Item, syntax_ast::AstCallTarget>)
           return OperandSyntaxShape::CallTarget;
         else if constexpr (std::same_as<Item, syntax_ast::AstCallTargetSet>)
           return OperandSyntaxShape::CallTargetSet;
-        else if constexpr (std::same_as<Item,
-                                        syntax_ast::AstBranchTargetSet>)
+        else if constexpr (std::same_as<Item, syntax_ast::AstBranchTargetSet>)
           return OperandSyntaxShape::BranchTargetSet;
         else if constexpr (std::same_as<Item,
                                         syntax_ast::AstRegisterPredicatePair>)
@@ -65,7 +62,8 @@ using check_end::SyntaxOperandSlotDescriptor;
 using check_end::SyntaxVariantDescriptor;
 
 namespace detail {
-static bool allows_shape(OperandSyntaxShape allowed, OperandSyntaxShape actual) {
+static bool allows_shape(OperandSyntaxShape allowed,
+                         OperandSyntaxShape actual) {
   using Underlying = std::underlying_type_t<OperandSyntaxShape>;
   return (static_cast<Underlying>(allowed) & static_cast<Underlying>(actual)) !=
          0;
@@ -125,8 +123,8 @@ std::optional<ResolveDiagnostic> diagnose_modern_pack_mismatch(
     const auto* vector =
         std::get_if<syntax_ast::AstVectorPack>(&ast.operands[index]);
     if (slot.minimum_elements == 0 || vector == nullptr ||
-        !allows_shape(slot.allowed_shapes,
-                      check_end::get_operand_syntax_shape(ast.operands[index]))) {
+        !allows_shape(slot.allowed_shapes, check_end::get_operand_syntax_shape(
+                                               ast.operands[index]))) {
       continue;
     }
     bool other_slots_match = true;

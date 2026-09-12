@@ -28,15 +28,15 @@ inline SyntaxInstructionParseResult parseInstruction(std::string_view source) {
  * The argument must be a stable lvalue. It is evaluated once so callers can
  * safely reuse it after this assertion before dereferencing its AST value.
  */
-#define ASSERT_MODULE_PARSE_SUCCEEDS(result_lvalue)                            \
-  do {                                                                          \
-    const auto& parse_result = (result_lvalue);                                 \
-    ASSERT_TRUE(parse_result.has_value())                                       \
-        << (parse_result.diagnostics.empty()                                    \
-              ? "PTX source did not produce a syntax module."                 \
-              : parse_result.diagnostics.front().message);                     \
-    ASSERT_TRUE(parse_result.diagnostics.empty())                               \
-        << parse_result.diagnostics.front().message;                            \
+#define ASSERT_MODULE_PARSE_SUCCEEDS(result_lvalue)             \
+  do {                                                          \
+    const auto& parse_result = (result_lvalue);                 \
+    ASSERT_TRUE(parse_result.has_value())                       \
+        << (parse_result.diagnostics.empty()                    \
+                ? "PTX source did not produce a syntax module." \
+                : parse_result.diagnostics.front().message);    \
+    ASSERT_TRUE(parse_result.diagnostics.empty())               \
+        << parse_result.diagnostics.front().message;            \
   } while (false)
 
 /**
@@ -45,13 +45,13 @@ inline SyntaxInstructionParseResult parseInstruction(std::string_view source) {
  * The argument must be a stable lvalue. It is evaluated once so callers can
  * safely reuse it after this assertion before dereferencing its AST value.
  */
-#define ASSERT_INSTRUCTION_PARSE_SUCCEEDS(result_lvalue)                       \
-  do {                                                                          \
-    const auto& parse_result = (result_lvalue);                                 \
-    ASSERT_TRUE(parse_result.has_value())                                       \
-        << (parse_result.diagnostics.empty()                                    \
-              ? "PTX source did not produce a syntax instruction."            \
-              : parse_result.diagnostics.front().message);                     \
-    ASSERT_TRUE(parse_result.diagnostics.empty())                               \
-        << parse_result.diagnostics.front().message;                            \
+#define ASSERT_INSTRUCTION_PARSE_SUCCEEDS(result_lvalue)             \
+  do {                                                               \
+    const auto& parse_result = (result_lvalue);                      \
+    ASSERT_TRUE(parse_result.has_value())                            \
+        << (parse_result.diagnostics.empty()                         \
+                ? "PTX source did not produce a syntax instruction." \
+                : parse_result.diagnostics.front().message);         \
+    ASSERT_TRUE(parse_result.diagnostics.empty())                    \
+        << parse_result.diagnostics.front().message;                 \
   } while (false)

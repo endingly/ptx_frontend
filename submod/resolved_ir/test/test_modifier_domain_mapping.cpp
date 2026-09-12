@@ -20,9 +20,10 @@ TEST(ModifierDomainMapping, RejectsUnsupportedComparisonDefault) {
     static_cast<void>(detail::resolve_default_modifier_value(field, binding));
     FAIL() << "comparison modifiers must not accept a generated default";
   } catch (const ResolveException& exception) {
-    EXPECT_STREQ(exception.what(),
-                 "Optional modifier 'comparison' cannot use a "
-                 "comparison-operator default for resolved field 'comparison'.");
+    EXPECT_STREQ(
+        exception.what(),
+        "Optional modifier 'comparison' cannot use a "
+        "comparison-operator default for resolved field 'comparison'.");
   }
 }
 

@@ -58,8 +58,10 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   const SyntaxVariantDescriptor& syntax_variant =
       detail::find_syntax_variant_descriptor(syntax_instruction, variant_name);
   const ResolvedVariantDescriptor& resolved_variant =
-      detail::find_resolved_variant_descriptor(resolved_instruction, variant_name);
-  const auto selected_layout = detail::select_operand_layout(syntax_variant, ast);
+      detail::find_resolved_variant_descriptor(resolved_instruction,
+                                               variant_name);
+  const auto selected_layout =
+      detail::select_operand_layout(syntax_variant, ast);
   if (!selected_layout)
     return std::unexpected(selected_layout.error());
 
@@ -105,10 +107,10 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     fields.execution_predicate = std::move(*predicate);
   }
   for (const auto& binding : resolved_variant.modifier_bindings) {
-    const auto& syntax_modifier =
-        detail::find_syntax_modifier_descriptor(syntax_variant, binding.source_kind_id);
-    const auto& field = detail::find_resolved_field_descriptor(resolved_variant,
-                                                               binding.target_field_id);
+    const auto& syntax_modifier = detail::find_syntax_modifier_descriptor(
+        syntax_variant, binding.source_kind_id);
+    const auto& field = detail::find_resolved_field_descriptor(
+        resolved_variant, binding.target_field_id);
     const auto actual =
         actual_modifiers->find(std::string(binding.source_kind_id));
     const bool present = actual != actual_modifiers->end();
@@ -144,8 +146,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const auto& binding = resolved_layout.bindings[index];
     const auto& field = detail::find_resolved_operand_field_descriptor(
         resolved_layout, binding.target_field_id);
-    auto value = detail::resolve_operand_value(field, binding, ast.operands[index],
-                                               fields, context);
+    auto value = detail::resolve_operand_value(
+        field, binding, ast.operands[index], fields, context);
     if (!value)
       return std::unexpected(value.error());
     if (auto* address = std::get_if<WithLocs<ResolvedAddress>>(&*value)) {

@@ -127,7 +127,8 @@ TEST(SymbolTableIndexLifetime, DetectsHighestRepresentableParameterizedMember) {
   ASSERT_TRUE(parsed.diagnostics.empty());
   const auto bound = bindSymbols(*parsed);
   ASSERT_EQ(bound.diagnostics.size(), 1u);
-  EXPECT_EQ(bound.diagnostics.front().kind, BindDiagnosticKind::DuplicateSymbol);
+  EXPECT_EQ(bound.diagnostics.front().kind,
+            BindDiagnosticKind::DuplicateSymbol);
   EXPECT_TRUE(bound.diagnostics.front().previous_range.has_value());
 }
 

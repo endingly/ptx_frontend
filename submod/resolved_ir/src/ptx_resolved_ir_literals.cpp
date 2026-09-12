@@ -73,18 +73,15 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
   const bool source_is_negative =
       !source_is_unsigned && std::bit_cast<int64_t>(source_bits) < 0;
   if (require_target_range) {
-    const uint64_t positive_limit =
-        kind == base::ScalarKind::Signed
-            ? (uint64_t{1} << (bit_width - 1)) - 1
-            : bit_mask;
-    const uint64_t negative_limit =
-        kind == base::ScalarKind::Signed
-            ? uint64_t{1} << (bit_width - 1)
-            : bit_mask;
-    const bool representable =
-        source_is_negative
-            ? uint64_t{0} - source_bits <= negative_limit
-            : source_bits <= positive_limit;
+    const uint64_t positive_limit = kind == base::ScalarKind::Signed
+                                        ? (uint64_t{1} << (bit_width - 1)) - 1
+                                        : bit_mask;
+    const uint64_t negative_limit = kind == base::ScalarKind::Signed
+                                        ? uint64_t{1} << (bit_width - 1)
+                                        : bit_mask;
+    const bool representable = source_is_negative
+                                   ? uint64_t{0} - source_bits <= negative_limit
+                                   : source_bits <= positive_limit;
     if (!representable) {
       return std::unexpected(invalid_immediate(
           immediate,
@@ -113,8 +110,9 @@ uint32_t narrow_float_literal_bits(uint64_t bits) {
   const uint64_t fraction = bits & 0x000fffffffffffffULL;
   if (exponent == 0x7ff) {
     return sign | 0x7f800000U |
-           (fraction == 0 ? 0U
-                          : static_cast<uint32_t>(fraction >> 29) | 0x00400000U);
+           (fraction == 0
+                ? 0U
+                : static_cast<uint32_t>(fraction >> 29) | 0x00400000U);
   }
   // Every binary64 subnormal is smaller than half a binary32 subnormal ULP.
   if (exponent == 0)
@@ -301,7 +299,8 @@ resolve_call_literal(
       .kind = literal.kind,
   };
   // Call arguments retain their formal-parameter representability contract.
-  auto resolved = detail::resolve_immediate_value(immediate, formal.scalar_type, true);
+  auto resolved =
+      detail::resolve_immediate_value(immediate, formal.scalar_type, true);
   if (!resolved)
     return std::unexpected(resolved.error());
   return WithLocs<ResolvedImmediate>{std::move(*resolved), range};

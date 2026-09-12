@@ -223,8 +223,8 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
   ASSERT_EQ(body.size(), 3u);
 
   const auto& target_only = std::get<Call>(body[0]);
-  const auto& target_payload =
-      std::get<Call::Direct::TargetOperands>(std::get<Call::Direct>(target_only.variant).operands);
+  const auto& target_payload = std::get<Call::Direct::TargetOperands>(
+      std::get<Call::Direct>(target_only.variant).operands);
   EXPECT_EQ(target_payload.target.value.spelling, "callee");
   ASSERT_TRUE(target_payload.target.value.symbol_id.has_value());
 
@@ -238,7 +238,8 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
   auto& direct = std::get<Call::Direct>(call.variant);
   ASSERT_TRUE(call.execution_predicate.has_value());
   EXPECT_TRUE(direct.uni.value);
-  const auto& return_payload = std::get<Call::Direct::ReturnTargetInputOperands>(direct.operands);
+  const auto& return_payload =
+      std::get<Call::Direct::ReturnTargetInputOperands>(direct.operands);
   EXPECT_EQ(return_payload.return_value.value.spelling, "%out");
   ASSERT_TRUE(return_payload.return_value.value.symbol_id.has_value());
   ASSERT_EQ(return_payload.arguments.value.values.size(), 3u);
@@ -433,7 +434,8 @@ TEST(ResolvedModule, ReportsDirectCallArityAndElementRanges) {
             "Integer literal '128' is out of range for scalar type 'S8'.");
 
   const auto& caller = std::get<syntax_ast::AstFunction>(ast.items[5]);
-  const auto& extra_inputs = std::get<syntax_ast::AstInstruction>(caller.body[6]);
+  const auto& extra_inputs =
+      std::get<syntax_ast::AstInstruction>(caller.body[6]);
   const auto& type_mismatch =
       std::get<syntax_ast::AstInstruction>(caller.body[7]);
   const auto& extra_group =
@@ -497,23 +499,23 @@ TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& caller = resolved->functions[1].body;
   ASSERT_EQ(caller.size(), 6u);
-  const auto& entry_load = std::get<Ld::ExplicitScalar>(
-      std::get<Ld>(caller[0]).variant);
+  const auto& entry_load =
+      std::get<Ld::ExplicitScalar>(std::get<Ld>(caller[0]).variant);
   EXPECT_EQ(entry_load.address.value.parameter_qualifier,
             ParameterAddressQualifier::Entry);
-  const auto& staged_store = std::get<St::ExplicitScalar>(
-      std::get<St>(caller[2]).variant);
+  const auto& staged_store =
+      std::get<St::ExplicitScalar>(std::get<St>(caller[2]).variant);
   EXPECT_EQ(staged_store.address.value.parameter_qualifier,
             ParameterAddressQualifier::Function);
-  const auto& default_load = std::get<Ld::ExplicitScalar>(
-      std::get<Ld>(caller[1]).variant);
+  const auto& default_load =
+      std::get<Ld::ExplicitScalar>(std::get<Ld>(caller[1]).variant);
   EXPECT_EQ(default_load.address.value.parameter_qualifier,
             ParameterAddressQualifier::Default);
   const auto& call = std::get<Call>(caller[4]);
   EXPECT_TRUE(call.execution_predicate.has_value());
   EXPECT_TRUE(std::get<Call::Direct>(call.variant).uni.value);
-  const auto& return_load = std::get<Ld::ExplicitScalar>(
-      std::get<Ld>(caller[5]).variant);
+  const auto& return_load =
+      std::get<Ld::ExplicitScalar>(std::get<Ld>(caller[5]).variant);
   EXPECT_EQ(return_load.address.value.parameter_qualifier,
             ParameterAddressQualifier::Function);
 }
@@ -544,8 +546,8 @@ TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
     return resolveModule(*parsed);
   };
 
-  const auto entry_as_function = resolve_source(
-      "ld.param::func.u32 %r0, [entry_input];");
+  const auto entry_as_function =
+      resolve_source("ld.param::func.u32 %r0, [entry_input];");
   ASSERT_FALSE(entry_as_function.has_value());
   EXPECT_EQ(entry_as_function.error().front().message,
             ".param::func may access only a device-function parameter or "
@@ -563,7 +565,8 @@ TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
             "A function-local .param argument store cannot be predicated.");
 
   const auto non_adjacent_store = resolve_source(
-      "st.param.u32 [input], %r0;\n  mov.u32 %r0, %r0;\n  call (output), callee, (input);");
+      "st.param.u32 [input], %r0;\n  mov.u32 %r0, %r0;\n  call (output), "
+      "callee, (input);");
   ASSERT_FALSE(non_adjacent_store.has_value());
   EXPECT_EQ(non_adjacent_store.error().front().message,
             "A function-local .param argument store must be in the contiguous "
@@ -583,7 +586,8 @@ TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
             "A function-local .param return load cannot be predicated.");
 
   const auto non_adjacent_return_load = resolve_source(
-      "call (output), callee, (input);\n  mov.u32 %r0, %r0;\n  ld.param.u32 %r0, [output];");
+      "call (output), callee, (input);\n  mov.u32 %r0, %r0;\n  ld.param.u32 "
+      "%r0, [output];");
   ASSERT_FALSE(non_adjacent_return_load.has_value());
   EXPECT_EQ(non_adjacent_return_load.error().front().message,
             "A function-local .param return load must be in the contiguous "
@@ -614,14 +618,14 @@ TEST(ResolvedModule, ResolvesIndirectCallsWithFunctionLocalMetadata) {
             check_end::OperandSyntaxShape::CallTarget);
   EXPECT_EQ(syntax.variants[0].operand_layouts[3].slots[1].allowed_shapes,
             check_end::OperandSyntaxShape::CallTargetSet);
-  EXPECT_EQ(resolved_descriptor.variants[0].operand_layouts[3]
+  EXPECT_EQ(resolved_descriptor.variants[0]
+                .operand_layouts[3]
                 .bindings[0]
                 .allowed_shapes,
             checker::OperandShape::IndirectCallee);
-  EXPECT_EQ(resolved_descriptor.variants[0].operand_layouts[3]
-                .fields[0]
-                .value_kind,
-            check_end::ResolvedValueKind::IndirectCallee);
+  EXPECT_EQ(
+      resolved_descriptor.variants[0].operand_layouts[3].fields[0].value_kind,
+      check_end::ResolvedValueKind::IndirectCallee);
   for (size_t index = 3; index != 6; ++index) {
     const auto& availability =
         checker_descriptor.variants[0].operand_layouts[index].availability;
@@ -680,21 +684,23 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
       std::get<Call::Direct>(std::get<Call>(body[0]).variant).operands);
   const auto& second = std::get<Call::Direct::TargetInputMetadataOperands>(
       std::get<Call::Direct>(std::get<Call>(body[1]).variant).operands);
-  const auto& third =
-      std::get<Call::Direct::ReturnTargetInputMetadataOperands>(
-          std::get<Call::Direct>(std::get<Call>(body[2]).variant).operands);
+  const auto& third = std::get<Call::Direct::ReturnTargetInputMetadataOperands>(
+      std::get<Call::Direct>(std::get<Call>(body[2]).variant).operands);
   const auto& first_target = std::get<ResolvedRegisterRef>(first.target.value);
   ASSERT_TRUE(first_target.symbol_id.has_value());
   EXPECT_EQ(first_target.symbol_id, fptr->symbol);
   const auto& first_metadata =
       std::get<ResolvedIndirectMetadataRef>(first.metadata.value);
   EXPECT_EQ(first_metadata.symbol_id, empty_prototype->symbol);
-  EXPECT_EQ(first_metadata.declaration_kind, binding::SymbolKind::CallPrototype);
+  EXPECT_EQ(first_metadata.declaration_kind,
+            binding::SymbolKind::CallPrototype);
   const auto& second_metadata =
       std::get<ResolvedIndirectMetadataRef>(second.metadata.value);
   EXPECT_EQ(second_metadata.symbol_id, targets->symbol);
-  EXPECT_EQ(second_metadata.declaration_kind, binding::SymbolKind::CallTargetSet);
-  const auto& second_target = std::get<ResolvedRegisterRef>(second.target.value);
+  EXPECT_EQ(second_metadata.declaration_kind,
+            binding::SymbolKind::CallTargetSet);
+  const auto& second_target =
+      std::get<ResolvedRegisterRef>(second.target.value);
   ASSERT_TRUE(second_target.symbol_id.has_value());
   EXPECT_EQ(second_target.symbol_id, fptr->symbol);
   const auto& third_target = std::get<ResolvedRegisterRef>(third.target.value);
@@ -795,8 +801,9 @@ TEST(ResolvedModule, RejectsEntryAsDirectCallTarget) {
 
   const auto resolved = resolveModule(ast);
   ASSERT_FALSE(resolved.has_value());
-  EXPECT_EQ(resolved.error().front().message,
-            "Direct call target 'callee' must name a device .func, not an .entry.");
+  EXPECT_EQ(
+      resolved.error().front().message,
+      "Direct call target 'callee' must name a device .func, not an .entry.");
 }
 
 TEST(ResolvedModule, StandaloneDirectCallRemainsUnbound) {
@@ -896,7 +903,6 @@ TEST(ResolvedModule, ResolvesSameModuleAliasCallsToCanonicalSignature) {
   const auto resolved = resolveModule(*parsed_module_1);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

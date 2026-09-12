@@ -24,6 +24,22 @@ env:
   PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
 
 jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install pinned formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format-21
+
+      - name: Check tracked handwritten C++ formatting
+        run: python3 .github/scripts/check_clang_format.py --clang-format clang-format-21
+
   test:
     name: ${{ matrix.name }}
     runs-on: ubuntu-26.04

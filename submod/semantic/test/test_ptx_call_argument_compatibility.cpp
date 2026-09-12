@@ -141,7 +141,8 @@ TEST(CallArgumentCompatibility, ChecksPointerContractAsymmetrically) {
             Compatibility::Compatible);
 }
 
-TEST(CallArgumentCompatibility, GenericFormalPointerAcceptsConcreteActualSpace) {
+TEST(CallArgumentCompatibility,
+     GenericFormalPointerAcceptsConcreteActualSpace) {
   auto formal = scalar();
   auto actual = formal;
   formal.pointer = PointerProperties{.pointed_alignment = 8};

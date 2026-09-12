@@ -110,32 +110,35 @@ TEST(ResolvedStorageDeclarations, OctalExpressionsAndDeclarationMetadata) {
   EXPECT_EQ(storageNamed(*resolved, "slots").parameterized_count, 8u);
   const auto& pointer = storageNamed(*resolved, "pointer");
   ASSERT_EQ(pointer.initializer.size(), 1u);
-  EXPECT_EQ(std::get<StorageRelocation>(pointer.initializer[0].value).addend_bits,
-            8u);
+  EXPECT_EQ(
+      std::get<StorageRelocation>(pointer.initializer[0].value).addend_bits,
+      8u);
   const auto& signedness = storageNamed(*resolved, "signedness");
   ASSERT_EQ(signedness.initializer.size(), 3u);
-  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[0].value).bits, 1u);
-  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[1].value).bits, 0u);
+  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[0].value).bits,
+            1u);
+  EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[1].value).bits,
+            0u);
   EXPECT_EQ(std::get<StorageConstant>(signedness.initializer[2].value).bits,
             std::numeric_limits<uint64_t>::max());
 }
 
 /** Invalid octal input reports its literal position, including inside foldable expressions. */
 TEST(ResolvedStorageDeclarations, InvalidOctalCannotReachCleanResolution) {
-  for (const std::string source : {
-           ".global .u32 invalid = 09;",
-           ".global .u32 invalid = (09 ? 7 : 7);",
-           ".global .u8 invalid[09];",
-           ".entry k() { .reg .u32 %r; mov.u32 %r, 09; }",
-           ".entry k() { .reg .u32 %r; ld.global.u32 %r, [09]; }"}) {
+  for (const std::string source :
+       {".global .u32 invalid = 09;", ".global .u32 invalid = (09 ? 7 : 7);",
+        ".global .u8 invalid[09];",
+        ".entry k() { .reg .u32 %r; mov.u32 %r, 09; }",
+        ".entry k() { .reg .u32 %r; ld.global.u32 %r, [09]; }"}) {
     SCOPED_TRACE(source);
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
     ASSERT_FALSE(ast.diagnostics.empty());
-    EXPECT_TRUE(std::ranges::any_of(ast.diagnostics, [&](const auto& diagnostic) {
-      return diagnostic.range.start.column ==
-             static_cast<int32_t>(source.find("09") + 1);
-    }));
+    EXPECT_TRUE(
+        std::ranges::any_of(ast.diagnostics, [&](const auto& diagnostic) {
+          return diagnostic.range.start.column ==
+                 static_cast<int32_t>(source.find("09") + 1);
+        }));
   }
 }
 
@@ -164,12 +167,13 @@ TEST(ResolvedStorageDeclarations, RetainsInvalidIntegerLiteralDiagnostics) {
       std::pair{".global .u32 value = (-", " ? 7 : 7);"},
       std::pair{".global .u32 value = ((.u64)", " ? 7 : 7);"},
       std::pair{".global .u32 value = ((", " + 1) ? 7 : 7);"},
-      std::pair{".global .u32 base; .global .u64 value = generic(base + ", ");"},
+      std::pair{".global .u32 base; .global .u64 value = generic(base + ",
+                ");"},
       std::pair{".global .u32 value = (0xff(", ") ? 7 : 7);"},
   };
-  for (const std::string_view literal : {
-           "18446744073709551616", "0x10000000000000000",
-           "02000000000000000000000"}) {
+  for (const std::string_view literal :
+       {"18446744073709551616", "0x10000000000000000",
+        "02000000000000000000000"}) {
     for (const auto& [prefix, suffix] : contexts) {
       const std::string source =
           ".version 9.3\n.target sm_80\n.address_size 64\n" +
@@ -179,12 +183,18 @@ TEST(ResolvedStorageDeclarations, RetainsInvalidIntegerLiteralDiagnostics) {
       ASSERT_FALSE(resolved.has_value());
       const SourceRange expected{
           {4, static_cast<int32_t>(std::string_view{prefix}.size() + 1)},
-          {4, static_cast<int32_t>(std::string_view{prefix}.size() + literal.size() + 1)}};
-      EXPECT_EQ(std::ranges::count_if(resolved.error(), [&](const auto& diagnostic) {
-        return diagnostic.declaration_kind ==
-                   declaration_semantics::DeclarationDiagnosticKind::InvalidIntegerLiteral &&
-               diagnostic.range == expected;
-      }), 1);
+          {4, static_cast<int32_t>(std::string_view{prefix}.size() +
+                                   literal.size() + 1)}};
+      EXPECT_EQ(
+          std::ranges::count_if(
+              resolved.error(),
+              [&](const auto& diagnostic) {
+                return diagnostic.declaration_kind ==
+                           declaration_semantics::DeclarationDiagnosticKind::
+                               InvalidIntegerLiteral &&
+                       diagnostic.range == expected;
+              }),
+          1);
     }
   }
 }
@@ -206,8 +216,8 @@ TEST(ResolvedStorageDeclarations, PreservesValidAndDeferredIntegerConstants) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& limits = storageNamed(*resolved, "limits");
   constexpr std::array<uint64_t, 4> expected{
-      0x7fffffffffffffffULL, 0x8000000000000000ULL,
-      0xffffffffffffffffULL, 0xffffffffffffffffULL};
+      0x7fffffffffffffffULL, 0x8000000000000000ULL, 0xffffffffffffffffULL,
+      0xffffffffffffffffULL};
   ASSERT_EQ(limits.initializer.size(), expected.size());
   for (size_t index = 0; index < expected.size(); ++index) {
     EXPECT_EQ(std::get<StorageConstant>(limits.initializer[index].value).bits,
@@ -220,7 +230,9 @@ TEST(ResolvedStorageDeclarations, PreservesValidAndDeferredIntegerConstants) {
             (std::vector<std::optional<uint64_t>>{1u}));
   const auto& pointer = storageNamed(*resolved, "pointer");
   ASSERT_EQ(pointer.initializer.size(), 1u);
-  EXPECT_EQ(std::get<StorageRelocation>(pointer.initializer[0].value).addend_bits, 8u);
+  EXPECT_EQ(
+      std::get<StorageRelocation>(pointer.initializer[0].value).addend_bits,
+      8u);
   const auto& masked = storageNamed(*resolved, "masked");
   ASSERT_EQ(masked.initializer.size(), 1u);
   EXPECT_EQ(std::get<StorageConstant>(masked.initializer[0].value).bits, 255u);
@@ -238,14 +250,16 @@ TEST(ResolvedStorageDeclarations, ConvertsIntegerSourcesAtStorageElementWidth) {
   for (const auto name : {"signed_decimal", "signed_hex"}) {
     const auto& declaration = storageNamed(*resolved, name);
     ASSERT_EQ(declaration.initializer.size(), 1u);
-    EXPECT_EQ(std::get<StorageConstant>(declaration.initializer.front().value).bits,
-              0xffffffffU);
+    EXPECT_EQ(
+        std::get<StorageConstant>(declaration.initializer.front().value).bits,
+        0xffffffffU);
   }
   for (const auto name : {"unsigned_decimal", "unsigned_hex"}) {
     const auto& declaration = storageNamed(*resolved, name);
     ASSERT_EQ(declaration.initializer.size(), 1u);
-    EXPECT_EQ(std::get<StorageConstant>(declaration.initializer.front().value).bits,
-              0U);
+    EXPECT_EQ(
+        std::get<StorageConstant>(declaration.initializer.front().value).bits,
+        0U);
   }
 }
 
@@ -631,12 +645,10 @@ TEST(ResolvedStorageDeclarations, RejectsOpaqueObjectInitializerRelocations) {
   constexpr std::array rejected_fixtures{
       std::string_view{
           ".global .texref texture;\n.global .u64 address = texture;"},
-      std::string_view{
-          ".global .samplerref sampler;\n"
-          ".global .u64 address = generic(sampler);"},
-      std::string_view{
-          ".global .surfref surface;\n"
-          ".global .u8 address = 0xff(surface + 1);"},
+      std::string_view{".global .samplerref sampler;\n"
+                       ".global .u64 address = generic(sampler);"},
+      std::string_view{".global .surfref surface;\n"
+                       ".global .u8 address = 0xff(surface + 1);"},
   };
   for (const std::string_view fixture : rejected_fixtures) {
     const auto rejected = resolveSource(std::string{fixture});
@@ -657,8 +669,8 @@ TEST(ResolvedStorageDeclarations, RejectsOpaqueObjectInitializerRelocations) {
         resolve_storage_declarations(*ast, binding_result.table);
     EXPECT_FALSE(storage.has_value());
     if (!storage) {
-      EXPECT_TRUE(std::ranges::any_of(
-          storage.error(), [](const auto& diagnostic) {
+      EXPECT_TRUE(
+          std::ranges::any_of(storage.error(), [](const auto& diagnostic) {
             return diagnostic.kind ==
                    declaration_semantics::DeclarationDiagnosticKind::
                        UnsupportedStorageInitializer;
@@ -761,17 +773,20 @@ TEST(ResolvedStorageDeclarations, AppliesRelocationAndMaskVersionBoundaries) {
   const auto kernel_address = resolveSource(
       ".version 3.1\n.entry kernel() {}\n"
       ".global .u64 address = kernel;");
-  ASSERT_TRUE(kernel_address.has_value()) << kernel_address.error().front().message;
+  ASSERT_TRUE(kernel_address.has_value())
+      << kernel_address.error().front().message;
   const auto& kernel_pointer = storageNamed(*kernel_address, "address");
   ASSERT_EQ(kernel_pointer.initializer.size(), 1u);
-  EXPECT_EQ(std::get<StorageRelocation>(kernel_pointer.initializer.front().value)
-                .address_kind,
-            StorageAddressKind::Function);
+  EXPECT_EQ(
+      std::get<StorageRelocation>(kernel_pointer.initializer.front().value)
+          .address_kind,
+      StorageAddressKind::Function);
 
   const auto device_address = resolveSource(
       ".version 3.0\n.func helper() {}\n"
       ".global .u64 address = helper;");
-  ASSERT_TRUE(device_address.has_value()) << device_address.error().front().message;
+  ASSERT_TRUE(device_address.has_value())
+      << device_address.error().front().message;
 }
 
 /** Function relocations retain function identity and reject address-space transforms. */
@@ -921,8 +936,9 @@ TEST(ResolvedStorageDeclarations, RetainsIntegerBitsAndImplicitWideZero) {
   ASSERT_EQ(negative.initializer.size(), 1u);
   EXPECT_EQ(std::get<StorageConstant>(negative.initializer.front().value).bits,
             0xffffffffu);
-  EXPECT_EQ(std::get<StorageConstant>(negative.initializer.front().value).high_bits,
-            0u);
+  EXPECT_EQ(
+      std::get<StorageConstant>(negative.initializer.front().value).high_bits,
+      0u);
   const auto& wide = storageNamed(*resolved, "wide");
   EXPECT_EQ(wide.element_type, StorageElementType{base::ScalarType::B128});
   EXPECT_EQ(wide.byte_extent, 16u);
@@ -960,9 +976,8 @@ TEST(ResolvedStorageDeclarations, WidensB128IntegerResults) {
   };
   for (const auto& fixture : fixtures) {
     SCOPED_TRACE(fixture.expression);
-    const auto resolved = resolveSource(
-        ".version 9.3\n.global .b128 wide = " +
-        std::string{fixture.expression} + ";");
+    const auto resolved = resolveSource(".version 9.3\n.global .b128 wide = " +
+                                        std::string{fixture.expression} + ";");
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     const auto& wide = storageNamed(*resolved, "wide");
     EXPECT_EQ(wide.byte_extent, 16u);
@@ -970,7 +985,8 @@ TEST(ResolvedStorageDeclarations, WidensB128IntegerResults) {
     EXPECT_EQ(wide.initialization, StorageInitializationKind::Explicit);
     ASSERT_EQ(wide.initializer.size(), 1u);
     EXPECT_EQ(wide.initializer[0].byte_offset, 0u);
-    const auto* value = std::get_if<StorageConstant>(&wide.initializer[0].value);
+    const auto* value =
+        std::get_if<StorageConstant>(&wide.initializer[0].value);
     ASSERT_NE(value, nullptr);
     EXPECT_EQ(value->bits, fixture.low);
     EXPECT_EQ(value->high_bits, fixture.high);
@@ -985,8 +1001,7 @@ TEST(ResolvedStorageDeclarations, RetainsSparseB128Aggregates) {
 )ptx");
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& values = storageNamed(*resolved, "values");
-  EXPECT_EQ(values.array_extents,
-            (std::vector<std::optional<uint64_t>>{2, 3}));
+  EXPECT_EQ(values.array_extents, (std::vector<std::optional<uint64_t>>{2, 3}));
   EXPECT_EQ(values.byte_extent, 96u);
   ASSERT_EQ(values.initializer.size(), 3u);
   EXPECT_EQ(values.initializer[0].byte_offset, 0u);
@@ -994,7 +1009,8 @@ TEST(ResolvedStorageDeclarations, RetainsSparseB128Aggregates) {
   EXPECT_EQ(values.initializer[2].byte_offset, 48u);
   EXPECT_EQ(std::get<StorageConstant>(values.initializer[1].value).high_bits,
             std::numeric_limits<uint64_t>::max());
-  EXPECT_EQ(std::get<StorageConstant>(values.initializer[2].value).high_bits, 0u);
+  EXPECT_EQ(std::get<StorageConstant>(values.initializer[2].value).high_bits,
+            0u);
   const auto& empty = storageNamed(*resolved, "empty");
   EXPECT_EQ(empty.byte_extent, 32u);
   EXPECT_EQ(empty.initialization, StorageInitializationKind::Explicit);

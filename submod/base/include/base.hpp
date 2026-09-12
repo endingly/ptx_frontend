@@ -13,36 +13,36 @@ namespace ptx_frontend::base {
 // Each row keeps the modeled scalar's public enum order, PTX spelling, and
 // declaration contract together.  Expand it only inside this header so clients
 // do not depend on a preprocessor macro.
-#define PTX_FRONTEND_FOR_EACH_SCALAR_TYPE(X)                                \
-  X(U8, ".u8", Unsigned, 1, Fundamental)                                    \
-  X(U8x4, ".u8x4", Unsigned, 4, InstructionOnly)                            \
-  X(U16, ".u16", Unsigned, 2, Fundamental)                                  \
-  X(U16x2, ".u16x2", Unsigned, 4, InstructionOnly)                          \
-  X(U32, ".u32", Unsigned, 4, Fundamental)                                  \
-  X(U64, ".u64", Unsigned, 8, Fundamental)                                  \
-  X(S8, ".s8", Signed, 1, Fundamental)                                      \
-  X(S8x4, ".s8x4", Signed, 4, InstructionOnly)                              \
-  X(S16, ".s16", Signed, 2, Fundamental)                                    \
-  X(S16x2, ".s16x2", Signed, 4, InstructionOnly)                            \
-  X(S32, ".s32", Signed, 4, Fundamental)                                    \
-  X(S64, ".s64", Signed, 8, Fundamental)                                    \
-  X(B8, ".b8", Bit, 1, Fundamental)                                         \
-  X(B16, ".b16", Bit, 2, Fundamental)                                       \
-  X(B32, ".b32", Bit, 4, Fundamental)                                       \
-  X(B64, ".b64", Bit, 8, Fundamental)                                       \
-  X(B128, ".b128", Bit, 16, Fundamental)                                    \
-  X(F16, ".f16", Float, 2, Fundamental)                                     \
-  X(F16x2, ".f16x2", Float, 4, Fundamental)                                 \
-  X(F32, ".f32", Float, 4, Fundamental)                                     \
-  X(F32x2, ".f32x2", Float, 8, InstructionOnly)                             \
-  X(F64, ".f64", Float, 8, Fundamental)                                     \
-  X(BF16, ".bf16", Float, 2, InstructionOnly)                               \
-  X(BF16x2, ".bf16x2", Float, 4, InstructionOnly)                           \
-  X(E4m3x2, ".e4m3x2", Float, 2, InstructionOnly)                           \
-  X(E5m2x2, ".e5m2x2", Float, 2, InstructionOnly)                           \
-  X(Pred, ".pred", Pred, 1, Fundamental)                                    \
-  X(TF32, ".tf32", Float, 4, InstructionOnly)                               \
-  X(E4m3, ".e4m3", Float, 1, InstructionOnly)                               \
+#define PTX_FRONTEND_FOR_EACH_SCALAR_TYPE(X)       \
+  X(U8, ".u8", Unsigned, 1, Fundamental)           \
+  X(U8x4, ".u8x4", Unsigned, 4, InstructionOnly)   \
+  X(U16, ".u16", Unsigned, 2, Fundamental)         \
+  X(U16x2, ".u16x2", Unsigned, 4, InstructionOnly) \
+  X(U32, ".u32", Unsigned, 4, Fundamental)         \
+  X(U64, ".u64", Unsigned, 8, Fundamental)         \
+  X(S8, ".s8", Signed, 1, Fundamental)             \
+  X(S8x4, ".s8x4", Signed, 4, InstructionOnly)     \
+  X(S16, ".s16", Signed, 2, Fundamental)           \
+  X(S16x2, ".s16x2", Signed, 4, InstructionOnly)   \
+  X(S32, ".s32", Signed, 4, Fundamental)           \
+  X(S64, ".s64", Signed, 8, Fundamental)           \
+  X(B8, ".b8", Bit, 1, Fundamental)                \
+  X(B16, ".b16", Bit, 2, Fundamental)              \
+  X(B32, ".b32", Bit, 4, Fundamental)              \
+  X(B64, ".b64", Bit, 8, Fundamental)              \
+  X(B128, ".b128", Bit, 16, Fundamental)           \
+  X(F16, ".f16", Float, 2, Fundamental)            \
+  X(F16x2, ".f16x2", Float, 4, Fundamental)        \
+  X(F32, ".f32", Float, 4, Fundamental)            \
+  X(F32x2, ".f32x2", Float, 8, InstructionOnly)    \
+  X(F64, ".f64", Float, 8, Fundamental)            \
+  X(BF16, ".bf16", Float, 2, InstructionOnly)      \
+  X(BF16x2, ".bf16x2", Float, 4, InstructionOnly)  \
+  X(E4m3x2, ".e4m3x2", Float, 2, InstructionOnly)  \
+  X(E5m2x2, ".e5m2x2", Float, 2, InstructionOnly)  \
+  X(Pred, ".pred", Pred, 1, Fundamental)           \
+  X(TF32, ".tf32", Float, 4, InstructionOnly)      \
+  X(E4m3, ".e4m3", Float, 1, InstructionOnly)      \
   X(E5m2, ".e5m2", Float, 1, InstructionOnly)
 
 /** Modeled PTX scalar identities in their stable public numeric order. */
@@ -218,4 +218,4 @@ bool scalar_types_compatible(
     ScalarType actual, ScalarType instruction,
     ScalarTypeSizePolicy size_policy = ScalarTypeSizePolicy::SameWidth);
 
-};  // namespace ptx_frontend
+};  // namespace ptx_frontend::base

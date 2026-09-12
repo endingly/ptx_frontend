@@ -28,12 +28,9 @@ TEST(ScalarTypeMetadata, AppliesExplicitRegisterSizePolicy) {
   constexpr auto wider = ScalarTypeSizePolicy::EqualOrWider;
 
   EXPECT_TRUE(scalar_types_compatible(ScalarType::U64, ScalarType::U8, wider));
-  EXPECT_TRUE(
-      scalar_types_compatible(ScalarType::S64, ScalarType::U16, wider));
-  EXPECT_TRUE(
-      scalar_types_compatible(ScalarType::B64, ScalarType::F32, wider));
-  EXPECT_TRUE(
-      scalar_types_compatible(ScalarType::F64, ScalarType::B32, wider));
+  EXPECT_TRUE(scalar_types_compatible(ScalarType::S64, ScalarType::U16, wider));
+  EXPECT_TRUE(scalar_types_compatible(ScalarType::B64, ScalarType::F32, wider));
+  EXPECT_TRUE(scalar_types_compatible(ScalarType::F64, ScalarType::B32, wider));
   EXPECT_FALSE(
       scalar_types_compatible(ScalarType::U16, ScalarType::U32, wider));
   EXPECT_FALSE(
@@ -107,11 +104,12 @@ resolve_indirect_callee_field(const syntax_ast::AstInstruction& ast,
                          check_end::OperandSyntaxShape::CallTargetSet,
        .presence = check_end::OperandPresence::Required},
   }};
-  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts = {{
-      {.layout_id = "indirect_callee",
-       .kind = check_end::OperandLayoutKind::Flat,
-       .slots = syntax_slots},
-  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{
+          {.layout_id = "indirect_callee",
+           .kind = check_end::OperandLayoutKind::Flat,
+           .slots = syntax_slots},
+      }};
   const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{
       {.variant_name = "indirect_callee",
        .modifiers = {},
@@ -142,8 +140,8 @@ resolve_indirect_callee_field(const syntax_ast::AstInstruction& ast,
            .fields = operand_fields,
            .bindings = operand_bindings},
       }};
-  const std::array<check_end::ResolvedVariantDescriptor, 1>
-      resolved_variants = {{
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{
           {.variant_name = "indirect_callee",
            .fields = {},
            .modifier_bindings = {},
@@ -164,8 +162,8 @@ syntax_ast::AstInstruction indirect_metadata_instruction(std::string spelling) {
       .range = range,
   };
   ast.operands.emplace_back(syntax_ast::AstCallTargetSet{
-      .name = syntax_ast::AstIdentifierRef{.syntax = {std::move(spelling),
-                                                       range}},
+      .name =
+          syntax_ast::AstIdentifierRef{.syntax = {std::move(spelling), range}},
       .range = range,
   });
   return ast;
@@ -186,11 +184,12 @@ resolve_register_pack(const syntax_ast::AstInstruction& ast) {
        .maximum_elements = 5,
        .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
   }};
-  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts = {{
-      {.layout_id = "pack",
-       .kind = check_end::OperandLayoutKind::Flat,
-       .slots = syntax_slots},
-  }};
+  const std::array<check_end::SyntaxOperandLayoutDescriptor, 1> syntax_layouts =
+      {{
+          {.layout_id = "pack",
+           .kind = check_end::OperandLayoutKind::Flat,
+           .slots = syntax_slots},
+      }};
   const std::array<check_end::SyntaxVariantDescriptor, 1> syntax_variants = {{
       {.variant_name = "Pack",
        .modifiers = {},
@@ -260,12 +259,13 @@ resolve_modern_pack_layouts(
            .fields = fields,
            .bindings = bindings},
       }};
-  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants = {{
-      {.variant_name = "Pack",
-       .fields = {},
-       .modifier_bindings = {},
-       .operand_layouts = resolved_layouts},
-  }};
+  const std::array<check_end::ResolvedVariantDescriptor, 1> resolved_variants =
+      {{
+          {.variant_name = "Pack",
+           .fields = {},
+           .modifier_bindings = {},
+           .operand_layouts = resolved_layouts},
+      }};
   const check_end::ResolvedInstructionDescriptor resolved_descriptor{
       .opcode_name = "sample",
       .variants = resolved_variants,
@@ -280,17 +280,20 @@ TEST(ResolveFields, DiagnosesModernPackCardinalityAtSyntaxSelection) {
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().range,
             std::get<syntax_ast::AstVectorPack>(ast.operands.front()).range);
-  EXPECT_EQ(resolved.error().message, "Vector operand requires 1 to 5 elements.");
+  EXPECT_EQ(resolved.error().message,
+            "Vector operand requires 1 to 5 elements.");
 }
 
 TEST(ResolveFields, DiagnosesModernPackElementShapeAtSyntaxSelection) {
   const auto ast = parse_instruction("sample {1};");
-  const auto& vector = std::get<syntax_ast::AstVectorPack>(ast.operands.front());
+  const auto& vector =
+      std::get<syntax_ast::AstVectorPack>(ast.operands.front());
   const auto resolved = resolve_register_pack(ast);
 
   ASSERT_FALSE(resolved.has_value());
-  EXPECT_EQ(resolved.error().range,
-            std::get<syntax_ast::AstImmediate>(vector.elements.front()).syntax.range);
+  EXPECT_EQ(
+      resolved.error().range,
+      std::get<syntax_ast::AstImmediate>(vector.elements.front()).syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Vector operand element has a shape not accepted by this "
             "instruction layout.");
@@ -299,21 +302,21 @@ TEST(ResolveFields, DiagnosesModernPackElementShapeAtSyntaxSelection) {
 TEST(ResolveFields, SelectsRegisterOnlyModernPackLayout) {
   const std::array<check_end::SyntaxOperandSlotDescriptor, 1>
       register_only_slots = {{
-      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
-       .presence = check_end::OperandPresence::Required,
-       .minimum_elements = 1,
-       .maximum_elements = 5,
-       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
-  }};
+          {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+           .presence = check_end::OperandPresence::Required,
+           .minimum_elements = 1,
+           .maximum_elements = 5,
+           .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier},
+      }};
   const std::array<check_end::SyntaxOperandSlotDescriptor, 1>
       register_or_immediate_slots = {{
-      {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
-       .presence = check_end::OperandPresence::Required,
-       .minimum_elements = 1,
-       .maximum_elements = 5,
-       .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier |
-                                 check_end::OperandSyntaxShape::Immediate},
-  }};
+          {.allowed_shapes = check_end::OperandSyntaxShape::VectorPack,
+           .presence = check_end::OperandPresence::Required,
+           .minimum_elements = 1,
+           .maximum_elements = 5,
+           .allowed_element_shapes = check_end::OperandSyntaxShape::Identifier |
+                                     check_end::OperandSyntaxShape::Immediate},
+      }};
   const std::array<check_end::SyntaxOperandLayoutDescriptor, 2> layouts = {{
       {.layout_id = "register_only",
        .kind = check_end::OperandLayoutKind::Flat,
@@ -323,8 +326,8 @@ TEST(ResolveFields, SelectsRegisterOnlyModernPackLayout) {
        .slots = register_or_immediate_slots},
   }};
 
-  const auto fields = resolve_modern_pack_layouts(
-      parse_instruction("sample {%r0};"), layouts);
+  const auto fields =
+      resolve_modern_pack_layouts(parse_instruction("sample {%r0};"), layouts);
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
   EXPECT_EQ(fields->operand_layout.value, 0u);
 }
@@ -408,8 +411,8 @@ TEST(ResolveIndirectCallee, ResolvesStandaloneRegisterAndMetadataSpelling) {
   EXPECT_EQ(register_ref->index, 12u);
   EXPECT_FALSE(register_ref->symbol_id.has_value());
 
-  const auto metadata_fields = resolve_indirect_callee_field(
-      indirect_metadata_instruction("prototype"));
+  const auto metadata_fields =
+      resolve_indirect_callee_field(indirect_metadata_instruction("prototype"));
   ASSERT_TRUE(metadata_fields.has_value()) << metadata_fields.error().message;
   const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(
       &indirect_callee_field(*metadata_fields).value);
@@ -492,14 +495,14 @@ TEST(ResolveIndirectCallee, RejectsInvalidMetadataAndDirectCalleeKinds) {
   ASSERT_TRUE(caller.has_value());
   const auto scope = binding.table.symbol(caller->symbol).owned_scope;
   ASSERT_TRUE(scope.has_value());
-  const ResolveContext context{.symbols = binding.table,
-                               .scope = *scope,
-                               .function_is_entry = true};
+  const ResolveContext context{
+      .symbols = binding.table, .scope = *scope, .function_is_entry = true};
 
-  const auto function =
-      resolve_indirect_callee_field(parse_instruction("call target;"), &context);
+  const auto function = resolve_indirect_callee_field(
+      parse_instruction("call target;"), &context);
   ASSERT_FALSE(function.has_value());
-  EXPECT_EQ(function.error().message, "Symbol 'target' is not a .reg variable.");
+  EXPECT_EQ(function.error().message,
+            "Symbol 'target' is not a .reg variable.");
 
   const auto branch = resolve_indirect_callee_field(
       indirect_metadata_instruction("branches"), &context);
@@ -605,8 +608,8 @@ TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
                  Bar::VariantType::CtaRedOrPred);
   expect_variant("bar.warp.sync 0xffffffff;", Bar::VariantType::WarpSync);
 
-  for (const std::string_view source : {"bar.warp 0xffffffff;",
-                                        "bar.warp.arrive 0xffffffff;"}) {
+  for (const std::string_view source :
+       {"bar.warp 0xffffffff;", "bar.warp.arrive 0xffffffff;"}) {
     const auto selected = selectVariant<Bar>(parse_instruction(source));
     EXPECT_FALSE(selected.has_value());
   }
@@ -671,23 +674,23 @@ TEST(SelectVariantMatch, SelectsMatchSyncFormsAndRejectsInvalidOnes) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Match>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Match>(parse_instruction(
-      "match.any.sync.b32 _, %b1, 0xffffffff;"))
+  EXPECT_FALSE(resolve<Match>(
+                   parse_instruction("match.any.sync.b32 _, %b1, 0xffffffff;"))
                    .has_value());
   EXPECT_FALSE(resolve<Match>(parse_instruction(
-      "match.any.sync.b32 _|%p0, %b1, 0xffffffff;"))
+                                  "match.any.sync.b32 _|%p0, %b1, 0xffffffff;"))
                    .has_value());
-  EXPECT_TRUE(resolve<Match>(parse_instruction(
-      "match.all.sync.b32 _, %b1, 0xffffffff;"))
+  EXPECT_TRUE(resolve<Match>(
+                  parse_instruction("match.all.sync.b32 _, %b1, 0xffffffff;"))
                   .has_value());
   EXPECT_TRUE(resolve<Match>(parse_instruction(
-      "match.all.sync.b32 _|%p0, %b1, 0xffffffff;"))
+                                 "match.all.sync.b32 _|%p0, %b1, 0xffffffff;"))
                   .has_value());
   EXPECT_TRUE(resolve<Match>(parse_instruction(
-      "match.all.sync.b32 %b0|_, %b1, 0xffffffff;"))
+                                 "match.all.sync.b32 %b0|_, %b1, 0xffffffff;"))
                   .has_value());
   EXPECT_FALSE(resolve<Match>(parse_instruction(
-      "match.all.sync.b32 _|_, %b1, 0xffffffff;"))
+                                  "match.all.sync.b32 _|_, %b1, 0xffffffff;"))
                    .has_value());
 }
 
@@ -737,7 +740,8 @@ TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
 TEST(SelectVariantGriddepcontrol, SelectsActionsAndRejectsInvalidForms) {
   const auto expect_variant = [](std::string_view source,
                                  Griddepcontrol::VariantType expected) {
-    const auto selected = selectVariant<Griddepcontrol>(parse_instruction(source));
+    const auto selected =
+        selectVariant<Griddepcontrol>(parse_instruction(source));
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -752,14 +756,17 @@ TEST(SelectVariantGriddepcontrol, SelectsActionsAndRejectsInvalidForms) {
            "griddepcontrol.wait.sync;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Griddepcontrol>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Griddepcontrol>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Griddepcontrol>(
-      parse_instruction("griddepcontrol.wait %r0;")).has_value());
+  EXPECT_FALSE(
+      resolve<Griddepcontrol>(parse_instruction("griddepcontrol.wait %r0;"))
+          .has_value());
 }
 
 TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
-  const auto expect_variant = [](std::string_view source, Cp::VariantType expected) {
+  const auto expect_variant = [](std::string_view source,
+                                 Cp::VariantType expected) {
     const auto selected = selectVariant<Cp>(parse_instruction(source));
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
@@ -773,8 +780,9 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
                  Cp::VariantType::AsyncMbarrierArriveSharedCta);
   expect_variant("cp.async.mbarrier.arrive.noinc.b64 [%rd0];",
                  Cp::VariantType::AsyncMbarrierArriveNoincGenericOrShared);
-  expect_variant("cp.async.mbarrier.arrive.noinc.shared::cta.b64 [shared_value];",
-                 Cp::VariantType::AsyncMbarrierArriveNoincSharedCta);
+  expect_variant(
+      "cp.async.mbarrier.arrive.noinc.shared::cta.b64 [shared_value];",
+      Cp::VariantType::AsyncMbarrierArriveNoincSharedCta);
 
   for (const std::string_view source : {
            "cp.async.mbarrier.arrive.shared::cluster.b64 [%rd0];",
@@ -785,8 +793,9 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Cp>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Cp>(
-      parse_instruction("cp.async.mbarrier.arrive.b64 [%rd0], 1;")).has_value());
+  EXPECT_FALSE(
+      resolve<Cp>(parse_instruction("cp.async.mbarrier.arrive.b64 [%rd0], 1;"))
+          .has_value());
 }
 
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
@@ -820,7 +829,8 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   expect_variant("fence.proxy.tensormap::generic.acquire.cluster [%rd0], 128;",
                  Fence::VariantType::ProxyTensormapGenericAcquireCluster);
   expect_variant(
-      "fence.proxy.async::generic.acquire.sync_restrict::shared::cluster.cluster;",
+      "fence.proxy.async::generic.acquire.sync_restrict::shared::cluster."
+      "cluster;",
       Fence::VariantType::ProxyAsyncGenericAcquireSyncRestrictSharedCluster);
   expect_variant(
       "fence.proxy.async::generic.release.sync_restrict::shared::cta.cluster;",
@@ -829,8 +839,10 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   for (const std::string_view source : {
            "fence.proxy.alias;",
            "fence.proxy.generic::tensormap.release.gpu;",
-           "fence.proxy.async::generic.acquire.cluster.sync_restrict::shared::cluster;",
-           "fence.proxy.async::generic.release.sync_restrict::shared::cluster.cluster;",
+           "fence.proxy.async::generic.acquire.cluster.sync_restrict::shared::"
+           "cluster;",
+           "fence.proxy.async::generic.release.sync_restrict::shared::cluster."
+           "cluster;",
        }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value());
@@ -840,38 +852,48 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
 TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
   const auto expect_variant = [](std::string_view source,
                                  Clusterlaunchcontrol::VariantType expected) {
-    const auto selected = selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
+    const auto selected =
+        selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
   expect_variant(
-      "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
+      "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 "
+      "[%rd0], [%rd1];",
       Clusterlaunchcontrol::VariantType::TryCancelAsyncGeneric);
   expect_variant(
-      "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
+      "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx:"
+      ":bytes.b128 [%rd0], [%rd1];",
       Clusterlaunchcontrol::VariantType::TryCancelAsyncSharedCta);
   expect_variant(
-      "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [%rd0], [%rd1];",
+      "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes."
+      "multicast::cluster::all.b128 [%rd0], [%rd1];",
       Clusterlaunchcontrol::VariantType::TryCancelAsyncMulticastGeneric);
   expect_variant(
-      "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx::bytes.multicast::cluster::all.b128 [%rd0], [%rd1];",
+      "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx:"
+      ":bytes.multicast::cluster::all.b128 [%rd0], [%rd1];",
       Clusterlaunchcontrol::VariantType::TryCancelAsyncMulticastSharedCta);
 
   for (const std::string_view source : {
            "clusterlaunchcontrol.try_cancel.async.b128 [%rd0], [%rd1];",
-           "clusterlaunchcontrol.try_cancel.mbarrier::complete_tx::bytes.async.b128 [%rd0], [%rd1];",
-           "clusterlaunchcontrol.try_cancel.async.shared::cta.multicast::cluster::all.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
-           "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b32 [%rd0], [%rd1];",
+           "clusterlaunchcontrol.try_cancel.mbarrier::complete_tx::bytes.async."
+           "b128 [%rd0], [%rd1];",
+           "clusterlaunchcontrol.try_cancel.async.shared::cta.multicast::"
+           "cluster::all.mbarrier::complete_tx::bytes.b128 [%rd0], [%rd1];",
+           "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes."
+           "b32 [%rd0], [%rd1];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source))
+                     .has_value());
   }
 }
 
 TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
   const auto expect_variant = [](std::string_view source,
                                  Clusterlaunchcontrol::VariantType expected) {
-    const auto selected = selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
+    const auto selected =
+        selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -879,7 +901,8 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
       "clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %q0;",
       Clusterlaunchcontrol::VariantType::QueryCancelIsCanceledPred);
   expect_variant(
-      "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, %r1, %r2, _}, %q0;",
+      "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, "
+      "%r1, %r2, _}, %q0;",
       Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidV4);
   expect_variant(
       "clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 %r0, %q0;",
@@ -893,12 +916,16 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
 
   for (const std::string_view source : {
            "clusterlaunchcontrol.query_cancel.is_canceled.b128 %p0, %q0;",
-           "clusterlaunchcontrol.query_cancel.get_first_ctaid::w.b32.b128 %r0, %q0;",
-           "clusterlaunchcontrol.query_cancel.get_first_ctaid.b32.v4.b128 {%r0, %r1, %r2, _}, %q0;",
-           "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b64.b128 {%r0, %r1, %r2, _}, %q0;",
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid::w.b32.b128 %r0, "
+           "%q0;",
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid.b32.v4.b128 "
+           "{%r0, %r1, %r2, _}, %q0;",
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b64.b128 "
+           "{%r0, %r1, %r2, _}, %q0;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source))
+                     .has_value());
   }
 }
 
@@ -914,24 +941,30 @@ TEST(SelectVariantMbarrier, SelectsBasicTestWaitForms) {
                  Mbarrier::VariantType::TestWaitTokenGenericOrShared);
   expect_variant("mbarrier.test_wait.shared.b64 %p0, [shared_value], %state;",
                  Mbarrier::VariantType::TestWaitTokenGenericOrShared);
-  expect_variant("mbarrier.test_wait.shared::cta.b64 %p0, [shared_value], %state;",
-                 Mbarrier::VariantType::TestWaitTokenSharedCta);
+  expect_variant(
+      "mbarrier.test_wait.shared::cta.b64 %p0, [shared_value], %state;",
+      Mbarrier::VariantType::TestWaitTokenSharedCta);
   expect_variant("mbarrier.test_wait.parity.b64 %p0, [%rd0], 1;",
                  Mbarrier::VariantType::TestWaitParityGenericOrShared);
-  expect_variant("mbarrier.test_wait.parity.shared::cta.b64 %p0, [shared_value], %r0;",
-                 Mbarrier::VariantType::TestWaitParitySharedCta);
+  expect_variant(
+      "mbarrier.test_wait.parity.shared::cta.b64 %p0, [shared_value], %r0;",
+      Mbarrier::VariantType::TestWaitParitySharedCta);
 
   for (const std::string_view source : {
            "mbarrier.test_wait.shared::cluster.b64 %p0, [%rd0], %state;",
            "mbarrier.test_wait.b32 %p0, [%rd0], %state;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.test_wait.b64 %p0, [%rd0];")).has_value());
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.test_wait.b64 %p0, [%rd0], %state, 1;")).has_value());
+                   parse_instruction("mbarrier.test_wait.b64 %p0, [%rd0];"))
+                   .has_value());
+  EXPECT_FALSE(
+      resolve<Mbarrier>(
+          parse_instruction("mbarrier.test_wait.b64 %p0, [%rd0], %state, 1;"))
+          .has_value());
 }
 
 TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
@@ -944,19 +977,26 @@ TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
 
   expect_variant("mbarrier.try_wait.b64 %p0, [%rd0], %state;",
                  Mbarrier::VariantType::TryWaitTokenGenericOrShared);
-  expect_variant("mbarrier.try_wait.shared::cta.b64 %p0, [shared_value], %state, 1;",
-                 Mbarrier::VariantType::TryWaitTokenSharedCta);
+  expect_variant(
+      "mbarrier.try_wait.shared::cta.b64 %p0, [shared_value], %state, 1;",
+      Mbarrier::VariantType::TryWaitTokenSharedCta);
   expect_variant("mbarrier.try_wait.parity.b64 %p0, [%rd0], 1;",
                  Mbarrier::VariantType::TryWaitParityGenericOrShared);
-  expect_variant("mbarrier.try_wait.parity.shared::cta.b64 %p0, [shared_value], %r0, %r1;",
-                 Mbarrier::VariantType::TryWaitParitySharedCta);
+  expect_variant(
+      "mbarrier.try_wait.parity.shared::cta.b64 %p0, [shared_value], %r0, %r1;",
+      Mbarrier::VariantType::TryWaitParitySharedCta);
 
-  EXPECT_FALSE(selectVariant<Mbarrier>(
-      parse_instruction("mbarrier.try_wait.b32 %p0, [%rd0], %state;")).has_value());
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0];")).has_value());
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0], %state, 1, 2;")).has_value());
+  EXPECT_FALSE(
+      selectVariant<Mbarrier>(
+          parse_instruction("mbarrier.try_wait.b32 %p0, [%rd0], %state;"))
+          .has_value());
+  EXPECT_FALSE(
+      resolve<Mbarrier>(parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0];"))
+          .has_value());
+  EXPECT_FALSE(
+      resolve<Mbarrier>(
+          parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0], %state, 1, 2;"))
+          .has_value());
 }
 
 TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
@@ -967,38 +1007,63 @@ TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
     EXPECT_EQ(*selected, expected);
   };
 
-  expect_variant("mbarrier.test_wait.phase_type::primary.b64 %p0, [%rd0], %state;",
-                 Mbarrier::VariantType::TestWaitTokenPrimaryGenericOrShared);
-  expect_variant("mbarrier.test_wait.phase_type::primary.shared::cta.b64 %p0|%p1, %b0, [shared_value], %state;",
-                 Mbarrier::VariantType::TestWaitTokenPrimarySharedCta);
-  expect_variant("mbarrier.test_wait.parity.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], 1;",
-                 Mbarrier::VariantType::TestWaitParityPrimaryGenericOrShared);
-  expect_variant("mbarrier.test_wait.parity.phase_type::primary.shared::cta.b64 %p0, [shared_value], 1;",
-                 Mbarrier::VariantType::TestWaitParityPrimarySharedCta);
-  expect_variant("mbarrier.test_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1;",
-                 Mbarrier::VariantType::TestWaitParityConditionalGenericOrShared);
-  expect_variant("mbarrier.test_wait.parity.phase_type::conditional.shared::cta.b64 %p0, [shared_value], 1;",
-                 Mbarrier::VariantType::TestWaitParityConditionalSharedCta);
-  expect_variant("mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], %state, 1;",
-                 Mbarrier::VariantType::TryWaitTokenPrimaryGenericOrShared);
-  expect_variant("mbarrier.try_wait.phase_type::primary.shared::cta.b64 %p0, [shared_value], %state;",
-                 Mbarrier::VariantType::TryWaitTokenPrimarySharedCta);
-  expect_variant("mbarrier.try_wait.parity.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], 1, 2;",
-                 Mbarrier::VariantType::TryWaitParityPrimaryGenericOrShared);
-  expect_variant("mbarrier.try_wait.parity.phase_type::primary.shared::cta.b64 %p0, [shared_value], 1;",
-                 Mbarrier::VariantType::TryWaitParityPrimarySharedCta);
-  expect_variant("mbarrier.try_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1, 2;",
-                 Mbarrier::VariantType::TryWaitParityConditionalGenericOrShared);
-  expect_variant("mbarrier.try_wait.parity.phase_type::conditional.shared::cta.b64 %p0, [shared_value], 1;",
-                 Mbarrier::VariantType::TryWaitParityConditionalSharedCta);
+  expect_variant(
+      "mbarrier.test_wait.phase_type::primary.b64 %p0, [%rd0], %state;",
+      Mbarrier::VariantType::TestWaitTokenPrimaryGenericOrShared);
+  expect_variant(
+      "mbarrier.test_wait.phase_type::primary.shared::cta.b64 %p0|%p1, %b0, "
+      "[shared_value], %state;",
+      Mbarrier::VariantType::TestWaitTokenPrimarySharedCta);
+  expect_variant(
+      "mbarrier.test_wait.parity.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], "
+      "1;",
+      Mbarrier::VariantType::TestWaitParityPrimaryGenericOrShared);
+  expect_variant(
+      "mbarrier.test_wait.parity.phase_type::primary.shared::cta.b64 %p0, "
+      "[shared_value], 1;",
+      Mbarrier::VariantType::TestWaitParityPrimarySharedCta);
+  expect_variant(
+      "mbarrier.test_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1;",
+      Mbarrier::VariantType::TestWaitParityConditionalGenericOrShared);
+  expect_variant(
+      "mbarrier.test_wait.parity.phase_type::conditional.shared::cta.b64 %p0, "
+      "[shared_value], 1;",
+      Mbarrier::VariantType::TestWaitParityConditionalSharedCta);
+  expect_variant(
+      "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], %state, "
+      "1;",
+      Mbarrier::VariantType::TryWaitTokenPrimaryGenericOrShared);
+  expect_variant(
+      "mbarrier.try_wait.phase_type::primary.shared::cta.b64 %p0, "
+      "[shared_value], %state;",
+      Mbarrier::VariantType::TryWaitTokenPrimarySharedCta);
+  expect_variant(
+      "mbarrier.try_wait.parity.phase_type::primary.b64 %p0|%p1, %b0, [%rd0], "
+      "1, 2;",
+      Mbarrier::VariantType::TryWaitParityPrimaryGenericOrShared);
+  expect_variant(
+      "mbarrier.try_wait.parity.phase_type::primary.shared::cta.b64 %p0, "
+      "[shared_value], 1;",
+      Mbarrier::VariantType::TryWaitParityPrimarySharedCta);
+  expect_variant(
+      "mbarrier.try_wait.parity.phase_type::conditional.b64 %p0, [%rd0], 1, 2;",
+      Mbarrier::VariantType::TryWaitParityConditionalGenericOrShared);
+  expect_variant(
+      "mbarrier.try_wait.parity.phase_type::conditional.shared::cta.b64 %p0, "
+      "[shared_value], 1;",
+      Mbarrier::VariantType::TryWaitParityConditionalSharedCta);
 
-  for (const std::string_view source : {
-           "mbarrier.test_wait.phase_type::conditional.b64 %p0, [%rd0], %state;",
-           "mbarrier.test_wait.parity.phase_type::conditional.b64 %p0|%p1, [%rd0], 1;",
-           "mbarrier.try_wait.phase_type::primary.b64 %p0, %b0, [%rd0], %state;",
-           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, _, [%rd0], %state;",
-           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, 1, [%rd0], %state;",
-       }) {
+  for (
+      const std::string_view source : {
+          "mbarrier.test_wait.phase_type::conditional.b64 %p0, [%rd0], %state;",
+          "mbarrier.test_wait.parity.phase_type::conditional.b64 %p0|%p1, "
+          "[%rd0], 1;",
+          "mbarrier.try_wait.phase_type::primary.b64 %p0, %b0, [%rd0], %state;",
+          "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, _, [%rd0], "
+          "%state;",
+          "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, 1, [%rd0], "
+          "%state;",
+      }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());
   }
@@ -1044,10 +1109,12 @@ TEST(SelectVariantMbarrier, SelectsCheckLayout) {
                  Mbarrier::VariantType::CheckLayoutGenericV0);
   expect_variant("mbarrier.check_layout.layout::v1.b64 %p0, [%rd0];",
                  Mbarrier::VariantType::CheckLayoutGenericV1);
-  expect_variant("mbarrier.check_layout.layout::v0.shared::cta.b64 %p0, [shared_value];",
-                 Mbarrier::VariantType::CheckLayoutSharedCtaV0);
-  expect_variant("mbarrier.check_layout.layout::v1.shared::cta.b64 %p0, [shared_value];",
-                 Mbarrier::VariantType::CheckLayoutSharedCtaV1);
+  expect_variant(
+      "mbarrier.check_layout.layout::v0.shared::cta.b64 %p0, [shared_value];",
+      Mbarrier::VariantType::CheckLayoutSharedCtaV0);
+  expect_variant(
+      "mbarrier.check_layout.layout::v1.shared::cta.b64 %p0, [shared_value];",
+      Mbarrier::VariantType::CheckLayoutSharedCtaV1);
 
   for (const std::string_view source : {
            "mbarrier.check_layout.b64 %p0, [%rd0];",
@@ -1057,7 +1124,8 @@ TEST(SelectVariantMbarrier, SelectsCheckLayout) {
            "mbarrier.check_layout.layout::v0.relaxed.b64 %p0, [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
   for (const std::string_view source : {
            "mbarrier.check_layout.layout::v0.b64 _, [%rd0];",
@@ -1091,8 +1159,9 @@ TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Mapa>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Mapa>(
-      parse_instruction("mapa.shared::cluster.u32 %r0, %r1;")).has_value());
+  EXPECT_FALSE(
+      resolve<Mapa>(parse_instruction("mapa.shared::cluster.u32 %r0, %r1;"))
+          .has_value());
 }
 
 TEST(SelectVariantGetctarank, SelectsSharedClusterAndGenericForms) {
@@ -1116,10 +1185,12 @@ TEST(SelectVariantGetctarank, SelectsSharedClusterAndGenericForms) {
            "getctarank.shared::cluster.u32.u64 %r0, %r1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Getctarank>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Getctarank>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(resolve<Getctarank>(
-      parse_instruction("getctarank.shared::cluster.u32 %r0;")).has_value());
+                   parse_instruction("getctarank.shared::cluster.u32 %r0;"))
+                   .has_value());
 }
 
 TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
@@ -1170,10 +1241,11 @@ TEST(SelectVariantMbarrier, SelectsInitLayoutsAndSpaces) {
            "mbarrier.shared.b64 [%rd0], 1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.init.b64 [%rd0];")).has_value());
+  EXPECT_FALSE(resolve<Mbarrier>(parse_instruction("mbarrier.init.b64 [%rd0];"))
+                   .has_value());
 }
 
 TEST(SelectVariantMbarrier, SelectsInvalSpaces) {
@@ -1199,10 +1271,11 @@ TEST(SelectVariantMbarrier, SelectsInvalSpaces) {
            "mbarrier.inval.layout::v0.b64 [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.inval.b64;")).has_value());
+  EXPECT_FALSE(
+      resolve<Mbarrier>(parse_instruction("mbarrier.inval.b64;")).has_value());
 }
 
 TEST(SelectVariantMbarrier, SelectsExpectTxSemanticsAndSpaces) {
@@ -1227,16 +1300,19 @@ TEST(SelectVariantMbarrier, SelectsExpectTxSemanticsAndSpaces) {
                  Mbarrier::VariantType::ExpectTxRelaxedCtaGenericOrShared);
   expect_variant("mbarrier.expect_tx.relaxed.cta.shared::cta.b64 [%rd0], 1;",
                  Mbarrier::VariantType::ExpectTxRelaxedCtaSharedCta);
-  expect_variant("mbarrier.expect_tx.relaxed.cta.shared::cluster.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::ExpectTxRelaxedCtaSharedCluster);
+  expect_variant(
+      "mbarrier.expect_tx.relaxed.cta.shared::cluster.b64 [%rd0], 1;",
+      Mbarrier::VariantType::ExpectTxRelaxedCtaSharedCluster);
   expect_variant("mbarrier.expect_tx.relaxed.cluster.b64 [%rd0], 1;",
                  Mbarrier::VariantType::ExpectTxRelaxedClusterGenericOrShared);
   expect_variant("mbarrier.expect_tx.relaxed.cluster.shared.b64 [%rd0], 1;",
                  Mbarrier::VariantType::ExpectTxRelaxedClusterGenericOrShared);
-  expect_variant("mbarrier.expect_tx.relaxed.cluster.shared::cta.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::ExpectTxRelaxedClusterSharedCta);
-  expect_variant("mbarrier.expect_tx.relaxed.cluster.shared::cluster.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::ExpectTxRelaxedClusterSharedCluster);
+  expect_variant(
+      "mbarrier.expect_tx.relaxed.cluster.shared::cta.b64 [%rd0], 1;",
+      Mbarrier::VariantType::ExpectTxRelaxedClusterSharedCta);
+  expect_variant(
+      "mbarrier.expect_tx.relaxed.cluster.shared::cluster.b64 [%rd0], 1;",
+      Mbarrier::VariantType::ExpectTxRelaxedClusterSharedCluster);
 
   for (const std::string_view source : {
            "mbarrier.expect_tx.relaxed.b64 [%rd0], 1;",
@@ -1247,12 +1323,15 @@ TEST(SelectVariantMbarrier, SelectsExpectTxSemanticsAndSpaces) {
            "mbarrier.expect_tx.shared [%rd0], 1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
+  EXPECT_FALSE(
+      resolve<Mbarrier>(parse_instruction("mbarrier.expect_tx.b64 [%rd0];"))
+          .has_value());
   EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.expect_tx.b64 [%rd0];")).has_value());
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.expect_tx.b64 [%rd0], %tid.x;")).has_value());
+                   parse_instruction("mbarrier.expect_tx.b64 [%rd0], %tid.x;"))
+                   .has_value());
 }
 
 TEST(SelectVariantMbarrier, SelectsCompleteTxSemanticsAndSpaces) {
@@ -1277,16 +1356,21 @@ TEST(SelectVariantMbarrier, SelectsCompleteTxSemanticsAndSpaces) {
                  Mbarrier::VariantType::CompleteTxRelaxedCtaGenericOrShared);
   expect_variant("mbarrier.complete_tx.relaxed.cta.shared::cta.b64 [%rd0], 1;",
                  Mbarrier::VariantType::CompleteTxRelaxedCtaSharedCta);
-  expect_variant("mbarrier.complete_tx.relaxed.cta.shared::cluster.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::CompleteTxRelaxedCtaSharedCluster);
-  expect_variant("mbarrier.complete_tx.relaxed.cluster.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::CompleteTxRelaxedClusterGenericOrShared);
-  expect_variant("mbarrier.complete_tx.relaxed.cluster.shared.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::CompleteTxRelaxedClusterGenericOrShared);
-  expect_variant("mbarrier.complete_tx.relaxed.cluster.shared::cta.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::CompleteTxRelaxedClusterSharedCta);
-  expect_variant("mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64 [%rd0], 1;",
-                 Mbarrier::VariantType::CompleteTxRelaxedClusterSharedCluster);
+  expect_variant(
+      "mbarrier.complete_tx.relaxed.cta.shared::cluster.b64 [%rd0], 1;",
+      Mbarrier::VariantType::CompleteTxRelaxedCtaSharedCluster);
+  expect_variant(
+      "mbarrier.complete_tx.relaxed.cluster.b64 [%rd0], 1;",
+      Mbarrier::VariantType::CompleteTxRelaxedClusterGenericOrShared);
+  expect_variant(
+      "mbarrier.complete_tx.relaxed.cluster.shared.b64 [%rd0], 1;",
+      Mbarrier::VariantType::CompleteTxRelaxedClusterGenericOrShared);
+  expect_variant(
+      "mbarrier.complete_tx.relaxed.cluster.shared::cta.b64 [%rd0], 1;",
+      Mbarrier::VariantType::CompleteTxRelaxedClusterSharedCta);
+  expect_variant(
+      "mbarrier.complete_tx.relaxed.cluster.shared::cluster.b64 [%rd0], 1;",
+      Mbarrier::VariantType::CompleteTxRelaxedClusterSharedCluster);
 
   for (const std::string_view source : {
            "mbarrier.complete_tx.relaxed.b64 [%rd0], 1;",
@@ -1297,12 +1381,16 @@ TEST(SelectVariantMbarrier, SelectsCompleteTxSemanticsAndSpaces) {
            "mbarrier.complete_tx.shared [%rd0], 1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.complete_tx.b64 [%rd0];")).has_value());
-  EXPECT_FALSE(resolve<Mbarrier>(
-      parse_instruction("mbarrier.complete_tx.b64 [%rd0], %tid.x;")).has_value());
+  EXPECT_FALSE(
+      resolve<Mbarrier>(parse_instruction("mbarrier.complete_tx.b64 [%rd0];"))
+          .has_value());
+  EXPECT_FALSE(
+      resolve<Mbarrier>(
+          parse_instruction("mbarrier.complete_tx.b64 [%rd0], %tid.x;"))
+          .has_value());
 }
 
 TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
@@ -1314,7 +1402,8 @@ TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
   };
 
   const auto sink_ast = parse_instruction("mbarrier.arrive.b64 _, [%rd0];");
-  const auto* sink = std::get_if<syntax_ast::AstIdentifierRef>(&sink_ast.operands[0]);
+  const auto* sink =
+      std::get_if<syntax_ast::AstIdentifierRef>(&sink_ast.operands[0]);
   ASSERT_NE(sink, nullptr);
   EXPECT_EQ(sink->syntax.text, "_");
 
@@ -1326,10 +1415,12 @@ TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
                  Mbarrier::VariantType::ArriveSharedCluster);
   expect_variant("mbarrier.arrive.release.cta.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveSemanticsGenericOrShared);
-  expect_variant("mbarrier.arrive.release.cluster.shared::cta.b64 %state, [%rd0];",
-                 Mbarrier::VariantType::ArriveSemanticsSharedCta);
-  expect_variant("mbarrier.arrive.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveSemanticsSharedCluster);
+  expect_variant(
+      "mbarrier.arrive.release.cluster.shared::cta.b64 %state, [%rd0];",
+      Mbarrier::VariantType::ArriveSemanticsSharedCta);
+  expect_variant(
+      "mbarrier.arrive.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveSemanticsSharedCluster);
   expect_variant("mbarrier.arrive.expect_tx.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveExpectTxGenericOrShared);
   expect_variant("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%rd0], 1;",
@@ -1338,18 +1429,22 @@ TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
                  Mbarrier::VariantType::ArriveExpectTxSharedCluster);
   expect_variant("mbarrier.arrive.expect_tx.release.cta.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveExpectTxSemanticsGenericOrShared);
-  expect_variant("mbarrier.arrive.expect_tx.release.cluster.shared::cta.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveExpectTxSemanticsSharedCta);
-  expect_variant("mbarrier.arrive.expect_tx.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveExpectTxSemanticsSharedCluster);
+  expect_variant(
+      "mbarrier.arrive.expect_tx.release.cluster.shared::cta.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveExpectTxSemanticsSharedCta);
+  expect_variant(
+      "mbarrier.arrive.expect_tx.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveExpectTxSemanticsSharedCluster);
   expect_variant("mbarrier.arrive.noComplete.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveNoCompleteGenericOrShared);
   expect_variant("mbarrier.arrive.noComplete.shared::cta.b64 _, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveNoCompleteSharedCta);
-  expect_variant("mbarrier.arrive.noComplete.release.cta.b64 %state, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveNoCompleteReleaseCtaGenericOrShared);
-  expect_variant("mbarrier.arrive.noComplete.release.cta.shared::cta.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveNoCompleteReleaseCtaSharedCta);
+  expect_variant(
+      "mbarrier.arrive.noComplete.release.cta.b64 %state, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveNoCompleteReleaseCtaGenericOrShared);
+  expect_variant(
+      "mbarrier.arrive.noComplete.release.cta.shared::cta.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveNoCompleteReleaseCtaSharedCta);
 
   for (const std::string_view source : {
            "mbarrier.arrive.release.b64 %state, [%rd0];",
@@ -1359,7 +1454,8 @@ TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
            "mbarrier.arrive.b64.shared %state, [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
 }
 
@@ -1379,30 +1475,42 @@ TEST(SelectVariantMbarrier, SelectsArriveDropFormsAndLayouts) {
                  Mbarrier::VariantType::ArriveDropSharedCluster);
   expect_variant("mbarrier.arrive_drop.release.cta.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveDropSemanticsGenericOrShared);
-  expect_variant("mbarrier.arrive_drop.release.cluster.shared::cta.b64 %state, [%rd0];",
-                 Mbarrier::VariantType::ArriveDropSemanticsSharedCta);
-  expect_variant("mbarrier.arrive_drop.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropSemanticsSharedCluster);
+  expect_variant(
+      "mbarrier.arrive_drop.release.cluster.shared::cta.b64 %state, [%rd0];",
+      Mbarrier::VariantType::ArriveDropSemanticsSharedCta);
+  expect_variant(
+      "mbarrier.arrive_drop.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropSemanticsSharedCluster);
   expect_variant("mbarrier.arrive_drop.expect_tx.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveDropExpectTxGenericOrShared);
   expect_variant("mbarrier.arrive_drop.expect_tx.shared::cta.b64 _, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveDropExpectTxSharedCta);
-  expect_variant("mbarrier.arrive_drop.expect_tx.shared::cluster.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropExpectTxSharedCluster);
-  expect_variant("mbarrier.arrive_drop.expect_tx.release.cta.b64 %state, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropExpectTxSemanticsGenericOrShared);
-  expect_variant("mbarrier.arrive_drop.expect_tx.release.cluster.shared::cta.b64 %state, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropExpectTxSemanticsSharedCta);
-  expect_variant("mbarrier.arrive_drop.expect_tx.relaxed.cta.shared::cluster.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropExpectTxSemanticsSharedCluster);
+  expect_variant(
+      "mbarrier.arrive_drop.expect_tx.shared::cluster.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropExpectTxSharedCluster);
+  expect_variant(
+      "mbarrier.arrive_drop.expect_tx.release.cta.b64 %state, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropExpectTxSemanticsGenericOrShared);
+  expect_variant(
+      "mbarrier.arrive_drop.expect_tx.release.cluster.shared::cta.b64 %state, "
+      "[%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropExpectTxSemanticsSharedCta);
+  expect_variant(
+      "mbarrier.arrive_drop.expect_tx.relaxed.cta.shared::cluster.b64 _, "
+      "[%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropExpectTxSemanticsSharedCluster);
   expect_variant("mbarrier.arrive_drop.noComplete.b64 %state, [%rd0], 1;",
                  Mbarrier::VariantType::ArriveDropNoCompleteGenericOrShared);
-  expect_variant("mbarrier.arrive_drop.noComplete.shared::cta.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropNoCompleteSharedCta);
-  expect_variant("mbarrier.arrive_drop.noComplete.release.cta.b64 %state, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropNoCompleteReleaseCtaGenericOrShared);
-  expect_variant("mbarrier.arrive_drop.noComplete.release.cta.shared::cta.b64 _, [%rd0], 1;",
-                 Mbarrier::VariantType::ArriveDropNoCompleteReleaseCtaSharedCta);
+  expect_variant(
+      "mbarrier.arrive_drop.noComplete.shared::cta.b64 _, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropNoCompleteSharedCta);
+  expect_variant(
+      "mbarrier.arrive_drop.noComplete.release.cta.b64 %state, [%rd0], 1;",
+      Mbarrier::VariantType::ArriveDropNoCompleteReleaseCtaGenericOrShared);
+  expect_variant(
+      "mbarrier.arrive_drop.noComplete.release.cta.shared::cta.b64 _, [%rd0], "
+      "1;",
+      Mbarrier::VariantType::ArriveDropNoCompleteReleaseCtaSharedCta);
 
   for (const std::string_view source : {
            "mbarrier.arrive_drop.release.b64 %state, [%rd0];",
@@ -1413,12 +1521,14 @@ TEST(SelectVariantMbarrier, SelectsArriveDropFormsAndLayouts) {
            "mbarrier.arrive_drop.noComplete.shared::cluster.b64 _, [%rd0], 1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Mbarrier>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        selectVariant<Mbarrier>(parse_instruction(source)).has_value());
   }
 }
 
 TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
-  const auto expect_load = [](std::string_view source, Ld::VariantType expected) {
+  const auto expect_load = [](std::string_view source,
+                              Ld::VariantType expected) {
     const auto ast = parse_instruction(source);
     const auto selected = selectVariant<Ld>(ast);
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
@@ -1458,7 +1568,8 @@ TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
     EXPECT_EQ(*selected, expected);
   };
   expect_store("st.wt.u32 [%rd0], %r0;", St::VariantType::GenericScalar);
-  expect_store("st.global.cg.u32 [%rd0], %r0;", St::VariantType::ExplicitScalar);
+  expect_store("st.global.cg.u32 [%rd0], %r0;",
+               St::VariantType::ExplicitScalar);
   expect_store("st.wt.v2.u32 [%rd0], {%r0, %r1};",
                St::VariantType::GenericVector);
   expect_store("st.shared.cg.v4.u16 [%rd0], {%h0, %h1, %h2, %h3};",
@@ -1490,12 +1601,13 @@ TEST(SelectVariantLoadStore, SelectsLegalCacheOperatorsAndRejectsWrongOnes) {
       << modern_vector_selected.error().message;
   EXPECT_EQ(*modern_vector_selected, Ld::VariantType::GenericVector);
 
-  const auto vector_mmio = parse_instruction(
-      "ld.mmio.relaxed.sys.v2.u32 {%r0, %r1}, [%rd0];");
+  const auto vector_mmio =
+      parse_instruction("ld.mmio.relaxed.sys.v2.u32 {%r0, %r1}, [%rd0];");
   const auto vector_mmio_selected = selectVariant<Ld>(vector_mmio);
   ASSERT_FALSE(vector_mmio_selected.has_value());
-  EXPECT_EQ(vector_mmio_selected.error().message,
-            "No variant of instruction 'ld' accepts this modifier combination.");
+  EXPECT_EQ(
+      vector_mmio_selected.error().message,
+      "No variant of instruction 'ld' accepts this modifier combination.");
 }
 
 TEST(SelectVariantAdd, ReportsUnknownModifier) {
@@ -1642,7 +1754,8 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   ASSERT_TRUE(and_boundary.has_value()) << and_boundary.error().message;
   const auto* and_b32 = std::get_if<And::B32>(&and_boundary->variant);
   ASSERT_NE(and_b32, nullptr);
-  const auto* and_immediate = std::get_if<ResolvedImmediate>(&and_b32->src2.value);
+  const auto* and_immediate =
+      std::get_if<ResolvedImmediate>(&and_b32->src2.value);
   ASSERT_NE(and_immediate, nullptr);
   EXPECT_EQ(and_immediate->bits, 0xffffffffU);
   EXPECT_EQ(and_immediate->integer_source_bits, 0xffffffffU);
@@ -1662,7 +1775,8 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   ASSERT_TRUE(or_resolved.has_value()) << or_resolved.error().message;
   const auto* or_b32 = std::get_if<Or::B32>(&or_resolved->variant);
   ASSERT_NE(or_b32, nullptr);
-  const auto* or_immediate = std::get_if<ResolvedImmediate>(&or_b32->src2.value);
+  const auto* or_immediate =
+      std::get_if<ResolvedImmediate>(&or_b32->src2.value);
   ASSERT_NE(or_immediate, nullptr);
   EXPECT_EQ(or_immediate->bits, 0U);
   EXPECT_EQ(or_immediate->integer_source_bits, 0x100000000ULL);
@@ -1672,7 +1786,8 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   ASSERT_TRUE(xor_resolved.has_value()) << xor_resolved.error().message;
   const auto* xor_b32 = std::get_if<Xor::B32>(&xor_resolved->variant);
   ASSERT_NE(xor_b32, nullptr);
-  const auto* xor_immediate = std::get_if<ResolvedImmediate>(&xor_b32->src2.value);
+  const auto* xor_immediate =
+      std::get_if<ResolvedImmediate>(&xor_b32->src2.value);
   ASSERT_NE(xor_immediate, nullptr);
   EXPECT_EQ(xor_immediate->bits, 0U);
   EXPECT_EQ(xor_immediate->integer_source_bits, 0x100000000ULL);
@@ -1682,7 +1797,8 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   ASSERT_TRUE(not_resolved.has_value()) << not_resolved.error().message;
   const auto* not_b32 = std::get_if<Not::B32>(&not_resolved->variant);
   ASSERT_NE(not_b32, nullptr);
-  const auto* not_immediate = std::get_if<ResolvedImmediate>(&not_b32->src.value);
+  const auto* not_immediate =
+      std::get_if<ResolvedImmediate>(&not_b32->src.value);
   ASSERT_NE(not_immediate, nullptr);
   EXPECT_EQ(not_immediate->bits, 0xffffffffU);
   EXPECT_EQ(not_immediate->integer_source_bits,
@@ -1708,15 +1824,17 @@ TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
 }
 
 TEST(ResolveSet, SelectsFrozenCommonScalarVariants) {
-  const auto eq = resolve<Set>(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
+  const auto eq =
+      resolve<Set>(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
   ASSERT_TRUE(eq.has_value()) << eq.error().message;
   const auto* eq_u32_u32 = std::get_if<Set::EqU32U32>(&eq->variant);
   ASSERT_NE(eq_u32_u32, nullptr);
   EXPECT_EQ(eq_u32_u32->comparison.value, ComparisonOperator::Eq);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(eq_u32_u32->src2.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(eq_u32_u32->src2.value));
 
-  const auto lt_and = resolve<Set>(
-      parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
+  const auto lt_and =
+      resolve<Set>(parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
   ASSERT_TRUE(lt_and.has_value()) << lt_and.error().message;
   const auto* lt_and_f32_s32 = std::get_if<Set::LtAndF32S32>(&lt_and->variant);
   ASSERT_NE(lt_and_f32_s32, nullptr);
@@ -1768,8 +1886,7 @@ TEST(ResolveSetp, SelectsM12GeS32Variant) {
 }
 
 TEST(ResolveSetp, SelectsFrozenDualPredicateVariants) {
-  const auto equality_ast =
-      parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
+  const auto equality_ast = parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
   const auto equality = resolve<Setp>(equality_ast);
   ASSERT_TRUE(equality.has_value()) << equality.error().message;
   const auto* eq = std::get_if<Setp::EqU32Pair>(&equality->variant);
@@ -1856,7 +1973,8 @@ TEST(ResolveSlct, RejectsUnfrozenModifierForms) {
 }
 
 TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
-  const auto to_generic = resolve<Cvta>(parse_instruction("cvta.global.u64 %rd0, %rd1;"));
+  const auto to_generic =
+      resolve<Cvta>(parse_instruction("cvta.global.u64 %rd0, %rd1;"));
   ASSERT_TRUE(to_generic.has_value()) << to_generic.error().message;
   const auto* global = std::get_if<Cvta::GlobalU64>(&to_generic->variant);
   ASSERT_NE(global, nullptr);
@@ -1872,10 +1990,9 @@ TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
 }
 
 TEST(ResolveCvta, RejectsWrongModifierOrderOrU32) {
-  for (const auto source : {"cvta.global.to.u64 %rd0, %rd1;",
-                            "cvta.u64.global %rd0, %rd1;",
-                            "cvta.global.u32 %r0, %r1;",
-                            "cvta.to.global.u32 %r0, %r1;"}) {
+  for (const auto source :
+       {"cvta.global.to.u64 %rd0, %rd1;", "cvta.u64.global %rd0, %rd1;",
+        "cvta.global.u32 %r0, %r1;", "cvta.to.global.u32 %r0, %r1;"}) {
     const auto selected = selectVariant<Cvta>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -1883,7 +2000,8 @@ TEST(ResolveCvta, RejectsWrongModifierOrderOrU32) {
 }
 
 TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
-  const auto resolved = resolve<Mul>(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
+  const auto resolved =
+      resolve<Mul>(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* mul = std::get_if<Mul::LoU32>(&resolved->variant);
   ASSERT_NE(mul, nullptr);
@@ -1919,9 +2037,9 @@ TEST(ResolveMul, SelectsM12WideS32Variant) {
 }
 
 TEST(ResolveMul, RejectsUnfrozenVariants) {
-  for (const auto source : {"mul.u32 %r0, %r1, %r2;",
-                            "mul.lo.s32 %r0, %r1, %r2;",
-                            "mul.wide.s64 %rd0, %r1, %r2;"}) {
+  for (const auto source :
+       {"mul.u32 %r0, %r1, %r2;", "mul.lo.s32 %r0, %r1, %r2;",
+        "mul.wide.s64 %rd0, %r1, %r2;"}) {
     const auto selected = selectVariant<Mul>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -1929,7 +2047,8 @@ TEST(ResolveMul, RejectsUnfrozenVariants) {
 }
 
 TEST(ResolveMul, SelectsFrozenRnF32Variant) {
-  const auto resolved = resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
+  const auto resolved =
+      resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   ASSERT_NE(std::get_if<Mul::RnF32>(&resolved->variant), nullptr);
   EXPECT_EQ(Mul::RnF32::rounding, RoundingMode::Rn);
@@ -1937,9 +2056,9 @@ TEST(ResolveMul, SelectsFrozenRnF32Variant) {
 }
 
 TEST(ResolveMul, RejectsUnfrozenFloatingVariants) {
-  for (const auto source : {"mul.f32 %f0, %f1, %f2;",
-                            "mul.rz.f32 %f0, %f1, %f2;",
-                            "mul.rn.f64 %fd0, %fd1, %fd2;"}) {
+  for (const auto source :
+       {"mul.f32 %f0, %f1, %f2;", "mul.rz.f32 %f0, %f1, %f2;",
+        "mul.rn.f64 %fd0, %fd1, %fd2;"}) {
     const auto selected = selectVariant<Mul>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -1947,12 +2066,14 @@ TEST(ResolveMul, RejectsUnfrozenFloatingVariants) {
 }
 
 TEST(ResolveMul, RejectsImmediateFloatingOperand) {
-  const auto resolved = resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
+  const auto resolved =
+      resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
   ASSERT_FALSE(resolved.has_value());
 }
 
 TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
-  const auto resolved = resolve<Mad>(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
+  const auto resolved =
+      resolve<Mad>(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* mad = std::get_if<Mad::LoU32>(&resolved->variant);
   ASSERT_NE(mad, nullptr);
@@ -1967,8 +2088,8 @@ TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
   EXPECT_TRUE(Mad::LoS32::lo);
   EXPECT_EQ(Mad::LoS32::type, ScalarType::S32);
 
-  const auto wide = resolve<Mad>(
-      parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
+  const auto wide =
+      resolve<Mad>(parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
   ASSERT_TRUE(wide.has_value()) << wide.error().message;
   ASSERT_NE(std::get_if<Mad::WideU32>(&wide->variant), nullptr);
   EXPECT_TRUE(Mad::WideU32::wide);
@@ -1983,11 +2104,10 @@ TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
 }
 
 TEST(ResolveMad, RejectsUnfrozenVariants) {
-  for (const auto source : {"mad.u32 %r0, %r1, %r2, %r3;",
-                            "mad.hi.u32 %r0, %r1, %r2, %r3;",
-                            "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
-                            "mad.rz.f32 %f0, %f1, %f2, %f3;",
-                            "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
+  for (const auto source :
+       {"mad.u32 %r0, %r1, %r2, %r3;", "mad.hi.u32 %r0, %r1, %r2, %r3;",
+        "mad.lo.sat.s32 %r0, %r1, %r2, %r3;", "mad.rz.f32 %f0, %f1, %f2, %f3;",
+        "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -2006,8 +2126,7 @@ TEST(ResolveFma, SelectsCompleteFmaVariantFamily) {
                  Fma::VariantType::RnF32);
   expect_variant("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;",
                  Fma::VariantType::DirectedF32);
-  expect_variant("fma.rn.f64 %d0, %d1, %d2, %d3;",
-                 Fma::VariantType::RnF64);
+  expect_variant("fma.rn.f64 %d0, %d1, %d2, %d3;", Fma::VariantType::RnF64);
   expect_variant("fma.rp.f64 %d0, %d1, %d2, %d3;",
                  Fma::VariantType::DirectedF64);
   expect_variant("fma.rm.ftz.f32x2 %b0, %b1, %b2, %b3;",
@@ -2024,8 +2143,7 @@ TEST(ResolveFma, SelectsCompleteFmaVariantFamily) {
                  Fma::VariantType::HalfOobRelu);
   expect_variant("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;",
                  Fma::VariantType::Bf16);
-  expect_variant("fma.rn.bf16x2 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::Bf16x2);
+  expect_variant("fma.rn.bf16x2 %b0, %b1, %b2, %b3;", Fma::VariantType::Bf16x2);
   expect_variant("fma.rn.oob.bf16 %b0, %b1, %b2, %b3;",
                  Fma::VariantType::Bf16Oob);
   expect_variant("fma.rn.oob.relu.bf16x2 %b0, %b1, %b2, %b3;",
@@ -2069,13 +2187,12 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
   }
 
   for (const auto type : half_types) {
-    const std::string_view registers = type == "f16" ? "%h0, %h1, %h2, %h3"
-                                                       : "%b0, %b1, %b2, %b3";
+    const std::string_view registers =
+        type == "f16" ? "%h0, %h1, %h2, %h3" : "%b0, %b1, %b2, %b3";
     for (const auto ftz : optional_flags) {
       for (const auto sat : saturation_flags) {
-        expect_resolved("fma.rn" + std::string(ftz) + std::string(sat) +
-                        "." + std::string(type) + " " +
-                        std::string(registers) + ";");
+        expect_resolved("fma.rn" + std::string(ftz) + std::string(sat) + "." +
+                        std::string(type) + " " + std::string(registers) + ";");
       }
       expect_resolved("fma.rn" + std::string(ftz) + ".relu." +
                       std::string(type) + " " + std::string(registers) + ";");
@@ -2090,16 +2207,16 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
 
   for (const auto type : bfloat_types) {
     for (const auto relu : relu_flags) {
-      expect_resolved("fma.rn" + std::string(relu) + "." +
-                      std::string(type) + " %b0, %b1, %b2, %b3;");
+      expect_resolved("fma.rn" + std::string(relu) + "." + std::string(type) +
+                      " %b0, %b1, %b2, %b3;");
       expect_resolved("fma.rn.oob" + std::string(relu) + "." +
                       std::string(type) + " %b0, %b1, %b2, %b3;");
     }
   }
 
   for (const auto input_type : mixed_input_types) {
-    const std::string_view inputs = input_type == "f16" ? "%h1, %h2"
-                                                         : "%b1, %b2";
+    const std::string_view inputs =
+        input_type == "f16" ? "%h1, %h2" : "%b1, %b2";
     for (const auto rounding : roundings) {
       for (const auto sat : saturation_flags) {
         expect_resolved("fma." + std::string(rounding) + std::string(sat) +
@@ -2113,8 +2230,8 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
 }
 
 TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
-  const auto directed = resolve<Fma>(
-      parse_instruction("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
+  const auto directed =
+      resolve<Fma>(parse_instruction("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(directed.has_value()) << directed.error().message;
   const auto* directed_f32 = std::get_if<Fma::DirectedF32>(&directed->variant);
   ASSERT_NE(directed_f32, nullptr);
@@ -2132,8 +2249,8 @@ TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
   EXPECT_TRUE(Fma::HalfRelu::relu);
   EXPECT_EQ(relu->type.value, ScalarType::F16x2);
 
-  const auto oob = resolve<Fma>(
-      parse_instruction("fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;"));
+  const auto oob =
+      resolve<Fma>(parse_instruction("fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;"));
   ASSERT_TRUE(oob.has_value()) << oob.error().message;
   const auto* half_oob = std::get_if<Fma::HalfOob>(&oob->variant);
   ASSERT_NE(half_oob, nullptr);
@@ -2141,8 +2258,8 @@ TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
   EXPECT_TRUE(half_oob->saturate.value);
   EXPECT_EQ(half_oob->type.value, ScalarType::F16);
 
-  const auto bf16 = resolve<Fma>(
-      parse_instruction("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;"));
+  const auto bf16 =
+      resolve<Fma>(parse_instruction("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;"));
   ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
   const auto* bfloat = std::get_if<Fma::Bf16>(&bf16->variant);
   ASSERT_NE(bfloat, nullptr);
@@ -2185,8 +2302,8 @@ TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
   EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src3.value).type,
             ScalarType::F64);
 
-  const auto widened = resolve<Fma>(parse_instruction(
-      "fma.rn.f64 %d0, 0f00000001, 0f80000000, 0f7f800000;"));
+  const auto widened = resolve<Fma>(
+      parse_instruction("fma.rn.f64 %d0, 0f00000001, 0f80000000, 0f7f800000;"));
   ASSERT_TRUE(widened.has_value()) << widened.error().message;
   const auto* widened_variant = std::get_if<Fma::RnF64>(&widened->variant);
   ASSERT_NE(widened_variant, nullptr);
@@ -2211,8 +2328,8 @@ TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
 }
 
 TEST(ResolveFma, NarrowsFloatingLiteralsForSinglePrecisionAccumulators) {
-  const auto standard = resolve<Fma>(parse_instruction(
-      "fma.rn.f32 %f0, 1e300, -1e300, 0d7fefffffffffffff;"));
+  const auto standard = resolve<Fma>(
+      parse_instruction("fma.rn.f32 %f0, 1e300, -1e300, 0d7fefffffffffffff;"));
   ASSERT_TRUE(standard.has_value()) << standard.error().message;
   const auto* standard_variant = std::get_if<Fma::RnF32>(&standard->variant);
   ASSERT_NE(standard_variant, nullptr);
@@ -2223,8 +2340,8 @@ TEST(ResolveFma, NarrowsFloatingLiteralsForSinglePrecisionAccumulators) {
   EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src3.value).bits,
             0x7f800000U);
 
-  const auto mixed = resolve<Fma>(parse_instruction(
-      "fma.rn.f32.f16 %f0, %h1, %h2, -1e300;"));
+  const auto mixed =
+      resolve<Fma>(parse_instruction("fma.rn.f32.f16 %f0, %h1, %h2, -1e300;"));
   ASSERT_TRUE(mixed.has_value()) << mixed.error().message;
   const auto* mixed_variant = std::get_if<Fma::MixedF32F16>(&mixed->variant);
   ASSERT_NE(mixed_variant, nullptr);
@@ -2279,15 +2396,13 @@ TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
   ASSERT_NE(std::get_if<Div::S32>(&s32->variant), nullptr);
   EXPECT_EQ(Div::S32::type, ScalarType::S32);
 
-  const auto f32 =
-      resolve<Div>(parse_instruction("div.rn.f32 %f0, %f1, %f2;"));
+  const auto f32 = resolve<Div>(parse_instruction("div.rn.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
   ASSERT_NE(std::get_if<Div::RnF32>(&f32->variant), nullptr);
   EXPECT_EQ(Div::RnF32::rounding, RoundingMode::Rn);
   EXPECT_EQ(Div::RnF32::type, ScalarType::F32);
 
-  const auto f64 =
-      resolve<Div>(parse_instruction("div.rn.f64 %d0, %d1, %d2;"));
+  const auto f64 = resolve<Div>(parse_instruction("div.rn.f64 %d0, %d1, %d2;"));
   ASSERT_TRUE(f64.has_value()) << f64.error().message;
   ASSERT_NE(std::get_if<Div::RnF64>(&f64->variant), nullptr);
   EXPECT_EQ(Div::RnF64::rounding, RoundingMode::Rn);
@@ -2295,11 +2410,10 @@ TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
 }
 
 TEST(ResolveDiv, RejectsUnfrozenVariants) {
-  for (const auto source : {"div.rz.f32 %f0, %f1, %f2;",
-                            "div.approx.f32 %f0, %f1, %f2;",
-                            "div.full.f64 %d0, %d1, %d2;",
-                            "div.rn.f16 %h0, %h1, %h2;",
-                            "div.sat.u32 %r0, %r1, %r2;"}) {
+  for (const auto source :
+       {"div.rz.f32 %f0, %f1, %f2;", "div.approx.f32 %f0, %f1, %f2;",
+        "div.full.f64 %d0, %d1, %d2;", "div.rn.f16 %h0, %h1, %h2;",
+        "div.sat.u32 %r0, %r1, %r2;"}) {
     const auto selected = selectVariant<Div>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -2312,7 +2426,8 @@ TEST(ResolveRem, SelectsFrozenVariantsAndAcceptsZeroDivisor) {
   const auto* signed_rem = std::get_if<Rem::S32>(&s32->variant);
   ASSERT_NE(signed_rem, nullptr);
   EXPECT_EQ(Rem::S32::type, ScalarType::S32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(signed_rem->src2.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(signed_rem->src2.value));
 
   const auto u32 = resolve<Rem>(parse_instruction("rem.u32 %r0, %r1, %r2;"));
   ASSERT_TRUE(u32.has_value()) << u32.error().message;
@@ -2335,17 +2450,16 @@ TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
 }
 
 TEST(ResolveMin, RejectsUnfrozenVariants) {
-  for (const auto source : {"min.relu.s32 %r0, %r1, %r2;",
-                            "min.f32 %f0, %f1, %f2;",
-                            "min.ftz.f32 %f0, %f1, %f2;",
-                            "min.xorsign.abs.f32 %f0, %f1, %f2;",
-                            "min.abs.f32 %f0, %f1, %f2;",
-                            "min.nan.f32 %f0, %f1, %f2;"}) {
+  for (const auto source :
+       {"min.relu.s32 %r0, %r1, %r2;", "min.f32 %f0, %f1, %f2;",
+        "min.ftz.f32 %f0, %f1, %f2;", "min.xorsign.abs.f32 %f0, %f1, %f2;",
+        "min.abs.f32 %f0, %f1, %f2;", "min.nan.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Min>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(
-      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
+      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2, %f3;"))
+          .has_value());
 }
 
 TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
@@ -2363,17 +2477,16 @@ TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
 }
 
 TEST(ResolveMax, RejectsUnfrozenVariants) {
-  for (const auto source : {"max.relu.s32 %r0, %r1, %r2;",
-                            "max.f32 %f0, %f1, %f2;",
-                            "max.ftz.f32 %f0, %f1, %f2;",
-                            "max.xorsign.abs.f32 %f0, %f1, %f2;",
-                            "max.abs.f32 %f0, %f1, %f2;",
-                            "max.nan.f32 %f0, %f1, %f2;"}) {
+  for (const auto source :
+       {"max.relu.s32 %r0, %r1, %r2;", "max.f32 %f0, %f1, %f2;",
+        "max.ftz.f32 %f0, %f1, %f2;", "max.xorsign.abs.f32 %f0, %f1, %f2;",
+        "max.abs.f32 %f0, %f1, %f2;", "max.nan.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Max>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(
-      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2, %f3;")).has_value());
+      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2, %f3;"))
+          .has_value());
 }
 
 TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
@@ -2389,13 +2502,13 @@ TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
 }
 
 TEST(ResolveAbs, RejectsUnfrozenAndInvalidForms) {
-  for (const auto source : {"abs.sat.s32 %r0, %r1;",
-                            "abs.ftz.f32 %f0, %f1;"}) {
+  for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Abs>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.s32 %r0;")).has_value());
-  EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
+  EXPECT_FALSE(
+      resolve<Abs>(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
 }
 
 TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
@@ -2416,8 +2529,7 @@ TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
 }
 
 TEST(ResolveNeg, RejectsUnfrozenForms) {
-  for (const auto source : {"neg.ftz.f32 %f0, %f1;",
-                            "neg.bf16x2 %r0, %r1;",
+  for (const auto source : {"neg.ftz.f32 %f0, %f1;", "neg.bf16x2 %r0, %r1;",
                             "neg.sat.s32 %r0, %r1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Neg>(parse_instruction(source)).has_value());
@@ -2425,9 +2537,9 @@ TEST(ResolveNeg, RejectsUnfrozenForms) {
 }
 
 TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
-  for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 0x1a;",
-                            "lop3.b32 %r0, %r1, %r2, %r3, 0;",
-                            "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
+  for (const auto source :
+       {"lop3.b32 %r0, %r1, %r2, %r3, 0x1a;", "lop3.b32 %r0, %r1, %r2, %r3, 0;",
+        "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Lop3>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -2437,39 +2549,42 @@ TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
 }
 
 TEST(ResolveLop3, RejectsUnfrozenPredicateExtensionAndNonImmediateLut) {
-  EXPECT_FALSE(selectVariant<Lop3>(parse_instruction(
-      "lop3.and.b32 %r0, %r1, %r2, %r3, 0x1a, %p0;")).has_value());
-  EXPECT_FALSE(resolve<Lop3>(parse_instruction(
-      "lop3.b32 %r0, %r1, %r2, %r3, %r4;")).has_value());
+  EXPECT_FALSE(
+      selectVariant<Lop3>(
+          parse_instruction("lop3.and.b32 %r0, %r1, %r2, %r3, 0x1a, %p0;"))
+          .has_value());
+  EXPECT_FALSE(
+      resolve<Lop3>(parse_instruction("lop3.b32 %r0, %r1, %r2, %r3, %r4;"))
+          .has_value());
 }
 
 TEST(ResolveBfe, SelectsFrozenU32VariantAndRejectsNonImmediateBounds) {
-  for (const auto source : {"bfe.u32 %r0, %r1, 0, 8;",
-                            "bfe.u32 %r0, %r1, 255, 255;"}) {
+  for (const auto source :
+       {"bfe.u32 %r0, %r1, 0, 8;", "bfe.u32 %r0, %r1, 255, 255;"}) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Bfe>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     ASSERT_NE(std::get_if<Bfe::U32>(&resolved->variant), nullptr);
     EXPECT_EQ(Bfe::U32::type, ScalarType::U32);
   }
-  for (const auto source : {"bfe.u32 %r0, %r1, %r2, 8;",
-                            "bfe.u32 %r0, %r1, 8, %r2;"}) {
+  for (const auto source :
+       {"bfe.u32 %r0, %r1, %r2, 8;", "bfe.u32 %r0, %r1, 8, %r2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Bfe>(parse_instruction(source)).has_value());
   }
 }
 
 TEST(ResolveBfi, SelectsFrozenB32VariantAndRejectsNonImmediateBounds) {
-  for (const auto source : {"bfi.b32 %r0, %r1, %r2, 0, 8;",
-                            "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
+  for (const auto source :
+       {"bfi.b32 %r0, %r1, %r2, 0, 8;", "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Bfi>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     ASSERT_NE(std::get_if<Bfi::B32>(&resolved->variant), nullptr);
     EXPECT_EQ(Bfi::B32::type, ScalarType::B32);
   }
-  for (const auto source : {"bfi.b32 %r0, %r1, %r2, %r3, 8;",
-                            "bfi.b32 %r0, %r1, %r2, 8, %r3;"}) {
+  for (const auto source :
+       {"bfi.b32 %r0, %r1, %r2, %r3, 8;", "bfi.b32 %r0, %r1, %r2, 8, %r3;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Bfi>(parse_instruction(source)).has_value());
   }
@@ -2480,14 +2595,17 @@ TEST(ResolveBrev, SelectsFrozenB32VariantAndRejectsB64) {
   ASSERT_TRUE(brev.has_value()) << brev.error().message;
   ASSERT_NE(std::get_if<Brev::B32>(&brev->variant), nullptr);
   EXPECT_EQ(Brev::B32::type, ScalarType::B32);
-  EXPECT_FALSE(selectVariant<Brev>(parse_instruction("brev.b64 %rd0, %rd1;")).has_value());
+  EXPECT_FALSE(selectVariant<Brev>(parse_instruction("brev.b64 %rd0, %rd1;"))
+                   .has_value());
 }
 
 TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
-  const auto left = resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
+  const auto left =
+      resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;
   ASSERT_NE(std::get_if<Shf::LClampB32>(&left->variant), nullptr);
-  const auto right = resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
+  const auto right =
+      resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(right.has_value()) << right.error().message;
   ASSERT_NE(std::get_if<Shf::RWrapB32>(&right->variant), nullptr);
 }
@@ -2501,15 +2619,24 @@ TEST(ResolveShf, RejectsUnfrozenDirectionAndModeVariants) {
 }
 
 TEST(ResolvePrmt, SelectsFrozenGenericAndF4eVariants) {
-  for (const auto source : {"prmt.b32 %r0, %r1, %r2, 0x5410;", "prmt.b32 %r0, %r1, %r2, 0;", "prmt.b32 %r0, %r1, %r2, 65535;"})
+  for (const auto source :
+       {"prmt.b32 %r0, %r1, %r2, 0x5410;", "prmt.b32 %r0, %r1, %r2, 0;",
+        "prmt.b32 %r0, %r1, %r2, 65535;"})
     EXPECT_TRUE(resolve<Prmt>(parse_instruction(source)).has_value()) << source;
-  EXPECT_TRUE(resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, %r3;")).has_value());
+  EXPECT_TRUE(
+      resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, %r3;"))
+          .has_value());
 }
 
 TEST(ResolvePrmt, RejectsWrongSelectorFormsAndModes) {
-  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32 %r0, %r1, %r2, %r3;")).has_value());
-  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, 0;")).has_value());
-  EXPECT_FALSE(selectVariant<Prmt>(parse_instruction("prmt.b32.b4e %r0, %r1, %r2, %r3;")).has_value());
+  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32 %r0, %r1, %r2, %r3;"))
+                   .has_value());
+  EXPECT_FALSE(
+      resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, 0;"))
+          .has_value());
+  EXPECT_FALSE(
+      selectVariant<Prmt>(parse_instruction("prmt.b32.b4e %r0, %r1, %r2, %r3;"))
+          .has_value());
 }
 
 TEST(ResolvePopc, SelectsFrozenB32VariantAndRejectsB64) {
@@ -2517,7 +2644,8 @@ TEST(ResolvePopc, SelectsFrozenB32VariantAndRejectsB64) {
   ASSERT_TRUE(popc.has_value()) << popc.error().message;
   ASSERT_NE(std::get_if<Popc::B32>(&popc->variant), nullptr);
   EXPECT_EQ(Popc::B32::type, ScalarType::B32);
-  EXPECT_FALSE(selectVariant<Popc>(parse_instruction("popc.b64 %rd0, %rd1;")).has_value());
+  EXPECT_FALSE(selectVariant<Popc>(parse_instruction("popc.b64 %rd0, %rd1;"))
+                   .has_value());
 }
 
 TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
@@ -2527,11 +2655,13 @@ TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
   const auto b64 = resolve<Clz>(parse_instruction("clz.b64 %r0, %rd1;"));
   ASSERT_TRUE(b64.has_value()) << b64.error().message;
   EXPECT_NE(std::get_if<Clz::B64>(&b64->variant), nullptr);
-  EXPECT_FALSE(selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
+  EXPECT_FALSE(
+      selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
 }
 
 TEST(ResolveBfind, SelectsFrozenShiftamtU32AndRejectsPlainForm) {
-  const auto bfind = resolve<Bfind>(parse_instruction("bfind.shiftamt.u32 %r0, %r1;"));
+  const auto bfind =
+      resolve<Bfind>(parse_instruction("bfind.shiftamt.u32 %r0, %r1;"));
   ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
   ASSERT_NE(std::get_if<Bfind::ShiftamtU32>(&bfind->variant), nullptr);
   EXPECT_TRUE(Bfind::ShiftamtU32::shiftamt);
@@ -2548,10 +2678,9 @@ TEST(ResolveIsspacep, SelectsFrozenGlobalU64AndRejectsOtherForms) {
   EXPECT_EQ(Isspacep::GlobalU64::state_space, MemoryStateSpace::Global);
   EXPECT_EQ(global->src.value.register_class, ResolvedRegisterClass::General);
 
-  for (const auto source : {"isspacep %p0, %rd0;",
-                            "isspacep.shared %p0, %rd0;",
-                            "isspacep.global %r0, %rd0;",
-                            "isspacep.global %p0, [%rd0];"}) {
+  for (const auto source :
+       {"isspacep %p0, %rd0;", "isspacep.shared %p0, %rd0;",
+        "isspacep.global %r0, %rd0;", "isspacep.global %p0, [%rd0];"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Isspacep>(parse_instruction(source)).has_value());
   }
@@ -2579,7 +2708,8 @@ TEST(ResolveCvt, SelectsFrozenRnF32F64Variant) {
 }
 
 TEST(ResolveCvt, SelectsFrozenMixedVariants) {
-  const auto to_float = resolve<Cvt>(parse_instruction("cvt.rn.f32.u32 %f0, %r0;"));
+  const auto to_float =
+      resolve<Cvt>(parse_instruction("cvt.rn.f32.u32 %f0, %r0;"));
   ASSERT_TRUE(to_float.has_value()) << to_float.error().message;
   EXPECT_NE(std::get_if<Cvt::RnF32U32>(&to_float->variant), nullptr);
 
@@ -2594,7 +2724,8 @@ TEST(ResolveCvt, SelectsFrozenMixedVariants) {
 }
 
 TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
-  const auto scalar = resolve<Cvt>(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
+  const auto scalar =
+      resolve<Cvt>(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
   ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
   ASSERT_NE(std::get_if<Cvt::RnF32S32>(&scalar->variant), nullptr);
 
@@ -2608,14 +2739,14 @@ TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
 }
 
 TEST(ResolveCvt, RejectsM12UnfrozenAndPackedTwoOperandForms) {
-  for (const auto source : {"cvt.rz.f32.s32 %f0, %r0;",
-                            "cvt.rn.f32.s16 %f0, %r0;",
-                            "cvt.rz.f16x2.f32 %r0, %f0, %f1;"}) {
+  for (const auto source :
+       {"cvt.rz.f32.s32 %f0, %r0;", "cvt.rn.f32.s16 %f0, %r0;",
+        "cvt.rz.f16x2.f32 %r0, %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(
-      resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;")).has_value());
+  EXPECT_FALSE(resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;"))
+                   .has_value());
 }
 
 TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
@@ -2640,9 +2771,9 @@ TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(resolve<Cvt>(
-                   parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2;"))
-                   .has_value());
+  EXPECT_FALSE(
+      resolve<Cvt>(parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2;"))
+          .has_value());
 }
 
 TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
@@ -2652,8 +2783,7 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   ASSERT_NE(std::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant),
             nullptr);
-  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::state_space,
-            MemoryStateSpace::Global);
+  EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::state_space, MemoryStateSpace::Global);
   EXPECT_TRUE(Ld::GlobalNcL1NoAllocateU32::nc);
   EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::eviction_priority,
             EvictionPriority::NoAllocate);
@@ -2676,9 +2806,9 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
 }
 
 TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
-  for (const auto source : {"cvt.f32.f64 %f0, %fd0;",
-                            "cvt.rz.f32.f64 %f0, %fd0;",
-                            "cvt.rn.f64.f32 %fd0, %f0;"}) {
+  for (const auto source :
+       {"cvt.f32.f64 %f0, %fd0;", "cvt.rz.f32.f64 %f0, %fd0;",
+        "cvt.rn.f64.f32 %fd0, %f0;"}) {
     const auto selected = selectVariant<Cvt>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -2686,9 +2816,9 @@ TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
 }
 
 TEST(ResolveCvt, RejectsUnfrozenMixedVariants) {
-  for (const auto source : {"cvt.rz.f32.u32 %f0, %r0;",
-                            "cvt.rn.u32.f32 %r0, %f0;",
-                            "cvt.rzi.f32.u32 %f0, %r0;"}) {
+  for (const auto source :
+       {"cvt.rz.f32.u32 %f0, %r0;", "cvt.rn.u32.f32 %r0, %f0;",
+        "cvt.rzi.f32.u32 %f0, %r0;"}) {
     const auto selected = selectVariant<Cvt>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
@@ -2791,7 +2921,8 @@ TEST(ResolveInstruction, RejectsUnknownOpcode) {
 }
 
 TEST(ResolveInstruction, RejectsMalformedMetadataCallWithGenericLayoutError) {
-  const auto resolved = resolveInstruction(indirect_metadata_instruction("metadata"));
+  const auto resolved =
+      resolveInstruction(indirect_metadata_instruction("metadata"));
 
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().message,
@@ -2847,7 +2978,8 @@ TEST(ResolveLoadStore, PreservesMemoryConsistencyDefaultsAndExplicitWeak) {
   const auto omitted_ast = parse_instruction("ld.u32 %r0, [%rd0];");
   const auto omitted = resolve<Ld>(omitted_ast);
   ASSERT_TRUE(omitted.has_value()) << omitted.error().message;
-  const auto* omitted_variant = std::get_if<Ld::GenericScalar>(&omitted->variant);
+  const auto* omitted_variant =
+      std::get_if<Ld::GenericScalar>(&omitted->variant);
   ASSERT_NE(omitted_variant, nullptr);
   EXPECT_EQ(omitted_variant->semantics.value, MemoryConsistency::Omitted);
   EXPECT_TRUE(omitted_variant->semantics.locs.empty());
@@ -2864,12 +2996,12 @@ TEST(ResolveLoadStore, PreservesMemoryConsistencyDefaultsAndExplicitWeak) {
   EXPECT_EQ(weak_variant->semantics.locs.front(),
             weak_ast.modifiers.front().syntax.range);
 
-  const auto acquire = selectVariant<Ld>(
-      parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
+  const auto acquire =
+      selectVariant<Ld>(parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
   ASSERT_TRUE(acquire.has_value()) << acquire.error().message;
   EXPECT_EQ(*acquire, Ld::VariantType::GenericScalar);
-  const auto release = selectVariant<St>(
-      parse_instruction("st.release.sys.u32 [%rd0], %r0;"));
+  const auto release =
+      selectVariant<St>(parse_instruction("st.release.sys.u32 [%rd0], %r0;"));
   ASSERT_TRUE(release.has_value()) << release.error().message;
   EXPECT_EQ(*release, St::VariantType::GenericScalar);
 }
@@ -2879,32 +3011,33 @@ TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
       .target = {.ptx_version = {9, 2}, .sm_version = 90},
       .instruction_range = SourceRange{},
   };
-  const auto missing_scope = resolve<Ld>(
-      parse_instruction("ld.relaxed.u32 %r0, [%rd0];"));
+  const auto missing_scope =
+      resolve<Ld>(parse_instruction("ld.relaxed.u32 %r0, [%rd0];"));
   ASSERT_TRUE(missing_scope.has_value()) << missing_scope.error().message;
   const auto missing_scope_check = checker::check(*missing_scope, context);
   ASSERT_FALSE(missing_scope_check.has_value());
   EXPECT_EQ(missing_scope_check.error().back().kind,
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
-  const auto conflicting_cache = resolve<Ld>(
-      parse_instruction("ld.volatile.ca.u32 %r0, [%rd0];"));
-  ASSERT_TRUE(conflicting_cache.has_value()) << conflicting_cache.error().message;
+  const auto conflicting_cache =
+      resolve<Ld>(parse_instruction("ld.volatile.ca.u32 %r0, [%rd0];"));
+  ASSERT_TRUE(conflicting_cache.has_value())
+      << conflicting_cache.error().message;
   const auto cache_check = checker::check(*conflicting_cache, context);
   ASSERT_FALSE(cache_check.has_value());
   EXPECT_EQ(cache_check.error().back().kind,
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
-  const auto relaxed_local = resolve<Ld>(
-      parse_instruction("ld.local.relaxed.cta.u32 %r0, [%rd0];"));
+  const auto relaxed_local =
+      resolve<Ld>(parse_instruction("ld.local.relaxed.cta.u32 %r0, [%rd0];"));
   ASSERT_TRUE(relaxed_local.has_value()) << relaxed_local.error().message;
   const auto relaxed_local_check = checker::check(*relaxed_local, context);
   ASSERT_FALSE(relaxed_local_check.has_value());
   EXPECT_EQ(relaxed_local_check.error().back().kind,
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
-  const auto canonical_relaxed_local = resolve<Ld>(
-      parse_instruction("ld.relaxed.cta.local.u32 %r0, [%rd0];"));
+  const auto canonical_relaxed_local =
+      resolve<Ld>(parse_instruction("ld.relaxed.cta.local.u32 %r0, [%rd0];"));
   ASSERT_TRUE(canonical_relaxed_local.has_value())
       << canonical_relaxed_local.error().message;
   const auto canonical_relaxed_local_check =
@@ -2929,8 +3062,8 @@ TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
   EXPECT_EQ(canonical_mmio_check.error().back().kind,
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
-  const auto unknown_generic = resolve<Ld>(
-      parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
+  const auto unknown_generic =
+      resolve<Ld>(parse_instruction("ld.acquire.gpu.u32 %r0, [%rd0];"));
   ASSERT_TRUE(unknown_generic.has_value()) << unknown_generic.error().message;
   EXPECT_TRUE(checker::check(*unknown_generic, context).has_value());
 }
@@ -2982,15 +3115,19 @@ TEST(CollectActualModifiersAdd, RejectsOutOfOrderMixedSlots) {
   const auto actual = collect_actual_modifiers(ast, *mixed);
 
   ASSERT_FALSE(actual.has_value());
-  EXPECT_EQ(actual.error().message,
-            "Modifier combination does not match instruction variant 'MixedF32'.");
+  EXPECT_EQ(
+      actual.error().message,
+      "Modifier combination does not match instruction variant 'MixedF32'.");
 }
 
 TEST(SelectVariantMixedPrecision, RejectsUnsupportedReorderingAndDuplicates) {
   for (const std::string_view opcode : {"add", "sub"}) {
     for (const std::string_view suffix : {
-             ".rz.f32.sat.bf16", ".rz.sat.bf16.f32", ".sat.sat.f32.bf16",
-             ".rn.rz.f32.bf16", ".sat.f32.f16.sat",
+             ".rz.f32.sat.bf16",
+             ".rz.sat.bf16.f32",
+             ".sat.sat.f32.bf16",
+             ".rn.rz.f32.bf16",
+             ".sat.f32.f16.sat",
          }) {
       const std::string source =
           std::string(opcode) + std::string(suffix) + " %f0, %h1, %f2;";
@@ -3016,7 +3153,9 @@ TEST(CollectActualModifiers, BindsRepeatedSpellingsToOrderedSlots) {
   }};
   const std::array<check_end::SyntaxOperandLayoutDescriptor, 0> layouts{};
   const std::array<check_end::SyntaxVariantDescriptor, 1> variants = {{
-      {.variant_name = "Repeated", .modifiers = modifiers, .operand_layouts = layouts},
+      {.variant_name = "Repeated",
+       .modifiers = modifiers,
+       .operand_layouts = layouts},
   }};
   const check_end::SyntaxInstructionDescriptor instruction{
       .Opcode_name = "sample",
@@ -3360,20 +3499,20 @@ TEST(ResolveImmediateLiteral, ConvertsEvaluatedIntegerSourcesAtTheUseWidth) {
       << negative_unsigned.error().message;
   EXPECT_EQ(negative_unsigned->bits, 0xffffU);
 
-  const auto narrowed = resolve_immediate_literal(parse_immediate("65536"),
-                                                  ScalarType::U16);
+  const auto narrowed =
+      resolve_immediate_literal(parse_immediate("65536"), ScalarType::U16);
   ASSERT_TRUE(narrowed.has_value()) << narrowed.error().message;
   EXPECT_EQ(narrowed->bits, 0U);
   EXPECT_EQ(narrowed->integer_source_bits, 65536U);
 
-  const auto signed_word = resolve_immediate_literal(
-      parse_immediate("0xffffffff"), ScalarType::S32);
+  const auto signed_word =
+      resolve_immediate_literal(parse_immediate("0xffffffff"), ScalarType::S32);
   ASSERT_TRUE(signed_word.has_value()) << signed_word.error().message;
   EXPECT_EQ(signed_word->bits, 0xffffffffU);
   EXPECT_EQ(signed_word->integer_source_bits, 0xffffffffU);
 
-  const auto unsigned_word = resolve_immediate_literal(
-      parse_immediate("4294967296"), ScalarType::U32);
+  const auto unsigned_word =
+      resolve_immediate_literal(parse_immediate("4294967296"), ScalarType::U32);
   ASSERT_TRUE(unsigned_word.has_value()) << unsigned_word.error().message;
   EXPECT_EQ(unsigned_word->bits, 0U);
   EXPECT_EQ(unsigned_word->integer_source_bits, 4294967296U);
@@ -3403,14 +3542,14 @@ TEST(ResolveImmediateLiteral,
     EXPECT_EQ(resolved->type, ScalarType::U8);
   }
 
-  const auto positive = resolve_immediate_literal(parse_immediate("+010"),
-                                                  ScalarType::S8);
+  const auto positive =
+      resolve_immediate_literal(parse_immediate("+010"), ScalarType::S8);
   ASSERT_TRUE(positive.has_value()) << positive.error().message;
   EXPECT_EQ(positive->bits, 8U);
   EXPECT_FALSE(positive->is_negative);
 
-  const auto negative = resolve_immediate_literal(parse_immediate("-010"),
-                                                  ScalarType::S8);
+  const auto negative =
+      resolve_immediate_literal(parse_immediate("-010"), ScalarType::S8);
   ASSERT_TRUE(negative.has_value()) << negative.error().message;
   EXPECT_EQ(negative->bits, 0xf8U);
   EXPECT_TRUE(negative->is_negative);
@@ -3466,7 +3605,8 @@ TEST(ResolveImmediateLiteral, NormalizesIntegerMinusZeroAndUnsignedNegation) {
 
   const auto unsigned_negation = resolve_immediate_literal(
       parse_immediate("-18446744073709551615U"), ScalarType::U32);
-  ASSERT_TRUE(unsigned_negation.has_value()) << unsigned_negation.error().message;
+  ASSERT_TRUE(unsigned_negation.has_value())
+      << unsigned_negation.error().message;
   EXPECT_FALSE(unsigned_negation->is_negative);
   EXPECT_EQ(unsigned_negation->integer_source_bits, 1U);
   EXPECT_EQ(unsigned_negation->bits, 1U);
@@ -3589,7 +3729,8 @@ TEST(ResolveImmediateLiteral, SupportsFloatingLexicalForms) {
             "'U32'.");
 }
 
-TEST(ResolveImmediateLiteral, NarrowsAtIeeeBoundariesAndPreservesExactPayloads) {
+TEST(ResolveImmediateLiteral,
+     NarrowsAtIeeeBoundariesAndPreservesExactPayloads) {
   constexpr std::array<std::pair<std::string_view, uint64_t>, 15> cases{{
       {"0d0000000000000000", 0x00000000},
       {"0d8000000000000000", 0x80000000},
@@ -3615,12 +3756,12 @@ TEST(ResolveImmediateLiteral, NarrowsAtIeeeBoundariesAndPreservesExactPayloads) 
     EXPECT_EQ(converted->bits, expected);
     EXPECT_EQ(converted->type, ScalarType::F32);
   }
-  const auto unchanged_nan = resolve_immediate_literal(
-      parse_immediate("0f7f800001"), ScalarType::F32);
+  const auto unchanged_nan =
+      resolve_immediate_literal(parse_immediate("0f7f800001"), ScalarType::F32);
   ASSERT_TRUE(unchanged_nan.has_value());
   EXPECT_EQ(unchanged_nan->bits, 0x7f800001);
-  const auto widened_nan = resolve_immediate_literal(
-      parse_immediate("0f7f800001"), ScalarType::F64);
+  const auto widened_nan =
+      resolve_immediate_literal(parse_immediate("0f7f800001"), ScalarType::F64);
   ASSERT_TRUE(widened_nan.has_value());
   EXPECT_EQ(widened_nan->bits, 0x7ff8000020000000ULL);
 }
@@ -3650,10 +3791,9 @@ TEST(ResolveCallLiteral, TypesAgainstTheFormalAndPreservesSourceRange) {
                           .kind = typed_immediate.kind},
       typed_immediate.syntax.range, u16);
   ASSERT_TRUE(typed.has_value()) << typed.error().message;
-  EXPECT_EQ(typed->value,
-            (ResolvedImmediate{.bits = 42,
-                               .type = ScalarType::U16,
-                               .integer_source_bits = 42}));
+  EXPECT_EQ(typed->value, (ResolvedImmediate{.bits = 42,
+                                             .type = ScalarType::U16,
+                                             .integer_source_bits = 42}));
   EXPECT_EQ(typed->locs, std::vector{typed_immediate.syntax.range});
 
   const auto overflow_immediate = parse_immediate("65536");
@@ -3856,8 +3996,8 @@ TEST(ResolveFields, ResolvesComparisonOperatorModifier) {
   };
 
   const auto ast = parse_instruction("sample.lt;");
-  const auto fields = resolve_fields(ast, syntax_descriptor, resolved_descriptor,
-                                     "Comparison");
+  const auto fields =
+      resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Comparison");
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
   const auto* comparison = std::get_if<WithLocs<ComparisonOperator>>(
       &fields->modifiers.at("comparison"));

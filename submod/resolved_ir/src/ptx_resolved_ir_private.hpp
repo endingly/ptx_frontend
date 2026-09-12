@@ -45,7 +45,8 @@ const check_end::ResolvedFieldDescriptor& find_resolved_field_descriptor(
     const check_end::ResolvedVariantDescriptor& variant, std::string_view id);
 
 /** Return a field borrowed from layout; the layout must outlive use. */
-const check_end::ResolvedFieldDescriptor& find_resolved_operand_field_descriptor(
+const check_end::ResolvedFieldDescriptor&
+find_resolved_operand_field_descriptor(
     const check_end::ResolvedOperandLayoutDescriptor& layout,
     std::string_view id);
 

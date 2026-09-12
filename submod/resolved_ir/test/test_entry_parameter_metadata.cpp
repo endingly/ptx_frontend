@@ -97,8 +97,7 @@ TEST(ResolvedParameterDeclarations, RetainsGemmEntryInputsInSourceOrder) {
       ASSERT_TRUE(declaration.pointer);
       EXPECT_EQ(declaration.pointer->pointed_state_space,
                 call_argument_compatibility::PointedStateSpace::Global);
-      EXPECT_EQ(declaration.pointer->pointed_alignment,
-                index == 0 ? 32u : 16u);
+      EXPECT_EQ(declaration.pointer->pointed_alignment, index == 0 ? 32u : 16u);
     } else {
       EXPECT_FALSE(declaration.pointer);
     }
@@ -106,7 +105,8 @@ TEST(ResolvedParameterDeclarations, RetainsGemmEntryInputsInSourceOrder) {
 }
 
 /** Pointer defaults and all concrete target spaces survive contract lowering. */
-TEST(ResolvedParameterDeclarations, RetainsEntryPointerTargetSpacesAndDefaults) {
+TEST(ResolvedParameterDeclarations,
+     RetainsEntryPointerTargetSpacesAndDefaults) {
   const auto resolved = resolveSource(R"ptx(
 .entry pointers(
     .param .u64 raw_address,
@@ -137,8 +137,7 @@ TEST(ResolvedParameterDeclarations, RetainsEntryPointerTargetSpacesAndDefaults) 
     ASSERT_TRUE(declarations[index + 2].pointer);
     EXPECT_EQ(declarations[index + 2].pointer->pointed_state_space,
               spaces[index]);
-    EXPECT_EQ(declarations[index + 2].pointer->pointed_alignment,
-              4u << index);
+    EXPECT_EQ(declarations[index + 2].pointer->pointed_alignment, 4u << index);
     EXPECT_EQ(declarations[index + 2].alignment, 8u);
   }
   for (size_t index = 1; index < declarations.size(); ++index) {
@@ -161,8 +160,7 @@ TEST(ResolvedParameterDeclarations, RetainsEntryArrayShapesAndByteExtents) {
 )ptx");
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& declarations =
-      resolved->functions.front().parameter_declarations;
+  const auto& declarations = resolved->functions.front().parameter_declarations;
   ASSERT_EQ(declarations.size(), 4u);
   for (const auto& declaration : declarations)
     EXPECT_EQ(declaration.role, ParameterDeclarationRole::EntryInput);
@@ -255,8 +253,7 @@ TEST(ResolvedParameterDeclarations, RetainsAllRolesAndDeclarationProperties) {
   EXPECT_EQ(result.scalar_type, ScalarType::B16);
   EXPECT_EQ(result.alignment, 8u);
   EXPECT_TRUE(result.explicit_alignment);
-  EXPECT_EQ(result.array_extents,
-            (std::vector<std::optional<uint64_t>>{2u}));
+  EXPECT_EQ(result.array_extents, (std::vector<std::optional<uint64_t>>{2u}));
   EXPECT_EQ(result.byte_extent, 4u);
   EXPECT_EQ(input.role, Role::DeviceInput);
   EXPECT_EQ(input.scalar_type, ScalarType::U32);
@@ -300,20 +297,20 @@ TEST(ResolvedParameterDeclarations, RetainsAllRolesAndDeclarationProperties) {
 /** Every supported parameter element has a validated enum and natural byte size. */
 TEST(ResolvedParameterDeclarations, ClassifiesEverySupportedElementType) {
   const std::pair<std::string_view, base::ScalarType> types[] = {
-      {".s8", base::ScalarType::S8}, {".s16", base::ScalarType::S16},
-      {".s32", base::ScalarType::S32}, {".s64", base::ScalarType::S64},
-      {".u8", base::ScalarType::U8}, {".u16", base::ScalarType::U16},
-      {".u32", base::ScalarType::U32}, {".u64", base::ScalarType::U64},
-      {".b8", base::ScalarType::B8}, {".b16", base::ScalarType::B16},
-      {".b32", base::ScalarType::B32}, {".b64", base::ScalarType::B64},
+      {".s8", base::ScalarType::S8},     {".s16", base::ScalarType::S16},
+      {".s32", base::ScalarType::S32},   {".s64", base::ScalarType::S64},
+      {".u8", base::ScalarType::U8},     {".u16", base::ScalarType::U16},
+      {".u32", base::ScalarType::U32},   {".u64", base::ScalarType::U64},
+      {".b8", base::ScalarType::B8},     {".b16", base::ScalarType::B16},
+      {".b32", base::ScalarType::B32},   {".b64", base::ScalarType::B64},
       {".b128", base::ScalarType::B128}, {".f16", base::ScalarType::F16},
-      {".f32", base::ScalarType::F32}, {".f64", base::ScalarType::F64},
+      {".f32", base::ScalarType::F32},   {".f64", base::ScalarType::F64},
   };
   for (const auto& [spelling, type] : types) {
     SCOPED_TRACE(spelling);
-    const auto resolved = resolveSource(
-        ".version 9.3\n.target sm_80\n.entry k(.param " +
-        std::string(spelling) + " value) {}");
+    const auto resolved =
+        resolveSource(".version 9.3\n.target sm_80\n.entry k(.param " +
+                      std::string(spelling) + " value) {}");
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     const auto& declaration = resolved->functions[0].parameter_declarations[0];
     EXPECT_EQ(declaration.scalar_type, type);
@@ -367,8 +364,10 @@ TEST(ResolvedParameterDeclarations, PassesEntryPointerValuesToDeviceFunctions) {
 )ptx");
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_TRUE(resolved->functions[1].parameter_declarations[0].pointer);
-  EXPECT_EQ(resolved->functions[1].parameter_declarations[0]
-                .pointer->pointed_alignment, 16u);
+  EXPECT_EQ(resolved->functions[1]
+                .parameter_declarations[0]
+                .pointer->pointed_alignment,
+            16u);
 }
 
 /** Formal .param storage cannot substitute for a local call-argument object. */
@@ -434,28 +433,21 @@ TEST(ResolvedParameterDeclarations, RetainsParametersPerFunctionScope) {
       resolved->functions[2].parameter_declarations;
   const auto& helper_declaration =
       resolved->functions[3].parameter_declarations;
-  const auto& helper_definition =
-      resolved->functions[4].parameter_declarations;
+  const auto& helper_definition = resolved->functions[4].parameter_declarations;
   ASSERT_EQ(first_declarations.size(), 1u);
   ASSERT_EQ(second_declarations.size(), 1u);
   ASSERT_TRUE(empty_declarations.empty());
   ASSERT_EQ(helper_declaration.size(), 2u);
   ASSERT_EQ(helper_definition.size(), 2u);
   EXPECT_EQ(first_declarations[0].role, ParameterDeclarationRole::EntryInput);
-  EXPECT_EQ(second_declarations[0].role,
-            ParameterDeclarationRole::EntryInput);
-  EXPECT_EQ(helper_declaration[0].role,
-            ParameterDeclarationRole::DeviceReturn);
-  EXPECT_EQ(helper_declaration[1].role,
-            ParameterDeclarationRole::DeviceInput);
-  EXPECT_EQ(helper_definition[0].role,
-            ParameterDeclarationRole::DeviceReturn);
-  EXPECT_EQ(helper_definition[1].role,
-            ParameterDeclarationRole::DeviceInput);
-  const auto& first = resolved->symbols.symbol(
-      first_declarations[0].symbol_id);
-  const auto& second = resolved->symbols.symbol(
-      second_declarations[0].symbol_id);
+  EXPECT_EQ(second_declarations[0].role, ParameterDeclarationRole::EntryInput);
+  EXPECT_EQ(helper_declaration[0].role, ParameterDeclarationRole::DeviceReturn);
+  EXPECT_EQ(helper_declaration[1].role, ParameterDeclarationRole::DeviceInput);
+  EXPECT_EQ(helper_definition[0].role, ParameterDeclarationRole::DeviceReturn);
+  EXPECT_EQ(helper_definition[1].role, ParameterDeclarationRole::DeviceInput);
+  const auto& first = resolved->symbols.symbol(first_declarations[0].symbol_id);
+  const auto& second =
+      resolved->symbols.symbol(second_declarations[0].symbol_id);
   EXPECT_NE(first.id, second.id);
   EXPECT_NE(first.scope, second.scope);
   EXPECT_EQ(first.name, "input");

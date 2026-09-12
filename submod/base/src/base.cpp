@@ -73,4 +73,4 @@ bool scalar_types_compatible(ScalarType actual, ScalarType instruction,
   return is_fundamental_integer(actual) && is_fundamental_integer(instruction);
 }
 
-};  // namespace ptx_frontend
+};  // namespace ptx_frontend::base

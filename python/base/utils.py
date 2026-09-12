@@ -29,6 +29,7 @@ def generated_at_comment() -> str:
 
 def find_clang_format() -> Optional[str]:
     for name in (
+        "clang-format-21",
         "clang-format",
         "clang-format-15",
         "clang-format-14",

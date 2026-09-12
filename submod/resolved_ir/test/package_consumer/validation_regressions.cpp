@@ -62,7 +62,8 @@ int check_effective_alignment() {
     const std::string explicit_value = ".extern .global .align 4 .u32 g;\n";
     const std::string source =
         ".version 8.0\n.target sm_80\n.address_size 64\n" +
-        (explicit_first ? explicit_value + implicit : implicit + explicit_value) +
+        (explicit_first ? explicit_value + implicit
+                        : implicit + explicit_value) +
         ".entry k() { ret; }\n";
     ptx_frontend::PtxSyntaxParser parser(source);
     auto ast = parser.parseModule();
@@ -112,17 +113,18 @@ int check_owned_module_handoff() {
   }
   if (module->header.regions.size() != 2 ||
       module->header.regions[1].address_size_bits != 64 ||
-      module->functions.size() != 2 ||
-      !ir::validateModule(*module))
+      module->functions.size() != 2 || !ir::validateModule(*module))
     return 32;
   const auto& call = std::get<ir::Call>(module->functions[1].body.front());
   const auto& operands = std::get<ir::Call::Direct::TargetInputOperands>(
       std::get<ir::Call::Direct>(call.variant).operands);
   const auto* literal = std::get_if<ir::ResolvedCallLiteral>(
       &operands.arguments.value.values.front().value);
-  const auto signature_space =
-      module->functions.front().contract.signature.parameters.front().state_space;
-  const auto& register_call = std::get<ir::Call>(module->functions[1].body.at(1));
+  const auto signature_space = module->functions.front()
+                                   .contract.signature.parameters.front()
+                                   .state_space;
+  const auto& register_call =
+      std::get<ir::Call>(module->functions[1].body.at(1));
   const auto& register_operands =
       std::get<ir::Call::Direct::TargetInputOperands>(
           std::get<ir::Call::Direct>(register_call.variant).operands);
@@ -130,8 +132,8 @@ int check_owned_module_handoff() {
       register_operands.arguments.value.values.front().value);
   if (literal == nullptr || !literal->value ||
       literal->kind != ptx_frontend::base::LiteralCategory::DecimalInteger ||
-      signature_space !=
-          ptx_frontend::call_argument_compatibility::CallArgumentStateSpace::Register ||
+      signature_space != ptx_frontend::call_argument_compatibility::
+                             CallArgumentStateSpace::Register ||
       register_actual.state_space !=
           ptx_frontend::base::DeclarationStateSpace::Register ||
       literal->value->type != ptx_frontend::base::ScalarType::U32 ||

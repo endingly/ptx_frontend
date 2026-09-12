@@ -145,11 +145,11 @@ TEST(ResolvedModule, ResolvesAndChecksM12I06FrozenSubForms) {
 }
 
 TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
-  constexpr std::array<std::string_view, 5> roundings{
-      "", ".rn", ".rz", ".rm", ".rp"};
-  constexpr std::array rounding_modes{
-      RoundingMode::Rn, RoundingMode::Rn, RoundingMode::Rz,
-      RoundingMode::Rm, RoundingMode::Rp};
+  constexpr std::array<std::string_view, 5> roundings{"", ".rn", ".rz", ".rm",
+                                                      ".rp"};
+  constexpr std::array rounding_modes{RoundingMode::Rn, RoundingMode::Rn,
+                                      RoundingMode::Rz, RoundingMode::Rm,
+                                      RoundingMode::Rp};
   constexpr std::array input_types{"f16", "bf16"};
   constexpr std::array input_type_values{ScalarType::F16, ScalarType::BF16};
   constexpr std::array input_registers{"%h0", "%bf0"};
@@ -160,32 +160,31 @@ TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
   .reg .f16 %h0;
   .reg .b16 %bf0;
 )ptx";
-  const auto append_instruction = [&](std::string_view opcode,
-                                      std::string_view rounding,
-                                      std::string_view before_types,
-                                      std::string_view input_type,
-                                      std::string_view after_types,
-                                      std::string_view input_register) {
-    source += "  ";
-    source += opcode;
-    source += rounding;
-    source += before_types;
-    source += ".f32.";
-    source += input_type;
-    source += after_types;
-    source += " %f0, ";
-    source += input_register;
-    source += ", %f1;\n";
-  };
+  const auto append_instruction =
+      [&](std::string_view opcode, std::string_view rounding,
+          std::string_view before_types, std::string_view input_type,
+          std::string_view after_types, std::string_view input_register) {
+        source += "  ";
+        source += opcode;
+        source += rounding;
+        source += before_types;
+        source += ".f32.";
+        source += input_type;
+        source += after_types;
+        source += " %f0, ";
+        source += input_register;
+        source += ", %f1;\n";
+      };
   const auto append_forms = [&](std::string_view opcode) {
-    for (size_t type_index = 0; type_index != input_types.size(); ++type_index) {
+    for (size_t type_index = 0; type_index != input_types.size();
+         ++type_index) {
       for (const std::string_view rounding : roundings) {
         append_instruction(opcode, rounding, "", input_types[type_index], "",
                            input_registers[type_index]);
         append_instruction(opcode, rounding, ".sat", input_types[type_index],
                            "", input_registers[type_index]);
-        append_instruction(opcode, rounding, "", input_types[type_index], ".sat",
-                           input_registers[type_index]);
+        append_instruction(opcode, rounding, "", input_types[type_index],
+                           ".sat", input_registers[type_index]);
       }
     }
   };
@@ -223,7 +222,8 @@ TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
       EXPECT_TRUE(rounding.locs.empty());
     } else {
       ASSERT_EQ(rounding.locs.size(), 1U);
-      EXPECT_EQ(rounding.locs.front(), instruction.modifiers.front().syntax.range);
+      EXPECT_EQ(rounding.locs.front(),
+                instruction.modifiers.front().syntax.range);
     }
     EXPECT_EQ(input_type.value, input_type_values[type_index]);
     ASSERT_EQ(input_type.locs.size(), 1U);
@@ -265,7 +265,8 @@ TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
 
   size_t instruction_index = 0;
   for (size_t opcode_index = 0; opcode_index != 2U; ++opcode_index) {
-    for (size_t type_index = 0; type_index != input_types.size(); ++type_index) {
+    for (size_t type_index = 0; type_index != input_types.size();
+         ++type_index) {
       for (size_t rounding_index = 0; rounding_index != roundings.size();
            ++rounding_index) {
         const size_t type_modifier_index =
@@ -284,8 +285,7 @@ TEST(ResolvedModule, PreservesMixedPrecisionModifierOrderCompatibility) {
                            type_modifier_index + 2U, type_modifier_index);
         expect_instruction(body[instruction_index + 2U], legacy_syntax,
                            type_index, rounding_index, true,
-                           type_modifier_index + 1U,
-                           type_modifier_index + 2U);
+                           type_modifier_index + 1U, type_modifier_index + 2U);
         instruction_index += 3U;
       }
     }
@@ -360,7 +360,8 @@ TEST(ResolvedModule, RejectsOutOfRangeAddressOffsetBeforeNarrowing) {
   const auto resolved = resolveModule(ast);
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().front().message,
-            "Integer literal '9223372036854775808' is out of range for scalar type 'S64'.");
+            "Integer literal '9223372036854775808' is out of range for scalar "
+            "type 'S64'.");
 }
 
 TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
@@ -384,13 +385,13 @@ TEST(ResolvedModule, ResolvesBareRetInDeviceFunctionAndEntry) {
   for (const auto& function : resolved->functions) {
     ASSERT_EQ(function.body.size(), 1u);
     const auto& ret = std::get<Ret>(function.body.front());
-    EXPECT_TRUE(checker::check(
-                    ret,
-                    checker::Context{
-                        .target = {.ptx_version = {1, 0}, .sm_version = 0},
-                        .instruction_range = ast.range,
-                    })
-                    .has_value());
+    EXPECT_TRUE(
+        checker::check(ret,
+                       checker::Context{
+                           .target = {.ptx_version = {1, 0}, .sm_version = 0},
+                           .instruction_range = ast.range,
+                       })
+            .has_value());
   }
 }
 
@@ -413,11 +414,9 @@ TEST(ResolvedModule, ResolvesBareAndPredicatedExitInDeviceFunctionAndEntry) {
   ASSERT_EQ(resolved->functions.size(), 2u);
   EXPECT_FALSE(resolved->functions[0].is_entry);
   EXPECT_TRUE(resolved->functions[1].is_entry);
-  const auto& device_exit =
-      std::get<Exit>(resolved->functions[0].body.front());
+  const auto& device_exit = std::get<Exit>(resolved->functions[0].body.front());
   EXPECT_TRUE(device_exit.execution_predicate.has_value());
-  const auto& entry_exit =
-      std::get<Exit>(resolved->functions[1].body.front());
+  const auto& entry_exit = std::get<Exit>(resolved->functions[1].body.front());
   EXPECT_FALSE(entry_exit.execution_predicate.has_value());
 }
 
@@ -440,11 +439,9 @@ TEST(ResolvedModule, ResolvesBareAndPredicatedTrapInDeviceFunctionAndEntry) {
   ASSERT_EQ(resolved->functions.size(), 2u);
   EXPECT_FALSE(resolved->functions[0].is_entry);
   EXPECT_TRUE(resolved->functions[1].is_entry);
-  const auto& device_trap =
-      std::get<Trap>(resolved->functions[0].body.front());
+  const auto& device_trap = std::get<Trap>(resolved->functions[0].body.front());
   EXPECT_TRUE(device_trap.execution_predicate.has_value());
-  const auto& entry_trap =
-      std::get<Trap>(resolved->functions[1].body.front());
+  const auto& entry_trap = std::get<Trap>(resolved->functions[1].body.front());
   EXPECT_FALSE(entry_trap.execution_predicate.has_value());
 }
 
@@ -476,11 +473,9 @@ TEST(ResolvedModule, ResolvesAndChecksM10CacheHintEvictionSlice) {
       std::get<St::GlobalU32L1Evict>(std::get<St>(body[2]).variant);
   const auto& store_last =
       std::get<St::GlobalU32L1Evict>(std::get<St>(body[3]).variant);
-  EXPECT_EQ(load_first.eviction_priority.value,
-            EvictionPriority::EvictFirst);
+  EXPECT_EQ(load_first.eviction_priority.value, EvictionPriority::EvictFirst);
   EXPECT_EQ(load_last.eviction_priority.value, EvictionPriority::EvictLast);
-  EXPECT_EQ(store_first.eviction_priority.value,
-            EvictionPriority::EvictFirst);
+  EXPECT_EQ(store_first.eviction_priority.value, EvictionPriority::EvictFirst);
   EXPECT_EQ(store_last.eviction_priority.value, EvictionPriority::EvictLast);
 
   const auto& load_hint =
@@ -535,19 +530,18 @@ TEST(ResolvedModule, ChecksM12LdGlobalNcL1NoAllocateSlice) {
   const auto& ast = *parsed_module_1;
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& instruction = std::get<Ld>(resolved->functions.front().body.front());
-  const auto& load =
-      std::get<Ld::GlobalNcL1NoAllocateU32>(instruction.variant);
+  const auto& instruction =
+      std::get<Ld>(resolved->functions.front().body.front());
+  const auto& load = std::get<Ld::GlobalNcL1NoAllocateU32>(instruction.variant);
   EXPECT_EQ(load.dst.value.declared_type, ScalarType::U32);
   const auto& global_address =
       std::get<ResolvedSymbolRef>(load.address.value.base);
   EXPECT_EQ(global_address.address_state_space,
             syntax_ast::AstStateSpace::Global);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{.target = {.ptx_version = {7, 4},
-                                              .sm_version = 70},
-                                   .instruction_range = ast.range})
+  EXPECT_TRUE(checker::check(instruction,
+                             checker::Context{.target = {.ptx_version = {7, 4},
+                                                         .sm_version = 70},
+                                              .instruction_range = ast.range})
                   .has_value());
 
   const auto ptx_too_old = checker::check(
@@ -648,18 +642,19 @@ TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
   const auto& ast = *parsed_module_1;
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& instruction = std::get<Ldu>(resolved->functions.front().body.front());
+  const auto& instruction =
+      std::get<Ldu>(resolved->functions.front().body.front());
   const auto& load = std::get<Ldu::GlobalU32>(instruction.variant);
   EXPECT_EQ(load.state_space, MemoryStateSpace::Global);
   EXPECT_EQ(load.type, ScalarType::U32);
   EXPECT_EQ(load.dst.value.declared_type, ScalarType::U64);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {2, 0}, .sm_version = 0},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {2, 0}, .sm_version = 0},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old = checker::check(
       instruction,
@@ -742,13 +737,13 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
   const auto& prefetch = std::get<Prefetch::GlobalL1>(instruction.variant);
   EXPECT_EQ(prefetch.state_space, MemoryStateSpace::Global);
   EXPECT_TRUE(prefetch.l1);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {2, 0}, .sm_version = 20},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {2, 0}, .sm_version = 20},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -826,13 +821,13 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchuL1GenericAddressSlice) {
       std::get<Prefetchu>(resolved->functions.front().body.front());
   const auto& prefetchu = std::get<Prefetchu::L1>(instruction.variant);
   EXPECT_TRUE(prefetchu.l1);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {2, 0}, .sm_version = 20},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {2, 0}, .sm_version = 20},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -903,12 +898,12 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
     EXPECT_EQ(policy.dst.value.declared_type, ScalarType::B64);
     EXPECT_EQ(policy.fraction.value.type, ScalarType::F32);
     EXPECT_EQ(policy.fraction.value.bits, 1056964608u);
-    EXPECT_TRUE(checker::check(
-                    instruction,
-                    checker::Context{.target = {.ptx_version = {7, 4},
-                                                .sm_version = 80},
-                                     .instruction_range = ast.range})
-                    .has_value());
+    EXPECT_TRUE(
+        checker::check(instruction,
+                       checker::Context{
+                           .target = {.ptx_version = {7, 4}, .sm_version = 80},
+                           .instruction_range = ast.range})
+            .has_value());
   }
 
   const auto too_old_ptx = checker::check(
@@ -940,7 +935,8 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
   const auto unfrozen_fractions = resolveModule(*parsed_module_2);
   ASSERT_TRUE(unfrozen_fractions.has_value())
       << unfrozen_fractions.error().front().message;
-  for (const auto& resolved_instruction : unfrozen_fractions->functions.front().body) {
+  for (const auto& resolved_instruction :
+       unfrozen_fractions->functions.front().body) {
     const auto checked = checker::check(
         std::get<Createpolicy>(resolved_instruction),
         checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
@@ -959,10 +955,12 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
   const auto compatible_dst = resolveModule(*parsed_module_3);
   ASSERT_TRUE(compatible_dst.has_value())
       << compatible_dst.error().front().message;
-  EXPECT_TRUE(checker::check(
-      std::get<Createpolicy>(compatible_dst->functions.front().body.front()),
-      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}})
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(
+          std::get<Createpolicy>(
+              compatible_dst->functions.front().body.front()),
+          checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}})
+          .has_value());
 
   const auto parsed_module_4 = parseModule(R"ptx(
 .entry kernel() {
@@ -982,10 +980,14 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
 
   // This is ISA-legal without .fractional, but intentionally unfrozen here.
   for (const auto source : {
-           ".entry kernel() { .reg .b64 %b0; createpolicy.L2::evict_last.b64 %b0, 0.5; }",
-           ".entry kernel() { .reg .b64 %b0; createpolicy.fractional.L1::evict_last.b64 %b0, 0.5; }",
-           ".entry kernel() { .reg .b64 %b0; createpolicy.fractional.L2::evict_first.b64 %b0, 0.5; }",
-           ".entry kernel() { .reg .b64 %b0; createpolicy.fractional.L2::evict_last.u64 %b0, 0.5; }",
+           ".entry kernel() { .reg .b64 %b0; createpolicy.L2::evict_last.b64 "
+           "%b0, 0.5; }",
+           ".entry kernel() { .reg .b64 %b0; "
+           "createpolicy.fractional.L1::evict_last.b64 %b0, 0.5; }",
+           ".entry kernel() { .reg .b64 %b0; "
+           "createpolicy.fractional.L2::evict_first.b64 %b0, 0.5; }",
+           ".entry kernel() { .reg .b64 %b0; "
+           "createpolicy.fractional.L2::evict_last.u64 %b0, 0.5; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_5 = parseModule(source);
@@ -1000,7 +1002,8 @@ TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
     SCOPED_TRACE(source);
     PtxSyntaxParser parser(source);
     const auto parsed = parser.parseInstruction();
-    EXPECT_FALSE(parsed.has_value() && resolve<Createpolicy>(*parsed).has_value());
+    EXPECT_FALSE(parsed.has_value() &&
+                 resolve<Createpolicy>(*parsed).has_value());
   }
 }
 
@@ -1027,12 +1030,12 @@ TEST(ResolvedModule, ResolvesAndChecksApplypriorityGlobalL2EvictNormalSlice) {
     EXPECT_EQ(priority.eviction_priority, EvictionPriority::EvictNormal);
     EXPECT_EQ(priority.size.value.type, ScalarType::U32);
     EXPECT_EQ(priority.size.value.bits, 128u);
-    EXPECT_TRUE(checker::check(
-                    instruction,
-                    checker::Context{.target = {.ptx_version = {7, 4},
-                                                .sm_version = 80},
-                                     .instruction_range = ast.range})
-                    .has_value());
+    EXPECT_TRUE(
+        checker::check(instruction,
+                       checker::Context{
+                           .target = {.ptx_version = {7, 4}, .sm_version = 80},
+                           .instruction_range = ast.range})
+            .has_value());
   }
 
   const auto too_old_ptx = checker::check(
@@ -1090,7 +1093,8 @@ TEST(ResolvedModule, ResolvesAndChecksApplypriorityGlobalL2EvictNormalSlice) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
   const auto local_address = resolveModule(*parsed_module_4);
-  ASSERT_TRUE(local_address.has_value()) << local_address.error().front().message;
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
   const auto address_checked = checker::check(
       std::get<Applypriority>(local_address->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
@@ -1099,10 +1103,14 @@ TEST(ResolvedModule, ResolvesAndChecksApplypriorityGlobalL2EvictNormalSlice) {
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
 
   for (const auto source : {
-           ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; applypriority.global.L2::evict_normal [%rd0], %r0; }",
-           ".entry kernel() { .reg .u64 %rd0; applypriority.L2::evict_normal [%rd0], 128; }",
-           ".entry kernel() { .reg .u64 %rd0; applypriority.global.L1::evict_normal [%rd0], 128; }",
-           ".entry kernel() { .reg .u64 %rd0; applypriority.global.L2::evict_last [%rd0], 128; }",
+           ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; "
+           "applypriority.global.L2::evict_normal [%rd0], %r0; }",
+           ".entry kernel() { .reg .u64 %rd0; applypriority.L2::evict_normal "
+           "[%rd0], 128; }",
+           ".entry kernel() { .reg .u64 %rd0; "
+           "applypriority.global.L1::evict_normal [%rd0], 128; }",
+           ".entry kernel() { .reg .u64 %rd0; "
+           "applypriority.global.L2::evict_last [%rd0], 128; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_5 = parseModule(source);
@@ -1133,12 +1141,12 @@ TEST(ResolvedModule, ResolvesAndChecksDiscardGlobalL2Slice) {
     EXPECT_TRUE(discard.l2);
     EXPECT_EQ(discard.size.value.type, ScalarType::U32);
     EXPECT_EQ(discard.size.value.bits, 128u);
-    EXPECT_TRUE(checker::check(
-                    instruction,
-                    checker::Context{.target = {.ptx_version = {7, 4},
-                                                .sm_version = 80},
-                                     .instruction_range = ast.range})
-                    .has_value());
+    EXPECT_TRUE(
+        checker::check(instruction,
+                       checker::Context{
+                           .target = {.ptx_version = {7, 4}, .sm_version = 80},
+                           .instruction_range = ast.range})
+            .has_value());
   }
 
   const auto too_old_ptx = checker::check(
@@ -1190,7 +1198,8 @@ TEST(ResolvedModule, ResolvesAndChecksDiscardGlobalL2Slice) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
   const auto local_address = resolveModule(*parsed_module_4);
-  ASSERT_TRUE(local_address.has_value()) << local_address.error().front().message;
+  ASSERT_TRUE(local_address.has_value())
+      << local_address.error().front().message;
   const auto address_checked = checker::check(
       std::get<Discard>(local_address->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
@@ -1199,7 +1208,8 @@ TEST(ResolvedModule, ResolvesAndChecksDiscardGlobalL2Slice) {
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
 
   for (const auto source : {
-           ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; discard.global.L2 [%rd0], %r0; }",
+           ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; discard.global.L2 "
+           "[%rd0], %r0; }",
            ".entry kernel() { .reg .u64 %rd0; discard.L2 [%rd0], 128; }",
            ".entry kernel() { .reg .u64 %rd0; discard.global.L1 [%rd0], 128; }",
        }) {
@@ -1236,7 +1246,8 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
     return checker::Context{
         .target = {.ptx_version = ptx_version,
                    .sm_version = target_profile->identity.architecture.number,
-                   .enabled_family_features = target_profile->enabled_family_features,
+                   .enabled_family_features =
+                       target_profile->enabled_family_features,
                    .identity = target_profile->identity,
                    .capabilities = target_profile->capabilities},
         .instruction_range = ast.range,
@@ -1292,9 +1303,10 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
   }};
   for (const auto& target : below_threshold_targets) {
     SCOPED_TRACE(target.spelling);
-    EXPECT_FALSE(checker::check(std::get<Setmaxnreg>(body.front()),
-                                context_for(target.spelling, target.ptx_version))
-                     .has_value());
+    EXPECT_FALSE(
+        checker::check(std::get<Setmaxnreg>(body.front()),
+                       context_for(target.spelling, target.ptx_version))
+            .has_value());
   }
 
   for (const auto source : {
@@ -1307,12 +1319,14 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
     SCOPED_TRACE(source);
     PtxSyntaxParser parser(source);
     const auto instruction_ast = parser.parseInstruction();
-    ASSERT_TRUE(instruction_ast.has_value()) << instruction_ast.diagnostics.front().message;
+    ASSERT_TRUE(instruction_ast.has_value())
+        << instruction_ast.diagnostics.front().message;
     const auto setmaxnreg = resolve<Setmaxnreg>(*instruction_ast);
     ASSERT_TRUE(setmaxnreg.has_value()) << setmaxnreg.error().message;
     const auto checked = checker::check(
-        *setmaxnreg, checker::Context{.target = supported_context.target,
-                                       .instruction_range = instruction_ast->range});
+        *setmaxnreg,
+        checker::Context{.target = supported_context.target,
+                         .instruction_range = instruction_ast->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::ImmediateValueMismatch);
@@ -1320,10 +1334,11 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
 
   const auto too_old_ptx = checker::check(
       std::get<Setmaxnreg>(body.front()),
-      checker::Context{.target = {.ptx_version = {7, 9},
-                                  .sm_version = profile->identity.architecture.number,
-                                  .identity = profile->identity},
-                       .instruction_range = ast.range});
+      checker::Context{
+          .target = {.ptx_version = {7, 9},
+                     .sm_version = profile->identity.architecture.number,
+                     .identity = profile->identity},
+          .instruction_range = ast.range});
   EXPECT_FALSE(too_old_ptx.has_value());
   for (const std::string_view target : {"sm_90", "sm_100", "sm_103"}) {
     SCOPED_TRACE(target);
@@ -1333,7 +1348,8 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
   }
 
   for (const auto source : {
-           ".entry kernel() { .reg .u32 %r0; setmaxnreg.inc.sync.aligned.u32 %r0; }",
+           ".entry kernel() { .reg .u32 %r0; setmaxnreg.inc.sync.aligned.u32 "
+           "%r0; }",
            ".entry kernel() { setmaxnreg.dec.sync.aligned.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.aligned.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.sync.u32 192; }",
@@ -1403,8 +1419,7 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto wrong_spaces = resolveModule(*parsed_module_2);
-  ASSERT_TRUE(wrong_spaces.has_value())
-      << wrong_spaces.error().front().message;
+  ASSERT_TRUE(wrong_spaces.has_value()) << wrong_spaces.error().front().message;
   for (const auto& instruction : wrong_spaces->functions.front().body) {
     const auto checked = checker::check(std::get<Cp>(instruction), context);
     ASSERT_FALSE(checked.has_value());
@@ -1532,7 +1547,8 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncMbarrierArriveSlice) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Cp>(instruction), supported).has_value());
   const auto old_ptx = checker::check(
       std::get<Cp>(body[0]),
       checker::Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
@@ -1600,13 +1616,13 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCommitGroupSlice) {
   const auto& commit = std::get<Cp::AsyncCommitGroup>(instruction.variant);
   EXPECT_TRUE(commit.async);
   EXPECT_TRUE(commit.commit_group);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {7, 0}, .sm_version = 80},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {7, 0}, .sm_version = 80},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -1714,8 +1730,9 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitGroupSlice) {
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
 
   for (const auto literal : {"-1U", "4294967296"}) {
-    const auto parsed_module_5 = parseModule(
-        std::string(".entry kernel() { cp.async.wait_group ") + literal + "; }");
+    const auto parsed_module_5 =
+        parseModule(std::string(".entry kernel() { cp.async.wait_group ") +
+                    literal + "; }");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_5);
     const auto out_of_range = resolveModule(*parsed_module_5);
     SCOPED_TRACE(literal);
@@ -1757,13 +1774,13 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncWaitAllSlice) {
   const auto& wait_all = std::get<Cp::AsyncWaitAll>(instruction.variant);
   EXPECT_TRUE(wait_all.async);
   EXPECT_TRUE(wait_all.wait_all);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {7, 0}, .sm_version = 80},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {7, 0}, .sm_version = 80},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -1820,8 +1837,8 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& instruction =
       std::get<Ldmatrix>(resolved->functions.front().body.front());
-  const auto& matrix = std::get<Ldmatrix::SyncAlignedM8n8X2SharedB16>(
-      instruction.variant);
+  const auto& matrix =
+      std::get<Ldmatrix::SyncAlignedM8n8X2SharedB16>(instruction.variant);
   EXPECT_TRUE(matrix.sync);
   EXPECT_TRUE(matrix.aligned);
   EXPECT_TRUE(matrix.m8n8);
@@ -1861,7 +1878,8 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   ASSERT_TRUE(wrong_address.has_value())
       << wrong_address.error().front().message;
   const auto address_check = checker::check(
-      std::get<Ldmatrix>(wrong_address->functions.front().body.front()), context);
+      std::get<Ldmatrix>(wrong_address->functions.front().body.front()),
+      context);
   ASSERT_FALSE(address_check.has_value());
   EXPECT_EQ(address_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -1896,12 +1914,18 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   ASSERT_FALSE(wrong_register.has_value());
 
   for (const auto source : {
-           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1, %r2}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; "
+           "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; "
+           "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1, %r2}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
+           "ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
+           "ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
+           "ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
+           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
+           "ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
        }) {
     const auto parsed_module_5 = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_5);
@@ -1968,11 +1992,26 @@ TEST(ResolvedModule, ResolvesAndChecksMmaSyncAlignedM16n8k8RowColSlice) {
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
   for (const auto source : {
-           ".entry kernel() { .reg .f32 %d<3>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
-           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
-           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b0; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, %b0, {%c0, %c1, %c2, %c3}; }",
-           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<3>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2}; }",
-           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 %a<2>; .reg .f16x2 %b<1>; mma.sync.aligned.m16n8k8.row.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<3>; .reg .f32 %c<4>; .reg .f16x2 "
+           "%a<2>; .reg .f16x2 %b<1>; "
+           "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2}, "
+           "{%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16 "
+           "%a<2>; .reg .f16x2 %b<1>; "
+           "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, "
+           "%d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 "
+           "%a<2>; .reg .f16x2 %b0; "
+           "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, "
+           "%d3}, {%a0, %a1}, %b0, {%c0, %c1, %c2, %c3}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<3>; .reg .f16x2 "
+           "%a<2>; .reg .f16x2 %b<1>; "
+           "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, "
+           "%d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2}; }",
+           ".entry kernel() { .reg .f32 %d<4>; .reg .f32 %c<4>; .reg .f16x2 "
+           "%a<2>; .reg .f16x2 %b<1>; "
+           "mma.sync.aligned.m16n8k8.row.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, "
+           "{%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3}; }",
        }) {
     const auto parsed_module_2 = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
@@ -1992,13 +2031,13 @@ TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
       std::get<Membar>(resolved->functions.front().body.front());
   const auto& membar = std::get<Membar::Cta>(instruction.variant);
   EXPECT_EQ(membar.scope, MemoryScope::Cta);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {1, 4}, .sm_version = 0},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {1, 4}, .sm_version = 0},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old = checker::check(
       instruction,
@@ -2041,13 +2080,13 @@ TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
   const auto& fence = std::get<Fence::AcqRelCta>(instruction.variant);
   EXPECT_EQ(fence.semantics, MemoryConsistency::AcqRel);
   EXPECT_EQ(fence.scope, MemoryScope::Cta);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -2110,15 +2149,16 @@ TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 14u);
-  const auto& async = std::get<Fence::ProxyAsync>(std::get<Fence>(body[0]).variant);
+  const auto& async =
+      std::get<Fence::ProxyAsync>(std::get<Fence>(body[0]).variant);
   EXPECT_EQ(async.proxy_kind.value, AsyncProxyKind::Async);
   EXPECT_EQ(std::get<Fence::ProxyAsync>(std::get<Fence>(body[2]).variant)
                 .proxy_kind.value,
             AsyncProxyKind::AsyncSharedCta);
-  EXPECT_EQ(std::get<Fence::ProxyAsyncSharedCluster>(
-                std::get<Fence>(body[3]).variant)
-                .proxy_kind.value,
-            AsyncProxyKind::AsyncSharedCluster);
+  EXPECT_EQ(
+      std::get<Fence::ProxyAsyncSharedCluster>(std::get<Fence>(body[3]).variant)
+          .proxy_kind.value,
+      AsyncProxyKind::AsyncSharedCluster);
   const auto& acquire = std::get<Fence::ProxyTensormapGenericAcquire>(
       std::get<Fence>(body[9]).variant);
   EXPECT_EQ(acquire.proxy_pair.value, ProxyKindPair::TensormapToGeneric);
@@ -2137,7 +2177,8 @@ TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Fence>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Fence>(instruction), supported).has_value());
 
   const auto old_pair = checker::check(
       std::get<Fence>(body[4]),
@@ -2178,7 +2219,8 @@ TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {
   const auto wrong_address = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_address.has_value());
   const auto wrong_address_checked = checker::check(
-      std::get<Fence>(wrong_address->functions.front().body.front()), supported);
+      std::get<Fence>(wrong_address->functions.front().body.front()),
+      supported);
   ASSERT_FALSE(wrong_address_checked.has_value());
   EXPECT_EQ(wrong_address_checked.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -2221,15 +2263,17 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 4u);
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::TryCancelAsyncGeneric>(
-      std::get<Clusterlaunchcontrol>(body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::TryCancelAsyncSharedCta>(
-      std::get<Clusterlaunchcontrol>(body[1]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::TryCancelAsyncGeneric>(
+          std::get<Clusterlaunchcontrol>(body[0]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::TryCancelAsyncSharedCta>(
+          std::get<Clusterlaunchcontrol>(body[1]).variant));
   EXPECT_TRUE(std::holds_alternative<
-      Clusterlaunchcontrol::TryCancelAsyncMulticastGeneric>(
+              Clusterlaunchcontrol::TryCancelAsyncMulticastGeneric>(
       std::get<Clusterlaunchcontrol>(body[2]).variant));
   EXPECT_TRUE(std::holds_alternative<
-      Clusterlaunchcontrol::TryCancelAsyncMulticastSharedCta>(
+              Clusterlaunchcontrol::TryCancelAsyncMulticastSharedCta>(
       std::get<Clusterlaunchcontrol>(body[3]).variant));
 
   const auto context_for = [&ast](std::string_view target,
@@ -2299,9 +2343,10 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto wrong_address = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_address.has_value());
-  const auto wrong_address_checked = checker::check(
-      std::get<Clusterlaunchcontrol>(wrong_address->functions.front().body.front()),
-      context_for("sm_100a", {8, 6}));
+  const auto wrong_address_checked =
+      checker::check(std::get<Clusterlaunchcontrol>(
+                         wrong_address->functions.front().body.front()),
+                     context_for("sm_100a", {8, 6}));
   ASSERT_FALSE(wrong_address_checked.has_value());
   EXPECT_EQ(wrong_address_checked.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -2315,7 +2360,8 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
   const auto wrong_response_alignment = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_response_alignment.has_value());
   const auto response_alignment_checked = checker::check(
-      std::get<Clusterlaunchcontrol>(wrong_response_alignment->functions.front().body.front()),
+      std::get<Clusterlaunchcontrol>(
+          wrong_response_alignment->functions.front().body.front()),
       context_for("sm_100a", {8, 6}));
   ASSERT_FALSE(response_alignment_checked.has_value());
   EXPECT_EQ(response_alignment_checked.error().front().kind,
@@ -2330,7 +2376,8 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolTryCancelSlices) {
   const auto wrong_mbarrier_alignment = resolveModule(*parsed_module_4);
   ASSERT_TRUE(wrong_mbarrier_alignment.has_value());
   const auto mbarrier_alignment_checked = checker::check(
-      std::get<Clusterlaunchcontrol>(wrong_mbarrier_alignment->functions.front().body.front()),
+      std::get<Clusterlaunchcontrol>(
+          wrong_mbarrier_alignment->functions.front().body.front()),
       context_for("sm_100a", {8, 6}));
   ASSERT_FALSE(mbarrier_alignment_checked.has_value());
   EXPECT_EQ(mbarrier_alignment_checked.error().front().kind,
@@ -2367,22 +2414,30 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolQueryCancelSlices) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 8u);
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelIsCanceledPred>(
-      std::get<Clusterlaunchcontrol>(body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidV4>(
-      std::get<Clusterlaunchcontrol>(body[1]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidV4>(
-      std::get<Clusterlaunchcontrol>(body[2]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidX>(
-      std::get<Clusterlaunchcontrol>(body[3]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidY>(
-      std::get<Clusterlaunchcontrol>(body[4]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidZ>(
-      std::get<Clusterlaunchcontrol>(body[5]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidX>(
-      std::get<Clusterlaunchcontrol>(body[6]).variant));
-  EXPECT_TRUE(std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidY>(
-      std::get<Clusterlaunchcontrol>(body[7]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelIsCanceledPred>(
+          std::get<Clusterlaunchcontrol>(body[0]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidV4>(
+          std::get<Clusterlaunchcontrol>(body[1]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidV4>(
+          std::get<Clusterlaunchcontrol>(body[2]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidX>(
+          std::get<Clusterlaunchcontrol>(body[3]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidY>(
+          std::get<Clusterlaunchcontrol>(body[4]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidZ>(
+          std::get<Clusterlaunchcontrol>(body[5]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidX>(
+          std::get<Clusterlaunchcontrol>(body[6]).variant));
+  EXPECT_TRUE(
+      std::holds_alternative<Clusterlaunchcontrol::QueryCancelGetFirstCtaidY>(
+          std::get<Clusterlaunchcontrol>(body[7]).variant));
 
   const auto context_for = [&ast](std::string_view target,
                                   checker::PtxVersion ptx_version) {
@@ -2403,13 +2458,13 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolQueryCancelSlices) {
                     .has_value());
   }
 
-  const auto too_old = checker::check(
-      std::get<Clusterlaunchcontrol>(body[0]), context_for("sm_100a", {8, 5}));
+  const auto too_old = checker::check(std::get<Clusterlaunchcontrol>(body[0]),
+                                      context_for("sm_100a", {8, 5}));
   ASSERT_FALSE(too_old.has_value());
   EXPECT_EQ(too_old.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
-  const auto too_small = checker::check(
-      std::get<Clusterlaunchcontrol>(body[0]), context_for("sm_90", {8, 6}));
+  const auto too_small = checker::check(std::get<Clusterlaunchcontrol>(body[0]),
+                                        context_for("sm_90", {8, 6}));
   ASSERT_FALSE(too_small.has_value());
   EXPECT_EQ(too_small.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
@@ -2422,9 +2477,14 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolQueryCancelSlices) {
             checker::CheckDiagnosticKind::UnsupportedAvailability);
 
   for (const std::string_view source : {
-           ".entry kernel() { .reg .pred %p0; clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, 1; }",
-           ".entry kernel() { .reg .b32 %r<3>; .reg .b128 %q0; clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, %r1, %r2}, %q0; }",
-           ".entry kernel() { .reg .b32 %r0; .reg .b128 %q0; clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 _, %q0; }",
+           ".entry kernel() { .reg .pred %p0; "
+           "clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, 1; }",
+           ".entry kernel() { .reg .b32 %r<3>; .reg .b128 %q0; "
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 "
+           "{%r0, %r1, %r2}, %q0; }",
+           ".entry kernel() { .reg .b32 %r0; .reg .b128 %q0; "
+           "clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 _, "
+           "%q0; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_2 = parseModule(source);
@@ -2477,20 +2537,20 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   EXPECT_EQ(legacy_atom.scope, atom.scope);
   EXPECT_EQ(legacy_atom.add, atom.add);
   EXPECT_EQ(legacy_atom.type, atom.type);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
-  EXPECT_TRUE(checker::check(
-                  legacy_instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
+  EXPECT_TRUE(
+      checker::check(legacy_instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -2613,20 +2673,20 @@ TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
   EXPECT_EQ(legacy_red.scope, red.scope);
   EXPECT_EQ(legacy_red.add, red.add);
   EXPECT_EQ(legacy_red.type, red.type);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
-  EXPECT_TRUE(checker::check(
-                  legacy_instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {6, 0}, .sm_version = 70},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
+  EXPECT_TRUE(
+      checker::check(legacy_instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {6, 0}, .sm_version = 70},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -2738,13 +2798,13 @@ TEST(ResolvedModule, ResolvesAndChecksActivemaskB32Slice) {
   const auto& activemask = std::get<Activemask::B32>(instruction.variant);
   EXPECT_EQ(activemask.type, ScalarType::B32);
   EXPECT_EQ(activemask.dst.value.declared_type, ScalarType::B32);
-  EXPECT_TRUE(checker::check(
-                  instruction,
-                  checker::Context{
-                      .target = {.ptx_version = {6, 2}, .sm_version = 30},
-                      .instruction_range = ast.range,
-                  })
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(instruction,
+                     checker::Context{
+                         .target = {.ptx_version = {6, 2}, .sm_version = 30},
+                         .instruction_range = ast.range,
+                     })
+          .has_value());
 
   const auto too_old_ptx = checker::check(
       instruction,
@@ -2771,10 +2831,11 @@ TEST(ResolvedModule, ResolvesAndChecksActivemaskB32Slice) {
   const auto compatible_dst = resolveModule(*parsed_module_2);
   ASSERT_TRUE(compatible_dst.has_value())
       << compatible_dst.error().front().message;
-  EXPECT_TRUE(checker::check(
-                  std::get<Activemask>(compatible_dst->functions.front().body.front()),
-                  checker::Context{.target = {.ptx_version = {6, 2}, .sm_version = 30}})
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(
+          std::get<Activemask>(compatible_dst->functions.front().body.front()),
+          checker::Context{.target = {.ptx_version = {6, 2}, .sm_version = 30}})
+          .has_value());
 
   const auto parsed_module_3 = parseModule(R"ptx(
 .entry kernel() {
@@ -2832,9 +2893,10 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   EXPECT_TRUE(immediate.sync);
   EXPECT_TRUE(immediate.ballot);
   EXPECT_EQ(immediate.type, ScalarType::B32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.membermask.value));
   EXPECT_TRUE(
-      std::holds_alternative<ResolvedRegisterRef>(register_mask.membermask.value));
+      std::holds_alternative<ResolvedImmediate>(immediate.membermask.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      register_mask.membermask.value));
   const checker::Context context{
       .target = {.ptx_version = {6, 0}, .sm_version = 30},
       .instruction_range = ast.range,
@@ -2872,8 +2934,7 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   ASSERT_TRUE(bad_dst_and_mask.has_value())
       << bad_dst_and_mask.error().front().message;
   for (const auto& candidate : bad_dst_and_mask->functions.front().body) {
-    const auto checked = checker::check(
-        std::get<Vote>(candidate), context);
+    const auto checked = checker::check(std::get<Vote>(candidate), context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -2890,9 +2951,11 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   const auto compatible_dst = resolveModule(*parsed_module_3);
   ASSERT_TRUE(compatible_dst.has_value())
       << compatible_dst.error().front().message;
-  EXPECT_TRUE(checker::check(
-                  std::get<Vote>(compatible_dst->functions.front().body.front()), context)
-                  .has_value());
+  EXPECT_TRUE(
+      checker::check(
+          std::get<Vote>(compatible_dst->functions.front().body.front()),
+          context)
+          .has_value());
 
   const auto parsed_module_4 = parseModule(R"ptx(
 .entry kernel() {
@@ -3031,12 +3094,12 @@ TEST(ResolvedModule, ResolvesAndChecksBarrierClusterSlices) {
   EXPECT_EQ(wait.semantics.value, MemoryConsistency::Acquire);
   EXPECT_TRUE(wait.semantics.locs.empty());
   EXPECT_FALSE(wait.aligned.value);
-  EXPECT_FALSE(std::get<Barrier::ClusterArrive>(
-                   std::get<Barrier>(body[2]).variant)
-                   .semantics.locs.empty());
-  EXPECT_FALSE(std::get<Barrier::ClusterWait>(
-                   std::get<Barrier>(body[6]).variant)
-                   .semantics.locs.empty());
+  EXPECT_FALSE(
+      std::get<Barrier::ClusterArrive>(std::get<Barrier>(body[2]).variant)
+          .semantics.locs.empty());
+  EXPECT_FALSE(
+      std::get<Barrier::ClusterWait>(std::get<Barrier>(body[6]).variant)
+          .semantics.locs.empty());
 
   const auto context_for = [&ast](std::string_view target,
                                   checker::PtxVersion ptx_version) {
@@ -3075,8 +3138,8 @@ TEST(ResolvedModule, ResolvesAndChecksBarrierClusterSlices) {
   };
   EXPECT_FALSE(checker::check(std::get<Barrier>(body.front()), missing_cluster)
                    .has_value());
-  const auto too_old = checker::check(
-      std::get<Barrier>(body.front()), context_for("sm_90a", {7, 7}));
+  const auto too_old = checker::check(std::get<Barrier>(body.front()),
+                                      context_for("sm_90a", {7, 7}));
   ASSERT_FALSE(too_old.has_value());
   for (const auto index : {2u, 3u, 6u}) {
     SCOPED_TRACE(index);
@@ -3133,10 +3196,10 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
       any_immediate.membermask.value));
   EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
       any_register.membermask.value));
-  EXPECT_TRUE(std::holds_alternative<
-      Match::AllSync::WithoutPredicateOperands>(all_plain.operands));
-  const auto& paired = std::get<Match::AllSync::WithPredicateOperands>(
-      all_pair.operands);
+  EXPECT_TRUE(std::holds_alternative<Match::AllSync::WithoutPredicateOperands>(
+      all_plain.operands));
+  const auto& paired =
+      std::get<Match::AllSync::WithPredicateOperands>(all_pair.operands);
   ASSERT_TRUE(paired.dst.value.data.has_value());
   ASSERT_TRUE(paired.dst.value.predicate.has_value());
   EXPECT_EQ(paired.dst.value.data->value.declared_type, ScalarType::B32);
@@ -3150,7 +3213,8 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
-    EXPECT_TRUE(checker::check(std::get<Match>(instruction), context).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Match>(instruction), context).has_value());
   }
   const auto too_old_ptx = checker::check(
       std::get<Match>(body.front()),
@@ -3168,9 +3232,12 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
   for (const std::string_view source : {
-           ".entry kernel() { .reg .b64 %d0; .reg .b32 %b0; match.any.sync.b32 %d0, %b0, 0; }",
-           ".entry kernel() { .reg .b32 %b<2>; match.any.sync.b64 %b0, %b1, 0; }",
-           ".entry kernel() { .reg .b32 %b<2>; .reg .b64 %d0; match.any.sync.b32 %b0, %b1, %d0; }",
+           ".entry kernel() { .reg .b64 %d0; .reg .b32 %b0; match.any.sync.b32 "
+           "%d0, %b0, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; match.any.sync.b64 %b0, %b1, 0; "
+           "}",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .b64 %d0; "
+           "match.any.sync.b32 %b0, %b1, %d0; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_2 = parseModule(source);
@@ -3184,9 +3251,12 @@ TEST(ResolvedModule, ResolvesAndChecksMatchSyncSlices) {
               checker::CheckDiagnosticKind::OperandTypeMismatch);
   }
   for (const std::string_view source : {
-           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.any.sync.b32 %b0|%p0, %b1, 0; }",
-           ".entry kernel() { .reg .b32 %b<2>; .reg .u32 %u0; match.all.sync.b32 %b0|%u0, %b1, 0; }",
-           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; match.all.sync.b32 %b0|%p0, %b1; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; "
+           "match.any.sync.b32 %b0|%p0, %b1, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .u32 %u0; "
+           "match.all.sync.b32 %b0|%u0, %b1, 0; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p0; "
+           "match.all.sync.b32 %b0|%p0, %b1; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_3 = parseModule(source);
@@ -3214,10 +3284,12 @@ TEST(ResolvedModule, ResolvesMatchSyncSinksAndReportsExactRejectedRanges) {
   const auto& all_data_sink = std::get<Match>(body[0]);
   const auto& single_sink = std::get<Match>(body[1]);
   const auto& shfl_predicate_sink = std::get<Match>(body[2]);
-  const auto& all_data_operands = std::get<Match::AllSync::WithoutPredicateOperands>(
-      std::get<Match::AllSync>(all_data_sink.variant).operands);
-  const auto& single_sink_operands = std::get<Match::AllSync::WithPredicateOperands>(
-      std::get<Match::AllSync>(single_sink.variant).operands);
+  const auto& all_data_operands =
+      std::get<Match::AllSync::WithoutPredicateOperands>(
+          std::get<Match::AllSync>(all_data_sink.variant).operands);
+  const auto& single_sink_operands =
+      std::get<Match::AllSync::WithPredicateOperands>(
+          std::get<Match::AllSync>(single_sink.variant).operands);
   const auto& shfl_predicate_operands =
       std::get<Match::AllSync::WithPredicateOperands>(
           std::get<Match::AllSync>(shfl_predicate_sink.variant).operands);
@@ -3232,7 +3304,8 @@ TEST(ResolvedModule, ResolvesMatchSyncSinksAndReportsExactRejectedRanges) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Match>(instruction), context).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Match>(instruction), context).has_value());
 
   const auto reject = [&](std::string_view source) {
     const auto parsed_module_2 = parseModule(source);
@@ -3240,8 +3313,8 @@ TEST(ResolvedModule, ResolvesMatchSyncSinksAndReportsExactRejectedRanges) {
     const auto& invalid_ast = *parsed_module_2;
     const auto& invalid_function =
         std::get<syntax_ast::AstFunction>(invalid_ast.items.back());
-    const auto& invalid_instruction = std::get<syntax_ast::AstInstruction>(
-        invalid_function.body.back());
+    const auto& invalid_instruction =
+        std::get<syntax_ast::AstInstruction>(invalid_function.body.back());
     const auto invalid = resolveModule(invalid_ast);
     ASSERT_FALSE(invalid.has_value());
     ASSERT_FALSE(invalid.error().empty());
@@ -3285,13 +3358,12 @@ TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
   const auto& min_f32 =
       std::get<Redux::SyncMinF32>(std::get<Redux>(body[4]).variant);
   EXPECT_EQ(add.type.value, ScalarType::U32);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(add.membermask.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(add.membermask.value));
   EXPECT_TRUE(
       std::holds_alternative<ResolvedRegisterRef>(min.membermask.value));
   EXPECT_EQ(boolean.operation.value, BooleanOperator::Xor);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      boolean.membermask.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(boolean.membermask.value));
   EXPECT_TRUE(min_f32.abs.value);
   EXPECT_TRUE(min_f32.nan.value);
   EXPECT_FALSE(min_f32.abs.locs.empty());
@@ -3321,17 +3393,21 @@ TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
   for (const std::string_view source : {
-           ".entry kernel() { .reg .b64 %d0; .reg .u32 %u0; redux.sync.add.u32 %d0, %u0, 0; }",
-           ".entry kernel() { .reg .u32 %u0; .reg .b64 %d0; redux.sync.add.u32 %u0, %d0, 0; }",
-           ".entry kernel() { .reg .u32 %u<2>; .reg .b64 %d0; redux.sync.add.u32 %u0, %u1, %d0; }",
+           ".entry kernel() { .reg .b64 %d0; .reg .u32 %u0; redux.sync.add.u32 "
+           "%d0, %u0, 0; }",
+           ".entry kernel() { .reg .u32 %u0; .reg .b64 %d0; redux.sync.add.u32 "
+           "%u0, %d0, 0; }",
+           ".entry kernel() { .reg .u32 %u<2>; .reg .b64 %d0; "
+           "redux.sync.add.u32 %u0, %u1, %d0; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_2 = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
     const auto invalid = resolveModule(*parsed_module_2);
     ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
-    const auto checked = checker::check(
-        std::get<Redux>(invalid->functions.front().body.front()), baseline_context);
+    const auto checked =
+        checker::check(std::get<Redux>(invalid->functions.front().body.front()),
+                       baseline_context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -3346,15 +3422,15 @@ TEST(ResolvedModule, ResolvesAndChecksReduxSyncSlices) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
   const auto& float_ast = *parsed_module_3;
   const auto float_resolved = resolveModule(float_ast);
-  ASSERT_TRUE(float_resolved.has_value()) << float_resolved.error().front().message;
+  ASSERT_TRUE(float_resolved.has_value())
+      << float_resolved.error().front().message;
   const auto availability = [&float_resolved](std::string_view source) {
     const auto parsed = parseModule(source);
     if (!parsed || !parsed.diagnostics.empty()) {
       ADD_FAILURE() << (parsed.diagnostics.empty()
                             ? "PTX source did not produce a syntax module."
                             : parsed.diagnostics.front().message);
-      return checker::CheckResult{
-          std::unexpected(checker::CheckDiagnostics{})};
+      return checker::CheckResult{std::unexpected(checker::CheckDiagnostics{})};
     }
     return checkModuleAvailability(*parsed, *float_resolved);
   };
@@ -3419,8 +3495,8 @@ TEST(ResolvedModule, ResolvesAndChecksGriddepcontrolActions) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
-    EXPECT_TRUE(
-        checker::check(std::get<Griddepcontrol>(instruction), context).has_value());
+    EXPECT_TRUE(checker::check(std::get<Griddepcontrol>(instruction), context)
+                    .has_value());
   }
   for (const checker::Context unavailable : {
            checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 90},
@@ -3430,7 +3506,8 @@ TEST(ResolvedModule, ResolvesAndChecksGriddepcontrolActions) {
        }) {
     SCOPED_TRACE(unavailable.target.ptx_version.minor);
     EXPECT_FALSE(
-        checker::check(std::get<Griddepcontrol>(body.front()), unavailable).has_value());
+        checker::check(std::get<Griddepcontrol>(body.front()), unavailable)
+            .has_value());
   }
   for (const std::string_view source : {
            ".entry kernel() { griddepcontrol; }",
@@ -3443,7 +3520,6 @@ TEST(ResolvedModule, ResolvesAndChecksGriddepcontrolActions) {
     EXPECT_FALSE(resolveModule(*parsed_module_2).has_value());
   }
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

@@ -11,7 +11,8 @@ namespace ptx_frontend::resolved_ir {
 namespace {
 
 /** Recovered internal-percent source never enters the resolved module as a symbol. */
-TEST(IdentifierLexicalRecovery, ExcludesInvalidNamesAndRejectsRecoveredReference) {
+TEST(IdentifierLexicalRecovery,
+     ExcludesInvalidNamesAndRejectsRecoveredReference) {
   constexpr std::string_view source = R"ptx(.version 9.3
 .target sm_80
 .address_size 64
@@ -39,8 +40,7 @@ TEST(IdentifierLexicalRecovery, ExcludesInvalidNamesAndRejectsRecoveredReference
   const auto resolved = resolveModule(*parsed);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_FALSE(resolved.error().empty());
-  EXPECT_EQ(resolved.error().front().range,
-            (SourceRange{{7, 18}, {7, 22}}));
+  EXPECT_EQ(resolved.error().front().range, (SourceRange{{7, 18}, {7, 22}}));
 }
 
 }  // namespace

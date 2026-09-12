@@ -51,10 +51,12 @@ TEST(PtxSymbolTable, OctalDeclarationMetadata) {
   EXPECT_EQ(member->parameterized_index, 7u);
   EXPECT_EQ(table.symbol(member->symbol).parameterized_count, 8u);
   EXPECT_FALSE(table.lookup(*scope, "%r8").has_value());
-  const auto* file = findReference(table, "8", binding::ReferenceKind::DebugFile);
+  const auto* file =
+      findReference(table, "8", binding::ReferenceKind::DebugFile);
   ASSERT_NE(file, nullptr);
   ASSERT_TRUE(file->target.has_value());
-  EXPECT_EQ(table.symbol(file->target->symbol).kind, binding::SymbolKind::DebugFile);
+  EXPECT_EQ(table.symbol(file->target->symbol).kind,
+            binding::SymbolKind::DebugFile);
   EXPECT_EQ(table.symbol(file->target->symbol).name, "8");
 }
 
@@ -239,22 +241,22 @@ TEST(PtxSymbolTable, InitializerReferenceIndexRetainsFirstUnresolvedRange) {
 
   const auto bound = binding::bindSymbols(*module);
   ASSERT_FALSE(bound.diagnostics.empty());
-  const binding::SymbolReference* first = bound.table.initializerReference(
-      first_symbol->name.syntax.range);
+  const binding::SymbolReference* first =
+      bound.table.initializerReference(first_symbol->name.syntax.range);
   ASSERT_NE(first, nullptr);
   EXPECT_EQ(first->spelling, "missing");
   EXPECT_FALSE(first->target.has_value());
 
   auto copied = bound.table;
-  const binding::SymbolReference* copied_first = copied.initializerReference(
-      first_symbol->name.syntax.range);
+  const binding::SymbolReference* copied_first =
+      copied.initializerReference(first_symbol->name.syntax.range);
   ASSERT_NE(copied_first, nullptr);
   EXPECT_EQ(copied_first->spelling, "missing");
   EXPECT_FALSE(copied_first->target.has_value());
 
   auto moved = std::move(copied);
-  const binding::SymbolReference* moved_first = moved.initializerReference(
-      first_symbol->name.syntax.range);
+  const binding::SymbolReference* moved_first =
+      moved.initializerReference(first_symbol->name.syntax.range);
   ASSERT_NE(moved_first, nullptr);
   EXPECT_EQ(moved_first->spelling, "missing");
   EXPECT_FALSE(moved_first->target.has_value());
@@ -292,12 +294,11 @@ TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
   ASSERT_TRUE(kernel.has_value());
   const auto function_scope =
       *binding_result.table.symbol(kernel->symbol).owned_scope;
-  const auto& function =
-      std::get<syntax_ast::AstFunction>(module->items[1]);
-  const auto& first_block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
-      function.body[1]);
-  const auto& second_block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
-      function.body[2]);
+  const auto& function = std::get<syntax_ast::AstFunction>(module->items[1]);
+  const auto& first_block =
+      *std::get<std::unique_ptr<syntax_ast::AstBlock>>(function.body[1]);
+  const auto& second_block =
+      *std::get<std::unique_ptr<syntax_ast::AstBlock>>(function.body[2]);
   const auto inner_scope =
       binding_result.table.blockScope(function_scope, first_block.range);
   const auto sibling_scope =
@@ -308,7 +309,8 @@ TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
             binding::ScopeKind::Block);
   EXPECT_EQ(binding_result.table.scope(*inner_scope).parent, function_scope);
 
-  const auto outer_value = binding_result.table.lookup(function_scope, "%value");
+  const auto outer_value =
+      binding_result.table.lookup(function_scope, "%value");
   const auto inner_value = binding_result.table.lookup(*inner_scope, "%value");
   ASSERT_TRUE(outer_value.has_value());
   ASSERT_TRUE(inner_value.has_value());
@@ -326,7 +328,8 @@ TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
       ASSERT_NE(identifier, nullptr);
       const auto reference = std::ranges::find_if(
           binding_result.table.references(), [&](const auto& candidate) {
-            return candidate.kind == binding::ReferenceKind::InstructionOperand &&
+            return candidate.kind ==
+                       binding::ReferenceKind::InstructionOperand &&
                    candidate.range == identifier->syntax.range;
           });
       ASSERT_NE(reference, binding_result.table.references().end());
@@ -337,12 +340,11 @@ TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
   expect_add_references(
       std::get<syntax_ast::AstInstruction>(first_block.body[6]),
       inner_value->symbol);
-  expect_add_references(
-      std::get<syntax_ast::AstInstruction>(function.body[3]),
-      outer_value->symbol);
+  expect_add_references(std::get<syntax_ast::AstInstruction>(function.body[3]),
+                        outer_value->symbol);
 
-  for (const auto [name, kind] : std::initializer_list<
-           std::pair<std::string_view, binding::SymbolKind>>{
+  for (const auto [name, kind] :
+       std::initializer_list<std::pair<std::string_view, binding::SymbolKind>>{
            {"inner_label", binding::SymbolKind::Label},
            {"prototype", binding::SymbolKind::CallPrototype},
            {"targets", binding::SymbolKind::CallTargetSet},
@@ -350,7 +352,8 @@ TEST(PtxSymbolTable, BindsNestedBlocksLexicallyButKeepsControlMetadataLocal) {
     const auto symbol = binding_result.table.lookup(function_scope, name);
     ASSERT_TRUE(symbol.has_value()) << name;
     EXPECT_EQ(binding_result.table.symbol(symbol->symbol).kind, kind);
-    EXPECT_EQ(binding_result.table.symbol(symbol->symbol).scope, function_scope);
+    EXPECT_EQ(binding_result.table.symbol(symbol->symbol).scope,
+              function_scope);
   }
   for (const auto [name, kind] : std::initializer_list<
            std::pair<std::string_view, binding::ReferenceKind>>{
@@ -531,10 +534,10 @@ TEST(PtxSymbolTable, ClassifiesLocalCallParametersInTheirFunctionScope) {
 
   const auto binding_result = binding::bindSymbols(*module);
   ASSERT_TRUE(binding_result.diagnostics.empty());
-  const auto first = binding_result.table.lookup(
-      binding_result.table.moduleScope(), "first");
-  const auto second = binding_result.table.lookup(
-      binding_result.table.moduleScope(), "second");
+  const auto first =
+      binding_result.table.lookup(binding_result.table.moduleScope(), "first");
+  const auto second =
+      binding_result.table.lookup(binding_result.table.moduleScope(), "second");
   ASSERT_TRUE(first.has_value());
   ASSERT_TRUE(second.has_value());
   const auto first_scope =
@@ -546,7 +549,8 @@ TEST(PtxSymbolTable, ClassifiesLocalCallParametersInTheirFunctionScope) {
   EXPECT_EQ(binding_result.table.symbol(staging->symbol).kind,
             binding::SymbolKind::CallParameter);
   EXPECT_EQ(binding_result.table.symbol(staging->symbol).scope, first_scope);
-  EXPECT_FALSE(binding_result.table.lookup(second_scope, "staging").has_value());
+  EXPECT_FALSE(
+      binding_result.table.lookup(second_scope, "staging").has_value());
   const auto* argument = findReference(binding_result.table, "staging",
                                        binding::ReferenceKind::CallArgument);
   ASSERT_NE(argument, nullptr);
@@ -579,10 +583,9 @@ TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
   const auto dispatch =
       first.table.lookup(first.table.moduleScope(), "dispatch");
   ASSERT_TRUE(dispatch.has_value());
-  const auto function_scope =
-      *first.table.symbol(dispatch->symbol).owned_scope;
-  for (const auto [name, kind] : std::initializer_list<
-           std::pair<std::string_view, binding::SymbolKind>>{
+  const auto function_scope = *first.table.symbol(dispatch->symbol).owned_scope;
+  for (const auto [name, kind] :
+       std::initializer_list<std::pair<std::string_view, binding::SymbolKind>>{
            {"prototype", binding::SymbolKind::CallPrototype},
            {"targets", binding::SymbolKind::CallTargetSet},
            {"branches", binding::SymbolKind::BranchTargetSet}}) {
@@ -600,8 +603,8 @@ TEST(PtxSymbolTable, CollectsFunctionLocalControlFlowMetadataSymbols) {
             first.table.lookup(function_scope, "branches")->symbol);
   EXPECT_NE(first.table.lookup(function_scope, "targets")->symbol,
             first.table.lookup(function_scope, "branches")->symbol);
-  EXPECT_FALSE(first.table.lookup(first.table.moduleScope(), "prototype")
-                   .has_value());
+  EXPECT_FALSE(
+      first.table.lookup(first.table.moduleScope(), "prototype").has_value());
 
   for (const std::string_view name : {"prototype", "targets"}) {
     const auto* reference =
@@ -710,24 +713,12 @@ TEST(PtxSymbolTable, SpecialRegisterFamiliesHaveExactBounds) {
     EXPECT_TRUE(binding::isSpecialRegister(spelling)) << spelling;
   }
   for (const std::string_view spelling : {
-           "%is_explicit_cluster",
-           "%cluster_ctarank",
-           "%cluster_nctarank",
-           "%clusterid",
-           "%nclusterid",
-           "%cluster_ctaid",
-           "%cluster_nctaid",
-           "%clusterid.x",
-           "%clusterid.y",
-           "%clusterid.z",
-           "%nclusterid.x",
-           "%nclusterid.y",
-           "%nclusterid.z",
-           "%cluster_ctaid.x",
-           "%cluster_ctaid.y",
-           "%cluster_ctaid.z",
-           "%cluster_nctaid.x",
-           "%cluster_nctaid.y",
+           "%is_explicit_cluster", "%cluster_ctarank",  "%cluster_nctarank",
+           "%clusterid",           "%nclusterid",       "%cluster_ctaid",
+           "%cluster_nctaid",      "%clusterid.x",      "%clusterid.y",
+           "%clusterid.z",         "%nclusterid.x",     "%nclusterid.y",
+           "%nclusterid.z",        "%cluster_ctaid.x",  "%cluster_ctaid.y",
+           "%cluster_ctaid.z",     "%cluster_nctaid.x", "%cluster_nctaid.y",
            "%cluster_nctaid.z",
        }) {
     EXPECT_TRUE(binding::isSpecialRegister(spelling)) << spelling;
@@ -773,8 +764,7 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   const auto pm4 = base::lookup("%pm4");
   ASSERT_TRUE(pm3.has_value());
   ASSERT_TRUE(pm4.has_value());
-  EXPECT_EQ(pm3->id.kind,
-            base::SpecialRegisterKind::PerformanceMonitor);
+  EXPECT_EQ(pm3->id.kind, base::SpecialRegisterKind::PerformanceMonitor);
   EXPECT_EQ(pm3->id.index, 3u);
   EXPECT_EQ(pm4->id.index, 4u);
   EXPECT_EQ(pm3->minimum_ptx_major, 1u);
@@ -787,8 +777,7 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
   const auto envreg31 = base::lookup("%envreg31");
   ASSERT_TRUE(pm7_64.has_value());
   ASSERT_TRUE(envreg31.has_value());
-  EXPECT_EQ(pm7_64->id.kind,
-            base::SpecialRegisterKind::PerformanceMonitor64);
+  EXPECT_EQ(pm7_64->id.kind, base::SpecialRegisterKind::PerformanceMonitor64);
   EXPECT_EQ(pm7_64->id.index, 7u);
   EXPECT_EQ(pm7_64->element_type, base::ScalarType::U64);
   EXPECT_EQ(pm7_64->minimum_ptx_major, 4u);
@@ -864,10 +853,8 @@ TEST(PtxSymbolTable, SpecialRegisterMetadataCarriesTypeShapeAndAvailability) {
     ASSERT_TRUE(info.has_value()) << expected.spelling;
     EXPECT_EQ(info->element_type, expected.type) << expected.spelling;
     EXPECT_EQ(info->vector_width, 1u) << expected.spelling;
-    EXPECT_EQ(info->minimum_ptx_major, expected.ptx_major)
-        << expected.spelling;
-    EXPECT_EQ(info->minimum_ptx_minor, expected.ptx_minor)
-        << expected.spelling;
+    EXPECT_EQ(info->minimum_ptx_major, expected.ptx_major) << expected.spelling;
+    EXPECT_EQ(info->minimum_ptx_minor, expected.ptx_minor) << expected.spelling;
     EXPECT_EQ(info->minimum_sm, expected.sm) << expected.spelling;
   }
 }
@@ -977,22 +964,22 @@ debug_name:
 
   ASSERT_TRUE(binding_result.diagnostics.empty());
   const auto& table = binding_result.table;
-  const auto debug_files = std::ranges::count_if(
-      table.symbols(), [](const auto& symbol) {
+  const auto debug_files =
+      std::ranges::count_if(table.symbols(), [](const auto& symbol) {
         return symbol.kind == binding::SymbolKind::DebugFile;
       });
   EXPECT_EQ(debug_files, 1u);
-  const auto debug_file = std::ranges::find_if(
-      table.symbols(), [](const auto& symbol) {
+  const auto debug_file =
+      std::ranges::find_if(table.symbols(), [](const auto& symbol) {
         return symbol.kind == binding::SymbolKind::DebugFile;
       });
   ASSERT_NE(debug_file, table.symbols().end());
   EXPECT_EQ(debug_file->name, "1");
 
-  const auto* first_file = findReference(
-      table, "0x1U", binding::ReferenceKind::DebugFile);
-  const auto* inline_file = findReference(
-      table, "1", binding::ReferenceKind::DebugFile);
+  const auto* first_file =
+      findReference(table, "0x1U", binding::ReferenceKind::DebugFile);
+  const auto* inline_file =
+      findReference(table, "1", binding::ReferenceKind::DebugFile);
   ASSERT_NE(first_file, nullptr);
   ASSERT_NE(inline_file, nullptr);
   ASSERT_TRUE(first_file->target.has_value());
@@ -1015,8 +1002,7 @@ debug_name:
 
   const auto ordinary = table.lookup(table.moduleScope(), "debug_name");
   ASSERT_TRUE(ordinary.has_value());
-  EXPECT_EQ(table.symbol(ordinary->symbol).kind,
-            binding::SymbolKind::Variable);
+  EXPECT_EQ(table.symbol(ordinary->symbol).kind, binding::SymbolKind::Variable);
   EXPECT_FALSE(table.lookup(table.moduleScope(), ".debug_str").has_value());
 }
 
@@ -1037,13 +1023,15 @@ TEST(PtxSymbolTable, DiagnosesUnresolvedDebugMetadataAndDuplicateDebugLabel) {
   const auto binding_result = binding::bindSymbols(*module);
 
   EXPECT_EQ(std::ranges::count_if(
-                binding_result.diagnostics, [](const auto& diagnostic) {
+                binding_result.diagnostics,
+                [](const auto& diagnostic) {
                   return diagnostic.kind ==
                          binding::BindDiagnosticKind::UnresolvedReference;
                 }),
             2);
   EXPECT_EQ(std::ranges::count_if(
-                binding_result.diagnostics, [](const auto& diagnostic) {
+                binding_result.diagnostics,
+                [](const auto& diagnostic) {
                   return diagnostic.kind ==
                          binding::BindDiagnosticKind::DuplicateSymbol;
                 }),

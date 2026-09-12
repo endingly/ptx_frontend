@@ -8,8 +8,8 @@
 #include <string_view>
 #include <type_traits>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
 namespace ptx_frontend::resolved_ir {
 using check_end::OperandPresence;
@@ -315,14 +315,14 @@ std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic> resolve_predicate(
 
 std::expected<WithLocs<ResolvedShflSyncDestination>, ResolveDiagnostic>
 resolve_shfl_destination(const syntax_ast::AstOperand& operand,
-                         bool allow_destination_sink,
-                         bool allow_predicate_sink,
+                         bool allow_destination_sink, bool allow_predicate_sink,
                          const ResolveContext* context) {
   const auto* pair =
       std::get_if<syntax_ast::AstRegisterPredicatePair>(&operand);
   if (pair == nullptr) {
-    return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
-                                               .message = "Expected d|p destination."});
+    return std::unexpected(
+        ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                          .message = "Expected d|p destination."});
   }
   std::optional<WithLoc<ResolvedRegisterRef>> data;
   if (pair->dst.syntax.text == "_") {
@@ -345,7 +345,8 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
     if (!allow_predicate_sink) {
       return std::unexpected(ResolveDiagnostic{
           .range = pair->predicate.syntax.range,
-          .message = "The '_' sink is not allowed as the predicate half of this d|p destination.",
+          .message = "The '_' sink is not allowed as the predicate half of "
+                     "this d|p destination.",
       });
     }
   } else {
@@ -353,8 +354,8 @@ resolve_shfl_destination(const syntax_ast::AstOperand& operand,
         pair->predicate, false, pair->predicate.syntax.range, context);
     if (!resolved_predicate)
       return std::unexpected(resolved_predicate.error());
-    predicate = WithLoc<ResolvedPredicate>{
-        std::move(resolved_predicate->value), pair->predicate.syntax.range};
+    predicate = WithLoc<ResolvedPredicate>{std::move(resolved_predicate->value),
+                                           pair->predicate.syntax.range};
   }
   if (!data && !predicate) {
     return std::unexpected(ResolveDiagnostic{
@@ -476,7 +477,7 @@ resolve_branch_target_set(const syntax_ast::AstOperand& operand,
     resolved.symbol_id = symbol.id;
   }
   return WithLocs<ResolvedBranchTargetSet>{std::move(resolved),
-                                            target_set->range};
+                                           target_set->range};
 }
 
 std::expected<ResolvedCallParameterRef, ResolveDiagnostic>
@@ -501,7 +502,8 @@ resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
       symbol.kind == binding::SymbolKind::InputParameter ||
       symbol.kind == binding::SymbolKind::ReturnParameter ||
       symbol.kind == binding::SymbolKind::CallParameter;
-  const bool allowed_space = symbol.state_space &&
+  const bool allowed_space =
+      symbol.state_space &&
       (*symbol.state_space == syntax_ast::AstStateSpace::Register ||
        *symbol.state_space == syntax_ast::AstStateSpace::Parameter);
   if (!parameter_or_variable || !allowed_space) {
@@ -567,23 +569,25 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
     }
     const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
     if (symbol.kind != binding::SymbolKind::Function) {
-      const bool is_register = symbol.kind == binding::SymbolKind::Variable &&
+      const bool is_register =
+          symbol.kind == binding::SymbolKind::Variable &&
           symbol.state_space == syntax_ast::AstStateSpace::Register;
       return std::unexpected(ResolveDiagnostic{
           .range = target->range,
-          .message = is_register
-              ? "Indirect call register targets require a function-local "
-                ".callprototype or .calltargets metadata operand."
-              : fmt::format("Call target '{}' must name a function.",
-                            target->name.syntax.text),
+          .message =
+              is_register
+                  ? "Indirect call register targets require a function-local "
+                    ".callprototype or .calltargets metadata operand."
+                  : fmt::format("Call target '{}' must name a function.",
+                                target->name.syntax.text),
       });
     }
     if (symbol.function_is_entry) {
       return std::unexpected(ResolveDiagnostic{
           .range = target->range,
-          .message = fmt::format(
-              "Direct call target '{}' must name a device .func, not an .entry.",
-              target->name.syntax.text),
+          .message = fmt::format("Direct call target '{}' must name a device "
+                                 ".func, not an .entry.",
+                                 target->name.syntax.text),
       });
     }
     resolved.symbol_id = symbol.id;
@@ -596,8 +600,8 @@ std::expected<WithLocs<ResolvedIndirectCallee>, ResolveDiagnostic>
 resolve_indirect_callee(const syntax_ast::AstOperand& operand,
                         const ResolveContext* context) {
   if (const auto* target = std::get_if<syntax_ast::AstCallTarget>(&operand)) {
-    auto register_ref = resolve_register(syntax_ast::AstOperand{target->name},
-                                         context);
+    auto register_ref =
+        resolve_register(syntax_ast::AstOperand{target->name}, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
     return WithLocs<ResolvedIndirectCallee>{
@@ -608,7 +612,8 @@ resolve_indirect_callee(const syntax_ast::AstOperand& operand,
   if (metadata == nullptr) {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
-        .message = "Expected an indirect call register target or metadata label.",
+        .message =
+            "Expected an indirect call register target or metadata label.",
     });
   }
 
@@ -675,8 +680,7 @@ resolve_call_return_parameter(const syntax_ast::AstOperand& operand,
   auto resolved = resolve_call_parameter(*identifier, context);
   if (!resolved)
     return std::unexpected(resolved.error());
-  return WithLocs<ResolvedCallParameterRef>{std::move(*resolved),
-                                             group->range};
+  return WithLocs<ResolvedCallParameterRef>{std::move(*resolved), group->range};
 }
 
 std::expected<WithLocs<ResolvedCallArguments>, ResolveDiagnostic>
@@ -779,8 +783,9 @@ resolve_predicate_source(const syntax_ast::AstOperand& operand,
           base::ScalarType::Pred) {
         return std::unexpected(ResolveDiagnostic{
             .range = range,
-            .message = fmt::format("Expected a predicate special register, got '{}'.",
-                                   special->value.spelling),
+            .message =
+                fmt::format("Expected a predicate special register, got '{}'.",
+                            special->value.spelling),
         });
       }
       return WithLocs<ResolvedPredicateSource>{
@@ -811,8 +816,9 @@ resolve_vector_special_register(const syntax_ast::AstOperand& operand) {
   if (!info || info->vector_width != 4) {
     return std::unexpected(ResolveDiagnostic{
         .range = identifier->syntax.range,
-        .message = fmt::format("Expected a four-component special register, got '{}'.",
-                               identifier->syntax.text),
+        .message =
+            fmt::format("Expected a four-component special register, got '{}'.",
+                        identifier->syntax.text),
     });
   }
   return WithLocs<ResolvedVectorSpecialRegisterRef>{
@@ -833,21 +839,22 @@ enum class AddressImmediateDomain : uint8_t { General, MemoryOperand };
  * wider relocation-addend contract.
  */
 std::expected<std::optional<ResolvedAddressOffset>, ResolveDiagnostic>
-resolve_address_offset(const syntax_ast::AstAddress& address,
-                       AddressImmediateDomain domain =
-                           AddressImmediateDomain::General) {
+resolve_address_offset(
+    const syntax_ast::AstAddress& address,
+    AddressImmediateDomain domain = AddressImmediateDomain::General) {
   if (!address.offset)
     return std::nullopt;
 
   const bool memory_operand = domain == AddressImmediateDomain::MemoryOperand;
-  auto value = resolve_immediate_value(address.offset->magnitude,
-                                       ScalarType::S64, true);
+  auto value =
+      resolve_immediate_value(address.offset->magnitude, ScalarType::S64, true);
   if (!value)
     return std::unexpected(value.error());
   const bool subtract = address.offset->operation ==
                         syntax_ast::AstAddressOffset::Operator::Subtract;
   if (memory_operand) {
-    const uint64_t source_bits = value->integer_source_bits.value_or(value->bits);
+    const uint64_t source_bits =
+        value->integer_source_bits.value_or(value->bits);
     const uint64_t magnitude =
         value->is_negative ? uint64_t{0} - source_bits : source_bits;
     const bool effective_negative = subtract != value->is_negative;
@@ -1055,8 +1062,8 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     }
   } else {
     const auto& immediate = std::get<syntax_ast::AstImmediate>(address->base);
-    auto immediate_base = resolve_immediate_value(immediate, ScalarType::U32,
-                                                  true);
+    auto immediate_base =
+        resolve_immediate_value(immediate, ScalarType::U32, true);
     if (!immediate_base)
       return std::unexpected(immediate_base.error());
     if (immediate_base->is_negative) {
@@ -1070,8 +1077,8 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
     base = std::move(*immediate_base);
   }
 
-  auto offset = resolve_address_offset(*address,
-                                       AddressImmediateDomain::MemoryOperand);
+  auto offset =
+      resolve_address_offset(*address, AddressImmediateDomain::MemoryOperand);
   if (!offset)
     return std::unexpected(offset.error());
 
@@ -1080,13 +1087,12 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
           .base = std::move(*base),
           .offset = std::move(*offset),
           .enclosing_function_kind =
-              context == nullptr ? EnclosingFunctionKind::Unknown
+              context == nullptr           ? EnclosingFunctionKind::Unknown
               : context->function_is_entry ? EnclosingFunctionKind::Entry
                                            : EnclosingFunctionKind::Device,
       },
       address->range};
 }
-
 
 std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     const syntax_ast::AstOperand& operand, ScalarType type,
@@ -1100,8 +1106,8 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
                               identifier->syntax.range};
   }
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
-    auto value = detail::resolve_immediate_value(*immediate, type,
-                                         require_target_range);
+    auto value =
+        detail::resolve_immediate_value(*immediate, type, require_target_range);
     if (!value)
       return std::unexpected(value.error());
     return WithLocs<RegOrImm>{RegOrImm{*value}, immediate->syntax.range};
@@ -1123,8 +1129,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    std::optional<uint8_t> required_arity,
                    checker::VectorTypePolicy vector_type_policy,
                    base::ScalarTypeSizePolicy register_width_policy,
-                   bool allow_sink,
-                   size_t sink_payload_bits,
+                   bool allow_sink, size_t sink_payload_bits,
                    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
@@ -1145,9 +1150,8 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   if (required_arity && arity != *required_arity) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message =
-            fmt::format("This vector operand requires {} elements.",
-                        *required_arity),
+        .message = fmt::format("This vector operand requires {} elements.",
+                               *required_arity),
     });
   }
   const size_t vector_payload_bits =
@@ -1158,20 +1162,21 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   if (vector_payload_bits > checker::kMaxRegisterVectorPayloadBits) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message = fmt::format(
-            "This vector operand's payload width ({} bits) exceeds the supported "
-            "{} bit limit.",
-            vector_payload_bits,
-            checker::kMaxRegisterVectorPayloadBits),
+        .message = fmt::format("This vector operand's payload width ({} bits) "
+                               "exceeds the supported "
+                               "{} bit limit.",
+                               vector_payload_bits,
+                               checker::kMaxRegisterVectorPayloadBits),
     });
   }
   if (!required_arity &&
       std::ranges::find(allowed_arities, arity) == allowed_arities.end()) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message = vector_type_policy == checker::VectorTypePolicy::Aggregate
-                       ? "A vector mov requires two or four elements."
-                       : "A vector operand requires two, four, or eight elements.",
+        .message =
+            vector_type_policy == checker::VectorTypePolicy::Aggregate
+                ? "A vector mov requires two or four elements."
+                : "A vector operand requires two, four, or eight elements.",
     });
   }
   size_t element_bytes = scalar_size_of(instruction_type);
@@ -1197,7 +1202,8 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     if (identifier == nullptr) {
       return std::unexpected(ResolveDiagnostic{
           .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
-          .message = "A register-vector element must be a register or '_' sink.",
+          .message =
+              "A register-vector element must be a register or '_' sink.",
       });
     }
     locations.push_back(identifier->syntax.range);
@@ -1256,9 +1262,10 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
 }
 
 std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
-resolve_modern_register_vector(const syntax_ast::AstOperand& operand,
-                               const check_end::ResolvedOperandBindingDescriptor& binding,
-                               const ResolveContext* context) {
+resolve_modern_register_vector(
+    const syntax_ast::AstOperand& operand,
+    const check_end::ResolvedOperandBindingDescriptor& binding,
+    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
     return std::unexpected(ResolveDiagnostic{
@@ -1270,9 +1277,9 @@ resolve_modern_register_vector(const syntax_ast::AstOperand& operand,
       vector->elements.size() > binding.maximum_elements) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message = fmt::format("Vector operand requires {} to {} elements.",
-                               binding.minimum_elements,
-                               binding.maximum_elements),
+        .message =
+            fmt::format("Vector operand requires {} to {} elements.",
+                        binding.minimum_elements, binding.maximum_elements),
     });
   }
 
@@ -1281,11 +1288,13 @@ resolve_modern_register_vector(const syntax_ast::AstOperand& operand,
   std::vector<SourceRange> locations;
   locations.reserve(vector->elements.size());
   for (const auto& element : vector->elements) {
-    const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&element);
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&element);
     if (identifier == nullptr) {
       return std::unexpected(ResolveDiagnostic{
           .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
-          .message = "A matrix fragment element must be a register or '_' sink.",
+          .message =
+              "A matrix fragment element must be a register or '_' sink.",
       });
     }
     locations.push_back(identifier->syntax.range);
@@ -1320,9 +1329,9 @@ resolve_tensor_coordinate(
       vector->elements.size() > binding.maximum_elements) {
     return std::unexpected(ResolveDiagnostic{
         .range = vector->range,
-        .message = fmt::format("Vector operand requires {} to {} elements.",
-                               binding.minimum_elements,
-                               binding.maximum_elements),
+        .message =
+            fmt::format("Vector operand requires {} to {} elements.",
+                        binding.minimum_elements, binding.maximum_elements),
     });
   }
 
@@ -1351,7 +1360,8 @@ resolve_tensor_coordinate(
       if (*type == ScalarType::Invalid) {
         return std::unexpected(ResolveDiagnostic{
             .range = immediate.syntax.range,
-            .message = "Tensor coordinate immediates require an operand scalar type.",
+            .message =
+                "Tensor coordinate immediates require an operand scalar type.",
         });
       }
       immediate_type = *type;
@@ -1373,8 +1383,7 @@ resolve_tensor_coordinate(
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
-                   bool allow_function_symbol,
-                   const ResolveContext* context) {
+                   bool allow_function_symbol, const ResolveContext* context) {
   if (type == ScalarType::B128) {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
@@ -1572,7 +1581,6 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                                      identifier->syntax.range};
 }
 
-
 std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
     const ResolvedOperandBindingDescriptor& binding,
     const ResolvedInstructionFields& fields, const SourceRange& range) {
@@ -1605,9 +1613,10 @@ std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
       binding.target_field_id, field_id));
 }
 
-std::expected<std::optional<uint8_t>, ResolveDiagnostic> vector_arity_for_operand(
-    const ResolvedOperandBindingDescriptor& binding,
-    const ResolvedInstructionFields& fields, const SourceRange& range) {
+std::expected<std::optional<uint8_t>, ResolveDiagnostic>
+vector_arity_for_operand(const ResolvedOperandBindingDescriptor& binding,
+                         const ResolvedInstructionFields& fields,
+                         const SourceRange& range) {
   if (binding.vector_arity_modifier_field_id.empty())
     return std::nullopt;
 
@@ -1640,20 +1649,25 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::MbarrierStateToken: {
-      const bool is_sink = std::get_if<syntax_ast::AstIdentifierRef>(&operand) != nullptr &&
-                           std::get<syntax_ast::AstIdentifierRef>(operand).syntax.text == "_";
+      const bool is_sink =
+          std::get_if<syntax_ast::AstIdentifierRef>(&operand) != nullptr &&
+          std::get<syntax_ast::AstIdentifierRef>(operand).syntax.text == "_";
       if (is_sink) {
         if (binding.mbarrier_state_token_form ==
             checker::MbarrierStateTokenForm::Register) {
-          return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
-              .message = "The '_' sink is not allowed for this mbarrier state token."});
+          return std::unexpected(
+              ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                                .message = "The '_' sink is not allowed for "
+                                           "this mbarrier state token."});
         }
         return ResolvedFieldValue{WithLocs<ResolvedMbarrierStateToken>{
             ResolvedMbarrierStateToken{.register_ref = std::nullopt},
             syntax_ast::sourceRange(operand)}};
       }
-      if (binding.mbarrier_state_token_form == checker::MbarrierStateTokenForm::Sink) {
-        return std::unexpected(ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+      if (binding.mbarrier_state_token_form ==
+          checker::MbarrierStateTokenForm::Sink) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
             .message = "This mbarrier state token requires the '_' sink."});
       }
       auto value = resolve_register(operand, context);
@@ -1727,9 +1741,9 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::ShflDestination: {
-      auto value = resolve_shfl_destination(
-          operand, binding.allow_destination_sink,
-          binding.allow_predicate_sink, context);
+      auto value =
+          resolve_shfl_destination(operand, binding.allow_destination_sink,
+                                   binding.allow_predicate_sink, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -1745,9 +1759,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      auto value =
-          resolve_mov_source(operand, *type, binding.allowed_shapes,
-                             binding.allow_function_symbol, context);
+      auto value = resolve_mov_source(operand, *type, binding.allowed_shapes,
+                                      binding.allow_function_symbol, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
@@ -1805,18 +1818,14 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      const auto arity =
-          vector_arity_for_operand(binding, fields, syntax_ast::sourceRange(operand));
+      const auto arity = vector_arity_for_operand(
+          binding, fields, syntax_ast::sourceRange(operand));
       if (!arity)
         return std::unexpected(arity.error());
-      auto value =
-          resolve_reg_vector(operand, *type,
-                             binding.allowed_vector_arities,
-                             *arity,
-                             binding.vector_type_policy,
-                             binding.register_width_policy,
-                             binding.allow_vector_sink,
-                             binding.vector_sink_payload_bits, context);
+      auto value = resolve_reg_vector(
+          operand, *type, binding.allowed_vector_arities, *arity,
+          binding.vector_type_policy, binding.register_width_policy,
+          binding.allow_vector_sink, binding.vector_sink_payload_bits, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

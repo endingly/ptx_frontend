@@ -3,9 +3,9 @@
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
-#include "ptx_storage_declarations.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_source_identity.hpp"
+#include "ptx_storage_declarations.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -70,8 +70,8 @@ base::ScalarType call_scalar_type(std::string_view spelling) {
 /** Parse a source address-size directive without retaining syntax ownership. */
 std::optional<uint32_t> address_size_bits(std::string_view text) {
   uint32_t result{};
-  const auto [end, error] = std::from_chars(
-      text.data(), text.data() + text.size(), result);
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), result);
   if (text.empty() || error != std::errc{} || end != text.data() + text.size())
     return std::nullopt;
   return result == 32 || result == 64 ? std::optional{result} : std::nullopt;
@@ -84,8 +84,8 @@ std::optional<checker::PtxVersion> parse_version(std::string_view text) {
     return std::nullopt;
   checker::PtxVersion result;
   const auto parse = [](std::string_view digits, uint16_t& output) {
-    const auto [end, error] = std::from_chars(
-        digits.data(), digits.data() + digits.size(), output);
+    const auto [end, error] =
+        std::from_chars(digits.data(), digits.data() + digits.size(), output);
     return !digits.empty() && error == std::errc{} &&
            end == digits.data() + digits.size();
   };
@@ -98,8 +98,8 @@ std::optional<checker::PtxVersion> parse_version(std::string_view text) {
 /** Parse one validated unsigned directive operand into owned semantic storage. */
 std::optional<uint32_t> normalized_u32(std::string_view text) {
   uint32_t value{};
-  const auto [end, error] = std::from_chars(
-      text.data(), text.data() + text.size(), value);
+  const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value);
   if (text.empty() || error != std::errc{} || end != text.data() + text.size())
     return std::nullopt;
   return value;
@@ -146,7 +146,8 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
   /** Region zero models declarations before the first .target directive. */
   header.regions.push_back({.range = ast.range});
   for (const auto& item : ast.items) {
-    if (const auto* directive = std::get_if<syntax_ast::AstVersionDirective>(&item)) {
+    if (const auto* directive =
+            std::get_if<syntax_ast::AstVersionDirective>(&item)) {
       const auto parsed = parse_version(directive->version.text);
       if (!parsed || version)
         header.invalid_directives.push_back(directive->range);
@@ -180,9 +181,9 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
   const auto version_provenance = version
                                       ? SourceConfigurationProvenance::Explicit
                                       : SourceConfigurationProvenance::Missing;
-  const auto address_provenance = address_size_explicit
-                                      ? SourceConfigurationProvenance::Explicit
-                                      : SourceConfigurationProvenance::Defaulted;
+  const auto address_provenance =
+      address_size_explicit ? SourceConfigurationProvenance::Explicit
+                            : SourceConfigurationProvenance::Defaulted;
   for (auto& region : header.regions) {
     region.version = version;
     region.version_provenance = version_provenance;
@@ -202,7 +203,8 @@ ResolvedKernelResourceContract resolve_resource_contract(
   for (const auto& value : resource.values) {
     const auto parsed = normalized_u32(value.text);
     if (!parsed)
-      throw ResolveException("Validated kernel resource has a non-numeric value.");
+      throw ResolveException(
+          "Validated kernel resource has a non-numeric value.");
     resolved.values.push_back(*parsed);
   }
   if (has_implicit_resource_dimensions(resolved.kind)) {
@@ -220,7 +222,8 @@ std::optional<ResolvedAbiPreservationContract> resolve_abi_contract(
     return std::nullopt;
   const auto count = normalized_u32(suffix->count.text);
   if (!count)
-    throw ResolveException("Validated ABI preservation suffix has an invalid count.");
+    throw ResolveException(
+        "Validated ABI preservation suffix has an invalid count.");
   return ResolvedAbiPreservationContract{
       .count = *count,
       .control_registers = control_registers,
@@ -279,9 +282,8 @@ CallArgumentProperties call_argument_properties(
 std::optional<binding::SymbolId> declared_symbol(
     const binding::SymbolTable& symbols, binding::ScopeId scope,
     const syntax_ast::AstVariableDeclarator& declarator) {
-  return symbols.exactDeclaration(
-      scope, declarator.name.syntax.text,
-      declarator.parameterized_count.has_value());
+  return symbols.exactDeclaration(scope, declarator.name.syntax.text,
+                                  declarator.parameterized_count.has_value());
 }
 
 binding::ScopeId block_scope(const binding::SymbolTable& symbols,
@@ -303,10 +305,9 @@ void index_body_call_arguments(
       for (const auto& declarator : declaration->declarators) {
         const auto symbol_id = declared_symbol(symbols, scope, declarator);
         if (symbol_id) {
-          properties.emplace(
-              symbol_id->value,
-              call_argument_properties(*declaration, declarator,
-                                       symbols.symbol(*symbol_id)));
+          properties.emplace(symbol_id->value, call_argument_properties(
+                                                   *declaration, declarator,
+                                                   symbols.symbol(*symbol_id)));
         }
       }
     } else if (const auto* block =
@@ -330,9 +331,9 @@ void index_function_call_arguments(const syntax_ast::AstFunction& function,
       const auto lookup =
           symbols.lookup(scope, parameters[index].name.syntax.text);
       if (lookup) {
-        properties.emplace(lookup->symbol.value,
-                           declaration_semantics::call_argument_properties(
-                               contracts[index]));
+        properties.emplace(
+            lookup->symbol.value,
+            declaration_semantics::call_argument_properties(contracts[index]));
       }
     }
   };
@@ -352,9 +353,9 @@ void index_body_metadata_signatures(
           symbols.lookup(function_scope, prototype->label.syntax.text);
       if (!lookup)
         throw ResolveException("Bound .callprototype has no local symbol.");
-      signatures.try_emplace(lookup->symbol.value,
-                             declaration_semantics::functionSignature(
-                                 *prototype));
+      signatures.try_emplace(
+          lookup->symbol.value,
+          declaration_semantics::functionSignature(*prototype));
       continue;
     }
     if (const auto* targets = std::get_if<syntax_ast::AstCallTargets>(&item)) {
@@ -385,9 +386,10 @@ void index_body_metadata_signatures(
   }
 }
 
-void index_function_metadata_signatures(
-    const syntax_ast::AstFunction& function, const binding::SymbolTable& symbols,
-    binding::ScopeId scope, FunctionSignatureIndex& signatures) {
+void index_function_metadata_signatures(const syntax_ast::AstFunction& function,
+                                        const binding::SymbolTable& symbols,
+                                        binding::ScopeId scope,
+                                        FunctionSignatureIndex& signatures) {
   index_body_metadata_signatures(function.body, symbols, scope, signatures);
 }
 
@@ -406,11 +408,13 @@ void resolve_control_contracts(
                                    binding::SymbolKind expected) {
     const auto lookup = symbols.lookup(function_scope, name);
     if (!lookup || symbols.symbol(lookup->symbol).kind != expected)
-      throw ResolveException("Validated control metadata has no bound declaration.");
+      throw ResolveException(
+          "Validated control metadata has no bound declaration.");
     return lookup->symbol;
   };
   for (const auto& item : body) {
-    if (const auto* branches = std::get_if<syntax_ast::AstBranchTargets>(&item)) {
+    if (const auto* branches =
+            std::get_if<syntax_ast::AstBranchTargets>(&item)) {
       ResolvedBranchTargetSetContract contract{
           .symbol_id = metadata_symbol(branches->label.syntax.text,
                                        binding::SymbolKind::BranchTargetSet),
@@ -435,7 +439,8 @@ void resolve_control_contracts(
           const auto lookup = symbols.lookup(function_scope, name);
           if (!lookup || symbols.symbol(lookup->symbol).kind !=
                              binding::SymbolKind::Label) {
-            throw ResolveException("Validated branch target has no bound label.");
+            throw ResolveException(
+                "Validated branch target has no bound label.");
           }
           contract.targets.push_back({
               .symbol_id = lookup->symbol,
@@ -455,11 +460,12 @@ void resolve_control_contracts(
           .range = targets->range,
       };
       for (const auto& target : targets->targets) {
-        const auto lookup = symbols.lookup(symbols.moduleScope(),
-                                            target.syntax.text);
+        const auto lookup =
+            symbols.lookup(symbols.moduleScope(), target.syntax.text);
         if (!lookup || symbols.symbol(lookup->symbol).kind !=
                            binding::SymbolKind::Function) {
-          throw ResolveException("Validated call target has no bound function.");
+          throw ResolveException(
+              "Validated call target has no bound function.");
         }
         const auto& symbol = symbols.symbol(lookup->symbol);
         contract.targets.push_back({
@@ -471,8 +477,8 @@ void resolve_control_contracts(
       }
       if (contract.targets.empty())
         throw ResolveException("Validated call target set has no target.");
-      const auto signature = signatures.find(
-          contract.targets.front().canonical_function.value);
+      const auto signature =
+          signatures.find(contract.targets.front().canonical_function.value);
       if (signature == signatures.end()) {
         throw ResolveException("Validated call target set has no signature.");
       }
@@ -530,7 +536,8 @@ std::string_view compatibility_message(
 }
 
 /** Return the input argument group owned by a resolved call, when it has one. */
-ResolvedCallArguments* resolved_call_arguments(ResolvedInstruction& instruction) {
+ResolvedCallArguments* resolved_call_arguments(
+    ResolvedInstruction& instruction) {
   ResolvedCallArguments* arguments = nullptr;
   std::visit(
       [&](auto& candidate) {
@@ -614,8 +621,8 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     if (target == nullptr)
       return;
     const auto lookup = symbols.lookup(scope, target->name.syntax.text);
-    if (!lookup || symbols.symbol(lookup->symbol).kind !=
-                       binding::SymbolKind::Function)
+    if (!lookup ||
+        symbols.symbol(lookup->symbol).kind != binding::SymbolKind::Function)
       return;
     const binding::Symbol& target_symbol = symbols.symbol(lookup->symbol);
     const binding::SymbolId canonical =
@@ -632,7 +639,8 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
   if (signature == nullptr)
     return;
 
-  ResolvedCallArguments* resolved_inputs = resolved_call_arguments(resolved_call);
+  ResolvedCallArguments* resolved_inputs =
+      resolved_call_arguments(resolved_call);
 
   const auto check_group = [&](std::string_view kind, const auto* actuals,
                                const auto& formals) {
@@ -648,9 +656,9 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     if (actual_count != formals.size() && !omitted_unsized_input) {
       diagnostics.push_back(ResolveDiagnostic{
           .range = actuals == nullptr ? target_range : actuals->range,
-          .message = fmt::format("{} has {} {} argument{} but callee requires {}.",
-                                 call_subject, actual_count, kind,
-                                 actual_count == 1 ? "" : "s", formals.size()),
+          .message = fmt::format(
+              "{} has {} {} argument{} but callee requires {}.", call_subject,
+              actual_count, kind, actual_count == 1 ? "" : "s", formals.size()),
       });
     }
     if (actuals == nullptr)
@@ -690,19 +698,19 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
           retained->value = literal->value;
         }
       } else {
-        const auto& identifier =
-            std::get<syntax_ast::AstIdentifierRef>(actual);
+        const auto& identifier = std::get<syntax_ast::AstIdentifierRef>(actual);
         const auto actual_lookup =
             symbols.lookup(scope, identifier.syntax.text);
         if (!actual_lookup) {
-          throw ResolveException(fmt::format(
-              "Bound call argument '{}' has no symbol.", identifier.syntax.text));
+          throw ResolveException(
+              fmt::format("Bound call argument '{}' has no symbol.",
+                          identifier.syntax.text));
         }
         const auto properties_it = properties.find(actual_lookup->symbol.value);
         if (properties_it == properties.end()) {
-          throw ResolveException(fmt::format(
-              "Bound call argument '{}' has no ABI properties.",
-              identifier.syntax.text));
+          throw ResolveException(
+              fmt::format("Bound call argument '{}' has no ABI properties.",
+                          identifier.syntax.text));
         }
         actual_properties = properties_it->second;
       }
@@ -712,14 +720,16 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
       if (compatibility != CallArgumentCompatibility::Compatible) {
         diagnostics.push_back(ResolveDiagnostic{
             .range = range,
-            .message = metadata == nullptr
-                ? fmt::format("Direct call {} argument {} for '{}' has {}.",
-                              kind, index + 1, callee_name,
-                              compatibility_message(compatibility))
-                : fmt::format("Indirect call via metadata '{}' {} argument {} "
-                              "has {}.",
-                              callee_name, kind, index + 1,
-                              compatibility_message(compatibility)),
+            .message =
+                metadata == nullptr
+                    ? fmt::format("Direct call {} argument {} for '{}' has {}.",
+                                  kind, index + 1, callee_name,
+                                  compatibility_message(compatibility))
+                    : fmt::format(
+                          "Indirect call via metadata '{}' {} argument {} "
+                          "has {}.",
+                          callee_name, kind, index + 1,
+                          compatibility_message(compatibility)),
         });
       }
     }
@@ -921,10 +931,10 @@ void check_call_staging_body(
               is_staging_transparent(body[call_index]))) {
         ++call_index;
       }
-      const auto* call = call_index < body.size()
-                             ? std::get_if<syntax_ast::AstInstruction>(
-                                   &body[call_index])
-                             : nullptr;
+      const auto* call =
+          call_index < body.size()
+              ? std::get_if<syntax_ast::AstInstruction>(&body[call_index])
+              : nullptr;
       if (call == nullptr ||
           !call_uses_parameter(*call,
                                syntax_ast::AstCallParameterListKind::Input,
@@ -1069,8 +1079,8 @@ void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
         diagnostics.push_back(std::move(resolved.error()));
         continue;
       }
-      check_call_abi(*instruction, *resolved, symbols, context.scope, signatures,
-                     call_argument_properties, diagnostics);
+      check_call_abi(*instruction, *resolved, symbols, context.scope,
+                     signatures, call_argument_properties, diagnostics);
       resolved_function.body.push_back(std::move(*resolved));
       resolved_function.instruction_ranges.push_back(instruction->range);
       resolved_function.instruction_opcodes.emplace_back(
@@ -1184,11 +1194,13 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
   /** Region zero is the targetless prefix before the first .target directive. */
   std::size_t active_region = 0;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
-    if (const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item)) {
+    if (const auto* target =
+            std::get_if<syntax_ast::AstTargetDirective>(&item)) {
       (void)target;
       ++active_region;
       if (active_region >= header.regions.size())
-        throw ResolveException("Source target has no owned configuration region.");
+        throw ResolveException(
+            "Source target has no owned configuration region.");
       continue;
     }
     const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
@@ -1219,27 +1231,32 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
         .name = symbol.name,
         .is_entry = function->is_entry,
         .is_prototype = function->is_prototype,
-        .contract = {
-            .signature = declaration_semantics::functionSignature(*function),
-            .linkage = symbol.linkage,
-            .canonical_function =
-                symbol.canonical_function.value_or(symbol.id),
-            .is_noreturn = function->is_noreturn,
-            .abi_preserve = resolve_abi_contract(function->abi_preserve, false),
-            .abi_preserve_control =
-                resolve_abi_contract(function->abi_preserve_control, true),
-            .blocks_are_clusters = function->blocks_are_clusters.has_value(),
-            .language_values =
-                function->language
-                    ? std::optional<std::vector<std::string>>{std::in_place}
-                    : std::nullopt,
-        },
+        .contract =
+            {
+                .signature =
+                    declaration_semantics::functionSignature(*function),
+                .linkage = symbol.linkage,
+                .canonical_function =
+                    symbol.canonical_function.value_or(symbol.id),
+                .is_noreturn = function->is_noreturn,
+                .abi_preserve =
+                    resolve_abi_contract(function->abi_preserve, false),
+                .abi_preserve_control =
+                    resolve_abi_contract(function->abi_preserve_control, true),
+                .blocks_are_clusters =
+                    function->blocks_are_clusters.has_value(),
+                .language_values =
+                    function->language
+                        ? std::optional<std::vector<std::string>>{std::in_place}
+                        : std::nullopt,
+            },
         .range = function->range,
         .declaration_scope = scope,
-        .source_target = header.regions[active_region].target_options.empty()
-                             ? std::nullopt
-                             : std::optional<std::string>{
-                                   header.regions[active_region].target_options.front()},
+        .source_target =
+            header.regions[active_region].target_options.empty()
+                ? std::nullopt
+                : std::optional<std::string>{header.regions[active_region]
+                                                 .target_options.front()},
         .source_version = header.regions[active_region].version,
         .source_region = active_region,
         .source_identity = detail::function_source_identity(*function),
@@ -1307,7 +1324,8 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     const auto& symbol = binding_result.table.symbol(lookup->symbol);
     if (symbol.kind != binding::SymbolKind::Function ||
         !symbol.canonical_function) {
-      throw ResolveException("Validated function alias has no canonical function.");
+      throw ResolveException(
+          "Validated function alias has no canonical function.");
     }
     function_aliases.push_back({
         .symbol_id = symbol.id,
@@ -1345,10 +1363,9 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolve_and_check(
     ModuleResolveDiagnostics availability_diagnostics;
     availability_diagnostics.reserve(availability.error().size());
     for (const checker::CheckDiagnostic& diagnostic : availability.error()) {
-      availability_diagnostics.push_back(
-          {.range = diagnostic.range,
-           .message = diagnostic.message,
-           .checker_kind = diagnostic.kind});
+      availability_diagnostics.push_back({.range = diagnostic.range,
+                                          .message = diagnostic.message,
+                                          .checker_kind = diagnostic.kind});
     }
     return std::unexpected(std::move(availability_diagnostics));
   }
@@ -1356,11 +1373,11 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolve_and_check(
   if (!owned_validation) {
     ModuleResolveDiagnostics owned_diagnostics;
     owned_diagnostics.reserve(owned_validation.error().size());
-    for (const checker::CheckDiagnostic& diagnostic : owned_validation.error()) {
-      owned_diagnostics.push_back(
-          {.range = diagnostic.range,
-           .message = diagnostic.message,
-           .checker_kind = diagnostic.kind});
+    for (const checker::CheckDiagnostic& diagnostic :
+         owned_validation.error()) {
+      owned_diagnostics.push_back({.range = diagnostic.range,
+                                   .message = diagnostic.message,
+                                   .checker_kind = diagnostic.kind});
     }
     return std::unexpected(std::move(owned_diagnostics));
   }
@@ -1373,8 +1390,8 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModule(
   return resolve_and_check(ast, ModuleValidationPolicy::AvailableContext);
 }
 
-std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveAndValidateModule(
-    const syntax_ast::AstModule& ast) {
+std::expected<ResolvedModule, ModuleResolveDiagnostics>
+resolveAndValidateModule(const syntax_ast::AstModule& ast) {
   return resolve_and_check(ast, ModuleValidationPolicy::RequireCompleteContext);
 }
 

@@ -12,8 +12,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size) {
   if (size > static_cast<std::size_t>(std::numeric_limits<int>::max()))
     return 0;
 
-  const char* bytes =
-      size == 0 ? "" : reinterpret_cast<const char*>(data);
+  const char* bytes = size == 0 ? "" : reinterpret_cast<const char*>(data);
   const std::string_view source(bytes, size);
   ptx_frontend::PtxLexer lexer(source);
   for (std::size_t count = 0; count <= size; ++count) {

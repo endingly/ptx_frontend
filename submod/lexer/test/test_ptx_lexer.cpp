@@ -73,7 +73,8 @@ static void expect_token(const LexedToken& tok, TokenKind kind,
 
 /** Octal source retains the existing integer token category and exact spelling. */
 TEST(PtxLexerNew, OctalSpellingsAndDecimalFloatControls) {
-  for (const std::string_view spelling : {"0", "0U", "00", "010", "077u", "010U"}) {
+  for (const std::string_view spelling :
+       {"0", "0U", "00", "010", "077u", "010U"}) {
     PtxLexer lexer(spelling);
     const auto token = lexer.next();
     EXPECT_EQ(token.kind, TokenKind::Decimal) << spelling;
@@ -298,8 +299,8 @@ TEST(PtxLexerNew, ModuleDirectivesRemainDedicatedTokens) {
 }
 
 TEST(PtxLexerNew, KernelResourceDirectivesRemainDedicatedTokens) {
-  const auto toks = lex_all(
-      ".maxnreg 32 .maxntid 16, 8 .reqntid 64 .minnctapersm 2");
+  const auto toks =
+      lex_all(".maxnreg 32 .maxntid 16, 8 .reqntid 64 .minnctapersm 2");
 
   ASSERT_EQ(toks.size(), 10u);
   expect_token(toks[0], TokenKind::DotMaxnreg, ".maxnreg");
@@ -319,8 +320,7 @@ TEST(PtxLexerNew, ClusterDimensionDirectivesRemainDedicatedTokens) {
 }
 
 TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
-  const auto toks = lex_all(
-      ".file 0 \"source.ptx\", 0, 18446744073709551615U");
+  const auto toks = lex_all(".file 0 \"source.ptx\", 0, 18446744073709551615U");
 
   ASSERT_EQ(toks.size(), 7u);
   expect_token(toks[0], TokenKind::DotFile, ".file");
@@ -352,8 +352,8 @@ TEST(PtxLexerNew, PragmaDirectiveRemainsDedicated) {
 }
 
 TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
-  const auto toks = lex_all(
-      ".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");
+  const auto toks =
+      lex_all(".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");
 
   ASSERT_EQ(toks.size(), 14u);
   expect_token(toks[0], TokenKind::DotLoc, ".loc");
@@ -606,8 +606,7 @@ TEST(PtxLexerNew, PreservesMixedLineEndingsInsideBlockComments) {
   EXPECT_EQ(add.range, (SourceRange{SourcePos{6, 1}, SourcePos{6, 4}}));
   ASSERT_EQ(add.leading_trivia.size(), 4u);
   EXPECT_EQ(add.leading_trivia[0].kind, TriviaKind::BlockComment);
-  EXPECT_EQ(add.leading_trivia[0].text,
-            "/* first\r\nsecond\rlast\nend */");
+  EXPECT_EQ(add.leading_trivia[0].text, "/* first\r\nsecond\rlast\nend */");
   EXPECT_EQ(add.leading_trivia[0].range,
             (SourceRange{SourcePos{1, 1}, SourcePos{4, 7}}));
   EXPECT_EQ(add.leading_trivia[1].kind, TriviaKind::Whitespace);

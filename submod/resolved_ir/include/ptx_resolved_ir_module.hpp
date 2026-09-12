@@ -13,7 +13,11 @@
 namespace ptx_frontend::resolved_ir {
 
 /** Records whether an effective source-header value was explicit or inferred. */
-enum class SourceConfigurationProvenance : uint8_t { Missing, Explicit, Defaulted };
+enum class SourceConfigurationProvenance : uint8_t {
+  Missing,
+  Explicit,
+  Defaulted
+};
 
 /** One ordered source target region; it never implies a physical target. */
 struct ResolvedSourceTargetRegion {

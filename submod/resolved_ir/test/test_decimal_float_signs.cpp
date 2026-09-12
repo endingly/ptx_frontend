@@ -29,7 +29,8 @@ const syntax_ast::AstImmediate& immediateOperand(
 }
 
 /** Return the immediate source held by a scalar move instruction. */
-const ResolvedImmediate& scalarMovImmediate(const ResolvedInstruction& instruction) {
+const ResolvedImmediate& scalarMovImmediate(
+    const ResolvedInstruction& instruction) {
   const auto& mov = std::get<Mov>(instruction);
   const auto& scalar = std::get<Mov::Scalar>(mov.variant);
   const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
@@ -111,9 +112,8 @@ TEST(DecimalFloatSigns, RejectsMalformedLeadingSigns) {
     };
     const auto resolved = resolve_immediate_literal(immediate, ScalarType::F32);
     ASSERT_FALSE(resolved.has_value());
-    EXPECT_EQ(resolved.error().message,
-              "Invalid decimal floating literal '" + std::string(spelling) +
-                  "'.");
+    EXPECT_EQ(resolved.error().message, "Invalid decimal floating literal '" +
+                                            std::string(spelling) + "'.");
   }
 }
 

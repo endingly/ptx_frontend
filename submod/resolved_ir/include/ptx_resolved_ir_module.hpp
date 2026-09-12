@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
 #include "resolved_ir.gen.hpp"
 
@@ -91,11 +91,11 @@ struct ResolvedFunctionAttribute {
   /** Semantic attribute category. */
   ResolvedFunctionAttributeKind kind{};
   /**
-   * `.unified` UUID halves in PTX operand order: [0] is upper 64 bits and [1]
-   * is lower 64 bits. No byte order or host-address interpretation is applied.
+   * `.unified` UUID halves in PTX operand order. No byte order or host-address
+   * interpretation is applied.
    * A finalized attribute with kind Unified must provide this payload.
    */
-  std::optional<std::array<uint64_t, 2>> unified_id;
+  std::optional<ResolvedUnifiedId> unified_id;
   /** Source provenance of this attribute. */
   SourceRange range;
 };

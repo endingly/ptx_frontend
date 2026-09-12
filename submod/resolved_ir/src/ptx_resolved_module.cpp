@@ -9,7 +9,6 @@
 #include "ptx_storage_declarations.hpp"
 
 #include <algorithm>
-#include <array>
 #include <charconv>
 #include <limits>
 #include <ranges>
@@ -234,7 +233,7 @@ std::optional<ResolvedAbiPreservationContract> resolve_abi_contract(
 }
 
 /** Decode `.unified` source operands into upper/lower PTX UUID halves. */
-std::optional<std::array<uint64_t, 2>> resolve_unified_id(
+std::optional<ResolvedUnifiedId> resolve_unified_id(
     const syntax_ast::AstAttribute& attribute) {
   if (attribute.values.size() != 2)
     return std::nullopt;
@@ -242,7 +241,7 @@ std::optional<std::array<uint64_t, 2>> resolve_unified_id(
   const auto lower = base::parseIntegerMagnitude(attribute.values[1].text);
   if (!upper || !lower)
     return std::nullopt;
-  return std::array<uint64_t, 2>{*upper, *lower};
+  return ResolvedUnifiedId{.upper = *upper, .lower = *lower};
 }
 
 /** Convert a function attribute into owned semantic data without AST lifetime. */

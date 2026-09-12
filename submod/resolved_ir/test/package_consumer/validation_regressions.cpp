@@ -1,4 +1,3 @@
-#include <array>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -147,8 +146,9 @@ int check_owned_module_handoff() {
       literal->value->bits != 7 ||
       callee_attribute.kind != ir::ResolvedFunctionAttributeKind::Unified ||
       !callee_attribute.unified_id ||
-      *callee_attribute.unified_id !=
-          std::array<uint64_t, 2>{0u, std::numeric_limits<uint64_t>::max()})
+      callee_attribute.unified_id->upper != 0u ||
+      callee_attribute.unified_id->lower !=
+          std::numeric_limits<uint64_t>::max())
     return 33;
   auto mutated = *module;
   auto& changed = std::get<ir::Call::Direct::TargetInputOperands>(

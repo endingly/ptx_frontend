@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <variant>
@@ -9,6 +8,7 @@
 #include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
 
 namespace ptx_frontend::resolved_ir {
 
@@ -102,8 +102,8 @@ struct ResolvedStorageDeclaration {
   std::optional<uint32_t> parameterized_count;
   /** Source attribute only; downstream decides allocation policy. */
   bool is_managed{};
-  /** Upper/lower UUID halves for .unified; no host/device address is fabricated. */
-  std::optional<std::array<uint64_t, 2>> unified_id;
+  /** Typed `.unified` UUID; no host/device address is fabricated. */
+  std::optional<ResolvedUnifiedId> unified_id;
   StorageInitializationKind initialization{};
   /** Explicit scalar entries; omitted positions in Explicit mode are zero-filled. */
   std::vector<StorageInitializerElement> initializer;

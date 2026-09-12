@@ -240,7 +240,7 @@ std::optional<uint64_t> inferred_outer_extent(
 /** Decode validated source attributes into the declaration's owned metadata. */
 bool resolve_attributes(const syntax_ast::AstVariableDeclaration& declaration,
                         bool& is_managed,
-                        std::optional<std::array<uint64_t, 2>>& unified_id,
+                        std::optional<ResolvedUnifiedId>& unified_id,
                         std::vector<DeclarationDiagnostic>& diagnostics) {
   for (const auto& attribute : declaration.attributes) {
     if (attribute.kind == syntax_ast::AstAttributeKind::Managed) {
@@ -261,7 +261,7 @@ bool resolve_attributes(const syntax_ast::AstVariableDeclaration& declaration,
           attribute.range, ".unified values must be unsigned 64-bit integers.");
       return false;
     }
-    unified_id = std::array<uint64_t, 2>{*upper, *lower};
+    unified_id = ResolvedUnifiedId{.upper = *upper, .lower = *lower};
   }
   return true;
 }
@@ -807,7 +807,7 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
   }
 
   bool is_managed = false;
-  std::optional<std::array<uint64_t, 2>> unified_id;
+  std::optional<ResolvedUnifiedId> unified_id;
   if (!resolve_attributes(declaration, is_managed, unified_id, diagnostics))
     return;
 

@@ -455,7 +455,11 @@ TEST(ResolvedStorageDeclarations, RetainsManagedAndUnifiedAttributes) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& attributed = storageNamed(*resolved, "attributed");
   EXPECT_TRUE(attributed.is_managed);
-  EXPECT_EQ(attributed.unified_id, (std::array<uint64_t, 2>{1u, 2u}));
+  EXPECT_EQ(attributed.unified_id,
+            (ResolvedUnifiedId{.upper = 1u, .lower = 2u}));
+  ASSERT_TRUE(attributed.unified_id.has_value());
+  EXPECT_EQ(attributed.unified_id->upper, 1u);
+  EXPECT_EQ(attributed.unified_id->lower, 2u);
 }
 
 /** Module resolution preserves exact-token `.unified` overflow diagnostics. */

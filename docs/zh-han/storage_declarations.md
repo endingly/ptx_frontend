@@ -27,7 +27,7 @@ external declaration 后出现同名 plain definition 会被拒绝。
 | `linkage`、`declaration_kind` | 源码 linkage 与 external declaration／definition 状态 |
 | `is_dynamic_shared` | 首维未定长的 external shared declaration |
 | `parameterized_count` | 分别命名的对象数量；instruction reference 通过 parameterized index 标识成员 |
-| `is_managed`、`unified_id` | 保留 attribute；不是模拟分配策略或 host/device address |
+| `is_managed`、`unified_id` | 保留 attribute；`unified_id` 是按 PTX `uuid1`/`uuid2` 顺序保存 `ResolvedUnifiedId{upper, lower}` 的可选值，不是模拟分配策略或 host/device address |
 
 Opaque texture、sampler、surface identity 不会获得臆造的 physical size 或默认 alignment。
 未知大小用缺失值表示，绝不用零表示。零或非法 dimension、非法 alignment、乘法溢出会产生

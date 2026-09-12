@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -534,7 +533,8 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedFunctionAttributes) {
   ASSERT_EQ(function.contract.attributes.size(), 1u);
   ResolvedFunctionAttribute& attribute = function.contract.attributes.front();
   ASSERT_EQ(attribute.kind, ResolvedFunctionAttributeKind::Unified);
-  ASSERT_EQ(attribute.unified_id, (std::array<uint64_t, 2>{1u, 2u}));
+  ASSERT_EQ(attribute.unified_id,
+            (ResolvedUnifiedId{.upper = 1u, .lower = 2u}));
 
   const auto original_kind = attribute.kind;
   attribute.kind = ResolvedFunctionAttributeKind::Managed;
@@ -579,8 +579,8 @@ TEST(OwnedModuleHandoff, RetainsTypedUnifiedUuidAfterInputDies) {
   }
 
   ASSERT_TRUE(owned.has_value());
-  constexpr std::array<uint64_t, 2> expected_uuid{
-      0u, std::numeric_limits<uint64_t>::max()};
+  constexpr ResolvedUnifiedId expected_uuid{
+      .upper = 0u, .lower = std::numeric_limits<uint64_t>::max()};
   ASSERT_EQ(owned->functions.size(), 3u);
   for (const ResolvedFunction& function : owned->functions) {
     ASSERT_EQ(function.contract.attributes.size(), 1u);
@@ -588,6 +588,9 @@ TEST(OwnedModuleHandoff, RetainsTypedUnifiedUuidAfterInputDies) {
         function.contract.attributes.front();
     EXPECT_EQ(attribute.kind, ResolvedFunctionAttributeKind::Unified);
     EXPECT_EQ(attribute.unified_id, expected_uuid);
+    ASSERT_TRUE(attribute.unified_id.has_value());
+    EXPECT_EQ(attribute.unified_id->upper, expected_uuid.upper);
+    EXPECT_EQ(attribute.unified_id->lower, expected_uuid.lower);
   }
   expect_owned_validation_success(
       *owned, ModuleValidationPolicy::RequireCompleteContext);

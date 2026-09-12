@@ -31,7 +31,7 @@ declaration followed by a same-named plain definition is rejected.
 | `linkage`, `declaration_kind` | Source linkage and external-declaration versus definition status |
 | `is_dynamic_shared` | External shared declaration whose first dimension is unsized |
 | `parameterized_count` | Number of separately named objects; instruction references identify members by their parameterized index |
-| `is_managed`, `unified_id` | Retained attributes, not simulated allocation policy or host/device addresses |
+| `is_managed`, `unified_id` | Retained attributes. `unified_id` is optional `ResolvedUnifiedId{upper, lower}` in PTX `uuid1`/`uuid2` order, not simulated allocation policy or host/device addresses |
 
 Opaque texture, sampler, and surface identities do not acquire invented physical
 sizes or default alignments. Unknown size is represented by an absent value,

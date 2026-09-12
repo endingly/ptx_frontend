@@ -105,3 +105,5 @@ add_test(NAME revalidates_installed_modifier_domain
     COMMAND ptx_frontend_validation_consumer modifier)
 add_test(NAME normalizes_installed_external_alignment
     COMMAND ptx_frontend_validation_consumer alignment)
+add_test(NAME validates_installed_owned_module_handoff
+    COMMAND ptx_frontend_validation_consumer handoff)

@@ -23,7 +23,7 @@ validation before publishing metadata.
 | Header multidimensional parameter array | Explicit unsupported parse diagnostic | Not reached | None; context-specific header-array grammar remains unresolved rather than being classified as illegal |
 | Body-local vector `.param` | Retained | Explicit unsupported diagnostic | None; retained legal-but-unsupported boundary pending vector shape and call-staging metadata |
 | Body-local parameterized `.param` group (`name<count>`) | Retained | Explicit unsupported diagnostic | None; legal declaration shorthand needs per-expanded-name identity and declaration-order metadata |
-| Vector or array `.param` in a `.callprototype` | Retained where the prototype grammar accepts it | Explicit unsupported diagnostic | No signature claim; vector/array ABI shape is not inferred from spelling alone |
+| Vector or multidimensional `.param` formal in a `.callprototype` | Explicit unsupported parse diagnostic where the header grammar rejects it | Not reached | Scalar and one-dimensional array contracts remain supported; vector shape and higher-rank header syntax are not inferred |
 | `.pred`, unknown or instruction-only type spelling | Type spelling retained | Rejected for `.param` | None |
 | Module-scope `.param` | Retained | Rejected | None |
 

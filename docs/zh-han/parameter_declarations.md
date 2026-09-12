@@ -21,7 +21,7 @@
 | Header 多维 parameter array | 明确的 unsupported parse diagnostic | 不进入 | 无；header array grammar 仍为 unresolved，不据此宣称 illegal |
 | Body-local vector `.param` | 保留 | 明确的 unsupported diagnostic | 无；保留为 legal-but-unsupported，等待 vector shape 与 call-staging metadata |
 | Body-local parameterized `.param` group (`name<count>`) | 保留 | 明确的 unsupported diagnostic | 无；合法 declaration shorthand 需要逐个展开名称的 identity 与 declaration-order metadata |
-| `.callprototype` 中的 vector 或 array `.param` | prototype grammar 接受时保留 | 明确的 unsupported diagnostic | 不声明 signature；不能从 spelling 推断 vector/array ABI shape |
+| `.callprototype` 中的 vector 或多维 `.param` formal | header grammar 拒绝时给出明确 unsupported parse diagnostic | 不会到达 | scalar 与一维 array contract 仍受支持；不从 spelling 推断 vector shape 或更高维 header syntax |
 | `.pred`、未知或仅用于指令的 type spelling | 保留 type spelling | 在 `.param` 中拒绝 | 无 |
 | Module-scope `.param` | 保留 | 拒绝 | 无 |
 

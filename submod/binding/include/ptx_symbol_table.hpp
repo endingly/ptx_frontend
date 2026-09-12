@@ -95,7 +95,8 @@ struct Symbol {
   std::string name;
   SourceRange declaration_range;
   SymbolLinkage linkage{};
-  std::optional<syntax_ast::AstStateSpace> state_space;
+  /** Semantic declaration state space; syntax aliases remain source-compatible. */
+  std::optional<base::DeclarationStateSpace> state_space;
   std::optional<std::string> type;
   std::optional<uint8_t> vector_width;
   /** Guaranteed byte alignment for an address of this data declaration. */

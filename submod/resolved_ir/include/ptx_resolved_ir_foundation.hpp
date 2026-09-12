@@ -529,14 +529,24 @@ struct ResolvedCallParameterRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
-  std::optional<syntax_ast::AstStateSpace> state_space;
+  /** Semantic declaration state space; the base alias needs no syntax AST. */
+  std::optional<base::DeclarationStateSpace> state_space;
   std::optional<ScalarType> declared_type;
   bool operator==(const ResolvedCallParameterRef&) const = default;
 };
-/** A call literal retained as spelling until the callee contract supplies type. */
+/**
+ * A call literal which is deferred only outside a successfully contextual module.
+ *
+ * Module resolution fills ``value`` from the formal signature. The spelling and
+ * lexical kind remain only as provenance for standalone/deferred consumers.
+ */
 struct ResolvedCallLiteral {
+  /** Original source spelling retained for an intentionally deferred literal. */
   std::string spelling;
-  syntax_ast::AstImmediateKind kind{};
+  /** Base lexical category independent of complete syntax-AST ownership. */
+  base::LiteralCategory kind{};
+  /** Formal-driven typed value present after successful module call checking. */
+  std::optional<ResolvedImmediate> value;
   bool operator==(const ResolvedCallLiteral&) const = default;
 };
 using ResolvedCallArgument =
@@ -552,9 +562,9 @@ struct ResolvedSymbolRef {
   std::optional<uint32_t> parameterized_index;
   std::optional<binding::SymbolKind> declaration_kind;
   /** Declared space; may differ from the produced address space for parameters. */
-  std::optional<syntax_ast::AstStateSpace> declaration_state_space;
+  std::optional<base::DeclarationStateSpace> declaration_state_space;
   /** Effective address space after context-sensitive address materialization. */
-  std::optional<syntax_ast::AstStateSpace> address_state_space;
+  std::optional<base::DeclarationStateSpace> address_state_space;
   std::optional<ScalarType> declared_type;
   /** Guaranteed byte alignment for a bound declaration address. */
   std::optional<uint64_t> address_alignment;

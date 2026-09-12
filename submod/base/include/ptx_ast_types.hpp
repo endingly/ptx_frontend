@@ -24,6 +24,12 @@ enum class AstStateSpace : uint8_t {
   Constant,
 };
 
+/** Semantic declaration-space name for values interpreted outside the AST. */
+using DeclarationStateSpace = AstStateSpace;
+
+/** Semantic literal-category name for deferred source provenance. */
+using LiteralCategory = AstImmediateKind;
+
 }  // namespace ptx_frontend::base
 
 /** Preserve the established AST namespace without requiring AST definitions. */

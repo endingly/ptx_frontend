@@ -59,6 +59,53 @@ struct FunctionParameterContract {
   }
 };
 
+/** Return a constant ABI value, rejecting preserved invalid structural input. */
+inline std::optional<uint64_t> contract_constant(
+    const std::optional<NormalizedNumericValue>& value) {
+  if (!value)
+    return std::nullopt;
+  return std::get_if<uint64_t>(&*value)
+             ? std::optional<uint64_t>{std::get<uint64_t>(*value)}
+             : std::nullopt;
+}
+
+/** Convert one normalized formal contract to the shared call-ABI properties. */
+inline call_argument_compatibility::CallArgumentProperties
+call_argument_properties(const FunctionParameterContract& contract) {
+  using call_argument_compatibility::CallArgumentProperties;
+  using call_argument_compatibility::CallArgumentStateSpace;
+  using call_argument_compatibility::CallArgumentVectorShape;
+  const auto alignment = contract_constant(contract.alignment);
+  const auto array_size = contract_constant(contract.array_extent);
+  const auto pointer_alignment = contract_constant(contract.pointer_alignment);
+  if (!alignment || (contract.array_extent && !array_size) ||
+      (contract.is_pointer && !pointer_alignment)) {
+    return {
+        .state_space = CallArgumentStateSpace::Invalid,
+        .scalar_type = contract.scalar_type,
+        .vector_shape = CallArgumentVectorShape::Scalar,
+        .type_spelling = contract.type_spelling,
+        .is_array = contract.is_array,
+    };
+  }
+  CallArgumentProperties properties{
+      .state_space = contract.state_space,
+      .scalar_type = contract.scalar_type,
+      .vector_shape = CallArgumentVectorShape::Scalar,
+      .type_spelling = contract.type_spelling,
+      .array_alignment = *alignment,
+      .is_array = contract.is_array,
+      .array_size = array_size,
+  };
+  if (contract.is_pointer) {
+    properties.pointer = {
+        .pointed_state_space = contract.pointed_state_space,
+        .pointed_alignment = *pointer_alignment,
+    };
+  }
+  return properties;
+}
+
 /** Canonical ABI-relevant data shared by function declarations and bodies. */
 struct FunctionSignature {
   /** Whether the source function is an entry point. */

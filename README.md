@@ -123,6 +123,11 @@ validation context. Targetless fragments remain supported by resolution-only
 and compatibility entry points; they are not a claim of target-valid code.
 Model-only consumers can include `ptx_resolved_ir_model.hpp` without the Syntax
 AST or resolver/checker implementation interfaces.
+`ResolvedModule` also owns its effective header context, declaration contracts,
+control metadata, typed call literals, and instruction provenance. After the
+source and AST are released, `validateModule(module, policy)` rechecks those
+owned invariants and reports structured diagnostics without borrowing syntax
+state; see the [Resolved IR design](docs/us-en/resolved_ir_design.md).
 Imported binding, declaration, and checker diagnostics retain their typed
 categories and source locations through `ResolveDiagnostic`; `stage()` identifies
 their origin, and `previous_range` preserves related declaration locations.

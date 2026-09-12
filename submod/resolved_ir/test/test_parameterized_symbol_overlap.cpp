@@ -30,16 +30,18 @@ void expectDisjointDigitPrefixGroupsResolve(bool reverse) {
   ASSERT_EQ(resolved->functions.size(), 1u);
 
   const auto function_scope =
-      resolved->symbols.symbol(resolved->functions.front().symbol_id).owned_scope;
+      resolved->symbols.symbol(resolved->functions.front().symbol_id)
+          .owned_scope;
   ASSERT_TRUE(function_scope.has_value());
   constexpr std::array<std::pair<std::string_view, std::string_view>, 2>
       expected{{{"%r0", "%r"}, {"%r19", "%r1"}}};
   for (const auto [spelling, base] : expected) {
-    const auto reference = std::find_if(
-        resolved->symbols.references().begin(), resolved->symbols.references().end(),
-        [spelling](const binding::SymbolReference& item) {
-          return item.spelling == spelling;
-        });
+    const auto reference =
+        std::find_if(resolved->symbols.references().begin(),
+                     resolved->symbols.references().end(),
+                     [spelling](const binding::SymbolReference& item) {
+                       return item.spelling == spelling;
+                     });
     ASSERT_NE(reference, resolved->symbols.references().end());
     ASSERT_TRUE(reference->target.has_value());
     const auto declaration =

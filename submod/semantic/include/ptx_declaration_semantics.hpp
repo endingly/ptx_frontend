@@ -9,36 +9,10 @@
 #include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
+#include <ptx_frontend/semantic/ptx_function_contract.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 namespace ptx_frontend::declaration_semantics {
-
-/** ABI-relevant, source-location-independent function parameter data. */
-struct FunctionParameterContract {
-  syntax_ast::AstStateSpace state_space{};
-  /** Effective byte alignment as a decimal key, or retained invalid source text. */
-  std::optional<std::string> alignment;
-  std::string type;
-  bool is_pointer{};
-  std::optional<std::string> pointer_space;
-  /** Effective pointee alignment (default four bytes); absent for non-pointers. */
-  std::optional<std::string> pointer_alignment;
-  bool is_array{};
-  /** A normalized constant extent, or a structural key for an invalid one. */
-  std::optional<std::string> array_extent;
-
-  bool operator==(const FunctionParameterContract&) const = default;
-};
-
-/** Canonical ABI-relevant data shared by function declarations and bodies. */
-struct FunctionSignature {
-  bool is_entry{};
-  bool is_noreturn{};
-  std::vector<FunctionParameterContract> return_parameters;
-  std::vector<FunctionParameterContract> parameters;
-
-  bool operator==(const FunctionSignature&) const = default;
-};
 
 /** A fully evaluated integer constant with the signedness used by PTX rules. */
 struct IntegerConstantValue {

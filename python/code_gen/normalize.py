@@ -1411,7 +1411,7 @@ def _validate_immediate_constraint_operand(
     *,
     allowed_kinds: tuple[str, ...] = ("imm",),
 ) -> None:
-    """Require a constrained immediate operand in at least one layout."""
+    """Require one occurrence and validate every layout where it is present."""
 
     found = False
     for layout in layouts:

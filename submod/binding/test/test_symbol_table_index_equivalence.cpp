@@ -16,8 +16,8 @@ namespace ptx_frontend::binding {
 namespace {
 
 /** Independently retain the original vector-search contract as a test oracle. */
-std::optional<SymbolLookup> linearLookup(const SymbolTable& table, ScopeId scope,
-                                        std::string_view name) {
+std::optional<SymbolLookup> linearLookup(const SymbolTable& table,
+                                         ScopeId scope, std::string_view name) {
   for (;;) {
     for (const auto& symbol : table.symbols()) {
       if (symbol.scope == scope && symbol.kind != SymbolKind::DebugFile &&
@@ -36,8 +36,8 @@ std::optional<SymbolLookup> linearLookup(const SymbolTable& table, ScopeId scope
       for (char character : suffix)
         decimal = decimal && character >= '0' && character <= '9';
       uint32_t index = 0;
-      const auto [end, error] = std::from_chars(
-          suffix.data(), suffix.data() + suffix.size(), index);
+      const auto [end, error] =
+          std::from_chars(suffix.data(), suffix.data() + suffix.size(), index);
       if (decimal && error == std::errc{} &&
           end == suffix.data() + suffix.size() &&
           index < *symbol.parameterized_count)
@@ -84,10 +84,9 @@ bool expandedNamesOverlap(std::string_view left,
                           std::optional<uint32_t> right_count) {
   const auto left_names = expandedNames(left, left_count);
   const auto right_names = expandedNames(right, right_count);
-  return std::any_of(left_names.begin(), left_names.end(),
-                     [&right_names](const auto& name) {
-    return right_names.contains(name);
-  });
+  return std::any_of(
+      left_names.begin(), left_names.end(),
+      [&right_names](const auto& name) { return right_names.contains(name); });
 }
 
 /** Format a scalar or compact declaration for the parser-driven oracle. */
@@ -105,8 +104,9 @@ std::string declaration(std::string_view name,
 size_t duplicateDiagnosticCount(const SymbolBinding& binding) {
   return std::count_if(binding.diagnostics.begin(), binding.diagnostics.end(),
                        [](const auto& diagnostic) {
-    return diagnostic.kind == BindDiagnosticKind::DuplicateSymbol;
-  });
+                         return diagnostic.kind ==
+                                BindDiagnosticKind::DuplicateSymbol;
+                       });
 }
 
 /** Check indexes against lexical vector search, including diagnosed overlaps. */
@@ -164,7 +164,8 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
                                 current.name, current.parameterized_count))
         continue;
       ASSERT_LT(overlap_count, duplicate_diagnostics.size());
-      const BindDiagnostic& diagnostic = *duplicate_diagnostics[overlap_count++];
+      const BindDiagnostic& diagnostic =
+          *duplicate_diagnostics[overlap_count++];
       EXPECT_EQ(diagnostic.range, current.declaration_range);
       EXPECT_EQ(diagnostic.previous_range, previous.declaration_range);
       break;
@@ -172,14 +173,14 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
   }
   EXPECT_EQ(overlap_count, duplicate_diagnostics.size());
 
-  std::vector<std::string> queries{"missing", "metadata_only", "1", "child3",
-                                   "sibling", "outer10"};
+  std::vector<std::string> queries{"missing", "metadata_only", "1",
+                                   "child3",  "sibling",       "outer10"};
   for (const auto& symbol : bound.table.symbols()) {
     queries.push_back(symbol.name);
     if (symbol.parameterized_count) {
       for (std::string_view suffix :
-           std::array{"0", "1", "2", "9", "10", "11", "12", "19", "20",
-                      "00", "01", "4294967295", "4294967296"})
+           std::array{"0", "1", "2", "9", "10", "11", "12", "19", "20", "00",
+                      "01", "4294967295", "4294967296"})
         queries.push_back(symbol.name + std::string{suffix});
     }
   }
@@ -200,8 +201,8 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
         SCOPED_TRACE(query);
         SCOPED_TRACE(scope.id.value);
         SCOPED_TRACE(parameterized);
-        const auto expected = linearExactDeclaration(
-            bound.table, scope.id, query, parameterized);
+        const auto expected =
+            linearExactDeclaration(bound.table, scope.id, query, parameterized);
         EXPECT_EQ(bound.table.exactDeclaration(scope.id, query, parameterized),
                   expected);
       }
@@ -212,8 +213,8 @@ TEST(SymbolTableIndexEquivalence, MatchesLinearLookupAcrossMixedScopes) {
 /** Compare compact declaration diagnostics with many independently expanded sets. */
 TEST(SymbolTableIndexEquivalence,
      MatchesExplicitFiniteOverlapSetsAcrossFormsAndOrders) {
-  constexpr std::array<std::string_view, 8> bases{
-      "%r", "%r1", "%r2", "%r9", "%x", "%x0", "%x9", "%q"};
+  constexpr std::array<std::string_view, 8> bases{"%r", "%r1", "%r2", "%r9",
+                                                  "%x", "%x0", "%x9", "%q"};
   constexpr std::array<uint32_t, 7> counts{0, 1, 2, 3, 9, 10, 12};
 
   for (size_t left_base = 0; left_base < bases.size(); ++left_base) {
@@ -225,25 +226,22 @@ TEST(SymbolTableIndexEquivalence,
           for (const bool reverse : {false, true}) {
             const std::string_view first =
                 reverse ? bases[right_base] : bases[left_base];
-            const uint32_t first_count =
-                reverse ? right_count : left_count;
+            const uint32_t first_count = reverse ? right_count : left_count;
             const std::string_view second =
                 reverse ? bases[left_base] : bases[right_base];
-            const uint32_t second_count =
-                reverse ? left_count : right_count;
-            const std::string source = ".entry overlap() {\n" +
-                                       declaration(first, first_count) +
-                                       declaration(second, second_count) +
-                                       "ret;\n}\n";
+            const uint32_t second_count = reverse ? left_count : right_count;
+            const std::string source =
+                ".entry overlap() {\n" + declaration(first, first_count) +
+                declaration(second, second_count) + "ret;\n}\n";
             PtxSyntaxParser parser(source);
             const auto parsed = parser.parseModule();
             ASSERT_TRUE(parsed.has_value()) << source;
             ASSERT_TRUE(parsed.diagnostics.empty()) << source;
             const auto bound = bindSymbols(*parsed);
             SCOPED_TRACE(source);
-            EXPECT_EQ(duplicateDiagnosticCount(bound),
-                      expandedNamesOverlap(first, first_count, second,
-                                           second_count));
+            EXPECT_EQ(
+                duplicateDiagnosticCount(bound),
+                expandedNamesOverlap(first, first_count, second, second_count));
           }
         }
       }
@@ -261,19 +259,18 @@ TEST(SymbolTableIndexEquivalence,
           const std::string second = reverse ? std::string{base} : ordinary;
           const std::optional<uint32_t> second_count =
               reverse ? std::optional<uint32_t>{count} : std::nullopt;
-          const std::string source = ".entry ordinary() {\n" +
-                                     declaration(first, first_count) +
-                                     declaration(second, second_count) +
-                                     "ret;\n}\n";
+          const std::string source =
+              ".entry ordinary() {\n" + declaration(first, first_count) +
+              declaration(second, second_count) + "ret;\n}\n";
           PtxSyntaxParser parser(source);
           const auto parsed = parser.parseModule();
           ASSERT_TRUE(parsed.has_value()) << source;
           ASSERT_TRUE(parsed.diagnostics.empty()) << source;
           const auto bound = bindSymbols(*parsed);
           SCOPED_TRACE(source);
-          EXPECT_EQ(duplicateDiagnosticCount(bound),
-                    expandedNamesOverlap(first, first_count, second,
-                                         second_count));
+          EXPECT_EQ(
+              duplicateDiagnosticCount(bound),
+              expandedNamesOverlap(first, first_count, second, second_count));
         }
       }
     }
@@ -301,8 +298,8 @@ TEST(SymbolTableIndexEquivalence, IndexesOnlySemanticOverlapCandidates) {
   const BindDiagnostic& diagnostic = bound.diagnostics.front();
   ASSERT_TRUE(diagnostic.previous_range.has_value());
 
-  const auto function = bound.table.lookup(bound.table.moduleScope(),
-                                           "candidates");
+  const auto function =
+      bound.table.lookup(bound.table.moduleScope(), "candidates");
   ASSERT_TRUE(function.has_value());
   const auto scope = bound.table.symbol(function->symbol).owned_scope;
   ASSERT_TRUE(scope.has_value());

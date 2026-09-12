@@ -14,9 +14,14 @@
 | Body-local scalar / 有界数组，含多维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、大小溢出检查、alignment、PTX 2.0 / SM 20 | `parameter_declarations`，role 为 `BodyLocal`，保留词法 scope 与完整 shape |
 | Unsized body-local `.param` | 保留 | 拒绝 | 不生成 resolved module |
 | `.callprototype` scalar / array formal | 保留 | Device signature 规则；prototype 本身要求 PTX 2.1 / SM 20 | Semantic API 可生成拥有自身数据的 `declaration_semantics::FunctionSignature`；不进入声明表 |
-| Header vector / 多维数组 | 明确的 unsupported parse diagnostic | 不进入 | 无 |
-| Body-local vector `.param` | 保留 | 明确的 unsupported diagnostic | 无 |
-| `.f16x2` / opaque `.texref`、`.samplerref`、`.surfref` | 保留 type spelling | 明确的 unsupported diagnostic | 无；不臆造 opaque size/alignment |
+| Entry header 的 opaque `.texref`、`.samplerref`、`.surfref` | 保留 type spelling | 明确的 unsupported diagnostic | 无；opaque entry object 合法，但需要 identity-only metadata 和专用 texture/surface 使用方式，不能臆造 byte layout |
+| Device formal、return 或 body-local opaque object | 保留 type spelling | 拒绝 | 无；illegal，因为 opaque object 仅可用于 module global 与 entry parameter list |
+| Entry header、device formal/return 或 body-local 中的 `.f16x2` | 保留 type spelling | 明确的 unsupported diagnostic | 无；`.f16x2` 是 fundamental type，因此这是保留的 legal-but-unsupported 边界，不是 alternate-format rejection |
+| Header `.v2` / `.v4` parameter | 明确的 unsupported parse diagnostic | 不进入 | 无；保留为 legal-but-unsupported，等待上下文相关的 vector shape、size 与 ABI metadata |
+| Header 多维 parameter array | 明确的 unsupported parse diagnostic | 不进入 | 无；header array grammar 仍为 unresolved，不据此宣称 illegal |
+| Body-local vector `.param` | 保留 | 明确的 unsupported diagnostic | 无；保留为 legal-but-unsupported，等待 vector shape 与 call-staging metadata |
+| Body-local parameterized `.param` group (`name<count>`) | 保留 | 明确的 unsupported diagnostic | 无；合法 declaration shorthand 需要逐个展开名称的 identity 与 declaration-order metadata |
+| `.callprototype` 中的 vector 或多维 `.param` formal | header grammar 拒绝时给出明确 unsupported parse diagnostic | 不会到达 | scalar 与一维 array contract 仍受支持；不从 spelling 推断 vector shape 或更高维 header syntax |
 | `.pred`、未知或仅用于指令的 type spelling | 保留 type spelling | 在 `.param` 中拒绝 | 无 |
 | Module-scope `.param` | 保留 | 拒绝 | 无 |
 
@@ -53,8 +58,11 @@ Entry header parameter 要求 PTX 1.4。对普通非 opaque entry parameter，�
 PTX 8.1 及以后为 32764 字节。Checked arithmetic 拒绝单个声明或累计大小溢出。
 这些是 ISA 限制，不是 CUDA/OpenCL driver 专属限制；byte extent 不是 packed offset 或
 已分配内存。缺失 version/target 时不能证明 availability 违规。
-PTX 1.0–1.3 将 entry input 声明放在 body 中的旧形式不受支持；body-local metadata role
-描述的是 call argument/return object，而非这些旧式 input。
+PTX 1.0–1.3 将 entry input 声明放在 body 中的旧形式仍被排除。PTX 9.3 说明 PTX 1.x
+拥有 kernel `.param` object，而 device `.param` formal 到 PTX 2.0 才出现；但它没有给出
+把旧式 body input 映射到当前 declaration table 所需的 grammar 与 identity rule。因此
+body-local metadata role 绝不会将这类 object 重新解释成 entry input。这是 unresolved 的
+legacy grammar，而不是声称历史形式 ISA-illegal。
 Parser 会拒绝 body-local `.param` initializer；对直接构造的 AST，semantic validation
 也会拒绝该形式。
 没有 payload 时，call 可以省略通过验证的末尾 unsized byte input；其他必需的 input
@@ -76,12 +84,31 @@ input；其他 role 不是 launch slot。
 `array_extents` / `byte_extent` 代替 `is_array` / `array_extent`。空维度列表表示 scalar；
 未知维度表示受支持的 unsized array。ABI layout 与 packing 仍由 consumer 负责。
 
-Opaque entry parameter 是合法 ISA object，但需要专门的、按名称使用的 texture/surface
-access contract，普通 `ld.param` 不能加载它们，其物理 layout 刻意隐藏。支持这些对象、
-`.f16x2`、header vector 与更高 rank 的 header grammar 属于后续工作，需要上下文相关的
-conformance evidence 及匹配的 typed metadata。当前 unsupported diagnostic 不代表这些形式
-全部违反 ISA。Body-local parameterized declaration group 同样超出当前 metadata 支持边界。
-本工作不增加指令族、simulator execution、argument packing 或物理分配。
+### 保留边界与规范分类
+
+归档规范的分类在本文固定为四种：表中的形式为 **legal supported**；
+**legal but unsupported** 会继续明确诊断，直到实现其 typed metadata 与 access rule；
+**illegal** 继续拒绝；**unresolved** 不能仅因 parser 行为而被提升到任一种分类。
+
+Opaque entry parameter 是合法 ISA object：`.entry` directive 允许它们，而 opaque type
+一节将声明位置限制为 module global 与 entry parameter list。它们是按名称使用的
+texture/surface object，普通 `ld.param` 不能加载，物理 layout 也被刻意隐藏。因此 device
+与 body 的 opaque declaration 继续拒绝。
+
+`.f16x2` 是 fundamental type，不同于 alternate packed format。parameter-passing rule
+讨论 base-type scalar 与 vector `.param` formal，因此 frontend 将 `.f16x2` 记录为
+legal but unsupported，而不会把它并入 instruction-only type diagnostic。支持它还需要一致的
+declaration、direct-call ABI、literal 与 resolved-memory 行为；现有 `ScalarType::F16x2`
+值本身并不构成该 contract。
+
+`.v2`/`.v4` parameter shape 与 local parameterized group 也采用相同区分。variable rule
+允许 non-predicate fundamental type 的二/四 lane vector，并允许任意 state space 的
+fundamental type 使用 parameterized name。当前 grammar 已保留的 source form 会继续保留，
+但 frontend 不会臆造展开 declaration、vector byte/alignment、call staging 或 public metadata。
+通用 array rule 只确立 constant dimension，未解决不同的 header 多维 parameter grammar；
+该行仍为 unresolved。
+
+本工作不增加 instruction family、simulator execution、argument packing 或物理分配。
 
 ## 依据与回归
 
@@ -92,6 +119,11 @@ conformance evidence 及匹配的 typed metadata。当前 unsupported diagnostic
 [device function](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#kernel-and-function-directives-func) 与
 [call prototype](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype)。
 Assembler 实验只补充证据，不取代规范。
+
+作为非硬件的补充观察，使用 PTX 9.1 / `sm_80` 运行 `ptxas` 13.1：independent texture
+mode 的 opaque entry list 与 body-local parameterized group 可汇编；孤立 `.f16x2`、vector
+`.param` 在 allocation 时被拒绝，header 多维 array 被该 parser 拒绝。该工具版本结果不会
+覆盖上述 PTX 9.3 分类，也不是 execution test。
 
 回归覆盖明确的 parser 边界、semantic type/role/version/size 验证、resolved declaration
 identity/lifetime，以及单独编译的 installed-package consumer。GPU execution 不属于声明

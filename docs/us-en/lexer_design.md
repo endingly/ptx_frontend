@@ -288,8 +288,7 @@ Line endings are handled as follows:
 
 - `\n` increments the line and resets the column to 1.
 - `\r` does the same.
-- `\r\n` is treated as one line ending when both bytes are part of the same
-  Flex match.
+- `\r\n` is treated as one line ending, including inside block comments.
 
 Columns count bytes, not Unicode code points. PTX identifiers are currently
 restricted to ASCII, so this matches the accepted lexical grammar.
@@ -362,10 +361,6 @@ ctest --test-dir out/build/ci-linux-gcc-debug --output-on-failure
 - Token text is allocated separately for every emitted token.
 - The lexer accepts ASCII identifiers only.
 - Block comments cannot nest.
-- A `\r\n` sequence inside a block comment is currently consumed as two
-  separate Flex matches and therefore advances the line twice. Outside block
-  comments, CRLF is normally consumed in one whitespace match and advances the
-  line once.
 - String tokens preserve escapes and quotes; they are not decoded.
 - Signs are separate from numeric literals.
 - The decimal floating grammar does not recognize every spelling that a C++

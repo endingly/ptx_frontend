@@ -123,6 +123,11 @@ validation context. Targetless fragments remain supported by resolution-only
 and compatibility entry points; they are not a claim of target-valid code.
 Model-only consumers can include `ptx_resolved_ir_model.hpp` without the Syntax
 AST or resolver/checker implementation interfaces.
+`ResolvedModule` also owns its effective header context, declaration contracts,
+control metadata, typed call literals, and instruction provenance. After the
+source and AST are released, `validateModule(module, policy)` rechecks those
+owned invariants and reports structured diagnostics without borrowing syntax
+state; see the [Resolved IR design](docs/us-en/resolved_ir_design.md).
 Imported binding, declaration, and checker diagnostics retain their typed
 categories and source locations through `ResolveDiagnostic`; `stage()` identifies
 their origin, and `previous_range` preserves related declaration locations.
@@ -229,6 +234,10 @@ target_compile_features(example PRIVATE cxx_std_23)
 target_link_libraries(example PRIVATE ptx_frontend::ptx_frontend)
 ```
 
+The project keeps its internal component targets project-prefixed, so an
+embedded build can retain generic parent target names such as `common` or
+`lexer`. Consumers should link the stable `ptx_frontend::<component>` aliases.
+
 A minimal parse-and-resolve example:
 
 ```cpp
@@ -289,9 +298,12 @@ layout as a stable pre-1.0 ABI. See the
 the instruction database or generator.
 
 `instructions/ptx_spec` is a source-tree compatibility symlink. Installed
-packages also expose `ptx_spec` (the public PTX data) and `codegen` (the
-generator plus its runtime resources) CMake components; consumers supply their
-own backend mapping when generating C++.
+packages expose only `ptx_spec`, the public PTX data, as a non-target CMake
+component. The frontend generator, its runtime resources, and the repository
+C++ backend mapping are source-build implementation details; downstream
+projects that generate C++ supply their own backend mapping. See the
+[installed CMake component contract](docs/us-en/cmake_components.md) for the
+public Python model and the intentional exclusions.
 
 ## Repository layout
 

@@ -64,13 +64,13 @@ enum class TokenKind : uint16_t {
   NotEq,        // !=
 
   // Literals
-  F32Hex,   // 0f<8hex>
-  F64Hex,   // 0d<16hex>
-  Hex,      // 0x...  (integer hex, optional U suffix)
-  F64,      // decimal floating literal
+  F32Hex,  // 0f<8hex>
+  F64Hex,  // 0d<16hex>
+  Hex,     // 0x...  (integer hex, optional U suffix)
+  F64,     // decimal floating literal
   Decimal,  // unprefixed integer (decimal or leading-zero octal), optional U suffix
-  String,   // "..."
-  WarpSz,   // WARP_SZ
+  String,  // "..."
+  WarpSz,  // WARP_SZ
 
   // Dynamic text tokens
   Ident,     // opcode, symbol, label, register, PTX special register, etc.

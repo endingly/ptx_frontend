@@ -67,42 +67,40 @@ int check_entry_parameter_metadata() {
       declared[0].alignment != 2 || declared[0].explicit_alignment ||
       !declared[0].array_extents.empty() || declared[0].byte_extent != 2 ||
       declared[0].pointer || declared[1].role != Role::EntryInput ||
-      declared[1].scalar_type != ScalarType::B8 ||
-      declared[1].alignment != 8 || !declared[1].explicit_alignment ||
+      declared[1].scalar_type != ScalarType::B8 || declared[1].alignment != 8 ||
+      !declared[1].explicit_alignment ||
       declared[1].array_extents != std::vector<std::optional<uint64_t>>{4} ||
       declared[1].byte_extent != 4 || declared[1].pointer ||
       defined[0].role != Role::EntryInput ||
-      defined[0].scalar_type != ScalarType::U32 ||
-      defined[0].alignment != 4 || defined[0].explicit_alignment ||
-      !defined[0].array_extents.empty() || defined[0].byte_extent != 4 ||
-      defined[0].pointer || defined[1].role != Role::EntryInput ||
-      defined[1].scalar_type != ScalarType::U64 ||
-      defined[1].alignment != 16 || !defined[1].explicit_alignment ||
-      !defined[1].array_extents.empty() || defined[1].byte_extent != 8 ||
-      defined[1].pointer || defined[2].role != Role::EntryInput ||
-      defined[2].scalar_type != ScalarType::U64 ||
-      defined[2].alignment != 8 || !defined[2].pointer ||
-      defined[2].pointer->pointed_state_space ||
+      defined[0].scalar_type != ScalarType::U32 || defined[0].alignment != 4 ||
+      defined[0].explicit_alignment || !defined[0].array_extents.empty() ||
+      defined[0].byte_extent != 4 || defined[0].pointer ||
+      defined[1].role != Role::EntryInput ||
+      defined[1].scalar_type != ScalarType::U64 || defined[1].alignment != 16 ||
+      !defined[1].explicit_alignment || !defined[1].array_extents.empty() ||
+      defined[1].byte_extent != 8 || defined[1].pointer ||
+      defined[2].role != Role::EntryInput ||
+      defined[2].scalar_type != ScalarType::U64 || defined[2].alignment != 8 ||
+      !defined[2].pointer || defined[2].pointer->pointed_state_space ||
       defined[2].pointer->pointed_alignment != 4 ||
       !defined[2].array_extents.empty() || defined[2].byte_extent != 8 ||
       defined[3].role != Role::EntryInput ||
-      defined[3].scalar_type != ScalarType::U64 ||
-      defined[3].alignment != 8 || !defined[3].pointer ||
+      defined[3].scalar_type != ScalarType::U64 || defined[3].alignment != 8 ||
+      !defined[3].pointer ||
       defined[3].pointer->pointed_state_space !=
           ptx_frontend::call_argument_compatibility::PointedStateSpace::
               Global ||
       defined[3].pointer->pointed_alignment != 32 ||
       !defined[3].array_extents.empty() || defined[3].byte_extent != 8 ||
       defined[4].role != Role::EntryInput ||
-      defined[4].scalar_type != ScalarType::B8 ||
-      defined[4].alignment != 8 || !defined[4].explicit_alignment ||
+      defined[4].scalar_type != ScalarType::B8 || defined[4].alignment != 8 ||
+      !defined[4].explicit_alignment ||
       defined[4].array_extents != std::vector<std::optional<uint64_t>>{8} ||
       defined[4].byte_extent != 8 || defined[4].pointer) {
     return 34;
   }
   if (!declared_function_scope || !defined_function_scope ||
-      resolved_module->symbols.symbol(declared[0].symbol_id).name !=
-          "scalar" ||
+      resolved_module->symbols.symbol(declared[0].symbol_id).name != "scalar" ||
       resolved_module->symbols.symbol(declared[1].symbol_id).name !=
           "declaration_bytes" ||
       resolved_module->symbols.symbol(defined[0].symbol_id).name != "scalar" ||
@@ -169,15 +167,20 @@ int check_entry_parameter_metadata() {
       device_parameters[3].symbol_id == device_parameters[4].symbol_id ||
       device_parameters[3].scope_id == device_parameters[4].scope_id ||
       device_parameters[0].scope_id !=
-          resolved_module->symbols.symbol(device_parameters[0].symbol_id).scope ||
+          resolved_module->symbols.symbol(device_parameters[0].symbol_id)
+              .scope ||
       device_parameters[1].scope_id !=
-          resolved_module->symbols.symbol(device_parameters[1].symbol_id).scope ||
+          resolved_module->symbols.symbol(device_parameters[1].symbol_id)
+              .scope ||
       device_parameters[2].scope_id !=
-          resolved_module->symbols.symbol(device_parameters[2].symbol_id).scope ||
+          resolved_module->symbols.symbol(device_parameters[2].symbol_id)
+              .scope ||
       device_parameters[3].scope_id !=
-          resolved_module->symbols.symbol(device_parameters[3].symbol_id).scope ||
+          resolved_module->symbols.symbol(device_parameters[3].symbol_id)
+              .scope ||
       device_parameters[4].scope_id !=
-          resolved_module->symbols.symbol(device_parameters[4].symbol_id).scope) {
+          resolved_module->symbols.symbol(device_parameters[4].symbol_id)
+              .scope) {
     return 36;
   }
   return 0;
@@ -215,7 +218,8 @@ int check_parameter_declaration_boundaries() {
   if (!boundary_ast || !boundary_ast.diagnostics.empty())
     return 39;
   const auto boundary = ptx_frontend::resolved_ir::resolveModule(*boundary_ast);
-  if (!boundary || boundary->functions[0].parameter_declarations[0].byte_extent != 32764 ||
+  if (!boundary ||
+      boundary->functions[0].parameter_declarations[0].byte_extent != 32764 ||
       ptx_frontend::declaration_semantics::parameterScalarType(".b128") !=
           ptx_frontend::base::ScalarType::B128 ||
       ptx_frontend::declaration_semantics::parameterScalarType(".pred"))
@@ -386,8 +390,7 @@ int check_module_diagnostics() {
   std::vector<binding::BindDiagnostic> original;
   resolved_ir::ModuleResolveDiagnostics diagnostics;
   {
-    const std::string source =
-        ".entry k() { .reg .u32 %r; .reg .u32 %r; }";
+    const std::string source = ".entry k() { .reg .u32 %r; .reg .u32 %r; }";
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
     if (!ast || !ast.diagnostics.empty())
@@ -649,7 +652,7 @@ done:
       ptx_frontend::binding::bindSymbols(*directive_ast);
   if (!directive_symbols.diagnostics.empty() ||
       !ptx_frontend::declaration_semantics::checkDeclarations(
-          *directive_ast, directive_symbols.table)
+           *directive_ast, directive_symbols.table)
            .empty()) {
     return 23;
   }

@@ -80,4 +80,4 @@ struct Info {
 /** Return intrinsic metadata for a previously resolved stable identity. */
 [[nodiscard]] Info metadata(SpecialRegisterId id) noexcept;
 
-}  // namespace ptx_frontend::special_registers
+}  // namespace ptx_frontend::base

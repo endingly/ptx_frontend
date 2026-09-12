@@ -42,15 +42,16 @@ std::string declarationAtDepth(std::string_view shape, std::size_t depth) {
   else {
     const auto lists = shape == "mixed" ? wrappers / 2 : wrappers;
     dimensions = repeated("[1]", lists);
-    value = repeated("{", lists) + repeated("+", wrappers - lists) +
-            "1" + repeated("}", lists);
+    value = repeated("{", lists) + repeated("+", wrappers - lists) + "1" +
+            repeated("}", lists);
   }
   return ".global .u32 value" + dimensions + " = " + value + ";\n";
 }
 
 /** Recursive grammar and iterative tree-building forms share one boundary. */
-constexpr std::array shapes{"unary", "parentheses", "cast", "call", "postfix",
-                            "conditional", "binary", "initializer", "mixed"};
+constexpr std::array shapes{"unary",  "parentheses", "cast",
+                            "call",   "postfix",     "conditional",
+                            "binary", "initializer", "mixed"};
 
 /** Exercise lowering, checking, resolution, and ordinary recursive destruction. */
 TEST(ConstantTreeDepth, AcceptsBelowAndAtLimitThroughModuleResolution) {
@@ -58,8 +59,9 @@ TEST(ConstantTreeDepth, AcceptsBelowAndAtLimitThroughModuleResolution) {
     for (const auto depth : {PtxCstParser::maxConstantTreeDepth - 1,
                              PtxCstParser::maxConstantTreeDepth}) {
       SCOPED_TRACE(std::string{shape} + " depth=" + std::to_string(depth));
-      const std::string source = ".version 9.3\n.target sm_80\n.address_size 64\n" +
-                                 declarationAtDepth(shape, depth);
+      const std::string source =
+          ".version 9.3\n.target sm_80\n.address_size 64\n" +
+          declarationAtDepth(shape, depth);
       PtxSyntaxParser parser(source);
       const auto ast = parser.parseModule();
       ASSERT_TRUE(ast.has_value());
@@ -67,7 +69,8 @@ TEST(ConstantTreeDepth, AcceptsBelowAndAtLimitThroughModuleResolution) {
       const auto resolved = resolveModule(*ast);
       // Nested mask calls and chained callees are syntactically supported, but
       // are not materializable storage initializers. Still exercise their checks.
-      if (std::string_view{shape} == "call" || std::string_view{shape} == "postfix")
+      if (std::string_view{shape} == "call" ||
+          std::string_view{shape} == "postfix")
         EXPECT_FALSE(resolved.has_value());
       else
         ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
@@ -81,13 +84,14 @@ TEST(ConstantTreeDepth, RejectsOverLimitAndRecoversThroughLowering) {
     for (const auto depth : {PtxCstParser::maxConstantTreeDepth + 1,
                              PtxCstParser::maxConstantTreeDepth * 8}) {
       SCOPED_TRACE(std::string{shape} + " depth=" + std::to_string(depth));
-      const std::string source = declarationAtDepth(shape, depth) +
-                                 ".global .u32 survivor = 7;\n";
+      const std::string source =
+          declarationAtDepth(shape, depth) + ".global .u32 survivor = 7;\n";
       PtxCstParser cst_parser(source);
       const auto cst = cst_parser.parseModule();
       ASSERT_TRUE(cst.has_value());
       ASSERT_FALSE(cst.diagnostics.empty());
-      EXPECT_NE(cst.diagnostics.front().message.find("depth limit"), std::string::npos);
+      EXPECT_NE(cst.diagnostics.front().message.find("depth limit"),
+                std::string::npos);
       EXPECT_EQ(cst.diagnostics.front().range.start.line, 1);
       EXPECT_EQ(cst->sourceText(), source);
       PtxSyntaxParser ast_parser(source);
@@ -98,8 +102,10 @@ TEST(ConstantTreeDepth, RejectsOverLimitAndRecoversThroughLowering) {
       const auto resolved = resolveModule(*ast);
       ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
       ASSERT_EQ(resolved->storage_declarations.size(), 1u);
-      EXPECT_EQ(resolved->symbols.symbol(resolved->storage_declarations[0].symbol_id).name,
-                "survivor");
+      EXPECT_EQ(
+          resolved->symbols.symbol(resolved->storage_declarations[0].symbol_id)
+              .name,
+          "survivor");
     }
   }
 }
@@ -122,9 +128,11 @@ TEST(ConstantTreeDepth, HandlesTruncatedTreesAndPartialOwnership) {
 }
 
 /** A depth policy must not become an accidental total-element budget. */
-TEST(ConstantTreeDepth, KeepsWideShallowInitializersAndSiblingBudgetsIndependent) {
-  const std::string source = ".global .u32 wide[] = {" + repeated("1,", 1024) +
-      "1};\n" + declarationAtDepth("unary", PtxCstParser::maxConstantTreeDepth) +
+TEST(ConstantTreeDepth,
+     KeepsWideShallowInitializersAndSiblingBudgetsIndependent) {
+  const std::string source =
+      ".global .u32 wide[] = {" + repeated("1,", 1024) + "1};\n" +
+      declarationAtDepth("unary", PtxCstParser::maxConstantTreeDepth) +
       ".global .u32 last = 2;\n";
   PtxSyntaxParser parser(source);
   const auto ast = parser.parseModule();

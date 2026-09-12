@@ -55,13 +55,13 @@
             "name": "ci-python-and-package-consumer",
             "configurePreset": "ci-linux-gcc-debug",
             "configuration": "Debug",
-            "targets": ["resolved_ir"]
+            "targets": ["ptx_frontend_resolved_ir"]
         },
         {
             "name": "ci-integration-smoke",
             "configurePreset": "ci-integration-smoke",
             "configuration": "Debug",
-            "targets": ["resolved_ir"]
+            "targets": ["ptx_frontend_resolved_ir"]
         }
     ],
     "testPresets": [

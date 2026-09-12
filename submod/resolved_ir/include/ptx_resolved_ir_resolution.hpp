@@ -149,6 +149,12 @@ checker::CheckResult validateModule(
     ModuleValidationPolicy policy =
         ModuleValidationPolicy::RequireCompleteContext);
 
+/** Validate owned semantic invariants without reparsing or traversing an AST. */
+checker::CheckResult validateModule(
+    const ResolvedModule& module,
+    ModuleValidationPolicy policy =
+        ModuleValidationPolicy::RequireCompleteContext);
+
 /** Resolve and check the modeled subset, rejecting missing validation context. */
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveAndValidateModule(const syntax_ast::AstModule& ast);

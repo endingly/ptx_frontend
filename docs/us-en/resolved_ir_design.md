@@ -28,10 +28,12 @@ accepts exactly 256-bit `.v8` × 32-bit and `.v4` × 64-bit forms. Static natura
 alignment checks bound data symbols with constant byte offsets and absolute
 immediate addresses; register and standalone unresolved addresses stay unknown.
 Other source forms, remaining qualifier extensions, CFG/SSA, and target
-lowering remain later work. `ResolvedIndirectCallee` now provides descriptor-
+lowering remain later work. `ResolvedIndirectCallee` provides descriptor-
 independent identity for a non-predicate `.reg` indirect target or a bound
-function-local `.callprototype`/`.calltargets` label; it intentionally omits
-metadata payload and ABI. Generated `Call::Direct` now has three additional
+function-local `.callprototype`/`.calltargets` label. Its enclosing
+`ResolvedFunction` owns the matching ordered metadata payload and normalized
+ABI separately, so an operand remains compact without making the metadata
+unavailable. Generated `Call::Direct` now has three additional
 `IndirectCall` layouts (target/metadata, target/input/metadata, and
 return/target/input/metadata), each available from PTX 2.1 / SM 20; normal
 module indirect calls preserve the bound target and metadata identities, then
@@ -39,12 +41,16 @@ reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
 The public model entry point is
-`<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It contains owned data
+`<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It aggregates the
+handwritten foundation, the generated instruction structs and
+`ResolvedInstruction` union, and handwritten module containers in that order.
+`ptx_resolved_ir_module.hpp` directly includes only the foundation and generated
+instruction surface, so fixed module fields can evolve in C++ without changing
+the generator and the headers remain acyclic. These headers contain owned data
 and read-only descriptors without requiring the complete Syntax AST, resolver
 helpers, or instruction-checker implementation. Resolution is exposed through
 `ptx_resolved_ir_resolution.hpp`, checking through `ptx_resolved_ir_checker.hpp`;
-`ptx_resolved_ir.hpp` remains the compatibility aggregate. The generated model
-includes its foundation, not the aggregate, so these headers do not form a cycle.
+`ptx_resolved_ir.hpp` remains the compatibility aggregate.
 
 The public layer also provides an opcode-independent boundary:
 
@@ -67,6 +73,7 @@ The module entry points have distinct success contracts:
 | `resolveAndValidateModule(ast)` | Resolution and final checking passed, with a recognized source target and PTX version for each checked region. Missing context is an error. |
 | `resolveModule(ast)` | Compatibility behavior: resolution plus final checks where context is available; targetless fragments remain accepted. |
 | `validateModule(ast, module, policy)` | Source correspondence and final instruction/directive checks passed under the explicit policy (default: `RequireCompleteContext`). The module must already have passed resolution. |
+| `validateModule(module, policy)` | Revalidates owned header, declaration/member identities, control metadata, typed call literals, operand layouts, and available source-region checker rules without traversing an AST. Manually constructed or mutated public IR must use this entry point before consumption. |
 | `checkModuleAvailability(ast, module)` | Compatibility wrapper for validation with `AvailableContext`; despite its historical name, it runs the full instruction checker in contextualized regions. |
 
 Resolution-only still enforces declaration availability when its source contains
@@ -106,8 +113,56 @@ availability under its replacement source context. Duplicate equivalent
 declarations need an unambiguous occurrence match; they are not silently paired
 by order. Instruction diagnostics use the IR's original owned ranges, while
 directive diagnostics refer to the supplied AST. Missing strict-validation
-context is reported as `MissingValidationContext`. Raw module directives still
-require an AST; this is not an AST-free complete-module serialization contract.
+context is reported as `MissingValidationContext`.
+
+`ResolvedModule::header` owns the effective version, ordered source target
+options, and address-size values for a targetless prefix and every subsequent
+`.target` region. Each value records `Missing`, `Explicit`, or `Defaulted`
+provenance. An omitted `.address_size` owns the PTX-defined 32-bit value with
+`Defaulted` provenance; it never depends on the host. Source target order
+defines source availability only; it is not a deployment or physical-backend
+target. Invalid, duplicate, or inconsistent
+header directives are retained as invalid ranges and rejected by owned
+validation. `ResolvedFunction::source_region` selects this same owned context.
+
+Functions own their normalized signature, linkage and canonical/alias identity,
+`.noreturn` and ABI-preservation contracts, normalized numeric resource values,
+cluster dimensions (including inferred trailing dimensions), `.blocksareclusters`,
+and language value. Entry resources are source launch contracts, not occupancy
+calculations or physical allocations. Function-local `.branchtargets` owns its
+ordered expanded bound labels (so `L<2>` is `L0`, `L1`, not two `L` entries);
+explicit repeated labels retain separate logical entries. `.calltargets` owns ordered
+bound/canonical functions plus their common signature; `.callprototype` owns
+its signature and ABI/noreturn suffixes. These records and their source ranges
+remain valid after AST destruction.
+
+`ResolvedFunctionAttribute::values` has migrated from source spelling storage
+to the typed optional `ResolvedUnifiedId` `unified_id` payload. For
+`.attribute(.unified(uuid1, uuid2))`, `unified_id->upper` is UUID `uuid1`
+(upper 64 bits) and `unified_id->lower` is UUID `uuid2` (lower 64 bits); no
+byte-order or host-address conversion occurs. Function attributes and storage
+declarations use this same named value type.
+Malformed source UUID tokens remain declaration diagnostics, while AST-free
+validation rejects a retained `.unified` attribute without that typed payload.
+
+Module call literals are formal-driven `ResolvedImmediate` values after a
+successful direct, alias, or metadata-backed call check. A standalone
+instruction without a module call contract may retain a `ResolvedCallLiteral`
+with no value; consumers must not guess a type. A declared external module
+call still retains its signature and formal-typed literals; actual linking or
+relocation remains deferred. `base::DeclarationStateSpace` and
+`base::LiteralCategory` name the
+semantic values exposed by resolved/binding data. The legacy `AstStateSpace`
+and `AstImmediateKind` aliases remain source-compatible names, not a requirement
+to retain a syntax AST.
+
+Instruction ranges/opcodes and all owned records are semantic provenance. The
+frontend retains `.language` and function ABI/resource contracts; `.file`,
+`.loc`, `.section`, and `.pragma` remain syntax/debug or advisory metadata and
+are explicitly not resolved payloads. There is no promise of stable generated
+C++ struct layout or binary ABI. Raw module directives still require an AST;
+the owned model is a semantic handoff for the documented subset, not a complete
+source serialization contract.
 
 `ResolveDiagnostic` owns its message and source ranges. Module resolution
 preserves the originating `binding_kind`, `declaration_kind`, or `checker_kind`,
@@ -167,6 +222,15 @@ canonical prototype/definition signature, checks return/input actuals and
 formal-typed literals, and enforces function-local `.param` qualification,
 predication, and staging adjacency. The generated checker remains responsible
 for one resolved instruction and target-aware descriptor rules.
+
+`<ptx_frontend/semantic/ptx_function_contract.hpp>` exposes the canonical
+function-signature contract without a Syntax AST dependency. Its parameter
+contracts use semantic state-space and pointer-space enums, `ScalarType` and a
+typed vector shape, retained invalid spelling for diagnostics, and optional
+tagged numeric values: omitted, validated constants, or invalid structural
+keys. Direct-call ABI validation consumes those normalized values without
+reparsing alignment text or the former array-extent string protocol; invalid
+structural data is never silently replaced by a default.
 
 Call-staging adjacency follows the executable instruction sequence within the
 current lexical body. Ordinary variable declarations, `.loc`, and `.pragma` do

@@ -1308,6 +1308,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         operand_name: str,
         other_layout_name: str,
         other_operands: list[dict[str, str]],
+        immediate_kind: str = "imm",
     ) -> None:
         normalize_instruction_spec(
             {
@@ -1318,7 +1319,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     "availability": {"ptx": "1.0"},
                     "operand_layouts": [
                         {"name": "immediate", "operands": [
-                            {"name": operand_name, "kind": "imm"},
+                            {"name": operand_name, "kind": immediate_kind},
                         ]},
                         {"name": other_layout_name, "operands": other_operands},
                     ],
@@ -1328,16 +1329,16 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
 
     def test_immediate_constraints_allow_a_missing_layout_operand(self) -> None:
-        for kind, constraint, operand_name in (
+        for kind, constraint, operand_name, operand_kind in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
-            }, "size"),
+            }, "size", "imm"),
             ("immediate_range", {
                 "kind": "immediate_range", "operand": "count", "minimum": 1,
-            }, "count"),
+            }, "count", "reg_or_imm"),
             ("immediate_multiple_of", {
                 "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
-            }, "stride"),
+            }, "stride", "reg_or_imm"),
         ):
             with self.subTest(kind=kind):
                 self._normalize_multilayout_immediate_constraint(
@@ -1345,6 +1346,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     operand_name,
                     "missing",
                     [{"name": "dst", "kind": "reg"}],
+                    immediate_kind=operand_kind,
                 )
 
     def test_immediate_constraint_rejects_unknown_operand(self) -> None:
@@ -1375,22 +1377,22 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             )
 
     def test_immediate_constraints_name_non_immediate_layout_and_kind(self) -> None:
-        for kind, constraint, operand_name in (
+        for kind, constraint, operand_name, operand_kind, disallowed_kind in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
-            }, "size"),
+            }, "size", "imm", "reg_or_imm"),
             ("immediate_range", {
                 "kind": "immediate_range", "operand": "count", "minimum": 1,
-            }, "count"),
+            }, "count", "reg_or_imm", "reg"),
             ("immediate_multiple_of", {
                 "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
-            }, "stride"),
+            }, "stride", "reg_or_imm", "reg"),
         ):
             with self.subTest(kind=kind):
                 with self.assertRaisesRegex(
                     ValueError,
                     rf"{kind} operand {operand_name!r}.*operand layout "
-                    r"'register'.*kind 'imm'.*'reg'",
+                    rf"'register'.*not {disallowed_kind!r}",
                 ):
                     self._normalize_multilayout_immediate_constraint(
                         constraint,
@@ -1398,8 +1400,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         "register",
                         [
                             {"name": "dst", "kind": "reg"},
-                            {"name": operand_name, "kind": "reg"},
+                            {"name": operand_name, "kind": disallowed_kind},
                         ],
+                        immediate_kind=operand_kind,
                     )
 
     def test_immediate_constraints_accept_immediates_in_every_layout(self) -> None:

@@ -20,8 +20,8 @@ std::optional<syntax_ast::AstModule> parse_module(std::string_view source) {
   auto module = parser.parseModule();
   if (!module) {
     ADD_FAILURE() << (module.diagnostics.empty()
-                         ? "PTX source did not parse."
-                         : module.diagnostics.front().message);
+                          ? "PTX source did not parse."
+                          : module.diagnostics.front().message);
     return std::nullopt;
   }
   return std::move(*module);
@@ -39,7 +39,8 @@ TEST(CtaBarrierNumeric, RejectsInvalidKnownImmediateValuesAtTheirOperands) {
 .entry k() {
   .reg .u32 %r;
   .reg .pred %p<2>;
-  )ptx" + std::string(instruction) + R"ptx(
+  )ptx" + std::string(instruction) +
+                               R"ptx(
   ret;
 }
 )ptx";
@@ -47,11 +48,14 @@ TEST(CtaBarrierNumeric, RejectsInvalidKnownImmediateValuesAtTheirOperands) {
     ASSERT_TRUE(ast.has_value());
     const auto& body =
         std::get<syntax_ast::AstFunction>(ast->items.back()).body;
-    const auto bar = std::find_if(
-        body.begin(), body.end(), [](const syntax_ast::AstFunctionBodyItem& item) {
-          const auto* instruction = std::get_if<syntax_ast::AstInstruction>(&item);
-          return instruction != nullptr && instruction->opcode.syntax.text == "bar";
-        });
+    const auto bar =
+        std::find_if(body.begin(), body.end(),
+                     [](const syntax_ast::AstFunctionBodyItem& item) {
+                       const auto* instruction =
+                           std::get_if<syntax_ast::AstInstruction>(&item);
+                       return instruction != nullptr &&
+                              instruction->opcode.syntax.text == "bar";
+                     });
     ASSERT_NE(bar, body.end());
     const auto& syntax_instruction = std::get<syntax_ast::AstInstruction>(*bar);
     const auto resolved = resolveModule(*ast);
@@ -61,9 +65,9 @@ TEST(CtaBarrierNumeric, RejectsInvalidKnownImmediateValuesAtTheirOperands) {
     for (const auto& diagnostic : resolved.error()) {
       EXPECT_EQ(diagnostic.checker_kind,
                 checker::CheckDiagnosticKind::ImmediateValueMismatch);
-      EXPECT_EQ(diagnostic.range, syntax_ast::sourceRange(
-                                      syntax_instruction.operands[
-                                          invalid_operand_index]));
+      EXPECT_EQ(diagnostic.range,
+                syntax_ast::sourceRange(
+                    syntax_instruction.operands[invalid_operand_index]));
     }
   };
 
@@ -159,8 +163,8 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
   ASSERT_TRUE(legacy_ast.has_value());
   const auto legacy = resolveModule(*legacy_ast);
   ASSERT_TRUE(legacy.has_value()) << legacy.error().front().message;
-  const auto& legacy_instruction = std::get<Bar>(
-      legacy->functions.front().body.front());
+  const auto& legacy_instruction =
+      std::get<Bar>(legacy->functions.front().body.front());
   EXPECT_TRUE(checker::check(
                   legacy_instruction,
                   checker::Context{
@@ -186,10 +190,11 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
 }
 
 TEST(CtaBarrierNumeric, RejectsMalformedDivisibilityDescriptorForRegister) {
-  constexpr checker::VariantDescriptor::ImmediateMultipleOfDescriptor descriptor{
-      .operand_field_id = "thread_count",
-      .divisor = 0,
-  };
+  constexpr checker::VariantDescriptor::ImmediateMultipleOfDescriptor
+      descriptor{
+          .operand_field_id = "thread_count",
+          .divisor = 0,
+      };
   const checker::OperandView thread_count{
       .field_id = "thread_count",
       .actual_shape = checker::OperandShape::Register,

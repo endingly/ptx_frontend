@@ -21,6 +21,11 @@ permissive。non-predicate `.v2`/`.v4` 寄存器最大为 128 bit，predicate �
 是 scalar。这些 declaration rule 保留合法 `.reg` function formal 及 parameterized
 register group。
 
+`base::ScalarTypeMetadata` 是每个已建模 scalar 的 PTX 拼写、kind、字节宽度及 `.reg`
+declaration usage 的唯一规范来源。declaration semantics 使用该 metadata；generated
+resolver 的 suffix table 仍只是 instruction-modifier 的机械映射。`.param` 刻意保留其
+独立的 storage-type contract。
+
 ## 规范来源记录
 
 工程规范版本为 PTX ISA 9.3。本次依据

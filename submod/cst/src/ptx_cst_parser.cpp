@@ -106,10 +106,11 @@ bool isSupportedModuleItemStart(TokenKind kind) {
 
 bool isFunctionBodyItemStart(TokenKind kind) {
   return kind == TokenKind::LBrace || kind == TokenKind::At ||
-         kind == TokenKind::Ident ||
-         isVariableStateSpace(kind) || kind == TokenKind::DotLoc ||
-         kind == TokenKind::DotPragma || kind == TokenKind::DotCallPrototype ||
-         kind == TokenKind::DotCallTargets || kind == TokenKind::DotBranchTargets;
+         kind == TokenKind::Ident || isVariableStateSpace(kind) ||
+         kind == TokenKind::DotLoc || kind == TokenKind::DotPragma ||
+         kind == TokenKind::DotCallPrototype ||
+         kind == TokenKind::DotCallTargets ||
+         kind == TokenKind::DotBranchTargets;
 }
 
 CstParseResult parseFailure(CstParseDiagnostic diagnostic) {
@@ -222,13 +223,12 @@ PtxCstParser::expectIntegerLiteral(std::string_view name) {
   const TokenId id = peek();
   if (isIntegerLiteral(token(id).kind))
     return consume();
-  return std::unexpected(CstParseDiagnostic{
-      token(id).range, "expected " + std::string(name)});
+  return std::unexpected(
+      CstParseDiagnostic{token(id).range, "expected " + std::string(name)});
 }
 
 PtxCstParser::RecoveryResult PtxCstParser::recover(
-    TokenId first,
-    const CstParseDiagnostic& diagnostic,
+    TokenId first, const CstParseDiagnostic& diagnostic,
     RecoveryContext context) {
   using syntax_cst::CstRecoveryKind;
   using syntax_cst::CstRecoveryNode;
@@ -236,8 +236,7 @@ PtxCstParser::RecoveryResult PtxCstParser::recover(
 
   RecoveryResult result;
   TokenId current = peek();
-  const auto append_span = [this, &result](CstRecoveryKind kind,
-                                           TokenId begin,
+  const auto append_span = [this, &result](CstRecoveryKind kind, TokenId begin,
                                            TokenId end) {
     if (begin >= end)
       return;
@@ -245,13 +244,13 @@ PtxCstParser::RecoveryResult PtxCstParser::recover(
         .kind = kind,
         .expected_kind = std::nullopt,
         .token_range = CstTokenRange{begin, end},
-        .range = SourceRange{token(begin).range.start,
-                             token(end - 1).range.end},
+        .range =
+            SourceRange{token(begin).range.start, token(end - 1).range.end},
     });
     result.last = end - 1;
   };
   const auto append_inserted = [this, &result](TokenKind expected,
-                                                TokenId position) {
+                                               TokenId position) {
     result.nodes.push_back(CstRecoveryNode{
         .kind = CstRecoveryKind::Inserted,
         .expected_kind = expected,
@@ -571,13 +570,14 @@ PtxCstParser::parseIndexedBranchOperands() {
   if (!target_set)
     return std::unexpected(target_set.error());
   if (token(peek()).kind == TokenKind::Comma) {
-    return std::unexpected(CstParseDiagnostic{
-        token(peek()).range, "brx.idx accepts exactly an index and target list"});
+    return std::unexpected(
+        CstParseDiagnostic{token(peek()).range,
+                           "brx.idx accepts exactly an index and target list"});
   }
   return std::vector<syntax_cst::CstOperandElement>{
       {syntax_cst::CstIdentifier{*index}, *comma},
-      {syntax_cst::CstBranchTargetSet{
-           syntax_cst::CstIdentifier{*target_set}, {*target_set, *target_set + 1}},
+      {syntax_cst::CstBranchTargetSet{syntax_cst::CstIdentifier{*target_set},
+                                      {*target_set, *target_set + 1}},
        std::nullopt}};
 }
 
@@ -613,7 +613,9 @@ PtxCstParser::parseOperand() {
     if (!predicate)
       return std::unexpected(predicate.error());
     return syntax_cst::CstOperand{syntax_cst::CstRegisterPredicatePair{
-        base, pipe, syntax_cst::CstIdentifier{*predicate},
+        base,
+        pipe,
+        syntax_cst::CstIdentifier{*predicate},
         {*identifier, *predicate + 1}}};
   }
 
@@ -715,8 +717,7 @@ PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
   using namespace syntax_cst;
 
   if (remaining_depth == 0) {
-    return std::unexpected(
-        depthLimitExceeded(peek(), "constant expression"));
+    return std::unexpected(depthLimitExceeded(peek(), "constant expression"));
   }
 
   const TokenId first = peek();
@@ -749,10 +750,9 @@ PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
       const TokenId last = operand->expression.token_range.last;
       return ParsedConstantExpression{
           CstConstantExpression{
-              CstConstantCast{
-                  left_paren, type, *right_paren,
-                  std::make_unique<CstConstantExpression>(
-                      std::move(operand->expression))},
+              CstConstantCast{left_paren, type, *right_paren,
+                              std::make_unique<CstConstantExpression>(
+                                  std::move(operand->expression))},
               {left_paren, last}},
           operand->depth + 1};
     }
@@ -769,11 +769,10 @@ PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
       return std::unexpected(right_paren.error());
     expression = ParsedConstantExpression{
         CstConstantExpression{
-            CstConstantParenthesized{
-                left_paren,
-                std::make_unique<CstConstantExpression>(
-                    std::move(inner->expression)),
-                *right_paren},
+            CstConstantParenthesized{left_paren,
+                                     std::make_unique<CstConstantExpression>(
+                                         std::move(inner->expression)),
+                                     *right_paren},
             {left_paren, *right_paren + 1}},
         inner->depth + 1};
   } else {
@@ -794,8 +793,7 @@ PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
         expect(TokenKind::RParen, "')' after initializer operator");
     if (!right_paren)
       return std::unexpected(right_paren.error());
-    const std::size_t depth =
-        std::max(expression.depth, argument->depth) + 1;
+    const std::size_t depth = std::max(expression.depth, argument->depth) + 1;
     if (depth > remaining_depth) {
       return std::unexpected(
           depthLimitExceeded(left_paren, "constant expression"));
@@ -803,13 +801,12 @@ PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
     const TokenId expression_first = expression.expression.token_range.first;
     expression = ParsedConstantExpression{
         CstConstantExpression{
-            CstConstantCall{
-                std::make_unique<CstConstantExpression>(
-                    std::move(expression.expression)),
-                left_paren,
-                std::make_unique<CstConstantExpression>(
-                    std::move(argument->expression)),
-                *right_paren},
+            CstConstantCall{std::make_unique<CstConstantExpression>(
+                                std::move(expression.expression)),
+                            left_paren,
+                            std::make_unique<CstConstantExpression>(
+                                std::move(argument->expression)),
+                            *right_paren},
             {expression_first, *right_paren + 1}},
         depth};
   }
@@ -820,8 +817,7 @@ PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
 std::expected<PtxCstParser::ParsedConstantExpression, CstParseDiagnostic>
 PtxCstParser::parseConstantUnary(std::size_t remaining_depth) {
   if (remaining_depth == 0) {
-    return std::unexpected(
-        depthLimitExceeded(peek(), "constant expression"));
+    return std::unexpected(depthLimitExceeded(peek(), "constant expression"));
   }
   if (!isConstantUnaryOperator(token(peek()).kind))
     return parseConstantPrimary(remaining_depth);
@@ -849,8 +845,7 @@ std::expected<PtxCstParser::ParsedConstantExpression, CstParseDiagnostic>
 PtxCstParser::parseConstantExpression(int minimum_precedence,
                                       std::size_t remaining_depth) {
   if (remaining_depth == 0) {
-    return std::unexpected(
-        depthLimitExceeded(peek(), "constant expression"));
+    return std::unexpected(depthLimitExceeded(peek(), "constant expression"));
   }
   auto left = parseConstantUnary(remaining_depth);
   if (!left)
@@ -904,11 +899,10 @@ PtxCstParser::parseConstantExpression(int minimum_precedence,
     auto false_expression = parseConstantExpression(0, remaining_depth - 1);
     if (!false_expression)
       return std::unexpected(false_expression.error());
-    const std::size_t depth = std::max(
-                                  left->depth,
-                                  std::max(true_expression->depth,
-                                           false_expression->depth)) +
-                              1;
+    const std::size_t depth =
+        std::max(left->depth,
+                 std::max(true_expression->depth, false_expression->depth)) +
+        1;
     if (depth > remaining_depth) {
       return std::unexpected(
           depthLimitExceeded(question, "constant expression"));
@@ -1053,8 +1047,7 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers,
       }
       std::optional<syntax_cst::CstConstantExpression> size;
       if (token(peek()).kind != TokenKind::RBracket) {
-        auto expression =
-            parseConstantExpression(0, maxConstantTreeDepth);
+        auto expression = parseConstantExpression(0, maxConstantTreeDepth);
         if (!expression)
           return std::unexpected(expression.error());
         size = std::move(expression->expression);
@@ -1147,8 +1140,8 @@ PtxCstParser::parseAttributeList() {
     if (!name)
       return std::unexpected(name.error());
     if (token(*name).text != ".managed" && token(*name).text != ".unified") {
-      return std::unexpected(CstParseDiagnostic{token(*name).range,
-                                                "unsupported .attribute member"});
+      return std::unexpected(CstParseDiagnostic{
+          token(*name).range, "unsupported .attribute member"});
     }
     std::vector<TokenId> values;
     std::vector<TokenId> value_commas;
@@ -1174,8 +1167,8 @@ PtxCstParser::parseAttributeList() {
     }
     if ((token(*name).text == ".managed" && !values.empty()) ||
         (token(*name).text == ".unified" && values.size() != 2)) {
-      return std::unexpected(CstParseDiagnostic{token(*name).range,
-                                                "invalid .attribute member arity"});
+      return std::unexpected(CstParseDiagnostic{
+          token(*name).range, "invalid .attribute member arity"});
     }
     attributes.push_back(syntax_cst::CstAttribute{
         .name = *name,
@@ -1224,8 +1217,7 @@ PtxCstParser::parseFunctionParameter() {
     return std::unexpected(type.error());
   if (token(*type).text == ".v2" || token(*type).text == ".v4") {
     return std::unexpected(CstParseDiagnostic{
-        token(*type).range,
-        "vector function parameters are not supported"});
+        token(*type).range, "vector function parameters are not supported"});
   }
 
   std::optional<TokenId> pointer_directive;
@@ -1329,8 +1321,8 @@ std::expected<syntax_cst::CstCallPrototype, CstParseDiagnostic>
 PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
   const TokenId directive = consume();
   if (token(directive).kind != TokenKind::DotCallPrototype) {
-    return std::unexpected(CstParseDiagnostic{
-        token(directive).range, "expected '.callprototype'"});
+    return std::unexpected(CstParseDiagnostic{token(directive).range,
+                                              "expected '.callprototype'"});
   }
 
   std::optional<syntax_cst::CstFunctionParameterList> return_parameters;
@@ -1342,7 +1334,8 @@ PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
       return std::unexpected(CstParseDiagnostic{
           SourceRange{token(parsed->token_range.first).range.start,
                       token(parsed->token_range.last - 1).range.end},
-          ".callprototype return parameter list must contain exactly one parameter"});
+          ".callprototype return parameter list must contain exactly one "
+          "parameter"});
     }
     return_parameters = std::move(*parsed);
   }
@@ -1389,7 +1382,8 @@ PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
   if (!abi_preserve_control)
     return std::unexpected(abi_preserve_control.error());
 
-  const auto semicolon = expect(TokenKind::Semicolon, "';' after .callprototype");
+  const auto semicolon =
+      expect(TokenKind::Semicolon, "';' after .callprototype");
   if (!semicolon)
     return std::unexpected(semicolon.error());
   return syntax_cst::CstCallPrototype{
@@ -1411,8 +1405,8 @@ std::expected<syntax_cst::CstCallTargets, CstParseDiagnostic>
 PtxCstParser::parseCallTargets(TokenId label, TokenId colon) {
   const TokenId directive = consume();
   if (token(directive).kind != TokenKind::DotCallTargets) {
-    return std::unexpected(CstParseDiagnostic{
-        token(directive).range, "expected '.calltargets'"});
+    return std::unexpected(
+        CstParseDiagnostic{token(directive).range, "expected '.calltargets'"});
   }
   if (token(peek()).kind == TokenKind::Semicolon) {
     return std::unexpected(CstParseDiagnostic{
@@ -1455,8 +1449,8 @@ std::expected<syntax_cst::CstBranchTargets, CstParseDiagnostic>
 PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
   const TokenId directive = consume();
   if (token(directive).kind != TokenKind::DotBranchTargets) {
-    return std::unexpected(CstParseDiagnostic{
-        token(directive).range, "expected '.branchtargets'"});
+    return std::unexpected(CstParseDiagnostic{token(directive).range,
+                                              "expected '.branchtargets'"});
   }
   if (token(peek()).kind == TokenKind::Semicolon) {
     return std::unexpected(CstParseDiagnostic{
@@ -1480,7 +1474,8 @@ PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
       if (!parsed_count)
         return std::unexpected(parsed_count.error());
       count = *parsed_count;
-      auto parsed_right_angle = expect(TokenKind::Gt, "'>' after branch target count");
+      auto parsed_right_angle =
+          expect(TokenKind::Gt, "'>' after branch target count");
       if (!parsed_right_angle)
         return std::unexpected(parsed_right_angle.error());
       right_angle = *parsed_right_angle;
@@ -1522,8 +1517,8 @@ std::expected<syntax_cst::CstLocDirective, CstParseDiagnostic>
 PtxCstParser::parseLocDirective() {
   const TokenId directive = consume();
   if (token(directive).kind != TokenKind::DotLoc) {
-    return std::unexpected(CstParseDiagnostic{token(directive).range,
-                                              "expected '.loc'"});
+    return std::unexpected(
+        CstParseDiagnostic{token(directive).range, "expected '.loc'"});
   }
   auto file_index = expectIntegerLiteral("source file index");
   if (!file_index)
@@ -1531,8 +1526,7 @@ PtxCstParser::parseLocDirective() {
   auto line_number = expect(TokenKind::Decimal, "source line number");
   if (!line_number)
     return std::unexpected(line_number.error());
-  auto column_position =
-      expect(TokenKind::Decimal, "source column position");
+  auto column_position = expect(TokenKind::Decimal, "source column position");
   if (!column_position)
     return std::unexpected(column_position.error());
 
@@ -1568,14 +1562,14 @@ PtxCstParser::parseLocDirective() {
     const TokenId inlined_at_keyword = consume();
     if (token(inlined_at_keyword).kind != TokenKind::Ident ||
         token(inlined_at_keyword).text != "inlined_at") {
-      return std::unexpected(CstParseDiagnostic{
-          token(inlined_at_keyword).range, "expected 'inlined_at'"});
+      return std::unexpected(CstParseDiagnostic{token(inlined_at_keyword).range,
+                                                "expected 'inlined_at'"});
     }
-    auto inline_file_index =
-        expectIntegerLiteral("inlined source file index");
+    auto inline_file_index = expectIntegerLiteral("inlined source file index");
     if (!inline_file_index)
       return std::unexpected(inline_file_index.error());
-    auto inline_line_number = expect(TokenKind::Decimal, "inlined source line number");
+    auto inline_line_number =
+        expect(TokenKind::Decimal, "inlined source line number");
     if (!inline_line_number)
       return std::unexpected(inline_line_number.error());
     auto inline_column_position =
@@ -1672,17 +1666,20 @@ PtxCstParser::parseKernelResourceDirective() {
       kind == TokenKind::DotMaxclusterrank) {
     if (token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{
-          token(peek()).range, "this kernel resource directive accepts one value"});
+          token(peek()).range,
+          "this kernel resource directive accepts one value"});
     }
   } else {
     while (token(peek()).kind == TokenKind::Comma) {
       commas.push_back(consume());
       if (values.size() == 3) {
-        return std::unexpected(CstParseDiagnostic{
-            token(peek()).range,
-            "thread-count kernel resource directives accept at most three values"});
+        return std::unexpected(
+            CstParseDiagnostic{token(peek()).range,
+                               "thread-count kernel resource directives accept "
+                               "at most three values"});
       }
-      auto value = expect(TokenKind::Decimal, "kernel resource value after comma");
+      auto value =
+          expect(TokenKind::Decimal, "kernel resource value after comma");
       if (!value)
         return std::unexpected(value.error());
       values.push_back(*value);
@@ -1782,9 +1779,10 @@ PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
   }
 
   if (isKernelResourceDirective(token(peek()).kind)) {
-    return std::unexpected(CstParseDiagnostic{
-        token(peek()).range,
-        "kernel resource directives are only valid in an entry function header"});
+    return std::unexpected(
+        CstParseDiagnostic{token(peek()).range,
+                           "kernel resource directives are only valid in an "
+                           "entry function header"});
   }
 
   if (token(peek()).kind == TokenKind::Ident) {
@@ -1809,8 +1807,7 @@ PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
           return std::unexpected(targets.error());
         return std::move(*targets);
       }
-      return syntax_cst::CstLabel{first_token, colon,
-                                  {first_token, colon + 1}};
+      return syntax_cst::CstLabel{first_token, colon, {first_token, colon + 1}};
     }
     auto instruction = parseInstructionNode(first_token);
     if (!instruction)
@@ -1841,8 +1838,7 @@ PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
 }
 
 std::expected<syntax_cst::CstBlock, CstParseDiagnostic>
-PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics,
-                         size_t block_depth) {
+PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics, size_t block_depth) {
   const TokenId left_brace = consume();
   std::vector<syntax_cst::CstFunctionBodyItem> body;
   const auto finish_missing_right_brace = [&]() {
@@ -1853,8 +1849,8 @@ PtxCstParser::parseBlock(CstParseDiagnostics& diagnostics,
         .kind = syntax_cst::CstRecoveryKind::Inserted,
         .expected_kind = TokenKind::RBrace,
         .token_range = std::nullopt,
-        .range = SourceRange{token(peek()).range.start,
-                             token(peek()).range.start},
+        .range =
+            SourceRange{token(peek()).range.start, token(peek()).range.start},
     });
     return syntax_cst::CstBlock{
         .left_brace = left_brace,
@@ -1988,8 +1984,8 @@ PtxCstParser::parseSectionDirective() {
   const TokenId directive = consume();
   const TokenId name = consume();
   if (!isIdentifierToken(token(name).kind)) {
-    return std::unexpected(CstParseDiagnostic{token(name).range,
-                                              "expected section name"});
+    return std::unexpected(
+        CstParseDiagnostic{token(name).range, "expected section name"});
   }
   auto left_brace = expect(TokenKind::LBrace, "section opening brace");
   if (!left_brace)
@@ -2001,8 +1997,7 @@ PtxCstParser::parseSectionDirective() {
   while (brace_depth != 0) {
     const TokenId next = peek();
     if (token(next).kind == TokenKind::Eof ||
-        (brace_depth == 1 &&
-         isSupportedModuleItemStart(token(next).kind))) {
+        (brace_depth == 1 && isSupportedModuleItemStart(token(next).kind))) {
       return std::unexpected(CstParseDiagnostic{
           token(next).range, "expected section closing brace",
           TokenKind::RBrace});
@@ -2100,9 +2095,9 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
     header_tokens.push_back(*noreturn_directive);
   }
 
-  const auto parse_abi_suffix = [this]()
-      -> std::expected<syntax_cst::CstCallPrototypeAbiSuffix,
-                       CstParseDiagnostic> {
+  const auto parse_abi_suffix =
+      [this]() -> std::expected<syntax_cst::CstCallPrototypeAbiSuffix,
+                                CstParseDiagnostic> {
     const TokenId suffix_directive = consume();
     auto count = expect(TokenKind::Decimal, "ABI preserved register count");
     if (!count)
@@ -2254,8 +2249,8 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
           .kind = syntax_cst::CstRecoveryKind::Inserted,
           .expected_kind = TokenKind::RBrace,
           .token_range = std::nullopt,
-          .range = SourceRange{token(peek()).range.start,
-                               token(peek()).range.start},
+          .range =
+              SourceRange{token(peek()).range.start, token(peek()).range.start},
       });
       return finish_missing_body_brace();
     }
@@ -2278,8 +2273,8 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
           .kind = syntax_cst::CstRecoveryKind::Inserted,
           .expected_kind = TokenKind::RBrace,
           .token_range = std::nullopt,
-          .range = SourceRange{token(peek()).range.start,
-                               token(peek()).range.start},
+          .range =
+              SourceRange{token(peek()).range.start, token(peek()).range.start},
       });
       return finish_missing_body_brace();
     }
@@ -2404,27 +2399,33 @@ CstParseResult PtxCstParser::parseModule() {
     }
 
     if (token(peek()).kind == TokenKind::DotCallPrototype) {
-      recover_item(item_first, CstParseDiagnostic{
-          token(peek()).range,
-          "'.callprototype' is only valid inside a function body"});
+      recover_item(
+          item_first,
+          CstParseDiagnostic{
+              token(peek()).range,
+              "'.callprototype' is only valid inside a function body"});
       continue;
     }
     if (token(peek()).kind == TokenKind::DotCallTargets) {
-      recover_item(item_first, CstParseDiagnostic{
-          token(peek()).range,
-          "'.calltargets' is only valid inside a function body"});
+      recover_item(item_first,
+                   CstParseDiagnostic{
+                       token(peek()).range,
+                       "'.calltargets' is only valid inside a function body"});
       continue;
     }
     if (token(peek()).kind == TokenKind::DotBranchTargets) {
-      recover_item(item_first, CstParseDiagnostic{
-          token(peek()).range,
-          "'.branchtargets' is only valid inside a function body"});
+      recover_item(
+          item_first,
+          CstParseDiagnostic{
+              token(peek()).range,
+              "'.branchtargets' is only valid inside a function body"});
       continue;
     }
     if (isKernelResourceDirective(token(peek()).kind)) {
-      recover_item(item_first, CstParseDiagnostic{
-          token(peek()).range,
-          "kernel resource directives are only valid in an entry function header"});
+      recover_item(item_first,
+                   CstParseDiagnostic{token(peek()).range,
+                                      "kernel resource directives are only "
+                                      "valid in an entry function header"});
       continue;
     }
 
@@ -2447,17 +2448,18 @@ CstParseResult PtxCstParser::parseModule() {
             break;
         }
         if (!message.empty()) {
-          recover_item(item_first,
-                       CstParseDiagnostic{token(peek()).range,
-                                          std::string(message)});
+          recover_item(item_first, CstParseDiagnostic{token(peek()).range,
+                                                      std::string(message)});
           continue;
         }
       }
     }
 
-    recover_item(item_first, CstParseDiagnostic{
-        token(peek()).range,
-        "expected module directive, variable declaration, or function"});
+    recover_item(
+        item_first,
+        CstParseDiagnostic{
+            token(peek()).range,
+            "expected module directive, variable declaration, or function"});
   }
 
   if (items.empty()) {

@@ -60,8 +60,7 @@ PtxLexer::Token PtxLexer::next() {
       continue;
     }
 
-    return Token{kind, std::move(text), sval.range,
-                 std::move(leading_trivia)};
+    return Token{kind, std::move(text), sval.range, std::move(leading_trivia)};
   }
 }
 

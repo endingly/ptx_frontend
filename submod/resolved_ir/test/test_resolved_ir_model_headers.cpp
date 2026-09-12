@@ -21,4 +21,11 @@ TEST(ResolvedIrModelHeaders, ExposeOwnedModelRecords) {
   EXPECT_EQ(literal.spelling, "1");
 }
 
+/** Verify the model aggregate retains handwritten module containers. */
+TEST(ResolvedIrModelHeaders, ExposeHandwrittenModuleContainers) {
+  ResolvedModule module{};
+  module.functions.emplace_back();
+  EXPECT_TRUE(module.functions.front().body.empty());
+}
+
 }  // namespace ptx_frontend::resolved_ir

@@ -25,11 +25,11 @@ struct RegisterFormalArithmeticCase {
 };
 
 /** Assert the bound type, class, shape, and identity of two scalar formals. */
-void expectBoundFormalMetadata(
-    const ResolvedRegisterRef& result, const ResolvedRegisterRef& input,
-    const RegisterFormalArithmeticCase& test_case,
-    const binding::SymbolLookup& result_symbol,
-    const binding::SymbolLookup& input_symbol) {
+void expectBoundFormalMetadata(const ResolvedRegisterRef& result,
+                               const ResolvedRegisterRef& input,
+                               const RegisterFormalArithmeticCase& test_case,
+                               const binding::SymbolLookup& result_symbol,
+                               const binding::SymbolLookup& input_symbol) {
   EXPECT_EQ(result.register_class, ResolvedRegisterClass::General);
   EXPECT_EQ(input.register_class, ResolvedRegisterClass::General);
   EXPECT_EQ(result.declared_type, test_case.scalar_type);
@@ -47,11 +47,11 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
       RegisterFormalArithmeticCase{"u32", "u32", "1", ScalarType::U32},
       RegisterFormalArithmeticCase{"b32", "u32", "1", ScalarType::B32},
       RegisterFormalArithmeticCase{"f32", "rn.f32", "0f3f800000",
-                                  ScalarType::F32},
+                                   ScalarType::F32},
       RegisterFormalArithmeticCase{"u64", "u64", "1", ScalarType::U64},
   };
-  const checker::Context context{.target = {.ptx_version = {8, 0},
-                                             .sm_version = 80}};
+  const checker::Context context{
+      .target = {.ptx_version = {8, 0}, .sm_version = 80}};
 
   for (const RegisterFormalArithmeticCase& test_case : cases) {
     const std::string source =
@@ -78,7 +78,8 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
 
     const auto& syntax_function =
         std::get<syntax_ast::AstFunction>(ast->items.back());
-    const auto function_scope = bound.table.functionScope(syntax_function.range);
+    const auto function_scope =
+        bound.table.functionScope(syntax_function.range);
     ASSERT_TRUE(function_scope.has_value());
     const auto result_symbol = bound.table.lookup(*function_scope, "%result");
     const auto input_symbol = bound.table.lookup(*function_scope, "%input");

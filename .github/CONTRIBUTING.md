@@ -13,6 +13,15 @@ and manually dispatched full runs remain available; separate event/workflow
 concurrency groups keep an integration push from cancelling them. Release
 publication behavior is unchanged.
 
+## Formatting and naming
+
+CI runs `clang-format-21 --dry-run --Werror` on tracked handwritten C and C++
+sources. Generated and vendor-owned files are excluded: regenerate them through
+their owning pipeline instead of formatting them by hand. New C++ interfaces use
+`snake_case`; existing public spellings remain compatible unless an explicitly
+reviewed API migration says otherwise. The maintained [naming and legacy
+audit](../docs/us-en/code_conventions.md) records the current exceptions.
+
 ## Integration cache warming
 
 Both integration jobs configure and build the same normal presets as PRs:

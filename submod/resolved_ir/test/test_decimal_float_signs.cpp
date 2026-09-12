@@ -11,34 +11,30 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include "test_syntax_parse_helpers.hpp"
+
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Parse an immediate in a floating instruction without bypassing source syntax. */
-syntax_ast::AstImmediate parseImmediate(std::string_view spelling) {
+/** Parse an instruction holding an immediate without bypassing source syntax. */
+SyntaxInstructionParseResult parseImmediate(std::string_view spelling) {
   PtxSyntaxParser parser("mov.f32 %f0, " + std::string(spelling) + ";");
-  auto instruction = parser.parseInstruction();
-  EXPECT_TRUE(instruction.has_value());
-  EXPECT_TRUE(instruction.diagnostics.empty());
-  return std::get<syntax_ast::AstImmediate>(
-      std::move(*instruction).operands[1]);
+  return parser.parseInstruction();
+}
+
+/** Return the second operand after the caller has verified the parsed instruction. */
+const syntax_ast::AstImmediate& immediateOperand(
+    const syntax_ast::AstInstruction& instruction) {
+  return std::get<syntax_ast::AstImmediate>(instruction.operands[1]);
 }
 
 /** Return the immediate source held by a scalar move instruction. */
-const ResolvedImmediate& scalarMovImmediate(const ResolvedInstruction& instruction) {
+const ResolvedImmediate& scalarMovImmediate(
+    const ResolvedInstruction& instruction) {
   const auto& mov = std::get<Mov>(instruction);
   const auto& scalar = std::get<Mov::Scalar>(mov.variant);
   const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
   return std::get<ResolvedImmediate>(operands.src.value);
-}
-
-/** Parse a source module while retaining parser failures in the test output. */
-syntax_ast::AstModule parseModule(std::string_view source) {
-  PtxSyntaxParser parser(source);
-  auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value());
-  EXPECT_TRUE(module.diagnostics.empty());
-  return std::move(*module);
 }
 
 /** Accept equivalent signs while retaining exact decimal floating bit patterns. */
@@ -69,7 +65,9 @@ TEST(DecimalFloatSigns, ResolvesLeadingSignsZeroAndExponents) {
 
   for (const auto& fixture : fixtures) {
     SCOPED_TRACE(fixture.spelling);
-    const auto immediate = parseImmediate(fixture.spelling);
+    const auto parsed = parseImmediate(fixture.spelling);
+    ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+    const auto& immediate = immediateOperand(*parsed);
     EXPECT_EQ(immediate.kind, syntax_ast::AstImmediateKind::DecimalFloat);
     const auto resolved = resolve_immediate_literal(immediate, fixture.type);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -81,18 +79,24 @@ TEST(DecimalFloatSigns, ResolvesLeadingSignsZeroAndExponents) {
 
 /** Keep raw floating bit-pattern sign handling independent of decimal decoding. */
 TEST(DecimalFloatSigns, PreservesRawBitPatternSignRules) {
-  const auto unsigned_bits =
-      resolve_immediate_literal(parseImmediate("0f3f800000"), ScalarType::F32);
+  const auto unsigned_instruction = parseImmediate("0f3f800000");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(unsigned_instruction);
+  const auto unsigned_bits = resolve_immediate_literal(
+      immediateOperand(*unsigned_instruction), ScalarType::F32);
   ASSERT_TRUE(unsigned_bits.has_value()) << unsigned_bits.error().message;
   EXPECT_EQ(unsigned_bits->bits, 0x3f800000u);
 
-  const auto positive_bits =
-      resolve_immediate_literal(parseImmediate("+0f3f800000"), ScalarType::F32);
+  const auto positive_instruction = parseImmediate("+0f3f800000");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(positive_instruction);
+  const auto positive_bits = resolve_immediate_literal(
+      immediateOperand(*positive_instruction), ScalarType::F32);
   ASSERT_TRUE(positive_bits.has_value()) << positive_bits.error().message;
   EXPECT_EQ(positive_bits->bits, 0x3f800000u);
 
-  const auto negative_bits =
-      resolve_immediate_literal(parseImmediate("-0f3f800000"), ScalarType::F32);
+  const auto negative_instruction = parseImmediate("-0f3f800000");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(negative_instruction);
+  const auto negative_bits = resolve_immediate_literal(
+      immediateOperand(*negative_instruction), ScalarType::F32);
   ASSERT_FALSE(negative_bits.has_value());
   EXPECT_EQ(negative_bits.error().message,
             "Floating bit-pattern literal '-0f3f800000' cannot have a sign.");
@@ -108,15 +112,14 @@ TEST(DecimalFloatSigns, RejectsMalformedLeadingSigns) {
     };
     const auto resolved = resolve_immediate_literal(immediate, ScalarType::F32);
     ASSERT_FALSE(resolved.has_value());
-    EXPECT_EQ(resolved.error().message,
-              "Invalid decimal floating literal '" + std::string(spelling) +
-                  "'.");
+    EXPECT_EQ(resolved.error().message, "Invalid decimal floating literal '" +
+                                            std::string(spelling) + "'.");
   }
 }
 
 /** Use function formal types for signed decimal literals in source call arguments. */
 TEST(DecimalFloatSigns, ResolvesSourceCallLiteralsAgainstFloatingFormals) {
-  const auto module = parseModule(R"ptx(
+  const auto module = test_helpers::parseModule(R"ptx(
 .version 9.3
 .target sm_80
 .address_size 64
@@ -127,13 +130,19 @@ TEST(DecimalFloatSigns, ResolvesSourceCallLiteralsAgainstFloatingFormals) {
   ret;
 }
 )ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(module);
+  const auto resolved = resolveModule(*module);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 
-  const declaration_semantics::FunctionParameterContract f32{.type = ".f32"};
-  const auto negative_zero = parseImmediate("-0.0");
+  const declaration_semantics::FunctionParameterContract f32{
+      .scalar_type = base::ScalarType::F32,
+      .type_spelling = ".f32",
+  };
+  const auto negative_zero_instruction = parseImmediate("-0.0");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(negative_zero_instruction);
+  const auto& negative_zero = immediateOperand(*negative_zero_instruction);
   const auto literal = resolve_call_literal(
       ResolvedCallLiteral{.spelling = negative_zero.syntax.text,
                           .kind = negative_zero.kind},
@@ -145,7 +154,7 @@ TEST(DecimalFloatSigns, ResolvesSourceCallLiteralsAgainstFloatingFormals) {
 
 /** Resolve leading-sign decimal literals through source module move instructions. */
 TEST(DecimalFloatSigns, ResolvesSignedDecimalMovesInSourceModule) {
-  const auto module = parseModule(R"ptx(
+  const auto module = test_helpers::parseModule(R"ptx(
 .version 9.3
 .target sm_80
 .address_size 64
@@ -159,8 +168,9 @@ TEST(DecimalFloatSigns, ResolvesSignedDecimalMovesInSourceModule) {
   ret;
 }
 )ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(module);
+  const auto resolved = resolveModule(*module);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;

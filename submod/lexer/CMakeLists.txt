@@ -1,15 +1,16 @@
 file(GLOB_RECURSE lexer_srcs src/*cpp)
-add_library(lexer STATIC)
-target_sources(lexer PRIVATE ${lexer_srcs})
-add_library(ptx_frontend::lexer ALIAS lexer)
+add_library(ptx_frontend_lexer STATIC)
+set_property(TARGET ptx_frontend_lexer PROPERTY EXPORT_NAME lexer)
+target_sources(ptx_frontend_lexer PRIVATE ${lexer_srcs})
+add_library(ptx_frontend::lexer ALIAS ptx_frontend_lexer)
 register_headers(
-    lexer
+    ptx_frontend_lexer
     lexer
     PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries(
-    lexer
+    ptx_frontend_lexer
     PUBLIC ptx_frontend::common
 )
 
@@ -28,16 +29,16 @@ FLEX_TARGET(
 )
 
 target_include_directories(
-    lexer PRIVATE ${PTX_LEXER_OUT_DIR}
+    ptx_frontend_lexer PRIVATE ${PTX_LEXER_OUT_DIR}
 )
 target_sources(
-    lexer PRIVATE ${PTX_LEXER_OUT}
+    ptx_frontend_lexer PRIVATE ${PTX_LEXER_OUT}
 )
 
 if(BUILD_TESTING)
     file(GLOB_RECURSE test_lexer_srcs test/*.cpp)
     add_executable(test_lexer ${test_lexer_srcs})
     find_package(GTest CONFIG REQUIRED)
-    target_link_libraries(test_lexer PRIVATE GTest::gtest GTest::gtest_main lexer)
+    target_link_libraries(test_lexer PRIVATE GTest::gtest GTest::gtest_main ptx_frontend::lexer)
     gtest_discover_tests(test_lexer PROPERTIES TIMEOUT 10)
 endif()

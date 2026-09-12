@@ -1,10 +1,12 @@
 """Standard-library regression tests for CI cache and action-pin helpers."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -25,6 +27,7 @@ def load_module(name: str, filename: str):
 
 IDENTITY = load_module("compiler_cache_identity", "compiler-cache-identity.py")
 PINS = load_module("check_action_pins", "check_action_pins.py")
+FORMAT = load_module("check_clang_format", "check_clang_format.py")
 
 
 class CompilerCacheIdentityTests(unittest.TestCase):
@@ -174,6 +177,38 @@ class ActionPinTests(unittest.TestCase):
         self.assertEqual(PINS.floating_action_references(SCRIPTS.parent.parent), [])
 
 
+class ClangFormatTests(unittest.TestCase):
+    """Verify formatter-version parsing and tracked-source selection."""
+
+    def test_parses_the_pinned_major_version(self) -> None:
+        """Ubuntu's formatter banner exposes the required major version."""
+        self.assertEqual(
+            FORMAT.clang_format_major("Ubuntu clang-format version 21.1.8 (6ubuntu1)"),
+            FORMAT.CLANG_FORMAT_MAJOR,
+        )
+        with self.assertRaisesRegex(ValueError, "Cannot determine"):
+            FORMAT.clang_format_major("formatter unavailable")
+
+    def test_selects_only_tracked_handwritten_c_and_cpp_files(self) -> None:
+        """Generated, vendor, non-source, and untracked paths cannot enter the gate."""
+        tracked = b"submod/source.cpp\0generated/file.cpp\0vendor/file.hpp\0submod/file.gen.hpp\0docs/readme.md\0"
+        completed = subprocess.CompletedProcess(["git"], 0, stdout=tracked)
+        with mock.patch.object(FORMAT.subprocess, "run", return_value=completed):
+            sources = FORMAT.tracked_handwritten_sources(Path("/repository"))
+        self.assertEqual(sources, [Path("submod/source.cpp")])
+
+    def test_reports_every_formatter_drift(self) -> None:
+        """A nonzero formatter result identifies its tracked source path."""
+        completed = subprocess.CompletedProcess(
+            ["clang-format-21"], 1, stdout="", stderr="code should be clang-formatted"
+        )
+        with mock.patch.object(FORMAT.subprocess, "run", return_value=completed):
+            failures = FORMAT.formatting_failures(
+                Path("/repository"), "clang-format-21", [Path("submod/source.cpp")]
+            )
+        self.assertEqual(failures, ["submod/source.cpp: code should be clang-formatted"])
+
+
 class WorkflowContractTests(unittest.TestCase):
     """Protect the intended full-check and integration-smoke partition."""
 
@@ -185,6 +220,40 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("schedule:", workflow)
             self.assertIn("workflow_dispatch:", workflow)
             self.assertNotIn("\n  push:", workflow)
+
+    def test_format_gate_uses_the_pinned_formatter_major(self) -> None:
+        """Both CI workflows invoke the formatter major installed by shared setup."""
+        linux = (WORKFLOWS / "linux-ci.yml").read_text(encoding="utf-8")
+        package_consumer = (
+            WORKFLOWS / "python-and-package-consumer.yml"
+        ).read_text(encoding="utf-8")
+        setup = (SCRIPTS.parent / "actions/setup-linux/action.yml").read_text(encoding="utf-8")
+        self.assertIn("name: Formatting", linux)
+        self.assertIn("clang-format-21", linux)
+        self.assertIn("check_clang_format.py --clang-format clang-format-21", linux)
+        self.assertIn(
+            "check_clang_format.py --clang-format clang-format-21", package_consumer
+        )
+        self.assertIn("clang-format-21", setup)
+
+    def test_targeted_build_presets_use_the_private_resolved_ir_target(self) -> None:
+        """Package-oriented builds follow the renamed concrete resolved-IR target."""
+        presets = json.loads(
+            (SCRIPTS.parent.parent / "CMakePresets.json").read_text(encoding="utf-8")
+        )
+        targeted_presets = {
+            preset["name"]: preset["targets"]
+            for preset in presets["buildPresets"]
+            if preset["name"]
+            in {"ci-python-and-package-consumer", "ci-integration-smoke"}
+        }
+        self.assertEqual(
+            targeted_presets,
+            {
+                "ci-python-and-package-consumer": ["ptx_frontend_resolved_ir"],
+                "ci-integration-smoke": ["ptx_frontend_resolved_ir"],
+            },
+        )
 
     def test_prewarm_is_gcc_push_only_full_build_matrix(self) -> None:
         """Branch prewarm builds normal GCC Debug and Release configurations."""

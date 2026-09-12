@@ -22,9 +22,10 @@ TEST(PtxCstFuzz, HandlesRepresentativeByteSeeds) {
       "` .entry k() { ret; }"};
 
   for (const std::string_view source : seeds) {
-    EXPECT_EQ(LLVMFuzzerTestOneInput(
-                  reinterpret_cast<const uint8_t*>(source.data()), source.size()),
-              0);
+    EXPECT_EQ(
+        LLVMFuzzerTestOneInput(reinterpret_cast<const uint8_t*>(source.data()),
+                               source.size()),
+        0);
   }
 }
 
@@ -39,9 +40,10 @@ TEST(PtxCstFuzz, HandlesDeepConstantTreeSeeds) {
             std::string(depth, '}') + ";",
         ".global .u32 x = " + std::string(depth, '(') + "1 + ("};
     for (const auto& source : seeds) {
-      EXPECT_EQ(LLVMFuzzerTestOneInput(
-                    reinterpret_cast<const uint8_t*>(source.data()), source.size()),
-                0);
+      EXPECT_EQ(
+          LLVMFuzzerTestOneInput(
+              reinterpret_cast<const uint8_t*>(source.data()), source.size()),
+          0);
     }
   }
 }

@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
-#include <cstdint>
 #include <array>
-#include <string_view>
+#include <cstdint>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include <string_view>
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -26,7 +26,8 @@ TEST(CheckerProjectionSafety, RejectsMutatedVectorRegisterWidths) {
   ASSERT_NE(primitive, nullptr);
   constexpr std::array<std::string_view, 1> capabilities{"cluster"};
   const checker::Context context{
-      .target = {.ptx_version = {9, 3}, .sm_version = 90,
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = 90,
                  .capabilities = capabilities},
       .instruction_range = ast->range,
   };

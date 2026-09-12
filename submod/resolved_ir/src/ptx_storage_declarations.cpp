@@ -14,8 +14,8 @@
 
 #include <fmt/format.h>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 
 #include "resolved_value_domains.gen.hpp"
 
@@ -171,9 +171,8 @@ std::optional<uint64_t> unsigned_value(std::string_view text) {
 std::optional<binding::SymbolId> declaration_symbol(
     const binding::SymbolTable& symbols, binding::ScopeId scope,
     const syntax_ast::AstVariableDeclarator& declarator) {
-  return symbols.exactDeclaration(
-      scope, declarator.name.syntax.text,
-      declarator.parameterized_count.has_value());
+  return symbols.exactDeclaration(scope, declarator.name.syntax.text,
+                                  declarator.parameterized_count.has_value());
 }
 
 /** Find the nearest owning function for a lexical declaration scope. */
@@ -241,7 +240,7 @@ std::optional<uint64_t> inferred_outer_extent(
 /** Decode validated source attributes into the declaration's owned metadata. */
 bool resolve_attributes(const syntax_ast::AstVariableDeclaration& declaration,
                         bool& is_managed,
-                        std::optional<std::array<uint64_t, 2>>& unified_id,
+                        std::optional<ResolvedUnifiedId>& unified_id,
                         std::vector<DeclarationDiagnostic>& diagnostics) {
   for (const auto& attribute : declaration.attributes) {
     if (attribute.kind == syntax_ast::AstAttributeKind::Managed) {
@@ -262,7 +261,7 @@ bool resolve_attributes(const syntax_ast::AstVariableDeclaration& declaration,
           attribute.range, ".unified values must be unsigned 64-bit integers.");
       return false;
     }
-    unified_id = std::array<uint64_t, 2>{*upper, *lower};
+    unified_id = ResolvedUnifiedId{.upper = *upper, .lower = *lower};
   }
   return true;
 }
@@ -808,7 +807,7 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
   }
 
   bool is_managed = false;
-  std::optional<std::array<uint64_t, 2>> unified_id;
+  std::optional<ResolvedUnifiedId> unified_id;
   if (!resolve_attributes(declaration, is_managed, unified_id, diagnostics))
     return;
 
@@ -980,8 +979,8 @@ resolve_storage_declarations(const syntax_ast::AstModule& module,
                  function->range, "Function has no bound lexical scope.");
         continue;
       }
-      resolve_body(function->body, *function_scope, symbols,
-                   version, declarations, diagnostics);
+      resolve_body(function->body, *function_scope, symbols, version,
+                   declarations, diagnostics);
     }
   }
   if (!diagnostics.empty())

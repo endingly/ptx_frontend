@@ -26,6 +26,7 @@ from ptx_frontend.code_gen.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
 from ptx_frontend.code_gen.gen_resolved_ir import (
+    _validate_reference_field_types,
     generate_resolved_dispatch_source,
     generate_resolved_ir_header,
     generate_resolved_ir_source,
@@ -3574,10 +3575,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("// Generated at: ", source)
         self.assertIn("#pragma once", source)
         self.assertIn("#include <cstddef>", source)
+        self.assertIn("#include <concepts>", source)
+        self.assertIn("#include <span>", source)
         self.assertIn("#include <optional>", source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>', source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>', source)
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
+        self.assertIn("void visit_instruction_references(const Add& instruction", source)
+        self.assertIn("std::invocable<Visitor&, const ResolvedRegisterRef&", source)
         self.assertEqual(source.count("namespace checker {"), 0)
         self.assertIn("struct Add {", source)
         self.assertIn("struct Atom {", source)
@@ -3662,22 +3667,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn("using ResolvedInstruction = std::variant<", source)
-        self.assertIn("struct ResolvedLabelPosition {", source)
-        self.assertIn("struct ResolvedFunction {", source)
-        self.assertIn("struct ResolvedModule {", source)
-        self.assertIn(
-            "std::vector<ResolvedStorageDeclaration> storage_declarations;",
-            source,
-        )
-        self.assertIn("binding::SymbolTable symbols;", source)
-        self.assertIn("std::string source_identity;", source)
-        self.assertIn("binding::SymbolId symbol_id;", source)
-        self.assertIn("std::size_t instruction_offset;", source)
-        self.assertIn("std::vector<ResolvedLabelPosition> label_positions;", source)
+        self.assertNotIn("struct ResolvedLabelPosition {", source)
+        self.assertNotIn("struct ResolvedFunction {", source)
+        self.assertNotIn("struct ResolvedModule {", source)
         self.assertNotIn("resolveInstruction(", source)
         self.assertNotIn("resolveModule(", source)
-        self.assertIn("binding::ScopeId declaration_scope;", source)
-        self.assertIn("std::string source_identity;", source)
+        self.assertNotIn("binding::ScopeId declaration_scope;", source)
+        self.assertNotIn("std::string source_identity;", source)
         self.assertIn("enum class VariantType {", source)
         self.assertIn("struct IntegerNoSat {", source)
         self.assertIn("ResolvedOperandLayoutTag operand_layout;", source)
@@ -3710,6 +3706,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertNotIn("std::visit(detail::Overloaded{", source)
         self.assertNotIn("AddResolvedDescriptorStorage", source)
         self.assertIn("}  // namespace ptx_frontend::resolved_ir", source)
+
+    def test_rejects_unclassified_reference_payload_type(self) -> None:
+        """Future operand payloads must declare their reference policy."""
+
+        variant = self.instruction.variants[0]
+        layout = variant.operand_layouts[0]
+        unknown_field = replace(
+            layout.fields[0], value_cpp_type="FutureReferencePayload"
+        )
+        unknown_layout = replace(
+            layout, fields=(unknown_field, *layout.fields[1:])
+        )
+        unknown_variant = replace(
+            variant, operand_layouts=(unknown_layout, *variant.operand_layouts[1:])
+        )
+        unknown_instruction = replace(
+            self.instruction, variants=(unknown_variant, *self.instruction.variants[1:])
+        )
+        with self.assertRaisesRegex(ValueError, "explicit module-reference policy"):
+            _validate_reference_field_types((unknown_instruction,))
 
     def test_generate_resolved_instruction_dispatch_source(self) -> None:
         database = self.database

@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
@@ -32,6 +33,16 @@ size_t diagnosticCount(const CheckedModule& result,
   return std::ranges::count_if(
       result.diagnostics,
       [kind](const auto& diagnostic) { return diagnostic.kind == kind; });
+}
+
+/** Return a normalized constant when the contract field is not structural. */
+std::optional<uint64_t> contractConstant(
+    const std::optional<NormalizedNumericValue>& value) {
+  if (!value)
+    return std::nullopt;
+  if (const auto* constant = std::get_if<uint64_t>(&*value))
+    return *constant;
+  return std::nullopt;
 }
 
 TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
@@ -67,17 +78,17 @@ TEST(PtxDeclarationSemantics, RejectsOpaqueObjectInitializerSymbols) {
 )ptx");
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::InvalidInitializerExpression),
-            3u);
+  EXPECT_EQ(
+      diagnosticCount(result,
+                      DeclarationDiagnosticKind::InvalidInitializerExpression),
+      3u);
   for (const int32_t line : {8, 9, 10}) {
-    EXPECT_TRUE(std::ranges::any_of(result.diagnostics,
-                                    [line](const auto& diagnostic) {
-                                      return diagnostic.kind ==
-                                                 DeclarationDiagnosticKind::
-                                                     InvalidInitializerExpression &&
-                                             diagnostic.range.start.line == line;
-                                    }));
+    EXPECT_TRUE(
+        std::ranges::any_of(result.diagnostics, [line](const auto& diagnostic) {
+          return diagnostic.kind ==
+                     DeclarationDiagnosticKind::InvalidInitializerExpression &&
+                 diagnostic.range.start.line == line;
+        }));
   }
 }
 
@@ -88,11 +99,12 @@ TEST(PtxDeclarationSemantics, ValidatesM11DirectiveBoundaries) {
 .func f() .noreturn { ret; }
 .entry kernel() .blocksareclusters .language "", 11 {}
 )ptx");
-  EXPECT_GE(diagnosticCount(result,
-                            DeclarationDiagnosticKind::UnsupportedDirectivePtxVersion),
-            2u);
-  EXPECT_GE(diagnosticCount(result,
-                            DeclarationDiagnosticKind::InvalidDeclarationDirective),
+  EXPECT_GE(
+      diagnosticCount(
+          result, DeclarationDiagnosticKind::UnsupportedDirectivePtxVersion),
+      2u);
+  EXPECT_GE(diagnosticCount(
+                result, DeclarationDiagnosticKind::InvalidDeclarationDirective),
             3u);
 }
 
@@ -110,9 +122,11 @@ TEST(PtxDeclarationSemantics, RejectsM11AliasAndHeaderSemanticBoundaries) {
            DeclarationDiagnosticKind::InvalidFunctionAlias},
       Case{".version 9.3\n.weak .func target() {}\n.alias alias_fn, target;",
            DeclarationDiagnosticKind::InvalidFunctionAlias},
-      Case{".version 9.3\n.func alias_fn(.param .u32 x);\n.func target(.param .u64 x) {}\n.alias alias_fn, target;",
+      Case{".version 9.3\n.func alias_fn(.param .u32 x);\n.func target(.param "
+           ".u64 x) {}\n.alias alias_fn, target;",
            DeclarationDiagnosticKind::InvalidFunctionAlias},
-      Case{".version 9.3\n.func alias_fn;\n.func target() {}\n.alias alias_fn, target;\n.alias alias_fn, target;",
+      Case{".version 9.3\n.func alias_fn;\n.func target() {}\n.alias alias_fn, "
+           "target;\n.alias alias_fn, target;",
            DeclarationDiagnosticKind::InvalidFunctionAlias},
       Case{".version 9.3\n.shared .attribute(.managed) .u32 x;",
            DeclarationDiagnosticKind::InvalidDeclarationDirective},
@@ -124,11 +138,13 @@ TEST(PtxDeclarationSemantics, RejectsM11AliasAndHeaderSemanticBoundaries) {
            DeclarationDiagnosticKind::InvalidDeclarationDirective},
       Case{".version 9.3\n.entry kernel() .language \"bad\", 11 {}",
            DeclarationDiagnosticKind::InvalidDeclarationDirective},
-      Case{".version 9.3\n.func f() .abi_preserve 1;\n.func f() .abi_preserve 2 {}",
+      Case{".version 9.3\n.func f() .abi_preserve 1;\n.func f() .abi_preserve "
+           "2 {}",
            DeclarationDiagnosticKind::IncompatibleRedeclaration},
       Case{".version 9.3\n.func f();\n.func f() .abi_preserve 1 {}",
            DeclarationDiagnosticKind::IncompatibleRedeclaration},
-      Case{".version 9.3\n.func f() { { .shared .attribute(.managed, .managed) .u32 x; } }",
+      Case{".version 9.3\n.func f() { { .shared .attribute(.managed, .managed) "
+           ".u32 x; } }",
            DeclarationDiagnosticKind::InvalidDeclarationDirective},
   };
   for (const auto& test : cases) {
@@ -143,7 +159,8 @@ TEST(PtxDeclarationSemantics, CanonicalizesEquivalentM11HeaderValues) {
 .func .attribute(.unified(1, 2)) f() .language "PTX";
 .func .attribute(.unified(0x1, 0x2)) f() .language 3 {}
 )ptx");
-  EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
             0u);
 }
 
@@ -180,27 +197,31 @@ TEST(PtxDeclarationSemantics, ValidatesUnifiedAttributeUuidHalves) {
   std::vector<SourceRange> expected_ranges;
   for (const auto& item : module->items) {
     if (const auto* function = std::get_if<syntax_ast::AstFunction>(&item)) {
-      expected_ranges.push_back(function->attributes.front().values[
-          function->name.syntax.text == "decimal_upper" ||
-                  function->name.syntax.text == "hexadecimal_upper"
-              ? 0
-              : 1]
-                                    .range);
+      expected_ranges.push_back(
+          function->attributes.front()
+              .values[function->name.syntax.text == "decimal_upper" ||
+                              function->name.syntax.text == "hexadecimal_upper"
+                          ? 0
+                          : 1]
+              .range);
     } else if (const auto* declaration =
                    std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-      expected_ranges.push_back(declaration->attributes.front().values.front().range);
+      expected_ranges.push_back(
+          declaration->attributes.front().values.front().range);
     }
   }
   ASSERT_EQ(expected_ranges.size(), 5u);
   for (const SourceRange expected : expected_ranges) {
     EXPECT_TRUE(std::ranges::any_of(
         diagnostics, [expected](const DeclarationDiagnostic& diagnostic) {
-          return diagnostic.kind == DeclarationDiagnosticKind::InvalidIntegerLiteral &&
+          return diagnostic.kind ==
+                     DeclarationDiagnosticKind::InvalidIntegerLiteral &&
                  diagnostic.range == expected;
         }));
   }
   EXPECT_EQ(std::ranges::count_if(
-                diagnostics, [](const DeclarationDiagnostic& diagnostic) {
+                diagnostics,
+                [](const DeclarationDiagnostic& diagnostic) {
                   return diagnostic.kind ==
                          DeclarationDiagnosticKind::InvalidIntegerLiteral;
                 }),
@@ -214,14 +235,19 @@ TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
     const auto result = check(
         ".version 9.3\n"
         ".extern .global .align 010 .u32 aligned;\n"
-        ".extern .global .align " + count + " .u32 aligned;\n"
+        ".extern .global .align " +
+        count +
+        " .u32 aligned;\n"
         ".extern .global .u32 slots<010>;\n"
-        ".extern .global .u32 slots<" + count + ">;\n"
+        ".extern .global .u32 slots<" +
+        count +
+        ">;\n"
         ".func f() .abi_preserve 010 .abi_preserve_control 010;\n"
-        ".func f() .abi_preserve " + count + " .abi_preserve_control " +
-        count + " {}\n");
+        ".func f() .abi_preserve " +
+        count + " .abi_preserve_control " + count + " {}\n");
     EXPECT_TRUE(result.binding.diagnostics.empty());
-    EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
+    EXPECT_EQ(diagnosticCount(
+                  result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
               count == "8" ? 0u : 3u);
     if (count == "8")
       EXPECT_TRUE(result.diagnostics.empty());
@@ -255,16 +281,17 @@ TEST(PtxDeclarationSemantics,
 
   for (const auto& alignment : cases) {
     for (const bool reverse : std::array{false, true}) {
-      const std::string source = reverse
-                                     ? std::string{alignment.explicit_alignment} +
-                                           std::string{alignment.omitted}
-                                     : std::string{alignment.omitted} +
-                                           std::string{alignment.explicit_alignment};
+      const std::string source =
+          reverse ? std::string{alignment.explicit_alignment} +
+                        std::string{alignment.omitted}
+                  : std::string{alignment.omitted} +
+                        std::string{alignment.explicit_alignment};
       const CheckedModule result = check(source);
       EXPECT_TRUE(result.binding.diagnostics.empty()) << source;
-      EXPECT_EQ(diagnosticCount(result,
-                                DeclarationDiagnosticKind::IncompatibleRedeclaration),
-                0u)
+      EXPECT_EQ(
+          diagnosticCount(result,
+                          DeclarationDiagnosticKind::IncompatibleRedeclaration),
+          0u)
           << source;
       EXPECT_TRUE(result.diagnostics.empty()) << source;
     }
@@ -355,9 +382,9 @@ TEST(PtxDeclarationSemantics, ChecksDeclarationsAndMetadataInsideNestedBlocks) {
   EXPECT_EQ(
       diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
       1u);
-  EXPECT_EQ(
-      diagnosticCount(result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
-      1u);
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+            1u);
 }
 
 TEST(PtxDeclarationSemantics,
@@ -385,7 +412,8 @@ TEST(PtxDeclarationSemantics,
  */
 TEST(PtxDeclarationSemantics,
      PropagatesOverflowingIntegerLiteralsThroughDeclarations) {
-  const CheckedModule result = check(R"ptx(.global .u32 decimal[18446744073709551616];
+  const CheckedModule result =
+      check(R"ptx(.global .u32 decimal[18446744073709551616];
 .global .u32 hexadecimal[0x10000000000000000];
 .global .u32 octal[02000000000000000000000];
 .global .u32 selected[1 ? 18446744073709551616 : 7];
@@ -404,12 +432,13 @@ TEST(PtxDeclarationSemantics,
     EXPECT_FALSE(diagnostic.previous_range.has_value());
   }
   EXPECT_EQ(invalid_literal_count, 6u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::InvalidArrayDimension),
-            5u);
-  EXPECT_EQ(diagnosticCount(
-                result, DeclarationDiagnosticKind::InvalidInitializerExpression),
-            1u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
+      5u);
+  EXPECT_EQ(
+      diagnosticCount(result,
+                      DeclarationDiagnosticKind::InvalidInitializerExpression),
+      1u);
 }
 
 /**
@@ -427,8 +456,8 @@ TEST(PtxDeclarationSemantics,
   ASSERT_EQ(declaration->declarators.size(), 1u);
   auto& dimension = declaration->declarators.front().array_dimensions.front();
   ASSERT_TRUE(dimension.size.has_value());
-  auto* literal = std::get_if<syntax_ast::AstConstantLiteral>(
-      &dimension.size->node);
+  auto* literal =
+      std::get_if<syntax_ast::AstConstantLiteral>(&dimension.size->node);
   ASSERT_NE(literal, nullptr);
   const SourceRange literal_range = literal->value.syntax.range;
   literal->value.syntax.text = "09";
@@ -438,7 +467,8 @@ TEST(PtxDeclarationSemantics,
 
   const auto invalid = std::ranges::find_if(
       diagnostics, [](const DeclarationDiagnostic& diagnostic) {
-        return diagnostic.kind == DeclarationDiagnosticKind::InvalidIntegerLiteral;
+        return diagnostic.kind ==
+               DeclarationDiagnosticKind::InvalidIntegerLiteral;
       });
   ASSERT_NE(invalid, diagnostics.end());
   EXPECT_EQ(invalid->range, literal_range);
@@ -795,16 +825,19 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_EQ(prototype_signature, functionSignature(definition));
   ASSERT_EQ(prototype_signature.return_parameters.size(), 1u);
   const auto& result = prototype_signature.return_parameters[0];
-  EXPECT_EQ(result.state_space, syntax_ast::AstStateSpace::Parameter);
-  EXPECT_EQ(result.alignment, "16");
-  EXPECT_EQ(result.type, ".u32");
+  EXPECT_EQ(result.state_space,
+            call_argument_compatibility::CallArgumentStateSpace::Parameter);
+  EXPECT_EQ(contractConstant(result.alignment), 16u);
+  EXPECT_EQ(result.scalar_type, base::ScalarType::U32);
+  EXPECT_EQ(result.type_spelling, ".u32");
   const auto& address = prototype_signature.parameters[0];
   EXPECT_FALSE(address.is_pointer);
-  EXPECT_EQ(address.type, ".u64");
+  EXPECT_EQ(address.scalar_type, base::ScalarType::U64);
+  EXPECT_EQ(contractConstant(address.alignment), 8u);
   ASSERT_EQ(prototype_signature.parameters.size(), 2u);
   const auto& values = prototype_signature.parameters[1];
   EXPECT_TRUE(values.is_array);
-  EXPECT_EQ(values.array_extent, "#4");
+  EXPECT_EQ(contractConstant(values.array_extent), 4u);
   const FunctionSignature kernel_signature =
       functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
   EXPECT_TRUE(kernel_signature.is_entry);
@@ -822,6 +855,48 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_TRUE(functionSignature(noreturn_prototype).is_noreturn);
   EXPECT_TRUE(
       checkDeclarations(*module, binding::bindSymbols(*module).table).empty());
+}
+
+/** Invalid numeric fields retain distinct structural keys for redeclaration checks. */
+TEST(PtxDeclarationSemantics, RetainsInvalidParameterContractStructure) {
+  PtxSyntaxParser parser(R"ptx(
+.func f(.param .align 3 .u32 value);
+.func f(.param .align 5 .u32 value) { ret; }
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
+  const auto& declaration = std::get<syntax_ast::AstFunction>(module->items[0]);
+  const auto& definition = std::get<syntax_ast::AstFunction>(module->items[1]);
+  const auto declaration_signature = functionSignature(declaration);
+  const auto definition_signature = functionSignature(definition);
+  ASSERT_EQ(declaration_signature.parameters.size(), 1u);
+  ASSERT_EQ(definition_signature.parameters.size(), 1u);
+  const auto* first_key = std::get_if<InvalidStructuralKey>(
+      &*declaration_signature.parameters.front().alignment);
+  const auto* second_key = std::get_if<InvalidStructuralKey>(
+      &*definition_signature.parameters.front().alignment);
+  ASSERT_NE(first_key, nullptr);
+  ASSERT_NE(second_key, nullptr);
+  EXPECT_EQ(first_key->value, "3");
+  EXPECT_EQ(second_key->value, "5");
+  EXPECT_NE(declaration_signature, definition_signature);
+
+  const auto diagnostics =
+      checkDeclarations(*module, binding::bindSymbols(*module).table);
+  EXPECT_EQ(std::ranges::count_if(
+                diagnostics,
+                [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         DeclarationDiagnosticKind::InvalidAlignment;
+                }),
+            2u);
+  EXPECT_EQ(std::ranges::count_if(
+                diagnostics,
+                [](const auto& diagnostic) {
+                  return diagnostic.kind ==
+                         DeclarationDiagnosticKind::IncompatibleRedeclaration;
+                }),
+            1u);
 }
 
 TEST(PtxDeclarationSemantics, RejectsIncompatibleRedeclarationsAndDefinitions) {
@@ -897,25 +972,25 @@ N1:
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::DuplicateMetadataTarget),
             1u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             3u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::InvalidMetadataTarget),
-            2u);
   EXPECT_EQ(
-      diagnosticCount(result,
-                      DeclarationDiagnosticKind::IncompatibleCallTargetSignature),
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidMetadataTarget),
+      2u);
+  EXPECT_EQ(
+      diagnosticCount(
+          result, DeclarationDiagnosticKind::IncompatibleCallTargetSignature),
       1u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::InvalidCallPrototype),
-            2u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::InvalidArrayDimension),
-            1u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidCallPrototype),
+      2u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidArrayDimension),
+      1u);
 
-  const auto duplicate_call_target = std::ranges::find_if(
-      result.diagnostics, [](const auto& diagnostic) {
+  const auto duplicate_call_target =
+      std::ranges::find_if(result.diagnostics, [](const auto& diagnostic) {
         return diagnostic.kind ==
                    DeclarationDiagnosticKind::DuplicateMetadataTarget &&
                diagnostic.message.find(".calltargets") != std::string::npos;
@@ -925,8 +1000,8 @@ N1:
   EXPECT_EQ(duplicate_call_target->previous_range->start.line, 9);
   EXPECT_EQ(duplicate_call_target->range.start.line, 9);
 
-  const auto incompatible = std::ranges::find_if(
-      result.diagnostics, [](const auto& diagnostic) {
+  const auto incompatible =
+      std::ranges::find_if(result.diagnostics, [](const auto& diagnostic) {
         return diagnostic.kind ==
                DeclarationDiagnosticKind::IncompatibleCallTargetSignature;
       });
@@ -948,8 +1023,8 @@ TEST(PtxDeclarationSemantics,
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::DuplicateMetadataTarget),
             0u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             4u);
 }
 
@@ -982,8 +1057,8 @@ TEST(PtxDeclarationSemantics,
   EXPECT_EQ(diagnosticCount(result,
                             DeclarationDiagnosticKind::DuplicateMetadataTarget),
             0u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             2u);
 }
 
@@ -1000,15 +1075,16 @@ second_label:
 )ptx");
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::UnresolvedMetadataTarget),
+  EXPECT_EQ(diagnosticCount(
+                result, DeclarationDiagnosticKind::UnresolvedMetadataTarget),
             0u);
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::MultipleDefinitions),
-            1u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::MultipleDefinitions),
+      1u);
 }
 
-TEST(PtxDeclarationSemantics, RequiresFunctionDeclarationsBeforeAddressInitializers) {
+TEST(PtxDeclarationSemantics,
+     RequiresFunctionDeclarationsBeforeAddressInitializers) {
   const CheckedModule result = check(R"ptx(
 .global .u64 late_table[1] = { late };
 .func late() { ret; }
@@ -1174,8 +1250,8 @@ TEST(PtxDeclarationSemantics, RequiresPositivePowerOfTwoAlignment) {
               .param .u64 .ptr .global .align 16 valid_pointer) { }
 )ptx");
 
-  EXPECT_EQ(diagnosticCount(result, DeclarationDiagnosticKind::InvalidAlignment),
-            4u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::InvalidAlignment), 4u);
 }
 
 TEST(PtxDeclarationSemantics, ChecksKernelResourcePtxAvailability) {
@@ -1338,9 +1414,9 @@ TEST(PtxDeclarationSemantics, RejectsConflictingKernelThreadCountsInOrder) {
 TEST(PtxDeclarationSemantics, RejectsModuleScopeParameterVariables) {
   const CheckedModule result = check(".param .u32 staging;");
 
-  EXPECT_EQ(diagnosticCount(result,
-                            DeclarationDiagnosticKind::ModuleScopeParameter),
-            1u);
+  EXPECT_EQ(
+      diagnosticCount(result, DeclarationDiagnosticKind::ModuleScopeParameter),
+      1u);
 }
 
 }  // namespace

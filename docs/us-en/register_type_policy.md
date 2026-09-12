@@ -26,6 +26,12 @@ does not make the CST restrictive. Non-predicate `.v2`/`.v4` registers are
 limited to 128 bits, while predicate registers are scalar. These declaration
 rules preserve valid `.reg` function formals and parameterized register groups.
 
+`base::ScalarTypeMetadata` is the canonical source for every modeled scalar's
+PTX spelling, kind, byte width, and `.reg` declaration usage. Declaration
+semantics uses that metadata; the generated resolver suffix table remains a
+mechanical instruction-modifier mapping. `.param` deliberately retains its
+separate storage-type contract.
+
 ## Normative source ledger
 
 The project specification is PTX ISA 9.3. This correction uses the

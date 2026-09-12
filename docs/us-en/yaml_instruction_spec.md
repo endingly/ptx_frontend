@@ -449,13 +449,14 @@ checking, validates `minimum`, present `maximum`, and `divisor` with the same
 rule, rejects `maximum < minimum`, and requires `divisor > 0`.
 
 The operand reference is deliberately variant-wide, not layout-local. It must
-occur in at least one operand layout; layouts that omit it do not produce a
-missing-field error. Where it occurs, `immediate_value` requires `kind: imm`,
-while `immediate_range` and `immediate_multiple_of` accept `kind: imm` or
-`kind: reg_or_imm`. A `reg` occurrence is a normalization error that identifies
-the variant, constraint kind, operand, and layout. This permits optional
-operands while preserving immediate-only rules where their value contract
-requires one.
+occur in at least one operand layout. For all three constraint kinds, omission
+means that the constraint does not apply in that layout and does not produce a
+missing-field error. Where the operand occurs, `immediate_value` requires
+`kind: imm`, while `immediate_range` and `immediate_multiple_of` accept
+`kind: imm` or `kind: reg_or_imm`. A `reg` occurrence is a normalization error
+that identifies the variant, constraint kind, operand, and layout. This permits
+optional operands while preserving immediate-only rules where their value
+contract requires one.
 
 The current frozen `setmaxnreg.inc.sync.aligned.u32` form illustrates a range
 plus divisibility rule:

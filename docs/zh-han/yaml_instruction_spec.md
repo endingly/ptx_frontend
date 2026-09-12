@@ -392,11 +392,11 @@ register 值留给 runtime。当具名 operand 的语义合理时，这些 descr
 `divisor`；还会拒绝 `maximum < minimum`，并要求 `divisor > 0`。
 
 operand 引用刻意是 variant-wide，而不是 layout-local。它必须至少出现在一个 operand
-layout；省略它的 layout 不会导致 missing-field error。出现时，`immediate_value` 要求
-`kind: imm`，而 `immediate_range` 与 `immediate_multiple_of` 接受 `kind: imm` 或
-`kind: reg_or_imm`。`reg` occurrence 会导致 normalization error，并指明 variant、
-constraint kind、operand 与 layout。这样既允许 optional operand，又在值 contract 要求时
-保留 immediate-only rule。
+layout。对全部三类 constraint，省略该 operand 表示 constraint 不适用于该 layout，且不
+会导致 missing-field error。operand 出现时，`immediate_value` 要求 `kind: imm`，而
+`immediate_range` 与 `immediate_multiple_of` 接受 `kind: imm` 或 `kind: reg_or_imm`。
+`reg` occurrence 会导致 normalization error，并指明 variant、constraint kind、operand 与
+layout。这样既允许 optional operand，又在值 contract 要求时保留 immediate-only rule。
 
 当前冻结的 `setmaxnreg.inc.sync.aligned.u32` form 展示了 range 与 divisibility rule 的组合：
 

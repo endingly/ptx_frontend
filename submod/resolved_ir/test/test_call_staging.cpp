@@ -94,7 +94,8 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
     EXPECT_EQ(operands.return_value.value.symbol_id, result->symbol);
     ASSERT_EQ(operands.arguments.value.values.size(), 2u);
     for (size_t index = 0; index < 2; ++index) {
-      const auto symbol = module->symbols.lookup(*scope, index == 0 ? "a" : "b");
+      const auto symbol =
+          module->symbols.lookup(*scope, index == 0 ? "a" : "b");
       ASSERT_TRUE(symbol);
       const auto& argument = std::get<ResolvedCallParameterRef>(
           operands.arguments.value.values[index].value);
@@ -106,10 +107,10 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
 /** Instructions, labels, metadata, and blocks remain boundaries in both directions. */
 TEST(CallStaging, RejectsInstructionAndControlBoundaries) {
   for (const bool before_call : {true, false}) {
-    for (const std::string_view gap : {
-             "mov.b32 %r2, %r2;", "bra resume; resume:", "resume:",
-             "{ .reg .b32 %inner; }", "prototype: .callprototype _;",
-             "callees: .calltargets take2;", "branches: .branchtargets done;"}) {
+    for (const std::string_view gap :
+         {"mov.b32 %r2, %r2;", "bra resume; resume:", "resume:",
+          "{ .reg .b32 %inner; }", "prototype: .callprototype _;",
+          "callees: .calltargets take2;", "branches: .branchtargets done;"}) {
       SCOPED_TRACE(before_call ? "argument store" : "return load");
       SCOPED_TRACE(gap);
       const std::string body =
@@ -120,26 +121,30 @@ TEST(CallStaging, RejectsInstructionAndControlBoundaries) {
           "\nld.param.b32 %r1, [result];\ndone:";
       const auto ast = parseCallModule(body);
       ASSERT_TRUE(ast);
-      const auto& function = std::get<syntax_ast::AstFunction>(ast->items.back());
+      const auto& function =
+          std::get<syntax_ast::AstFunction>(ast->items.back());
       std::optional<SourceRange> offending_range;
       for (const auto& item : function.body) {
-        const auto* instruction = std::get_if<syntax_ast::AstInstruction>(&item);
-        if (instruction && instruction->opcode.syntax.text ==
-                               (before_call ? "st" : "ld"))
+        const auto* instruction =
+            std::get_if<syntax_ast::AstInstruction>(&item);
+        if (instruction &&
+            instruction->opcode.syntax.text == (before_call ? "st" : "ld"))
           offending_range = instruction->range;
       }
       ASSERT_TRUE(offending_range);
       const auto module = resolveModule(*ast);
       ASSERT_FALSE(module);
       ASSERT_EQ(module.error().size(), 1u);
-      EXPECT_EQ(module.error().front().stage(), ResolveDiagnosticStage::Resolution);
+      EXPECT_EQ(module.error().front().stage(),
+                ResolveDiagnosticStage::Resolution);
       EXPECT_EQ(module.error().front().range, *offending_range);
-      EXPECT_EQ(module.error().front().message,
-                before_call
-                    ? "A function-local .param argument store must be in the "
-                      "contiguous block immediately before a call that uses it."
-                    : "A function-local .param return load must be in the "
-                      "contiguous block immediately after a call that returns it.");
+      EXPECT_EQ(
+          module.error().front().message,
+          before_call
+              ? "A function-local .param argument store must be in the "
+                "contiguous block immediately before a call that uses it."
+              : "A function-local .param return load must be in the "
+                "contiguous block immediately after a call that returns it.");
     }
   }
 }
@@ -148,8 +153,9 @@ TEST(CallStaging, RejectsInstructionAndControlBoundaries) {
 TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
   for (const bool store : {true, false}) {
     SCOPED_TRACE(store ? "argument store" : "return load");
-    const std::string body = std::string{".param .b32 a, b, result;\n"} +
-        (store ? "@%p " : "") + "st.param.b32 [a], %r0;\n" +
+    const std::string body =
+        std::string{".param .b32 a, b, result;\n"} + (store ? "@%p " : "") +
+        "st.param.b32 [a], %r0;\n" +
         ".reg .b32 %temporary;\ncall (result), take2, (a, b);\n" +
         ".param .b32 unused;\n" + (store ? "" : "@%p ") +
         "ld.param.b32 %r1, [result];";
@@ -158,7 +164,8 @@ TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
     const auto& function = std::get<syntax_ast::AstFunction>(ast->items.back());
     std::optional<SourceRange> predicate_range;
     for (const auto& item : function.body) {
-      if (const auto* instruction = std::get_if<syntax_ast::AstInstruction>(&item);
+      if (const auto* instruction =
+              std::get_if<syntax_ast::AstInstruction>(&item);
           instruction && instruction->predicate)
         predicate_range = instruction->predicate->range;
     }
@@ -166,11 +173,13 @@ TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
     const auto module = resolveModule(*ast);
     ASSERT_FALSE(module);
     ASSERT_EQ(module.error().size(), 1u);
-    EXPECT_EQ(module.error().front().stage(), ResolveDiagnosticStage::Resolution);
+    EXPECT_EQ(module.error().front().stage(),
+              ResolveDiagnosticStage::Resolution);
     EXPECT_EQ(module.error().front().range, *predicate_range);
-    EXPECT_EQ(module.error().front().message,
-              store ? "A function-local .param argument store cannot be predicated."
-                    : "A function-local .param return load cannot be predicated.");
+    EXPECT_EQ(
+        module.error().front().message,
+        store ? "A function-local .param argument store cannot be predicated."
+              : "A function-local .param return load cannot be predicated.");
   }
 }
 
@@ -197,11 +206,12 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   const auto outer = module->symbols.lookup(*scope, "result");
   ASSERT_TRUE(outer);
   const auto& operands = std::get<Call::Direct::ReturnTargetInputOperands>(
-      std::get<Call::Direct>(std::get<Call>(function.body[1]).variant).operands);
+      std::get<Call::Direct>(std::get<Call>(function.body[1]).variant)
+          .operands);
   ASSERT_TRUE(operands.return_value.value.symbol_id);
   EXPECT_NE(operands.return_value.value.symbol_id, outer->symbol);
-  const auto& load = std::get<Ld::ExplicitScalar>(
-      std::get<Ld>(function.body[2]).variant);
+  const auto& load =
+      std::get<Ld::ExplicitScalar>(std::get<Ld>(function.body[2]).variant);
   EXPECT_EQ(std::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
             operands.return_value.value.symbol_id);
 
@@ -223,7 +233,8 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
       crossed_function.body.back());
   EXPECT_EQ(crossed.error().front().range,
             std::get<syntax_ast::AstInstruction>(block.body.back()).range);
-  EXPECT_EQ(crossed.error().front().stage(), ResolveDiagnosticStage::Resolution);
+  EXPECT_EQ(crossed.error().front().stage(),
+            ResolveDiagnosticStage::Resolution);
   EXPECT_EQ(crossed.error().front().message,
             "A function-local .param return load must be in the contiguous "
             "block immediately after a call that returns it.");

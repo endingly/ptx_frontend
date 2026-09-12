@@ -22,7 +22,8 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     SCOPED_TRACE(entries);
     const std::string source =
         ".version 6.0\n.target sm_30\n.entry k() {\n.reg .u32 %idx;\n"
-        "targets: .branchtargets " + entries +
+        "targets: .branchtargets " +
+        entries +
         ";\nmov.u32 %idx, 1;\nbrx.idx %idx, targets;\nL0: ret;\nL1: ret;\n}";
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
@@ -36,13 +37,16 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     const auto table_symbol = resolved->symbols.lookup(*scope, "targets");
     ASSERT_TRUE(table_symbol);
     ASSERT_EQ(function.body.size(), 4u);
-    const auto& branch = std::get<Brx::Idx>(std::get<Brx>(function.body[1]).variant);
+    const auto& branch =
+        std::get<Brx::Idx>(std::get<Brx>(function.body[1]).variant);
     EXPECT_EQ(branch.tlist.value.symbol_id, table_symbol->symbol);
     EXPECT_EQ(resolved->symbols.symbol(table_symbol->symbol).kind,
               binding::SymbolKind::BranchTargetSet);
 
-    const auto& syntax_function = std::get<syntax_ast::AstFunction>(ast->items.back());
-    const auto& table = std::get<syntax_ast::AstBranchTargets>(syntax_function.body[1]);
+    const auto& syntax_function =
+        std::get<syntax_ast::AstFunction>(ast->items.back());
+    const auto& table =
+        std::get<syntax_ast::AstBranchTargets>(syntax_function.body[1]);
     // Expand only in this assertion: the public AST retains compact entries.
     std::vector<std::string> expanded;
     std::string retained_entries;
@@ -63,7 +67,8 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     for (const auto& name : expanded) {
       const auto label = resolved->symbols.lookup(*scope, name);
       ASSERT_TRUE(label);
-      EXPECT_EQ(resolved->symbols.symbol(label->symbol).kind, binding::SymbolKind::Label);
+      EXPECT_EQ(resolved->symbols.symbol(label->symbol).kind,
+                binding::SymbolKind::Label);
     }
   }
 }
@@ -75,19 +80,23 @@ TEST(BranchTargetRepetition, RejectsMissingAndForeignLabels) {
     const std::string source =
         ".entry k() {\n.reg .u32 %idx;\n"
         "targets: .branchtargets Missing, Missing;\n"
-        "brx.idx %idx, targets;\n}\n" + suffix;
+        "brx.idx %idx, targets;\n}\n" +
+        suffix;
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
     ASSERT_TRUE(ast);
     ASSERT_TRUE(ast.diagnostics.empty());
-    const auto& function = std::get<syntax_ast::AstFunction>(ast->items.front());
-    const auto& table = std::get<syntax_ast::AstBranchTargets>(function.body[1]);
+    const auto& function =
+        std::get<syntax_ast::AstFunction>(ast->items.front());
+    const auto& table =
+        std::get<syntax_ast::AstBranchTargets>(function.body[1]);
     const auto resolved = resolveModule(*ast);
     ASSERT_FALSE(resolved);
     ASSERT_EQ(resolved.error().size(), 2u);
     for (size_t index = 0; index < 2; ++index) {
       EXPECT_EQ(resolved.error()[index].declaration_kind,
-                declaration_semantics::DeclarationDiagnosticKind::UnresolvedMetadataTarget);
+                declaration_semantics::DeclarationDiagnosticKind::
+                    UnresolvedMetadataTarget);
       EXPECT_EQ(resolved.error()[index].range, table.targets[index].range);
     }
   }

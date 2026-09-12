@@ -17,8 +17,8 @@ syntax_ast::AstModule parse_module(std::string_view source) {
   auto parsed = parser.parseModule();
   if (!parsed || !parsed.diagnostics.empty()) {
     ADD_FAILURE() << (parsed.diagnostics.empty()
-                         ? "PTX source did not parse."
-                         : parsed.diagnostics.front().message);
+                          ? "PTX source did not parse."
+                          : parsed.diagnostics.front().message);
     return {};
   }
   return std::move(*parsed);
@@ -45,8 +45,7 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
   .reg .f32 %f<3>;
   mov.f32 %f1, 1.0;
   mov.f32 %f2, 2.0;
-)ptx"} +
-                             "  add" + std::string{rounding_suffix} +
+)ptx"} + "  add" + std::string{rounding_suffix} +
                              R"ptx(.f32 %f0, %f1, %f2;
   ret;
 }
@@ -57,9 +56,11 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
     ADD_FAILURE() << resolved.error().front().message;
     return {};
   }
-  if (resolved->functions.size() != 1 || resolved->functions.front().body.size() != 4 ||
+  if (resolved->functions.size() != 1 ||
+      resolved->functions.front().body.size() != 4 ||
       resolved->functions.front().instruction_ranges.size() != 4) {
-    ADD_FAILURE() << "The valid module did not retain its expected Add body entry.";
+    ADD_FAILURE()
+        << "The valid module did not retain its expected Add body entry.";
     return {};
   }
   const auto* add = std::get_if<Add>(&resolved->functions.front().body[2]);
@@ -69,10 +70,12 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
   }
   return {
       .instruction = *add,
-      .context = {
-          .target = {.ptx_version = {8, 0}, .sm_version = 80},
-          .instruction_range = resolved->functions.front().instruction_ranges[2],
-      },
+      .context =
+          {
+              .target = {.ptx_version = {8, 0}, .sm_version = 80},
+              .instruction_range =
+                  resolved->functions.front().instruction_ranges[2],
+          },
   };
 }
 
@@ -94,8 +97,9 @@ TEST(ModifierDomainRevalidation, RejectsMutatedFloatingAddRzi) {
   selected->rounding.value = RoundingMode::Rzi;
   ASSERT_FALSE(selected->rounding.locs.empty());
 
-  expect_domain_failure(checker::check(candidate.instruction, candidate.context),
-                        selected->rounding.locs.front());
+  expect_domain_failure(
+      checker::check(candidate.instruction, candidate.context),
+      selected->rounding.locs.front());
 }
 
 /** Legal Add rounding values remain legal even without special availability. */
@@ -108,7 +112,8 @@ TEST(ModifierDomainRevalidation, PreservesLegalFloatingAddRoundingValues) {
     auto* selected = std::get_if<Add::FloatF32>(&candidate.instruction.variant);
     ASSERT_NE(selected, nullptr);
     selected->rounding.value = rounding;
-    EXPECT_TRUE(checker::check(candidate.instruction, candidate.context).has_value());
+    EXPECT_TRUE(
+        checker::check(candidate.instruction, candidate.context).has_value());
   }
 }
 
@@ -119,11 +124,13 @@ TEST(ModifierDomainRevalidation, UsesDefaultAndFallbackRangeWithoutProvenance) {
   ASSERT_NE(selected, nullptr);
   EXPECT_EQ(selected->rounding.value, RoundingMode::Rn);
   EXPECT_TRUE(selected->rounding.locs.empty());
-  EXPECT_TRUE(checker::check(candidate.instruction, candidate.context).has_value());
+  EXPECT_TRUE(
+      checker::check(candidate.instruction, candidate.context).has_value());
 
   selected->rounding.value = RoundingMode::Rzi;
-  expect_domain_failure(checker::check(candidate.instruction, candidate.context),
-                        candidate.context.instruction_range);
+  expect_domain_failure(
+      checker::check(candidate.instruction, candidate.context),
+      candidate.context.instruction_range);
 }
 
 /** Invalid and unnamed enum values share the same variant-domain invariant. */
@@ -134,17 +141,19 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
       SCOPED_TRACE(static_cast<int>(rounding));
       SCOPED_TRACE(retain_provenance);
       auto candidate = resolve_float_add();
-      auto* selected = std::get_if<Add::FloatF32>(&candidate.instruction.variant);
+      auto* selected =
+          std::get_if<Add::FloatF32>(&candidate.instruction.variant);
       ASSERT_NE(selected, nullptr);
       selected->rounding.value = rounding;
       ASSERT_FALSE(selected->rounding.locs.empty());
-      const SourceRange expected_range = retain_provenance
-                                             ? selected->rounding.locs.front()
-                                             : candidate.context.instruction_range;
+      const SourceRange expected_range =
+          retain_provenance ? selected->rounding.locs.front()
+                            : candidate.context.instruction_range;
       if (!retain_provenance)
         selected->rounding.locs.clear();
-      expect_domain_failure(checker::check(candidate.instruction, candidate.context),
-                            expected_range);
+      expect_domain_failure(
+          checker::check(candidate.instruction, candidate.context),
+          expected_range);
     }
   }
 }

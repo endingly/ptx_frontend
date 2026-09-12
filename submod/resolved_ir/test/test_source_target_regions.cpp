@@ -79,7 +79,7 @@ TEST(SourceTargetRegions, RejectsFormalAfterDowngradeToSm20) {
       declarationDiagnosticCount(
           resolved.error(), declaration_semantics::DeclarationDiagnosticKind::
                                 UnsupportedParameterDeclaration),
-            1u);
+      1u);
 }
 
 /** A single target still supplies the parameter availability context. */
@@ -93,11 +93,11 @@ TEST(SourceTargetRegions, AppliesSingleTargetToFormalAvailability) {
 
   const auto resolved = resolveModule(*ast);
   ASSERT_FALSE(resolved.has_value());
-  EXPECT_EQ(declarationDiagnosticCount(
-                resolved.error(),
-                declaration_semantics::DeclarationDiagnosticKind::
-                    UnsupportedParameterDeclaration),
-            1u);
+  EXPECT_EQ(
+      declarationDiagnosticCount(
+          resolved.error(), declaration_semantics::DeclarationDiagnosticKind::
+                                UnsupportedParameterDeclaration),
+      1u);
 }
 
 /** Function-local declarations use their containing function's target region. */

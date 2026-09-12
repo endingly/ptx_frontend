@@ -1,8 +1,8 @@
 #pragma once
 #include <memory>
+#include <ptx_frontend/lexer/ptx_token.hpp>
 #include <string>
 #include <string_view>
-#include <ptx_frontend/lexer/ptx_token.hpp>
 
 namespace ptx_frontend {
 

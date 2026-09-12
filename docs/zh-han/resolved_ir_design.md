@@ -24,18 +24,21 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 静态 natural alignment 会检查已绑定 data symbol 的常量 byte offset 和 absolute immediate；
 register 与 standalone unresolved address 保持 unknown。其余 source form、其余 memory
 qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
-`ResolvedIndirectCallee` 现在为 non-predicate `.reg` indirect target 或已绑定的 function-local
-`.callprototype`/`.calltargets` label 提供 descriptor-independent identity；它有意不携带 metadata
-payload 或 ABI。generated `Call::Direct` 现有三个额外的 `IndirectCall` layout
+`ResolvedIndirectCallee` 为 non-predicate `.reg` indirect target 或已绑定的 function-local
+`.callprototype`/`.calltargets` label 提供 descriptor-independent identity；所属
+`ResolvedFunction` 另行拥有对应的有序 metadata payload 与 normalized ABI，operand 因而保持紧凑，
+但 metadata 不会丢失。generated `Call::Direct` 现有三个额外的 `IndirectCall` layout
 （target/metadata、target/input/metadata、return/target/input/metadata），均要求 PTX 2.1 / SM 20；
 normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
 公共 model 入口是 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`，
-只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
+它依次聚合手写 foundation、生成的 instruction struct 与 `ResolvedInstruction` union、以及手写
+module container。`ptx_resolved_ir_module.hpp` 只直接包含 foundation 和生成的 instruction
+surface，因此固定 module field 可在不修改 generator 的情况下用 C++ 演进，且 headers 保持无环。
+这些头只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
 instruction checker 实现接口。解析入口位于 `ptx_resolved_ir_resolution.hpp`，
 检查入口位于 `ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 保留为兼容聚合头。
-生成的 model 包含 foundation 而非聚合头，避免循环包含。
 
 公共层还提供了一个与具体 opcode 无关的边界：
 
@@ -58,6 +61,7 @@ resolveModule(const syntax_ast::AstModule& ast);
 | `resolveAndValidateModule(ast)` | 解析与末尾检查通过，每个受检区域都有已识别 source target 和 PTX version；缺少上下文时报错。 |
 | `resolveModule(ast)` | 保留兼容行为：解析并检查上下文可用的区域，仍接受 targetless fragment。 |
 | `validateModule(ast, module, policy)` | source 对应关系和显式策略下的 instruction/directive 检查通过，默认 `RequireCompleteContext`；module 必须已经通过解析。 |
+| `validateModule(module, policy)` | 不遍历 AST，只重新验证 owned header、declaration/member identity、control metadata、typed call literal、operand layout 与可用 source-region checker rule。手工构造或修改 public IR 后必须调用它。 |
 | `checkModuleAvailability(ast, module)` | `AvailableContext` 策略的兼容包装；虽然历史名称是 availability，实际在有上下文的区域运行完整 instruction checker。 |
 
 resolve-only 仍会在源码提供相关 version/target 时检查声明可用性，不是绕过非法声明的入口。
@@ -85,8 +89,42 @@ binding、声明形状/类型规则、operand resolution 与 call ABI/staging �
 影响解析语义的 directive 仍须匹配。验证会重新绑定传入 AST 并重复 declaration semantics，
 包括新 source context 下的声明可用性。重复等价声明必须能唯一识别对应 occurrence，不会按顺序静默配对。
 指令诊断使用 IR 拥有的原始 range，directive 诊断使用传入 AST 的位置。
-严格验证缺少上下文时返回 `MissingValidationContext`。原始 module directive 仍需要 AST；
-这不代表提供无需 AST 的完整模块序列化契约。
+严格验证缺少上下文时返回 `MissingValidationContext`。
+
+`ResolvedModule::header` 拥有 targetless prefix 以及每个后续 `.target` region 的有效 version、
+有序 source target option 与 address-size 值。每个值记录 `Missing`、`Explicit` 或 `Defaulted`
+provenance。source target 的顺序只定义 source availability，不是 deployment 或物理后端 target。
+省略 `.address_size` 时拥有 PTX 规定的 32-bit 值并标为 `Defaulted`，绝不依赖 host。
+invalid、duplicate 或互相矛盾的 header directive 以 invalid range 保留，并由 owned validation
+拒绝；`ResolvedFunction::source_region` 选择同一份 owned context。
+
+Function 拥有 normalized signature、linkage、canonical/alias identity、`.noreturn` 与
+ABI-preservation contract、numeric resource value、cluster dimension（包括省略尾维推导为一）、
+`.blocksareclusters` 与 language value。entry resource 是 source launch contract，不是 occupancy
+计算或物理分配。function-local `.branchtargets` 拥有有序展开后的 bound label（`L<2>` 为
+`L0`、`L1`，不是两个 `L`），显式重复 label 保留为不同 logical entry；`.calltargets` 拥有
+有序 bound/canonical function 及共享 signature；`.callprototype` 拥有
+signature 与 ABI/noreturn suffix。上述记录及其 source range 在 AST 销毁后仍有效。
+
+`ResolvedFunctionAttribute::values` 已从 source spelling 存储迁移为可选的 typed
+`ResolvedUnifiedId` `unified_id` payload。对 `.attribute(.unified(uuid1, uuid2))`，
+`unified_id->upper` 是 UUID `uuid1`（upper 64 bits），`unified_id->lower` 是 UUID `uuid2`
+（lower 64 bits）；不发生 byte-order 或 host-address conversion。function attribute 与 storage
+declaration 使用同一个 named value type。malformed source UUID token 仍保留为 declaration
+diagnostic，而 AST-free validation 会拒绝缺少该 typed payload 的 `.unified` attribute。
+
+成功的 direct、alias 或 metadata-backed call 会将 module literal 保存为 formal-driven 的
+`ResolvedImmediate`。没有 module call contract 的 standalone instruction 可保留没有 value 的
+`ResolvedCallLiteral`；consumer 不得猜测 type。已声明的 external module call 仍保留 signature
+与 formal-typed literal；实际 linking 或 relocation 仍延后处理。resolved/binding data 使用
+`base::DeclarationStateSpace` 与 `base::LiteralCategory` 表示语义值；旧有
+`AstStateSpace`、`AstImmediateKind` alias 继续保持 source compatibility，但不要求保存 Syntax AST。
+
+instruction range/opcode 与全部 owned record 都是 semantic provenance。frontend 保留 `.language`
+以及 function ABI/resource contract；`.file`、`.loc`、`.section`、`.pragma` 属于 syntax/debug 或
+advisory metadata，明确不作为 resolved payload。generated C++ struct layout 或 binary ABI 不保证稳定。
+原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
+序列化契约。
 
 `ResolveDiagnostic` 拥有 message 和 source range 的值。模块解析保留原阶段的
 `binding_kind`、`declaration_kind` 或 `checker_kind`，以及主位置 `range` 和 binding
@@ -131,6 +169,13 @@ call-context 工作：它取得 canonical prototype/definition signature，检�
 和按 formal 定型的 literal，并执行 function-local `.param` 的 qualifier、predicate 与 staging
 adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor
 规则。
+
+`<ptx_frontend/semantic/ptx_function_contract.hpp>` 提供不依赖 Syntax AST 的 canonical
+function-signature contract。其 parameter contract 使用 semantic state-space 与 pointer-space
+enum、`ScalarType` 和 typed vector shape，以及只为诊断保留的 invalid spelling；数值字段是
+optional tagged value：omitted、已验证 constant 或 invalid structural key。direct-call ABI
+直接消费这些 normalized value，不再重解析 alignment text 或旧 array-extent string protocol；
+invalid structural data 绝不会被静默替换为 default。
 
 call-staging 邻接性按当前词法 body 的执行指令序列检查。普通变量声明、`.loc` 和
 `.pragma` 不打断 call 前的参数 store 或 call 后的返回值 load。标签、嵌套 block 及

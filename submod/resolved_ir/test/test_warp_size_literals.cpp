@@ -9,20 +9,14 @@
 #include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include "test_syntax_parse_helpers.hpp"
+
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Parse one module and retain parser failures in the test output. */
-syntax_ast::AstModule parseModule(std::string_view source) {
-  PtxSyntaxParser parser(source);
-  auto module = parser.parseModule();
-  EXPECT_TRUE(module.has_value());
-  EXPECT_TRUE(module.diagnostics.empty());
-  return std::move(*module);
-}
-
 /** Return the immediate source held by a scalar move instruction. */
-const ResolvedImmediate& scalarMovImmediate(const ResolvedInstruction& instruction) {
+const ResolvedImmediate& scalarMovImmediate(
+    const ResolvedInstruction& instruction) {
   const auto& mov = std::get<Mov>(instruction);
   const auto& scalar = std::get<Mov::Scalar>(mov.variant);
   const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
@@ -31,7 +25,7 @@ const ResolvedImmediate& scalarMovImmediate(const ResolvedInstruction& instructi
 
 /** Resolve WARP_SZ through parser, module binding, and typed instruction uses. */
 TEST(WarpSizeLiteral, ResolvesSourceConstantInInstructionAndDeclarationUses) {
-  const auto module = parseModule(R"ptx(
+  const auto module = test_helpers::parseModule(R"ptx(
 .version 9.3
 .target sm_80
 .address_size 64
@@ -45,8 +39,9 @@ TEST(WarpSizeLiteral, ResolvesSourceConstantInInstructionAndDeclarationUses) {
   ret;
 }
 )ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(module);
+  const auto resolved = resolveModule(*module);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->storage_declarations.size(), 1u);
@@ -83,7 +78,8 @@ TEST(WarpSizeLiteral, PublicLiteralEntryPointUsesSignedSourceConstant) {
       .kind = syntax_ast::AstImmediateKind::WarpSize,
   };
 
-  const auto signed_value = resolve_immediate_literal(immediate, ScalarType::S16);
+  const auto signed_value =
+      resolve_immediate_literal(immediate, ScalarType::S16);
   ASSERT_TRUE(signed_value.has_value()) << signed_value.error().message;
   EXPECT_EQ(signed_value->bits, 32u);
   EXPECT_EQ(signed_value->integer_source_bits, 32u);
@@ -110,13 +106,14 @@ TEST(WarpSizeLiteral, PublicLiteralEntryPointUsesSignedSourceConstant) {
   const auto incompatible =
       resolve_immediate_literal(immediate, ScalarType::F32);
   ASSERT_FALSE(incompatible.has_value());
-  EXPECT_EQ(incompatible.error().message,
-            "Integer literal 'WARP_SZ' is incompatible with scalar type 'F32'.");
+  EXPECT_EQ(
+      incompatible.error().message,
+      "Integer literal 'WARP_SZ' is incompatible with scalar type 'F32'.");
 }
 
 /** Keep instruction-specific immediate restrictions after WARP_SZ materialization. */
 TEST(WarpSizeLiteral, PreservesInstructionImmediateLegality) {
-  const auto module = parseModule(R"ptx(
+  const auto module = test_helpers::parseModule(R"ptx(
 .version 9.3
 .target sm_80
 .address_size 64
@@ -125,8 +122,9 @@ TEST(WarpSizeLiteral, PreservesInstructionImmediateLegality) {
   ret;
 }
 )ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(module);
+  const auto resolved = resolveModule(*module);
 
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);

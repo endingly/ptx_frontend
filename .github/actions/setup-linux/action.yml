@@ -71,7 +71,7 @@ runs:
           -o Dir::Cache::archives="$APT_CACHE_DIR" \
           -o Binary::apt::APT::Keep-Downloaded-Packages=true \
           install -y --no-install-recommends \
-          build-essential ccache clang-format cmake curl flex gcc g++ git \
+          build-essential ccache clang-format-21 cmake curl flex gcc g++ git \
           ninja-build pkg-config python3 python3-pip python3-venv tar unzip zip
         sudo chmod -R a+rX "$APT_CACHE_DIR"
 

@@ -102,21 +102,25 @@ execution claim enforcement 的 [ptxsim#23](https://github.com/endingly/ptxsim/i
 [#126](https://github.com/endingly/ptx_frontend/issues/126) 是已经存在的具体 `mov.pred`
 syntax/layout blocker。
 
-本审计未记录任何新建的外部 issue。#51 要求每个未覆盖 frontend family 都有专属 remediation
-tracking；在创建并关联下列 whole-operation follow-up 前，该验收仍待完成，而不能拆成
-variant ticket：
+#51 的 whole-operation frontend follow-up 已完成关联，且没有拆成 variant ticket：
 
-1. 具有 owned implicit-state contract 的 carry/condition-code `add.cc`/`addc` 与
-   `sub.cc`/`subc`；
-2. 修正 MOV `.b128` scalar-layout over-admission；[#126](https://github.com/endingly/ptx_frontend/issues/126)
-   仍是已建单的独立 negated-predicate defect；
-3. 超出当前 5 个 form 的完整 PTX 9.3 `mul` model/check；
-4. 超出当前 5 个 form 的完整 PTX 9.3 `setp` model/check；
-5. 独立的 `ld`、`st` 逐 form frontend completeness 工作，并链接 ptxsim#24 的必要 runtime
-   semantics；以及
-6. 若要求的是 execution 而不是现有 frontend model，则新建 whole-FMA simulator execution
-   contract。
+1. [#132](https://github.com/endingly/ptx_frontend/issues/132) 负责 carry/condition-code
+   `add.cc`/`addc` 与 `sub.cc`/`subc` 的 implicit-state contract；
+2. [#127](https://github.com/endingly/ptx_frontend/issues/127) 限制 MOV `.b128` 的
+   scalar-layout over-admission；[#126](https://github.com/endingly/ptx_frontend/issues/126)
+   仍是独立已建单的 negated-predicate defect；
+3. [#128](https://github.com/endingly/ptx_frontend/issues/128) 补齐超出当前 5 个 form 的 PTX
+   9.3 `mul` model/check；
+4. [#129](https://github.com/endingly/ptx_frontend/issues/129) 补齐超出当前 5 个 form 的 PTX
+   9.3 `setp` model/check；以及
+5. [#130](https://github.com/endingly/ptx_frontend/issues/130) 和
+   [#131](https://github.com/endingly/ptx_frontend/issues/131) 分别负责 `ld`、`st` 的逐 form
+   frontend completeness，并链接 ptxsim#24 的必要 runtime semantics。
 
-每项 follow-up 都必须使用 canonical YAML/database path、保持 negative diagnostic，并在接受的
-frontend form 改变后重新验证 downstream projection。不得恢复 retired handwritten opcode
-coverage registry，也不得引入 simulator runtime variant-support API。
+现有 frontend [#53](https://github.com/endingly/ptx_frontend/issues/53) 与 simulator
+[ptxsim#25](https://github.com/endingly/ptxsim/issues/25) 是 whole-FMA tracker；其 closed 状态仅为
+去重证据，并非新的 execution verification。每项 frontend follow-up 都必须使用 canonical
+YAML/database path、保持 negative diagnostic，并在接受的 frontend form 改变后重新验证
+downstream projection。不得恢复 retired handwritten opcode coverage registry，也不得引入
+simulator runtime variant-support API。创建这些链接只建立 owner，不改变上文每项 operation 的
+completeness 结论或历史 execution evidence。

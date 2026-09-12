@@ -2,7 +2,7 @@
 
 本文描述 frontend 已建模的完整 PTX 9.3 `fma` contract。它补充[语法覆盖矩阵](syntax_coverage.md)，
 不表示所有 PTX opcode 或 simulator execution 已受支持。machine-readable instruction
-specification 为 `instructions/ptx_spec/arithmetic.yaml`。
+specification 为 `python/code_gen/resources/ptx_spec/arithmetic.yaml`。
 
 规范依据是 NVIDIA 的 PTX ISA 9.3 archive：[floating FMA
 §9.7.3.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-fma)、

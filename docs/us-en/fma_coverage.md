@@ -4,7 +4,7 @@ This document states the complete PTX 9.3 `fma` contract modelled by the
 frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it
 is not a claim that every PTX opcode or simulator execution is supported. The
 machine-readable instruction specification is
-`instructions/ptx_spec/arithmetic.yaml`.
+`python/code_gen/resources/ptx_spec/arithmetic.yaml`.
 
 The normative reference is NVIDIA's PTX ISA 9.3 archive: [floating FMA
 §9.7.3.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-fma),

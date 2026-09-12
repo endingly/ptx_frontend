@@ -113,23 +113,31 @@ for `ld`/`st` execution, and [ptxsim#23](https://github.com/endingly/ptxsim/issu
 for enforcement of whole-op execution claims.  Frontend [#126](https://github.com/endingly/ptx_frontend/issues/126)
 is the already-open, concrete `mov.pred` syntax/layout blocker.
 
-No new external issue is recorded by this audit.  Issue #51 requires every
-uncovered frontend family to have dedicated remediation tracking; that
-acceptance remains pending until the following whole-operation follow-ups are
-created and linked, rather than split into variant tickets:
+Issue #51's whole-operation frontend follow-ups are now tracked without
+splitting them into variant tickets:
 
-1. carry/condition-code `add.cc`/`addc` and `sub.cc`/`subc`, with an owned
-   implicit-state contract;
-2. correct MOV's `.b128` scalar-layout over-admission; [#126](https://github.com/endingly/ptx_frontend/issues/126)
-   remains the separate already-filed negated-predicate defect;
-3. complete PTX 9.3 `mul` modeling and checking beyond the current five forms;
-4. complete PTX 9.3 `setp` modeling and checking beyond the current five forms;
-5. separate form-by-form frontend completeness work for `ld` and `st`, linked
-   to ptxsim#24 for the required runtime semantics; and
-6. a whole-FMA simulator execution contract if execution, rather than the
-   already documented frontend model, is required.
+1. [#132](https://github.com/endingly/ptx_frontend/issues/132) owns the
+   carry/condition-code `add.cc`/`addc` and `sub.cc`/`subc` implicit-state
+   contract;
+2. [#127](https://github.com/endingly/ptx_frontend/issues/127) restricts
+   MOV's `.b128` scalar-layout over-admission.  [#126](https://github.com/endingly/ptx_frontend/issues/126)
+   remains the separately filed negated-predicate defect;
+3. [#128](https://github.com/endingly/ptx_frontend/issues/128) completes PTX
+   9.3 `mul` modeling and checking beyond the current five forms;
+4. [#129](https://github.com/endingly/ptx_frontend/issues/129) completes PTX
+   9.3 `setp` modeling and checking beyond the current five forms; and
+5. [#130](https://github.com/endingly/ptx_frontend/issues/130) and
+   [#131](https://github.com/endingly/ptx_frontend/issues/131) separately own
+   form-by-form `ld` and `st` frontend completeness, linked to ptxsim#24 for
+   the required runtime semantics.
 
-Each such follow-up must use the canonical YAML/database path, preserve
-negative diagnostics, and revalidate the downstream projection after an
-accepted frontend form changes.  It must not restore a retired handwritten
-opcode coverage registry or introduce a simulator runtime variant-support API.
+The existing frontend [#53](https://github.com/endingly/ptx_frontend/issues/53)
+and simulator [ptxsim#25](https://github.com/endingly/ptxsim/issues/25) are
+the whole-FMA trackers; their closed state is de-duplication evidence only, not
+a new execution verification.  Each frontend follow-up must use the canonical
+YAML/database path, preserve negative diagnostics, and revalidate the
+downstream projection after an accepted frontend form changes.  It must not
+restore a retired handwritten opcode coverage registry or introduce a simulator
+runtime variant-support API.  Creating these links establishes ownership only;
+it does not change the per-operation completeness conclusions or the historical
+execution evidence above.

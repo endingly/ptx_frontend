@@ -1,6 +1,7 @@
 """Standard-library regression tests for CI cache and action-pin helpers."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -234,6 +235,25 @@ class WorkflowContractTests(unittest.TestCase):
             "check_clang_format.py --clang-format clang-format-21", package_consumer
         )
         self.assertIn("clang-format-21", setup)
+
+    def test_targeted_build_presets_use_the_private_resolved_ir_target(self) -> None:
+        """Package-oriented builds follow the renamed concrete resolved-IR target."""
+        presets = json.loads(
+            (SCRIPTS.parent.parent / "CMakePresets.json").read_text(encoding="utf-8")
+        )
+        targeted_presets = {
+            preset["name"]: preset["targets"]
+            for preset in presets["buildPresets"]
+            if preset["name"]
+            in {"ci-python-and-package-consumer", "ci-integration-smoke"}
+        }
+        self.assertEqual(
+            targeted_presets,
+            {
+                "ci-python-and-package-consumer": ["ptx_frontend_resolved_ir"],
+                "ci-integration-smoke": ["ptx_frontend_resolved_ir"],
+            },
+        )
 
     def test_prewarm_is_gcc_push_only_full_build_matrix(self) -> None:
         """Branch prewarm builds normal GCC Debug and Release configurations."""

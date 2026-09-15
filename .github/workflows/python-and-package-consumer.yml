@@ -30,6 +30,7 @@ jobs:
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
+      CCACHE_METRICS_DIR: ${{ runner.temp }}/ccache-metrics/ci-python-and-package-consumer
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -44,28 +45,96 @@ jobs:
       - name: Check tracked handwritten C++ formatting
         run: python3 .github/scripts/check_clang_format.py --clang-format clang-format-21
 
-      - name: Restore compiler cache
+      # Read-only consumer jobs restore a compatible Debug production seed but
+      # never own or upload one; trusted main integration owns all seed writes.
+      - name: Restore persistent compiler cache
+        id: ccache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
-          key: ccache-v7-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
           restore-keys: |
-            ccache-v7-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-
-            ccache-v7-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-
 
-      - name: Configure
+      - name: Configure and reset production compiler-cache statistics
         shell: bash
         run: |
+          rm -rf "$CCACHE_METRICS_DIR"
+          mkdir -p "$CCACHE_METRICS_DIR"
           ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/production.started-at"
           cmake --preset ci-linux-gcc-debug -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
-      - name: Build
-        run: cmake --build --preset ci-python-and-package-consumer
+      - name: Build production target
+        id: production-build
+        shell: bash
+        run: |
+          date +%s > "$CCACHE_METRICS_DIR/production.build-started-at"
+          set +e
+          cmake --build --preset ci-python-and-package-consumer
+          build_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/production.finished-at"
+          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
+          exit "$build_exit_code"
 
-      - name: Test Python and package consumer
-        run: ctest --preset ci-python-and-package-consumer --output-on-failure
-
-      - name: Show compiler cache statistics
+      - name: Record production compiler-cache statistics
         if: always()
         shell: bash
-        run: ccache --show-stats || true
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase production-build --started-at-file "$CCACHE_METRICS_DIR/production.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-started-at-file "$CCACHE_METRICS_DIR/production.build-started-at" \
+            --build-finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-exit-code-file "$CCACHE_METRICS_DIR/production.build-exit-code" \
+            --status "${{ steps.production-build.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/production-build.json" || true
+          ccache --show-stats || true
+
+      # Python/package tests can launch installed-consumer builds. Their compiler
+      # output belongs in RUNNER_TEMP, never in the restored production seed.
+      - name: Reset disposable test compiler cache statistics
+        if: success()
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/ci-python-and-package-consumer
+        run: |
+          rm -rf "$CCACHE_DIR"
+          mkdir -p "$CCACHE_DIR"
+          ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
+
+      - name: Test Python and package consumer in disposable compiler cache
+        id: consumer-test
+        shell: bash
+        if: success()
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/ci-python-and-package-consumer
+        run: |
+          set +e
+          ctest --preset ci-python-and-package-consumer --output-on-failure
+          test_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
+          exit "$test_exit_code"
+
+      - name: Record test compiler-cache statistics
+        if: always()
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/ci-python-and-package-consumer
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase tests --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
+            --status "${{ steps.consumer-test.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/tests.json" || true
+          ccache --show-stats || true
+
+      - name: Upload compiler-cache measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: consumer-ccache-metrics
+          path: ${{ runner.temp }}/ccache-metrics/ci-python-and-package-consumer
+          if-no-files-found: warn
+          retention-days: 14

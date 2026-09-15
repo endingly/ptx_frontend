@@ -47,6 +47,7 @@ jobs:
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
+      CCACHE_METRICS_DIR: ${{ runner.temp }}/ccache-metrics/${{ matrix.preset }}
     strategy:
       fail-fast: false
       matrix:
@@ -68,19 +69,24 @@ jobs:
         with:
           writes-shared-caches: ${{ matrix.writes_shared_caches }}
 
-      - name: Restore compiler cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # PR, scheduled, and manual jobs restore a compatible main-produced seed;
+      # only integration smoke on trusted main may upload immutable SHA keys.
+      - name: Restore persistent compiler cache
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
-          key: ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
           restore-keys: |
-            ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-
-            ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
 
-      - name: Configure
+      - name: Configure and reset production compiler-cache statistics
         shell: bash
         run: |
+          rm -rf "$CCACHE_METRICS_DIR"
+          mkdir -p "$CCACHE_METRICS_DIR"
           ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/production.started-at"
           cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
       - name: Save vcpkg source-download cache
@@ -98,13 +104,87 @@ jobs:
           path: .cache/vcpkg/archives
           key: ${{ steps.setup.outputs.binary-cache-key }}
 
-      - name: Build
-        run: cmake --build --preset "${{ matrix.preset }}"
+      - name: Build production target
+        id: production-build
+        shell: bash
+        run: |
+          date +%s > "$CCACHE_METRICS_DIR/production.build-started-at"
+          set +e
+          cmake --build --preset "${{ matrix.preset }}" --target ptx_frontend_resolved_ir
+          build_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/production.finished-at"
+          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
+          exit "$build_exit_code"
 
-      - name: Test
-        run: ctest --preset "${{ matrix.preset }}" --output-on-failure
-
-      - name: Show compiler cache statistics
+      - name: Record production compiler-cache statistics
         if: always()
         shell: bash
-        run: ccache --show-stats || true
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase production-build --started-at-file "$CCACHE_METRICS_DIR/production.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-started-at-file "$CCACHE_METRICS_DIR/production.build-started-at" \
+            --build-finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-exit-code-file "$CCACHE_METRICS_DIR/production.build-exit-code" \
+            --status "${{ steps.production-build.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/production-build.json" || true
+          ccache --show-stats || true
+
+      # Full test support contains the alternate generated fixture. Keep it and
+      # every compiler launched by CTest in a disposable cache so it cannot evict
+      # production objects from .cache/ccache.
+      - name: Reset disposable test compiler cache statistics
+        if: success()
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: |
+          rm -rf "$CCACHE_DIR"
+          mkdir -p "$CCACHE_DIR"
+          ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
+
+      - name: Build test support in disposable compiler cache
+        id: test-support
+        if: success()
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: cmake --build --preset "${{ matrix.preset }}"
+
+      - name: Test in disposable compiler cache
+        id: test
+        shell: bash
+        if: success()
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: |
+          set +e
+          ctest --preset "${{ matrix.preset }}" --output-on-failure
+          test_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
+          exit "$test_exit_code"
+
+      - name: Record test compiler-cache statistics
+        if: always()
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase tests --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
+            --status "${{ steps.test-support.outcome }}" \
+            --status "${{ steps.test.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/tests.json" || true
+          ccache --show-stats || true
+
+      # JSON records local cache size, cleanup count, hit/miss rate, and phase
+      # wall-clock time. Actions transfer bytes/times remain in action logs.
+      - name: Upload compiler-cache measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ccache-metrics-${{ matrix.preset }}
+          path: ${{ runner.temp }}/ccache-metrics/${{ matrix.preset }}
+          if-no-files-found: warn
+          retention-days: 14

@@ -20,7 +20,30 @@ codegen_category: arithmetic
 ```
 
 schema 负责字段形状和基础枚举；normalizer 负责跨字段的生成器不变量，例如一个
-variant 不能同时写 `operands` 和 `operand_layouts`。
+variant 不能同时写 `operands` 和 `operand_layouts`。schema enum、YAML entry 或 `rule`
+identifier 本身都不是 executable checker：只有 normalizer、generated descriptor、resolver
+和 checker 已实现对应 contract 时才有意义。
+
+## 扩展边界
+
+canonical YAML/database 是 instruction form 唯一的 machine-readable source。不得另建手写
+opcode/variant registry 或 capability API。
+
+canonical model 变更的独立、已测量成本见[generated-model build scalability baseline](build_scalability.md)；
+它不是 opcode acceptance 或 ISA-conformance evidence。
+
+只有当 form 复用已实现的 syntax/operand primitive、modifier domain、type expression 与
+descriptor-backed constraint 时，才适合 YAML-only 添加。它仍需要 non-overlapping variant、
+normalizer/database check、generated descriptor、resolver/checker coverage，以及
+source/target availability fact。复用一个 `rule` name 不等于新 relation 会被检查；必须确认
+其 selected descriptor field 和 constraint 会进入 executable checker code。
+
+新增 operand primitive、modifier domain/value representation 或 semantic constraint 是
+coordinated change：按需扩展 schema，再扩展 Python Syntax/Resolved model 与 normalization、
+C++ resolved payload 与 resolver、descriptor emission、checker implementation 和测试。不能仅因
+YAML 能解析就把 requirement 静默编码进 string 或 enum。frontend contract 是 source
+acceptance、binding、resolved modeling 与 target-aware validation；它不提供 simulator execution，
+也不建立 physical-hardware conformance。
 
 ## 预定义数据引用
 
@@ -200,6 +223,20 @@ type-expression 函数是 `modifier(name)`：它读取当前 variant 的 active 
 schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为未来语法，但
 normalizer 会明确报错表示尚未支持。
 
+每个 generated operand payload 还必须有明确的 module-reference policy。
+`gen_resolved_ir.py` 会将其 C++ payload type 分类到 `_REFERENCE_FIELD_TYPES` 或
+`_REFERENCE_FREE_FIELD_TYPES`；未分类 type 会使 generation 失败。reference-bearing payload
+是能够携带 bound declaration/symbol identity 的 resolved primitive（例如 register、predicate、
+symbol、address、vector、call/control 与 tensor-coordinate form）。生成的
+`visit_instruction_references` visitor 将它们交给 module 和 AST-free revalidation。reference-free
+payload 是不含此类 identity 的 value（例如 modifier enum、immediate 与 special-register
+reference），故刻意不访问。必须按实际 resolved payload 和 validation requirement 决定分类，
+不能按 operand 的 YAML name 猜测。随后还必须扩展 `ptx_module_availability.cpp` 中的 C++
+consumer：`ReferenceBearingOperandPayload` 接纳该 payload，`collect_operand_references` 递归
+投影为 `ModuleReferenceUse`，`check_module_references` 执行 owned-symbol、kind、scope、
+register-state 与 parameterized-index check。因此 generated visitor 本身不足；collector 的
+exhaustive branch 会故意令新 admitted payload 在没有 owned-module validation 时编译失败。
+
 `immediate_conversion` 是 integer immediate 独立的 use contract。其默认值 `narrow`
 会在解码 64-bit source 后保留 resolved scalar width 的低位。仅当语义 operand 必须能由
 该宽度表示时才使用 `require_target_range`：
@@ -312,8 +349,11 @@ runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source�
 `.v2/.v4` memory vector element 使用 `equal_or_wider`：声明 register size 必须大于等于
 instruction size；通过 size 检查后，任一侧 bit type 与 signed/unsigned integer pair 兼容，
 float 要求 exact type/size，integer/float 不兼容。immediate 与 special-register check 仍为
-same-width。wider actual register 当前只覆盖到 64-bit；在 declaration type 的 target availability
-得到检查前，`.b128` 仍明确拒绝。scalar `.b128` instruction type 仍不属于当前范围。
+same-width。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
+8.3 / SM 70；`.b128` 搭配 `.sys` 还要求 PTX 8.4。因此 exact `.b128` declaration 可以满足
+selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许把 wider actual
+`.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见
+[LD](ld_coverage.md) 与 [ST](st_coverage.md)。
 
 `reg_vector` operand 必须用 `vector.arity` 声明合法元素数。静态形式使用整数或列表：
 
@@ -527,6 +567,22 @@ resolver 与 checker 无需从 modifier 的位置或字符串重新推断 operan
 4. 新增 spec 前确认 lexer/AST 能形成所需 operand shape；不能时先扩展语法层。
 5. 新增 layout 必须补 resolver/checker 测试，尤其是 tag 范围与 tag/payload 不一致。
 6. schema 通过不代表生成器支持；运行 Python tests、CMake build 与 CTest 验证。
+
+## Whole-opcode acceptance
+
+不能因为一个新 variant 能 parse、YAML database test 通过，或 generated model 有非零
+variant count，就称 opcode complete。应针对相关 PTX 9.3 normative section 冻结所声称的范围，
+包括相邻的 excluded form，并用 independently derived 的 positive/negative source case 覆盖其
+modifier、operand、availability 与 diagnostic boundary。model/generator consistency check 只能说明
+YAML 按预期 normalized 和 emitted，不是 independently derived 的 ISA-conformance evidence。
+
+当 declaration type、binding identity、call/control metadata、function context 或 address
+provenance 会影响 legality 时，必须通过带 source version 和 target context 的
+declaration-aware module 测试。standalone instruction test 适合 local syntax/resolution，但不能替代
+module check。应 mutate public Resolved IR，并运行 AST-free validation，检查 retained identity、
+provenance 与 descriptor invariant。最后，用仅含 public header 的 installed-package consumer
+编译并运行。这些 frontend check 不证明 simulator execution、dynamic protocol correctness、独立
+probe 之外的 assembler acceptance，或 GPU/hardware behavior。
 
 推荐验证命令：
 

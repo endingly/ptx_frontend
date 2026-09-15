@@ -23,7 +23,37 @@ codegen_category: arithmetic
 
 The schema validates field shape and primitive enums. The normalizer enforces
 cross-field generator invariants, for example that a variant cannot declare
-both `operands` and `operand_layouts`.
+both `operands` and `operand_layouts`. Neither a schema enum, a YAML entry, nor
+a `rule` identifier is an executable checker by itself: it is useful only when
+the normalizer, generated descriptors, resolver, and checker already implement
+the corresponding contract.
+
+## Extension boundary
+
+The canonical YAML/database is the only machine-readable source for an
+instruction form. Do not create a parallel handwritten opcode/variant registry
+or capability API.
+
+For the separate, measured cost of changing that canonical model, see the
+[generated-model build scalability baseline](build_scalability.md); it is not
+opcode acceptance or ISA-conformance evidence.
+
+A YAML-only addition is appropriate only when the form reuses implemented
+syntax and operand primitives, modifier domains, type expressions, and
+descriptor-backed constraints. It still needs a non-overlapping variant, the
+normalizer/database checks, generated descriptors, resolver/checker coverage,
+and source/target availability facts. Reusing a `rule` name is not evidence
+that a new relation will be checked; confirm that its selected descriptor fields
+and constraints reach executable checker code.
+
+Adding a new operand primitive, modifier domain/value representation, or
+semantic constraint is a coordinated change: extend the schema only as needed,
+then the Python Syntax/Resolved model and normalization, C++ resolved payload
+and resolver, descriptor emission, checker implementation, and tests. Do not
+silently encode such a requirement in a string or an enum merely because YAML
+can parse it. The frontend contract is source acceptance, binding, resolved
+modeling, and target-aware validation; it neither supplies simulator execution
+nor establishes physical-hardware conformance.
 
 ## Predefined-data references
 
@@ -227,6 +257,25 @@ variant. The schema retains `same_as(...)`, `one_of(...)`, and
 `same_size_as(...)` as future syntax, but the normalizer explicitly rejects
 them as unsupported.
 
+Every generated operand payload also needs an explicit module-reference policy.
+`gen_resolved_ir.py` classifies its C++ payload type in either
+`_REFERENCE_FIELD_TYPES` or `_REFERENCE_FREE_FIELD_TYPES`; an unclassified type
+fails generation. Reference-bearing payloads are the resolved primitives that
+can carry bound declaration/symbol identity (for example register, predicate,
+symbol, address, vector, call/control, and tensor-coordinate forms). The
+generated `visit_instruction_references` visitor exposes them to module and
+AST-free revalidation. Reference-free payloads are values without such identity
+(for example modifier enums, immediates, and special-register references) and
+are intentionally not visited. Choose this classification from the actual
+resolved payload and validation requirement, not from an operand's YAML name.
+The C++ consumer must then be extended in `ptx_module_availability.cpp`:
+`ReferenceBearingOperandPayload` admits the payload, `collect_operand_references`
+recursively projects it to `ModuleReferenceUse`, and `check_module_references`
+performs the owned-symbol, kind, scope, register-state, and parameterized-index
+checks. A generated visitor alone is therefore insufficient; the collector's
+exhaustive branch deliberately fails compilation for a newly admitted payload
+without its owned-module validation.
+
 `immediate_conversion` is a separate use contract for integer immediates. It
 defaults to `narrow`, which retains the low bits of the resolved scalar width
 after decoding the 64-bit source. Use `require_target_range` only where a
@@ -356,10 +405,14 @@ stores the policy; no runtime Resolved IR field is generated. Current scalar
 elements use `equal_or_wider`: the declared register size must be at least the
 instruction size, after which either-side bit types and signed/unsigned integer
 pairs are compatible, floats require exact type/size, and integer/float pairs
-remain incompatible. Immediate and special-register checks stay same-width.
-Wider actual registers are currently limited to 64 bits; `.b128` remains
-rejected until declaration-type target availability is checked. Scalar `.b128`
-instruction types remain outside this set.
+remain incompatible. Immediate and special-register checks stay same-width. The
+current scalar `ld/st` domains do include `.b128`, with modifier-value
+availability at PTX 8.3 / SM 70; `.sys` with `.b128` additionally requires PTX
+8.4. An exact `.b128` declaration therefore satisfies a selected `.b128` memory
+instruction. The `equal_or_wider` escape hatch still does not admit a wider
+actual `.b128` register for a narrower selected instruction. The focused
+[LD](ld_coverage.md) and [ST](st_coverage.md) documents state the supported
+memory forms and their remaining boundaries.
 
 A `reg_vector` operand must declare legal element counts through
 `vector.arity`. Static forms use an integer or list:
@@ -606,6 +659,27 @@ supports optional rounding and `.sat`.
    tag/payload mismatch.
 6. Passing the schema does not prove generator support; run Python tests,
    CMake build, and CTest.
+
+## Whole-opcode acceptance
+
+Do not call an opcode complete merely because one new variant parses, a YAML
+database test passes, or the generated model has a nonzero variant count. Freeze
+the claimed PTX 9.3 scope against the relevant normative section, including
+adjacent excluded forms, then use independently derived positive and negative
+source cases for its modifier, operand, availability, and diagnostic
+boundaries. Model/generator consistency checks show that YAML was normalized
+and emitted as intended; they are not independently derived ISA-conformance
+evidence.
+
+Where declaration type, binding identity, call/control metadata, function
+context, or address provenance affects legality, test through a declaration-aware
+module with source version and target context. A standalone instruction test is
+useful for local syntax and resolution, but cannot replace that module check.
+Mutate the public Resolved IR and run AST-free validation for retained
+identities, provenance, and descriptor invariants. Finally, compile and run an
+installed-package consumer using only public headers. These frontend checks do
+not prove simulator execution, dynamic protocol correctness, assembler
+acceptance beyond the independent probes, or GPU/hardware behavior.
 
 Recommended validation:
 

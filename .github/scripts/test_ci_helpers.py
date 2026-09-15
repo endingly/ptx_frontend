@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -26,6 +27,8 @@ def load_module(name: str, filename: str):
 
 
 IDENTITY = load_module("compiler_cache_identity", "compiler-cache-identity.py")
+METRICS = load_module("capture_ccache_metrics", "capture_ccache_metrics.py")
+CLEANUP = load_module("cleanup_ccache_seeds", "cleanup_ccache_seeds.py")
 PINS = load_module("check_action_pins", "check_action_pins.py")
 FORMAT = load_module("check_clang_format", "check_clang_format.py")
 
@@ -135,6 +138,132 @@ class CompilerCacheIdentityTests(unittest.TestCase):
             assert_unchanged_after_failure(
                 '{"builtin-baseline": "0123456789abcdef0123456789abcdef01234567"}'
             )
+
+
+class CcacheMetricsTests(unittest.TestCase):
+    """Verify phase metrics retain ccache's compilation-level semantics."""
+
+    def test_hits_count_only_direct_and_preprocessed_compilations(self) -> None:
+        """Internal storage reads must not inflate the public compilation hit count."""
+        stats = {
+            "direct_cache_hit": 7,
+            "preprocessed_cache_hit": 3,
+            "local_storage_hit": 99,
+            "cache_miss": 5,
+            "cache_size_kibibyte": 123,
+            "max_cache_size_kibibyte": 1024,
+            "cleanups_performed": 2,
+        }
+        with mock.patch.object(METRICS.time, "time", return_value=120.0):
+            record = METRICS.metric_record(
+                "production-build", 100.0, 119.0, 110.0, 118.0, 0, ["success"], stats
+            )
+        self.assertEqual(record["phase_wall_seconds"], 19.0)
+        self.assertEqual(record["build_wall_seconds"], 8.0)
+        self.assertEqual(record["build_exit_code"], 0)
+        self.assertEqual(record["status"], "success")
+        ccache = record["ccache"]
+        self.assertEqual(ccache["hits"], 10)
+        self.assertEqual(ccache["misses"], 5)
+        self.assertEqual(ccache["cleanups_performed"], 2)
+        self.assertEqual(ccache["hit_rate"], 10 / 15)
+        transfer = record["cache_action_transfer"]
+        self.assertIsNone(transfer["restore_bytes"])
+        self.assertIn("action logs", transfer["source"])
+
+    def test_incomplete_or_failed_phase_is_not_recorded_as_success(self) -> None:
+        """A missing finish time prevents a wall-time claim and failure remains explicit."""
+        with mock.patch.object(METRICS.time, "time", return_value=120.0):
+            record = METRICS.metric_record(
+                "tests", 100.0, None, None, None, None, ["failure", "skipped"], {}
+            )
+        self.assertIsNone(record["phase_wall_seconds"])
+        self.assertIsNone(record["build_wall_seconds"])
+        self.assertIsNone(record["build_exit_code"])
+        self.assertEqual(record["status"], "failure")
+
+
+class CcacheSeedCleanupTests(unittest.TestCase):
+    """Verify cleanup plans never extend beyond a verified v8 seed lineage."""
+
+    prefix = "ccache-v8-Linux-X64-ci-linux-gcc-debug-compiler-"
+    ref = "refs/heads/main"
+    current_sha = "c" * 40
+
+    def _entry(
+        self, cache_id: int, sha: str, created_at: str, version: str = "cache-version", ref: str | None = None
+    ) -> CLEANUP.CacheEntry:
+        """Create a valid test cache entry in the selected or alternate scope."""
+        return CLEANUP.CacheEntry(
+            cache_id,
+            f"{self.prefix}{sha}",
+            version,
+            self.ref if ref is None else ref,
+            created_at,
+        )
+
+    def test_retains_current_and_one_previous_only_in_matching_version_and_ref(self) -> None:
+        """Older matching seeds are deleted without touching a different scope/version/ref."""
+        entries = [
+            self._entry(1, "a" * 40, "2026-01-01T00:00:00Z"),
+            self._entry(2, "b" * 40, "2026-01-02T00:00:00Z"),
+            self._entry(3, self.current_sha, "2026-01-03T00:00:00Z"),
+            self._entry(4, "d" * 40, "2026-01-04T00:00:00Z", version="other-version"),
+            self._entry(5, "e" * 40, "2026-01-05T00:00:00Z", ref="refs/heads/dev"),
+            self._entry(7, "f" * 40, "2026-01-07T00:00:00Z"),
+            CLEANUP.CacheEntry(6, "ccache-v7-Linux-X64-legacy", "cache-version", self.ref, "2026-01-06T00:00:00Z"),
+        ]
+        self.assertEqual(
+            CLEANUP.deletion_plan(entries, f"{self.prefix}{self.current_sha}", self.prefix, self.ref),
+            [1],
+        )
+
+    def test_pagination_or_current_seed_anomaly_refuses_before_delete(self) -> None:
+        """The CLI fails closed and does not issue DELETE when verification is incomplete."""
+        malformed_pages = json.dumps(
+            [{"total_count": 2, "actions_caches": [{"id": 1, "key": "x", "version": "v", "ref": self.ref, "created_at": "2026-01-01T00:00:00Z"}]}]
+        )
+        with mock.patch.object(CLEANUP, "gh", return_value=malformed_pages) as api, mock.patch.object(
+            sys, "argv", [
+                "cleanup_ccache_seeds.py",
+                "--repository", "owner/repository",
+                "--ref", self.ref,
+                "--prefix", self.prefix,
+                "--current-key", f"{self.prefix}{self.current_sha}",
+                "--execute",
+            ]
+        ):
+            self.assertEqual(CLEANUP.main(), 1)
+        self.assertEqual(api.call_count, 1)
+        self.assertIn("--paginate", api.call_args.args[0])
+
+    def test_verified_execute_deletes_only_planned_cache_id(self) -> None:
+        """A mocked API receives one scoped DELETE after a complete verified listing."""
+        pages = json.dumps(
+            [
+                {
+                    "total_count": 3,
+                    "actions_caches": [
+                        {"id": 1, "key": f"{self.prefix}{'a' * 40}", "version": "v", "ref": self.ref, "created_at": "2026-01-01T00:00:00Z"},
+                        {"id": 2, "key": f"{self.prefix}{'b' * 40}", "version": "v", "ref": self.ref, "created_at": "2026-01-02T00:00:00Z"},
+                        {"id": 3, "key": f"{self.prefix}{self.current_sha}", "version": "v", "ref": self.ref, "created_at": "2026-01-03T00:00:00Z"},
+                    ],
+                }
+            ]
+        )
+        with mock.patch.object(CLEANUP, "gh", side_effect=[pages, ""]) as api, mock.patch.object(
+            sys, "argv", [
+                "cleanup_ccache_seeds.py",
+                "--repository", "owner/repository",
+                "--ref", self.ref,
+                "--prefix", self.prefix,
+                "--current-key", f"{self.prefix}{self.current_sha}",
+                "--execute",
+            ]
+        ):
+            self.assertEqual(CLEANUP.main(), 0)
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(api.call_args_list[1].args[0][-1], "repos/owner/repository/actions/caches/1")
 
 
 class ActionPinTests(unittest.TestCase):
@@ -255,8 +384,8 @@ class WorkflowContractTests(unittest.TestCase):
             },
         )
 
-    def test_prewarm_is_gcc_push_only_full_build_matrix(self) -> None:
-        """Branch prewarm builds normal GCC Debug and Release configurations."""
+    def test_prewarm_is_gcc_push_only_production_build_matrix(self) -> None:
+        """Branch prewarm builds normal GCC production targets for both configurations."""
         smoke = (WORKFLOWS / "integration-smoke.yml").read_text(encoding="utf-8")
         self.assertIn("branches: [dev, main]", smoke)
         self.assertNotIn("pull_request:", smoke)
@@ -276,7 +405,10 @@ class WorkflowContractTests(unittest.TestCase):
             smoke,
         )
         self.assertIn('cmake --preset "${{ matrix.preset }}"', smoke)
-        self.assertIn('cmake --build --preset "${{ matrix.preset }}"', smoke)
+        self.assertIn(
+            'cmake --build --preset "${{ matrix.preset }}" --target ptx_frontend_resolved_ir',
+            smoke,
+        )
         self.assertNotIn("ci-integration-smoke", smoke)
         self.assertNotIn("--target resolved_ir", smoke)
 
@@ -287,23 +419,73 @@ class WorkflowContractTests(unittest.TestCase):
             "ctest --preset ci-python-and-package-consumer "
             "-R '^ptx_frontend\\.package_consumer$' --output-on-failure --no-tests=error"
         )
-        self.assertIn("if: matrix.name == 'Debug'", smoke)
+        self.assertIn("matrix.name == 'Debug'", smoke)
         self.assertIn(package_test, smoke)
         self.assertEqual(smoke.count("ctest --preset"), 1)
         self.assertNotIn('ctest --preset "${{ matrix.preset }}"', smoke)
         self.assertNotIn("python_test", smoke)
 
-    def test_prewarm_and_full_matrix_share_per_configuration_ccache_namespaces(self) -> None:
-        """Prewarm snapshots match the full matrix namespace for both build configurations."""
+    def test_sha_seed_namespaces_restore_only_and_cover_debug_and_release(self) -> None:
+        """Consumers restore SHA-keyed v8 prefixes while trusted main owns both writers."""
         linux = (WORKFLOWS / "linux-ci.yml").read_text(encoding="utf-8")
         smoke = (WORKFLOWS / "integration-smoke.yml").read_text(encoding="utf-8")
+        consumer = (WORKFLOWS / "python-and-package-consumer.yml").read_text(encoding="utf-8")
         namespace = (
-            "ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-"
-            "${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-"
+            "ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-"
+            "${{ steps.setup.outputs.compiler-identity }}-"
         )
         self.assertIn(namespace, linux)
         self.assertIn(namespace, smoke)
-        self.assertIn("${{ github.run_id }}-${{ github.run_attempt }}", smoke)
+        self.assertIn(
+            "ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-"
+            "${{ steps.setup.outputs.compiler-identity }}-",
+            consumer,
+        )
+        for workflow in (linux, smoke, consumer):
+            self.assertIn("actions/cache/restore@", workflow)
+            self.assertIn("${{ github.sha }}", workflow)
+            self.assertNotIn("ccache-v7-", workflow)
+            self.assertNotIn("ccache-epoch", workflow)
+            self.assertNotIn("github.run_id", workflow)
+            self.assertNotIn("github.run_attempt", workflow)
+
+        save_start = smoke.index("- name: Save persistent compiler cache seed")
+        save_step = smoke[save_start:]
+        self.assertIn("github.ref == 'refs/heads/main'", save_step)
+        self.assertIn("github.event_name == 'push'", save_step)
+        self.assertIn("steps.ccache.outputs.cache-hit != 'true'", save_step)
+        self.assertIn("path: .cache/ccache", save_step)
+        self.assertIn("${{ matrix.preset }}", save_step)
+        self.assertNotIn("Save persistent compiler cache seed", linux)
+        self.assertNotIn("Save persistent compiler cache seed", consumer)
+
+    def test_cleanup_is_main_only_version_scoped_and_has_the_only_actions_write_permission(self) -> None:
+        """Cleanup follows successful dual seed verification and cannot run on untrusted refs."""
+        smoke = (WORKFLOWS / "integration-smoke.yml").read_text(encoding="utf-8")
+        cleanup = smoke.split("\n  cleanup:\n", 1)[1]
+        before_cleanup = smoke.split("\n  cleanup:\n", 1)[0]
+        self.assertIn("needs: test", cleanup)
+        self.assertIn("github.event_name == 'push'", cleanup)
+        self.assertIn("github.ref == 'refs/heads/main'", cleanup)
+        self.assertIn("needs.test.result == 'success'", cleanup)
+        self.assertIn("needs.test.outputs.debug-prefix != ''", cleanup)
+        self.assertIn("needs.test.outputs.release-prefix != ''", cleanup)
+        self.assertIn("actions: write", cleanup)
+        self.assertNotIn("actions: write", before_cleanup)
+        self.assertIn("persist-credentials: false", cleanup)
+        self.assertIn("--execute", cleanup)
+        self.assertIn("$DEBUG_PREFIX", cleanup)
+        self.assertIn("$RELEASE_PREFIX", cleanup)
+        self.assertIn("cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}", smoke)
+
+    def test_matrix_exports_one_full_prefix_per_configuration(self) -> None:
+        """Cleanup receives build-runner prefixes rather than reconstituting another runner identity."""
+        smoke = (WORKFLOWS / "integration-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn("debug-prefix: ${{ steps.seed-metadata.outputs.debug-prefix }}", smoke)
+        self.assertIn("release-prefix: ${{ steps.seed-metadata.outputs.release-prefix }}", smoke)
+        self.assertIn('echo "debug-prefix=$prefix" >> "$GITHUB_OUTPUT"', smoke)
+        self.assertIn('echo "release-prefix=$prefix" >> "$GITHUB_OUTPUT"', smoke)
+        self.assertNotIn("COMPILER_IDENTITY:", smoke)
 
     def test_consumer_ccache_restore_cannot_replace_full_debug_snapshot(self) -> None:
         """The smaller consumer build restores the shared Debug cache without uploading it."""
@@ -314,9 +496,27 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertNotIn("uses: actions/cache@", consumer)
         self.assertIn(
-            "ccache-v7-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-",
+            "ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-",
             consumer,
         )
+
+    def test_test_compilation_uses_a_disposable_ccache_directory(self) -> None:
+        """Production statistics and seeds remain separate from test-only compilation."""
+        linux = (WORKFLOWS / "linux-ci.yml").read_text(encoding="utf-8")
+        smoke = (WORKFLOWS / "integration-smoke.yml").read_text(encoding="utf-8")
+        consumer = (WORKFLOWS / "python-and-package-consumer.yml").read_text(encoding="utf-8")
+        for workflow in (linux, smoke, consumer):
+            self.assertIn("Build production target", workflow)
+            self.assertIn("production.build-started-at", workflow)
+            self.assertIn("--build-started-at-file", workflow)
+            self.assertIn("ccache --zero-stats", workflow)
+            self.assertIn("${{ runner.temp }}/ccache-test/", workflow)
+            self.assertIn("capture_ccache_metrics.py", workflow)
+            self.assertIn("actions/upload-artifact@", workflow)
+        self.assertIn("Build test support in disposable compiler cache", linux)
+        self.assertIn("ctest --preset \"${{ matrix.preset }}\"", linux)
+        self.assertIn("Test installed package consumer in disposable compiler cache", smoke)
+        self.assertIn("Test Python and package consumer in disposable compiler cache", consumer)
 
     def test_binary_cache_writers_are_independent_of_shared_download_ownership(self) -> None:
         """Every matrix job saves its missing binary key; shared downloads stay Debug-owned."""

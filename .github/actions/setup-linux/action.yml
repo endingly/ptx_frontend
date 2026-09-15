@@ -48,7 +48,8 @@ runs:
     - name: Compute cache epoch
       id: epoch
       shell: bash
-      run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
 
     - name: Restore APT package cache
       id: apt

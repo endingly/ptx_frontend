@@ -313,8 +313,9 @@ addressable data-symbol 或 formal-parameter base 的地址值；
 scalar 与 braced-vector `ld`/`st` 要求方括号解引用，覆盖 register、immediate 与
 bound-symbol base。每个 opcode 使用 `GenericScalar`、`ExplicitScalar`、`GenericVector`
 与 `ExplicitVector` variant；runtime type field 接受 `.b8/.b16/.b32/.b64`、
-`.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64` 与 `.f32/.f64`，当前 memory type 不包含
-`.b128`。vector variant 额外要求 runtime `.v2/.v4/.v8` field，register-vector operand
+`.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64` 与 `.f32/.f64`，并包含 `.b128`；selected
+`.b128` value 要求 PTX 8.3 / SM 70，`.b128` 搭配 `.sys` 要求 PTX 8.4。vector variant
+额外要求 runtime `.v2/.v4/.v8` field，register-vector operand
 descriptor 将期望元素数链接到该 field，而不是按 arity 复制 variant。memory vector 使用
 element type policy：每个 register element 都按 instruction type 检查，允许
 `EqualOrWider` register width。legacy payload 最多 128 bit；generated cross constraint
@@ -325,8 +326,10 @@ element type policy：每个 register element 都按 instruction type 检查，�
 instruction type。通过 size 检查后，任一侧为 bit type 即兼容，fundamental signed/unsigned
 integer 互相兼容，float 只接受 exact type/size，integer/float 仍不兼容。这同时覆盖声明
 register 不超过 64-bit 的 wider load destination 与 store source（包括 store truncation）。
-wider actual `.b128` register 在 declaration type 的 target availability 得到表示与检查前明确
-拒绝；既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。
+wider actual `.b128` register 用于 narrower selected instruction 时，仍由 `EqualOrWider`
+policy 明确拒绝；exact `.b128` declaration 可用于 selected `.b128` memory instruction。
+既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。当前 memory subset 见
+[LD 覆盖](ld_coverage.md) 与 [ST 覆盖](st_coverage.md)。
 
 explicit load 接受 `.const/.global/.local/.param/.shared`，store 接受
 `.global/.local/.param/.shared`；`WithLocs` 同时保留 runtime state-space/type modifier 的值与

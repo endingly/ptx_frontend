@@ -145,6 +145,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "bfe"
         )
+        bfi_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "bfi"
+        )
+        bfind_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "bfind"
+        )
         cls.instruction = from_instruction_spec(add)
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
@@ -159,6 +169,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.lop3_instruction = from_instruction_spec(lop3_instruction)
         cls.shf_instruction = from_instruction_spec(shf_instruction)
         cls.bfe_instruction = from_instruction_spec(bfe_instruction)
+        cls.bfi_instruction = from_instruction_spec(bfi_instruction)
+        cls.bfind_instruction = from_instruction_spec(bfind_instruction)
         call = next(
             instruction
             for instruction in database.instructions
@@ -648,23 +660,50 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [("lut", 0, 255)],
         )
 
-    def test_bfe_has_two_immediate_ranges(self) -> None:
-        variant = self.bfe_instruction.variants[0]
-        self.assertEqual(variant.cpp_name, "U32")
+    def test_bit_field_controls_have_ranges_and_register_forms(self) -> None:
+        for instruction, expected_variants in (
+            (self.bfe_instruction, ["U32", "U64", "S32", "S64"]),
+            (self.bfi_instruction, ["B32", "B64"]),
+        ):
+            self.assertEqual(
+                [variant.cpp_name for variant in instruction.variants],
+                expected_variants,
+            )
+            for variant in instruction.variants:
+                self.assertEqual(
+                    [(constraint.operand_field_id, constraint.minimum,
+                      constraint.maximum)
+                     for constraint in variant.immediate_ranges],
+                    [("offset", 0, 255), ("width", 0, 255)],
+                )
+                self.assertEqual(
+                    [binding.allowed_shapes for binding in
+                     variant.operand_layouts[0].bindings[-2:]],
+                    [(ResolvedOperandShape.REGISTER,
+                      ResolvedOperandShape.IMMEDIATE)] * 2,
+                )
+                source_bindings = (
+                    variant.operand_layouts[0].bindings[1:-2]
+                    if instruction is self.bfi_instruction
+                    else variant.operand_layouts[0].bindings[1:2]
+                )
+                self.assertEqual(
+                    [binding.allowed_shapes for binding in source_bindings],
+                    [(ResolvedOperandShape.REGISTER,
+                      ResolvedOperandShape.IMMEDIATE)] * len(source_bindings),
+                )
+
+    def test_bfind_has_all_type_and_shift_amount_forms(self) -> None:
         self.assertEqual(
-            [field.name for field in variant.fields],
-            ["type", "dst", "src", "offset", "width"],
+            [variant.cpp_name for variant in self.bfind_instruction.variants],
+            ["ShiftamtU32", "U32", "U64", "S32", "S64", "ShiftamtU64",
+             "ShiftamtS32", "ShiftamtS64"],
         )
-        self.assertEqual(
-            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
-             for constraint in variant.immediate_ranges],
-            [("offset", 0, 255), ("width", 0, 255)],
-        )
-        self.assertEqual(
-            [binding.register_width_policy
-             for binding in variant.operand_layouts[0].bindings[:2]],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
-        )
+        for variant in self.bfind_instruction.variants:
+            self.assertEqual(
+                variant.operand_layouts[0].bindings[1].allowed_shapes,
+                (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+            )
 
     def test_shf_has_all_direction_and_mode_variants(self) -> None:
         self.assertEqual(

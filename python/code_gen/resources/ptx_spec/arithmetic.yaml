@@ -46,36 +46,81 @@ operand_patterns:
 
   popc_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: b32, register_width: same_width}
+
+  popc_b64:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: b64, register_width: same_width}
 
   clz_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: b32, register_width: same_width}
 
   clz_b64:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src, kind: reg, role: src, access: read, type: b64, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: b64, register_width: same_width}
 
   bfind_shiftamt_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+
+  bfind_u64:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: u64, register_width: same_width}
+
+  bfind_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: s32, register_width: same_width}
+
+  bfind_s64:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: s64, register_width: same_width}
 
   bfe_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src, kind: reg, role: src1, access: read, type: u32, register_width: same_width}
-    - {name: offset, kind: imm, role: src2, access: read, type: u32}
-    - {name: width, kind: imm, role: src3, access: read, type: u32}
+    - {name: src, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+
+  bfe_u64:
+    - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src1, access: read, type: u64, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+
+  bfe_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+
+  bfe_s64:
+    - {name: dst, kind: reg, role: dst, access: write, type: s64, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src1, access: read, type: s64, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
 
   bfi_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
-    - {name: insert, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
-    - {name: base, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
-    - {name: offset, kind: imm, role: src3, access: read, type: u32}
-    - {name: width, kind: imm, role: src3, access: read, type: u32}
+    - {name: insert, kind: reg_or_imm, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: base, kind: reg_or_imm, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+
+  bfi_b64:
+    - {name: dst, kind: reg, role: dst, access: write, type: b64, register_width: same_width}
+    - {name: insert, kind: reg_or_imm, role: src1, access: read, type: b64, register_width: same_width}
+    - {name: base, kind: reg_or_imm, role: src2, access: read, type: b64, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
 
   brev_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: b32, register_width: same_width}
+
+  brev_b64:
+    - {name: dst, kind: reg, role: dst, access: write, type: b64, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: b64, register_width: same_width}
 
   binary_wide_u32:
     - {name: dst, kind: reg, role: dst, access: write, type: u64, register_width: same_width}
@@ -1536,8 +1581,8 @@ instructions:
 
   - opcode: popc
     section: "9.7.1.15"
-    doc: "Frozen 32-bit population count."
-    syntax: "popc.b32 dst, src"
+    doc: "Population count over 32-bit and 64-bit bit containers."
+    syntax: "popc.{b32|b64} dst, src"
     operands: $popc_b32
     variants:
       - name: popc_b32
@@ -1546,6 +1591,13 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         examples:
           - {ptx: "popc.b32 %r0, %r1;", valid: true}
+      - name: popc_b64
+        operands: $popc_b64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        examples:
+          - {ptx: "popc.b64 %r0, %rd1;", valid: true}
 
   - opcode: clz
     section: "9.7.1.16"
@@ -1569,8 +1621,8 @@ instructions:
 
   - opcode: bfind
     section: "9.7.1.17"
-    doc: "Frozen unsigned 32-bit bit-find shift-amount form."
-    syntax: "bfind.shiftamt.u32 dst, src"
+    doc: "Find the most significant non-sign bit or its left-shift amount."
+    syntax: "bfind{.shiftamt}.{u32|u64|s32|s64} dst, src"
     operands: $bfind_shiftamt_u32
     variants:
       - name: bfind_shiftamt_u32
@@ -1580,11 +1632,62 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "bfind.shiftamt.u32 %r0, %r1;", valid: true}
+      - name: bfind_u32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "bfind.u32 %r0, %r1;", valid: true}
+      - name: bfind_u64
+        operands: $bfind_u64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "bfind.u64 %r0, %rd1;", valid: true}
+      - name: bfind_s32
+        operands: $bfind_s32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "bfind.s32 %r0, %r1;", valid: true}
+      - name: bfind_s64
+        operands: $bfind_s64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        examples:
+          - {ptx: "bfind.s64 %r0, %rd1;", valid: true}
+      - name: bfind_shiftamt_u64
+        operands: $bfind_u64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: shiftamt, kind: flag, presence: fixed, value: true, token: ".shiftamt"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "bfind.shiftamt.u64 %r0, %rd1;", valid: true}
+      - name: bfind_shiftamt_s32
+        operands: $bfind_s32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: shiftamt, kind: flag, presence: fixed, value: true, token: ".shiftamt"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples:
+          - {ptx: "bfind.shiftamt.s32 %r0, %r1;", valid: true}
+      - name: bfind_shiftamt_s64
+        operands: $bfind_s64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: shiftamt, kind: flag, presence: fixed, value: true, token: ".shiftamt"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        examples:
+          - {ptx: "bfind.shiftamt.s64 %r0, %rd1;", valid: true}
 
   - opcode: bfe
     section: "9.7.1.20"
-    doc: "Frozen unsigned 32-bit bit-field extract with immediate offset and width."
-    syntax: "bfe.u32 dst, src, offset, width"
+    doc: "Bit-field extract with unsigned 32-bit controls limited to 0 through 255."
+    syntax: "bfe.{u32|u64|s32|s64} dst, src, offset, width"
     operands: $bfe_u32
     variants:
       - name: bfe_u32
@@ -1596,11 +1699,41 @@ instructions:
           - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
         examples:
           - {ptx: "bfe.u32 %r0, %r1, 0, 8;", valid: true}
+      - name: bfe_u64
+        operands: $bfe_u64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfe.u64 %rd0, %rd1, 0, 8;", valid: true}
+      - name: bfe_s32
+        operands: $bfe_s32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfe.s32 %r0, %r1, 0, 8;", valid: true}
+      - name: bfe_s64
+        operands: $bfe_s64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfe.s64 %rd0, %rd1, 0, 8;", valid: true}
 
   - opcode: bfi
     section: "9.7.1.21"
-    doc: "Frozen 32-bit bit-field insert with immediate offset and width."
-    syntax: "bfi.b32 dst, insert, base, offset, width"
+    doc: "Bit-field insert with unsigned 32-bit controls limited to 0 through 255."
+    syntax: "bfi.{b32|b64} dst, insert, base, offset, width"
     operands: $bfi_b32
     variants:
       - name: bfi_b32
@@ -1612,11 +1745,21 @@ instructions:
           - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
         examples:
           - {ptx: "bfi.b32 %r0, %r1, %r2, 0, 8;", valid: true}
+      - name: bfi_b64
+        operands: $bfi_b64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        constraints:
+          - {kind: immediate_range, operand: offset, minimum: 0, maximum: 255}
+          - {kind: immediate_range, operand: width, minimum: 0, maximum: 255}
+        examples:
+          - {ptx: "bfi.b64 %rd0, %rd1, %rd2, 0, 8;", valid: true}
 
   - opcode: brev
     section: "9.7.1.19"
-    doc: "Frozen 32-bit bit-reverse form."
-    syntax: "brev.b32 dst, src"
+    doc: "Bit reverse over 32-bit and 64-bit bit containers."
+    syntax: "brev.{b32|b64} dst, src"
     operands: $brev_b32
     variants:
       - name: brev_b32
@@ -1625,6 +1768,13 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         examples:
           - {ptx: "brev.b32 %r0, %r1;", valid: true}
+      - name: brev_b64
+        operands: $brev_b64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        examples:
+          - {ptx: "brev.b64 %rd0, %rd1;", valid: true}
 
   - opcode: add
     section: "9.7.2.1"

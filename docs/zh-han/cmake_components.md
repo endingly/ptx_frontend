@@ -48,3 +48,8 @@ consumer。
 consumer/integration group。`ci-consumer-integration` 的 configure、build、test preset
 会选择它并运行稳定的 CTest `consumer` label。普通 Debug 与 Release preset 保持关闭，因而
 一般 C++ 与 Python unit check 不会间接 configure 或 build consumer fixture。
+
+CI 在 push 到 `main` 时自动运行 consumer/integration profile，与普通 Debug/Release
+缓存预热任务并行。它也支持手动触发，并在版本 tag 发布 wheel 前作为门禁。
+push 到 `dev` 时只运行普通预热任务。consumer job 会恢复兼容的编译器缓存，
+但不发布 production cache seed。

@@ -452,10 +452,11 @@ family scope，绝不表示整部 PTX ISA。
 20. issue 对应独立 commit；
 21. milestone 最后一个 commit 进行 code review 与 document-drift review。
 
-日常本地与 PR/main 使用 consumer 默认关闭的普通 Debug（云端可使用 Release）测试；
+日常本地与 PR 使用 consumer 默认关闭的普通 Debug（云端可使用 Release）测试；
 不要求每个 opcode issue 都重复运行安装包 consumer。`PTX_FRONTEND_BUILD_CONSUMER_TESTS=ON`
-只在显式 opt-in 的 consumer/integration profile 中构建生成 fixture、嵌入式与安装包能力测试；
-tag 发布前该 profile 是 wheel 发布的必经门禁。这样保留第 18 项的公共能力验证，同时避免将
+在独立的 consumer/integration profile 中构建生成 fixture、嵌入式与安装包能力测试。
+main push 自动运行该 profile，与普通 Debug/Release 预热任务并行；也支持手动触发，
+tag 发布前仍是 wheel 发布的必经门禁。这样保留第 18 项的公共能力验证，同时避免将
 consumer 或 Release 全量运行误作每个日常 issue 的默认步骤。
 
 只有 lexer/parser 能接受源码，不算支持 instruction。

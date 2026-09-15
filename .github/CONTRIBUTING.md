@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | `linux-ci.yml` | PR opened/updated/reopened, monthly schedule, manual dispatch | Full GCC Debug and Release build/test presets; check names remain `Debug` and `Release` |
 | `python-and-package-consumer.yml` | PR opened/updated/reopened, monthly schedule, manual dispatch | Python unit tests and formatting; check name remains `test` |
-| `integration-smoke.yml` | Push to `main` or `dev`; manual dispatch | Pushes refresh normal Debug/Release production and unit-test caches; manual dispatch runs opt-in consumer/integration coverage |
+| `integration-smoke.yml` | Push to `main` or `dev`; manual dispatch | Pushes refresh normal Debug/Release production and unit-test caches; pushes to `main` and manual dispatch run opt-in consumer/integration coverage |
 | `release-wheel.yml` | Push of a `v*` tag | Consumer/integration validation, then wheel build, smoke, and release publication |
 
 Normal Debug/Release and Python unit coverage remain the regular merge checks.
@@ -30,12 +30,13 @@ leave `PTX_FRONTEND_BUILD_CONSUMER_TESTS` off. The persistent seed contains only
 production objects; a successful push refreshes it only after the matching unit
 test completes.
 
-Manual dispatch runs the independent `ci-consumer-integration`
-preset. It enables `PTX_FRONTEND_BUILD_CONSUMER_TESTS`, builds only the production
-resolved-IR target and modern-operand fixture executable, and selects CTest tests
-by the stable `consumer` label. The group covers generated-fixture self-heal and
-topology checks, embedded-parent use, and the full installed-package consumer.
-It restores compatible caches but never saves a main seed.
+Pushes to `main` and manual dispatch run the independent
+`ci-consumer-integration` preset. It enables `PTX_FRONTEND_BUILD_CONSUMER_TESTS`,
+builds only the production resolved-IR target and modern-operand fixture
+executable, and selects CTest tests by the stable `consumer` label. The group
+covers generated-fixture self-heal and topology checks, embedded-parent use, and
+the full installed-package consumer. It restores compatible caches but never
+saves a main seed.
 
 ## Local consumer and integration coverage
 
@@ -63,11 +64,12 @@ configuration. Installed toolchains can differ within one matrix, so a fixed Deb
 writer cannot populate every Release key. Jobs sharing a key may race to save;
 the cache action handles duplicate saves without failing the job.
 Only Debug writes shared APT, pip, and vcpkg source-download caches. The Python
-unit and manual consumer jobs restore dependency caches without owning a main seed.
+unit and consumer jobs restore dependency caches without owning a main seed.
 
 Integration and PR Debug jobs share a compiler-cache namespace; Release has its
-own shared namespace. Manual and tag consumer jobs restore Debug caches but do not
-upload a smaller consumer-only snapshot that could supersede a production seed.
+own shared namespace. Main-push, manual, and tag consumer jobs restore Debug
+caches but do not upload a smaller consumer-only snapshot that could supersede a
+production seed.
 Trusted-main production jobs publish per-run snapshots so caches can advance after
 source changes; this does not bypass ccache content validation.
 

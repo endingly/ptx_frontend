@@ -2559,8 +2559,8 @@ TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
 }
 
 TEST(ResolveLop3, SelectsBoolopLayoutAndRejectsNonImmediateLut) {
-  const auto boolop = resolve<Lop3>(parse_instruction(
-      "lop3.and.b32 _|%p0, 1, %r2, 3, 0x1a, !%p1;"));
+  const auto boolop = resolve<Lop3>(
+      parse_instruction("lop3.and.b32 _|%p0, 1, %r2, 3, 0x1a, !%p1;"));
   ASSERT_TRUE(boolop.has_value()) << boolop.error().message;
   ASSERT_NE(std::get_if<Lop3::BoolopB32>(&boolop->variant), nullptr);
   EXPECT_FALSE(
@@ -2630,10 +2630,14 @@ TEST(ResolveShf, SelectsEveryDirectionAndModeVariant) {
 
 TEST(ResolveLogicAndShift, SelectsExpandedWidths) {
   for (const auto source : {
-           "and.pred %p0, !%p1, 1;", "or.b16 %h0, %h1, 1;",
-           "xor.b64 %rd0, %rd1, 1;", "not.b16 %h0, %h1;",
-           "cnot.b64 %rd0, 0;", "shl.b64 %rd0, %rd1, 64;",
-           "shr.b16 %h0, %h1, 16;", "shr.u64 %rd0, %rd1, 1;",
+           "and.pred %p0, !%p1, 1;",
+           "or.b16 %h0, %h1, 1;",
+           "xor.b64 %rd0, %rd1, 1;",
+           "not.b16 %h0, %h1;",
+           "cnot.b64 %rd0, 0;",
+           "shl.b64 %rd0, %rd1, 64;",
+           "shr.b16 %h0, %h1, 16;",
+           "shr.u64 %rd0, %rd1, 1;",
            "shr.s32 %r0, %r1, 1;",
        }) {
     SCOPED_TRACE(source);

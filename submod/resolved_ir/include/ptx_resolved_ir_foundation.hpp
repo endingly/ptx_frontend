@@ -267,6 +267,14 @@ struct OperandView {
   /** Whether a predicate-pair value retains at least one destination lane. */
   bool predicate_pair_has_destination = true;
   std::array<ScalarType, 2> predicate_pair_types{};
+  /** Whether the data lane of a d|p destination remains present. */
+  bool paired_destination_data_present = true;
+  /** Whether the predicate lane of a d|p destination remains present. */
+  bool paired_destination_predicate_present = true;
+  /** Declared type of the present predicate lane of a d|p destination. */
+  std::optional<ScalarType> paired_destination_predicate_type;
+  /** A destination payload contains a complemented predicate. */
+  bool destination_predicate_negated = false;
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
   std::optional<MemoryStateSpace> address_state_space;

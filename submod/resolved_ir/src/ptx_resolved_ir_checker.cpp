@@ -552,6 +552,60 @@ CheckResult check_operands(
                                  descriptor.target_field_id),
       });
     }
+    if (operand->actual_shape == OperandShape::ShflDestination) {
+      if (!operand->paired_destination_data_present &&
+          !operand->paired_destination_predicate_present) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format("Paired destination '{}' must retain a data "
+                                   "or predicate output.",
+                                   descriptor.target_field_id),
+        });
+      }
+      if (!operand->paired_destination_data_present &&
+          !descriptor.allow_destination_sink) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format("Paired destination '{}' cannot discard its "
+                                   "data output.",
+                                   descriptor.target_field_id),
+        });
+      }
+      if (!operand->paired_destination_predicate_present &&
+          !descriptor.allow_predicate_sink) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format("Paired destination '{}' cannot discard its "
+                                   "predicate output.",
+                                   descriptor.target_field_id),
+        });
+      }
+      if (operand->paired_destination_predicate_type &&
+          *operand->paired_destination_predicate_type != ScalarType::Pred) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format(
+                "Paired destination '{}' has predicate "
+                "output type '{}' rather than '.pred'.",
+                descriptor.target_field_id,
+                to_string(*operand->paired_destination_predicate_type)),
+        });
+      }
+    }
+    if (descriptor.role == OperandRole::Destination &&
+        operand->destination_predicate_negated) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("Predicate destination '{}' cannot be negated.",
+                          descriptor.target_field_id),
+      });
+    }
     if (operand->is_sink) {
       append_address_constraint_availability_diagnostics(
           descriptor.sink_availability, "mbarrier state-token sink", *operand,

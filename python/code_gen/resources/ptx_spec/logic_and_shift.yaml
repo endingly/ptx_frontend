@@ -9,234 +9,129 @@ section: "9.7.8"
 
 operand_patterns:
   binary_bitwise:
-    - name: dst
-      kind: reg
-      role: dst
-      access: write
-      type: b32
-    - name: src1
-      kind: reg_or_imm
-      role: src1
-      access: read
-      type: b32
-    - name: src2
-      kind: reg_or_imm
-      role: src2
-      access: read
-      type: b32
-
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+  binary_predicate:
+    - {name: dst, kind: pred, role: dst, access: write, type: pred}
+    - {name: src1, kind: pred_source, role: src1, access: read, type: pred}
+    - {name: src2, kind: pred_source, role: src2, access: read, type: pred}
   unary_bitwise:
-    - name: dst
-      kind: reg
-      role: dst
-      access: write
-      type: b32
-    - name: src
-      kind: reg_or_imm
-      role: src
-      access: read
-      type: b32
-
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+  unary_predicate:
+    - {name: dst, kind: pred, role: dst, access: write, type: pred}
+    - {name: src, kind: pred_source, role: src, access: read, type: pred}
   lop3_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
-    - {name: src3, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
-    - {name: lut, kind: imm, role: src, access: read, type: u32}
-
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: b32, register_width: same_width}
+    - {name: lut, kind: imm, role: src, access: read, type: u8}
+  lop3_boolop_b32:
+    - {name: dst, kind: shfl_dest, role: dst, access: write, type: b32, register_width: same_width, allow_destination_sink: true, allow_predicate_sink: false}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: b32, register_width: same_width}
+    - {name: lut, kind: imm, role: src, access: read, type: u8}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
   shf_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: b32, register_width: same_width}
     - {name: count, kind: reg_or_imm, role: src3, access: read, type: u32}
-
-  shift_b32:
-    - name: dst
-      kind: reg
-      role: dst
-      access: write
-      type: b32
-    - name: src
-      kind: reg_or_imm
-      role: src
-      access: read
-      type: b32
-    - name: amount
-      kind: reg_or_imm
-      role: src2
-      access: read
-      type: u32
+  shift:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: amount, kind: reg_or_imm, role: src2, access: read, type: u32}
 
 instructions:
   - opcode: and
     section: "9.7.8.1"
-    doc: "Bitwise AND of two 32-bit operands."
-    syntax: "and.b32 dst, src1, src2"
-    operands: $binary_bitwise
-
+    doc: "Bitwise AND of matching-width predicate or 16-, 32-, or 64-bit operands."
+    syntax: "and.{pred|b16|b32|b64} dst, src1, src2"
     variants:
-      - name: and_b32
-        description: "32-bit bitwise AND with register or immediate sources."
-        availability:
-          ptx: "1.0"
-          sm: 0
-        modifiers:
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b32
-
-        examples:
-          - ptx: "and.b32 %r0, %r1, %r2;"
-            valid: true
-          - ptx: "and.b32 %r0, %r1, 1;"
-            valid: true
+      - {name: and_pred, operands: $binary_predicate, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}]}
+      - {name: and_b16, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: and_b32, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: and_b64, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
   - opcode: or
     section: "9.7.8.2"
-    doc: "Bitwise OR of two 32-bit operands."
-    syntax: "or.b32 dst, src1, src2"
-    operands: $binary_bitwise
-
+    doc: "Bitwise OR of matching-width predicate or 16-, 32-, or 64-bit operands."
+    syntax: "or.{pred|b16|b32|b64} dst, src1, src2"
     variants:
-      - name: or_b32
-        description: "32-bit bitwise OR with register or immediate sources."
-        availability:
-          ptx: "1.0"
-          sm: 0
-        modifiers:
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b32
-
-        examples:
-          - ptx: "or.b32 %r0, %r1, %r2;"
-            valid: true
-          - ptx: "or.b32 %r0, %r1, 1;"
-            valid: true
+      - {name: or_pred, operands: $binary_predicate, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}]}
+      - {name: or_b16, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: or_b32, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: or_b64, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
   - opcode: xor
     section: "9.7.8.3"
-    doc: "Bitwise XOR of two 32-bit operands."
-    syntax: "xor.b32 dst, src1, src2"
-    operands: $binary_bitwise
-
+    doc: "Bitwise XOR of matching-width predicate or 16-, 32-, or 64-bit operands."
+    syntax: "xor.{pred|b16|b32|b64} dst, src1, src2"
     variants:
-      - name: xor_b32
-        description: "32-bit bitwise XOR with register or immediate sources."
-        availability:
-          ptx: "1.0"
-          sm: 0
-        modifiers:
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b32
-
-        examples:
-          - ptx: "xor.b32 %r0, %r1, %r2;"
-            valid: true
-          - ptx: "xor.b32 %r0, %r1, 1;"
-            valid: true
+      - {name: xor_pred, operands: $binary_predicate, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}]}
+      - {name: xor_b16, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: xor_b32, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: xor_b64, operands: $binary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
   - opcode: not
     section: "9.7.8.4"
-    doc: "Bitwise NOT of one 32-bit operand."
-    syntax: "not.b32 dst, src"
-    operands: $unary_bitwise
+    doc: "Bitwise NOT of a predicate or 16-, 32-, or 64-bit operand."
+    syntax: "not.{pred|b16|b32|b64} dst, src"
     variants:
-      - name: not_b32
-        description: "32-bit bitwise NOT with a register or immediate source."
-        availability:
-          ptx: "1.0"
-          sm: 0
-        modifiers:
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b32
-        examples:
-          - ptx: "not.b32 %r0, %r1;"
-            valid: true
-          - ptx: "not.b32 %r0, 1;"
-            valid: true
+      - {name: not_pred, operands: $unary_predicate, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}]}
+      - {name: not_b16, operands: $unary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: not_b32, operands: $unary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: not_b64, operands: $unary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
+  - opcode: cnot
+    section: "9.7.8.5"
+    doc: "C/C++-style logical negation of a matching-width 16-, 32-, or 64-bit operand."
+    syntax: "cnot.{b16|b32|b64} dst, src"
+    variants:
+      - {name: cnot_b16, operands: $unary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: cnot_b32, operands: $unary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: cnot_b64, operands: $unary_bitwise, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
   - opcode: lop3
     section: "9.7.8.6"
-    doc: "Frozen 32-bit three-input logic operation with an 8-bit immediate LUT."
-    syntax: "lop3.b32 dst, src1, src2, src3, lut"
-    operands: $lop3_b32
+    doc: "32-bit three-input logic with an unsigned 8-bit truth-table immediate and optional predicate result."
+    syntax: "lop3.b32 dst, src1, src2, src3, lut | lop3.{and|or}.b32 dst|predicate, src1, src2, src3, lut, combine"
     variants:
-      - name: lop3_b32
-        availability: {ptx: "4.3", sm: 50}
+      - {name: lop3_b32, operands: $lop3_b32, availability: {ptx: "4.3", sm: 50}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}], constraints: [{kind: immediate_range, operand: lut, minimum: 0, maximum: 255}]}
+      - name: lop3_boolop_b32
+        operands: $lop3_boolop_b32
+        availability: {ptx: "8.2", sm: 70}
         modifiers:
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or]}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
-        constraints:
-          - {kind: immediate_range, operand: lut, minimum: 0, maximum: 255}
-        examples:
-          - {ptx: "lop3.b32 %r0, %r1, %r2, %r3, 0x1a;", valid: true}
+        constraints: [{kind: immediate_range, operand: lut, minimum: 0, maximum: 255}]
   - opcode: shf
     section: "9.7.8.7"
-    doc: "Frozen 32-bit funnel shifts with fixed left-clamp and right-wrap modes."
-    syntax: "shf.l.clamp.b32 dst, src1, src2, count | shf.r.wrap.b32 dst, src1, src2, count"
+    doc: "32-bit funnel shifts for both directions and both clamp/wrap modes."
+    syntax: "shf.{l|r}.{clamp|wrap}.b32 dst, src1, src2, count"
     operands: $shf_b32
     variants:
-      - name: shf_l_clamp_b32
-        availability: {ptx: "3.1", sm: 32}
-        modifiers:
-          - {name: left, kind: flag, presence: fixed, value: true, token: ".l"}
-          - {name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}
-          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
-        examples:
-          - {ptx: "shf.l.clamp.b32 %r0, %r1, %r2, 8;", valid: true}
-      - name: shf_r_wrap_b32
-        availability: {ptx: "3.1", sm: 32}
-        modifiers:
-          - {name: right, kind: flag, presence: fixed, value: true, token: ".r"}
-          - {name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}
-          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
-        examples:
-          - {ptx: "shf.r.wrap.b32 %r0, %r1, %r2, %r3;", valid: true}
+      - {name: shf_l_clamp_b32, availability: {ptx: "3.1", sm: 32}, modifiers: [{name: left, kind: flag, presence: fixed, value: true, token: ".l"}, {name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: shf_l_wrap_b32, availability: {ptx: "3.1", sm: 32}, modifiers: [{name: left, kind: flag, presence: fixed, value: true, token: ".l"}, {name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: shf_r_clamp_b32, availability: {ptx: "3.1", sm: 32}, modifiers: [{name: right, kind: flag, presence: fixed, value: true, token: ".r"}, {name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: shf_r_wrap_b32, availability: {ptx: "3.1", sm: 32}, modifiers: [{name: right, kind: flag, presence: fixed, value: true, token: ".r"}, {name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
   - opcode: shl
     section: "9.7.8.8"
-    doc: "Shift a 32-bit operand left by a 32-bit count."
-    syntax: "shl.b32 dst, src, amount"
-    operands: $shift_b32
+    doc: "Shift a 16-, 32-, or 64-bit operand left by a 32-bit count."
+    syntax: "shl.{b16|b32|b64} dst, src, amount"
     variants:
-      - name: shl_b32
-        availability:
-          ptx: "1.0"
-          sm: 0
-        modifiers:
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: b32
-        examples:
-          - ptx: "shl.b32 %r0, %r1, %r2;"
-            valid: true
-          - ptx: "shl.b32 %r0, %r1, 1;"
-            valid: true
+      - {name: shl_b16, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: shl_b32, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: shl_b64, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
   - opcode: shr
     section: "9.7.8.9"
-    doc: "Shift a 32-bit operand right logically by a 32-bit count."
-    syntax: "shr.u32 dst, src, amount"
-    operands: $shift_b32
+    doc: "Shift a 16-, 32-, or 64-bit operand right with bit, zero, or sign fill and a 32-bit count."
+    syntax: "shr.{b16|b32|b64|u16|u32|u64|s16|s32|s64} dst, src, amount"
     variants:
-      - name: shr_u32
-        availability:
-          ptx: "1.0"
-          sm: 0
-        modifiers:
-          - name: type
-            kind: type
-            domain: scalar_types
-            presence: fixed
-            value: u32
-        examples:
-          - ptx: "shr.u32 %r0, %r1, %r2;"
-            valid: true
-          - ptx: "shr.u32 %r0, %r1, 1;"
-            valid: true
+      - {name: shr_b16, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}]}
+      - {name: shr_b32, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]}
+      - {name: shr_b64, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]}
+      - {name: shr_u16, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}]}
+      - {name: shr_u32, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]}
+      - {name: shr_u64, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}]}
+      - {name: shr_s16, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}]}
+      - {name: shr_s32, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]}
+      - {name: shr_s64, operands: $shift, availability: {ptx: "1.0", sm: 0}, modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}]}

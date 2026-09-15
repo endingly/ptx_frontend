@@ -384,6 +384,48 @@ int check_fma_contract() {
   return 0;
 }
 
+/** Verify newly exported logic-and-shift operations through installed APIs. */
+int check_logic_shift_contract() {
+  using namespace ptx_frontend::resolved_ir;
+  constexpr std::string_view fixture = R"ptx(
+.version 9.3
+.target sm_100
+.entry logic_shift_forms() {
+  .reg .pred %p<2>;
+  .reg .b32 %r<2>;
+  .reg .b64 %rd<2>;
+  cnot.b64 %rd0, %rd1;
+  lop3.or.b32 _ | %p0, 1, %r0, 2, 0xff, !%p1;
+}
+)ptx";
+  ptx_frontend::PtxSyntaxParser parser(fixture);
+  const auto ast = parser.parseModule();
+  if (!ast || !ast.diagnostics.empty())
+    return 80;
+  const auto module = resolveModule(*ast);
+  if (!module || module->functions.size() != 1 ||
+      module->functions.front().body.size() != 2)
+    return 81;
+  const auto& body = module->functions.front().body;
+  const auto* cnot = std::get_if<Cnot>(&body[0]);
+  const auto* lop3 = std::get_if<Lop3>(&body[1]);
+  if (!cnot || !lop3 || !std::holds_alternative<Cnot::B64>(cnot->variant) ||
+      !std::holds_alternative<Lop3::BoolopB32>(lop3->variant)) {
+    return 82;
+  }
+  const auto& boolop = std::get<Lop3::BoolopB32>(lop3->variant);
+  if (boolop.boolean.value != BooleanOperator::Or || boolop.dst.value.data ||
+      !boolop.dst.value.predicate ||
+      boolop.dst.value.predicate->value.negated) {
+    return 83;
+  }
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  if (!checker::check(*cnot, context) || !checker::check(*lop3, context))
+    return 84;
+  return 0;
+}
+
 /** Verify imported binding diagnostics survive through the installed module API. */
 int check_module_diagnostics() {
   using namespace ptx_frontend;
@@ -521,6 +563,10 @@ int main() {
   }
   if (const int fma_result = check_fma_contract(); fma_result != 0)
     return fma_result;
+  if (const int logic_shift_result = check_logic_shift_contract();
+      logic_shift_result != 0) {
+    return logic_shift_result;
+  }
   if (const int diagnostic_result = check_module_diagnostics();
       diagnostic_result != 0)
     return diagnostic_result;

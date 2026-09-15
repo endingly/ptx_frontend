@@ -2558,11 +2558,11 @@ TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
   }
 }
 
-TEST(ResolveLop3, RejectsUnfrozenPredicateExtensionAndNonImmediateLut) {
-  EXPECT_FALSE(
-      selectVariant<Lop3>(
-          parse_instruction("lop3.and.b32 %r0, %r1, %r2, %r3, 0x1a, %p0;"))
-          .has_value());
+TEST(ResolveLop3, SelectsBoolopLayoutAndRejectsNonImmediateLut) {
+  const auto boolop = resolve<Lop3>(parse_instruction(
+      "lop3.and.b32 _|%p0, 1, %r2, 3, 0x1a, !%p1;"));
+  ASSERT_TRUE(boolop.has_value()) << boolop.error().message;
+  ASSERT_NE(std::get_if<Lop3::BoolopB32>(&boolop->variant), nullptr);
   EXPECT_FALSE(
       resolve<Lop3>(parse_instruction("lop3.b32 %r0, %r1, %r2, %r3, %r4;"))
           .has_value());
@@ -2609,7 +2609,7 @@ TEST(ResolveBrev, SelectsFrozenB32VariantAndRejectsB64) {
                    .has_value());
 }
 
-TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
+TEST(ResolveShf, SelectsEveryDirectionAndModeVariant) {
   const auto left =
       resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;
@@ -2618,13 +2618,26 @@ TEST(ResolveShf, SelectsFrozenDirectionAndModeVariants) {
       resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(right.has_value()) << right.error().message;
   ASSERT_NE(std::get_if<Shf::RWrapB32>(&right->variant), nullptr);
+  const auto left_wrap =
+      resolve<Shf>(parse_instruction("shf.l.wrap.b32 %r0, 1, %r2, 32;"));
+  ASSERT_TRUE(left_wrap.has_value()) << left_wrap.error().message;
+  ASSERT_NE(std::get_if<Shf::LWrapB32>(&left_wrap->variant), nullptr);
+  const auto right_clamp =
+      resolve<Shf>(parse_instruction("shf.r.clamp.b32 %r0, %r1, 2, 33;"));
+  ASSERT_TRUE(right_clamp.has_value()) << right_clamp.error().message;
+  ASSERT_NE(std::get_if<Shf::RClampB32>(&right_clamp->variant), nullptr);
 }
 
-TEST(ResolveShf, RejectsUnfrozenDirectionAndModeVariants) {
-  for (const auto source : {"shf.l.wrap.b32 %r0, %r1, %r2, 8;",
-                            "shf.r.clamp.b32 %r0, %r1, %r2, 8;"}) {
+TEST(ResolveLogicAndShift, SelectsExpandedWidths) {
+  for (const auto source : {
+           "and.pred %p0, !%p1, 1;", "or.b16 %h0, %h1, 1;",
+           "xor.b64 %rd0, %rd1, 1;", "not.b16 %h0, %h1;",
+           "cnot.b64 %rd0, 0;", "shl.b64 %rd0, %rd1, 64;",
+           "shr.b16 %h0, %h1, 16;", "shr.u64 %rd0, %rd1, 1;",
+           "shr.s32 %r0, %r1, 1;",
+       }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Shf>(parse_instruction(source)).has_value());
+    EXPECT_TRUE(resolveInstruction(parse_instruction(source)).has_value());
   }
 }
 

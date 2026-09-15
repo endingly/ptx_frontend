@@ -302,6 +302,18 @@ a numbered `%pN` guard. `ResolvedBranchTarget` follows the same two-boundary
 rule: module resolution stores the current function label's `SymbolId`, while
 standalone resolution retains the source spelling with no symbol identity.
 
+Public-IR revalidation checks execution predicates independently of the selected
+opcode variant and operand layout, including operandless instructions. A known
+non-predicate register class, non-`.pred` declaration type, or vector shape is
+invalid; missing standalone declaration metadata remains unknown. Owned-module
+validation additionally requires the guard's identity to name an actual scalar
+`.reg .pred` declaration in the function's symbol table, rather than trusting
+cached register metadata. This includes legal register-valued function formals
+and parameterized predicate-register members. Plain and negated guards share
+the same contract. Diagnostics use the guard's retained location when present,
+otherwise the instruction range; neither check requires the original source or
+syntax AST to remain alive.
+
 `ResolvedSpecialRegisterRef` retains the exact spelling, a stable
 `SpecialRegisterId`, and an optional vector component. It does not store an
 effective type that depends on an instruction or target. The independent
@@ -400,9 +412,10 @@ address value restricted to an addressable data-symbol or formal-parameter
 base. Scalar and braced-vector `ld`/`st` require bracketed dereference and
 cover register, immediate, and bound-symbol bases. Each opcode uses
 `GenericScalar`, `ExplicitScalar`, `GenericVector`, and `ExplicitVector`
-variants. Their runtime type field accepts `.b8/.b16/.b32/.b64`,
-`.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; `.b128` is not a
-memory type in the current model. Vector variants add a required runtime
+variants. Their runtime type field accepts `.b8/.b16/.b32/.b64/.b128`,
+`.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; the selected
+`.b128` value requires PTX 8.3 / SM 70, and `.sys` with `.b128` requires PTX
+8.4. Vector variants add a required runtime
 `.v2/.v4/.v8` field, and the register-vector operand descriptor links its expected
 element count to that field rather than duplicating variants per arity. Memory
 vectors use element type policy: each register element is checked against the
@@ -417,10 +430,12 @@ check, either side being a bit type is compatible, signed/unsigned fundamental
 integers are mutually compatible, floats require the exact type/size, and
 integer/float combinations remain incompatible. This covers wider load
 destinations and store sources through 64-bit declared registers, including
-store truncation. A wider actual `.b128` register is deliberately rejected
-until declaration-type target availability is represented and checked; exact
-`.b128` compatibility remains unchanged for its existing `mov` vector
-consumers.
+store truncation. A wider actual `.b128` register is deliberately rejected by
+the `EqualOrWider` policy for a narrower selected instruction; an exact `.b128`
+declaration is accepted for a selected `.b128` memory instruction. Exact
+`.b128` compatibility remains unchanged for existing `mov` vector consumers.
+The focused [LD coverage](ld_coverage.md) and [ST coverage](st_coverage.md)
+documents define the current memory subset.
 
 Explicit loads accept `.const/.global/.local/.param/.shared`, while stores
 accept `.global/.local/.param/.shared`. `WithLocs` retains both runtime

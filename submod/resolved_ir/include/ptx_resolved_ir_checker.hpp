@@ -39,6 +39,7 @@ enum class CheckDiagnosticKind : uint8_t {
   ModuleSourceMismatch,
   MissingValidationContext,
   ModifierValueDomainMismatch,
+  InvalidExecutionPredicate,
 };
 
 /** A checker failure anchored to a stable resolved-IR source range. */
@@ -73,6 +74,10 @@ CheckResult check_availability(const VariantDescriptor&, const Context&);
 /** Find a selected variant and run checker logic shared by all opcode rules. */
 CheckResult check_common(const InstructionDescriptor&, std::string_view,
                          const Context&);
+/** Check the common predicate-register contract of an instruction guard. */
+CheckResult check_execution_predicate(
+    const std::optional<WithLocs<ResolvedPredicate>>& predicate,
+    const Context&);
 /** Check descriptor-driven operand shape, type, and declaration constraints. */
 CheckResult check_operands(std::span<const OperandDescriptor>,
                            std::span<const FieldView>,

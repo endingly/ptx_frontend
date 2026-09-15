@@ -9,7 +9,8 @@ permissions:
 
 concurrency:
   group: integration-smoke-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Main seed uploads and cleanup must not overlap a later main run.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
@@ -28,6 +29,9 @@ jobs:
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
+    outputs:
+      debug-prefix: ${{ steps.seed-metadata.outputs.debug-prefix }}
+      release-prefix: ${{ steps.seed-metadata.outputs.release-prefix }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,25 +47,47 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Initialize compiler-cache metrics directory
+        shell: bash
+        run: echo "CCACHE_METRICS_DIR=$RUNNER_TEMP/ccache-metrics/${{ matrix.preset }}" >> "$GITHUB_ENV"
+
       - name: Set up Linux dependencies
         id: setup
         uses: ./.github/actions/setup-linux
         with:
           writes-shared-caches: ${{ matrix.writes_shared_caches }}
 
-      - name: Restore compiler cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # All consumers restore this compatibility prefix. Only trusted main
+      # pushes below create immutable Debug and Release seeds for their SHA.
+      - name: Restore persistent compiler cache
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
-          key: ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
           restore-keys: |
-            ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ steps.setup.outputs.month }}-
-            ccache-v7-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
 
-      - name: Configure
+      # Each matrix child exports only its own full lineage prefix. Matrix job
+      # outputs retain the last successful nonempty value for each configuration.
+      - name: Export compiler-cache lineage metadata
+        id: seed-metadata
         shell: bash
         run: |
+          prefix="ccache-v8-${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-"
+          if [ "${{ matrix.preset }}" = ci-linux-gcc-debug ]; then
+            echo "debug-prefix=$prefix" >> "$GITHUB_OUTPUT"
+          else
+            echo "release-prefix=$prefix" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure and reset production compiler-cache statistics
+        shell: bash
+        run: |
+          rm -rf "$CCACHE_METRICS_DIR"
+          mkdir -p "$CCACHE_METRICS_DIR"
           ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/production.started-at"
           cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
       - name: Save vcpkg source-download cache
@@ -79,16 +105,119 @@ jobs:
           path: .cache/vcpkg/archives
           key: ${{ steps.setup.outputs.binary-cache-key }}
 
-      - name: Build
-        run: cmake --build --preset "${{ matrix.preset }}"
+      - name: Build production target
+        id: production-build
+        shell: bash
+        run: |
+          date +%s > "$CCACHE_METRICS_DIR/production.build-started-at"
+          set +e
+          cmake --build --preset "${{ matrix.preset }}" --target ptx_frontend_resolved_ir
+          build_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/production.finished-at"
+          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
+          exit "$build_exit_code"
 
-      - name: Test installed package consumer
-        if: matrix.name == 'Debug'
-        run: ctest --preset ci-python-and-package-consumer -R '^ptx_frontend\.package_consumer$' --output-on-failure --no-tests=error
-
-      - name: Show compiler cache statistics
+      - name: Record production compiler-cache statistics
         if: always()
         shell: bash
         run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase production-build --started-at-file "$CCACHE_METRICS_DIR/production.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-started-at-file "$CCACHE_METRICS_DIR/production.build-started-at" \
+            --build-finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-exit-code-file "$CCACHE_METRICS_DIR/production.build-exit-code" \
+            --status "${{ steps.production-build.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/production-build.json" || true
           ccache --show-stats || true
-          ccache --show-compression || true
+
+      # The installed package consumer invokes its own compiler. It must not add
+      # objects to the production seed that this job may later upload.
+      - name: Reset disposable package-consumer compiler cache statistics
+        if: success() && matrix.name == 'Debug'
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: |
+          rm -rf "$CCACHE_DIR"
+          mkdir -p "$CCACHE_DIR"
+          ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
+
+      - name: Test installed package consumer in disposable compiler cache
+        id: package-consumer-test
+        shell: bash
+        if: success() && matrix.name == 'Debug'
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: |
+          set +e
+          ctest --preset ci-python-and-package-consumer -R '^ptx_frontend\.package_consumer$' --output-on-failure --no-tests=error
+          test_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
+          exit "$test_exit_code"
+
+      - name: Record package-consumer compiler-cache statistics
+        if: always() && matrix.name == 'Debug'
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase package-consumer --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
+            --status "${{ steps.package-consumer-test.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/package-consumer.json" || true
+          ccache --show-stats || true
+
+      # The artifact contains local ccache counters. Cache-action transfer
+      # bytes/times are intentionally recorded only in the Actions action logs.
+      - name: Upload compiler-cache measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-ccache-metrics-${{ matrix.preset }}
+          path: ${{ runner.temp }}/ccache-metrics/${{ matrix.preset }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Exact hits are immutable and require no upload. A prefix hit creates
+      # this main commit's seed only after its production build/tests succeed.
+      - name: Save persistent compiler cache seed
+        id: ccache-save
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+
+  cleanup:
+    name: Retain trusted compiler-cache seeds
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.result == 'success' && needs.test.outputs.debug-prefix != '' && needs.test.outputs.release-prefix != ''
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      # This is a trusted main revision, not an artifact supplied by a PR.
+      - name: Check out trusted cleanup helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # The helper verifies the current key/ref/version before deleting. Any
+      # list, pagination, or verification anomaly fails before a delete call.
+      - name: Retain current and previous seeds for both configurations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEBUG_PREFIX: ${{ needs.test.outputs.debug-prefix }}
+          RELEASE_PREFIX: ${{ needs.test.outputs.release-prefix }}
+        shell: bash
+        run: |
+          for prefix in "$DEBUG_PREFIX" "$RELEASE_PREFIX"; do
+            python3 .github/scripts/cleanup_ccache_seeds.py \
+              --repository "$GITHUB_REPOSITORY" --ref refs/heads/main \
+              --prefix "$prefix" --current-key "${prefix}${GITHUB_SHA}" --execute
+          done

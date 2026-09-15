@@ -189,6 +189,46 @@ int check_owned_module_handoff() {
       defaulted->header.regions[1].address_size_provenance !=
           ir::SourceConfigurationProvenance::Defaulted)
     return 38;
+
+  std::optional<ir::ResolvedModule> guarded;
+  {
+    std::string source = R"ptx(
+.version 9.3
+.target sm_90
+.entry guarded() {
+  .reg .pred %p0;
+  .reg .u32 %r0;
+  @%p0 mov.u32 %r0, 1;
+  ret;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return 39;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!resolved)
+      return 40;
+    guarded.emplace(std::move(*resolved));
+  }
+  if (!guarded || !ir::validateModule(*guarded))
+    return 41;
+  auto& guarded_mov =
+      std::get<ir::Mov>(guarded->functions.front().body.front());
+  if (!guarded_mov.execution_predicate)
+    return 42;
+  auto& guarded_operands = std::get<ir::Mov::Scalar::ScalarOperands>(
+      std::get<ir::Mov::Scalar>(guarded_mov.variant).operands);
+  const auto predicate = guarded_mov.execution_predicate->value.register_ref;
+  guarded_mov.execution_predicate->value.register_ref =
+      guarded_operands.dst.value;
+  if (ir::validateModule(*guarded))
+    return 43;
+  guarded_mov.execution_predicate->value.register_ref = predicate;
+  guarded_mov.execution_predicate->value.register_ref.symbol_id =
+      guarded_operands.dst.value.symbol_id;
+  if (ir::validateModule(*guarded))
+    return 44;
   return 0;
 }
 

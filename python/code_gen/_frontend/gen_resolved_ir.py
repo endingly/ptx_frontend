@@ -527,9 +527,24 @@ def _emit_check_specialization(instruction: ResolvedInstruction) -> str:
 template <>
 CheckResult check<{instruction.cpp_name}>(
     const {instruction.cpp_name}& instruction, const Context& context) {{
+  const auto execution_predicate_check = check_execution_predicate(
+      instruction.execution_predicate, context);
 {variant_lambdas}
 
-  return std::visit(detail::Overloaded{{{visitor_lambdas}}}, instruction.variant);
+  const auto variant_check =
+      std::visit(detail::Overloaded{{{visitor_lambdas}}}, instruction.variant);
+  if (execution_predicate_check && variant_check)
+    return {{}};
+  CheckDiagnostics diagnostics;
+  if (!execution_predicate_check) {{
+    diagnostics.insert(diagnostics.end(), execution_predicate_check.error().begin(),
+                       execution_predicate_check.error().end());
+  }}
+  if (!variant_check) {{
+    diagnostics.insert(diagnostics.end(), variant_check.error().begin(),
+                       variant_check.error().end());
+  }}
+  return std::unexpected(std::move(diagnostics));
 }}"""
 
 

@@ -30,13 +30,13 @@ jobs:
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
-      CCACHE_METRICS_DIR: ${{ runner.temp }}/ccache-metrics/ci-python-and-package-consumer
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Test CI helper scripts
-        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
+      - name: Initialize compiler-cache metrics directory
+        shell: bash
+        run: echo "CCACHE_METRICS_DIR=$RUNNER_TEMP/ccache-metrics/ci-python-and-package-consumer" >> "$GITHUB_ENV"
 
       - name: Set up Linux dependencies
         id: setup

@@ -47,7 +47,6 @@ jobs:
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
-      CCACHE_METRICS_DIR: ${{ runner.temp }}/ccache-metrics/${{ matrix.preset }}
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +61,10 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Initialize compiler-cache metrics directory
+        shell: bash
+        run: echo "CCACHE_METRICS_DIR=$RUNNER_TEMP/ccache-metrics/${{ matrix.preset }}" >> "$GITHUB_ENV"
 
       - name: Set up Linux dependencies
         id: setup

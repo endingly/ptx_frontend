@@ -4,10 +4,6 @@ if(NOT DEFINED PTX_SOURCE_DIR OR NOT DEFINED PTX_BINARY_DIR OR
 endif()
 
 set(_test_root "${PTX_BINARY_DIR}/test/package_consumer")
-if(PTX_PACKAGE_CONSUMER_SMOKE_ONLY)
-    # A separately selected smoke must not remove a full acceptance run's files.
-    set(_test_root "${PTX_BINARY_DIR}/test/package_consumer_smoke")
-endif()
 set(_install_dir "${_test_root}/install")
 set(_build_dir "${_test_root}/build")
 set(_missing_component_build_dir "${_test_root}/missing_component")
@@ -158,11 +154,6 @@ if(DEFINED PTX_TEST_CONFIG AND NOT PTX_TEST_CONFIG STREQUAL "")
     list(APPEND _test_command --build-config "${PTX_TEST_CONFIG}")
 endif()
 execute_process(COMMAND ${_test_command} COMMAND_ERROR_IS_FATAL ANY)
-
-if(PTX_PACKAGE_CONSUMER_SMOKE_ONLY)
-    message(STATUS "Installed API smoke passed; full package acceptance remains a separate test")
-    return()
-endif()
 
 # Exercise a complete copied prefix and fixture source outside both trees.
 file(COPY "${_install_dir}/" DESTINATION "${_relocated_install_dir}")

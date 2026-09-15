@@ -11,7 +11,7 @@
                 "CMAKE_CXX_COMPILER": "/usr/bin/g++",
                 "CMAKE_BUILD_TYPE": "Debug",
                 "BUILD_TESTING": "ON",
-                "PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST": "OFF",
+                "PTX_FRONTEND_BUILD_CONSUMER_TESTS": "OFF",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
@@ -26,17 +26,18 @@
                 "CMAKE_CXX_COMPILER": "/usr/bin/g++",
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_TESTING": "ON",
+                "PTX_FRONTEND_BUILD_CONSUMER_TESTS": "OFF",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
         },
         {
-            "name": "ci-integration-smoke",
+            "name": "ci-consumer-integration",
             "inherits": "ci-linux-gcc-debug",
-            "binaryDir": "${sourceDir}/out/build/ci-linux-gcc-debug",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/ci-linux-gcc-debug",
-                "PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST": "ON"
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "PTX_FRONTEND_BUILD_CONSUMER_TESTS": "ON"
             }
         }
     ],
@@ -52,16 +53,10 @@
             "configuration": "Release"
         },
         {
-            "name": "ci-python-and-package-consumer",
-            "configurePreset": "ci-linux-gcc-debug",
+            "name": "ci-consumer-integration",
+            "configurePreset": "ci-consumer-integration",
             "configuration": "Debug",
-            "targets": ["ptx_frontend_resolved_ir"]
-        },
-        {
-            "name": "ci-integration-smoke",
-            "configurePreset": "ci-integration-smoke",
-            "configuration": "Debug",
-            "targets": ["ptx_frontend_resolved_ir"]
+            "targets": ["ptx_frontend_resolved_ir", "test_modern_operand_codegen"]
         }
     ],
     "testPresets": [
@@ -71,7 +66,7 @@
             "configuration": "Debug",
             "filter": {
                 "exclude": {
-                    "name": "^(python_test|ptx_frontend\\.package_consumer)$"
+                    "name": "^python_test$"
                 }
             }
         },
@@ -81,39 +76,24 @@
             "configuration": "Release",
             "filter": {
                 "exclude": {
-                    "name": "^(python_test|ptx_frontend\\.package_consumer)$"
+                    "name": "^python_test$"
                 }
             }
         },
         {
-            "name": "ci-python-and-package-consumer",
-            "configurePreset": "ci-linux-gcc-debug",
+            "name": "ci-consumer-integration",
+            "configurePreset": "ci-consumer-integration",
             "configuration": "Debug",
             "filter": {
                 "include": {
-                    "name": "^(python_test|ptx_frontend\\.package_consumer)$"
+                    "label": "consumer"
                 }
             },
             "output": {
                 "outputOnFailure": true
             },
             "execution": {
-                "jobs": 2
-            }
-        },
-        {
-            "name": "ci-integration-smoke",
-            "configurePreset": "ci-integration-smoke",
-            "configuration": "Debug",
-            "filter": {
-                "include": {
-                    "name": "^ptx_frontend\\.package_consumer_smoke$"
-                }
-            },
-            "output": {
-                "outputOnFailure": true
-            },
-            "execution": {
+                "jobs": 2,
                 "noTestsAction": "error"
             }
         }
@@ -158,39 +138,20 @@
             ]
         },
         {
-            "name": "ci-python-and-package-consumer",
-            "displayName": "CI Python and package consumer",
-            "description": "Build resolved IR and run Python and package-consumer tests",
+            "name": "ci-consumer-integration",
+            "displayName": "Consumer and integration coverage",
+            "description": "Build opt-in consumer fixtures and run their labeled CTest coverage",
             "steps": [
                 {
-                    "name": "ci-linux-gcc-debug",
+                    "name": "ci-consumer-integration",
                     "type": "configure"
                 },
                 {
-                    "name": "ci-python-and-package-consumer",
+                    "name": "ci-consumer-integration",
                     "type": "build"
                 },
                 {
-                    "name": "ci-python-and-package-consumer",
-                    "type": "test"
-                }
-            ]
-        },
-        {
-            "name": "ci-integration-smoke",
-            "displayName": "Integration library build and installed API smoke",
-            "description": "Build production libraries and run the installed consumer without full package acceptance",
-            "steps": [
-                {
-                    "name": "ci-integration-smoke",
-                    "type": "configure"
-                },
-                {
-                    "name": "ci-integration-smoke",
-                    "type": "build"
-                },
-                {
-                    "name": "ci-integration-smoke",
+                    "name": "ci-consumer-integration",
                     "type": "test"
                 }
             ]

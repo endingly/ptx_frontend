@@ -133,9 +133,8 @@ jobs:
             --output "$CCACHE_METRICS_DIR/production-build.json" || true
           ccache --show-stats || true
 
-      # Full test support contains the alternate generated fixture. Keep it and
-      # every compiler launched by CTest in a disposable cache so it cannot evict
-      # production objects from .cache/ccache.
+      # Normal unit-test support and every compiler launched by CTest stay in a
+      # disposable cache so they cannot evict production objects from .cache/ccache.
       - name: Reset disposable test compiler cache statistics
         if: success()
         shell: bash

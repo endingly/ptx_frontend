@@ -5,11 +5,52 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  consumer-integration:
+    name: Consumer and integration validation
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      CC: /usr/bin/gcc
+      CXX: /usr/bin/g++
+      VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
+      VCPKG_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.cache/vcpkg/archives,readwrite"
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 1G
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Linux dependencies
+        id: setup
+        uses: ./.github/actions/setup-linux
+
+      - name: Restore persistent Debug compiler cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+          restore-keys: |
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-
+
+      - name: Configure consumer and integration coverage
+        run: cmake --preset ci-consumer-integration -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+
+      - name: Build consumer and integration coverage
+        run: cmake --build --preset ci-consumer-integration
+
+      - name: Run labeled consumer and integration coverage
+        run: ctest --preset ci-consumer-integration --output-on-failure
+
+  release:
+    needs: consumer-integration
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

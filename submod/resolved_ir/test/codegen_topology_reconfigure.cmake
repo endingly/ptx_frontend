@@ -35,6 +35,7 @@ set(_configure_command
     "${CMAKE_COMMAND}" -C "${PTX_INITIAL_CACHE}"
     -S "${PTX_SOURCE_DIR}" -B "${_nested_binary_dir}"
     "-DBUILD_TESTING=ON"
+    "-DPTX_FRONTEND_BUILD_CONSUMER_TESTS=ON"
     "-DPTX_MODERN_OPERAND_TEST_SPEC_DIR:PATH=${_fixture_dir}")
 if(DEFINED PTX_CMAKE_GENERATOR AND NOT PTX_CMAKE_GENERATOR STREQUAL "")
     list(APPEND _configure_command -G "${PTX_CMAKE_GENERATOR}")

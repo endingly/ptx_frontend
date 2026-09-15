@@ -19,6 +19,12 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(PTX_USE_CCACHE "Use ccache to speed up compilation" ON)
 option(BUILD_TESTING "enable test program building" OFF)
+option(PTX_FRONTEND_BUILD_CONSUMER_TESTS
+       "Build consumer and integration test fixtures (requires BUILD_TESTING)" OFF)
+if(PTX_FRONTEND_BUILD_CONSUMER_TESTS AND NOT BUILD_TESTING)
+    message(FATAL_ERROR
+        "PTX_FRONTEND_BUILD_CONSUMER_TESTS requires BUILD_TESTING=ON")
+endif()
 
 if(PTX_USE_CCACHE)
     find_program(CCACHE_EXECUTABLE ccache)

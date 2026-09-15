@@ -308,6 +308,85 @@ TEST(OwnedModuleHandoff, RetainsContractsAndTypedCallsAfterInputDies) {
             checker::CheckDiagnosticKind::MissingValidationContext);
 }
 
+/** Guards retain predicate identity when the source AST no longer exists. */
+TEST(OwnedModuleHandoff, RevalidatesExecutionPredicateDeclarationsWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90
+.entry kernel() {
+  .reg .pred %p0;
+  .reg .u32 %r0;
+  @%p0 mov.u32 %r0, 1;
+  @!%p0 ret;
+}
+)ptx";
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ASSERT_EQ(module.functions.size(), 1u);
+  ResolvedFunction& kernel = module.functions.front();
+  ASSERT_EQ(kernel.body.size(), 2u);
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  auto& mov = std::get<Mov>(kernel.body.front());
+  ASSERT_TRUE(mov.execution_predicate.has_value());
+  auto& operands = std::get<Mov::Scalar::ScalarOperands>(
+      std::get<Mov::Scalar>(mov.variant).operands);
+  const ResolvedRegisterRef original_guard =
+      mov.execution_predicate->value.register_ref;
+  mov.execution_predicate->value.register_ref = operands.dst.value;
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
+  mov.execution_predicate->value.register_ref = original_guard;
+
+  ASSERT_TRUE(operands.dst.value.symbol_id.has_value());
+  mov.execution_predicate->value.register_ref.symbol_id =
+      operands.dst.value.symbol_id;
+  expect_owned_model_mismatch(module,
+                              ModuleValidationPolicy::RequireCompleteContext);
+  mov.execution_predicate->value.register_ref = original_guard;
+}
+
+/** Valid predicate declarations retain their existing binding forms. */
+TEST(OwnedModuleHandoff, PreservesPredicateFormalAndParameterizedGuards) {
+  const auto parsed = parse_owned_module_fixture(R"ptx(
+.version 9.3
+.target sm_90
+.func predicate_formal(.reg .pred %formal) { @%formal ret; }
+.entry kernel() {
+  .reg .pred %p<2>;
+  @%p0 ret;
+  @!%p1 ret;
+  ret;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModuleOnly(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  expect_owned_validation_success(
+      *resolved, ModuleValidationPolicy::RequireCompleteContext);
+
+  const auto invalid = parse_owned_module_fixture(R"ptx(
+.version 9.3
+.target sm_90
+.entry invalid_guard() {
+  .reg .u32 %r0;
+  @%r0 ret;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(invalid);
+  EXPECT_FALSE(resolveModuleOnly(*invalid).has_value());
+}
+
 /** Fully targeted modules pass strict owned validation after all parser state dies. */
 TEST(OwnedModuleHandoff, ValidatesCompleteContextWithoutAst) {
   std::optional<ResolvedModule> owned;

@@ -234,6 +234,15 @@ register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarge
 边界：module resolution 保存当前 function label 的 `SymbolId`，standalone resolution 保存
 源码 spelling 而令 identity 为空。
 
+公开 IR 重新校验会独立于所选 opcode variant 与 operand layout 检查 execution predicate，
+包括没有 operand 的指令。已知的非 predicate register class、非 `.pred` declaration type
+或 vector shape 均非法；standalone 缺失的 declaration metadata 仍保持 unknown。
+Owned-module validation 还会依据 function 的自有 symbol table，要求 guard identity
+实际指向 scalar `.reg .pred` declaration，而非信任缓存的 register metadata；合法的
+register-valued function formal 与 parameterized predicate-register member 同样适用。
+普通与否定 guard 采用相同约束。诊断优先使用 guard 保留的位置，否则回退到 instruction
+range；这些检查都不要求原始源码或 syntax AST 继续存活。
+
 `ResolvedSpecialRegisterRef` 保存准确 spelling、稳定的 `SpecialRegisterId` 与可选 vector
 component，不保存依赖具体指令或 target 的有效类型。独立的 special-register 语义注册表
 是名称、稳定身份、现行声明 element type、vector width 及 intrinsic 最低 PTX/SM 的单一

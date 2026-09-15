@@ -302,6 +302,18 @@ a numbered `%pN` guard. `ResolvedBranchTarget` follows the same two-boundary
 rule: module resolution stores the current function label's `SymbolId`, while
 standalone resolution retains the source spelling with no symbol identity.
 
+Public-IR revalidation checks execution predicates independently of the selected
+opcode variant and operand layout, including operandless instructions. A known
+non-predicate register class, non-`.pred` declaration type, or vector shape is
+invalid; missing standalone declaration metadata remains unknown. Owned-module
+validation additionally requires the guard's identity to name an actual scalar
+`.reg .pred` declaration in the function's symbol table, rather than trusting
+cached register metadata. This includes legal register-valued function formals
+and parameterized predicate-register members. Plain and negated guards share
+the same contract. Diagnostics use the guard's retained location when present,
+otherwise the instruction range; neither check requires the original source or
+syntax AST to remain alive.
+
 `ResolvedSpecialRegisterRef` retains the exact spelling, a stable
 `SpecialRegisterId`, and an optional vector component. It does not store an
 effective type that depends on an instruction or target. The independent

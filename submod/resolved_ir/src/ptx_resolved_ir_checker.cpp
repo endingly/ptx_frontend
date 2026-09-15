@@ -467,6 +467,34 @@ CheckResult check_common(const InstructionDescriptor& instruction,
   return check_availability(*variant, context);
 }
 
+CheckResult check_execution_predicate(
+    const std::optional<WithLocs<ResolvedPredicate>>& predicate,
+    const Context& context) {
+  if (!predicate)
+    return {};
+
+  const ResolvedRegisterRef& register_ref = predicate->value.register_ref;
+  CheckDiagnostics diagnostics;
+  const auto invalid = [&](std::string_view reason) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::InvalidExecutionPredicate,
+        .range = diagnostic_range(predicate->locs, context),
+        .message = fmt::format("Instruction execution predicate {}.", reason),
+    });
+  };
+  if (register_ref.register_class != ResolvedRegisterClass::Predicate)
+    invalid("does not retain predicate register class");
+  if (register_ref.declared_type &&
+      *register_ref.declared_type != ScalarType::Pred) {
+    invalid("has a non-.pred declared type");
+  }
+  if (register_ref.vector_width)
+    invalid("has vector register shape");
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
 CheckResult check_operands(
     std::span<const OperandDescriptor> descriptors,
     std::span<const FieldView> fields, std::span<const OperandView> operands,

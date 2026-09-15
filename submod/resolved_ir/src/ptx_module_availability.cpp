@@ -364,6 +364,8 @@ struct ModuleReferenceUse {
   std::optional<binding::SymbolKind> expected_kind;
   /** True when the binding must carry the .reg declaration state space. */
   bool requires_register_state{};
+  /** True when the binding must name a scalar .reg .pred declaration. */
+  bool requires_predicate_register{};
   bool function_local{};
   SourceRange range;
 };
@@ -392,11 +394,13 @@ void append_reference(std::vector<ModuleReferenceUse>& uses,
                       bool function_local,
                       std::span<const SourceRange> locations,
                       SourceRange fallback,
-                      bool requires_register_state = false) {
+                      bool requires_register_state = false,
+                      bool requires_predicate_register = false) {
   uses.push_back({.symbol_id = symbol_id,
                   .parameterized_index = parameterized_index,
                   .expected_kind = expected_kind,
                   .requires_register_state = requires_register_state,
+                  .requires_predicate_register = requires_predicate_register,
                   .function_local = function_local,
                   .range = reference_range(locations, fallback)});
 }
@@ -440,15 +444,17 @@ void collect_operand_references(const Value& value,
                                 std::span<const SourceRange> locations,
                                 SourceRange fallback,
                                 std::vector<ModuleReferenceUse>& uses) {
-  const auto collect_register = [&](const ResolvedRegisterRef& register_ref) {
-    append_reference(
-        uses, register_ref.symbol_id, register_ref.parameterized_index,
-        binding::SymbolKind::Variable, true, locations, fallback, true);
+  const auto collect_register = [&](const ResolvedRegisterRef& register_ref,
+                                    bool requires_predicate_register = false) {
+    append_reference(uses, register_ref.symbol_id,
+                     register_ref.parameterized_index,
+                     binding::SymbolKind::Variable, true, locations, fallback,
+                     true, requires_predicate_register);
   };
   if constexpr (std::same_as<Value, ResolvedRegisterRef>) {
     collect_register(value);
   } else if constexpr (std::same_as<Value, ResolvedPredicate>) {
-    collect_register(value.register_ref);
+    collect_register(value.register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedBranchTarget>) {
     append_reference(uses, value.symbol_id, std::nullopt,
                      binding::SymbolKind::Label, true, locations, fallback);
@@ -477,19 +483,19 @@ void collect_operand_references(const Value& value,
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
   } else if constexpr (std::same_as<Value, ResolvedPredicatePair>) {
-    collect_register(value.first.register_ref);
-    collect_register(value.second.register_ref);
+    collect_register(value.first.register_ref, true);
+    collect_register(value.second.register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedPredicatePairOrSink>) {
     if (value.first)
-      collect_register(value.first->register_ref);
+      collect_register(value.first->register_ref, true);
     if (value.second)
-      collect_register(value.second->register_ref);
+      collect_register(value.second->register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedPredicateOrSink>) {
     if (value.predicate)
-      collect_register(value.predicate->register_ref);
+      collect_register(value.predicate->register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedPredicateSource>) {
     if (const auto* predicate = std::get_if<ResolvedPredicate>(&value))
-      collect_register(predicate->register_ref);
+      collect_register(predicate->register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedIndirectCallee>) {
     if (const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(&value))
       append_reference(uses, metadata->symbol_id, std::nullopt,
@@ -525,7 +531,7 @@ void collect_operand_references(const Value& value,
     if (value.data)
       collect_register(value.data->value);
     if (value.predicate)
-      collect_register(value.predicate->value.register_ref);
+      collect_register(value.predicate->value.register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedCallArguments>) {
     for (const auto& argument : value.values) {
       if (const auto* parameter =
@@ -603,7 +609,10 @@ void check_module_references(const ResolvedModule& module,
         !use.expected_kind ||
         (use.requires_register_state ? is_register_operand_symbol(*symbol)
                                      : symbol->kind == *use.expected_kind);
-    if (!compatible_kind ||
+    const bool compatible_predicate =
+        !use.requires_predicate_register ||
+        (symbol->type && *symbol->type == ".pred" && !symbol->vector_width);
+    if (!compatible_kind || !compatible_predicate ||
         !is_operand_scope(module, symbol->scope, function.declaration_scope) ||
         (use.function_local &&
          !is_function_owned_scope(module, symbol->scope,

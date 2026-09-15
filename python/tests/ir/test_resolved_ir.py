@@ -3901,6 +3901,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("CheckResult check<Bra>(", source)
         self.assertIn("std::expected<Ret, ResolveDiagnostic>", source)
         self.assertIn("CheckResult check<Ret>(", source)
+        ret_check = source[source.index("CheckResult check<Ret>(") : source.index(
+            "template <>", source.index("CheckResult check<Ret>(") + 1
+        )]
+        self.assertEqual(ret_check.count("check_execution_predicate("), 1)
         self.assertIn("std::expected<Exit, ResolveDiagnostic>", source)
         self.assertIn("CheckResult check<Exit>(", source)
         self.assertIn("std::expected<Trap, ResolveDiagnostic>", source)
@@ -3919,6 +3923,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
 
         self.assertIn("std::expected<Mov, ResolveDiagnostic>", source)
+        mov_check = source[source.index("CheckResult check<Mov>(") : source.index(
+            "template <>", source.index("CheckResult check<Mov>(") + 1
+        )]
+        self.assertEqual(mov_check.count("check_execution_predicate("), 1)
+        self.assertLess(
+            mov_check.index("check_execution_predicate("),
+            mov_check.index("const auto check_scalar"),
+        )
         self.assertIn(
             ".src = resolved_operand<ResolvedMovSource>", source
         )

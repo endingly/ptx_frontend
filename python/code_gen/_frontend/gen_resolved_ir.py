@@ -1483,6 +1483,12 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.data
                       ? {object_name}.{field.name}.value.data->value.declared_type
                       : std::nullopt,
+                  .paired_destination_data_present = static_cast<bool>({object_name}.{field.name}.value.data),
+                  .paired_destination_predicate_present = static_cast<bool>({object_name}.{field.name}.value.predicate),
+                  .paired_destination_predicate_type = {object_name}.{field.name}.value.predicate
+                      ? {object_name}.{field.name}.value.predicate->value.register_ref.declared_type
+                      : std::nullopt,
+                  .destination_predicate_negated = {object_name}.{field.name}.value.predicate && {object_name}.{field.name}.value.predicate->value.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicatePair":
@@ -1491,6 +1497,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
                   .immediate_type = std::nullopt,
                   .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or(ScalarType::Invalid), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or(ScalarType::Invalid)}},
+                  .destination_predicate_negated = {object_name}.{field.name}.value.first.negated || {object_name}.{field.name}.value.second.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicatePairOrSink":
@@ -1500,6 +1507,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .immediate_type = std::nullopt,
                   .predicate_pair_has_destination = static_cast<bool>({object_name}.{field.name}.value.first) || static_cast<bool>({object_name}.{field.name}.value.second),
                   .predicate_pair_types = {{{object_name}.{field.name}.value.first ? {object_name}.{field.name}.value.first->register_ref.declared_type.value_or(ScalarType::Invalid) : ScalarType::Invalid, {object_name}.{field.name}.value.second ? {object_name}.{field.name}.value.second->register_ref.declared_type.value_or(ScalarType::Invalid) : ScalarType::Invalid}},
+                  .destination_predicate_negated = ({object_name}.{field.name}.value.first && {object_name}.{field.name}.value.first->negated) || ({object_name}.{field.name}.value.second && {object_name}.{field.name}.value.second->negated),
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedImmediate":
@@ -1519,6 +1527,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
+                  .destination_predicate_negated = {object_name}.{field.name}.value.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicateOrSink":
@@ -1528,6 +1537,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.predicate ? {object_name}.{field.name}.value.predicate->register_ref.declared_type : std::nullopt,
                   .is_sink = !{object_name}.{field.name}.value.predicate,
+                  .destination_predicate_negated = {object_name}.{field.name}.value.predicate && {object_name}.{field.name}.value.predicate->negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_cpp_type == "ResolvedPredicateSource":

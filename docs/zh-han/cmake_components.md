@@ -37,3 +37,19 @@ database = load_packaged_spec_database()
 `ptx_frontend.spec` 是面向下游的 Python API，提供可复用的 instruction model、database loader、normalization helper 和 resource accessor，同时与 frontend 自身使用完全相同的底层 model 类型。consumer 应将 `ptx-instr/v1` schema 视为稳定的数据契约。
 
 `ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现/兼容 namespace，新下游代码不应依赖它。frontend 专用的 generator modules（`cli.py`、`gen_*.py` 以及仓库 corpus generation helper）统一放在源码专用的 `python/code_gen/_frontend` 目录中，并明确不打入 wheel；wheel 也不再安装 `ptx-frontend-codegen` console script。
+
+## 测试 profile
+
+`BUILD_TESTING=ON` 只构建普通的 `test_resolved_ir` suite。默认配置刻意不包含 alternate
+generated fixture、self-heal/topology check、embedded-parent check 或 installed-package
+consumer。
+
+`PTX_FRONTEND_BUILD_CONSUMER_TESTS=ON` 必须与 `BUILD_TESTING=ON` 一同使用，并加入上述
+consumer/integration group。`ci-consumer-integration` 的 configure、build、test preset
+会选择它并运行稳定的 CTest `consumer` label。普通 Debug 与 Release preset 保持关闭，因而
+一般 C++ 与 Python unit check 不会间接 configure 或 build consumer fixture。
+
+CI 在 push 到 `main` 时自动运行 consumer/integration profile，与普通 Debug/Release
+缓存预热任务并行。它也支持手动触发，并在版本 tag 发布 wheel 前作为门禁。
+push 到 `dev` 时只运行普通预热任务。consumer job 会恢复兼容的编译器缓存，
+但不发布 production cache seed。

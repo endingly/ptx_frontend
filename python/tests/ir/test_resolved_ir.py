@@ -624,8 +624,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["f16x2"] * 2,
         )
 
-    def test_lop3_has_fixed_b32_variant_and_lut_range(self) -> None:
-        variant = self.lop3_instruction.variants[0]
+    def test_lop3_has_base_and_boolop_layouts_with_u8_lut_range(self) -> None:
+        variant, boolop = self.lop3_instruction.variants
         self.assertEqual(variant.cpp_name, "B32")
         self.assertEqual(
             [field.name for field in variant.fields],
@@ -635,6 +635,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
              for constraint in variant.immediate_ranges],
+            [("lut", 0, 255)],
+        )
+        self.assertEqual(boolop.cpp_name, "BoolopB32")
+        self.assertEqual(
+            [field.name for field in boolop.fields],
+            ["boolean", "type", "dst", "src1", "src2", "src3", "lut", "combine"],
+        )
+        self.assertEqual(
+            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+             for constraint in boolop.immediate_ranges],
             [("lut", 0, 255)],
         )
 
@@ -656,16 +666,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
         )
 
-    def test_shf_has_frozen_direction_and_mode_variants(self) -> None:
+    def test_shf_has_all_direction_and_mode_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.shf_instruction.variants],
-            ["LClampB32", "RWrapB32"],
+            ["LClampB32", "LWrapB32", "RClampB32", "RWrapB32"],
         )
         for variant in self.shf_instruction.variants:
             self.assertEqual(
                 [field.name for field in variant.fields],
-                ["left" if variant.cpp_name == "LClampB32" else "right",
-                 "clamp" if variant.cpp_name == "LClampB32" else "wrap",
+                ["left" if variant.cpp_name.startswith("L") else "right",
+                 "clamp" if "Clamp" in variant.cpp_name else "wrap",
                  "type", "dst", "src1", "src2", "count"],
             )
 
@@ -1396,7 +1406,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.operand_layouts[0].fields, ())
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 
-    def test_and_uses_a_fixed_b32_binary_variant(self) -> None:
+    def test_and_models_predicate_and_all_bit_widths(self) -> None:
         database = self.database
         and_instruction = next(
             instruction
@@ -1406,16 +1416,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         instruction = from_instruction_spec(and_instruction)
 
         self.assertEqual(instruction.cpp_name, "And")
-        self.assertEqual(len(instruction.variants), 1)
-        variant = instruction.variants[0]
-        self.assertEqual(variant.cpp_name, "B32")
+        self.assertEqual([variant.cpp_name for variant in instruction.variants],
+                         ["Pred", "B16", "B32", "B64"])
+        variant = instruction.variants[2]
         self.assertEqual(
-            [binding.type_expression.scalar_type
+            [binding.type_expression.modifier_field_id
              for binding in variant.operand_layouts[0].bindings],
-            ["b32", "b32", "b32"],
+            ["type", "type", "type"],
         )
 
-    def test_or_uses_a_fixed_b32_binary_variant(self) -> None:
+    def test_or_models_predicate_and_all_bit_widths(self) -> None:
         database = self.database
         or_instruction = next(
             instruction
@@ -1425,59 +1435,66 @@ class ResolvedIrBuildTest(unittest.TestCase):
         instruction = from_instruction_spec(or_instruction)
 
         self.assertEqual(instruction.cpp_name, "Or")
-        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual([variant.cpp_name for variant in instruction.variants],
+                         ["Pred", "B16", "B32", "B64"])
         self.assertEqual(
-            [binding.type_expression.scalar_type
-             for binding in instruction.variants[0].operand_layouts[0].bindings],
-            ["b32", "b32", "b32"],
+            [binding.type_expression.modifier_field_id
+             for binding in instruction.variants[2].operand_layouts[0].bindings],
+            ["type", "type", "type"],
         )
 
-    def test_xor_uses_a_fixed_b32_binary_variant(self) -> None:
+    def test_xor_models_predicate_and_all_bit_widths(self) -> None:
         database = self.database
         xor = next(item for item in database.instructions if item.opcode == "xor")
         instruction = from_instruction_spec(xor)
         self.assertEqual(instruction.cpp_name, "Xor")
-        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual([variant.cpp_name for variant in instruction.variants],
+                         ["Pred", "B16", "B32", "B64"])
         self.assertEqual(
-            [binding.type_expression.scalar_type
-             for binding in instruction.variants[0].operand_layouts[0].bindings],
-            ["b32", "b32", "b32"],
+            [binding.type_expression.modifier_field_id
+             for binding in instruction.variants[2].operand_layouts[0].bindings],
+            ["type", "type", "type"],
         )
 
-    def test_not_uses_a_fixed_b32_unary_variant(self) -> None:
+    def test_not_models_predicate_and_all_bit_widths(self) -> None:
         database = self.database
         not_instruction = next(item for item in database.instructions if item.opcode == "not")
         instruction = from_instruction_spec(not_instruction)
         self.assertEqual(instruction.cpp_name, "Not")
-        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual([variant.cpp_name for variant in instruction.variants],
+                         ["Pred", "B16", "B32", "B64"])
         self.assertEqual(
-            [binding.type_expression.scalar_type
-             for binding in instruction.variants[0].operand_layouts[0].bindings],
-            ["b32", "b32"],
+            [binding.type_expression.modifier_field_id
+             for binding in instruction.variants[2].operand_layouts[0].bindings],
+            ["type", "type"],
         )
 
-    def test_shl_uses_fixed_b32_data_and_u32_amount(self) -> None:
+    def test_shl_models_all_bit_widths_with_u32_amount(self) -> None:
         database = self.database
         shl = next(item for item in database.instructions if item.opcode == "shl")
         instruction = from_instruction_spec(shl)
         self.assertEqual(instruction.cpp_name, "Shl")
-        self.assertEqual(instruction.variants[0].cpp_name, "B32")
+        self.assertEqual([variant.cpp_name for variant in instruction.variants],
+                         ["B16", "B32", "B64"])
         self.assertEqual(
-            [binding.type_expression.scalar_type
-             for binding in instruction.variants[0].operand_layouts[0].bindings],
-            ["b32", "b32", "u32"],
+            [binding.type_expression.modifier_field_id
+             for binding in instruction.variants[1].operand_layouts[0].bindings],
+            ["type", "type", None],
         )
 
-    def test_shr_uses_fixed_u32_data_and_count(self) -> None:
+    def test_shr_models_bit_signed_and_unsigned_widths(self) -> None:
         database = self.database
         shr = next(item for item in database.instructions if item.opcode == "shr")
         instruction = from_instruction_spec(shr)
         self.assertEqual(instruction.cpp_name, "Shr")
-        self.assertEqual(instruction.variants[0].cpp_name, "U32")
         self.assertEqual(
-            [binding.type_expression.scalar_type
-             for binding in instruction.variants[0].operand_layouts[0].bindings],
-            ["b32", "b32", "u32"],
+            [variant.cpp_name for variant in instruction.variants],
+            ["B16", "B32", "B64", "U16", "U32", "U64", "S16", "S32", "S64"],
+        )
+        self.assertEqual(
+            [binding.type_expression.modifier_field_id
+             for binding in instruction.variants[4].operand_layouts[0].bindings],
+            ["type", "type", None],
         )
 
     def test_mov_uses_scalar_and_predicate_sources(self) -> None:

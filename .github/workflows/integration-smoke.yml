@@ -3,6 +3,7 @@ name: Integration smoke
 on:
   push:
     branches: [dev, main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,6 +25,7 @@ env:
 jobs:
   test:
     name: GCC ${{ matrix.name }} prewarm
+    if: github.event_name == 'push'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
@@ -131,10 +133,10 @@ jobs:
             --output "$CCACHE_METRICS_DIR/production-build.json" || true
           ccache --show-stats || true
 
-      # The installed package consumer invokes its own compiler. It must not add
-      # objects to the production seed that this job may later upload.
-      - name: Reset disposable package-consumer compiler cache statistics
-        if: success() && matrix.name == 'Debug'
+      # Keep normal unit objects and CTest compiler launches out of the
+      # production cache that is saved below as this revision's seed.
+      - name: Reset disposable unit-test compiler cache
+        if: success()
         shell: bash
         env:
           CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
@@ -142,33 +144,20 @@ jobs:
           rm -rf "$CCACHE_DIR"
           mkdir -p "$CCACHE_DIR"
           ccache --zero-stats
-          date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
 
-      - name: Test installed package consumer in disposable compiler cache
-        id: package-consumer-test
-        shell: bash
-        if: success() && matrix.name == 'Debug'
+      - name: Build normal resolved-IR tests in disposable compiler cache
+        if: success()
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
+        run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
+
+      - name: Run normal resolved-IR tests in disposable compiler cache
+        if: success()
         env:
           CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: |
-          set +e
-          ctest --preset ci-python-and-package-consumer -R '^ptx_frontend\.package_consumer$' --output-on-failure --no-tests=error
-          test_exit_code=$?
-          date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
-          exit "$test_exit_code"
-
-      - name: Record package-consumer compiler-cache statistics
-        if: always() && matrix.name == 'Debug'
-        shell: bash
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
-        run: |
-          python3 .github/scripts/capture_ccache_metrics.py \
-            --phase package-consumer --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
-            --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
-            --status "${{ steps.package-consumer-test.outcome }}" \
-            --output "$CCACHE_METRICS_DIR/package-consumer.json" || true
-          ccache --show-stats || true
+          ctest --test-dir "$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/submod/resolved_ir" \
+            --output-on-failure --no-tests=error
 
       # The artifact contains local ccache counters. Cache-action transfer
       # bytes/times are intentionally recorded only in the Actions action logs.
@@ -190,6 +179,39 @@ jobs:
         with:
           path: .cache/ccache
           key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+
+  consumer:
+    name: Consumer and integration coverage
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      CC: /usr/bin/gcc
+      CXX: /usr/bin/g++
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Linux dependencies
+        id: setup
+        uses: ./.github/actions/setup-linux
+
+      - name: Restore persistent Debug compiler cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+          restore-keys: |
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-
+
+      - name: Configure consumer and integration coverage
+        run: cmake --preset ci-consumer-integration -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+
+      - name: Build consumer and integration coverage
+        run: cmake --build --preset ci-consumer-integration
+
+      - name: Run labeled consumer and integration coverage
+        run: ctest --preset ci-consumer-integration --output-on-failure
 
   cleanup:
     name: Retain trusted compiler-cache seeds

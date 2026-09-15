@@ -47,6 +47,7 @@ if(BUILD_TESTING)
     )
     gtest_discover_tests(test_resolved_ir)
 
+    if(PTX_FRONTEND_BUILD_CONSUMER_TESTS)
     if(NOT DEFINED PTX_MODERN_OPERAND_TEST_SPEC_DIR)
         set(PTX_MODERN_OPERAND_TEST_SPEC_DIR
             "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures")
@@ -111,7 +112,8 @@ if(BUILD_TESTING)
         test/test_modern_operand_codegen.cpp)
     target_link_libraries(test_modern_operand_codegen
         PRIVATE GTest::gtest GTest::gtest_main modern_operand_resolved_ir)
-    gtest_discover_tests(test_modern_operand_codegen)
+    gtest_discover_tests(test_modern_operand_codegen
+        PROPERTIES LABELS "consumer;integration")
 
     add_test(
         NAME resolved_ir.modern_operand_codegen_self_heal
@@ -122,7 +124,7 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_self_heal.cmake"
     )
     set_tests_properties(resolved_ir.modern_operand_codegen_self_heal
-        PROPERTIES RUN_SERIAL TRUE)
+        PROPERTIES LABELS "consumer;integration" RUN_SERIAL TRUE)
 
     add_test(
         NAME resolved_ir.modern_operand_codegen_topology_reconfigure
@@ -143,6 +145,8 @@ if(BUILD_TESTING)
             "-DPTX_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/codegen_topology_reconfigure.cmake"
     )
+    set_tests_properties(resolved_ir.modern_operand_codegen_topology_reconfigure
+        PROPERTIES LABELS "consumer;integration")
     file(GENERATE
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/topology_reconfigure_initial_cache.cmake"
         CONTENT
@@ -170,7 +174,9 @@ set(CMAKE_PREFIX_PATH [==[${CMAKE_PREFIX_PATH}]==] CACHE STRING \"\" FORCE)
             "-DPTX_MAGIC_ENUM_DIR=${magic_enum_DIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/embedded_parent/run_test.cmake"
     )
-    # Keep the full acceptance and opt-in smoke on the same installed API client.
+    set_tests_properties(ptx_frontend.embedded_parent
+        PROPERTIES LABELS "consumer;integration")
+
     set(_package_consumer_command
         "${CMAKE_COMMAND}"
             "-DPTX_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
@@ -194,17 +200,9 @@ set(CMAKE_PREFIX_PATH [==[${CMAKE_PREFIX_PATH}]==] CACHE STRING \"\" FORCE)
     add_test(
         NAME ptx_frontend.package_consumer
         COMMAND ${_package_consumer_command}
-            "-DPTX_PACKAGE_CONSUMER_SMOKE_ONLY=OFF"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/test/package_consumer/run_test.cmake"
     )
-    option(PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST
-        "Register an additional installed API smoke test for integration builds" OFF)
-    if(PTX_FRONTEND_ENABLE_PACKAGE_SMOKE_TEST)
-        add_test(
-            NAME ptx_frontend.package_consumer_smoke
-            COMMAND ${_package_consumer_command}
-                "-DPTX_PACKAGE_CONSUMER_SMOKE_ONLY=ON"
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/test/package_consumer/run_test.cmake"
-        )
+    set_tests_properties(ptx_frontend.package_consumer
+        PROPERTIES LABELS "consumer;integration")
     endif()
 endif()

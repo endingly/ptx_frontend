@@ -41,3 +41,21 @@ database = load_packaged_spec_database()
 `ptx_frontend.spec` is the downstream-facing Python API. It exposes the reusable instruction model, database loaders, normalization helpers, and resource accessors while preserving the same underlying model types used by the frontend itself. Consumers should treat the `ptx-instr/v1` schema as the stable data contract.
 
 `ptx_frontend.code_gen` remains an implementation/compatibility namespace for the frontend source build. New downstream code should not depend on it. Frontend-only generator modules (`cli.py`, `gen_*.py`, and repository corpus-generation helpers) live under the source-only `python/code_gen/_frontend` directory and are deliberately excluded from the wheel. The wheel also does not install a `ptx-frontend-codegen` console script.
+
+## Test profiles
+
+`BUILD_TESTING=ON` builds the normal `test_resolved_ir` suite. The default is
+deliberately free of alternate generated fixtures, self-heal/topology checks,
+embedded-parent checks, and installed-package consumers.
+
+`PTX_FRONTEND_BUILD_CONSUMER_TESTS=ON` requires `BUILD_TESTING=ON` and adds that
+consumer/integration group. The `ci-consumer-integration` configure, build, and
+test presets select it and run the stable CTest `consumer` label. The normal
+Debug and Release presets leave it off, so ordinary C++ and Python unit checks
+do not indirectly configure or build consumer fixtures.
+
+CI runs the consumer/integration profile automatically on pushes to `main`,
+alongside the normal Debug/Release cache-prewarming jobs. It also supports
+manual dispatch and gates wheel publication on version tags. Pushes to `dev`
+run only the normal prewarming jobs. The consumer job restores compatible
+compiler caches without publishing production cache seeds.

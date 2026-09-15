@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -2013,6 +2015,154 @@ TEST(ResolvedModule, ChecksM12BrevTypes) {
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
+/** Verify every logic-and-shift form survives module resolution independently
+ * of the syntax AST that produced it. */
+TEST(ResolvedModule, ChecksIssue144LogicAndShiftFormsAfterAstLifetime) {
+  std::optional<ResolvedModule> owned_module;
+  {
+    const auto parsed_module = parseModule(R"ptx(
+.version 9.3
+.target sm_100
+.entry kernel() {
+  .reg .pred %p<4>;
+  .reg .b16 %h<4>;
+  .reg .b32 %r<4>;
+  .reg .b64 %rd<4>;
+  .reg .u16 %uh<2>;
+  .reg .u32 %ur<2>;
+  .reg .u64 %urd<2>;
+  .reg .s16 %sh<2>;
+  .reg .s32 %sr<2>;
+  .reg .s64 %srd<2>;
+  and.pred %p0, !%p1, 1;
+  and.b16 %h0, %h1, 1; and.b32 %r0, %r1, 1; and.b64 %rd0, %rd1, 1;
+  or.pred %p0, %p1, 0;
+  or.b16 %h0, %h1, 1; or.b32 %r0, %r1, 1; or.b64 %rd0, %rd1, 1;
+  xor.pred %p0, %p1, 1;
+  xor.b16 %h0, %h1, 1; xor.b32 %r0, %r1, 1; xor.b64 %rd0, %rd1, 1;
+  not.pred %p0, !%p1;
+  not.b16 %h0, %h1; not.b32 %r0, %r1; not.b64 %rd0, %rd1;
+  cnot.b16 %h0, %h1; cnot.b32 %r0, %r1; cnot.b64 %rd0, %rd1;
+  lop3.b32 %r0, 1, %r1, 2, 0;
+  lop3.and.b32 _ | %p0, 1, %r1, 2, 255, !%p1;
+  lop3.or.b32 %r0 | %p0, 1, %r1, 2, 0, %p1;
+  shf.l.clamp.b32 %r0, 1, %r1, 32;
+  shf.l.wrap.b32 %r0, 1, %r1, 33;
+  shf.r.clamp.b32 %r0, 1, %r1, 32;
+  shf.r.wrap.b32 %r0, 1, %r1, 33;
+  shl.b16 %h0, %h1, 32; shl.b32 %r0, %r1, 32; shl.b64 %rd0, %rd1, 32;
+  shr.b16 %h0, %h1, 32; shr.b32 %r0, %r1, 32; shr.b64 %rd0, %rd1, 32;
+  shr.u16 %uh0, %uh1, 32; shr.u32 %ur0, %ur1, 32; shr.u64 %urd0, %urd1, 32;
+  shr.s16 %sh0, %sh1, 32; shr.s32 %sr0, %sr1, 32; shr.s64 %srd0, %srd1, 32;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
+    auto resolved = resolveModule(*parsed_module);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned_module.emplace(std::move(*resolved));
+  }
+
+  ASSERT_EQ(owned_module->functions.size(), 1u);
+  const auto& body = owned_module->functions.front().body;
+  ASSERT_EQ(body.size(), 38u);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  for (const auto& instruction : body) {
+    EXPECT_TRUE(std::visit(
+        [&context](const auto& operation) {
+          return checker::check(operation, context).has_value();
+        },
+        instruction));
+  }
+}
+
+/** Verify module checking enforces logic-and-shift operand-width contracts. */
+TEST(ResolvedModule, ChecksIssue144LogicAndShiftWidthAndCountContracts) {
+  constexpr std::array cases{
+      std::pair{std::string_view{R"ptx(.entry kernel() {
+  .reg .b16 %h; .reg .b32 %r0, %r1; and.b16 %h, %r0, %r1;
+})ptx"},
+                false},
+      std::pair{std::string_view{R"ptx(.entry kernel() {
+  .reg .f32 %f; .reg .u32 %r; shr.s32 %r, %f, 1;
+})ptx"},
+                false},
+      std::pair{std::string_view{R"ptx(.entry kernel() {
+  .reg .f32 %f; .reg .u32 %r; shr.b32 %r, %f, 1;
+})ptx"},
+                true},
+      std::pair{std::string_view{R"ptx(.entry kernel() {
+  .reg .b32 %r0, %r1; .reg .b64 %rd; shl.b32 %r0, %r1, %rd;
+})ptx"},
+                false},
+      std::pair{std::string_view{R"ptx(.entry kernel() {
+  .reg .b32 %r0, %r1; .reg .f32 %f; shl.b32 %r0, %r1, %f;
+})ptx"},
+                false},
+  };
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  for (const auto& [source, expected_valid] : cases) {
+    SCOPED_TRACE(source);
+    const auto parsed_module = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
+    const auto resolved = resolveModule(*parsed_module);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    ASSERT_EQ(resolved->functions.front().body.size(), 1u);
+    EXPECT_EQ(std::visit(
+                  [&context](const auto& operation) {
+                    return checker::check(operation, context).has_value();
+                  },
+                  resolved->functions.front().body.front()),
+              expected_valid);
+  }
+}
+
+/** Verify resolver rejects layouts reserved for lop3 Boolean-result forms. */
+TEST(ResolvedModule, RejectsIssue144InvalidLop3AndPredicateLayouts) {
+  for (const std::string_view source : {
+           R"ptx(.entry kernel() {
+  .reg .pred %p; .reg .b32 %r0, %r1; lop3.and.b32 %r0 | _, %r0, 1, %r1, 0, %p;
+})ptx",
+           R"ptx(.entry kernel() {
+  .reg .b32 %r0, %r1; lop3.b32 _, %r0, 1, %r1, 0;
+})ptx",
+           R"ptx(.entry kernel() {
+  .reg .pred %p; .reg .b32 %r0, %r1; lop3.xor.b32 %r0 | %p, %r0, 1, %r1, 0, %p;
+})ptx",
+           R"ptx(.entry kernel() {
+  .reg .pred %p0, %p1, %p2; and.pred !%p0, %p1, %p2;
+})ptx",
+       }) {
+    SCOPED_TRACE(source);
+    const auto parsed_module = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
+    EXPECT_FALSE(resolveModule(*parsed_module).has_value());
+  }
+}
+
+/** Verify the lop3 truth-table control is constrained to its u8 range. */
+TEST(ResolvedModule, RejectsIssue144OutOfRangeLop3TruthTables) {
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  for (const std::string_view lut : {"256", "-1"}) {
+    SCOPED_TRACE(lut);
+    const std::string source =
+        ".entry kernel() { .reg .b32 %r0, %r1, %r2, %r3; lop3.b32 %r0, "
+        "%r1, %r2, %r3, " +
+        std::string(lut) + "; }";
+    const auto parsed_module = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
+    const auto resolved = resolveModule(*parsed_module);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    const auto checked = checker::check(
+        std::get<Lop3>(resolved->functions.front().body.front()), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
   }
 }
 

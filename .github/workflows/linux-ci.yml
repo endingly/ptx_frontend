@@ -44,6 +44,7 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-26.04
     timeout-minutes: 60
+    cache-mode: write
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
@@ -133,32 +134,24 @@ jobs:
             --output "$CCACHE_METRICS_DIR/production-build.json" || true
           ccache --show-stats || true
 
-      # Normal unit-test support and every compiler launched by CTest stay in a
-      # disposable cache so they cannot evict production objects from .cache/ccache.
-      - name: Reset disposable test compiler cache statistics
+      # Production and test compilation share the persistent compiler cache.
+      # Reset only statistics so test-phase hit/miss metrics remain independent.
+      - name: Reset test compiler-cache statistics
         if: success()
         shell: bash
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: |
-          rm -rf "$CCACHE_DIR"
-          mkdir -p "$CCACHE_DIR"
           ccache --zero-stats
           date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
 
-      - name: Build test support in disposable compiler cache
+      - name: Build test support
         id: test-support
         if: success()
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: cmake --build --preset "${{ matrix.preset }}"
 
-      - name: Test in disposable compiler cache
+      - name: Test
         id: test
         shell: bash
         if: success()
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: |
           set +e
           ctest --preset "${{ matrix.preset }}" --output-on-failure
@@ -169,16 +162,27 @@ jobs:
       - name: Record test compiler-cache statistics
         if: always()
         shell: bash
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: |
           python3 .github/scripts/capture_ccache_metrics.py \
-            --phase tests --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
+            --phase tests \
+            --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
             --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
             --status "${{ steps.test-support.outcome }}" \
             --status "${{ steps.test.outcome }}" \
             --output "$CCACHE_METRICS_DIR/tests.json" || true
           ccache --show-stats || true
+
+      - name: Save PR compiler cache
+        if: >
+          github.event_name == 'pull_request' &&
+          steps.production-build.outcome == 'success' &&
+          steps.test-support.outcome == 'success' &&
+          steps.test.outcome == 'success' &&
+          steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
 
       # JSON records local cache size, cleanup count, hit/miss rate, and phase
       # wall-clock time. Actions transfer bytes/times remain in action logs.

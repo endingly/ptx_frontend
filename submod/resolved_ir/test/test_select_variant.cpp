@@ -2117,7 +2117,7 @@ TEST(ResolveMad, RejectsIllegalModifiers) {
   for (const auto source :
        {"mad.u32 %r0, %r1, %r2, %r3;", "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
         "mad.rz.f32 %f0, %f1, %f2, %f3;",
-        "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
+        "mad.lo.cc.s16 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());

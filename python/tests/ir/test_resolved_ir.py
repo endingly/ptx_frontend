@@ -51,6 +51,7 @@ from ptx_frontend.code_gen.model import (
     ImmediateRangeConstraint,
     ImmediateValueConstraint,
     InstructionSpec,
+    ConditionCodeEffect,
     ModifierSpec,
     ModifierValueSpec,
     OperandLayoutSpec,
@@ -94,6 +95,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             instruction
             for instruction in database.instructions
             if instruction.opcode == "mad"
+        )
+        madc = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "madc"
         )
         fma = next(
             instruction
@@ -159,6 +165,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.sub_instruction = from_instruction_spec(sub)
         cls.mul_instruction = from_instruction_spec(mul)
         cls.mad_instruction = from_instruction_spec(mad)
+        cls.madc_instruction = from_instruction_spec(madc)
         cls.fma_instruction = from_instruction_spec(fma)
         cls.div_instruction = from_instruction_spec(div)
         cls.rem_instruction = from_instruction_spec(rem)
@@ -452,7 +459,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [variant.cpp_name for variant in self.mad_instruction.variants],
             ["RnF32", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
              "LoS16", "LoS64", "HiU16", "HiU32", "HiU64", "HiS16",
-             "HiS32", "HiS64", "WideU16", "WideS16", "WideS32", "HiSatS32"],
+             "HiS32", "HiS64", "WideU16", "WideS16", "WideS32", "HiSatS32",
+             "HiCc32", "LoCc32", "HiCc64", "LoCc64"],
         )
         self.assertEqual(
             [field.name for field in self.mad_instruction.variants[1].fields],
@@ -761,6 +769,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     [binding.kind for binding in bindings[1:]],
                     ["reg_or_imm"] * 3,
                 )
+
+    def test_extended_precision_multiply_add_variants(self) -> None:
+        self.assertEqual(
+            [variant.cpp_name for variant in self.mad_instruction.variants[-4:]],
+            ["HiCc32", "LoCc32", "HiCc64", "LoCc64"],
+        )
+        self.assertTrue(
+            all(variant.condition_code_effect is ConditionCodeEffect.CARRY_OUT
+                for variant in self.mad_instruction.variants[-4:])
+        )
+        self.assertEqual(
+            [variant.cpp_name for variant in self.madc_instruction.variants],
+            ["HiPlain32", "LoPlain32", "HiPlain64", "LoPlain64",
+             "HiCc32", "LoCc32", "HiCc64", "LoCc64"],
+        )
+        self.assertEqual(
+            [variant.condition_code_effect for variant in self.madc_instruction.variants],
+            [ConditionCodeEffect.CARRY_IN] * 4
+            + [ConditionCodeEffect.CARRY_IN_OUT] * 4,
+        )
 
     def test_shf_has_all_direction_and_mode_variants(self) -> None:
         self.assertEqual(

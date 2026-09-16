@@ -28,6 +28,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
+    cache-mode: write
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++
@@ -61,14 +62,15 @@ jobs:
 
       # All consumers restore this compatibility prefix. Only trusted main
       # pushes below create immutable Debug and Release seeds for their SHA.
-      - name: Restore persistent compiler cache
-        id: ccache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: .cache/ccache
-          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
-          restore-keys: |
-            ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
+      - name: Reset unit-test compiler-cache statistics
+        if: success()
+        shell: bash
+        run: |
+          ccache --zero-stats
+
+      - name: Build normal resolved-IR tests
+        if: success()
+        run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
 
       # Each matrix child exports only its own full lineage prefix. Matrix job
       # outputs retain the last successful nonempty value for each configuration.
@@ -138,8 +140,6 @@ jobs:
       - name: Reset disposable unit-test compiler cache
         if: success()
         shell: bash
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: |
           rm -rf "$CCACHE_DIR"
           mkdir -p "$CCACHE_DIR"
@@ -147,14 +147,10 @@ jobs:
 
       - name: Build normal resolved-IR tests in disposable compiler cache
         if: success()
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
 
       - name: Run normal resolved-IR tests in disposable compiler cache
         if: success()
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache-test/${{ matrix.preset }}
         run: |
           ctest --test-dir "$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/submod/resolved_ir" \
             --output-on-failure --no-tests=error
@@ -185,6 +181,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-26.04
     timeout-minutes: 60
+    cache-mode: read
     env:
       CC: /usr/bin/gcc
       CXX: /usr/bin/g++

@@ -134,8 +134,8 @@ jobs:
             --output "$CCACHE_METRICS_DIR/production-build.json" || true
           ccache --show-stats || true
 
-      # Normal unit-test support and every compiler launched by CTest stay in a
-      # disposable cache so they cannot evict production objects from .cache/ccache.
+      # Production and test compilation share the persistent compiler cache.
+      # Reset only statistics so test-phase hit/miss metrics remain independent.
       - name: Reset test compiler-cache statistics
         if: success()
         shell: bash

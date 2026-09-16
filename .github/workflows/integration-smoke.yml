@@ -68,10 +68,6 @@ jobs:
         run: |
           ccache --zero-stats
 
-      - name: Build normal resolved-IR tests
-        if: success()
-        run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
-
       # Each matrix child exports only its own full lineage prefix. Matrix job
       # outputs retain the last successful nonempty value for each configuration.
       - name: Export compiler-cache lineage metadata
@@ -134,20 +130,6 @@ jobs:
             --status "${{ steps.production-build.outcome }}" \
             --output "$CCACHE_METRICS_DIR/production-build.json" || true
           ccache --show-stats || true
-
-      # Keep normal unit objects and CTest compiler launches out of the
-      # production cache that is saved below as this revision's seed.
-      - name: Reset disposable unit-test compiler cache
-        if: success()
-        shell: bash
-        run: |
-          rm -rf "$CCACHE_DIR"
-          mkdir -p "$CCACHE_DIR"
-          ccache --zero-stats
-
-      - name: Build normal resolved-IR tests in disposable compiler cache
-        if: success()
-        run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
 
       - name: Run normal resolved-IR tests in disposable compiler cache
         if: success()

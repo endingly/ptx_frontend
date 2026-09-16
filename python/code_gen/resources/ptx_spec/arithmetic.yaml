@@ -40,6 +40,10 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
     - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
 
+  unary_integer_arith:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}}
+
   unary_f16x2_register:
     - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
@@ -198,6 +202,69 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: u64, register_width: same_width}
+
+  ternary_wide_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s64, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: s64, register_width: same_width}
+
+  ternary_wide_u16:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u16, register_width: same_width}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+
+  ternary_wide_s16:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s16, register_width: same_width}
+    - {name: src3, kind: reg_or_imm, role: src3, access: read, type: s32, register_width: same_width}
+
+  fns_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: mask, kind: reg_or_imm, role: src1, access: read, type: b32, register_width: same_width}
+    - {name: base, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: offset, kind: reg_or_imm, role: src3, access: read, type: s32, register_width: same_width}
+
+  szext_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+
+  szext_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+
+  bmsk_b32:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: position, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: width, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+
+  dp_u32_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: accumulator, kind: reg_or_imm, role: src3, access: read, type: u32, register_width: same_width}
+
+  dp_u32_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: u32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: accumulator, kind: reg_or_imm, role: src3, access: read, type: s32, register_width: same_width}
+
+  dp_s32_u32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: u32, register_width: same_width}
+    - {name: accumulator, kind: reg_or_imm, role: src3, access: read, type: s32, register_width: same_width}
+
+  dp_s32_s32:
+    - {name: dst, kind: reg, role: dst, access: write, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: accumulator, kind: reg_or_imm, role: src3, access: read, type: s32, register_width: same_width}
 
   binary_float_scalar:
     - name: dst
@@ -1391,8 +1458,8 @@ instructions:
 
   - opcode: mad
     section: "9.7.1.4"
-    doc: "Frozen low and wide 32-bit integer multiply-add."
-    syntax: "mad.lo.u32 | mad.lo.s32 | mad.wide.u32 dst, src1, src2, src3"
+    doc: "Integer multiply-add with high, low, wide, and signed high saturation forms."
+    syntax: "mad.{hi|lo}.{u16|u32|u64|s16|s32|s64} | mad.wide.{u16|u32|s16|s32} | mad.hi.sat.s32 dst, src1, src2, src3"
     operands: $ternary_arith
     variants:
       - name: mad_lo_u32
@@ -1420,10 +1487,112 @@ instructions:
         examples:
           - {ptx: "mad.wide.u32 %rd0, %r1, %r2, %rd3;", valid: true}
 
+      - name: mad_lo_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}
+        examples: [{ptx: "mad.lo.u16 %h0, %h1, %h2, %h3;", valid: true}]
+
+      - name: mad_lo_u64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples: [{ptx: "mad.lo.u64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+
+      - name: mad_lo_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}
+        examples: [{ptx: "mad.lo.s16 %h0, %h1, %h2, %h3;", valid: true}]
+
+      - name: mad_lo_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        examples: [{ptx: "mad.lo.s64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+
+      - name: mad_hi_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}
+        examples: [{ptx: "mad.hi.u16 %h0, %h1, %h2, %h3;", valid: true}]
+
+      - name: mad_hi_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples: [{ptx: "mad.hi.u32 %r0, %r1, %r2, %r3;", valid: true}]
+
+      - name: mad_hi_u64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples: [{ptx: "mad.hi.u64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+
+      - name: mad_hi_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}
+        examples: [{ptx: "mad.hi.s16 %h0, %h1, %h2, %h3;", valid: true}]
+
+      - name: mad_hi_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples: [{ptx: "mad.hi.s32 %r0, %r1, %r2, %r3;", valid: true}]
+
+      - name: mad_hi_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}
+        examples: [{ptx: "mad.hi.s64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+
+      - name: mad_wide_u16
+        operands: $ternary_wide_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}
+        examples: [{ptx: "mad.wide.u16 %r0, %h1, %h2, %r3;", valid: true}]
+
+      - name: mad_wide_s16
+        operands: $ternary_wide_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}
+        examples: [{ptx: "mad.wide.s16 %r0, %h1, %h2, %r3;", valid: true}]
+
+      - name: mad_wide_s32
+        operands: $ternary_wide_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: wide, kind: flag, presence: fixed, value: true, token: ".wide"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples: [{ptx: "mad.wide.s32 %rd0, %r1, %r2, %rd3;", valid: true}]
+
+      - name: mad_hi_sat_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: sat, kind: flag, presence: fixed, value: true, token: ".sat"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
+        examples: [{ptx: "mad.hi.sat.s32 %r0, %r1, %r2, %r3;", valid: true}]
+
   - opcode: div
     section: "9.7.1.9"
-    doc: "Frozen signed and unsigned 32-bit integer division."
-    syntax: "div.u32 | div.s32 dst, src1, src2"
+    doc: "Integer division."
+    syntax: "div.{u16|u32|u64|s16|s32|s64} dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: div_u32
@@ -1439,11 +1608,27 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         examples:
           - {ptx: "div.s32 %r0, %r1, %r2;", valid: true}
+      - name: div_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}]
+        examples: [{ptx: "div.u16 %h0, %h1, 3;", valid: true}]
+      - name: div_u64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}]
+        examples: [{ptx: "div.u64 %rd0, %rd1, 3;", valid: true}]
+      - name: div_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}]
+        examples: [{ptx: "div.s16 %h0, %h1, -3;", valid: true}]
+      - name: div_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}]
+        examples: [{ptx: "div.s64 %rd0, %rd1, -3;", valid: true}]
 
   - opcode: rem
     section: "9.7.1.10"
-    doc: "Frozen signed and unsigned 32-bit integer remainder."
-    syntax: "rem.s32 | rem.u32 dst, src1, src2"
+    doc: "Integer remainder."
+    syntax: "rem.{u16|u32|u64|s16|s32|s64} dst, src1, src2"
     operands: $binary_arith
     variants:
       - name: rem_s32
@@ -1459,6 +1644,22 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         examples:
           - {ptx: "rem.u32 %r0, %r1, %r2;", valid: true}
+      - name: rem_u16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u16}]
+        examples: [{ptx: "rem.u16 %h0, %h1, 3;", valid: true}]
+      - name: rem_u64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}]
+        examples: [{ptx: "rem.u64 %rd0, %rd1, 3;", valid: true}]
+      - name: rem_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}]
+        examples: [{ptx: "rem.s16 %h0, %h1, -3;", valid: true}]
+      - name: rem_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}]
+        examples: [{ptx: "rem.s64 %rd0, %rd1, -3;", valid: true}]
 
   - opcode: min
     section: "9.7.1.13"
@@ -1516,9 +1717,9 @@ instructions:
 
   - opcode: abs
     section: "9.7.1.11"
-    doc: "Frozen signed 32-bit integer absolute value."
-    syntax: "abs.s32 dst, src"
-    operands: $unary_scalar_register
+    doc: "Signed integer absolute value."
+    syntax: "abs.{s16|s32|s64} dst, src"
+    operands: $unary_integer_arith
     variants:
       - name: abs_s32
         availability: {ptx: "1.0", sm: 0}
@@ -1542,9 +1743,9 @@ instructions:
 
   - opcode: neg
     section: "9.7.1.12"
-    doc: "Frozen signed 32-bit integer negation."
-    syntax: "neg.s32 dst, src"
-    operands: $unary_scalar_register
+    doc: "Signed scalar and packed-byte integer negation."
+    syntax: "neg.{s16|s32|s64|s8x4} dst, src"
+    operands: $unary_integer_arith
     variants:
       - name: neg_s32
         availability: {ptx: "1.0", sm: 0}
@@ -1775,6 +1976,334 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
         examples:
           - {ptx: "brev.b64 %rd0, %rd1;", valid: true}
+
+  - opcode: clmad
+    section: "9.7.1.5"
+    doc: "Carryless 64-bit multiply-add."
+    syntax: "clmad.{hi|lo}.u64 dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: clmad_lo_u64
+        availability: {ptx: "9.3", sm: 80}
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples: [{ptx: "clmad.lo.u64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+      - name: clmad_hi_u64
+        availability: {ptx: "9.3", sm: 80}
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples: [{ptx: "clmad.hi.u64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+
+  - opcode: mul24
+    section: "9.7.1.6"
+    doc: "24-bit integer multiply with high and low result selection."
+    syntax: "mul24.{hi|lo}.{u32|s32} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: mul24_lo_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "mul24.lo.u32 %r0, %r1, 7;", valid: true}]
+      - name: mul24_lo_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "mul24.lo.s32 %r0, %r1, -7;", valid: true}]
+      - name: mul24_hi_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "mul24.hi.u32 %r0, %r1, %r2;", valid: true}]
+      - name: mul24_hi_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "mul24.hi.s32 %r0, %r1, %r2;", valid: true}]
+
+  - opcode: mad24
+    section: "9.7.1.7"
+    doc: "24-bit integer multiply-add with high and low result selection."
+    syntax: "mad24.{hi|lo}.{u32|s32} | mad24.hi.sat.s32 dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: mad24_lo_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "mad24.lo.u32 %r0, %r1, 7, %r2;", valid: true}]
+      - name: mad24_lo_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "mad24.lo.s32 %r0, %r1, -7, %r2;", valid: true}]
+      - name: mad24_hi_u32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "mad24.hi.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: mad24_hi_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "mad24.hi.s32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: mad24_hi_sat_s32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: sat, kind: flag, presence: fixed, value: true, token: ".sat"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "mad24.hi.sat.s32 %r0, %r1, %r2, %r3;", valid: true}]
+
+  - opcode: sad
+    section: "9.7.1.8"
+    doc: "Sum of absolute differences for scalar integer types."
+    syntax: "sad.{u16|u32|u64|s16|s32|s64} dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: sad_scalar
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
+        examples: [{ptx: "sad.u32 %r0, %r1, %r2, 1;", valid: true}, {ptx: "sad.s64 %rd0, %rd1, %rd2, -1;", valid: true}]
+
+  - opcode: fns
+    section: "9.7.1.18"
+    doc: "Find an indexed set bit in a 32-bit mask."
+    syntax: "fns.b32 dst, mask, base, offset"
+    operands: $fns_b32
+    variants:
+      - name: fns_b32
+        availability: {ptx: "6.0", sm: 30}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]
+        constraints: [{kind: immediate_range, operand: base, minimum: 0, maximum: 31}]
+        examples: [{ptx: "fns.b32 %r0, 0xaaaaaaaa, 3, -1;", valid: true}]
+
+  - opcode: szext
+    section: "9.7.1.22"
+    doc: "Sign-extend or zero-extend a selected-width 32-bit source."
+    syntax: "szext.{clamp|wrap}.{u32|s32} dst, src, width"
+    operands: $szext_u32
+    variants:
+      - name: szext_clamp_u32
+        availability: {ptx: "7.6", sm: 70}
+        modifiers: [{name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "szext.clamp.u32 %r0, %r1, 32;", valid: true}]
+      - name: szext_wrap_u32
+        availability: {ptx: "7.6", sm: 70}
+        modifiers: [{name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "szext.wrap.u32 %r0, 0xffffffff, 0;", valid: true}]
+      - name: szext_clamp_s32
+        operands: $szext_s32
+        availability: {ptx: "7.6", sm: 70}
+        modifiers: [{name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "szext.clamp.s32 %r0, %r1, 31;", valid: true}]
+      - name: szext_wrap_s32
+        operands: $szext_s32
+        availability: {ptx: "7.6", sm: 70}
+        modifiers: [{name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "szext.wrap.s32 %r0, %r1, 33;", valid: true}]
+
+  - opcode: bmsk
+    section: "9.7.1.23"
+    doc: "Construct a 32-bit mask with clamp or wrap behavior."
+    syntax: "bmsk.{clamp|wrap}.b32 dst, position, width"
+    operands: $bmsk_b32
+    variants:
+      - name: bmsk_clamp_b32
+        availability: {ptx: "7.6", sm: 70}
+        modifiers: [{name: clamp, kind: flag, presence: fixed, value: true, token: ".clamp"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]
+        examples: [{ptx: "bmsk.clamp.b32 %r0, %r1, 32;", valid: true}]
+      - name: bmsk_wrap_b32
+        availability: {ptx: "7.6", sm: 70}
+        modifiers: [{name: wrap, kind: flag, presence: fixed, value: true, token: ".wrap"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}]
+        examples: [{ptx: "bmsk.wrap.b32 %r0, 1, 33;", valid: true}]
+
+  - opcode: dp4a
+    section: "9.7.1.24"
+    doc: "Four-way packed-byte dot-product accumulate."
+    syntax: "dp4a.{u32|s32}.{u32|s32} dst, src1, src2, accumulator"
+    operands: $dp_u32_u32
+    variants:
+      - name: dp4a_u32_u32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: a_type, kind: type, domain: scalar_types, presence: fixed, value: u32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "dp4a.u32.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp4a_u32_s32
+        operands: $dp_u32_s32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: a_type, kind: type, domain: scalar_types, presence: fixed, value: u32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "dp4a.u32.s32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp4a_s32_u32
+        operands: $dp_s32_u32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: a_type, kind: type, domain: scalar_types, presence: fixed, value: s32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "dp4a.s32.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp4a_s32_s32
+        operands: $dp_s32_s32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: a_type, kind: type, domain: scalar_types, presence: fixed, value: s32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "dp4a.s32.s32 %r0, %r1, %r2, %r3;", valid: true}]
+
+  - opcode: dp2a
+    section: "9.7.1.25"
+    doc: "Two-way packed halfword-by-byte dot-product accumulate."
+    syntax: "dp2a.{lo|hi}.{u32|s32}.{u32|s32} dst, src1, src2, accumulator"
+    operands: $dp_u32_u32
+    variants:
+      - name: dp2a_lo_u32_u32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: u32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "dp2a.lo.u32.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_lo_u32_s32
+        operands: $dp_u32_s32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: u32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "dp2a.lo.u32.s32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_lo_s32_u32
+        operands: $dp_s32_u32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: s32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "dp2a.lo.s32.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_lo_s32_s32
+        operands: $dp_s32_s32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: lo, kind: flag, presence: fixed, value: true, token: ".lo"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: s32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "dp2a.lo.s32.s32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_hi_u32_u32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: u32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "dp2a.hi.u32.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_hi_u32_s32
+        operands: $dp_u32_s32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: u32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "dp2a.hi.u32.s32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_hi_s32_u32
+        operands: $dp_s32_u32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: s32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: u32}]
+        examples: [{ptx: "dp2a.hi.s32.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: dp2a_hi_s32_s32
+        operands: $dp_s32_s32
+        availability: {ptx: "5.0", sm: 61}
+        modifiers: [{name: hi, kind: flag, presence: fixed, value: true, token: ".hi"}, {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: s32}, {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "dp2a.hi.s32.s32 %r0, %r1, %r2, %r3;", valid: true}]
+
+  - opcode: min
+    section: "9.7.1.13"
+    doc: "Remaining scalar and packed integer minimum forms."
+    syntax: "min.{u16|u32|u64|s16|s64|u16x2|u8x4|s16x2|s8x4} | min.relu.{s32|s16x2|s8x4} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: min_non_relu_integer
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - u16
+              - u32
+              - u64
+              - s16
+              - s64
+              - value: u16x2
+                availability: {ptx: "8.0", sm: 90}
+              - value: u8x4
+                availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        examples: [{ptx: "min.u64 %rd0, %rd1, 4;", valid: true}, {ptx: "min.u16x2 %r0, %r1, %r2;", valid: true}]
+      - name: min_s16x2
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16x2}]
+        examples: [{ptx: "min.s16x2 %r0, %r1, %r2;", valid: true}]
+      - name: min_relu_s32
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "min.relu.s32 %r0, %r1, %r2;", valid: true}]
+      - name: min_relu_s16x2
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16x2}]
+        examples: [{ptx: "min.relu.s16x2 %r0, %r1, %r2;", valid: true}]
+      - name: min_s8x4
+        availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8x4}]
+        examples: [{ptx: "min.s8x4 %r0, %r1, %r2;", valid: true}]
+      - name: min_relu_s8x4
+        availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s8x4}]
+        examples: [{ptx: "min.relu.s8x4 %r0, %r1, %r2;", valid: true}]
+
+  - opcode: max
+    section: "9.7.1.14"
+    doc: "Remaining scalar and packed integer maximum forms."
+    syntax: "max.{u16|u32|u64|s16|s64|u16x2|u8x4|s16x2|s8x4} | max.relu.{s32|s16x2|s8x4} dst, src1, src2"
+    operands: $binary_arith
+    variants:
+      - name: max_non_relu_integer
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - name: type
+            kind: type
+            domain: scalar_types
+            presence: required
+            values:
+              - u16
+              - u32
+              - u64
+              - s16
+              - s64
+              - value: u16x2
+                availability: {ptx: "8.0", sm: 90}
+              - value: u8x4
+                availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        examples: [{ptx: "max.u64 %rd0, %rd1, 4;", valid: true}, {ptx: "max.u16x2 %r0, %r1, %r2;", valid: true}]
+      - name: max_s16x2
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16x2}]
+        examples: [{ptx: "max.s16x2 %r0, %r1, %r2;", valid: true}]
+      - name: max_relu_s32
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}]
+        examples: [{ptx: "max.relu.s32 %r0, %r1, %r2;", valid: true}]
+      - name: max_relu_s16x2
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16x2}]
+        examples: [{ptx: "max.relu.s16x2 %r0, %r1, %r2;", valid: true}]
+      - name: max_s8x4
+        availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8x4}]
+        examples: [{ptx: "max.s8x4 %r0, %r1, %r2;", valid: true}]
+      - name: max_relu_s8x4
+        availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s8x4}]
+        examples: [{ptx: "max.relu.s8x4 %r0, %r1, %r2;", valid: true}]
+
+  - opcode: abs
+    section: "9.7.1.11"
+    doc: "Remaining signed integer absolute-value forms."
+    syntax: "abs.{s16|s64} dst, src"
+    operands: $unary_integer_arith
+    variants:
+      - name: abs_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}]
+        examples: [{ptx: "abs.s16 %h0, -1;", valid: true}]
+      - name: abs_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}]
+        examples: [{ptx: "abs.s64 %rd0, -1;", valid: true}]
+
+  - opcode: neg
+    section: "9.7.1.12"
+    doc: "Remaining signed scalar and packed-byte negation forms."
+    syntax: "neg.{s16|s64|s8x4} dst, src"
+    operands: $unary_integer_arith
+    variants:
+      - name: neg_s16
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s16}]
+        examples: [{ptx: "neg.s16 %h0, -1;", valid: true}]
+      - name: neg_s64
+        availability: {ptx: "1.0", sm: 0}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s64}]
+        examples: [{ptx: "neg.s64 %rd0, -1;", valid: true}]
+      - name: neg_s8x4
+        availability: {ptx: "9.2", sm: 120, family: sm_120f}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8x4}]
+        examples: [{ptx: "neg.s8x4 %r0, %r1;", valid: true}]
 
   - opcode: add
     section: "9.7.2.1"

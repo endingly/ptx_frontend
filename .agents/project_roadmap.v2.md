@@ -401,7 +401,7 @@ family scope，绝不表示整部 PTX ISA。
 
 | PTX 9.3 family | 1.0 处置 | Milestone |
 | --- | --- | --- |
-| Integer arithmetic | common compiler-kernel subset；剩余 cross-product 延后 | M12 |
+| Integer arithmetic | PTX 9.3 §9.7.1 syntax form 已完整建模；扩展精度整数仍单列 | M12 |
 | Extended-precision integer | 非 corpus 必需项延后 | post-1.0 |
 | Floating / half / mixed precision | common subset；transcendental 完整度延后 | M12 / post-1.0 |
 | Comparison / selection | common integer/float/predicate topology | M12 |

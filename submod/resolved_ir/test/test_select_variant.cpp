@@ -2113,10 +2113,10 @@ TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
   EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMad, RejectsUnfrozenVariants) {
+TEST(ResolveMad, RejectsIllegalModifiers) {
   for (const auto source :
-       {"mad.u32 %r0, %r1, %r2, %r3;", "mad.hi.u32 %r0, %r1, %r2, %r3;",
-        "mad.lo.sat.s32 %r0, %r1, %r2, %r3;", "mad.rz.f32 %f0, %f1, %f2, %f3;",
+       {"mad.u32 %r0, %r1, %r2, %r3;", "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
+        "mad.rz.f32 %f0, %f1, %f2, %f3;",
         "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);
@@ -2459,11 +2459,11 @@ TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
   EXPECT_EQ(Min::NanF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMin, RejectsUnfrozenVariants) {
+TEST(ResolveMin, RejectsIllegalModifiers) {
   for (const auto source :
-       {"min.relu.s32 %r0, %r1, %r2;", "min.f32 %f0, %f1, %f2;",
-        "min.ftz.f32 %f0, %f1, %f2;", "min.xorsign.abs.f32 %f0, %f1, %f2;",
-        "min.abs.f32 %f0, %f1, %f2;", "min.nan.f32 %f0, %f1, %f2;"}) {
+       {"min.f32 %f0, %f1, %f2;", "min.ftz.f32 %f0, %f1, %f2;",
+        "min.xorsign.abs.f32 %f0, %f1, %f2;", "min.abs.f32 %f0, %f1, %f2;",
+        "min.nan.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Min>(parse_instruction(source)).has_value());
   }
@@ -2486,11 +2486,11 @@ TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
   EXPECT_EQ(Max::NanF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMax, RejectsUnfrozenVariants) {
+TEST(ResolveMax, RejectsIllegalModifiers) {
   for (const auto source :
-       {"max.relu.s32 %r0, %r1, %r2;", "max.f32 %f0, %f1, %f2;",
-        "max.ftz.f32 %f0, %f1, %f2;", "max.xorsign.abs.f32 %f0, %f1, %f2;",
-        "max.abs.f32 %f0, %f1, %f2;", "max.nan.f32 %f0, %f1, %f2;"}) {
+       {"max.f32 %f0, %f1, %f2;", "max.ftz.f32 %f0, %f1, %f2;",
+        "max.xorsign.abs.f32 %f0, %f1, %f2;", "max.abs.f32 %f0, %f1, %f2;",
+        "max.nan.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Max>(parse_instruction(source)).has_value());
   }

@@ -108,7 +108,7 @@ add_test(NAME normalizes_installed_external_alignment
 add_test(NAME validates_installed_owned_module_handoff
     COMMAND ptx_frontend_validation_consumer handoff)
 
-foreach(_opcode IN ITEMS mov mul setp carry ld st bit_operations)
+foreach(_opcode IN ITEMS mov mul setp carry ld st bit_operations integer_arithmetic)
     add_executable(ptx_frontend_${_opcode}_consumer ${_opcode}_completeness.cpp)
     target_compile_features(ptx_frontend_${_opcode}_consumer PRIVATE cxx_std_23)
     target_link_libraries(ptx_frontend_${_opcode}_consumer

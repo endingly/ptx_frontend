@@ -41,7 +41,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `mul` | 支持 | 完整 PTX 9.3 integer、floating、half 与 bfloat MUL form、其 modifier/operand contract 和 availability 见 [MUL 覆盖矩阵](mul_coverage.md)；simulator execution 仍不支持 |
 | 已建模的 `setp` | 支持 | 普通与 half/bfloat 比较、Boolean predicate source、destination shape 及目标边界见 [SETP 覆盖](setp_coverage.md)；不执行比较运算 |
 | 已建模的 `ld`/`st` | 支持 | Scalar/vector、shared 子空间、cache-control 组合、有序语义、NC load 和 unified-address 检查见 [LD 覆盖](ld_coverage.md) 与 [ST 覆盖](st_coverage.md)；内存执行与分配不属于 frontend |
-| 扩展精度 add/sub | 支持 | `add.cc`、`addc{.cc}`、`sub.cc` 和 `subc{.cc}` 交付 typed carry/borrow effect 并进行目标检查，见 [carry 覆盖](carry_coverage.md)；运行时 CC 状态仍不属于 frontend |
+| 扩展精度整数 | 支持 | §9.7.2 全部文档化的 `add`/`addc`/`sub`/`subc`/`mad`/`madc` type、mode 与 CC-effect 组合均提供 typed carry/borrow effect 和目标检查，见 [carry 覆盖](carry_coverage.md)；运行时 CC 状态仍不属于 frontend |
 | 冻结的 integer `mad` | 支持 | register-or-immediate source `mad.lo.u32`（PTX 1.0 / SM 0） |
 | 已建模的 `fma` | 支持 | 16 个 PTX 9.3 FMA variant、其 modifier/operand contract 与 availability 见 [FMA 覆盖矩阵](fma_coverage.md)；simulator execution 仍不支持 |
 | 冻结的 integer `div` | 支持 | register-or-immediate source `div.u32`（PTX 1.0 / SM 0）；zero divisor 保持接受，行为由 PTX 指定为 unspecified |

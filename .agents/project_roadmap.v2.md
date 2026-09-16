@@ -402,7 +402,7 @@ family scope，绝不表示整部 PTX ISA。
 | PTX 9.3 family | 1.0 处置 | Milestone |
 | --- | --- | --- |
 | Integer arithmetic | PTX 9.3 §9.7.1 syntax form 已完整建模；扩展精度整数仍单列 | M12 |
-| Extended-precision integer | 非 corpus 必需项延后 | post-1.0 |
+| Extended-precision integer | PTX 9.3 §9.7.2 type/mode/effect 组合已建模；跨指令 carry-chain 仍单列 | M12 |
 | Floating / half / mixed precision | common subset；transcendental 完整度延后 | M12 / post-1.0 |
 | Comparison / selection | common integer/float/predicate topology | M12 |
 | Logic / shift | common compiler-kernel subset | M12 |
@@ -1276,7 +1276,7 @@ M19 diagnostics/CI/reproducibility infrastructure
 | Surface | `suld/sust/sured/suq` |
 | Stack | `stacksave/stackrestore/alloca` |
 | Video | scalar/SIMD video instruction family |
-| Extended precision | addc/subc/madc 与完整 carry-chain |
+| Extended precision | 跨指令 carry-chain analysis 与 execution |
 | Transcendental | rcp/sqrt/rsqrt/sin/cos/lg2/ex2/tanh 完整 cross-product |
 | Legacy/deprecated | deprecated shfl/vote、legacy banks、历史 matrix variant |
 | Full variant expansion | WGMMA/TCGEN05 全 shape/type/layout cross-product |

@@ -2404,3 +2404,101 @@ instructions:
         modifiers:
           - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+
+  - opcode: mad
+    section: "9.7.2.5"
+    doc: "Extended-precision multiply-add with carry-out through implicit CC.CF."
+    syntax: "mad.{hi|lo}.cc.{u32|s32|u64|s64} dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: mad_hi_cc_32
+        availability: {ptx: "3.0", sm: 20}
+        condition_code_effect: carry_out
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: .hi}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        examples: [{ptx: "mad.hi.cc.u32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: mad_lo_cc_32
+        availability: {ptx: "3.0", sm: 20}
+        condition_code_effect: carry_out
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        examples: [{ptx: "mad.lo.cc.s32 %r0, %r1, %r2, %r3;", valid: true}]
+      - name: mad_hi_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_out
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: .hi}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+        examples: [{ptx: "mad.hi.cc.u64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+      - name: mad_lo_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_out
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+        examples: [{ptx: "mad.lo.cc.s64 %rd0, %rd1, %rd2, %rd3;", valid: true}]
+
+  - opcode: madc
+    section: "9.7.2.6"
+    doc: "Extended-precision multiply-add with carry-in and optional carry-out."
+    syntax: "madc.{hi|lo}{.cc}.{u32|s32|u64|s64} dst, src1, src2, src3"
+    operands: $ternary_arith
+    variants:
+      - name: madc_hi_plain_32
+        availability: {ptx: "3.0", sm: 20}
+        condition_code_effect: carry_in
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: .hi}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: madc_lo_plain_32
+        availability: {ptx: "3.0", sm: 20}
+        condition_code_effect: carry_in
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: madc_hi_plain_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_in
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: .hi}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+      - name: madc_lo_plain_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_in
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+      - name: madc_hi_cc_32
+        availability: {ptx: "3.0", sm: 20}
+        condition_code_effect: carry_in_out
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: .hi}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: madc_lo_cc_32
+        availability: {ptx: "3.0", sm: 20}
+        condition_code_effect: carry_in_out
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+      - name: madc_hi_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_in_out
+        modifiers:
+          - {name: hi, kind: flag, presence: fixed, value: true, token: .hi}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+      - name: madc_lo_cc_64
+        availability: {ptx: "4.3", sm: 20}
+        condition_code_effect: carry_in_out
+        modifiers:
+          - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
+          - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}

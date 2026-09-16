@@ -19,6 +19,8 @@
 #include <fmt/format.h>
 
 namespace ptx_frontend::resolved_ir {
+/** Optional generated opcode type used by owned call ABI validation. */
+struct Call;
 namespace {
 
 checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
@@ -1215,60 +1217,64 @@ void check_typed_call_literals(
     checker::CheckDiagnostics& diagnostics) {
   for (size_t index = 0; index < function.body.size(); ++index) {
     std::visit(
-        [&](const auto& instruction) {
-          if (instruction.get_resolved_descriptor().opcode_name != "call")
-            return;
-          std::visit(
-              [&](const auto& selected) {
-                if constexpr (requires { selected.operands; }) {
-                  std::visit(
-                      [&](const auto& operands) {
-                        const declaration_semantics::FunctionSignature*
-                            signature = nullptr;
-                        if constexpr (requires { operands.metadata.value; }) {
-                          if (const auto metadata = indirect_metadata_identity(
-                                  operands.metadata.value)) {
-                            signature =
-                                metadata_signature(signatures, *metadata);
+        [&](const auto& candidate) {
+          if constexpr (std::same_as<std::remove_cvref_t<decltype(candidate)>,
+                                     Call>) {
+            std::visit(
+                [&](const auto& selected) {
+                  if constexpr (requires { selected.operands; }) {
+                    std::visit(
+                        [&](const auto& operands) {
+                          const declaration_semantics::FunctionSignature*
+                              signature = nullptr;
+                          if constexpr (requires { operands.metadata.value; }) {
+                            if (const auto metadata =
+                                    indirect_metadata_identity(
+                                        operands.metadata.value)) {
+                              signature =
+                                  metadata_signature(signatures, *metadata);
+                            }
+                          } else if constexpr (requires {
+                                                 operands.target.value
+                                                     .symbol_id;
+                                               }) {
+                            if (operands.target.value.symbol_id) {
+                              signature = direct_signature(
+                                  module, signatures,
+                                  *operands.target.value.symbol_id);
+                            }
                           }
-                        } else if constexpr (requires {
-                                               operands.target.value.symbol_id;
-                                             }) {
-                          if (operands.target.value.symbol_id) {
-                            signature = direct_signature(
-                                module, signatures,
-                                *operands.target.value.symbol_id);
+                          if (signature == nullptr) {
+                            append_model_mismatch(
+                                diagnostics, function.instruction_ranges[index],
+                                "Resolved module call has no retained formal "
+                                "signature.");
+                            return;
                           }
-                        }
-                        if (signature == nullptr) {
-                          append_model_mismatch(
-                              diagnostics, function.instruction_ranges[index],
-                              "Resolved module call has no retained formal "
-                              "signature.");
-                          return;
-                        }
-                        const ResolvedCallArguments* inputs = nullptr;
-                        if constexpr (requires {
-                                        operands.arguments.value.values;
-                                      })
-                          inputs = &operands.arguments.value;
-                        const ResolvedCallParameterRef* returns = nullptr;
-                        if constexpr (requires {
-                                        operands.return_value.value.symbol_id;
-                                      }) {
-                          returns = &operands.return_value.value;
-                        }
-                        check_call_inputs(inputs, signature->parameters,
-                                          declarations, diagnostics,
-                                          function.instruction_ranges[index]);
-                        check_call_returns(
-                            returns, signature->return_parameters, declarations,
-                            diagnostics, function.instruction_ranges[index]);
-                      },
-                      selected.operands);
-                }
-              },
-              instruction.variant);
+                          const ResolvedCallArguments* inputs = nullptr;
+                          if constexpr (requires {
+                                          operands.arguments.value.values;
+                                        })
+                            inputs = &operands.arguments.value;
+                          const ResolvedCallParameterRef* returns = nullptr;
+                          if constexpr (requires {
+                                          operands.return_value.value.symbol_id;
+                                        }) {
+                            returns = &operands.return_value.value;
+                          }
+                          check_call_inputs(inputs, signature->parameters,
+                                            declarations, diagnostics,
+                                            function.instruction_ranges[index]);
+                          check_call_returns(
+                              returns, signature->return_parameters,
+                              declarations, diagnostics,
+                              function.instruction_ranges[index]);
+                        },
+                        selected.operands);
+                  }
+                },
+                candidate.variant);
+          }
         },
         function.body[index]);
   }

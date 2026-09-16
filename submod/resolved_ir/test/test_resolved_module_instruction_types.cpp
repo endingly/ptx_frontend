@@ -2018,6 +2018,57 @@ TEST(ResolvedModule, ChecksM12BrevTypes) {
   }
 }
 
+/** Expanded bit operations retain owned operands and validate after AST expiry. */
+TEST(ResolvedModule, RetainsExpandedBitOperationsAndRevalidatesMutations) {
+  std::optional<ResolvedModule> owned_module;
+  {
+    const auto parsed_module = parseModule(R"ptx(
+.version 9.3
+.target sm_100
+.entry kernel() {
+  .reg .u32 %r<8>;
+  .reg .u64 %rd<6>;
+  .reg .s64 %srd;
+  popc.b64 %r0, 1;
+  clz.b64 %r1, 1;
+  bfind.shiftamt.s64 %r2, -1;
+  bfe.s64 %srd, -1, %r3, %r4;
+  bfi.b64 %rd0, 1, 2, %r5, %r6;
+  brev.b64 %rd1, 1;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
+    auto resolved = resolveModule(*parsed_module);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned_module.emplace(std::move(*resolved));
+  }
+
+  ASSERT_EQ(owned_module->functions.size(), 1u);
+  auto& body = owned_module->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  EXPECT_TRUE(validateModule(*owned_module,
+                             ModuleValidationPolicy::RequireCompleteContext)
+                  .has_value());
+
+  auto& bfind = std::get<Bfind::ShiftamtS64>(std::get<Bfind>(body[2]).variant);
+  bfind.dst.value.declared_type = ScalarType::U64;
+  const auto invalid_destination = validateModule(
+      *owned_module, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_destination.has_value());
+  EXPECT_EQ(invalid_destination.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  bfind.dst.value.declared_type = ScalarType::U32;
+
+  auto& bfe = std::get<Bfe::S64>(std::get<Bfe>(body[3]).variant);
+  auto& offset_register = std::get<ResolvedRegisterRef>(bfe.offset.value);
+  offset_register.declared_type = ScalarType::U64;
+  const auto invalid_control = validateModule(
+      *owned_module, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_control.has_value());
+  EXPECT_EQ(invalid_control.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+}
+
 /** Verify every logic-and-shift form survives module resolution independently
  * of the syntax AST that produced it. */
 TEST(ResolvedModule, ChecksIssue144LogicAndShiftFormsAfterAstLifetime) {

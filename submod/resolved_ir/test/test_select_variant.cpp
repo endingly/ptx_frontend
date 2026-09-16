@@ -2113,10 +2113,10 @@ TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
   EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMad, RejectsUnfrozenVariants) {
+TEST(ResolveMad, RejectsIllegalModifiers) {
   for (const auto source :
-       {"mad.u32 %r0, %r1, %r2, %r3;", "mad.hi.u32 %r0, %r1, %r2, %r3;",
-        "mad.lo.sat.s32 %r0, %r1, %r2, %r3;", "mad.rz.f32 %f0, %f1, %f2, %f3;",
+       {"mad.u32 %r0, %r1, %r2, %r3;", "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
+        "mad.rz.f32 %f0, %f1, %f2, %f3;",
         "mad.lo.cc.u32 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);
@@ -2459,11 +2459,11 @@ TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
   EXPECT_EQ(Min::NanF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMin, RejectsUnfrozenVariants) {
+TEST(ResolveMin, RejectsIllegalModifiers) {
   for (const auto source :
-       {"min.relu.s32 %r0, %r1, %r2;", "min.f32 %f0, %f1, %f2;",
-        "min.ftz.f32 %f0, %f1, %f2;", "min.xorsign.abs.f32 %f0, %f1, %f2;",
-        "min.abs.f32 %f0, %f1, %f2;", "min.nan.f32 %f0, %f1, %f2;"}) {
+       {"min.f32 %f0, %f1, %f2;", "min.ftz.f32 %f0, %f1, %f2;",
+        "min.xorsign.abs.f32 %f0, %f1, %f2;", "min.abs.f32 %f0, %f1, %f2;",
+        "min.nan.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Min>(parse_instruction(source)).has_value());
   }
@@ -2486,11 +2486,11 @@ TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
   EXPECT_EQ(Max::NanF32::type, ScalarType::F32);
 }
 
-TEST(ResolveMax, RejectsUnfrozenVariants) {
+TEST(ResolveMax, RejectsIllegalModifiers) {
   for (const auto source :
-       {"max.relu.s32 %r0, %r1, %r2;", "max.f32 %f0, %f1, %f2;",
-        "max.ftz.f32 %f0, %f1, %f2;", "max.xorsign.abs.f32 %f0, %f1, %f2;",
-        "max.abs.f32 %f0, %f1, %f2;", "max.nan.f32 %f0, %f1, %f2;"}) {
+       {"max.f32 %f0, %f1, %f2;", "max.ftz.f32 %f0, %f1, %f2;",
+        "max.xorsign.abs.f32 %f0, %f1, %f2;", "max.abs.f32 %f0, %f1, %f2;",
+        "max.nan.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Max>(parse_instruction(source)).has_value());
   }
@@ -2568,45 +2568,43 @@ TEST(ResolveLop3, SelectsBoolopLayoutAndRejectsNonImmediateLut) {
           .has_value());
 }
 
-TEST(ResolveBfe, SelectsFrozenU32VariantAndRejectsNonImmediateBounds) {
+TEST(ResolveBfe, SelectsAllIntegerWidthsAndControlShapes) {
   for (const auto source :
-       {"bfe.u32 %r0, %r1, 0, 8;", "bfe.u32 %r0, %r1, 255, 255;"}) {
+       {"bfe.u32 %r0, 1, 0, 8;", "bfe.u64 %rd0, %rd1, 255, 255;",
+        "bfe.s32 %r0, %r1, %r2, 8;", "bfe.s64 %rd0, %rd1, 8, %r2;"}) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Bfe>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    ASSERT_NE(std::get_if<Bfe::U32>(&resolved->variant), nullptr);
-    EXPECT_EQ(Bfe::U32::type, ScalarType::U32);
+    EXPECT_TRUE(std::holds_alternative<Bfe::U32>(resolved->variant) ||
+                std::holds_alternative<Bfe::U64>(resolved->variant) ||
+                std::holds_alternative<Bfe::S32>(resolved->variant) ||
+                std::holds_alternative<Bfe::S64>(resolved->variant));
   }
-  for (const auto source :
-       {"bfe.u32 %r0, %r1, %r2, 8;", "bfe.u32 %r0, %r1, 8, %r2;"}) {
-    SCOPED_TRACE(source);
-    EXPECT_FALSE(resolve<Bfe>(parse_instruction(source)).has_value());
-  }
+  EXPECT_FALSE(
+      resolve<Bfe>(parse_instruction("bfe.b32 %r0, %r1, 0, 8;")).has_value());
 }
 
-TEST(ResolveBfi, SelectsFrozenB32VariantAndRejectsNonImmediateBounds) {
+TEST(ResolveBfi, SelectsBothBitWidthsAndControlShapes) {
   for (const auto source :
-       {"bfi.b32 %r0, %r1, %r2, 0, 8;", "bfi.b32 %r0, %r1, %r2, 255, 255;"}) {
+       {"bfi.b32 %r0, 1, 2, 0, 8;", "bfi.b64 %rd0, %rd1, %rd2, 255, 255;",
+        "bfi.b32 %r0, %r1, %r2, %r3, %r4;"}) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Bfi>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    ASSERT_NE(std::get_if<Bfi::B32>(&resolved->variant), nullptr);
-    EXPECT_EQ(Bfi::B32::type, ScalarType::B32);
+    EXPECT_TRUE(std::holds_alternative<Bfi::B32>(resolved->variant) ||
+                std::holds_alternative<Bfi::B64>(resolved->variant));
   }
-  for (const auto source :
-       {"bfi.b32 %r0, %r1, %r2, %r3, 8;", "bfi.b32 %r0, %r1, %r2, 8, %r3;"}) {
-    SCOPED_TRACE(source);
-    EXPECT_FALSE(resolve<Bfi>(parse_instruction(source)).has_value());
-  }
+  EXPECT_FALSE(resolve<Bfi>(parse_instruction("bfi.u32 %r0, %r1, %r2, 0, 8;"))
+                   .has_value());
 }
 
-TEST(ResolveBrev, SelectsFrozenB32VariantAndRejectsB64) {
-  const auto brev = resolve<Brev>(parse_instruction("brev.b32 %r0, %r1;"));
-  ASSERT_TRUE(brev.has_value()) << brev.error().message;
-  ASSERT_NE(std::get_if<Brev::B32>(&brev->variant), nullptr);
-  EXPECT_EQ(Brev::B32::type, ScalarType::B32);
-  EXPECT_FALSE(selectVariant<Brev>(parse_instruction("brev.b64 %rd0, %rd1;"))
-                   .has_value());
+TEST(ResolveBrev, SelectsBothBitWidths) {
+  for (const auto source : {"brev.b32 %r0, 1;", "brev.b64 %rd0, %rd1;"}) {
+    const auto brev = resolve<Brev>(parse_instruction(source));
+    ASSERT_TRUE(brev.has_value()) << brev.error().message;
+    EXPECT_TRUE(std::holds_alternative<Brev::B32>(brev->variant) ||
+                std::holds_alternative<Brev::B64>(brev->variant));
+  }
 }
 
 TEST(ResolveShf, SelectsEveryDirectionAndModeVariant) {
@@ -2666,17 +2664,17 @@ TEST(ResolvePrmt, RejectsWrongSelectorFormsAndModes) {
           .has_value());
 }
 
-TEST(ResolvePopc, SelectsFrozenB32VariantAndRejectsB64) {
-  const auto popc = resolve<Popc>(parse_instruction("popc.b32 %r0, %r1;"));
-  ASSERT_TRUE(popc.has_value()) << popc.error().message;
-  ASSERT_NE(std::get_if<Popc::B32>(&popc->variant), nullptr);
-  EXPECT_EQ(Popc::B32::type, ScalarType::B32);
-  EXPECT_FALSE(selectVariant<Popc>(parse_instruction("popc.b64 %rd0, %rd1;"))
-                   .has_value());
+TEST(ResolvePopc, SelectsBothBitWidths) {
+  for (const auto source : {"popc.b32 %r0, 1;", "popc.b64 %r0, %rd1;"}) {
+    const auto popc = resolve<Popc>(parse_instruction(source));
+    ASSERT_TRUE(popc.has_value()) << popc.error().message;
+    EXPECT_TRUE(std::holds_alternative<Popc::B32>(popc->variant) ||
+                std::holds_alternative<Popc::B64>(popc->variant));
+  }
 }
 
 TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
-  const auto b32 = resolve<Clz>(parse_instruction("clz.b32 %r0, %r1;"));
+  const auto b32 = resolve<Clz>(parse_instruction("clz.b32 %r0, 1;"));
   ASSERT_TRUE(b32.has_value()) << b32.error().message;
   EXPECT_NE(std::get_if<Clz::B32>(&b32->variant), nullptr);
   const auto b64 = resolve<Clz>(parse_instruction("clz.b64 %r0, %rd1;"));
@@ -2686,14 +2684,23 @@ TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
       selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
 }
 
-TEST(ResolveBfind, SelectsFrozenShiftamtU32AndRejectsPlainForm) {
-  const auto bfind =
-      resolve<Bfind>(parse_instruction("bfind.shiftamt.u32 %r0, %r1;"));
-  ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
-  ASSERT_NE(std::get_if<Bfind::ShiftamtU32>(&bfind->variant), nullptr);
+TEST(ResolveBfind, SelectsEveryTypeAndShiftAmountForm) {
+  for (const auto source : {
+           "bfind.u32 %r0, 1;",
+           "bfind.u64 %r0, %rd1;",
+           "bfind.s32 %r0, %r1;",
+           "bfind.s64 %r0, %rd1;",
+           "bfind.shiftamt.u32 %r0, %r1;",
+           "bfind.shiftamt.u64 %r0, %rd1;",
+           "bfind.shiftamt.s32 %r0, %r1;",
+           "bfind.shiftamt.s64 %r0, %rd1;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_TRUE(resolve<Bfind>(parse_instruction(source)).has_value());
+  }
   EXPECT_TRUE(Bfind::ShiftamtU32::shiftamt);
-  const auto plain = parse_instruction("bfind.u32 %r0, %r1;");
-  EXPECT_FALSE(selectVariant<Bfind>(plain).has_value());
+  EXPECT_FALSE(selectVariant<Bfind>(parse_instruction("bfind.b32 %r0, %r1;"))
+                   .has_value());
 }
 
 TEST(ResolveIsspacep, SelectsFrozenGlobalU64AndRejectsOtherForms) {

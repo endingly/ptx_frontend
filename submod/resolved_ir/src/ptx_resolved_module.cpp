@@ -10,8 +10,10 @@
 
 #include <algorithm>
 #include <charconv>
+#include <concepts>
 #include <limits>
 #include <ranges>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -19,6 +21,8 @@
 #include <fmt/format.h>
 
 namespace ptx_frontend::resolved_ir {
+/** Optional generated opcode type used by the call ABI resolver. */
+struct Call;
 namespace {
 
 using call_argument_compatibility::CallArgumentCompatibility;
@@ -554,23 +558,23 @@ ResolvedCallArguments* resolved_call_arguments(
   ResolvedCallArguments* arguments = nullptr;
   std::visit(
       [&](auto& candidate) {
-        if (candidate.get_resolved_descriptor().opcode_name != "call")
-          return;
-        std::visit(
-            [&](auto& selected) {
-              if constexpr (requires { selected.operands; }) {
-                std::visit(
-                    [&](auto& operands) {
-                      if constexpr (requires {
-                                      operands.arguments.value.values;
-                                    }) {
-                        arguments = &operands.arguments.value;
-                      }
-                    },
-                    selected.operands);
-              }
-            },
-            candidate.variant);
+        if constexpr (std::same_as<std::remove_cvref_t<decltype(candidate)>,
+                                   Call>) {
+          std::visit(
+              [&](auto& selected) {
+                if constexpr (requires { selected.operands; }) {
+                  std::visit(
+                      [&](auto& operands) {
+                        if constexpr (requires {
+                                        operands.arguments.value.values;
+                                      })
+                          arguments = &operands.arguments.value;
+                      },
+                      selected.operands);
+                }
+              },
+              candidate.variant);
+        }
       },
       instruction);
   return arguments;

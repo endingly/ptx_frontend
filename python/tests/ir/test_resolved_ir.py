@@ -729,6 +729,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 [variant.name for variant in by_opcode[opcode].variants], names
             )
 
+        min_relu_s16x2 = next(
+            variant
+            for variant in by_opcode["min"].variants
+            if variant.name == "min_relu_s16x2"
+        )
+        self.assertEqual(min_relu_s16x2.modifier_order_aliases,
+                         (("type", "relu"),))
+
         fns = by_opcode["fns"].variants[0]
         self.assertEqual(
             [(constraint.operand, constraint.minimum, constraint.maximum)

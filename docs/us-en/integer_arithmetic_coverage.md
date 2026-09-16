@@ -1,11 +1,15 @@
 # Integer Arithmetic Coverage
 
-The frontend models all 161 documented syntax forms in PTX ISA 9.3 §9.7.1:
+The frontend models all 161 documented type/mode combinations in PTX ISA 9.3
+§9.7.1:
 `add`, `sub`, `mul`, `mad`, `clmad`, `mul24`, `mad24`, `sad`, `div`, `rem`,
 `abs`, `neg`, `min`, `max`, `popc`, `clz`, `bfind`, `fns`, `brev`, `bfe`,
 `bfi`, `szext`, `bmsk`, `dp4a`, and `dp2a`. The canonical source is
 `python/code_gen/resources/ptx_spec/arithmetic.yaml`; parser descriptors,
 Resolved IR, and target-aware checking are generated from it.
+
+The documented `min.s16x2.relu` example is accepted as a modifier-order alias
+of canonical `min.relu.s16x2`; it does not add a form or canonical variant.
 
 The normative reference is the [archived CUDA 13.3 PTX ISA 9.3
 manual](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html).

@@ -2216,7 +2216,11 @@ instructions:
       - name: min_relu_s16x2
         availability: {ptx: "8.0", sm: 90}
         modifiers: [{name: relu, kind: flag, presence: fixed, value: true, token: ".relu"}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: s16x2}]
-        examples: [{ptx: "min.relu.s16x2 %r0, %r1, %r2;", valid: true}]
+        modifier_order_aliases:
+          - [type, relu]
+        examples:
+          - {ptx: "min.relu.s16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "min.s16x2.relu %r0, %r1, %r2;", valid: true}
       - name: min_s8x4
         availability: {ptx: "9.2", sm: 120, family: sm_120f}
         modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8x4}]

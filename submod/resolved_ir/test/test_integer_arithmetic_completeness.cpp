@@ -165,6 +165,48 @@ TEST(IntegerArithmeticCompleteness, ResolvesFamilySpecificPackedByteForms) {
           .has_value());
 }
 
+/** Accept the documented alternate modifier order for packed ReLU minimum. */
+TEST(IntegerArithmeticCompleteness,
+     ResolvesPackedReluMinimumModifierOrderAlias) {
+  const auto parsed_module = parseModule(R"ptx(
+.version 8.0
+.target sm_90
+.entry kernel() {
+  .reg .b32 %b<4>;
+  min.relu.s16x2 %b0, %b1, %b2;
+  min.s16x2.relu %b0, %b1, %b2;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
+  const auto resolved = resolveModule(*parsed_module);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->functions.front().body.size(), 2u);
+
+  for (const auto& instruction : resolved->functions.front().body) {
+    const auto& minimum = std::get<Min>(instruction);
+    ASSERT_NE(std::get_if<Min::ReluS16x2>(&minimum.variant), nullptr);
+    EXPECT_TRUE(Min::ReluS16x2::relu);
+    EXPECT_EQ(Min::ReluS16x2::type, ScalarType::S16x2);
+    EXPECT_TRUE(checker::check(
+                    minimum, checker::Context{.target = {.ptx_version = {8, 0},
+                                                         .sm_version = 90}})
+                    .has_value());
+    EXPECT_FALSE(checker::check(
+                     minimum, checker::Context{.target = {.ptx_version = {7, 9},
+                                                          .sm_version = 90}})
+                     .has_value());
+    EXPECT_FALSE(checker::check(
+                     minimum, checker::Context{.target = {.ptx_version = {8, 0},
+                                                          .sm_version = 80}})
+                     .has_value());
+  }
+
+  const auto duplicate_relu =
+      test_helpers::parseInstruction("min.s16x2.relu.relu %r0, %r1, %r2;");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(duplicate_relu);
+  EXPECT_FALSE(resolveInstruction(*duplicate_relu).has_value());
+}
+
 /** Verify the PTX, SM, and target-family floors for newly added forms. */
 TEST(IntegerArithmeticCompleteness, EnforcesNewFormTargetFloors) {
   constexpr std::array<std::string_view, 1> sm120f{"sm_120f"};

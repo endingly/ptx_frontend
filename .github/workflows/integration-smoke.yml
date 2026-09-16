@@ -60,6 +60,15 @@ jobs:
         with:
           writes-shared-caches: ${{ matrix.writes_shared_caches }}
 
+      - name: Restore persistent compiler cache
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+          restore-keys: |
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
+
       # All consumers restore this compatibility prefix. Only trusted main
       # pushes below create immutable Debug and Release seeds for their SHA.
       - name: Reset unit-test compiler-cache statistics
@@ -90,6 +99,40 @@ jobs:
           date +%s > "$CCACHE_METRICS_DIR/production.started-at"
           cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
+      - name: Build production target
+        id: production-build
+        shell: bash
+        run: |
+          date +%s > "$CCACHE_METRICS_DIR/production.build-started-at"
+          set +e
+          cmake --build --preset "${{ matrix.preset }}" --target ptx_frontend_resolved_ir
+          build_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/production.finished-at"
+          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
+          exit "$build_exit_code"
+
+      - name: Build normal resolved-IR tests
+        id: test-support
+        if: success()
+        run: |
+          cmake --build \
+            --preset "${{ matrix.preset }}" \
+            --target test_resolved_ir
+      
+      - name: Run normal resolved-IR tests
+        id: test
+        if: success()
+        shell: bash
+        run: |
+          set +e
+          ctest \
+            --test-dir "$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/submod/resolved_ir" \
+            --output-on-failure \
+            --no-tests=error
+          test_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
+          exit "$test_exit_code"
+
       - name: Save vcpkg source-download cache
         if: success() && matrix.writes_shared_caches && steps.setup.outputs.downloads-cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -104,18 +147,6 @@ jobs:
         with:
           path: .cache/vcpkg/archives
           key: ${{ steps.setup.outputs.binary-cache-key }}
-
-      - name: Build production target
-        id: production-build
-        shell: bash
-        run: |
-          date +%s > "$CCACHE_METRICS_DIR/production.build-started-at"
-          set +e
-          cmake --build --preset "${{ matrix.preset }}" --target ptx_frontend_resolved_ir
-          build_exit_code=$?
-          date +%s > "$CCACHE_METRICS_DIR/production.finished-at"
-          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
-          exit "$build_exit_code"
 
       - name: Record production compiler-cache statistics
         if: always()

@@ -7,7 +7,7 @@ import stat
 import tempfile
 import unittest
 
-from scripts.regenerate_m12_corpus import VERSION, json_bytes, main
+from ptx_frontend.scripts.regenerate_m12_corpus import VERSION, json_bytes, main
 
 
 ROOT = Path(__file__).resolve().parents[3]

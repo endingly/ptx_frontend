@@ -9,8 +9,8 @@ from ptx_frontend.base.utils import (
     generated_at_comment,
     to_file_stem,
 )
-from .cpp_backend import CppDomain, cpp_value
-from .database import CodegenDatabase
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
+from ptx_frontend.code_gen.database import CodegenDatabase
 from ptx_frontend.ir.syntax_ast import (
     ModifierPresence,
     OperandLayoutKind,
@@ -225,7 +225,8 @@ def _emit_modifier_order_alias_arrays(
     )
     entries = ",\n".join(
         "          check_end::SyntaxModifierOrderDescriptor{"
-        f".modifiers = {variant_name}_modifier_order_alias_{alias_index}" "}"
+        f".modifiers = {variant_name}_modifier_order_alias_{alias_index}"
+        "}"
         for alias_index in range(len(variant.modifier_order_aliases))
     )
     return f"""\
@@ -260,10 +261,7 @@ def _emit_operand_slot_array(
     layout_index: int,
     layout: SyntaxOperandLayoutDescriptor,
 ) -> str:
-    slots = ",\n".join(
-        _emit_operand_slot(slot)
-        for slot in layout.slots
-    )
+    slots = ",\n".join(_emit_operand_slot(slot) for slot in layout.slots)
     return f"""\
   inline static constexpr std::array<check_end::SyntaxOperandSlotDescriptor, {len(layout.slots)}>
       {variant_name}_layout_{layout_index}_slots = {{
@@ -275,15 +273,12 @@ def _emit_operand_layout_array(
     variant_name: str,
     layouts: tuple[SyntaxOperandLayoutDescriptor, ...],
 ) -> str:
-    entries = ",\n".join(
-        f"""\
+    entries = ",\n".join(f"""\
           check_end::SyntaxOperandLayoutDescriptor{{
               .layout_id = {_cpp_string(layout.layout_id)},
               .kind = {cpp_value(CppDomain.SYNTAX_OPERAND_LAYOUT_KINDS, layout.kind.value)},
               .slots = {variant_name}_layout_{index}_slots,
-          }}"""
-        for index, layout in enumerate(layouts)
-    )
+          }}""" for index, layout in enumerate(layouts))
     return f"""\
   inline static constexpr std::array<check_end::SyntaxOperandLayoutDescriptor, {len(layouts)}>
       {variant_name}_operand_layouts = {{
@@ -296,7 +291,7 @@ def _emit_operand_slot(
 ) -> str:
     allowed_shapes = _cpp_operand_syntax_shape(slot.allowed_syntax_shapes)
     type_tag = (
-        f'\n              .type_tag = {_cpp_string(slot.type_tag)},'
+        f"\n              .type_tag = {_cpp_string(slot.type_tag)},"
         if slot.type_tag is not None
         else ""
     )
@@ -326,9 +321,7 @@ def _emit_variant_descriptor(
 ) -> str:
     name = to_file_stem(variant.variant_id)
     modifier_order_aliases = (
-        f"{name}_modifier_order_aliases"
-        if variant.modifier_order_aliases
-        else "{}"
+        f"{name}_modifier_order_aliases" if variant.modifier_order_aliases else "{}"
     )
     return f"""\
           check_end::SyntaxVariantDescriptor{{
@@ -343,7 +336,7 @@ def _cpp_operand_syntax_shape(shape: OperandSyntaxShape) -> str:
     values = [
         cpp_value(CppDomain.SYNTAX_OPERAND_SHAPES, flag.name)
         for flag in OperandSyntaxShape
-        if shape & flag
+        if shape & flag and (flag.name != None)
     ]
     if not values:
         raise ValueError("operand syntax shape must not be empty")

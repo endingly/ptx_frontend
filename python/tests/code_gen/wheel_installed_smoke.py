@@ -133,12 +133,12 @@ def check_packaged_spec_model() -> None:
             "reg_or_imm",
         ]
 
-        assert operands[0].type_expression.modifier_name == "result_type"
-        assert operands[3].type_expression.modifier_name == "result_type"
+        assert operands[0].type_expression.modifier_name == "result_type" # pyright: ignore[reportOptionalMemberAccess]
+        assert operands[3].type_expression.modifier_name == "result_type" # pyright: ignore[reportOptionalMemberAccess]
 
-    assert layouts["fma_mixed_f32_f16"][1].type_expression.modifier_name == "input_type"
+    assert layouts["fma_mixed_f32_f16"][1].type_expression.modifier_name == "input_type" # pyright: ignore[reportOptionalMemberAccess]
 
-    assert layouts["fma_mixed_f32_bf16"][1].type_expression.scalar_type == "b16"
+    assert layouts["fma_mixed_f32_bf16"][1].type_expression.scalar_type == "b16" # pyright: ignore[reportOptionalMemberAccess]
 
 
 def main() -> None:

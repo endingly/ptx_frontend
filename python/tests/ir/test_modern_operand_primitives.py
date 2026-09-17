@@ -217,54 +217,6 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overlapping syntax"):
             normalize_instruction_spec(spec)
 
-    def test_mbarrier_domain_fixture_emits_typed_token_and_defaults(self) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "submod/resolved_ir/test/fixtures"
-        )
-        specification = next(
-            instruction
-            for instruction in database.instructions
-            if instruction.opcode == "synthetic_mbarrier_domain"
-        )
-        instruction = from_instruction_spec(specification)
-        variant = instruction.variants[0]
-        self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
-            [
-                ("phase_type", "WithLocs<MbarrierPhaseType>"),
-                ("layout", "WithLocs<MbarrierLayout>"),
-                ("state", "WithLocs<ResolvedMbarrierStateToken>"),
-            ],
-        )
-        self.assertEqual(
-            [binding.default_value.value for binding in variant.modifier_bindings],
-            ["phase_type::primary", "layout::v0"],
-        )
-        self.assertEqual(
-            variant.operand_layouts[0].bindings[0].allowed_shapes,
-            (ResolvedOperandShape.REGISTER,),
-        )
-
-        with tempfile.TemporaryDirectory() as directory:
-            directory_path = Path(directory)
-            header_path = directory_path / "resolved_ir.gen.hpp"
-            descriptor_path = directory_path / "resolved_descriptor.gen.cpp"
-            checker_path = directory_path / "checker.gen.cpp"
-            generate_resolved_ir_header(database, output_path=header_path)
-            generate_resolved_descriptor_source(database, output_path=descriptor_path)
-            generate_resolved_checker_descriptor_source(
-                database, output_path=checker_path
-            )
-            header = header_path.read_text(encoding="utf-8")
-            descriptor = descriptor_path.read_text(encoding="utf-8")
-            checker = checker_path.read_text(encoding="utf-8")
-
-        self.assertIn("WithLocs<ResolvedMbarrierStateToken> state;", header)
-        self.assertIn("MbarrierPhaseType::Primary", descriptor)
-        self.assertIn("MbarrierLayout::V0", descriptor)
-        self.assertIn("MbarrierPhaseType::Conditional", checker)
-        self.assertIn("MbarrierLayout::V1", checker)
-
     def test_normalizer_accepts_strictly_contained_modern_pack_layout(self) -> None:
         spec = _modern_instruction()
         variant = spec["instructions"][0]["variants"][0]

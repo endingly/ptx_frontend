@@ -7,7 +7,7 @@ import unittest
 
 from jsonschema import Draft202012Validator
 
-from ptx_frontend.code_gen.m12_natural_corpus import (
+from ptx_frontend.code_gen._frontend.m12_natural_corpus import (
     canonical_bytes,
     fixture_targets,
     target_directive_architectures,

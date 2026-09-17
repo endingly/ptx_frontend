@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Mapping
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
@@ -550,7 +551,7 @@ def _emit_operand_type_compatibility_descriptor(
           }}"""
 
 
-def _emit_availability(availability: dict[str, object]) -> str:
+def _emit_availability(availability: Mapping[str, object]) -> str:
     if "any_of" not in availability:
         minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
         return f'''{{

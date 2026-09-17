@@ -1,18 +1,13 @@
-from __future__ import annotations
-
 from pathlib import Path
 import sys
 import tempfile
+from typing import Any, cast
 import unittest
 
 from jsonschema import Draft202012Validator
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-# PYTHON_ROOT = REPO_ROOT / "python"
-
-# if str(PYTHON_ROOT) not in sys.path:
-#     sys.path.insert(0, str(PYTHON_ROOT))
 
 
 from ptx_frontend.code_gen.database import load_codegen_database
@@ -97,7 +92,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.schema = load_yaml(
-            REPO_ROOT / "instructions/schemas/ptx-instr-v1.schema.yaml"
+            REPO_ROOT / "instructions/ptx-instr-v1.schema.yaml"
         )
         cls.operand_validator = Draft202012Validator(
             {
@@ -108,7 +103,8 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
         )
 
     def test_schema_rejects_invalid_primitive_metadata(self) -> None:
-        valid = _modern_instruction()["instructions"][0]["variants"][0]["operands"]
+        valid_origin = cast(Any, _modern_instruction())
+        valid = valid_origin["instructions"][0]["variants"][0]["operands"]
         self.assertTrue(
             all(not list(self.operand_validator.iter_errors(item)) for item in valid)
         )
@@ -118,7 +114,9 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             cardinality={"min": 1, "max": 5},
             element_kinds=["imm", "reg"],
         )
-        self.assertFalse(list(self.operand_validator.iter_errors(reversed_coordinate)))
+        self.assertFalse(
+            list(self.operand_validator.iter_errors(cast(Any, reversed_coordinate)))
+        )
         for operand in (
             _operand("reg", "value", type_tag="ordinary_register"),
             _operand("descriptor", "desc"),
@@ -176,7 +174,9 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
                 vector={"arity": 2},
             ),
         ):
-            self.assertTrue(list(self.operand_validator.iter_errors(operand)))
+            self.assertTrue(
+                list(self.operand_validator.iter_errors(cast(Any, operand)))
+            )
 
     def test_predicate_sources_accept_integer_constants_and_negation(self) -> None:
         source_shapes = (
@@ -218,7 +218,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
                 normalize_operand(operand)
 
     def test_normalizer_rejects_incomparable_modern_pack_layouts(self) -> None:
-        spec = _modern_instruction()
+        spec = cast(Any, _modern_instruction())
         variant = spec["instructions"][0]["variants"][0]
         variant.pop("operands")
         variant["operand_layouts"] = [
@@ -249,7 +249,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             normalize_instruction_spec(spec)
 
     def test_normalizer_rejects_type_tag_only_layout_difference(self) -> None:
-        spec = _modern_instruction()
+        spec = cast(Any, _modern_instruction())
         variant = spec["instructions"][0]["variants"][0]
         variant.pop("operands")
         variant["operand_layouts"] = [
@@ -270,7 +270,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             normalize_instruction_spec(spec)
 
     def test_normalizer_accepts_strictly_contained_modern_pack_layout(self) -> None:
-        spec = _modern_instruction()
+        spec = cast(Any, _modern_instruction())
         variant = spec["instructions"][0]["variants"][0]
         variant.pop("operands")
         variant["operand_layouts"] = [

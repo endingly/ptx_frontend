@@ -5,7 +5,7 @@ import unittest
 import yaml
 
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
-from ptx_frontend.code_gen.gen_resolved_value_domains import (
+from ptx_frontend.code_gen._frontend.gen_resolved_value_domains import (
     generate_resolved_value_domain_header,
 )
 

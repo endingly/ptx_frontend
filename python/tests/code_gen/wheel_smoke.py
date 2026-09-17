@@ -20,7 +20,6 @@ def main(wheel: Path) -> None:
         names = archive.namelist()
     for name in (
         "ptx_frontend/base/utils.py",
-        "ptx_frontend/spec/__init__.py",
         "ptx_frontend/spec/model.py",
         "ptx_frontend/spec/database.py",
         "ptx_frontend/spec/resources.py",

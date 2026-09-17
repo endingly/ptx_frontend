@@ -17,7 +17,7 @@ if str(PYTHON_ROOT) not in sys.path:
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.gen_syntax_ast_arch import (
+from ptx_frontend.code_gen._frontend.gen_syntax_ast_arch import (
     emit_check_end_instruction_descriptor_implementation,
     generate_syntax_descriptor_source,
 )
@@ -795,7 +795,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             0
         ].state_space_expression
         self.assertIsNotNone(expression)
-        self.assertEqual(expression.modifier_name, "state_space")
+        self.assertEqual(expression.modifier_name, "state_space") # pyright: ignore[reportOptionalMemberAccess]
 
         with self.assertRaisesRegex(ValueError, "active state-space modifier"):
             normalize_with_modifier(
@@ -946,9 +946,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             "values": ["global", "param"],
         }
         operand = normalize_parameter(required_modifier)
-        self.assertEqual(operand.parameter_constraint.direction, "input")
+        self.assertEqual(operand.parameter_constraint.direction, "input") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            operand.parameter_constraint.function_availability,
+            operand.parameter_constraint.function_availability, # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "2.0", "sm": 20},
         )
 
@@ -959,7 +959,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             "domain": "state_spaces",
             "value": "param",
         }
-        self.assertIsNotNone(normalize_parameter(fixed_modifier).parameter_constraint)
+        self.assertIsNotNone(normalize_parameter(fixed_modifier).parameter_constraint) # pyright: ignore[reportArgumentType]
 
         with self.assertRaisesRegex(ValueError, "address constraints.*kind 'addr'"):
             normalize_parameter(required_modifier, kind="reg")
@@ -967,7 +967,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_parameter(required_modifier, state_space=None)
         without_param = dict(required_modifier, values=["global"])
         with self.assertRaisesRegex(ValueError, "allow \\.param"):
-            normalize_parameter(without_param)
+            normalize_parameter(without_param) # pyright: ignore[reportArgumentType]
         with self.assertRaisesRegex(ValueError, "unsupported parameter direction"):
             normalize_parameter(
                 required_modifier,
@@ -1153,7 +1153,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
 
         address = {"name": "address", "kind": "addr", "role": "addr", "access": "read"}
         count = {"name": "count", "kind": "imm", "role": "src", "access": "read", "type": "u32"}
-        normalize_layouts([[address], [address, count]])
+        normalize_layouts([[address], [address, count]]) # pyright: ignore[reportArgumentType]
         for invalid_layouts in (
             [[address], [count]],
             [[address], [address, address]],
@@ -1161,7 +1161,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         ):
             with self.subTest(layouts=invalid_layouts):
                 with self.assertRaisesRegex(ValueError, "kind 'addr' operand"):
-                    normalize_layouts(invalid_layouts)
+                    normalize_layouts(invalid_layouts) # pyright: ignore[reportArgumentType]
 
     def test_immediate_value_constraint_normalization(self) -> None:
         def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
@@ -1516,7 +1516,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )[0]
         operand = instruction.variants[0].operand_layouts[0].operands[0]
         self.assertEqual(operand.vector_arities, ())
-        self.assertEqual(operand.vector_arity_expression.modifier_name, "vector")
+        self.assertEqual(operand.vector_arity_expression.modifier_name, "vector") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
             operand.vector_type_policy,
             OperandVectorTypePolicy.ELEMENT,

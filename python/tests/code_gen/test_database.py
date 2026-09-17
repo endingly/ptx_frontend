@@ -8,12 +8,12 @@ from jsonschema import Draft202012Validator
 
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.load_yaml import load_yaml
-from ptx_frontend.code_gen.gen_resolved_checker_descriptor import _emit_availability
+from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import _emit_availability
 from ptx_frontend.code_gen.normalize import normalize_availability, normalize_operand
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCHEMA = REPO_ROOT / "instructions/schemas/ptx-instr-v1.schema.yaml"
+SCHEMA = REPO_ROOT / "instructions/ptx-instr-v1.schema.yaml"
 
 
 def _variant(name: str, type_value: str) -> dict[str, object]:
@@ -153,9 +153,10 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             "divisor": 8,
         }]
         validator = Draft202012Validator(load_yaml(SCHEMA))
-        self.assertEqual(list(validator.iter_errors(spec)), [])
+        json_spec = cast(Any, spec)
+        self.assertEqual(list(validator.iter_errors(json_spec)), [])
         cast(list[dict[str, object]], variant["constraints"])[0]["divisor"] = 0
-        self.assertTrue(list(validator.iter_errors(spec)))
+        self.assertTrue(list(validator.iter_errors(json_spec)))
 
     def test_schema_caps_immediate_constraint_fields_at_uint64(self) -> None:
         spec = _spec(
@@ -164,6 +165,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             variant_name="add_integer",
             type_value="u32",
         )
+        json_spec = cast(Any, spec)
         instruction = cast(list[dict[str, object]], spec["instructions"])[0]
         variant = cast(list[dict[str, object]], instruction["variants"])[0]
         variant["operands"] = [{
@@ -184,9 +186,9 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 variant["constraints"] = [constraint]
-                self.assertEqual(list(validator.iter_errors(spec)), [])
+                self.assertEqual(list(validator.iter_errors(json_spec)), [])
                 constraint[field] = too_large
-                self.assertTrue(list(validator.iter_errors(spec)))
+                self.assertTrue(list(validator.iter_errors(json_spec)))
 
     def test_database_allows_layout_conditional_immediate_constraints(self) -> None:
         for kind, constraint in (

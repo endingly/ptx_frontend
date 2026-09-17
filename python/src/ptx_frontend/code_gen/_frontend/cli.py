@@ -6,8 +6,8 @@ import argparse
 from pathlib import Path
 
 from ptx_frontend.base.utils import format_file_inplace
-from .cpp_backend import configure_cpp_backend, get_cpp_backend
-from .database import CodegenDatabase, load_codegen_database
+from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
+from ptx_frontend.code_gen.database import CodegenDatabase, load_codegen_database
 from .gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
@@ -37,7 +37,9 @@ def parse_arguments() -> argparse.Namespace:
 def main() -> None:
     args = parse_arguments()
     spec_dir, output_dir, backend_spec = (
-        args.spec_dir.resolve(), args.output.resolve(), args.backend_spec.resolve()
+        args.spec_dir.resolve(),
+        args.output.resolve(),
+        args.backend_spec.resolve(),
     )
     validate_directory(spec_dir, "--spec-dir")
     validate_file(backend_spec, "--backend-spec")
@@ -64,22 +66,30 @@ def main() -> None:
     generate_resolved_value_domain_header(backend, output_path=generated_files[0])
     generate_resolved_ir_header(database, output_path=generated_files[1])
     generate_resolved_ir_resolution_declarations_header(
-        database, output_path=generated_files[2])
+        database, output_path=generated_files[2]
+    )
     generate_resolved_ir_checker_declarations_header(
-        database, output_path=generated_files[3])
+        database, output_path=generated_files[3]
+    )
     generate_resolved_dispatch_source(database, output_path=generated_files[4])
     for category in instruction_categories(database):
         output_path = resolved_ir_category_source_path(output_dir, category)
-        generate_resolved_ir_source(database, category=category, output_path=output_path)
+        generate_resolved_ir_source(
+            database, category=category, output_path=output_path
+        )
         generated_files.append(output_path)
-    generated_files.extend([
-        output_dir / "private/syntax_descriptor.gen.cpp",
-        output_dir / "private/resolved_descriptor.gen.cpp",
-        output_dir / "private/resolved_ir_checker_descriptor.gen.cpp",
-    ])
+    generated_files.extend(
+        [
+            output_dir / "private/syntax_descriptor.gen.cpp",
+            output_dir / "private/resolved_descriptor.gen.cpp",
+            output_dir / "private/resolved_ir_checker_descriptor.gen.cpp",
+        ]
+    )
     generate_syntax_descriptor_source(database, output_path=generated_files[-3])
     generate_resolved_descriptor_source(database, output_path=generated_files[-2])
-    generate_resolved_checker_descriptor_source(database, output_path=generated_files[-1])
+    generate_resolved_checker_descriptor_source(
+        database, output_path=generated_files[-1]
+    )
     for generated_file in generated_files:
         format_file_inplace(str(generated_file))
 
@@ -99,21 +109,28 @@ def validate_file(path: Path, option: str) -> None:
 
 
 def instruction_categories(database: CodegenDatabase) -> tuple[str, ...]:
-    return tuple(sorted({instruction.codegen_category for instruction in database.instructions}))
+    return tuple(
+        sorted({instruction.codegen_category for instruction in database.instructions})
+    )
 
 
 def resolved_ir_category_source_path(output_dir: Path, category: str) -> Path:
     return output_dir / f"private/resolved_ir_{category}.gen.cpp"
 
 
-def expected_generated_files(database: CodegenDatabase, output_dir: Path) -> tuple[Path, ...]:
+def expected_generated_files(
+    database: CodegenDatabase, output_dir: Path
+) -> tuple[Path, ...]:
     return (
         output_dir / "private/resolved_value_domains.gen.hpp",
         output_dir / "public/resolved_ir.gen.hpp",
         output_dir / "public/resolved_ir_resolution.gen.hpp",
         output_dir / "public/resolved_ir_checker.gen.hpp",
         output_dir / "private/resolved_ir_dispatch.gen.cpp",
-        *(resolved_ir_category_source_path(output_dir, category) for category in instruction_categories(database)),
+        *(
+            resolved_ir_category_source_path(output_dir, category)
+            for category in instruction_categories(database)
+        ),
         output_dir / "private/syntax_descriptor.gen.cpp",
         output_dir / "private/resolved_descriptor.gen.cpp",
         output_dir / "private/resolved_ir_checker_descriptor.gen.cpp",

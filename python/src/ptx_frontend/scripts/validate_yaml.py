@@ -10,7 +10,6 @@ from argparse import ArgumentParser
 import yaml
 from jsonschema import Draft202012Validator
 
-
 def add_argparser() -> ArgumentParser:
     parser = ArgumentParser(description="Validate a YAML file against a JSON schema.")
     parser.add_argument("schema", type=str, help="Path to the yaml schema file.")

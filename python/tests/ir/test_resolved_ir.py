@@ -17,15 +17,15 @@ if str(PYTHON_ROOT) not in sys.path:
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.database import CodegenDatabase
 from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
-from ptx_frontend.code_gen.gen_resolved_descriptor import (
+from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
     generate_resolved_descriptor_source,
 )
-from ptx_frontend.code_gen.gen_resolved_checker_descriptor import (
+from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )
-from ptx_frontend.code_gen.gen_resolved_ir import (
+from ptx_frontend.code_gen._frontend.gen_resolved_ir import (
     _validate_reference_field_types,
     generate_resolved_dispatch_source,
     generate_resolved_ir_header,
@@ -347,7 +347,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["saturate", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
-            optional_sat.modifier_bindings[0].default_value.value,
+            optional_sat.modifier_bindings[0].default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             False,
         )
         self.assertEqual(
@@ -752,7 +752,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [("base", 0, 31)],
         )
         self.assertEqual(
-            [binding.type_expression.scalar_type
+            [binding.type_expression.scalar_type # pyright: ignore[reportOptionalMemberAccess]
              for binding in fns.operand_layouts[0].operands],
             ["b32", "b32", "u32", "s32"],
         )
@@ -1099,8 +1099,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ]
                 self.assertIn(("barrier", 0, 15), ranges)
                 self.assertEqual(
-                    (variant.immediate_multiple_of.operand_field_id,
-                     variant.immediate_multiple_of.divisor),
+                    (variant.immediate_multiple_of.operand_field_id, # pyright: ignore[reportOptionalMemberAccess]
+                     variant.immediate_multiple_of.divisor), # pyright: ignore[reportOptionalMemberAccess]
                     ("thread_count", 32),
                 )
 
@@ -1217,7 +1217,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ],
             )
             self.assertEqual(
-                variant.modifier_bindings[2].default_value.value,
+                variant.modifier_bindings[2].default_value.value, # pyright: ignore[reportOptionalMemberAccess]
                 default,
             )
             self.assertEqual(
@@ -2170,7 +2170,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
              ("state", "WithLocs<ResolvedMbarrierStateToken>")],
         )
         self.assertEqual(
-            pending_count.modifier_bindings[1].default_value.value, "layout::v0"
+            pending_count.modifier_bindings[1].default_value.value, "layout::v0" # pyright: ignore[reportOptionalMemberAccess]
         )
         self.assertEqual(
             dict(pending_count.modifier_value_availabilities[0].availability),
@@ -2216,7 +2216,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            generic_v0.modifier_bindings[1].default_value.value, "layout::v0"
+            generic_v0.modifier_bindings[1].default_value.value, "layout::v0" # pyright: ignore[reportOptionalMemberAccess]
         )
         self.assertEqual(
             [entry.value for entry in generic_v0.modifier_value_availabilities],
@@ -2265,7 +2265,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("tx_count", "WithLocs<RegOrImm>"),
             ],
         )
-        self.assertEqual(expect_tx_generic.modifier_bindings[1].default_value.value, "generic")
+        self.assertEqual(expect_tx_generic.modifier_bindings[1].default_value.value, "generic") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
             [(field.name, field.cpp_type) for field in expect_tx_relaxed_cta.fields[:3]],
             [("expect_tx", "bool"), ("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
@@ -2469,22 +2469,22 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "cache").default_value.value_cpp_type,
+                 if binding.source_kind_id == "cache").default_value.value_cpp_type, # pyright: ignore[reportOptionalMemberAccess]
             "CacheOperator",
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "cache").default_value.value,
+                 if binding.source_kind_id == "cache").default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             "unspecified",
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "semantics").default_value.value,
+                 if binding.source_kind_id == "semantics").default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             "omitted",
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "scope").default_value.value,
+                 if binding.source_kind_id == "scope").default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             "none",
         )
         self.assertEqual(
@@ -2525,8 +2525,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [(entry.source_kind_id, entry.value_cpp_type, entry.value)
              for entry in variant.modifier_value_availabilities],
         )
-        self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics")
-        self.assertEqual(variant.memory_consistency.address_field_id, "address")
+        self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics") # pyright: ignore[reportOptionalMemberAccess]
+        self.assertEqual(variant.memory_consistency.address_field_id, "address") # pyright: ignore[reportOptionalMemberAccess]
         (alignment,) = variant.address_alignments
         self.assertEqual(alignment.address_field_ids, ("address",))
         self.assertEqual(alignment.type_field_id, "type")
@@ -2603,7 +2603,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             (
                 explicit_cache_field.name,
                 explicit_cache_field.cpp_type,
-                explicit_cache_binding.default_value.value,
+                explicit_cache_binding.default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             ),
             ("cache", "WithLocs<CacheOperator>", "unspecified"),
         )
@@ -2644,9 +2644,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         load_parameter = (
             explicit_variant.operand_layouts[0].bindings[1].parameter_constraint
         )
-        self.assertEqual(load_parameter.direction, "input")
+        self.assertEqual(load_parameter.direction, "input") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            dict(load_parameter.function_availability),
+            dict(load_parameter.function_availability), # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "2.0", "sm": 20},
         )
         self.assertEqual(vector_variant.cpp_name, "GenericVector")
@@ -2654,7 +2654,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [field.name for field in vector_variant.fields],
             ["semantics", "scope", "cache", "vector", "type", "dst", "address"],
         )
-        self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "")
+        self.assertEqual(vector_variant.memory_consistency.mmio_field_id, "") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(vector_variant.address_alignments[0].vector_field_id, "vector")
         self.assertEqual(
             [value.value for value in next(modifier for modifier in ld.variants[4].modifiers if modifier.name == "vector").values],
@@ -2669,10 +2669,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertTrue(vector_binding.allow_vector_sink)
         self.assertEqual(vector_binding.vector_sink_payload_bits, 256)
-        self.assertEqual(vector_variant.memory_vector.type_field_id, "type")
-        self.assertEqual(vector_variant.memory_vector.vector_field_id, "dst")
+        self.assertEqual(vector_variant.memory_vector.type_field_id, "type") # pyright: ignore[reportOptionalMemberAccess]
+        self.assertEqual(vector_variant.memory_vector.vector_field_id, "dst") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            dict(vector_variant.memory_vector.availability),
+            dict(vector_variant.memory_vector.availability), # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "8.8", "sm": 100},
         )
         self.assertEqual(
@@ -2686,9 +2686,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             .bindings[1]
             .parameter_constraint
         )
-        self.assertEqual(load_vector_parameter.direction, "input")
+        self.assertEqual(load_vector_parameter.direction, "input") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            dict(load_vector_parameter.function_availability),
+            dict(load_vector_parameter.function_availability), # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "2.0", "sm": 20},
         )
 
@@ -2740,7 +2740,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             next(binding for binding in store_variants["GenericScalar"].modifier_bindings
-                 if binding.source_kind_id == "cache").default_value.value,
+                 if binding.source_kind_id == "cache").default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             "unspecified",
         )
         self.assertEqual(
@@ -2770,7 +2770,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             next(
-                binding.default_value.value
+                binding.default_value.value # pyright: ignore[reportOptionalMemberAccess]
                 for binding in store_variants["ExplicitScalar"].modifier_bindings
                 if binding.source_kind_id == "cache"
             ),
@@ -2815,9 +2815,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         store_parameter = (
             store_variants["ExplicitScalar"].operand_layouts[0].bindings[0].parameter_constraint
         )
-        self.assertEqual(store_parameter.direction, "return")
+        self.assertEqual(store_parameter.direction, "return") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            dict(store_parameter.function_availability),
+            dict(store_parameter.function_availability), # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "2.0", "sm": 20},
         )
         store_vector = store_variants["GenericVector"]
@@ -2825,7 +2825,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [field.name for field in store_vector.fields],
             ["semantics", "scope", "cache", "vector", "type", "address", "src"],
         )
-        self.assertEqual(store_vector.memory_consistency.mmio_field_id, "")
+        self.assertEqual(store_vector.memory_consistency.mmio_field_id, "") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
             [
                 value.value
@@ -2853,13 +2853,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertTrue(store_vector_binding.allow_vector_sink)
         self.assertEqual(store_vector_binding.vector_sink_payload_bits, 256)
-        self.assertEqual(store_vector.memory_vector.vector_field_id, "src")
+        self.assertEqual(store_vector.memory_vector.vector_field_id, "src") # pyright: ignore[reportOptionalMemberAccess]
         store_vector_parameter = (
             store_variants["ExplicitVector"].operand_layouts[0].bindings[0].parameter_constraint
         )
-        self.assertEqual(store_vector_parameter.direction, "return")
+        self.assertEqual(store_vector_parameter.direction, "return") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            dict(store_vector_parameter.function_availability),
+            dict(store_vector_parameter.function_availability), # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "2.0", "sm": 20},
         )
 
@@ -2973,7 +2973,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("fraction", "WithLocs<ResolvedImmediate>"),
             ],
         )
-        self.assertEqual(variant.immediate_value.values, (1056964608,))
+        self.assertEqual(variant.immediate_value.values, (1056964608,)) # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
@@ -3004,7 +3004,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("size", "WithLocs<ResolvedImmediate>"),
             ],
         )
-        self.assertEqual(variant.immediate_value.values, (128,))
+        self.assertEqual(variant.immediate_value.values, (128,)) # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_discard_global_l2_model(self) -> None:
@@ -3031,7 +3031,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("size", "WithLocs<ResolvedImmediate>"),
             ],
         )
-        self.assertEqual(variant.immediate_value.values, (128,))
+        self.assertEqual(variant.immediate_value.values, (128,)) # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(variant.address_alignments[0].alignment, 128)
 
     def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
@@ -3072,8 +3072,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
              for constraint in variant.immediate_ranges],
             [("count", 24, 256)],
         )
-        self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count")
-        self.assertEqual(variant.immediate_multiple_of.divisor, 8)
+        self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count") # pyright: ignore[reportOptionalMemberAccess]
+        self.assertEqual(variant.immediate_multiple_of.divisor, 8) # pyright: ignore[reportOptionalMemberAccess]
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
@@ -3126,8 +3126,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("cp_size", "WithLocs<ResolvedImmediate>"),
             ],
         )
-        self.assertEqual(variant.immediate_value.operand_field_id, "cp_size")
-        self.assertEqual(variant.immediate_value.values, (4, 8, 16))
+        self.assertEqual(variant.immediate_value.operand_field_id, "cp_size") # pyright: ignore[reportOptionalMemberAccess]
+        self.assertEqual(variant.immediate_value.values, (4, 8, 16)) # pyright: ignore[reportOptionalMemberAccess]
         (alignment,) = variant.address_alignments
         self.assertEqual(alignment.address_field_ids, ("dst", "src"))
         self.assertEqual(alignment.immediate_operand_field_id, "cp_size")
@@ -4357,7 +4357,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         parameter_binding = replace(
             parameter_binding,
             parameter_constraint=replace(
-                parameter_binding.parameter_constraint,
+                parameter_binding.parameter_constraint, # pyright: ignore[reportArgumentType]
                 function_availability=dnf,
             ),
         )

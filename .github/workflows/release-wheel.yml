@@ -64,7 +64,7 @@ jobs:
       - name: Check tag version and smoke-test wheel
         shell: bash
         run: |
-          version=$(python3 -c "from configparser import ConfigParser; p = ConfigParser(); p.read('python/setup.cfg'); print(p['metadata']['version'])")
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('python/pyproject.toml', 'rb'))['project']['version'])")
           test "${GITHUB_REF_NAME#v}" = "$version"
           python3 python/tests/code_gen/wheel_smoke.py dist/*.whl
 

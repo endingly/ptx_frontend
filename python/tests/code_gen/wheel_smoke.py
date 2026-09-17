@@ -1,17 +1,15 @@
 import argparse
-from configparser import ConfigParser
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import venv
 import zipfile
-
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG = ConfigParser()
-CONFIG.read(ROOT / "python/setup.cfg")
-EXPECTED_VERSION = CONFIG["metadata"]["version"]
+with (ROOT / "python/pyproject.toml").open("rb") as file:
+    EXPECTED_VERSION = tomllib.load(file)["project"]["version"]
 
 
 def main(wheel: Path) -> None:
@@ -53,7 +51,9 @@ def main(wheel: Path) -> None:
         if name in names:
             raise AssertionError(f"wheel exports frontend-private module {name}")
     if any("/code_gen/_frontend/" in name for name in names):
-        raise AssertionError("wheel contains the source-only frontend generator directory")
+        raise AssertionError(
+            "wheel contains the source-only frontend generator directory"
+        )
     if any(name.startswith(("base/", "code_gen/", "ir/", "spec/")) for name in names):
         raise AssertionError("wheel contains an unqualified top-level package")
 
@@ -75,7 +75,7 @@ def main(wheel: Path) -> None:
 from importlib.metadata import distribution, version
 from importlib.util import find_spec
 
-from ptx_frontend.spec import load_packaged_spec_database
+from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 from ptx_frontend.spec.resources import packaged_spec_schema
 from ptx_frontend.code_gen.model import InstructionSpec as CompatibilityInstructionSpec

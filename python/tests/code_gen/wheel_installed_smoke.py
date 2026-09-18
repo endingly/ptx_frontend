@@ -4,7 +4,7 @@ from importlib.resources import files
 from importlib.util import find_spec
 import os
 
-from ptx_frontend.spec.model import (
+from ptx_frontend.code_gen.model import (
     InstructionSpec as CompatibilityInstructionSpec,
 )
 from ptx_frontend.spec.database import load_packaged_spec_database

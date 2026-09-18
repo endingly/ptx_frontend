@@ -1,30 +1,127 @@
+"""Normalize operand specifications without changing diagnostic order."""
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
 from ptx_frontend.spec.model import (
+    MbarrierStateTokenForm,
+    OperandImmediateConversionPolicy,
+    OperandParameterConstraint,
+    OperandRegisterWidthPolicy,
     OperandSpec,
+    OperandStateSpaceExpression,
+    OperandStateSpaceValue,
+    OperandTypeExpression,
     OperandVectorArityExpression,
     OperandVectorTypePolicy,
-    MbarrierStateTokenForm,
-    OperandRegisterWidthPolicy,
-    OperandImmediateConversionPolicy,
 )
-from typing import Any
-from .expressions import (
-    _normalize_operand_vector_arity_expression,
-    _normalize_operand_type_expression,
-    _normalize_operand_state_space,
-    _normalize_operand_parameter_constraint,
-)
+
 from .availability import normalize_availability
-import re
+from .expressions import (
+    _normalize_operand_parameter_constraint,
+    _normalize_operand_state_space,
+    _normalize_operand_type_expression,
+    _normalize_operand_vector_arity_expression,
+)
+
+
+@dataclass(frozen=True)
+class _ShflSinkOptions:
+    """Normalized scalar and predicate sink flags for a shfl destination."""
+
+    allow_destination: bool
+    allow_predicate: bool
+
+
+@dataclass(frozen=True)
+class _MbarrierOptions:
+    """Normalized mbarrier token form and sink availability."""
+
+    form: MbarrierStateTokenForm
+    sink_availability: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _BracePackOptions:
+    """Normalized cardinality and element kinds for a brace-pack operand."""
+
+    minimum_elements: int | None
+    maximum_elements: int | None
+    element_kinds: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _VectorOptions:
+    """Normalized vector shape, type policy, and sink settings."""
+
+    arities: tuple[int, ...]
+    arity_expression: OperandVectorArityExpression | None
+    type_policy: OperandVectorTypePolicy
+    allow_sink: bool
+    sink_payload_bits: int
+
+
+@dataclass(frozen=True)
+class _AddressOptions:
+    """Normalized state-space and parameter constraints for an address."""
+
+    state_space_values: tuple[OperandStateSpaceValue, ...]
+    state_space_expression: OperandStateSpaceExpression | None
+    parameter_constraint: OperandParameterConstraint | None
 
 
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
-    """Normalize one operand specification."""
+    """Normalize one operand specification in the established validation order."""
 
-    vector_arities: tuple[int, ...] = ()
-    vector_arity_expression: OperandVectorArityExpression | None = None
-    vector_type_policy = OperandVectorTypePolicy.AGGREGATE
-    vector_allow_sink = False
-    vector_sink_payload_bits = 0
+    # Preserve this order: inputs with multiple errors must retain their
+    # original first diagnostic.
+    shfl_sink = _normalize_shfl_sink_options(raw)
+    mbarrier = _normalize_mbarrier_options(raw)
+    _validate_sink_destination(raw)
+
+    type_tag = _normalize_type_tag(raw)
+    pack = _normalize_brace_pack_options(raw)
+    vector = _normalize_vector_options(raw)
+
+    type_expression = _normalize_operand_type_expression(raw.get("type"))
+    register_width = _normalize_register_width(
+        raw,
+        type_expression=type_expression,
+    )
+    immediate_conversion = _normalize_immediate_conversion(raw)
+    address = _normalize_address_options(raw)
+
+    return OperandSpec(
+        name=raw["name"],
+        kind=raw["kind"],
+        role=raw.get("role"),
+        access=raw.get("access"),
+        type_expression=type_expression,
+        register_width_policy=register_width,
+        immediate_conversion_policy=immediate_conversion,
+        state_space_values=address.state_space_values,
+        state_space_expression=address.state_space_expression,
+        parameter_constraint=address.parameter_constraint,
+        vector_arities=vector.arities,
+        vector_arity_expression=vector.arity_expression,
+        vector_type_policy=vector.type_policy,
+        vector_allow_sink=vector.allow_sink,
+        vector_sink_payload_bits=vector.sink_payload_bits,
+        allow_destination_sink=shfl_sink.allow_destination,
+        allow_predicate_sink=shfl_sink.allow_predicate,
+        mbarrier_state_token_form=mbarrier.form,
+        sink_availability=mbarrier.sink_availability,
+        type_tag=type_tag,
+        minimum_elements=pack.minimum_elements,
+        maximum_elements=pack.maximum_elements,
+        element_kinds=pack.element_kinds,
+    )
+
+
+def _normalize_shfl_sink_options(raw: dict[str, Any]) -> _ShflSinkOptions:
+    """Normalize shfl sink flags, preserving destination-before-predicate checks."""
+
     allow_destination_sink = raw.get("allow_destination_sink", False)
     if not isinstance(allow_destination_sink, bool):
         raise TypeError("allow_destination_sink must be a boolean when supplied.")
@@ -35,6 +132,16 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raise TypeError("allow_predicate_sink must be a boolean when supplied.")
     if "allow_predicate_sink" in raw and raw["kind"] != "shfl_dest":
         raise ValueError("allow_predicate_sink is only valid for kind 'shfl_dest'")
+
+    return _ShflSinkOptions(
+        allow_destination=allow_destination_sink,
+        allow_predicate=allow_predicate_sink,
+    )
+
+
+def _normalize_mbarrier_options(raw: dict[str, Any]) -> _MbarrierOptions:
+    """Normalize the token form and availability before checking their use."""
+
     try:
         mbarrier_state_token_form = MbarrierStateTokenForm(
             raw.get("mbarrier_state_token_form", "register")
@@ -64,6 +171,16 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
             raise ValueError(
                 "sink-capable mbarrier state token requires sink_availability"
             )
+
+    return _MbarrierOptions(
+        form=mbarrier_state_token_form,
+        sink_availability=sink_availability,
+    )
+
+
+def _validate_sink_destination(raw: dict[str, Any]) -> None:
+    """Require scalar sink-capable operand kinds to be write destinations."""
+
     if raw["kind"] == "reg_or_sink" and (
         raw.get("role") != "dst" or raw.get("access") != "write"
     ):
@@ -76,6 +193,11 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raw.get("role") != "dst" or raw.get("access") != "write"
     ):
         raise ValueError("pred_pair_or_sink must be a write destination")
+
+
+def _normalize_type_tag(raw: dict[str, Any]) -> str | None:
+    """Normalize the type tag for descriptor and typed-token operands."""
+
     type_tag = raw.get("type_tag")
     if raw["kind"] in {"descriptor", "typed_token"}:
         if (
@@ -87,6 +209,12 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raise ValueError(
             "type_tag is only valid for descriptor or typed_token operands"
         )
+
+    return type_tag
+
+
+def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
+    """Normalize brace-pack cardinality before validating element kinds."""
 
     minimum_elements: int | None = None
     maximum_elements: int | None = None
@@ -125,6 +253,22 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         raise ValueError(
             "cardinality and element_kinds are only valid for brace-pack primitives"
         )
+
+    return _BracePackOptions(
+        minimum_elements=minimum_elements,
+        maximum_elements=maximum_elements,
+        element_kinds=element_kinds,
+    )
+
+
+def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
+    """Normalize vector arity, type policy, and sink options in that order."""
+
+    vector_arities: tuple[int, ...] = ()
+    vector_arity_expression: OperandVectorArityExpression | None = None
+    vector_type_policy = OperandVectorTypePolicy.AGGREGATE
+    vector_allow_sink = False
+    vector_sink_payload_bits = 0
     if raw["kind"] in {"reg_vector", "vector_reg", "vector_sreg"}:
         vector = raw.get("vector")
         if not isinstance(vector, dict) or "arity" not in vector:
@@ -173,7 +317,22 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
                     f"{raw['kind']} vector.sink_payload_bits requires vector.allow_sink."
                 )
 
-    type_expression = _normalize_operand_type_expression(raw.get("type"))
+    return _VectorOptions(
+        arities=vector_arities,
+        arity_expression=vector_arity_expression,
+        type_policy=vector_type_policy,
+        allow_sink=vector_allow_sink,
+        sink_payload_bits=vector_sink_payload_bits,
+    )
+
+
+def _normalize_register_width(
+    raw: dict[str, Any],
+    *,
+    type_expression: OperandTypeExpression | None,
+) -> OperandRegisterWidthPolicy:
+    """Normalize register width using the already-normalized type expression."""
+
     try:
         register_width_policy = OperandRegisterWidthPolicy(
             raw.get("register_width", "same_width")
@@ -195,6 +354,14 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
                 "requires a type expression"
             )
 
+    return register_width_policy
+
+
+def _normalize_immediate_conversion(
+    raw: dict[str, Any],
+) -> OperandImmediateConversionPolicy:
+    """Normalize immediate conversion and its operand-kind restriction."""
+
     try:
         immediate_conversion_policy = OperandImmediateConversionPolicy(
             raw.get("immediate_conversion", "narrow")
@@ -213,6 +380,12 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
             f"operand {raw['name']!r}: require_target_range immediate_conversion "
             "requires an immediate-capable operand"
         )
+
+    return immediate_conversion_policy
+
+
+def _normalize_address_options(raw: dict[str, Any]) -> _AddressOptions:
+    """Normalize both address constraints before checking their relationship."""
 
     state_space_values, state_space_expression = _normalize_operand_state_space(
         raw.get("state_space")
@@ -233,28 +406,9 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
             f"operand {raw['name']!r}: parameter constraint requires a "
             "state_space modifier expression"
         )
-    return OperandSpec(
-        name=raw["name"],
-        kind=raw["kind"],
-        role=raw.get("role"),
-        access=raw.get("access"),
-        type_expression=type_expression,
-        register_width_policy=register_width_policy,
-        immediate_conversion_policy=immediate_conversion_policy,
+
+    return _AddressOptions(
         state_space_values=state_space_values,
         state_space_expression=state_space_expression,
         parameter_constraint=parameter_constraint,
-        vector_arities=vector_arities,
-        vector_arity_expression=vector_arity_expression,
-        vector_type_policy=vector_type_policy,
-        vector_allow_sink=vector_allow_sink,
-        vector_sink_payload_bits=vector_sink_payload_bits,
-        allow_destination_sink=allow_destination_sink,
-        allow_predicate_sink=allow_predicate_sink,
-        mbarrier_state_token_form=mbarrier_state_token_form,
-        sink_availability=sink_availability,
-        type_tag=type_tag,
-        minimum_elements=minimum_elements,
-        maximum_elements=maximum_elements,
-        element_kinds=element_kinds,
     )

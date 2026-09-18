@@ -3,13 +3,12 @@
 from pathlib import Path
 import unittest
 
-from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.load_yaml import load_yaml
-from ptx_frontend.code_gen.model import OperandRegisterWidthPolicy
+from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.load_yaml import load_yaml
+from ptx_frontend.spec.model import OperandRegisterWidthPolicy
+from ptx_frontend.spec.resources import packaged_spec_dir
 
-
-ROOT = Path(__file__).resolve().parents[3]
-SPEC_DIR = ROOT / "instructions/ptx_spec"
+SPEC_DIR = packaged_spec_dir()
 
 
 class MulCompletenessTests(unittest.TestCase):
@@ -20,7 +19,9 @@ class MulCompletenessTests(unittest.TestCase):
         """Load the canonical database and retain MUL variants by stable YAML name."""
 
         database = load_codegen_database(spec_dir=SPEC_DIR)
-        instruction = next(item for item in database.instructions if item.opcode == "mul")
+        instruction = next(
+            item for item in database.instructions if item.opcode == "mul"
+        )
         cls.variants = {variant.name: variant for variant in instruction.variants}
 
     def test_records_all_three_normative_mul_sections(self) -> None:
@@ -65,9 +66,15 @@ class MulCompletenessTests(unittest.TestCase):
                 variant = self.variants[f"mul_wide_{signedness}{width}"]
                 operands = variant.operand_layouts[0].operands
                 self.assertEqual(
-                    tuple(operand.type_expression.scalar_type for operand in operands),
-                    (f"{signedness}{destination_width}",
-                     f"{signedness}{width}", f"{signedness}{width}"),
+                    tuple(
+                        operand.type_expression.scalar_type  # pyright: ignore[reportOptionalMemberAccess]
+                        for operand in operands
+                    ),
+                    (
+                        f"{signedness}{destination_width}",
+                        f"{signedness}{width}",
+                        f"{signedness}{width}",
+                    ),
                 )
                 self.assertEqual(
                     tuple(operand.kind for operand in operands),
@@ -79,7 +86,10 @@ class MulCompletenessTests(unittest.TestCase):
     def test_models_floating_rounding_flags_and_availability(self) -> None:
         """Keep the floating-family defaults separate from directed-rounding minima."""
 
-        f32 = {modifier.name: modifier for modifier in self.variants["mul_rn_f32"].modifiers}
+        f32 = {
+            modifier.name: modifier
+            for modifier in self.variants["mul_rn_f32"].modifiers
+        }
         self.assertEqual(f32["rounding"].presence, "optional")
         self.assertEqual(f32["rounding"].default, "rn")
         f32_rounding = {
@@ -92,12 +102,17 @@ class MulCompletenessTests(unittest.TestCase):
         self.assertEqual(f32["ftz"].presence, "optional")
         self.assertEqual(f32["sat"].presence, "optional")
         self.assertEqual(
-            tuple(operand.kind for operand in self.variants["mul_rn_f32"].operand_layouts[0].operands),
+            tuple(
+                operand.kind
+                for operand in self.variants["mul_rn_f32"].operand_layouts[0].operands
+            ),
             ("reg", "reg_or_imm", "reg_or_imm"),
         )
 
         for name in ("mul_f32x2", "mul_f64"):
-            modifiers = {modifier.name: modifier for modifier in self.variants[name].modifiers}
+            modifiers = {
+                modifier.name: modifier for modifier in self.variants[name].modifiers
+            }
             self.assertEqual(modifiers["rounding"].presence, "optional")
             self.assertEqual(modifiers["rounding"].default, "rn")
             self.assertEqual(
@@ -105,9 +120,14 @@ class MulCompletenessTests(unittest.TestCase):
                 ("rn", "rz", "rm", "rp"),
             )
         f32x2_operands = self.variants["mul_f32x2"].operand_layouts[0].operands
-        self.assertEqual(tuple(operand.kind for operand in f32x2_operands), ("reg",) * 3)
         self.assertEqual(
-            tuple(operand.type_expression.scalar_type for operand in f32x2_operands),
+            tuple(operand.kind for operand in f32x2_operands), ("reg",) * 3
+        )
+        self.assertEqual(
+            tuple(
+                operand.type_expression.scalar_type  # pyright: ignore[reportOptionalMemberAccess]
+                for operand in f32x2_operands
+            ),
             ("b64",) * 3,
         )
         self.assertEqual(
@@ -127,12 +147,17 @@ class MulCompletenessTests(unittest.TestCase):
             variant = self.variants[name]
             modifiers = {modifier.name: modifier for modifier in variant.modifiers}
             self.assertEqual(modifiers["rounding"].default, "rn")
-            self.assertEqual(tuple(value.value for value in modifiers["rounding"].values), ("rn",))
+            self.assertEqual(
+                tuple(value.value for value in modifiers["rounding"].values), ("rn",)
+            )
             self.assertEqual(modifiers["type"].value, type_name)
             if container is not None:
                 operands = variant.operand_layouts[0].operands
                 self.assertEqual(
-                    tuple(operand.type_expression.scalar_type for operand in operands),
+                    tuple(
+                        operand.type_expression.scalar_type  # pyright: ignore[reportOptionalMemberAccess]
+                        for operand in operands
+                    ),
                     (container,) * 3,
                 )
                 self.assertEqual(
@@ -141,11 +166,15 @@ class MulCompletenessTests(unittest.TestCase):
                 )
 
         for name in ("mul_half", "mul_half_x2"):
-            modifiers = {modifier.name: modifier for modifier in self.variants[name].modifiers}
+            modifiers = {
+                modifier.name: modifier for modifier in self.variants[name].modifiers
+            }
             self.assertEqual(modifiers["ftz"].presence, "optional")
             self.assertEqual(modifiers["sat"].presence, "optional")
         for name in ("mul_bfloat", "mul_bfloat_x2"):
-            modifiers = {modifier.name: modifier for modifier in self.variants[name].modifiers}
+            modifiers = {
+                modifier.name: modifier for modifier in self.variants[name].modifiers
+            }
             self.assertEqual(modifiers["ftz"].presence, "absent")
             self.assertEqual(modifiers["sat"].presence, "absent")
 

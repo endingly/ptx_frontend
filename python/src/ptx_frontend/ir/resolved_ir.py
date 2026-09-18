@@ -449,7 +449,7 @@ class ResolvedModifierBinding:
 class ResolvedModifierDefault:
     """Typed semantic value used when an optional modifier is omitted."""
 
-    value_cpp_type: str
+    value_kind: ResolvedValueKind
     value: str | bool | int
 
 
@@ -458,7 +458,7 @@ class ResolvedModifierValueAvailability:
     """Target requirement attached to one dynamic semantic modifier value."""
 
     source_kind_id: str
-    value_cpp_type: str
+    value_kind: ResolvedValueKind
     value: str | bool | int
     availability: tuple[tuple[str, Any], ...]
 
@@ -474,7 +474,7 @@ class ResolvedModifierValueDomain:
     """
 
     source_kind_id: str
-    value_cpp_type: str
+    value_kind: ResolvedValueKind
     value: str | bool | int
 
 
@@ -843,18 +843,18 @@ def _build_modifier_default(
         )
 
     try:
-        value_cpp_type = cpp_value(CppDomain.MODIFIER_VALUE_CPP_TYPES, modifier.kind)
-    except ValueError as error:
+        value_kind = _MODIFIER_VALUE_KINDS[modifier.kind]
+    except KeyError as error:
         raise ValueError(
             f"optional modifier {modifier.name!r}: unsupported default for "
             f"modifier kind {modifier.kind!r}"
         ) from error
 
-    if value_cpp_type == "bool" and type(modifier.default) is not bool:
+    if value_kind is ResolvedValueKind.BOOL and type(modifier.default) is not bool:
         raise ValueError(
             f"optional flag modifier {modifier.name!r} must have a boolean " "default"
         )
-    if value_cpp_type == "ScalarType":
+    if value_kind == ResolvedValueKind.SCALAR_TYPE:
         if not isinstance(modifier.default, str):
             raise ValueError(
                 f"optional type modifier {modifier.name!r} must have a string "
@@ -865,7 +865,7 @@ def _build_modifier_default(
                 f"optional type modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "RoundingMode":
+    if value_kind == ResolvedValueKind.ROUNDING_MODE:
         if not isinstance(modifier.default, str):
             raise ValueError(
                 f"optional rounding modifier {modifier.name!r} must have a "
@@ -876,13 +876,13 @@ def _build_modifier_default(
                 f"optional rounding modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "ComparisonOperator":
+    if value_kind == ResolvedValueKind.COMPARISON_OPERATOR:
         raise ValueError(
             f"optional comparison modifier {modifier.name!r} is unsupported"
         )
-    if value_cpp_type == "BooleanOperator":
+    if value_kind == ResolvedValueKind.BOOLEAN_OPERATOR:
         raise ValueError(f"optional boolean modifier {modifier.name!r} is unsupported")
-    if value_cpp_type == "CacheOperator":
+    if value_kind == ResolvedValueKind.CACHE_OPERATOR:
         if not isinstance(modifier.default, str):
             raise ValueError(
                 f"optional cache modifier {modifier.name!r} must have a "
@@ -893,7 +893,7 @@ def _build_modifier_default(
                 f"optional cache modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "MemoryStateSpace":
+    if value_kind == ResolvedValueKind.MEMORY_STATE_SPACE:
         if not isinstance(modifier.default, str):
             raise ValueError(
                 f"optional state-space modifier {modifier.name!r} must have a "
@@ -904,7 +904,7 @@ def _build_modifier_default(
                 f"optional state-space modifier {modifier.name!r} has "
                 f"unsupported default {modifier.default!r}"
             )
-    if value_cpp_type == "MemoryConsistency":
+    if value_kind == ResolvedValueKind.MEMORY_CONSISTENCY:
         if (
             not isinstance(modifier.default, str)
             or modifier.default not in cpp_domain(CppDomain.MEMORY_CONSISTENCIES).values
@@ -913,7 +913,7 @@ def _build_modifier_default(
                 f"optional semantics modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "MemoryScope":
+    if value_kind == ResolvedValueKind.MEMORY_SCOPE:
         if (
             not isinstance(modifier.default, str)
             or modifier.default not in cpp_domain(CppDomain.MEMORY_SCOPES).values
@@ -922,7 +922,7 @@ def _build_modifier_default(
                 f"optional scope modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "MbarrierPhaseType":
+    if value_kind == ResolvedValueKind.MBARRIER_PHASE_TYPE:
         if (
             not isinstance(modifier.default, str)
             or modifier.default not in cpp_domain(CppDomain.MBARRIER_PHASE_TYPES).values
@@ -931,7 +931,7 @@ def _build_modifier_default(
                 f"optional phase-type modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "MbarrierLayout":
+    if value_kind == ResolvedValueKind.MBARRIER_LAYOUT:
         if (
             not isinstance(modifier.default, str)
             or modifier.default not in cpp_domain(CppDomain.MBARRIER_LAYOUTS).values
@@ -940,7 +940,7 @@ def _build_modifier_default(
                 f"optional mbarrier-layout modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "AsyncProxyKind":
+    if value_kind == ResolvedValueKind.ASYNC_PROXY_KIND:
         if (
             not isinstance(modifier.default, str)
             or modifier.default not in cpp_domain(CppDomain.ASYNC_PROXY_KINDS).values
@@ -949,7 +949,7 @@ def _build_modifier_default(
                 f"optional async-proxy modifier {modifier.name!r} has unsupported "
                 f"default {modifier.default!r}"
             )
-    if value_cpp_type == "ProxyKindPair":
+    if value_kind == ResolvedValueKind.PROXY_KIND_PAIR:
         if (
             not isinstance(modifier.default, str)
             or modifier.default not in cpp_domain(CppDomain.PROXY_KIND_PAIRS).values
@@ -959,7 +959,7 @@ def _build_modifier_default(
                 f"default {modifier.default!r}"
             )
     return ResolvedModifierDefault(
-        value_cpp_type=value_cpp_type,
+        value_kind=value_kind,
         value=modifier.default,
     )
 
@@ -968,19 +968,19 @@ def _build_modifier_value_availability(
     modifier: ModifierSpec, value: ModifierValueSpec
 ) -> ResolvedModifierValueAvailability:
     try:
-        value_cpp_type = cpp_value(CppDomain.MODIFIER_VALUE_CPP_TYPES, modifier.kind)
-    except ValueError as error:
+        value_kind = _MODIFIER_VALUE_KINDS[modifier.kind]
+    except KeyError as error:
         raise ValueError(
             f"modifier {modifier.name!r}: availability for unsupported modifier "
             f"kind {modifier.kind!r}"
         ) from error
-    if value_cpp_type == "ScalarType" and not isinstance(value.value, str):
+    if value_kind == ResolvedValueKind.SCALAR_TYPE and not isinstance(value.value, str):
         raise ValueError(
             f"modifier {modifier.name!r}: scalar-type value must be a string"
         )
-    if value_cpp_type == "bool" and not isinstance(value.value, bool):
+    if value_kind == ResolvedValueKind.BOOL and not isinstance(value.value, bool):
         raise ValueError(f"modifier {modifier.name!r}: flag value must be boolean")
-    if value_cpp_type == "RoundingMode":
+    if value_kind == "RoundingMode":
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: rounding value must be a string"
@@ -990,7 +990,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported rounding value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "ComparisonOperator":
+    if value_kind == ResolvedValueKind.COMPARISON_OPERATOR:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: comparison value must be a string"
@@ -1000,7 +1000,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported comparison value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "BooleanOperator":
+    if value_kind == ResolvedValueKind.BOOLEAN_OPERATOR:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: boolean value must be a string"
@@ -1010,7 +1010,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported boolean value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "CacheOperator":
+    if value_kind == ResolvedValueKind.CACHE_OPERATOR:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: cache value must be a string"
@@ -1020,7 +1020,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported cache value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "EvictionPriority":
+    if value_kind == ResolvedValueKind.EVICTION_PRIORITY:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: eviction priority value must be "
@@ -1031,7 +1031,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported eviction priority "
                 f"value {value.value!r}"
             )
-    if value_cpp_type == "PrefetchSize":
+    if value_kind == ResolvedValueKind.PREFETCH_SIZE:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: prefetch size value must be a string"
@@ -1041,7 +1041,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported prefetch size "
                 f"value {value.value!r}"
             )
-    if value_cpp_type == "VectorArity":
+    if value_kind == ResolvedValueKind.VECTOR_ARITY:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: vector value must be a string"
@@ -1051,7 +1051,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported vector value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "MemoryStateSpace":
+    if value_kind == ResolvedValueKind.MEMORY_STATE_SPACE:
         if not isinstance(value.value, str):
             raise ValueError(
                 f"modifier {modifier.name!r}: state-space value must be a string"
@@ -1061,7 +1061,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported state-space value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "MemoryConsistency":
+    if value_kind == ResolvedValueKind.MEMORY_CONSISTENCY:
         if (
             not isinstance(value.value, str)
             or value.value not in cpp_domain(CppDomain.MEMORY_CONSISTENCIES).values
@@ -1070,7 +1070,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported memory consistency "
                 f"value {value.value!r}"
             )
-    if value_cpp_type == "MemoryScope":
+    if value_kind == ResolvedValueKind.MEMORY_SCOPE:
         if (
             not isinstance(value.value, str)
             or value.value not in cpp_domain(CppDomain.MEMORY_SCOPES).values
@@ -1079,7 +1079,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported memory scope value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "MbarrierPhaseType":
+    if value_kind == ResolvedValueKind.MBARRIER_PHASE_TYPE:
         if (
             not isinstance(value.value, str)
             or value.value not in cpp_domain(CppDomain.MBARRIER_PHASE_TYPES).values
@@ -1088,7 +1088,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported mbarrier phase-type "
                 f"value {value.value!r}"
             )
-    if value_cpp_type == "MbarrierLayout":
+    if value_kind == ResolvedValueKind.MBARRIER_LAYOUT:
         if (
             not isinstance(value.value, str)
             or value.value not in cpp_domain(CppDomain.MBARRIER_LAYOUTS).values
@@ -1097,7 +1097,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported mbarrier layout "
                 f"value {value.value!r}"
             )
-    if value_cpp_type == "AsyncProxyKind":
+    if value_kind == ResolvedValueKind.ASYNC_PROXY_KIND:
         if (
             not isinstance(value.value, str)
             or value.value not in cpp_domain(CppDomain.ASYNC_PROXY_KINDS).values
@@ -1106,7 +1106,7 @@ def _build_modifier_value_availability(
                 f"modifier {modifier.name!r}: unsupported async proxy value "
                 f"{value.value!r}"
             )
-    if value_cpp_type == "ProxyKindPair":
+    if value_kind == ResolvedValueKind.PROXY_KIND_PAIR:
         if (
             not isinstance(value.value, str)
             or value.value not in cpp_domain(CppDomain.PROXY_KIND_PAIRS).values
@@ -1117,7 +1117,7 @@ def _build_modifier_value_availability(
             )
     return ResolvedModifierValueAvailability(
         source_kind_id=modifier.name,
-        value_cpp_type=value_cpp_type,
+        value_kind=value_kind,
         value=value.value,
         availability=tuple(value.availability.items()),
     )
@@ -1157,7 +1157,7 @@ def _build_modifier_value_domain(
     availability = _build_modifier_value_availability(modifier, value)
     return ResolvedModifierValueDomain(
         source_kind_id=availability.source_kind_id,
-        value_cpp_type=availability.value_cpp_type,
+        value_kind=availability.value_kind,
         value=availability.value,
     )
 

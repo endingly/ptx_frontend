@@ -22,6 +22,7 @@ from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
     generate_resolved_descriptor_source,
+    _emit_modifier_default_descriptor
 )
 from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
@@ -46,6 +47,8 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     ResolvedVectorTypePolicy,
     from_instruction_spec,
+    ResolvedModifierBinding,
+    ResolvedModifierDefault,
 )
 from ptx_frontend.code_gen.model import (
     ImmediateMultipleOfConstraint,
@@ -185,6 +188,61 @@ class ResolvedIrBuildTest(unittest.TestCase):
             if instruction.opcode == "call"
         )
         cls.call_instruction = from_instruction_spec(call)
+
+    def test_modifier_default_descriptor_uses_only_selected_value_member(self) -> None:
+        binding = ResolvedModifierBinding(
+            source_kind_id="type",
+            target_field_id="type",
+            default_value=ResolvedModifierDefault(
+                value_kind=ResolvedValueKind.SCALAR_TYPE,
+                value="f32",
+            ),
+        )
+
+        emitted = _emit_modifier_default_descriptor(binding)
+
+        self.assertIn(
+            ".kind = check_end::ResolvedModifierDefaultKind::ScalarType",
+            emitted,
+        )
+        self.assertIn(
+            ".scalar_type = ScalarType::F32",
+            emitted,
+        )
+
+        unexpected_members = (
+            "bool_value",
+            "rounding_mode",
+            "cache_operator",
+            "eviction_priority",
+            "prefetch_size",
+            "memory_state_space",
+            "memory_consistency",
+            "memory_scope",
+            "mbarrier_phase_type",
+            "mbarrier_layout",
+            "async_proxy_kind",
+            "proxy_kind_pair",
+        )
+
+        for member in unexpected_members:
+            with self.subTest(member=member):
+                self.assertNotIn(
+                    f".{member} =",
+                    emitted,
+                )
+
+    def test_modifier_binding_without_default_uses_empty_descriptor(self) -> None:
+        binding = ResolvedModifierBinding(
+            source_kind_id="type",
+            target_field_id="type",
+            default_value=None,
+        )
+    
+        self.assertEqual(
+            _emit_modifier_default_descriptor(binding),
+            "check_end::ResolvedModifierDefaultDescriptor{}",
+        )
 
     def test_call_has_layout_local_group_payloads(self) -> None:
         self.assertEqual(self.call_instruction.cpp_name, "Call")
@@ -392,7 +450,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         rounding_default = f32.modifier_bindings[0].default_value
         self.assertIsNotNone(rounding_default)
         assert rounding_default is not None
-        self.assertEqual(rounding_default.value_cpp_type, "RoundingMode")
+        self.assertEqual(rounding_default.value_kind.value, "RoundingMode")
         self.assertEqual(rounding_default.value, "rn")
         self.assertEqual(
             [
@@ -845,7 +903,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         optional_sat_binding = variants["PackedOptionalSat"].modifier_bindings[0]
         self.assertIsNotNone(optional_sat_binding.default_value)
         assert optional_sat_binding.default_value is not None
-        self.assertEqual(optional_sat_binding.default_value.value_cpp_type, "bool")
+        self.assertEqual(optional_sat_binding.default_value.value_kind.value, "Bool")
         self.assertIs(optional_sat_binding.default_value.value, False)
         self.assertIsNone(
             variants["PackedOptionalSat"].modifier_bindings[1].default_value
@@ -2470,7 +2528,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "cache").default_value.value_cpp_type, # pyright: ignore[reportOptionalMemberAccess]
+                 if binding.source_kind_id == "cache").default_value.value_kind.value, # pyright: ignore[reportOptionalMemberAccess]
             "CacheOperator",
         )
         self.assertEqual(
@@ -2496,7 +2554,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                (entry.source_kind_id, entry.value_kind.value, entry.value)
                 for entry in variant.modifier_value_availabilities
                 if entry.source_kind_id == "cache"
             ],
@@ -2510,7 +2568,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                (entry.source_kind_id, entry.value_kind.value, entry.value)
                 for entry in variant.modifier_value_availabilities
                 if entry.source_kind_id == "semantics"
             ],
@@ -2522,8 +2580,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertIn(
-            ("mmio", "bool", True),
-            [(entry.source_kind_id, entry.value_cpp_type, entry.value)
+            ("mmio", "Bool", True),
+            [(entry.source_kind_id, entry.value_kind.value, entry.value)
              for entry in variant.modifier_value_availabilities],
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics") # pyright: ignore[reportOptionalMemberAccess]
@@ -3764,7 +3822,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertIsNotNone(cache_binding.default_value)
                 assert cache_binding.default_value is not None
                 self.assertEqual(
-                    cache_binding.default_value.value_cpp_type,
+                    cache_binding.default_value.value_kind.value,
                     "CacheOperator",
                 )
                 self.assertEqual(cache_binding.default_value.value, "unspecified")
@@ -4658,7 +4716,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(field.value_kind, ResolvedValueKind.COMPARISON_OPERATOR)
         self.assertEqual(field.cpp_type, "WithLocs<ComparisonOperator>")
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "ComparisonOperator",
         )
 
@@ -4713,7 +4771,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         specs = normalize_instruction_spec(spec)
         resolved = from_instruction_spec(specs[0])
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "EvictionPriority",
         )
 
@@ -4781,7 +4839,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(field.value_kind, ResolvedValueKind.BOOLEAN_OPERATOR)
         self.assertEqual(field.cpp_type, "WithLocs<BooleanOperator>")
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "BooleanOperator",
         )
 

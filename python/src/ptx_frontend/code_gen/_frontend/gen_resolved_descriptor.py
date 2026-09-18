@@ -22,6 +22,10 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     from_instruction_spec,
 )
+from ptx_frontend.code_gen.resolved_value_traits import (
+    modifier_default_cpp_expr,
+    resolved_modifier_value_traits,
+)
 
 
 def generate_resolved_descriptor_source(
@@ -165,108 +169,34 @@ def _emit_modifier_binding_descriptor(binding: ResolvedModifierBinding) -> str:
           }}"""
 
 
-def _emit_modifier_default_descriptor(binding: ResolvedModifierBinding) -> str:
+def _emit_modifier_default_descriptor(
+    binding: ResolvedModifierBinding,
+) -> str:
     default = binding.default_value
     if default is None:
         return "check_end::ResolvedModifierDefaultDescriptor{}"
-    if default.value_cpp_type == "bool" and type(default.value) is bool:
-        bool_value = "true" if default.value else "false"
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "Bool")},
-                  .bool_value = {bool_value},
-                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
-                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
-                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
-              }}"""
-    if default.value_cpp_type == "ScalarType" and isinstance(default.value, str):
-        scalar_type = cpp_value(CppDomain.SCALAR_TYPES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "ScalarType")},
-                  .bool_value = false,
-                  .scalar_type = {scalar_type},
-                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
-                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
-              }}"""
-    if default.value_cpp_type == "RoundingMode" and isinstance(default.value, str):
-        rounding_mode = cpp_value(CppDomain.ROUNDING_MODES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "RoundingMode")},
-                  .bool_value = false,
-                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
-                  .rounding_mode = {rounding_mode},
-                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
-              }}"""
-    if default.value_cpp_type == "CacheOperator" and isinstance(default.value, str):
-        cache_operator = cpp_value(CppDomain.CACHE_OPERATORS, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "CacheOperator")},
-                  .bool_value = false,
-                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
-                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
-                  .cache_operator = {cache_operator},
-              }}"""
-    if default.value_cpp_type == "EvictionPriority" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.EVICTION_PRIORITIES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "EvictionPriority")},
-                  .eviction_priority = {value},
-              }}"""
-    if default.value_cpp_type == "PrefetchSize" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.PREFETCH_SIZES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "PrefetchSize")},
-                  .prefetch_size = {value},
-              }}"""
-    if default.value_cpp_type == "MemoryStateSpace" and isinstance(default.value, str):
-        memory_state_space = cpp_value(CppDomain.MEMORY_STATE_SPACES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryStateSpace")},
-                  .bool_value = false,
-                  .scalar_type = {cpp_default(CppDomain.SCALAR_TYPES)},
-                  .rounding_mode = {cpp_default(CppDomain.ROUNDING_MODES)},
-                  .cache_operator = {cpp_default(CppDomain.CACHE_OPERATORS)},
-                  .memory_state_space = {memory_state_space},
-              }}"""
-    if default.value_cpp_type == "MemoryConsistency" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.MEMORY_CONSISTENCIES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryConsistency")},
-                  .memory_consistency = {value},
-              }}"""
-    if default.value_cpp_type == "MemoryScope" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.MEMORY_SCOPES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MemoryScope")},
-                  .memory_scope = {value},
-              }}"""
-    if default.value_cpp_type == "MbarrierPhaseType" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.MBARRIER_PHASE_TYPES, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierPhaseType")},
-                  .mbarrier_phase_type = {value},
-              }}"""
-    if default.value_cpp_type == "MbarrierLayout" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.MBARRIER_LAYOUTS, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "MbarrierLayout")},
-                  .mbarrier_layout = {value},
-              }}"""
-    if default.value_cpp_type == "AsyncProxyKind" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.ASYNC_PROXY_KINDS, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "AsyncProxyKind")},
-                  .async_proxy_kind = {value},
-              }}"""
-    if default.value_cpp_type == "ProxyKindPair" and isinstance(default.value, str):
-        value = cpp_value(CppDomain.PROXY_KIND_PAIRS, default.value)
-        return f"""check_end::ResolvedModifierDefaultDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS, "ProxyKindPair")},
-                  .proxy_kind_pair = {value},
-              }}"""
-    raise ValueError(
-        f"unsupported modifier default {default.value!r} for "
-        f"{default.value_cpp_type}"
+
+    traits = resolved_modifier_value_traits(default.value_kind)
+
+    if not traits.supports_default:
+        raise ValueError(
+            f"unsupported modifier default {default.value!r} for "
+            f"{default.value_kind.value}"
+        )
+
+    kind = cpp_value(
+        CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS,
+        default.value_kind.value,
     )
+    value = modifier_default_cpp_expr(
+        default.value_kind,
+        default.value,
+    )
+
+    return f"""check_end::ResolvedModifierDefaultDescriptor{{
+                  .kind = {kind},
+                  .{traits.descriptor_member} = {value},
+              }}"""
 
 
 def _emit_operand_layout_storage(

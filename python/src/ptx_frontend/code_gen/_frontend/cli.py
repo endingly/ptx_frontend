@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ptx_frontend.base.utils import format_file_inplace
 from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
-from ptx_frontend.code_gen.database import CodegenDatabase, load_codegen_database
+from ptx_frontend.spec.database import CodegenDatabase, load_codegen_database
 from .gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
 )

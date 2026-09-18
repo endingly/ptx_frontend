@@ -13,7 +13,7 @@ from ptx_frontend.code_gen.cpp_backend import (
     cpp_value,
     load_cpp_backend,
 )
-from ptx_frontend.code_gen.model import (
+from ptx_frontend.spec.model import (
     CodegenUnit,
     DomainBackend,
     EmitAlternativeBackend,
@@ -23,13 +23,14 @@ from ptx_frontend.code_gen.model import (
     OperandBackend,
     RuntimeLookupKind,
 )
-from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage
-
-
-REPOSITORY_CPP_BACKEND_SPEC = (
-    Path(__file__).resolve().parents[3]
-    / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+from ptx_frontend.ir.resolved_ir import (
+    ResolvedField,
+    ResolvedFieldOrigin,
+    ResolvedFieldStorage,
 )
+from ptx_frontend.spec.resources import packaged_backend_spec
+
+REPOSITORY_CPP_BACKEND_SPEC = packaged_backend_spec()
 
 
 class BackendModelTests(unittest.TestCase):
@@ -104,9 +105,7 @@ class BackendModelTests(unittest.TestCase):
             "ScalarType::F32",
         )
         self.assertEqual(
-            unit.domains[CppDomain.RESOLVED_OPERAND_ROLES.value].values[
-                "Source"
-            ],
+            unit.domains[CppDomain.RESOLVED_OPERAND_ROLES.value].values["Source"],
             "check_end::OperandRole::Source",
         )
         self.assertEqual(
@@ -166,9 +165,7 @@ class BackendModelTests(unittest.TestCase):
             unit.domains[CppDomain.BOOLEAN_OPERATORS.value].values["xor"],
             "BooleanOperator::Xor",
         )
-        modifier_types = unit.domains[
-            CppDomain.MODIFIER_VALUE_CPP_TYPES.value
-        ].values
+        modifier_types = unit.domains[CppDomain.MODIFIER_VALUE_CPP_TYPES.value].values
         self.assertEqual(
             {
                 kind: modifier_types[kind]
@@ -238,15 +235,13 @@ class BackendModelTests(unittest.TestCase):
         self.assertIsNone(
             unit.domains[CppDomain.RESOLVED_OPERAND_ROLES.value].runtime_lookup
         )
-        self.assertEqual(
-            set(unit.domains), {domain.value for domain in CppDomain}
-        )
+        self.assertEqual(set(unit.domains), {domain.value for domain in CppDomain})
 
     def test_model_emission_reads_cpp_spelling_from_backend_yaml(self) -> None:
         raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
-        raw["domains"][CppDomain.SCALAR_TYPES.value]["values"]["f32"] = (
-            "CustomType::F32"
-        )
+        raw["domains"][CppDomain.SCALAR_TYPES.value]["values"][
+            "f32"
+        ] = "CustomType::F32"
 
         with tempfile.TemporaryDirectory() as directory:
             backend_path = Path(directory) / "backend.yaml"
@@ -271,7 +266,9 @@ class BackendModelTests(unittest.TestCase):
 
     def test_requires_explicit_cpp_backend_configuration(self) -> None:
         with patch.object(cpp_backend, "_active_backend_spec", None):
-            with self.assertRaisesRegex(RuntimeError, "C\\+\\+ backend is not configured"):
+            with self.assertRaisesRegex(
+                RuntimeError, "C\\+\\+ backend is not configured"
+            ):
                 cpp_backend.get_cpp_backend()
 
     def test_cpp_lookup_rejects_string_domain_identifiers(self) -> None:

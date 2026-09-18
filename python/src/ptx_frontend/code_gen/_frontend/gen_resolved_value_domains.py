@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case, generated_at_comment
-from ptx_frontend.code_gen.model import CodegenUnit, DomainBackend, RuntimeLookupKind
+from ptx_frontend.spec.model import CodegenUnit, DomainBackend, RuntimeLookupKind
 
 
 def generate_resolved_value_domain_header(
@@ -53,8 +53,7 @@ struct PtxSuffixEntry {{
 
 def _emit_ptx_suffix_table(name: str, domain: DomainBackend) -> str:
     entries = ",\n".join(
-        f'        {{"{suffix}", {value}}}'
-        for suffix, value in domain.values.items()
+        f'        {{"{suffix}", {value}}}' for suffix, value in domain.values.items()
     )
     return f"""inline constexpr std::array<PtxSuffixEntry<{domain.cpp_type}>, {len(domain.values)}>
     k{file_stem_to_pascal_case(name)} = {{{{

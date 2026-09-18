@@ -17,7 +17,7 @@ from ptx_frontend.code_gen.cpp_backend import (
     cpp_optional_value,
     cpp_value,
 )
-from ptx_frontend.code_gen.model import (
+from ptx_frontend.spec.model import (
     ConditionCodeEffect,
     AddressAlignmentConstraint,
     ImmediateMultipleOfConstraint,
@@ -718,19 +718,20 @@ def _build_memory_consistency_constraint(
         ),
     )
 
+
 @overload
 def _build_address_alignment_constraint(
     constraint: AddressAlignmentConstraint,
     modifier_field_ids: dict[str, str],
-) -> ResolvedAddressAlignmentConstraint:
-    ...
+) -> ResolvedAddressAlignmentConstraint: ...
+
 
 @overload
 def _build_address_alignment_constraint(
     constraint: None,
     modifier_field_ids: dict[str, str],
-) -> None:
-    ...
+) -> None: ...
+
 
 def _build_address_alignment_constraint(
     constraint: AddressAlignmentConstraint | None,

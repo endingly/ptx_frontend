@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from functools import cache
 from pathlib import Path
+from importlib.resources.abc import Traversable
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -20,11 +21,9 @@ from .model import (
     OperandBackend,
     RuntimeLookupKind,
 )
+from ptx_frontend.spec.resources import packaged_backend_spec_schema
 
-
-DEFAULT_CPP_BACKEND_SCHEMA = (
-    Path(__file__).resolve().parent / "resources/ptx-cpp-backend-v1.schema.yaml"
-)
+DEFAULT_CPP_BACKEND_SCHEMA = packaged_backend_spec_schema()
 
 
 class CppDomain(str, Enum):
@@ -44,9 +43,7 @@ class CppDomain(str, Enum):
     MEMORY_CONSISTENCIES = "memory_consistencies"
     MEMORY_SCOPES = "memory_scopes"
     VECTOR_ARITIES = "vector_arities"
-    MEMORY_STATE_SPACES = (  # YAML: domains.memory_state_spaces
-        "memory_state_spaces"
-    )
+    MEMORY_STATE_SPACES = "memory_state_spaces"  # YAML: domains.memory_state_spaces
     MBARRIER_PHASE_TYPES = "mbarrier_phase_types"
     MBARRIER_LAYOUTS = "mbarrier_layouts"
     ASYNC_PROXY_KINDS = "async_proxy_kinds"
@@ -73,7 +70,9 @@ class CppDomain(str, Enum):
     SYNTAX_OPERAND_LAYOUT_KINDS = (  # YAML: domains.syntax_operand_layout_kinds
         "syntax_operand_layout_kinds"
     )
-    SYNTAX_OPERAND_SHAPES = "syntax_operand_shapes"  # YAML: domains.syntax_operand_shapes
+    SYNTAX_OPERAND_SHAPES = (
+        "syntax_operand_shapes"  # YAML: domains.syntax_operand_shapes
+    )
     RESOLVED_VALUE_KINDS = "resolved_value_kinds"  # YAML: domains.resolved_value_kinds
     RESOLVED_OPERAND_ROLES = (  # YAML: domains.resolved_operand_roles
         "resolved_operand_roles"
@@ -101,14 +100,14 @@ class CppDomain(str, Enum):
 
 _REQUIRED_DOMAINS = frozenset(domain.value for domain in CppDomain)
 
-_active_backend_spec: Path | None = None
+_active_backend_spec: Traversable | None = None
 
 
-def configure_cpp_backend(path: Path) -> None:
+def configure_cpp_backend(path: Traversable) -> None:
     """Select the backend specification used by subsequent model/emitter calls."""
 
     global _active_backend_spec
-    _active_backend_spec = path.resolve()
+    _active_backend_spec = path
 
 
 def get_cpp_backend() -> CodegenUnit:
@@ -116,8 +115,7 @@ def get_cpp_backend() -> CodegenUnit:
 
     if _active_backend_spec is None:
         raise RuntimeError(
-            "C++ backend is not configured; "
-            "call configure_cpp_backend(path) first"
+            "C++ backend is not configured; " "call configure_cpp_backend(path) first"
         )
     return load_cpp_backend(_active_backend_spec)
 
@@ -141,9 +139,7 @@ def load_cpp_backend(path: Path) -> CodegenUnit:
             f"{path}: C++ backend is missing required domains "
             f"{sorted(missing_domains)}"
         )
-    instructions = _normalize_instruction_backends(
-        path, raw.get("instructions", {})
-    )
+    instructions = _normalize_instruction_backends(path, raw.get("instructions", {}))
     includes = _normalize_includes(path, raw.get("includes"))
 
     return CodegenUnit(
@@ -162,9 +158,7 @@ def cpp_domain(name: CppDomain) -> DomainBackend:
     """Return a required backend domain with a contextual error."""
 
     if not isinstance(name, CppDomain):
-        raise TypeError(
-            "C++ backend domain must be identified by a CppDomain member"
-        )
+        raise TypeError("C++ backend domain must be identified by a CppDomain member")
     try:
         return get_cpp_backend().domains[name.value]
     except KeyError as error:
@@ -184,9 +178,7 @@ def cpp_value(domain_name: CppDomain, semantic_value: str) -> str:
         ) from error
 
 
-def cpp_optional_value(
-    domain_name: CppDomain, semantic_value: str
-) -> str | None:
+def cpp_optional_value(domain_name: CppDomain, semantic_value: str) -> str | None:
     """Return an optional mapping, used for identity-preserving rewrites."""
 
     return cpp_domain(domain_name).values.get(semantic_value)
@@ -197,15 +189,11 @@ def cpp_default(domain_name: CppDomain) -> str:
 
     domain = cpp_domain(domain_name)
     if domain.default is None:
-        raise ValueError(
-            f"C++ backend domain {domain_name.value!r} has no default"
-        )
+        raise ValueError(f"C++ backend domain {domain_name.value!r} has no default")
     return domain.default
 
 
-def _normalize_domains(
-    path: Path, raw_domains: object
-) -> dict[str, DomainBackend]:
+def _normalize_domains(path: Path, raw_domains: object) -> dict[str, DomainBackend]:
     if not isinstance(raw_domains, dict) or not raw_domains:
         raise ValueError(f"{path}: backend domains must be a non-empty mapping")
 
@@ -221,9 +209,7 @@ def _normalize_domains(
         for semantic_value, raw_value in raw_values.items():
             if isinstance(raw_value, str):
                 cpp = raw_value
-            elif isinstance(raw_value, dict) and isinstance(
-                raw_value.get("cpp"), str
-            ):
+            elif isinstance(raw_value, dict) and isinstance(raw_value.get("cpp"), str):
                 cpp = raw_value["cpp"]
             else:
                 raise TypeError(
@@ -242,9 +228,7 @@ def _normalize_domains(
         if raw_runtime_lookup is None:
             runtime_lookup = None
         elif not isinstance(raw_runtime_lookup, str):
-            raise TypeError(
-                f"{path}: domain {name!r} runtime_lookup must be a string"
-            )
+            raise TypeError(f"{path}: domain {name!r} runtime_lookup must be a string")
         else:
             try:
                 runtime_lookup = RuntimeLookupKind(raw_runtime_lookup)
@@ -312,9 +296,7 @@ def _normalize_instruction_backends(
                 field=str(raw_operand.get("field", name)),
                 cpp_type=str(raw_operand.get("cpp_type", "Operand")),
             )
-            for name, raw_operand in raw_instruction_object.get(
-                "operands", {}
-            ).items()
+            for name, raw_operand in raw_instruction_object.get("operands", {}).items()
             if isinstance(raw_operand, dict)
         }
         printer = raw_instruction_object.get("printer", {})

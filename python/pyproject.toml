@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ptx_frontend"
 version = "0.0.1b0"
 description = "PTX frontend reusable Python models and resources"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "PyYAML>=6.0,<7",
     "jsonschema>=4.26,<5",
@@ -22,7 +22,7 @@ test = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"ptx_frontend.code_gen.resources" = [
+"ptx_frontend.spec.resources" = [
     "*.yaml",
     "ptx_cpp_backend_spec/*.yaml",
     "ptx_spec/*.yaml",

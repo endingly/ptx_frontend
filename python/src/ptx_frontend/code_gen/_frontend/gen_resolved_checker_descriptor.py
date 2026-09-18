@@ -7,8 +7,8 @@ from collections.abc import Mapping
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
-from ptx_frontend.code_gen.database import CodegenDatabase
-from ptx_frontend.code_gen.normalize import (
+from ptx_frontend.spec.database import CodegenDatabase
+from ptx_frontend.spec.normalize import (
     parse_availability_target,
     validate_availability_family,
     validate_availability_sm_version,

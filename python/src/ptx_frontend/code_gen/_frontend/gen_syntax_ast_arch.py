@@ -10,7 +10,7 @@ from ptx_frontend.base.utils import (
     to_file_stem,
 )
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
-from ptx_frontend.code_gen.database import CodegenDatabase
+from ptx_frontend.spec.database import CodegenDatabase
 from ptx_frontend.ir.syntax_ast import (
     ModifierPresence,
     OperandLayoutKind,

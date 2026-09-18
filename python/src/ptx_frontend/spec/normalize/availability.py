@@ -14,7 +14,7 @@ def validate_availability_sm_version(
 ) -> int:
     """Return one SM version representable by the generated C++ descriptor."""
 
-    if not isinstance(value, int) or not 0 <= value <= UINT32_MAX:
+    if type(value) is not int or not 0 <= value <= UINT32_MAX:
         raise ValueError(f"{field} must be a uint32")
 
     return value

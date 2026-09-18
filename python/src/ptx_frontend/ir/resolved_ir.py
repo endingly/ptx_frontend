@@ -97,6 +97,62 @@ class ResolvedValueKind(Enum):
     MBARRIER_STATE_TOKEN = "MbarrierStateToken"
 
 
+_MODIFIER_VALUE_KINDS: dict[str, ResolvedValueKind] = {
+    "flag": ResolvedValueKind.BOOL,
+    "type": ResolvedValueKind.SCALAR_TYPE,
+    "rounding": ResolvedValueKind.ROUNDING_MODE,
+    "comparison": ResolvedValueKind.COMPARISON_OPERATOR,
+    "boolean_op": ResolvedValueKind.BOOLEAN_OPERATOR,
+    "cache": ResolvedValueKind.CACHE_OPERATOR,
+    "eviction_priority": ResolvedValueKind.EVICTION_PRIORITY,
+    "prefetch_size": ResolvedValueKind.PREFETCH_SIZE,
+    "semantics": ResolvedValueKind.MEMORY_CONSISTENCY,
+    "scope": ResolvedValueKind.MEMORY_SCOPE,
+    "vector": ResolvedValueKind.VECTOR_ARITY,
+    "state_space": ResolvedValueKind.MEMORY_STATE_SPACE,
+    "phase_type": ResolvedValueKind.MBARRIER_PHASE_TYPE,
+    "mbarrier_layout": ResolvedValueKind.MBARRIER_LAYOUT,
+    "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
+    "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
+}
+
+
+_OPERAND_VALUE_KINDS: dict[str, ResolvedValueKind] = {
+    "reg": ResolvedValueKind.REGISTER,
+    "imm": ResolvedValueKind.IMMEDIATE,
+    "reg_or_imm": ResolvedValueKind.REG_OR_IMM,
+    "reg_or_sink": ResolvedValueKind.REGISTER_OR_SINK,
+    "shfl_dest": ResolvedValueKind.SHFL_DESTINATION,
+    "pred_pair": ResolvedValueKind.PREDICATE_PAIR,
+    "pred_pair_or_sink": ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
+    "mov_scalar_src": ResolvedValueKind.MOV_SOURCE,
+    "cluster_address": ResolvedValueKind.MOV_SOURCE,
+    "vector_reg": ResolvedValueKind.VECTOR_REGISTER,
+    "vector_sreg": ResolvedValueKind.VECTOR_SPECIAL_REGISTER,
+    "pred": ResolvedValueKind.PREDICATE,
+    "pred_or_sink": ResolvedValueKind.PREDICATE_OR_SINK,
+    "pred_source": ResolvedValueKind.PREDICATE_SOURCE,
+    "pred_or_sreg": ResolvedValueKind.PREDICATE_SOURCE,
+    "pred_or_not": ResolvedValueKind.PREDICATE,
+    "label": ResolvedValueKind.BRANCH_TARGET,
+    "sreg": ResolvedValueKind.SPECIAL_REGISTER,
+    "symbol": ResolvedValueKind.SYMBOL,
+    "addr": ResolvedValueKind.ADDRESS,
+    "reg_vector": ResolvedValueKind.REGISTER_VECTOR,
+    "descriptor": ResolvedValueKind.REGISTER,
+    "typed_token": ResolvedValueKind.REGISTER,
+    "mbarrier_state_token": ResolvedValueKind.MBARRIER_STATE_TOKEN,
+    "tensor_coordinate": ResolvedValueKind.TENSOR_COORDINATE,
+    "matrix_fragment": ResolvedValueKind.REGISTER_VECTOR,
+    "direct_call_target": ResolvedValueKind.DIRECT_CALL_TARGET,
+    "indirect_call_target": ResolvedValueKind.INDIRECT_CALLEE,
+    "indirect_call_metadata": ResolvedValueKind.INDIRECT_CALLEE,
+    "branch_target_set": ResolvedValueKind.BRANCH_TARGET_SET,
+    "call_return_param": ResolvedValueKind.CALL_RETURN_PARAMETER,
+    "call_arguments": ResolvedValueKind.CALL_ARGUMENTS,
+}
+
+
 class ResolvedFieldStorage(Enum):
     """Whether a field is stored per instruction or fixed by its variant."""
 
@@ -267,7 +323,7 @@ class ResolvedField:
     """One provenance-carrying field in a resolved variant struct."""
 
     name: str
-    value_cpp_type: str
+    value_kind: ResolvedValueKind
     origin: ResolvedFieldOrigin
     source_name: str
     operand_role: ResolvedOperandRole | None = None
@@ -277,18 +333,12 @@ class ResolvedField:
     constant_value: str | bool | int | None = None
 
     @property
-    def value_kind(self) -> ResolvedValueKind:
-        """Return the generic resolver category for this output field."""
+    def value_cpp_type(self) -> str:
+        """Return the backend-selected C++ type for this semantic value kind."""
 
-        for kind in ResolvedValueKind:
-            if (
-                cpp_value(CppDomain.RESOLVED_VALUE_CPP_TYPES, kind.value)
-                == self.value_cpp_type
-            ):
-                return kind
-        raise ValueError(
-            f"C++ backend does not assign resolved value kind to "
-            f"{self.value_cpp_type!r}"
+        return cpp_value(
+            CppDomain.RESOLVED_VALUE_CPP_TYPES,
+            self.value_kind.value,
         )
 
     @property
@@ -305,65 +355,36 @@ class ResolvedField:
 
         if self.storage is not ResolvedFieldStorage.STATIC_CONSTANT:
             raise ValueError("only static resolved fields have constant expressions")
-        if self.value_cpp_type == "bool" and isinstance(self.constant_value, bool):
+
+        if self.value_kind is ResolvedValueKind.BOOL and isinstance(
+            self.constant_value, bool
+        ):
             return "true" if self.constant_value else "false"
-        if self.value_cpp_type == "ScalarType" and isinstance(self.constant_value, str):
-            return cpp_value(CppDomain.SCALAR_TYPES, self.constant_value)
-        if self.value_cpp_type == "RoundingMode" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.ROUNDING_MODES, self.constant_value)
-        if self.value_cpp_type == "ComparisonOperator" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.COMPARISON_OPERATORS, self.constant_value)
-        if self.value_cpp_type == "BooleanOperator" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.BOOLEAN_OPERATORS, self.constant_value)
-        if self.value_cpp_type == "CacheOperator" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.CACHE_OPERATORS, self.constant_value)
-        if self.value_cpp_type == "EvictionPriority" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.EVICTION_PRIORITIES, self.constant_value)
-        if self.value_cpp_type == "PrefetchSize" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.PREFETCH_SIZES, self.constant_value)
-        if self.value_cpp_type == "MemoryStateSpace" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.MEMORY_STATE_SPACES, self.constant_value)
-        if self.value_cpp_type == "MemoryConsistency" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.MEMORY_CONSISTENCIES, self.constant_value)
-        if self.value_cpp_type == "MemoryScope" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.MEMORY_SCOPES, self.constant_value)
-        if self.value_cpp_type == "MbarrierPhaseType" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.MBARRIER_PHASE_TYPES, self.constant_value)
-        if self.value_cpp_type == "MbarrierLayout" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.MBARRIER_LAYOUTS, self.constant_value)
-        if self.value_cpp_type == "AsyncProxyKind" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.ASYNC_PROXY_KINDS, self.constant_value)
-        if self.value_cpp_type == "ProxyKindPair" and isinstance(
-            self.constant_value, str
-        ):
-            return cpp_value(CppDomain.PROXY_KIND_PAIRS, self.constant_value)
+
+        domains = {
+            ResolvedValueKind.SCALAR_TYPE: CppDomain.SCALAR_TYPES,
+            ResolvedValueKind.ROUNDING_MODE: CppDomain.ROUNDING_MODES,
+            ResolvedValueKind.COMPARISON_OPERATOR: CppDomain.COMPARISON_OPERATORS,
+            ResolvedValueKind.BOOLEAN_OPERATOR: CppDomain.BOOLEAN_OPERATORS,
+            ResolvedValueKind.CACHE_OPERATOR: CppDomain.CACHE_OPERATORS,
+            ResolvedValueKind.EVICTION_PRIORITY: CppDomain.EVICTION_PRIORITIES,
+            ResolvedValueKind.PREFETCH_SIZE: CppDomain.PREFETCH_SIZES,
+            ResolvedValueKind.MEMORY_STATE_SPACE: CppDomain.MEMORY_STATE_SPACES,
+            ResolvedValueKind.MEMORY_CONSISTENCY: CppDomain.MEMORY_CONSISTENCIES,
+            ResolvedValueKind.MEMORY_SCOPE: CppDomain.MEMORY_SCOPES,
+            ResolvedValueKind.MBARRIER_PHASE_TYPE: CppDomain.MBARRIER_PHASE_TYPES,
+            ResolvedValueKind.MBARRIER_LAYOUT: CppDomain.MBARRIER_LAYOUTS,
+            ResolvedValueKind.ASYNC_PROXY_KIND: CppDomain.ASYNC_PROXY_KINDS,
+            ResolvedValueKind.PROXY_KIND_PAIR: CppDomain.PROXY_KIND_PAIRS,
+        }
+
+        domain = domains.get(self.value_kind)
+        if domain is not None and isinstance(self.constant_value, str):
+            return cpp_value(domain, self.constant_value)
+
         raise ValueError(
             f"field {self.name!r}: unsupported fixed value "
-            f"{self.constant_value!r} for {self.value_cpp_type}"
+            f"{self.constant_value!r} for {self.value_kind.value}"
         )
 
 
@@ -1245,17 +1266,20 @@ def _build_operand_layout(
 
 def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
     try:
-        value_cpp_type = cpp_value(CppDomain.MODIFIER_VALUE_CPP_TYPES, modifier.kind)
-    except ValueError as error:
+        value_kind = _MODIFIER_VALUE_KINDS[modifier.kind]
+    except KeyError as error:
         raise ValueError(
             f"modifier {modifier.name!r}: unsupported resolved modifier kind "
             f"{modifier.kind!r}"
         ) from error
 
     return ResolvedField(
-        name=cpp_optional_value(CppDomain.MODIFIER_FIELD_NAMES, modifier.name)
+        name=cpp_optional_value(
+            CppDomain.MODIFIER_FIELD_NAMES,
+            modifier.name,
+        )
         or modifier.name,
-        value_cpp_type=value_cpp_type,
+        value_kind=value_kind,
         origin=ResolvedFieldOrigin.MODIFIER,
         source_name=modifier.name,
         storage=(
@@ -1263,14 +1287,14 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
             if modifier.presence == "fixed"
             else ResolvedFieldStorage.INSTANCE
         ),
-        constant_value=modifier.value if modifier.presence == "fixed" else None,
+        constant_value=(modifier.value if modifier.presence == "fixed" else None),
     )
 
 
 def _build_operand_field(operand: OperandSpec) -> ResolvedField:
     try:
-        value_cpp_type = cpp_value(CppDomain.OPERAND_VALUE_CPP_TYPES, operand.kind)
-    except ValueError as error:
+        value_kind = _OPERAND_VALUE_KINDS[operand.kind]
+    except KeyError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported resolved operand kind "
             f"{operand.kind!r}"
@@ -1294,7 +1318,7 @@ def _build_operand_field(operand: OperandSpec) -> ResolvedField:
 
     return ResolvedField(
         name=operand.name,
-        value_cpp_type=value_cpp_type,
+        value_kind=value_kind,
         origin=ResolvedFieldOrigin.OPERAND,
         source_name=operand.name,
         operand_role=role,

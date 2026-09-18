@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from typing import cast
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -3917,22 +3918,37 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
     def test_rejects_unclassified_reference_payload_type(self) -> None:
         """Future operand payloads must declare their reference policy."""
-
+    
         variant = self.instruction.variants[0]
         layout = variant.operand_layouts[0]
+    
         unknown_field = replace(
-            layout.fields[0], value_cpp_type="FutureReferencePayload"
+            layout.fields[0],
+            value_kind=cast(ResolvedValueKind, object()),
         )
         unknown_layout = replace(
-            layout, fields=(unknown_field, *layout.fields[1:])
+            layout,
+            fields=(unknown_field, *layout.fields[1:]),
         )
         unknown_variant = replace(
-            variant, operand_layouts=(unknown_layout, *variant.operand_layouts[1:])
+            variant,
+            operand_layouts=(
+                unknown_layout,
+                *variant.operand_layouts[1:],
+            ),
         )
         unknown_instruction = replace(
-            self.instruction, variants=(unknown_variant, *self.instruction.variants[1:])
+            self.instruction,
+            variants=(
+                unknown_variant,
+                *self.instruction.variants[1:],
+            ),
         )
-        with self.assertRaisesRegex(ValueError, "explicit module-reference policy"):
+    
+        with self.assertRaisesRegex(
+            ValueError,
+            "explicit module-reference policy",
+        ):
             _validate_reference_field_types((unknown_instruction,))
 
     def test_generate_resolved_instruction_dispatch_source(self) -> None:

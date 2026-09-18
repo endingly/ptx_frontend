@@ -27,6 +27,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
+    ResolvedValueKind,
 )
 from ptx_frontend.spec.resources import packaged_backend_spec
 
@@ -252,13 +253,47 @@ class BackendModelTests(unittest.TestCase):
 
             field = ResolvedField(
                 name="type",
-                value_cpp_type="ScalarType",
+                value_kind=ResolvedValueKind.SCALAR_TYPE,
                 origin=ResolvedFieldOrigin.MODIFIER,
                 source_name="type",
                 storage=ResolvedFieldStorage.STATIC_CONSTANT,
                 constant_value="f32",
             )
             self.assertEqual(field.cpp_constant_expr, "CustomType::F32")
+
+    def test_resolved_value_kind_is_independent_of_cpp_type_spelling(self) -> None:
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw["domains"][CppDomain.RESOLVED_VALUE_CPP_TYPES.value]["values"][
+            "ScalarType"
+        ] = "CustomScalarType"
+
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(
+                yaml.safe_dump(raw, sort_keys=False),
+                encoding="utf-8",
+            )
+            configure_cpp_backend(backend_path)
+
+            field = ResolvedField(
+                name="type",
+                value_kind=ResolvedValueKind.SCALAR_TYPE,
+                origin=ResolvedFieldOrigin.MODIFIER,
+                source_name="type",
+            )
+
+            self.assertIs(
+                field.value_kind,
+                ResolvedValueKind.SCALAR_TYPE,
+            )
+            self.assertEqual(
+                field.value_cpp_type,
+                "CustomScalarType",
+            )
+            self.assertEqual(
+                field.cpp_type,
+                "WithLocs<CustomScalarType>",
+            )
 
     def test_reports_missing_cpp_domain_value(self) -> None:
         with self.assertRaisesRegex(ValueError, "has no value 'missing'"):

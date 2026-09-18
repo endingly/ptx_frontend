@@ -15,58 +15,60 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandLayout,
     ResolvedVariant,
     from_instruction_spec,
+    ResolvedValueKind,
 )
 
 # These are the only generated operand payloads which can carry a binding
 # identity. Keeping the list explicit makes a newly modeled payload fail code
 # generation until its module-validation treatment is selected deliberately.
-_REFERENCE_FIELD_TYPES = frozenset(
+_REFERENCE_VALUE_KINDS = frozenset(
     {
-        "ResolvedRegisterRef",
-        "ResolvedMbarrierStateToken",
-        "ResolvedRegisterOrSink",
-        "RegOrImm",
-        "ResolvedShflSyncDestination",
-        "ResolvedPredicatePair",
-        "ResolvedPredicatePairOrSink",
-        "ResolvedPredicateOrSink",
-        "ResolvedMovSource",
-        "ResolvedPredicate",
-        "ResolvedPredicateSource",
-        "ResolvedBranchTarget",
-        "ResolvedBranchTargetSet",
-        "ResolvedVectorRegisterRef",
-        "ResolvedSymbolRef",
-        "ResolvedAddress",
-        "ResolvedRegisterVector",
-        "ResolvedTensorCoordinate",
-        "ResolvedFunctionRef",
-        "ResolvedIndirectCallee",
-        "ResolvedCallParameterRef",
-        "ResolvedCallArguments",
+        ResolvedValueKind.REGISTER,
+        ResolvedValueKind.MBARRIER_STATE_TOKEN,
+        ResolvedValueKind.REGISTER_OR_SINK,
+        ResolvedValueKind.REG_OR_IMM,
+        ResolvedValueKind.SHFL_DESTINATION,
+        ResolvedValueKind.PREDICATE_PAIR,
+        ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
+        ResolvedValueKind.PREDICATE_OR_SINK,
+        ResolvedValueKind.MOV_SOURCE,
+        ResolvedValueKind.PREDICATE,
+        ResolvedValueKind.PREDICATE_SOURCE,
+        ResolvedValueKind.BRANCH_TARGET,
+        ResolvedValueKind.BRANCH_TARGET_SET,
+        ResolvedValueKind.VECTOR_REGISTER,
+        ResolvedValueKind.SYMBOL,
+        ResolvedValueKind.ADDRESS,
+        ResolvedValueKind.REGISTER_VECTOR,
+        ResolvedValueKind.TENSOR_COORDINATE,
+        ResolvedValueKind.DIRECT_CALL_TARGET,
+        ResolvedValueKind.INDIRECT_CALLEE,
+        ResolvedValueKind.CALL_RETURN_PARAMETER,
+        ResolvedValueKind.CALL_ARGUMENTS,
     }
 )
-_REFERENCE_FREE_FIELD_TYPES = frozenset(
+
+_REFERENCE_FREE_VALUE_KINDS = frozenset(
     {
-        "bool",
-        "ScalarType",
-        "RoundingMode",
-        "ComparisonOperator",
-        "BooleanOperator",
-        "CacheOperator",
-        "EvictionPriority",
-        "PrefetchSize",
-        "MemoryConsistency",
-        "MemoryScope",
-        "VectorArity",
-        "MemoryStateSpace",
-        "MbarrierPhaseType",
-        "MbarrierLayout",
-        "AsyncProxyKind",
-        "ProxyKindPair",
-        "ResolvedImmediate",
-        "ResolvedSpecialRegisterRef",
-        "ResolvedVectorSpecialRegisterRef",
+        ResolvedValueKind.BOOL,
+        ResolvedValueKind.SCALAR_TYPE,
+        ResolvedValueKind.ROUNDING_MODE,
+        ResolvedValueKind.COMPARISON_OPERATOR,
+        ResolvedValueKind.BOOLEAN_OPERATOR,
+        ResolvedValueKind.CACHE_OPERATOR,
+        ResolvedValueKind.EVICTION_PRIORITY,
+        ResolvedValueKind.PREFETCH_SIZE,
+        ResolvedValueKind.MEMORY_CONSISTENCY,
+        ResolvedValueKind.MEMORY_SCOPE,
+        ResolvedValueKind.VECTOR_ARITY,
+        ResolvedValueKind.MEMORY_STATE_SPACE,
+        ResolvedValueKind.MBARRIER_PHASE_TYPE,
+        ResolvedValueKind.MBARRIER_LAYOUT,
+        ResolvedValueKind.ASYNC_PROXY_KIND,
+        ResolvedValueKind.PROXY_KIND_PAIR,
+        ResolvedValueKind.IMMEDIATE,
+        ResolvedValueKind.SPECIAL_REGISTER,
+        ResolvedValueKind.VECTOR_SPECIAL_REGISTER,
     }
 )
 
@@ -264,38 +266,49 @@ def _validate_reference_field_types(
     instructions: tuple[ResolvedInstruction, ...],
 ) -> None:
     """Require an explicit module-reference policy for every operand payload."""
-    known = _REFERENCE_FIELD_TYPES | _REFERENCE_FREE_FIELD_TYPES
+
+    known = _REFERENCE_VALUE_KINDS | _REFERENCE_FREE_VALUE_KINDS
     for instruction in instructions:
         for variant in instruction.variants:
             for layout in variant.operand_layouts:
                 for field in layout.fields:
-                    if field.value_cpp_type not in known:
+                    if field.value_kind not in known:
                         raise ValueError(
-                            "Resolved operand field type needs an explicit "
-                            f"module-reference policy: {field.value_cpp_type}"
+                            "Resolved operand value kind needs an explicit "
+                            f"module-reference policy: {field.value_kind!r}"
                         )
 
 
-def _emit_reference_fields(fields: tuple[ResolvedField, ...], object_name: str) -> str:
+def _emit_reference_fields(
+    fields: tuple[ResolvedField, ...],
+    object_name: str,
+) -> str:
     """Emit callbacks for only explicitly reference-bearing operand payloads."""
+
     return "\n".join(
-        f"      visitor({object_name}.{field.name}.value, {object_name}.{field.name}.locs);"
+        f"      visitor({object_name}.{field.name}.value, "
+        f"{object_name}.{field.name}.locs);"
         for field in fields
-        if field.value_cpp_type in _REFERENCE_FIELD_TYPES
+        if field.value_kind in _REFERENCE_VALUE_KINDS
     )
 
 
-def _reference_payload_types(instruction: ResolvedInstruction) -> tuple[str, ...]:
+def _reference_payload_types(
+    instruction: ResolvedInstruction,
+) -> tuple[str, ...]:
     """Return reference-bearing payload types in deterministic visitor order."""
+
     payloads = ["ResolvedPredicate"]
+
     for variant in instruction.variants:
         for layout in variant.operand_layouts:
             for field in layout.fields:
                 if (
-                    field.value_cpp_type in _REFERENCE_FIELD_TYPES
+                    field.value_kind in _REFERENCE_VALUE_KINDS
                     and field.value_cpp_type not in payloads
                 ):
                     payloads.append(field.value_cpp_type)
+
     return tuple(payloads)
 
 

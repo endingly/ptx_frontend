@@ -1,6 +1,16 @@
 from typing import Mapping
-
-from ptx_frontend.spec.model import *
+from typing import Any
+from ptx_frontend.spec.model import (
+    OperandLayoutSpec,
+    OperandTypeCompatibilitySpec,
+    ModifierSpec,
+    MemoryConsistencyConstraint,
+    AddressAlignmentConstraint,
+    MemoryVectorConstraint,
+    ImmediateValueConstraint,
+    ImmediateRangeConstraint,
+    ImmediateMultipleOfConstraint
+)
 from .availability import normalize_availability, UINT64_MAX
 from .modifiers import _normalize_modifier_values
 

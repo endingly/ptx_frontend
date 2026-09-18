@@ -1,4 +1,11 @@
-from ptx_frontend.spec.model import *
+from ptx_frontend.spec.model import (
+    OperandTypeExpression,
+    OperandTypeExpressionKind,
+    OperandStateSpaceValue,
+    OperandStateSpaceExpression,
+    OperandVectorArityExpression,
+    OperandParameterConstraint,
+)
 import re
 from .availability import *
 

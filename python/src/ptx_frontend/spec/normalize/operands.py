@@ -1,4 +1,12 @@
-from ptx_frontend.spec.model import *
+from ptx_frontend.spec.model import (
+    OperandSpec,
+    OperandVectorArityExpression,
+    OperandVectorTypePolicy,
+    MbarrierStateTokenForm,
+    OperandRegisterWidthPolicy,
+    OperandImmediateConversionPolicy,
+)
+from typing import Any
 from .expressions import (
     _normalize_operand_vector_arity_expression,
     _normalize_operand_type_expression,

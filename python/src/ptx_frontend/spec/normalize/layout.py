@@ -1,4 +1,5 @@
-from ptx_frontend.spec.model import *
+from typing import Any
+from ptx_frontend.spec.model import OperandLayoutSpec, OperandLayoutKind, OperandSpec
 from .availability import normalize_availability
 from ptx_frontend.ir.syntax_ast import OPERAND_SYNTAX_SHAPES
 from .operands import normalize_operand

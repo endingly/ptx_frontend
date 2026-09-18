@@ -1,4 +1,8 @@
-from ptx_frontend.spec.model import *
+from ptx_frontend.spec.model import (
+    ModifierSpec,
+    OperandLayoutSpec,
+    OperandTypeExpressionKind,
+)
 
 
 def _validate_modifier_type_expressions(

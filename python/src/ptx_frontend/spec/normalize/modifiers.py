@@ -1,5 +1,6 @@
 from ptx_frontend.spec.load_yaml import expand_value_refs
-from ptx_frontend.spec.model import *
+from typing import Any
+from ptx_frontend.spec.model import ModifierSpec, ModifierValueSpec
 from .availability import normalize_availability
 
 

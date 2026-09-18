@@ -1,31 +1,313 @@
 """Public loaders for normalized PTX instruction specifications."""
 
-from pathlib import Path
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+from functools import cache
+from typing import Any, TypeVar
 
-from ptx_frontend.code_gen.database import (
-    CodegenDatabase as PtxSpecDatabase,
-    discover_spec_files,
-    load_codegen_database,
-)
+from ptx_frontend.base.utils import file_stem_to_pascal_case
+from .load_yaml import load_yaml
+from .model import InstructionSpec, ModifierSpec, VariantSpec, modifier_spellings
+from .normalize import normalize_instruction_spec
+from jsonschema import Draft202012Validator
+from importlib.resources.abc import Traversable
+from .resources import packaged_spec_dir, packaged_spec_schema
 
-from .resources import packaged_spec_dir
+PTX_INSTRUCTION_SCHEMA = packaged_spec_schema()
 
 
-def load_spec_database(*, spec_dir: Path) -> PtxSpecDatabase:
+@dataclass(frozen=True)
+class CodegenDatabase:
+    """Normalized PTX ISA input shared by syntax and resolved IR generators."""
+
+    spec_schema: str
+    instructions: tuple[InstructionSpec, ...]
+
+
+def discover_spec_files(
+    spec_dir: Traversable,
+) -> tuple[Traversable, ...]:
+    """Return all PTX instruction specification files in stable order."""
+
+    def _walk_spec_files(root: Traversable) -> Iterator[Traversable]:
+        """Yield spec YAML files below ``root`` without relying on ``rglob``."""
+
+        for entry in sorted(root.iterdir(), key=lambda item: item.name):
+            if entry.is_dir():
+                yield from _walk_spec_files(entry)
+            elif entry.name.endswith(".yaml") and not entry.name.endswith(
+                ".schema.yaml"
+            ):
+                yield entry
+
+    return tuple(_walk_spec_files(spec_dir))
+
+
+def load_codegen_database(*, spec_dir: Traversable) -> CodegenDatabase:
+    """Load and normalize all PTX ISA specifications below ``spec_dir``."""
+
+    spec_files = discover_spec_files(spec_dir)
+    if not spec_files:
+        raise ValueError(f"no PTX instruction specs found in {spec_dir}")
+    specs = tuple((path, load_yaml(path)) for path in spec_files)
+    for path, spec in specs:
+        _validate_instruction_schema(path, spec)
+    schema_versions = {str(spec["schema"]) for _, spec in specs}
+    if len(schema_versions) != 1:
+        raise ValueError(f"mixed PTX spec schema versions: {sorted(schema_versions)}")
+    definitions = tuple(
+        instruction
+        for _, spec in specs
+        for instruction in normalize_instruction_spec(spec)
+    )
+    instructions = _merge_instruction_definitions(definitions)
+    return CodegenDatabase(
+        spec_schema=next(iter(schema_versions)),
+        instructions=instructions,
+    )
+
+
+@cache
+def _instruction_schema_validator() -> Draft202012Validator:
+    """Load the ISA schema once for a database-loading process."""
+
+    return Draft202012Validator(load_yaml(PTX_INSTRUCTION_SCHEMA))
+
+
+def _validate_instruction_schema(path: Traversable, spec: dict[str, Any]) -> None:
+    """Reject a malformed ISA spec before semantic normalization begins."""
+
+    errors = sorted(
+        _instruction_schema_validator().iter_errors(spec),
+        key=lambda error: list(error.path),
+    )
+    if not errors:
+        return
+
+    error = errors[0]
+    location = ".".join(str(piece) for piece in error.path) or "<root>"
+    raise ValueError(f"{path}:{location}: {error.message}")
+
+
+def _merge_instruction_definitions(
+    definitions: tuple[InstructionSpec, ...],
+) -> tuple[InstructionSpec, ...]:
+    """Merge definitions of the same opcode in stable file order."""
+
+    grouped: dict[str, list[InstructionSpec]] = {}
+    for definition in definitions:
+        grouped.setdefault(definition.opcode, []).append(definition)
+
+    merged: list[InstructionSpec] = []
+    for opcode, opcode_definitions in grouped.items():
+        _validate_merge_contract(opcode, opcode_definitions)
+
+        instruction = InstructionSpec(
+            opcode=opcode,
+            variants=tuple(
+                variant
+                for definition in opcode_definitions
+                for variant in definition.variants
+            ),
+            syntax_forms=_stable_unique(
+                syntax
+                for definition in opcode_definitions
+                for syntax in definition.syntax_forms
+            ),
+            source_categories=_stable_unique(
+                category
+                for definition in opcode_definitions
+                for category in definition.source_categories
+            ),
+            codegen_category=opcode_definitions[0].codegen_category,
+        )
+        _validate_merged_instruction(instruction)
+        merged.append(instruction)
+
+    return tuple(merged)
+
+
+def _validate_merge_contract(opcode: str, definitions: list[InstructionSpec]) -> None:
+    categories = {definition.codegen_category for definition in definitions}
+    if len(categories) != 1:
+        raise ValueError(
+            f"opcode {opcode!r} definitions disagree on codegen_category: "
+            f"{sorted(categories)}"
+        )
+
+
+def _validate_merged_instruction(instruction: InstructionSpec) -> None:
+    variant_ids = [variant.name for variant in instruction.variants]
+    expected_prefix = f"{instruction.opcode}_"
+    invalid_ids = [name for name in variant_ids if not name.startswith(expected_prefix)]
+    if invalid_ids:
+        raise ValueError(
+            f"opcode {instruction.opcode!r} has variant ids without required "
+            f"prefix {expected_prefix!r}: {invalid_ids}"
+        )
+    duplicate_ids = _duplicates(variant_ids)
+    if duplicate_ids:
+        raise ValueError(
+            f"opcode {instruction.opcode!r} has duplicate variant ids after "
+            f"definition merge: {sorted(duplicate_ids)}"
+        )
+
+    cpp_names = [
+        file_stem_to_pascal_case(_variant_name_without_opcode(instruction.opcode, name))
+        for name in variant_ids
+    ]
+    duplicate_cpp_names = _duplicates(cpp_names)
+    if duplicate_cpp_names:
+        raise ValueError(
+            f"opcode {instruction.opcode!r} has variant names that collide in "
+            f"C++: {sorted(duplicate_cpp_names)}"
+        )
+
+    _validate_variant_modifier_exclusivity(instruction)
+
+
+def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None:
+    languages = [
+        _variant_modifier_language(instruction.opcode, variant)
+        for variant in instruction.variants
+    ]
+    for left_index, left in enumerate(instruction.variants):
+        for right_index in range(left_index + 1, len(instruction.variants)):
+            right = instruction.variants[right_index]
+            if languages[left_index] & languages[right_index]:
+                raise ValueError(
+                    f"opcode {instruction.opcode!r} variants {left.name!r} and "
+                    f"{right.name!r} accept an overlapping modifier combination"
+                )
+
+
+def _variant_modifier_language(
+    opcode: str, variant: VariantSpec
+) -> set[tuple[str, ...]]:
+    """Return the union of canonical and declared alias modifier languages."""
+
+    slot_names: set[str] = set()
+    owners_by_spelling: dict[str, list[tuple[str, str]]] = {}
+    for modifier in variant.modifiers:
+        if modifier.name in slot_names:
+            raise ValueError(
+                f"opcode {opcode!r} variant {variant.name!r} repeats modifier "
+                f"slot {modifier.name!r}"
+            )
+        slot_names.add(modifier.name)
+
+        spellings = set(modifier_spellings(modifier))
+        if modifier.presence == "optional":
+            if not spellings:
+                raise ValueError(
+                    f"opcode {opcode!r} variant {variant.name!r} optional "
+                    f"modifier {modifier.name!r} has no source spelling"
+                )
+        elif modifier.presence != "absent":
+            if not spellings:
+                raise ValueError(
+                    f"opcode {opcode!r} variant {variant.name!r} active "
+                    f"modifier {modifier.name!r} has no source spelling"
+                )
+
+        if modifier.presence != "absent":
+            for spelling in spellings:
+                owners = owners_by_spelling.setdefault(spelling, [])
+                if owners and (
+                    modifier.presence == "optional"
+                    or any(presence == "optional" for _, presence in owners)
+                ):
+                    raise ValueError(
+                        f"opcode {opcode!r} variant {variant.name!r} maps "
+                        f"modifier spelling {spelling!r} to an optional slot; "
+                        "repeated spellings require only required/fixed slots"
+                    )
+                owners.append((modifier.name, modifier.presence))
+
+    modifiers_by_name = {modifier.name: modifier for modifier in variant.modifiers}
+    languages: dict[tuple[str, ...], tuple[str, ...]] = {}
+    orders = (
+        tuple(modifier.name for modifier in variant.modifiers),
+        *variant.modifier_order_aliases,
+    )
+    for order in orders:
+        language = _modifier_order_language(
+            tuple(modifiers_by_name[slot_name] for slot_name in order)
+        )
+        for sequence, binding in language.items():
+            previous_binding = languages.setdefault(sequence, binding)
+            if previous_binding != binding:
+                raise ValueError(
+                    f"opcode {opcode!r} variant {variant.name!r} modifier "
+                    f"order aliases bind {sequence!r} to different slot identities"
+                )
+    return set(languages)
+
+
+def _modifier_order_language(
+    modifiers: tuple[ModifierSpec, ...],
+) -> dict[tuple[str, ...], tuple[str, ...]]:
+    """Return source sequences and their slot bindings for one complete order."""
+
+    language: dict[tuple[str, ...], tuple[str, ...]] = {(): ()}
+    for modifier in modifiers:
+        spellings = set(modifier_spellings(modifier))
+        if modifier.presence == "absent":
+            choices: set[str | None] = {None}
+        elif modifier.presence == "optional":
+            choices = {None, *spellings}
+        else:
+            choices = set(spellings)
+
+        language = {
+            sequence if choice is None else (*sequence, choice): (
+                binding if choice is None else (*binding, modifier.name)
+            )
+            for (sequence, binding) in language.items()
+            for choice in choices
+        }
+    return language
+
+
+def _variant_name_without_opcode(opcode: str, variant_name: str) -> str:
+    prefix = f"{opcode}_"
+    return variant_name.removeprefix(prefix)
+
+
+T = TypeVar("T")
+
+
+def _stable_unique(values: Iterable[T]) -> tuple[T, ...]:
+    return tuple(dict.fromkeys(values))
+
+
+def _duplicates(values: list[str]) -> set[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for value in values:
+        if value in seen:
+            duplicates.add(value)
+        seen.add(value)
+    return duplicates
+
+
+def load_spec_database(*, spec_dir: Traversable) -> CodegenDatabase:
     """Load and normalize PTX instruction specs from ``spec_dir``."""
 
     return load_codegen_database(spec_dir=spec_dir)
 
 
-def load_packaged_spec_database() -> PtxSpecDatabase:
+def load_packaged_spec_database() -> CodegenDatabase:
     """Load the PTX instruction specs shipped with the installed wheel."""
 
-    return load_spec_database(spec_dir=Path(str(packaged_spec_dir())))
+    return load_spec_database(spec_dir=packaged_spec_dir())
 
 
 __all__ = [
-    "PtxSpecDatabase",
     "discover_spec_files",
     "load_packaged_spec_database",
     "load_spec_database",
+    "CodegenDatabase",
+    "discover_spec_files",
+    "load_codegen_database",
 ]

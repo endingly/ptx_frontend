@@ -1,7 +1,5 @@
 """Normalization of PTX ISA YAML into the typed code-generation model."""
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

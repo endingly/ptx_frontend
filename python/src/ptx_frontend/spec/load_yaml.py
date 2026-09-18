@@ -1,9 +1,9 @@
-from pathlib import Path
+from importlib.resources.abc import Traversable
 from typing import Any
 import yaml
 
 
-def load_yaml(path: Path) -> dict[str, Any]:
+def load_yaml(path: Traversable) -> dict[str, Any]:
     """Load a YAML file and return its contents as a dictionary."""
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):

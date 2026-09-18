@@ -308,6 +308,5 @@ __all__ = [
     "load_packaged_spec_database",
     "load_spec_database",
     "CodegenDatabase",
-    "discover_spec_files",
     "load_codegen_database",
 ]

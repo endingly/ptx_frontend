@@ -4,12 +4,17 @@ from importlib.resources import files
 from importlib.util import find_spec
 import os
 
-from ptx_frontend.code_gen.model import (
+from ptx_frontend.spec.model import (
     InstructionSpec as CompatibilityInstructionSpec,
 )
 from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
-from ptx_frontend.spec.resources import packaged_spec_schema
+from ptx_frontend.spec.resources import (
+    packaged_backend_spec,
+    packaged_backend_spec_schema,
+    packaged_spec_dir,
+    packaged_spec_schema,
+)
 
 EXPECTED_VERSION = os.environ["PTX_FRONTEND_EXPECTED_VERSION"]
 
@@ -29,16 +34,9 @@ def check_packaged_resources() -> None:
     """Verify schemas and PTX resources are available after installation."""
 
     assert packaged_spec_schema().is_file()
-
-    resource_root = files("ptx_frontend.code_gen.resources")
-
-    assert resource_root.joinpath("ptx-instr-v1.schema.yaml").is_file()
-
-    assert resource_root.joinpath("ptx-cpp-backend-v1.schema.yaml").is_file()
-
-    assert resource_root.joinpath("ptx_cpp_backend_spec/ptx_frontend.yaml").is_file()
-
-    assert resource_root.joinpath("ptx_spec/arithmetic.yaml").is_file()
+    assert packaged_backend_spec_schema().is_file()
+    assert packaged_backend_spec().is_file()
+    assert packaged_spec_dir().joinpath("arithmetic.yaml").is_file()
 
 
 def check_module_layout() -> None:
@@ -133,12 +131,32 @@ def check_packaged_spec_model() -> None:
             "reg_or_imm",
         ]
 
-        assert operands[0].type_expression.modifier_name == "result_type" # pyright: ignore[reportOptionalMemberAccess]
-        assert operands[3].type_expression.modifier_name == "result_type" # pyright: ignore[reportOptionalMemberAccess]
+        assert (
+            operands[
+                0
+            ].type_expression.modifier_name  # pyright: ignore[reportOptionalMemberAccess]
+            == "result_type"
+        )
+        assert (
+            operands[
+                3
+            ].type_expression.modifier_name  # pyright: ignore[reportOptionalMemberAccess]
+            == "result_type"
+        )
 
-    assert layouts["fma_mixed_f32_f16"][1].type_expression.modifier_name == "input_type" # pyright: ignore[reportOptionalMemberAccess]
+    assert (
+        layouts["fma_mixed_f32_f16"][
+            1
+        ].type_expression.modifier_name  # pyright: ignore[reportOptionalMemberAccess]
+        == "input_type"
+    )
 
-    assert layouts["fma_mixed_f32_bf16"][1].type_expression.scalar_type == "b16" # pyright: ignore[reportOptionalMemberAccess]
+    assert (
+        layouts["fma_mixed_f32_bf16"][
+            1
+        ].type_expression.scalar_type  # pyright: ignore[reportOptionalMemberAccess]
+        == "b16"
+    )
 
 
 def main() -> None:

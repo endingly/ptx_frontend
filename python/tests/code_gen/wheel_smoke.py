@@ -25,8 +25,8 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/base/utils.py",
         "ptx_frontend/spec/model.py",
         "ptx_frontend/spec/database.py",
-        "ptx_frontend/spec/resources.py",
-        "ptx_frontend/spec/normalize.py",
+        "ptx_frontend/spec/resources/__init__.py",
+        "ptx_frontend/spec/normalize/__init__.py",
         "ptx_frontend/spec/load_yaml.py",
         "ptx_frontend/code_gen/model.py",
         "ptx_frontend/code_gen/database.py",
@@ -49,10 +49,10 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/scripts/regenerate_m12_corpus.py",
         "ptx_frontend/scripts/validate_yaml.py",
         # Packaged schemas and specification resources.
-        "ptx_frontend/code_gen/resources/ptx-instr-v1.schema.yaml",
-        "ptx_frontend/code_gen/resources/ptx-cpp-backend-v1.schema.yaml",
-        "ptx_frontend/code_gen/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
-        "ptx_frontend/code_gen/resources/ptx_spec/arithmetic.yaml",
+        "ptx_frontend/spec/resources/ptx-instr-v1.schema.yaml",
+        "ptx_frontend/spec/resources/ptx-cpp-backend-v1.schema.yaml",
+        "ptx_frontend/spec/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
+        "ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml",
         # Distribution metadata.
         f"ptx_frontend-{EXPECTED_VERSION}.dist-info/METADATA",
     )

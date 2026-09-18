@@ -121,7 +121,7 @@ def get_cpp_backend() -> CodegenUnit:
 
 
 @cache
-def load_cpp_backend(path: Path) -> CodegenUnit:
+def load_cpp_backend(path: Traversable) -> CodegenUnit:
     """Normalize one backend YAML file into the existing backend model API."""
 
     raw = load_yaml(path)
@@ -193,7 +193,9 @@ def cpp_default(domain_name: CppDomain) -> str:
     return domain.default
 
 
-def _normalize_domains(path: Path, raw_domains: object) -> dict[str, DomainBackend]:
+def _normalize_domains(
+    path: Traversable, raw_domains: object
+) -> dict[str, DomainBackend]:
     if not isinstance(raw_domains, dict) or not raw_domains:
         raise ValueError(f"{path}: backend domains must be a non-empty mapping")
 
@@ -247,7 +249,7 @@ def _normalize_domains(path: Path, raw_domains: object) -> dict[str, DomainBacke
 
 
 def _normalize_instruction_backends(
-    path: Path, raw_instructions: object
+    path: Traversable, raw_instructions: object
 ) -> dict[str, InstructionBackend]:
     """Retain the restored instruction-backend model for future consumers."""
 
@@ -316,7 +318,9 @@ def _normalize_instruction_backends(
     return result
 
 
-def _normalize_includes(path: Path, raw_includes: object) -> tuple[str, ...] | None:
+def _normalize_includes(
+    path: Traversable, raw_includes: object
+) -> tuple[str, ...] | None:
     if raw_includes is None:
         return None
     if not isinstance(raw_includes, list):
@@ -343,7 +347,7 @@ def _mapping_string_tuple(mapping: object, key: str) -> tuple[str, ...]:
     return tuple(str(value) for value in values)
 
 
-def _validate_schema(path: Path, raw: dict[str, Any]) -> None:
+def _validate_schema(path: Traversable, raw: dict[str, Any]) -> None:
     schema = load_yaml(DEFAULT_CPP_BACKEND_SCHEMA)
     errors = sorted(
         Draft202012Validator(schema).iter_errors(raw),

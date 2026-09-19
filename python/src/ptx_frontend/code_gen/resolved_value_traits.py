@@ -198,3 +198,66 @@ def modifier_value_default_cpp_expr(
         raise AssertionError(f"{kind.value} has no configured C++ domain")
 
     return cpp_default(traits.cpp_domain)
+
+
+_MODIFIER_DESCRIPTOR_MEMBERS: tuple[
+    tuple[str, CppDomain | None],
+    ...,
+] = (
+    ("bool_value", None),
+    ("scalar_type", CppDomain.SCALAR_TYPES),
+    ("rounding_mode", CppDomain.ROUNDING_MODES),
+    ("comparison_operator", CppDomain.COMPARISON_OPERATORS),
+    ("boolean_operator", CppDomain.BOOLEAN_OPERATORS),
+    ("cache_operator", CppDomain.CACHE_OPERATORS),
+    ("eviction_priority", CppDomain.EVICTION_PRIORITIES),
+    ("prefetch_size", CppDomain.PREFETCH_SIZES),
+    ("vector_arity", CppDomain.VECTOR_ARITIES),
+    ("memory_state_space", CppDomain.MEMORY_STATE_SPACES),
+    ("memory_consistency", CppDomain.MEMORY_CONSISTENCIES),
+    ("memory_scope", CppDomain.MEMORY_SCOPES),
+    ("mbarrier_phase_type", CppDomain.MBARRIER_PHASE_TYPES),
+    ("mbarrier_layout", CppDomain.MBARRIER_LAYOUTS),
+    ("async_proxy_kind", CppDomain.ASYNC_PROXY_KINDS),
+    ("proxy_kind_pair", CppDomain.PROXY_KIND_PAIRS),
+)
+
+
+def modifier_descriptor_default_members() -> dict[str, str]:
+    """Return neutral C++ values for every modifier descriptor member."""
+
+    return {
+        member: ("false" if domain is None else cpp_default(domain))
+        for member, domain in _MODIFIER_DESCRIPTOR_MEMBERS
+    }
+
+
+def modifier_descriptor_members(
+    kind: ResolvedValueKind,
+    value_expr: str,
+) -> dict[str, str]:
+    """Return descriptor members with one semantic value selected."""
+
+    traits = resolved_modifier_value_traits(kind)
+    members = modifier_descriptor_default_members()
+
+    if traits.descriptor_member not in members:
+        raise AssertionError(
+            f"{kind.value} selects unknown descriptor member "
+            f"{traits.descriptor_member!r}"
+        )
+
+    members[traits.descriptor_member] = value_expr
+    return members
+
+
+def modifier_value_descriptor_members(
+    kind: ResolvedValueKind,
+    value: str | bool | int,
+) -> dict[str, str]:
+    """Convert one semantic modifier value into descriptor member expressions."""
+
+    return modifier_descriptor_members(
+        kind,
+        modifier_value_cpp_expr(kind, value),
+    )

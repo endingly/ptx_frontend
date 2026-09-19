@@ -97,6 +97,51 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 "v4",
             )
 
+    def test_modifier_descriptor_members_select_only_the_kind_member(self) -> None:
+        from ptx_frontend.code_gen.resolved_value_traits import (
+            modifier_value_descriptor_members,
+        )
+
+        members = modifier_value_descriptor_members(
+            ResolvedValueKind.SCALAR_TYPE,
+            "f32",
+        )
+
+        self.assertEqual(
+            members["scalar_type"],
+            "ScalarType::F32",
+        )
+        self.assertEqual(
+            members["bool_value"],
+            "false",
+        )
+        self.assertEqual(
+            members["rounding_mode"],
+            "RoundingMode::Invalid",
+        )
+        self.assertEqual(
+            members["cache_operator"],
+            "CacheOperator::Unspecified",
+        )
+
+    def test_bool_descriptor_member_does_not_require_a_cpp_domain(self) -> None:
+        from ptx_frontend.code_gen.resolved_value_traits import (
+            modifier_value_descriptor_members,
+        )
+
+        members = modifier_value_descriptor_members(
+            ResolvedValueKind.BOOL,
+            True,
+        )
+
+        self.assertEqual(
+            members["bool_value"],
+            "true",
+        )
+        self.assertEqual(
+            members["scalar_type"],
+            "ScalarType::Invalid",
+        )
 
 if __name__ == "__main__":
     unittest.main()

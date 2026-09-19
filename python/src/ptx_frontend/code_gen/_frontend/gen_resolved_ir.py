@@ -19,6 +19,7 @@ from ptx_frontend.ir.resolved_ir import (
 )
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
+    modifier_descriptor_members,
 )
 
 # These are the only generated operand payloads which can carry a binding
@@ -1068,190 +1069,64 @@ def _emit_check_modifier_value_view(
     variant: ResolvedVariant,
     field: ResolvedField,
 ) -> str:
-    bool_value = "false"
-    scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-    rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-    comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
-    boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
-    cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-    eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
-    prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
-    vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
-    memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
-    memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
-    mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
-    mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
-    async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
-    proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
+    """Emit one checker view of a selected resolved modifier value."""
 
-    if field.value_kind is ResolvedValueKind.SCALAR_TYPE:
-        scalar_type = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind is ResolvedValueKind.BOOL:
-        bool_value = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind is ResolvedValueKind.ROUNDING_MODE:
-        rounding_mode = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.COMPARISON_OPERATOR:
-        comparison_operator = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.BOOLEAN_OPERATOR:
-        boolean_operator = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.CACHE_OPERATOR:
-        cache_operator = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.EVICTION_PRIORITY:
-        eviction_priority = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.PREFETCH_SIZE:
-        prefetch_size = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.VECTOR_ARITY:
-        vector_arity = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.MEMORY_STATE_SPACE:
-        memory_state_space = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.MEMORY_CONSISTENCY:
-        memory_consistency = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.MEMORY_SCOPE:
-        memory_scope = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.MBARRIER_PHASE_TYPE:
-        mbarrier_phase_type = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.MBARRIER_LAYOUT:
-        mbarrier_layout = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.ASYNC_PROXY_KIND:
-        async_proxy_kind = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    elif field.value_kind == ResolvedValueKind.PROXY_KIND_PAIR:
-        proxy_kind_pair = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
-            else f"selected.{field.name}.value"
-        )
-    else:
-        raise ValueError(
-            f"modifier field {field.name!r}: unsupported availability view type "
-            f"{field.value_cpp_type!r}"
-        )
+    value_expr = (
+        f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
+        if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+        else f"selected.{field.name}.value"
+    )
+
+    members = modifier_descriptor_members(
+        field.value_kind,
+        value_expr,
+    )
 
     locations = (
         "std::span<const SourceRange>{}"
         if field.storage is ResolvedFieldStorage.STATIC_CONSTANT
         else f"selected.{field.name}.locs"
     )
+
     if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
         is_present = "true"
     else:
         is_present = f"!selected.{field.name}.locs.empty()"
+
         binding = next(
             binding
             for binding in variant.modifier_bindings
             if binding.target_field_id == field.name
         )
+
         if binding.default_value is not None:
             default_value = _modifier_default_cpp_value(binding.default_value)
             is_present += f" || selected.{field.name}.value != {default_value}"
-    # if field.value_cpp_type != "RoundingMode":
-    #     rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-    # if field.value_cpp_type != "ComparisonOperator":
-    #     comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
-    # if field.value_cpp_type != "BooleanOperator":
-    #     boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
-    # if field.value_cpp_type != "CacheOperator":
-    #     cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-    # if field.value_cpp_type != "EvictionPriority":
-    #     eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
-    # if field.value_cpp_type != "PrefetchSize":
-    #     prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
-    # if field.value_cpp_type != "VectorArity":
-    #     vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    # if field.value_cpp_type != "MemoryStateSpace":
-    #     memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
-    # if field.value_cpp_type != "MemoryConsistency":
-    #     memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
-    # if field.value_cpp_type != "MemoryScope":
-    #     memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
-    # if field.value_cpp_type != "MbarrierPhaseType":
-    #     mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
-    # if field.value_cpp_type != "MbarrierLayout":
-    #     mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
-    # if field.value_cpp_type != "AsyncProxyKind":
-    #     async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
-    # if field.value_cpp_type != "ProxyKindPair":
-    #     proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
+
+    value_kind = cpp_value(
+        CppDomain.CHECKER_MODIFIER_VALUE_KINDS,
+        field.value_kind.value,
+    )
 
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
-                  .value_kind = {field.value_kind},
-                  .bool_value = {bool_value},
-                  .scalar_type = {scalar_type},
-                  .rounding_mode = {rounding_mode},
-                  .comparison_operator = {comparison_operator},
-                  .boolean_operator = {boolean_operator},
-                  .cache_operator = {cache_operator},
-                  .eviction_priority = {eviction_priority},
-                  .prefetch_size = {prefetch_size},
-                  .vector_arity = {vector_arity},
-                  .memory_state_space = {memory_state_space},
-                  .memory_consistency = {memory_consistency},
-                  .memory_scope = {memory_scope},
-                  .mbarrier_phase_type = {mbarrier_phase_type},
-                  .mbarrier_layout = {mbarrier_layout},
-                  .async_proxy_kind = {async_proxy_kind},
-                  .proxy_kind_pair = {proxy_kind_pair},
+                  .value_kind = {value_kind},
+                  .bool_value = {members["bool_value"]},
+                  .scalar_type = {members["scalar_type"]},
+                  .rounding_mode = {members["rounding_mode"]},
+                  .comparison_operator = {members["comparison_operator"]},
+                  .boolean_operator = {members["boolean_operator"]},
+                  .cache_operator = {members["cache_operator"]},
+                  .eviction_priority = {members["eviction_priority"]},
+                  .prefetch_size = {members["prefetch_size"]},
+                  .vector_arity = {members["vector_arity"]},
+                  .memory_state_space = {members["memory_state_space"]},
+                  .memory_consistency = {members["memory_consistency"]},
+                  .memory_scope = {members["memory_scope"]},
+                  .mbarrier_phase_type = {members["mbarrier_phase_type"]},
+                  .mbarrier_layout = {members["mbarrier_layout"]},
+                  .async_proxy_kind = {members["async_proxy_kind"]},
+                  .proxy_kind_pair = {members["proxy_kind_pair"]},
                   .is_present = {is_present},
                   .locations = {locations},
               }}"""

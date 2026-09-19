@@ -6,7 +6,7 @@ from pathlib import Path
 from collections.abc import Mapping
 
 from ptx_frontend.base.utils import generated_at_comment
-from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
 from ptx_frontend.spec.database import CodegenDatabase
 from ptx_frontend.spec.normalize import (
     parse_availability_target,
@@ -21,7 +21,9 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandTypeCompatibility,
     ResolvedVariant,
     from_instruction_spec,
-    ResolvedValueKind,
+)
+from ptx_frontend.code_gen.resolved_value_traits import (
+    modifier_value_descriptor_members,
 )
 
 
@@ -319,141 +321,18 @@ def _emit_modifier_value_descriptor(
     include_availability: bool = True,
 ) -> str:
     """Emit one typed modifier descriptor, with optional target metadata."""
-    bool_value = "false"
-    scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-    rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-    comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
-    boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
-    cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-    eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
-    prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
-    vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
-    memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
-    memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
-    mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
-    mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
-    async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
-    proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
 
-    if entry.value_kind == ResolvedValueKind.BOOL:
-        bool_value = "true" if entry.value else "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.SCALAR_TYPE:
-        scalar_type = cpp_value(CppDomain.SCALAR_TYPES, str(entry.value))
-        bool_value = "false"
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.ROUNDING_MODE:
-        rounding_mode = cpp_value(CppDomain.ROUNDING_MODES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.COMPARISON_OPERATOR:
-        comparison_operator = cpp_value(
-            CppDomain.COMPARISON_OPERATORS, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.BOOLEAN_OPERATOR:
-        boolean_operator = cpp_value(CppDomain.BOOLEAN_OPERATORS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.CACHE_OPERATOR:
-        cache_operator = cpp_value(CppDomain.CACHE_OPERATORS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.EVICTION_PRIORITY:
-        eviction_priority = cpp_value(CppDomain.EVICTION_PRIORITIES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.PREFETCH_SIZE:
-        prefetch_size = cpp_value(CppDomain.PREFETCH_SIZES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.VECTOR_ARITY:
-        vector_arity = cpp_value(CppDomain.VECTOR_ARITIES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-    elif entry.value_kind == ResolvedValueKind.MEMORY_STATE_SPACE:
-        memory_state_space = cpp_value(CppDomain.MEMORY_STATE_SPACES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.MEMORY_CONSISTENCY:
-        memory_consistency = cpp_value(CppDomain.MEMORY_CONSISTENCIES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.MEMORY_SCOPE:
-        memory_scope = cpp_value(CppDomain.MEMORY_SCOPES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.MBARRIER_PHASE_TYPE:
-        mbarrier_phase_type = cpp_value(
-            CppDomain.MBARRIER_PHASE_TYPES, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.MBARRIER_LAYOUT:
-        mbarrier_layout = cpp_value(CppDomain.MBARRIER_LAYOUTS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.ASYNC_PROXY_KIND:
-        async_proxy_kind = cpp_value(CppDomain.ASYNC_PROXY_KINDS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_kind == ResolvedValueKind.PROXY_KIND_PAIR:
-        proxy_kind_pair = cpp_value(CppDomain.PROXY_KIND_PAIRS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    else:
-        raise ValueError(
-            f"unsupported modifier availability value kind {entry.value_kind!r}"
-        )
+    members = modifier_value_descriptor_members(
+        entry.value_kind,
+        entry.value,
+    )
+
     availability = ""
     if include_availability:
-        assert isinstance(entry, ResolvedModifierValueAvailability)
+        assert isinstance(
+            entry,
+            ResolvedModifierValueAvailability,
+        )
         availability = (
             f"              .availability = "
             f"{_emit_availability(dict(entry.availability))},\n"
@@ -461,23 +340,26 @@ def _emit_modifier_value_descriptor(
 
     return f"""          {descriptor_type}{{
               .kind_id = "{entry.source_kind_id}",
-              .value_kind = {cpp_value(CppDomain.CHECKER_MODIFIER_VALUE_KINDS, entry.value_kind.value)},
-              .bool_value = {bool_value},
-              .scalar_type = {scalar_type},
-              .rounding_mode = {rounding_mode},
-              .comparison_operator = {comparison_operator if entry.value_kind == ResolvedValueKind.COMPARISON_OPERATOR else cpp_default(CppDomain.COMPARISON_OPERATORS)},
-              .boolean_operator = {boolean_operator if entry.value_kind == ResolvedValueKind.BOOLEAN_OPERATOR else cpp_default(CppDomain.BOOLEAN_OPERATORS)},
-              .cache_operator = {cache_operator},
-              .eviction_priority = {eviction_priority if entry.value_kind == ResolvedValueKind.EVICTION_PRIORITY else cpp_default(CppDomain.EVICTION_PRIORITIES)},
-              .prefetch_size = {prefetch_size if entry.value_kind == ResolvedValueKind.PREFETCH_SIZE else cpp_default(CppDomain.PREFETCH_SIZES)},
-              .vector_arity = {vector_arity},
-              .memory_state_space = {memory_state_space if entry.value_kind == ResolvedValueKind.MEMORY_STATE_SPACE else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
-              .memory_consistency = {memory_consistency if entry.value_kind == ResolvedValueKind.MEMORY_CONSISTENCY else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},
-              .memory_scope = {memory_scope if entry.value_kind == ResolvedValueKind.MEMORY_SCOPE else cpp_default(CppDomain.MEMORY_SCOPES)},
-              .mbarrier_phase_type = {mbarrier_phase_type if entry.value_kind == ResolvedValueKind.MBARRIER_PHASE_TYPE else cpp_default(CppDomain.MBARRIER_PHASE_TYPES)},
-              .mbarrier_layout = {mbarrier_layout if entry.value_kind == ResolvedValueKind.MBARRIER_LAYOUT else cpp_default(CppDomain.MBARRIER_LAYOUTS)},
-              .async_proxy_kind = {async_proxy_kind if entry.value_kind == ResolvedValueKind.ASYNC_PROXY_KIND else cpp_default(CppDomain.ASYNC_PROXY_KINDS)},
-              .proxy_kind_pair = {proxy_kind_pair if entry.value_kind == ResolvedValueKind.PROXY_KIND_PAIR else cpp_default(CppDomain.PROXY_KIND_PAIRS)},
+              .value_kind = {cpp_value(
+                  CppDomain.CHECKER_MODIFIER_VALUE_KINDS,
+                  entry.value_kind.value,
+              )},
+              .bool_value = {members["bool_value"]},
+              .scalar_type = {members["scalar_type"]},
+              .rounding_mode = {members["rounding_mode"]},
+              .comparison_operator = {members["comparison_operator"]},
+              .boolean_operator = {members["boolean_operator"]},
+              .cache_operator = {members["cache_operator"]},
+              .eviction_priority = {members["eviction_priority"]},
+              .prefetch_size = {members["prefetch_size"]},
+              .vector_arity = {members["vector_arity"]},
+              .memory_state_space = {members["memory_state_space"]},
+              .memory_consistency = {members["memory_consistency"]},
+              .memory_scope = {members["memory_scope"]},
+              .mbarrier_phase_type = {members["mbarrier_phase_type"]},
+              .mbarrier_layout = {members["mbarrier_layout"]},
+              .async_proxy_kind = {members["async_proxy_kind"]},
+              .proxy_kind_pair = {members["proxy_kind_pair"]},
 {availability}
           }}"""
 

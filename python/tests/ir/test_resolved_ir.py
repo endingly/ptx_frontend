@@ -5030,6 +5030,33 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 sorted(payload_check.index(call) for call in calls),
             )
 
+    def test_modifier_value_descriptor_uses_traits_mapping(self) -> None:
+        from ptx_frontend.ir.resolved_ir import ResolvedModifierValueDomain
+        from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import _emit_modifier_value_domain_descriptor
+        entry = ResolvedModifierValueDomain(
+            source_kind_id="type",
+            value_kind=ResolvedValueKind.SCALAR_TYPE,
+            value="f32",
+        )
+
+        emitted = _emit_modifier_value_domain_descriptor(entry)
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::ScalarType",
+            emitted,
+        )
+        self.assertIn(
+            ".scalar_type = ScalarType::F32",
+            emitted,
+        )
+        self.assertIn(
+            ".bool_value = false",
+            emitted,
+        )
+        self.assertIn(
+            ".rounding_mode = RoundingMode::Invalid",
+            emitted,
+        )
 
 if __name__ == "__main__":
     unittest.main()

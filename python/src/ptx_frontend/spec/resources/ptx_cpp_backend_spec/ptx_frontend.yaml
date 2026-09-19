@@ -490,7 +490,7 @@ domains:
   checker_modifier_value_kinds:
     cpp_type: checker::ModifierValueKind
     values:
-      bool: checker::ModifierValueKind::Bool
+      Bool: checker::ModifierValueKind::Bool
       ScalarType: checker::ModifierValueKind::ScalarType
       RoundingMode: checker::ModifierValueKind::RoundingMode
       ComparisonOperator: checker::ModifierValueKind::ComparisonOperator

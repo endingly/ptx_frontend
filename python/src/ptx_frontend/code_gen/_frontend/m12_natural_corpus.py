@@ -6,8 +6,7 @@ from collections import Counter
 from pathlib import Path
 import re
 
-from ptx_frontend.code_gen.database import CodegenDatabase, _variant_modifier_language
-
+from ptx_frontend.spec.database import CodegenDatabase, _variant_modifier_language
 
 _ENTRY = re.compile(r"^\.visible\s+\.entry\s+([A-Za-z_][A-Za-z0-9_]*)\(")
 _SPELLING = re.compile(r"^[A-Za-z][A-Za-z0-9_.:]*$")
@@ -77,7 +76,9 @@ def classify_instruction_spelling(spelling: str, database: CodegenDatabase) -> s
     C++ checker behavior.
     """
 
-    for instruction in sorted(database.instructions, key=lambda item: -len(item.opcode)):
+    for instruction in sorted(
+        database.instructions, key=lambda item: -len(item.opcode)
+    ):
         opcode = instruction.opcode
         if spelling != opcode and not spelling.startswith(f"{opcode}."):
             continue

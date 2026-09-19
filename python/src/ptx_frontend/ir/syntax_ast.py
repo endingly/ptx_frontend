@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntFlag
-from ptx_frontend.code_gen.model import (
+from ptx_frontend.spec.model import (
     InstructionSpec,
     ModifierSpec,
     OperandLayoutKind as ModelOperandLayoutKind,
@@ -145,9 +145,7 @@ OPERAND_SYNTAX_SHAPES = {
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
     ),
-    "cluster_address": (
-        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS
-    ),
+    "cluster_address": (OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS),
     "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
     "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
     "pred": OperandSyntaxShape.IDENTIFIER_REF,
@@ -183,15 +181,14 @@ OPERAND_SYNTAX_SHAPES = {
     "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
 }
 
+
 def _build_variant_descriptor_view(
     variant: VariantSpec,
 ) -> SyntaxVariantDescriptor:
     modifiers = tuple(
         _build_modifier_descriptor_view(modifier) for modifier in variant.modifiers
     )
-    modifiers_by_name = {
-        modifier.kind_id: modifier for modifier in modifiers
-    }
+    modifiers_by_name = {modifier.kind_id: modifier for modifier in modifiers}
     return SyntaxVariantDescriptor(
         variant_id=variant.name,
         modifiers=modifiers,
@@ -201,9 +198,11 @@ def _build_variant_descriptor_view(
                 kind=OperandLayoutKind(
                     "Call"
                     if layout.kind is ModelOperandLayoutKind.CALL
-                    else "IndirectCall"
-                    if layout.kind is ModelOperandLayoutKind.INDIRECT_CALL
-                    else "Flat"
+                    else (
+                        "IndirectCall"
+                        if layout.kind is ModelOperandLayoutKind.INDIRECT_CALL
+                        else "Flat"
+                    )
                 ),
                 slots=tuple(
                     _build_operand_slot_descriptor_view(operand)
@@ -258,9 +257,11 @@ def _build_operand_slot_descriptor_view(
         maximum_elements=operand.maximum_elements,
         allowed_element_shapes=sum(
             (
-                OperandSyntaxShape.IDENTIFIER_REF
-                if kind == "reg"
-                else OperandSyntaxShape.IMMEDIATE
+                (
+                    OperandSyntaxShape.IDENTIFIER_REF
+                    if kind == "reg"
+                    else OperandSyntaxShape.IMMEDIATE
+                )
                 for kind in operand.element_kinds
             ),
             OperandSyntaxShape(0),

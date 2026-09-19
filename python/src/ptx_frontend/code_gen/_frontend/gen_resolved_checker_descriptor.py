@@ -6,9 +6,9 @@ from pathlib import Path
 from collections.abc import Mapping
 
 from ptx_frontend.base.utils import generated_at_comment
-from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
-from ptx_frontend.code_gen.database import CodegenDatabase
-from ptx_frontend.code_gen.normalize import (
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
+from ptx_frontend.spec.database import CodegenDatabase
+from ptx_frontend.spec.normalize import (
     parse_availability_target,
     validate_availability_family,
     validate_availability_sm_version,
@@ -20,8 +20,13 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandLayout,
     ResolvedOperandTypeCompatibility,
     ResolvedVariant,
+    ResolvedValueKind,
     from_instruction_spec,
 )
+from ptx_frontend.code_gen.resolved_value_traits import (
+    modifier_value_descriptor_members,
+)
+
 
 def generate_resolved_checker_descriptor_source(
     database: CodegenDatabase,
@@ -35,7 +40,8 @@ def generate_resolved_checker_descriptor_source(
     )
     _validate_unique_cpp_names(instructions)
     storage_definitions = "\n\n".join(
-        _emit_instruction_descriptor_storage(instruction) for instruction in instructions
+        _emit_instruction_descriptor_storage(instruction)
+        for instruction in instructions
     )
     getter_definitions = "\n\n".join(
         _emit_instruction_descriptor_getter(instruction) for instruction in instructions
@@ -74,8 +80,7 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         for variant in instruction.variants
     )
     layout_definitions = "\n\n".join(
-        _emit_variant_layout_descriptors(variant)
-        for variant in instruction.variants
+        _emit_variant_layout_descriptors(variant) for variant in instruction.variants
     )
     type_compatibility_definitions = "\n\n".join(
         _emit_variant_type_compatibility_descriptors(variant)
@@ -134,7 +139,6 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
 """
 
 
-
 def _emit_instruction_descriptor_getter(instruction: ResolvedInstruction) -> str:
     """Emit the checker descriptor getter outside generated_detail."""
 
@@ -151,7 +155,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
     consistency = variant.memory_consistency
     memory_consistency = ""
     if consistency is not None:
-        memory_consistency = f'''
+        memory_consistency = f"""
               .memory_consistency = {{
                   .semantics_field_id = "{consistency.semantics_field_id}",
                   .scope_field_id = "{consistency.scope_field_id}",
@@ -161,11 +165,11 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .type_field_id = "{consistency.type_field_id}",
                   .state_space_field_id = "{consistency.state_space_field_id or ""}",
                   .mmio_semantics = {variant.cpp_name}_mmio_semantics,
-              }},'''
+              }},"""
     vector = variant.memory_vector
     memory_vector = ""
     if vector is not None:
-        memory_vector = f'''
+        memory_vector = f"""
               .memory_vector = {{
                   .type_field_id = "{vector.type_field_id}",
                   .vector_field_id = "{vector.vector_field_id}",
@@ -173,25 +177,25 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .state_space_field_id = "{vector.state_space_field_id or ""}",
                   .availability = {_emit_availability(dict(vector.availability))},
                   .require_modern = {str(vector.require_modern).lower()},
-              }},'''
+              }},"""
     immediate_value = ""
     if variant.immediate_value is not None:
-        immediate_value = f'''
+        immediate_value = f"""
               .immediate_value = {{
                   .operand_field_id = "{variant.immediate_value.operand_field_id}",
                   .allowed_values = {variant.cpp_name}_immediate_value_values,
-              }},'''
+              }},"""
     immediate_ranges = ""
     if variant.immediate_ranges:
-        immediate_ranges = f'''
-              .immediate_ranges = {variant.cpp_name}_immediate_ranges,'''
+        immediate_ranges = f"""
+              .immediate_ranges = {variant.cpp_name}_immediate_ranges,"""
     immediate_multiple_of = ""
     if variant.immediate_multiple_of is not None:
-        immediate_multiple_of = f'''
+        immediate_multiple_of = f"""
               .immediate_multiple_of = {{
                   .operand_field_id = "{variant.immediate_multiple_of.operand_field_id}",
                   .divisor = {_cpp_uint64(variant.immediate_multiple_of.divisor)},
-              }},'''
+              }},"""
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {_emit_availability(dict(variant.availability))},
@@ -219,11 +223,10 @@ def _emit_mmio_semantic_descriptors(variant: ResolvedVariant) -> str:
     consistency = variant.memory_consistency
     assert consistency is not None
     entries = ",\n".join(
-        f'''          checker::VariantDescriptor::MmioSemanticDescriptor{{
+        f"""          checker::VariantDescriptor::MmioSemanticDescriptor{{
               .semantics = {cpp_value(CppDomain.MEMORY_CONSISTENCIES, value)},
               .availability = {_emit_availability(dict(availability))},
-          }}'''
-        for value, availability in consistency.mmio_semantics
+          }}""" for value, availability in consistency.mmio_semantics
     )
     return f"""  static constexpr std::array<checker::VariantDescriptor::MmioSemanticDescriptor, {len(consistency.mmio_semantics)}>
       {variant.cpp_name}_mmio_semantics = {{{{
@@ -241,13 +244,12 @@ def _emit_variant_immediate_value_descriptors(variant: ResolvedVariant) -> str:
 
 def _emit_variant_immediate_range_descriptors(variant: ResolvedVariant) -> str:
     entries = ",\n".join(
-        f'''          checker::VariantDescriptor::ImmediateRangeDescriptor{{
+        f"""          checker::VariantDescriptor::ImmediateRangeDescriptor{{
               .operand_field_id = "{constraint.operand_field_id}",
               .minimum = {_cpp_uint64(constraint.minimum)},
               .has_maximum = {str(constraint.maximum is not None).lower()},
               .maximum = {_cpp_uint64(constraint.maximum) if constraint.maximum is not None else "~uint64_t{0}"},
-          }}'''
-        for constraint in variant.immediate_ranges
+          }}""" for constraint in variant.immediate_ranges
     )
     return f"""  static constexpr std::array<checker::VariantDescriptor::ImmediateRangeDescriptor, {len(variant.immediate_ranges)}>
       {variant.cpp_name}_immediate_ranges = {{{{
@@ -264,7 +266,7 @@ def _cpp_uint64(value: int) -> str:
 def _emit_address_alignment_descriptor(variant: ResolvedVariant) -> str:
     if not variant.address_alignments:
         return ""
-    return f'''              .address_alignments = {variant.cpp_name}_address_alignments,'''
+    return f"""              .address_alignments = {variant.cpp_name}_address_alignments,"""
 
 
 def _emit_variant_address_alignment_descriptors(variant: ResolvedVariant) -> str:
@@ -273,16 +275,13 @@ def _emit_variant_address_alignment_descriptors(variant: ResolvedVariant) -> str
       {variant.cpp_name}_address_alignment_{index}_address_fields = {{{{{", ".join(f'\"{address}\"' for address in alignment.address_field_ids)}}}}};'''
         for index, alignment in enumerate(variant.address_alignments)
     )
-    entries = ",\n".join(
-        f'''          checker::AddressAlignmentConstraint{{
+    entries = ",\n".join(f"""          checker::AddressAlignmentConstraint{{
               .address_field_ids = {variant.cpp_name}_address_alignment_{index}_address_fields,
               .type_field_id = "{alignment.type_field_id or ""}",
               .vector_field_id = "{alignment.vector_field_id or ""}",
               .immediate_operand_field_id = "{alignment.immediate_operand_field_id or ""}",
               .alignment = {alignment.alignment or 0},
-          }}'''
-        for index, alignment in enumerate(variant.address_alignments)
-    )
+          }}""" for index, alignment in enumerate(variant.address_alignments))
     return f"""{fields}
   static constexpr std::array<checker::AddressAlignmentConstraint, {len(variant.address_alignments)}>
       {variant.cpp_name}_address_alignments = {{{{
@@ -323,149 +322,18 @@ def _emit_modifier_value_descriptor(
     include_availability: bool = True,
 ) -> str:
     """Emit one typed modifier descriptor, with optional target metadata."""
-    bool_value = "false"
-    scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-    rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-    comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
-    boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
-    cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-    eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
-    prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
-    vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
-    memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
-    memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
-    mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
-    mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
-    async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
-    proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
 
-    if entry.value_cpp_type == "bool":
-        bool_value = "true" if entry.value else "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "ScalarType":
-        scalar_type = cpp_value(CppDomain.SCALAR_TYPES, str(entry.value))
-        bool_value = "false"
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "RoundingMode":
-        rounding_mode = cpp_value(CppDomain.ROUNDING_MODES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "ComparisonOperator":
-        comparison_operator = cpp_value(
-            CppDomain.COMPARISON_OPERATORS, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "BooleanOperator":
-        boolean_operator = cpp_value(CppDomain.BOOLEAN_OPERATORS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "CacheOperator":
-        cache_operator = cpp_value(CppDomain.CACHE_OPERATORS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "EvictionPriority":
-        eviction_priority = cpp_value(
-            CppDomain.EVICTION_PRIORITIES, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "PrefetchSize":
-        prefetch_size = cpp_value(CppDomain.PREFETCH_SIZES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "VectorArity":
-        vector_arity = cpp_value(CppDomain.VECTOR_ARITIES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-    elif entry.value_cpp_type == "MemoryStateSpace":
-        memory_state_space = cpp_value(
-            CppDomain.MEMORY_STATE_SPACES, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "MemoryConsistency":
-        memory_consistency = cpp_value(
-            CppDomain.MEMORY_CONSISTENCIES, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "MemoryScope":
-        memory_scope = cpp_value(CppDomain.MEMORY_SCOPES, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "MbarrierPhaseType":
-        mbarrier_phase_type = cpp_value(
-            CppDomain.MBARRIER_PHASE_TYPES, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "MbarrierLayout":
-        mbarrier_layout = cpp_value(CppDomain.MBARRIER_LAYOUTS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "AsyncProxyKind":
-        async_proxy_kind = cpp_value(
-            CppDomain.ASYNC_PROXY_KINDS, str(entry.value)
-        )
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    elif entry.value_cpp_type == "ProxyKindPair":
-        proxy_kind_pair = cpp_value(CppDomain.PROXY_KIND_PAIRS, str(entry.value))
-        bool_value = "false"
-        scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
-        rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
-        cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
-        vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
-    else:
-        raise ValueError(
-            f"unsupported modifier availability value type {entry.value_cpp_type!r}"
-        )
+    members = modifier_value_descriptor_members(
+        entry.value_kind,
+        entry.value,
+    )
+
     availability = ""
     if include_availability:
-        assert isinstance(entry, ResolvedModifierValueAvailability)
+        assert isinstance(
+            entry,
+            ResolvedModifierValueAvailability,
+        )
         availability = (
             f"              .availability = "
             f"{_emit_availability(dict(entry.availability))},\n"
@@ -473,23 +341,26 @@ def _emit_modifier_value_descriptor(
 
     return f"""          {descriptor_type}{{
               .kind_id = "{entry.source_kind_id}",
-              .value_kind = {cpp_value(CppDomain.CHECKER_MODIFIER_VALUE_KINDS, entry.value_cpp_type)},
-              .bool_value = {bool_value},
-              .scalar_type = {scalar_type},
-              .rounding_mode = {rounding_mode},
-              .comparison_operator = {comparison_operator if entry.value_cpp_type == "ComparisonOperator" else cpp_default(CppDomain.COMPARISON_OPERATORS)},
-              .boolean_operator = {boolean_operator if entry.value_cpp_type == "BooleanOperator" else cpp_default(CppDomain.BOOLEAN_OPERATORS)},
-              .cache_operator = {cache_operator},
-              .eviction_priority = {eviction_priority if entry.value_cpp_type == "EvictionPriority" else cpp_default(CppDomain.EVICTION_PRIORITIES)},
-              .prefetch_size = {prefetch_size if entry.value_cpp_type == "PrefetchSize" else cpp_default(CppDomain.PREFETCH_SIZES)},
-              .vector_arity = {vector_arity},
-              .memory_state_space = {memory_state_space if entry.value_cpp_type == "MemoryStateSpace" else cpp_default(CppDomain.MEMORY_STATE_SPACES)},
-              .memory_consistency = {memory_consistency if entry.value_cpp_type == "MemoryConsistency" else cpp_default(CppDomain.MEMORY_CONSISTENCIES)},
-              .memory_scope = {memory_scope if entry.value_cpp_type == "MemoryScope" else cpp_default(CppDomain.MEMORY_SCOPES)},
-              .mbarrier_phase_type = {mbarrier_phase_type if entry.value_cpp_type == "MbarrierPhaseType" else cpp_default(CppDomain.MBARRIER_PHASE_TYPES)},
-              .mbarrier_layout = {mbarrier_layout if entry.value_cpp_type == "MbarrierLayout" else cpp_default(CppDomain.MBARRIER_LAYOUTS)},
-              .async_proxy_kind = {async_proxy_kind if entry.value_cpp_type == "AsyncProxyKind" else cpp_default(CppDomain.ASYNC_PROXY_KINDS)},
-              .proxy_kind_pair = {proxy_kind_pair if entry.value_cpp_type == "ProxyKindPair" else cpp_default(CppDomain.PROXY_KIND_PAIRS)},
+              .value_kind = {cpp_value(
+                  CppDomain.CHECKER_MODIFIER_VALUE_KINDS,
+                  entry.value_kind.value,
+              )},
+              .bool_value = {members[ResolvedValueKind.BOOL]},
+              .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},
+              .rounding_mode = {members[ResolvedValueKind.ROUNDING_MODE]},
+              .comparison_operator = {members[ResolvedValueKind.COMPARISON_OPERATOR]},
+              .boolean_operator = {members[ResolvedValueKind.BOOLEAN_OPERATOR]},
+              .cache_operator = {members[ResolvedValueKind.CACHE_OPERATOR]},
+              .eviction_priority = {members[ResolvedValueKind.EVICTION_PRIORITY]},
+              .prefetch_size = {members[ResolvedValueKind.PREFETCH_SIZE]},
+              .vector_arity = {members[ResolvedValueKind.VECTOR_ARITY]},
+              .memory_state_space = {members[ResolvedValueKind.MEMORY_STATE_SPACE]},
+              .memory_consistency = {members[ResolvedValueKind.MEMORY_CONSISTENCY]},
+              .memory_scope = {members[ResolvedValueKind.MEMORY_SCOPE]},
+              .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
+              .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
+              .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
+              .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
 {availability}
           }}"""
 
@@ -510,8 +381,7 @@ def _emit_variant_layout_descriptors(variant: ResolvedVariant) -> str:
     """Emit checker availability metadata for every layout of one variant."""
 
     entries = ",\n".join(
-        _emit_operand_layout_descriptor(layout)
-        for layout in variant.operand_layouts
+        _emit_operand_layout_descriptor(layout) for layout in variant.operand_layouts
     )
     return f"""  static constexpr std::array<checker::OperandLayoutDescriptor, {len(variant.operand_layouts)}>
       {variant.cpp_name}_operand_layouts = {{
@@ -554,11 +424,11 @@ def _emit_operand_type_compatibility_descriptor(
 def _emit_availability(availability: Mapping[str, object]) -> str:
     if "any_of" not in availability:
         minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
-        return f'''{{
+        return f"""{{
                   .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                   .minimum_sm_version = {validate_availability_sm_version(availability.get("sm", 0))},
                   .required_family = "{validate_availability_family(availability["family"]) if "family" in availability else ""}",
-              }}'''
+              }}"""
 
     clauses = availability["any_of"]
     assert isinstance(clauses, list)
@@ -571,13 +441,12 @@ def _emit_availability(availability: Mapping[str, object]) -> str:
             parse_availability_target(target) if target is not None else (0, "Generic")
         )
         family = (
-            validate_availability_family(clause["family"])
-            if "family" in clause else ""
+            validate_availability_family(clause["family"]) if "family" in clause else ""
         )
         capabilities = clause.get("capabilities", [])
         assert isinstance(capabilities, list)
         capability_values = ", ".join(f'"{value}"' for value in capabilities)
-        emitted.append(f'''checker::AvailabilityClause{{
+        emitted.append(f"""checker::AvailabilityClause{{
                       .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
                       .minimum_sm_version = {validate_availability_sm_version(clause.get("sm", 0))},
                       .has_exact_target = {str(target is not None).lower()},
@@ -586,7 +455,7 @@ def _emit_availability(availability: Mapping[str, object]) -> str:
                       .required_family = "{family}",
                       .capabilities = {{{{{capability_values}}}}},
                       .capability_count = {len(capabilities)},
-                  }}''')
+                  }}""")
     return f'''{{
                   .any_of = {{{{
                       {",\n                      ".join(emitted)}

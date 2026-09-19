@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from typing import cast
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -21,6 +22,7 @@ from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
     generate_resolved_descriptor_source,
+    _emit_modifier_default_descriptor
 )
 from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
     generate_resolved_checker_descriptor_source,
@@ -45,6 +47,8 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     ResolvedVectorTypePolicy,
     from_instruction_spec,
+    ResolvedModifierBinding,
+    ResolvedModifierDefault,
 )
 from ptx_frontend.code_gen.model import (
     ImmediateMultipleOfConstraint,
@@ -60,6 +64,9 @@ from ptx_frontend.code_gen.model import (
     OperandTypeExpression,
     OperandTypeExpressionKind,
     VariantSpec,
+)
+from ptx_frontend.ir.resolved_ir import (
+    _build_modifier_value_availability,
 )
 
 
@@ -184,6 +191,61 @@ class ResolvedIrBuildTest(unittest.TestCase):
             if instruction.opcode == "call"
         )
         cls.call_instruction = from_instruction_spec(call)
+
+    def test_modifier_default_descriptor_uses_only_selected_value_member(self) -> None:
+        binding = ResolvedModifierBinding(
+            source_kind_id="type",
+            target_field_id="type",
+            default_value=ResolvedModifierDefault(
+                value_kind=ResolvedValueKind.SCALAR_TYPE,
+                value="f32",
+            ),
+        )
+
+        emitted = _emit_modifier_default_descriptor(binding)
+
+        self.assertIn(
+            ".kind = check_end::ResolvedModifierDefaultKind::ScalarType",
+            emitted,
+        )
+        self.assertIn(
+            ".scalar_type = ScalarType::F32",
+            emitted,
+        )
+
+        unexpected_members = (
+            "bool_value",
+            "rounding_mode",
+            "cache_operator",
+            "eviction_priority",
+            "prefetch_size",
+            "memory_state_space",
+            "memory_consistency",
+            "memory_scope",
+            "mbarrier_phase_type",
+            "mbarrier_layout",
+            "async_proxy_kind",
+            "proxy_kind_pair",
+        )
+
+        for member in unexpected_members:
+            with self.subTest(member=member):
+                self.assertNotIn(
+                    f".{member} =",
+                    emitted,
+                )
+
+    def test_modifier_binding_without_default_uses_empty_descriptor(self) -> None:
+        binding = ResolvedModifierBinding(
+            source_kind_id="type",
+            target_field_id="type",
+            default_value=None,
+        )
+    
+        self.assertEqual(
+            _emit_modifier_default_descriptor(binding),
+            "check_end::ResolvedModifierDefaultDescriptor{}",
+        )
 
     def test_call_has_layout_local_group_payloads(self) -> None:
         self.assertEqual(self.call_instruction.cpp_name, "Call")
@@ -391,7 +453,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         rounding_default = f32.modifier_bindings[0].default_value
         self.assertIsNotNone(rounding_default)
         assert rounding_default is not None
-        self.assertEqual(rounding_default.value_cpp_type, "RoundingMode")
+        self.assertEqual(rounding_default.value_kind.value, "RoundingMode")
         self.assertEqual(rounding_default.value, "rn")
         self.assertEqual(
             [
@@ -844,7 +906,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         optional_sat_binding = variants["PackedOptionalSat"].modifier_bindings[0]
         self.assertIsNotNone(optional_sat_binding.default_value)
         assert optional_sat_binding.default_value is not None
-        self.assertEqual(optional_sat_binding.default_value.value_cpp_type, "bool")
+        self.assertEqual(optional_sat_binding.default_value.value_kind.value, "Bool")
         self.assertIs(optional_sat_binding.default_value.value, False)
         self.assertIsNone(
             variants["PackedOptionalSat"].modifier_bindings[1].default_value
@@ -2469,7 +2531,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "cache").default_value.value_cpp_type, # pyright: ignore[reportOptionalMemberAccess]
+                 if binding.source_kind_id == "cache").default_value.value_kind.value, # pyright: ignore[reportOptionalMemberAccess]
             "CacheOperator",
         )
         self.assertEqual(
@@ -2495,7 +2557,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                (entry.source_kind_id, entry.value_kind.value, entry.value)
                 for entry in variant.modifier_value_availabilities
                 if entry.source_kind_id == "cache"
             ],
@@ -2509,7 +2571,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                (entry.source_kind_id, entry.value_kind.value, entry.value)
                 for entry in variant.modifier_value_availabilities
                 if entry.source_kind_id == "semantics"
             ],
@@ -2521,8 +2583,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertIn(
-            ("mmio", "bool", True),
-            [(entry.source_kind_id, entry.value_cpp_type, entry.value)
+            ("mmio", "Bool", True),
+            [(entry.source_kind_id, entry.value_kind.value, entry.value)
              for entry in variant.modifier_value_availabilities],
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics") # pyright: ignore[reportOptionalMemberAccess]
@@ -3763,7 +3825,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertIsNotNone(cache_binding.default_value)
                 assert cache_binding.default_value is not None
                 self.assertEqual(
-                    cache_binding.default_value.value_cpp_type,
+                    cache_binding.default_value.value_kind.value,
                     "CacheOperator",
                 )
                 self.assertEqual(cache_binding.default_value.value, "unspecified")
@@ -3917,22 +3979,37 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
     def test_rejects_unclassified_reference_payload_type(self) -> None:
         """Future operand payloads must declare their reference policy."""
-
+    
         variant = self.instruction.variants[0]
         layout = variant.operand_layouts[0]
+    
         unknown_field = replace(
-            layout.fields[0], value_cpp_type="FutureReferencePayload"
+            layout.fields[0],
+            value_kind=cast(ResolvedValueKind, object()),
         )
         unknown_layout = replace(
-            layout, fields=(unknown_field, *layout.fields[1:])
+            layout,
+            fields=(unknown_field, *layout.fields[1:]),
         )
         unknown_variant = replace(
-            variant, operand_layouts=(unknown_layout, *variant.operand_layouts[1:])
+            variant,
+            operand_layouts=(
+                unknown_layout,
+                *variant.operand_layouts[1:],
+            ),
         )
         unknown_instruction = replace(
-            self.instruction, variants=(unknown_variant, *self.instruction.variants[1:])
+            self.instruction,
+            variants=(
+                unknown_variant,
+                *self.instruction.variants[1:],
+            ),
         )
-        with self.assertRaisesRegex(ValueError, "explicit module-reference policy"):
+    
+        with self.assertRaisesRegex(
+            ValueError,
+            "explicit module-reference policy",
+        ):
             _validate_reference_field_types((unknown_instruction,))
 
     def test_generate_resolved_instruction_dispatch_source(self) -> None:
@@ -4642,7 +4719,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(field.value_kind, ResolvedValueKind.COMPARISON_OPERATOR)
         self.assertEqual(field.cpp_type, "WithLocs<ComparisonOperator>")
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "ComparisonOperator",
         )
 
@@ -4697,7 +4774,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         specs = normalize_instruction_spec(spec)
         resolved = from_instruction_spec(specs[0])
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "EvictionPriority",
         )
 
@@ -4765,7 +4842,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(field.value_kind, ResolvedValueKind.BOOLEAN_OPERATOR)
         self.assertEqual(field.cpp_type, "WithLocs<BooleanOperator>")
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "BooleanOperator",
         )
 
@@ -4956,6 +5033,78 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 sorted(payload_check.index(call) for call in calls),
             )
 
+    def test_modifier_value_descriptor_uses_traits_mapping(self) -> None:
+        from ptx_frontend.ir.resolved_ir import ResolvedModifierValueDomain
+        from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import _emit_modifier_value_domain_descriptor
+        entry = ResolvedModifierValueDomain(
+            source_kind_id="type",
+            value_kind=ResolvedValueKind.SCALAR_TYPE,
+            value="f32",
+        )
+
+        emitted = _emit_modifier_value_domain_descriptor(entry)
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::ScalarType",
+            emitted,
+        )
+        self.assertIn(
+            ".scalar_type = ScalarType::F32",
+            emitted,
+        )
+        self.assertIn(
+            ".bool_value = false",
+            emitted,
+        )
+        self.assertIn(
+            ".rounding_mode = RoundingMode::Invalid",
+            emitted,
+        )
+
+    def test_rounding_modifier_value_rejects_unknown_backend_value(self) -> None:
+        modifier = ModifierSpec(
+            name="rounding",
+            kind="rounding",
+            presence="required",
+        )
+
+        value = ModifierValueSpec(
+            value="not_a_rounding_mode",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported RoundingMode value",
+        ):
+            _build_modifier_value_availability(
+                modifier,
+                value,
+            )
+
+    def test_rounding_modifier_value_accepts_known_backend_value(self) -> None:
+        modifier = ModifierSpec(
+            name="rounding",
+            kind="rounding",
+            presence="required",
+        )
+
+        value = ModifierValueSpec(
+            value="rn",
+        )
+
+        resolved = _build_modifier_value_availability(
+            modifier,
+            value,
+        )
+
+        self.assertIs(
+            resolved.value_kind,
+            ResolvedValueKind.ROUNDING_MODE,
+        )
+        self.assertEqual(
+            resolved.value,
+            "rn",
+        )
 
 if __name__ == "__main__":
     unittest.main()

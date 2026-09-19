@@ -100,6 +100,15 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 同一 variant 的多个 layout 可复用同名 field，前提是其定义完全一致；否则模型构建应
 失败，而不是让生成结果含糊。
 
+Modifier value 采用表驱动处理。`ir.resolved_value_kind` 定义语义身份，
+`ir.resolved_value_policy` 统一 modifier kind 映射、Python 值类型、optional default
+支持范围和诊断名称。C++ domain 与 descriptor member 映射归
+`code_gen.resolved_value_traits` 所有；emitter 共用其中的值转换和 descriptor 初始化
+函数，不再按 C++ 类型名称字符串分派。现有调用方仍可从 `ir.resolved_ir` 导入
+`ResolvedValueKind`。
+Descriptor 表达式映射使用 `ResolvedValueKind` 枚举作为查询键；C++ 成员名字符串
+仅用于输出拼写。
+
 ## C++ emitter 与产物
 
 `python/scripts/gen_all.py` 原子生成 Resolved IR 阶段所需的公共声明、运行期映射、

@@ -65,6 +65,9 @@ from ptx_frontend.code_gen.model import (
     OperandTypeExpressionKind,
     VariantSpec,
 )
+from ptx_frontend.ir.resolved_ir import (
+    _build_modifier_value_availability,
+)
 
 
 def setUpModule() -> None:
@@ -5056,6 +5059,51 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".rounding_mode = RoundingMode::Invalid",
             emitted,
+        )
+
+    def test_rounding_modifier_value_rejects_unknown_backend_value(self) -> None:
+        modifier = ModifierSpec(
+            name="rounding",
+            kind="rounding",
+            presence="required",
+        )
+
+        value = ModifierValueSpec(
+            value="not_a_rounding_mode",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported RoundingMode value",
+        ):
+            _build_modifier_value_availability(
+                modifier,
+                value,
+            )
+
+    def test_rounding_modifier_value_accepts_known_backend_value(self) -> None:
+        modifier = ModifierSpec(
+            name="rounding",
+            kind="rounding",
+            presence="required",
+        )
+
+        value = ModifierValueSpec(
+            value="rn",
+        )
+
+        resolved = _build_modifier_value_availability(
+            modifier,
+            value,
+        )
+
+        self.assertIs(
+            resolved.value_kind,
+            ResolvedValueKind.ROUNDING_MODE,
+        )
+        self.assertEqual(
+            resolved.value,
+            "rn",
         )
 
 if __name__ == "__main__":

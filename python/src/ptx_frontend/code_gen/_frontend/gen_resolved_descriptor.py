@@ -178,19 +178,13 @@ def _emit_modifier_default_descriptor(
 
     traits = resolved_modifier_value_traits(default.value_kind)
 
-    if not traits.supports_default:
-        raise ValueError(
-            f"unsupported modifier default {default.value!r} for "
-            f"{default.value_kind.value}"
-        )
-
-    kind = cpp_value(
-        CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS,
-        default.value_kind.value,
-    )
     value = modifier_default_cpp_expr(
         default.value_kind,
         default.value,
+    )
+    kind = cpp_value(
+        CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS,
+        default.value_kind.value,
     )
 
     return f"""check_end::ResolvedModifierDefaultDescriptor{{

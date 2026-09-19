@@ -878,177 +878,37 @@ def _emit_check_modifier_view(
     variant: ResolvedVariant,
     field: ResolvedField,
 ) -> str:
+    """Emit one checker field view with only the selected value engaged."""
+
     if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
-        bool_value = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "bool"
-            else "std::nullopt"
-        )
-        scalar_type = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "ScalarType"
-            else "std::nullopt"
-        )
-        comparison_operator = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "ComparisonOperator"
-            else "std::nullopt"
-        )
-        boolean_operator = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "BooleanOperator"
-            else "std::nullopt"
-        )
-        vector_arity = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "VectorArity"
-            else "std::nullopt"
-        )
-        memory_state_space = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "MemoryStateSpace"
-            else "std::nullopt"
-        )
-        memory_consistency = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "MemoryConsistency"
-            else "std::nullopt"
-        )
-        memory_scope = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "MemoryScope"
-            else "std::nullopt"
-        )
-        mbarrier_phase_type = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "MbarrierPhaseType"
-            else "std::nullopt"
-        )
-        mbarrier_layout = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "MbarrierLayout"
-            else "std::nullopt"
-        )
-        async_proxy_kind = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "AsyncProxyKind"
-            else "std::nullopt"
-        )
-        proxy_kind_pair = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "ProxyKindPair"
-            else "std::nullopt"
-        )
-        cache_operator = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "CacheOperator"
-            else "std::nullopt"
-        )
-        eviction_priority = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "EvictionPriority"
-            else "std::nullopt"
-        )
-        prefetch_size = (
-            f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
-            if field.value_cpp_type == "PrefetchSize"
-            else "std::nullopt"
-        )
+        value_expr = f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
         locations = "std::span<const SourceRange>{}"
     else:
-        bool_value = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "bool"
-            else "std::nullopt"
-        )
-        scalar_type = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "ScalarType"
-            else "std::nullopt"
-        )
-        comparison_operator = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "ComparisonOperator"
-            else "std::nullopt"
-        )
-        boolean_operator = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "BooleanOperator"
-            else "std::nullopt"
-        )
-        vector_arity = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "VectorArity"
-            else "std::nullopt"
-        )
-        memory_state_space = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "MemoryStateSpace"
-            else "std::nullopt"
-        )
-        memory_consistency = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "MemoryConsistency"
-            else "std::nullopt"
-        )
-        memory_scope = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "MemoryScope"
-            else "std::nullopt"
-        )
-        mbarrier_phase_type = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "MbarrierPhaseType"
-            else "std::nullopt"
-        )
-        mbarrier_layout = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "MbarrierLayout"
-            else "std::nullopt"
-        )
-        async_proxy_kind = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "AsyncProxyKind"
-            else "std::nullopt"
-        )
-        proxy_kind_pair = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "ProxyKindPair"
-            else "std::nullopt"
-        )
-        cache_operator = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "CacheOperator"
-            else "std::nullopt"
-        )
-        eviction_priority = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "EvictionPriority"
-            else "std::nullopt"
-        )
-        prefetch_size = (
-            f"selected.{field.name}.value"
-            if field.value_cpp_type == "PrefetchSize"
-            else "std::nullopt"
-        )
+        value_expr = f"selected.{field.name}.value"
         locations = f"selected.{field.name}.locs"
+
+    members = modifier_descriptor_members(
+        field.value_kind,
+        value_expr,
+        unselected_value_expr="std::nullopt",
+    )
     return f"""              FieldView{{
                   .field_id = "{field.name}",
-                  .bool_value = {bool_value},
-                  .cache_operator = {cache_operator},
-                  .eviction_priority = {eviction_priority},
-                  .prefetch_size = {prefetch_size},
-                  .scalar_type = {scalar_type},
-                  .comparison_operator = {comparison_operator},
-                  .boolean_operator = {boolean_operator},
-                  .vector_arity = {vector_arity},
-                  .memory_state_space = {memory_state_space},
-                  .memory_consistency = {memory_consistency},
-                  .memory_scope = {memory_scope},
-                  .mbarrier_phase_type = {mbarrier_phase_type},
-                  .mbarrier_layout = {mbarrier_layout},
-                  .async_proxy_kind = {async_proxy_kind},
-                  .proxy_kind_pair = {proxy_kind_pair},
+                  .bool_value = {members[ResolvedValueKind.BOOL]},
+                  .cache_operator = {members[ResolvedValueKind.CACHE_OPERATOR]},
+                  .eviction_priority = {members[ResolvedValueKind.EVICTION_PRIORITY]},
+                  .prefetch_size = {members[ResolvedValueKind.PREFETCH_SIZE]},
+                  .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},
+                  .comparison_operator = {members[ResolvedValueKind.COMPARISON_OPERATOR]},
+                  .boolean_operator = {members[ResolvedValueKind.BOOLEAN_OPERATOR]},
+                  .vector_arity = {members[ResolvedValueKind.VECTOR_ARITY]},
+                  .memory_state_space = {members[ResolvedValueKind.MEMORY_STATE_SPACE]},
+                  .memory_consistency = {members[ResolvedValueKind.MEMORY_CONSISTENCY]},
+                  .memory_scope = {members[ResolvedValueKind.MEMORY_SCOPE]},
+                  .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
+                  .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
+                  .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
+                  .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .locations = {locations},
               }}"""
 
@@ -1111,22 +971,22 @@ def _emit_check_modifier_value_view(
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},
-                  .bool_value = {members["bool_value"]},
-                  .scalar_type = {members["scalar_type"]},
-                  .rounding_mode = {members["rounding_mode"]},
-                  .comparison_operator = {members["comparison_operator"]},
-                  .boolean_operator = {members["boolean_operator"]},
-                  .cache_operator = {members["cache_operator"]},
-                  .eviction_priority = {members["eviction_priority"]},
-                  .prefetch_size = {members["prefetch_size"]},
-                  .vector_arity = {members["vector_arity"]},
-                  .memory_state_space = {members["memory_state_space"]},
-                  .memory_consistency = {members["memory_consistency"]},
-                  .memory_scope = {members["memory_scope"]},
-                  .mbarrier_phase_type = {members["mbarrier_phase_type"]},
-                  .mbarrier_layout = {members["mbarrier_layout"]},
-                  .async_proxy_kind = {members["async_proxy_kind"]},
-                  .proxy_kind_pair = {members["proxy_kind_pair"]},
+                  .bool_value = {members[ResolvedValueKind.BOOL]},
+                  .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},
+                  .rounding_mode = {members[ResolvedValueKind.ROUNDING_MODE]},
+                  .comparison_operator = {members[ResolvedValueKind.COMPARISON_OPERATOR]},
+                  .boolean_operator = {members[ResolvedValueKind.BOOLEAN_OPERATOR]},
+                  .cache_operator = {members[ResolvedValueKind.CACHE_OPERATOR]},
+                  .eviction_priority = {members[ResolvedValueKind.EVICTION_PRIORITY]},
+                  .prefetch_size = {members[ResolvedValueKind.PREFETCH_SIZE]},
+                  .vector_arity = {members[ResolvedValueKind.VECTOR_ARITY]},
+                  .memory_state_space = {members[ResolvedValueKind.MEMORY_STATE_SPACE]},
+                  .memory_consistency = {members[ResolvedValueKind.MEMORY_CONSISTENCY]},
+                  .memory_scope = {members[ResolvedValueKind.MEMORY_SCOPE]},
+                  .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
+                  .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
+                  .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
+                  .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .is_present = {is_present},
                   .locations = {locations},
               }}"""

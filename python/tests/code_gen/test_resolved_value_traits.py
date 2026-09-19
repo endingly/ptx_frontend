@@ -1,13 +1,36 @@
 import unittest
+from types import SimpleNamespace
 
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend, CppDomain
+from ptx_frontend.code_gen.cpp_backend import (
+    configure_cpp_backend,
+    CppDomain,
+    cpp_domain,
+)
 from ptx_frontend.code_gen.resolved_value_traits import (
     RESOLVED_MODIFIER_VALUE_KINDS,
     modifier_default_cpp_expr,
     modifier_value_cpp_expr,
     resolved_modifier_value_traits,
 )
-from ptx_frontend.ir.resolved_ir import ResolvedValueKind
+from ptx_frontend.ir.resolved_ir import (
+    ResolvedField,
+    ResolvedFieldOrigin,
+    ResolvedFieldStorage,
+    ResolvedValueKind,
+)
+from ptx_frontend.ir.resolved_ir import (
+    ResolvedModifierValueDomain,
+    ResolvedModifierBinding,
+    ResolvedModifierDefault,
+    _build_modifier_default,
+    _build_modifier_value_availability,
+)
+from ptx_frontend.ir.resolved_value_policy import (
+    RESOLVED_MODIFIER_VALUE_KINDS as POLICY_MODIFIER_VALUE_KINDS,
+    modifier_value_kind,
+    resolved_modifier_value_policy,
+)
+from ptx_frontend.code_gen.model import ModifierSpec, ModifierValueSpec
 from ptx_frontend.spec.resources import packaged_backend_spec
 
 
@@ -53,8 +76,12 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             "scalar_type",
         )
         self.assertIs(
-            traits.python_type,
+            resolved_modifier_value_policy(ResolvedValueKind.SCALAR_TYPE).python_type,
             str,
+        )
+        self.assertEqual(
+            RESOLVED_MODIFIER_VALUE_KINDS,
+            POLICY_MODIFIER_VALUE_KINDS,
         )
 
     def test_bool_value_does_not_require_a_cpp_domain(self) -> None:
@@ -97,6 +124,211 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 "v4",
             )
 
+        combined_type_diagnostics = {
+            "semantics": "memory consistency",
+            "scope": "memory scope",
+            "phase_type": "mbarrier phase-type",
+            "mbarrier_layout": "mbarrier layout",
+            "proxy": "async proxy",
+            "proxy_pair": "proxy pair",
+        }
+        for source_kind, label in combined_type_diagnostics.items():
+            with self.assertRaisesRegex(
+                ValueError,
+                f"unsupported {label} value 1",
+            ):
+                _build_modifier_value_availability(
+                    ModifierSpec(
+                        name=source_kind,
+                        kind=source_kind,
+                        presence="required",
+                    ),
+                    ModifierValueSpec(value=1),
+                )
+
+    def test_policy_validates_every_modifier_kind_and_default_contract(self) -> None:
+        modifier_kinds = {
+            "flag": ResolvedValueKind.BOOL,
+            "type": ResolvedValueKind.SCALAR_TYPE,
+            "rounding": ResolvedValueKind.ROUNDING_MODE,
+            "comparison": ResolvedValueKind.COMPARISON_OPERATOR,
+            "boolean_op": ResolvedValueKind.BOOLEAN_OPERATOR,
+            "cache": ResolvedValueKind.CACHE_OPERATOR,
+            "eviction_priority": ResolvedValueKind.EVICTION_PRIORITY,
+            "prefetch_size": ResolvedValueKind.PREFETCH_SIZE,
+            "semantics": ResolvedValueKind.MEMORY_CONSISTENCY,
+            "scope": ResolvedValueKind.MEMORY_SCOPE,
+            "vector": ResolvedValueKind.VECTOR_ARITY,
+            "state_space": ResolvedValueKind.MEMORY_STATE_SPACE,
+            "phase_type": ResolvedValueKind.MBARRIER_PHASE_TYPE,
+            "mbarrier_layout": ResolvedValueKind.MBARRIER_LAYOUT,
+            "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
+            "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
+        }
+        self.assertEqual(
+            frozenset(modifier_kinds.values()),
+            POLICY_MODIFIER_VALUE_KINDS,
+        )
+
+        for source_kind, value_kind in modifier_kinds.items():
+            self.assertIs(modifier_value_kind(source_kind), value_kind)
+            policy = resolved_modifier_value_policy(value_kind)
+            with self.assertRaises(ValueError):
+                _build_modifier_value_availability(
+                    ModifierSpec(
+                        name=source_kind,
+                        kind=source_kind,
+                        presence="required",
+                    ),
+                    ModifierValueSpec(value=1),
+                )
+            value = (
+                True
+                if policy.python_type is bool
+                else next(
+                    iter(
+                        cpp_domain(
+                            resolved_modifier_value_traits(value_kind).cpp_domain
+                        ).values
+                    )
+                )
+            )
+            modifier = ModifierSpec(
+                name=source_kind,
+                kind=source_kind,
+                presence="required",
+            )
+            resolved = _build_modifier_value_availability(
+                modifier,
+                ModifierValueSpec(value=value),
+            )
+            self.assertIs(resolved.value_kind, value_kind)
+
+            if policy.supports_default:
+                default = _build_modifier_default(
+                    ModifierSpec(
+                        name=source_kind,
+                        kind=source_kind,
+                        presence="optional",
+                        default=value,
+                    )
+                )
+                self.assertIsNotNone(default)
+                self.assertIs(default.value_kind, value_kind)
+            else:
+                with self.assertRaisesRegex(ValueError, "is unsupported"):
+                    _build_modifier_default(
+                        ModifierSpec(
+                            name=source_kind,
+                            kind=source_kind,
+                            presence="optional",
+                            default=value,
+                        )
+                    )
+
+        with self.assertRaisesRegex(ValueError, "flag value must be boolean"):
+            _build_modifier_value_availability(
+                ModifierSpec(name="flag", kind="flag", presence="required"),
+                ModifierValueSpec(value=1),
+            )
+        with self.assertRaisesRegex(
+            ValueError,
+            "optional state-space modifier 'state_space' must have a string default",
+        ):
+            _build_modifier_default(
+                ModifierSpec(
+                    name="state_space",
+                    kind="state_space",
+                    presence="optional",
+                    default=1,
+                )
+            )
+
+    def test_checker_value_kind_spelling_covers_every_modifier_policy(self) -> None:
+        from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
+            _emit_modifier_value_domain_descriptor,
+        )
+        for value_kind in POLICY_MODIFIER_VALUE_KINDS:
+            policy = resolved_modifier_value_policy(value_kind)
+            value = (
+                True
+                if policy.python_type is bool
+                else next(
+                    iter(
+                        cpp_domain(
+                            resolved_modifier_value_traits(value_kind).cpp_domain
+                        ).values
+                    )
+                )
+            )
+            emitted = _emit_modifier_value_domain_descriptor(
+                ResolvedModifierValueDomain(
+                    source_kind_id="test",
+                    value_kind=value_kind,
+                    value=value,
+                )
+            )
+            self.assertIn(
+                f".value_kind = checker::ModifierValueKind::{value_kind.value},",
+                emitted,
+            )
+
+    def test_field_views_leave_unselected_members_disengaged(self) -> None:
+        from ptx_frontend.code_gen._frontend.gen_resolved_ir import (
+            _emit_check_modifier_view,
+        )
+
+        instruction = SimpleNamespace(cpp_name="Sample")
+        variant = SimpleNamespace(cpp_name="Variant")
+        for storage in (
+            ResolvedFieldStorage.STATIC_CONSTANT,
+            ResolvedFieldStorage.INSTANCE,
+        ):
+            emitted = _emit_check_modifier_view(
+                instruction,
+                variant,
+                ResolvedField(
+                    name="type",
+                    value_kind=ResolvedValueKind.SCALAR_TYPE,
+                    origin=ResolvedFieldOrigin.MODIFIER,
+                    source_name="type",
+                    storage=storage,
+                    constant_value=(
+                        "f32"
+                        if storage is ResolvedFieldStorage.STATIC_CONSTANT
+                        else None
+                    ),
+                ),
+            )
+            self.assertIn(
+                ".scalar_type = "
+                + (
+                    "Sample::Variant::type"
+                    if storage is ResolvedFieldStorage.STATIC_CONSTANT
+                    else "selected.type.value"
+                ),
+                emitted,
+            )
+            self.assertIn(".cache_operator = std::nullopt", emitted)
+            self.assertIn(".bool_value = std::nullopt", emitted)
+
+    def test_inconsistent_default_rejects_before_backend_default_kind_lookup(self) -> None:
+        from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
+            _emit_modifier_default_descriptor,
+        )
+
+        with self.assertRaisesRegex(ValueError, "unsupported modifier default"):
+            _emit_modifier_default_descriptor(
+                ResolvedModifierBinding(
+                    source_kind_id="comparison",
+                    target_field_id="comparison",
+                    default_value=ResolvedModifierDefault(
+                        value_kind=ResolvedValueKind.COMPARISON_OPERATOR,
+                        value="eq",
+                    ),
+                )
+            )
+
     def test_modifier_descriptor_members_select_only_the_kind_member(self) -> None:
         from ptx_frontend.code_gen.resolved_value_traits import (
             modifier_value_descriptor_members,
@@ -108,21 +340,26 @@ class ResolvedValueTraitsTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            members["scalar_type"],
+            members[ResolvedValueKind.SCALAR_TYPE],
             "ScalarType::F32",
         )
         self.assertEqual(
-            members["bool_value"],
+            members[ResolvedValueKind.BOOL],
             "false",
         )
         self.assertEqual(
-            members["rounding_mode"],
+            members[ResolvedValueKind.ROUNDING_MODE],
             "RoundingMode::Invalid",
         )
         self.assertEqual(
-            members["cache_operator"],
+            members[ResolvedValueKind.CACHE_OPERATOR],
             "CacheOperator::Unspecified",
         )
+        self.assertEqual(
+            frozenset(members),
+            POLICY_MODIFIER_VALUE_KINDS,
+        )
+        self.assertNotIn("scalar_type", members)
 
     def test_bool_descriptor_member_does_not_require_a_cpp_domain(self) -> None:
         from ptx_frontend.code_gen.resolved_value_traits import (
@@ -135,11 +372,11 @@ class ResolvedValueTraitsTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            members["bool_value"],
+            members[ResolvedValueKind.BOOL],
             "true",
         )
         self.assertEqual(
-            members["scalar_type"],
+            members[ResolvedValueKind.SCALAR_TYPE],
             "ScalarType::Invalid",
         )
 

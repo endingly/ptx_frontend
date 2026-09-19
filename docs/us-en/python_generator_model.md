@@ -110,6 +110,16 @@ spelling/presence and does not duplicate the semantic default.
 Layouts may reuse a field name only when its complete definition is identical.
 Otherwise model construction fails instead of generating ambiguous code.
 
+Modifier value handling is table-driven. `ir.resolved_value_kind` owns semantic
+identity, and `ir.resolved_value_policy` owns modifier-kind mappings, Python value
+types, optional-default support, and diagnostic labels. The C++ domain and
+descriptor-member mappings live in `code_gen.resolved_value_traits`; emitters
+share its value conversion and descriptor initialization helpers instead of
+dispatching on C++ type-name strings. Descriptor expression maps use
+`ResolvedValueKind` enum keys; C++ member-name strings are output spellings only.
+`ResolvedValueKind` remains importable from
+`ir.resolved_ir` for existing callers.
+
 ## C++ emitters and artifacts
 
 `python/scripts/gen_all.py` atomically generates the public declarations,

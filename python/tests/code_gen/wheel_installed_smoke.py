@@ -41,34 +41,31 @@ def check_packaged_resources() -> None:
 
 
 def check_module_layout() -> None:
-    """Verify old generator paths are absent and relocated modules work."""
+    """Verify the flattened generator imports and absent corpus-tool surface."""
 
-    legacy_modules = (
-        "ptx_frontend.code_gen.__main__",
-        "ptx_frontend.code_gen.cli",
-        "ptx_frontend.code_gen.gen_resolved_checker_descriptor",
-        "ptx_frontend.code_gen.gen_resolved_descriptor",
-        "ptx_frontend.code_gen.gen_resolved_ir",
-        "ptx_frontend.code_gen.gen_resolved_value_domains",
-        "ptx_frontend.code_gen.gen_syntax_ast_arch",
+    absent_modules = (
+        "ptx_frontend.code_gen._frontend",
         "ptx_frontend.code_gen.m12_natural_corpus",
+        "ptx_frontend.scripts.regenerate_m12_corpus",
+        "ptx_frontend.scripts.regenerate_nvcc",
+        "ptx_frontend.code_gen.emit.natural_emission",
     )
 
-    for module in legacy_modules:
+    for module in absent_modules:
         assert find_spec(module) is None, module
 
     packaged_modules = (
         "ptx_frontend.code_gen.resolved_field_names",
         "ptx_frontend.spec.semantic_domains",
-        "ptx_frontend.code_gen._frontend.cli",
-        "ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor",
-        "ptx_frontend.code_gen._frontend.gen_resolved_descriptor",
-        "ptx_frontend.code_gen._frontend.gen_resolved_ir",
-        "ptx_frontend.code_gen._frontend.gen_resolved_value_domains",
-        "ptx_frontend.code_gen._frontend.gen_syntax_ast_arch",
-        "ptx_frontend.code_gen._frontend.m12_natural_corpus",
+        "ptx_frontend.code_gen.cli",
+        "ptx_frontend.code_gen.context",
+        "ptx_frontend.code_gen.plan",
+        "ptx_frontend.code_gen.emit.resolved_model",
+        "ptx_frontend.code_gen.emit.resolved_descriptors",
+        "ptx_frontend.code_gen.emit.checker_descriptors",
+        "ptx_frontend.code_gen.emit.syntax_descriptors",
+        "ptx_frontend.code_gen.emit.value_domains",
         "ptx_frontend.scripts.gen_all",
-        "ptx_frontend.scripts.regenerate_m12_corpus",
         "ptx_frontend.scripts.validate_yaml",
     )
 

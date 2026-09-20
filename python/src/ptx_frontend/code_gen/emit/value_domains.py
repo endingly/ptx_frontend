@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from ptx_frontend.code_gen.context import GenerationContext
+
 from pathlib import Path
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case, generated_at_comment
-from ptx_frontend.spec.model import CodegenUnit, DomainBackend, RuntimeLookupKind
+from ptx_frontend.spec.model import DomainBackend, RuntimeLookupKind
 
 
 def generate_resolved_value_domain_header(
-    backend: CodegenUnit,
+    context: GenerationContext,
     *,
     output_path: Path,
 ) -> None:
@@ -17,7 +19,7 @@ def generate_resolved_value_domain_header(
 
     domains = tuple(
         (name, domain)
-        for name, domain in backend.domains.items()
+        for name, domain in context.backend.domains.items()
         if domain.runtime_lookup is RuntimeLookupKind.PTX_SUFFIX
     )
     tables = "\n\n".join(

@@ -1,4 +1,4 @@
-"""Line-oriented spelling evidence from frozen nvcc PTX output for M12."""
+"""Line-oriented spelling evidence from frozen natural nvcc PTX output."""
 
 from __future__ import annotations
 
@@ -144,7 +144,7 @@ def build_natural_manifest(
 ) -> dict[str, object]:
     """Build deterministic profile-local opcode-and-modifier catalog evidence.
 
-    ``first_blocker`` is not full frontend support evidence; the M12 C++ corpus
+    ``first_blocker`` is not full frontend support evidence; the C++ corpus
     tests cover parse, resolve, and checker behavior.
     """
 

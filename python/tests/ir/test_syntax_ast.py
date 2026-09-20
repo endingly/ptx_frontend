@@ -15,9 +15,9 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from ptx_frontend.base.utils import generated_at_comment
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen._frontend.gen_syntax_ast_arch import (
+from ptx_frontend.code_gen.emit.syntax_descriptors import (
     emit_check_end_instruction_descriptor_implementation,
     generate_syntax_descriptor_source,
 )
@@ -41,6 +41,14 @@ from ptx_frontend.ir.syntax_ast import (
 def setUpModule() -> None:
     configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
 
+
+
+def build_test_generation_context(database):
+    """Make the explicit emitter input from this test's configured backend."""
+
+    from ptx_frontend.code_gen.context import build_generation_context
+
+    return build_generation_context(database, get_cpp_backend())
 
 class SyntaxAstDescriptorBuildTest(unittest.TestCase):
     @classmethod
@@ -1793,7 +1801,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             )
 
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
-        source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
+        source = emit_check_end_instruction_descriptor_implementation(
+            self.descriptor, get_cpp_backend()
+        )
 
         self.assertTrue(source.startswith("struct AddDescriptorStorage {"))
         self.assertIn(
@@ -1844,8 +1854,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             output_path = Path(directory) / "syntax_descriptor.gen.cpp"
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("SOURCE_DATE_EPOCH", None)
-                generate_syntax_descriptor_source(
-                    database,
+                generate_syntax_descriptor_source(build_test_generation_context(database),
                     output_path=output_path,
                 )
             source = output_path.read_text(encoding="utf-8")

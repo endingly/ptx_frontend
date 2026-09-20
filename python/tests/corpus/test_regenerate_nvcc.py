@@ -4,14 +4,19 @@ import json
 from pathlib import Path
 import shutil
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 
-from ptx_frontend.scripts.regenerate_m12_corpus import VERSION, json_bytes, main
-
-
 ROOT = Path(__file__).resolve().parents[3]
-M12_OUTPUTS = (
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.corpus.regenerate_nvcc import VERSION, json_bytes, main
+
+
+NVCC_OUTPUTS = (
     "corpus/m12/common_kernel_sm80.ptx",
     "corpus/m12/common_kernel_sm90a.ptx",
     "corpus/m12/common_kernel_sm100.ptx",
@@ -21,6 +26,7 @@ M12_OUTPUTS = (
     "corpus/m12/natural_manifest.json",
     "corpus/provenance.json",
 )
+TOOL = ROOT / "tools/corpus/regenerate_nvcc.py"
 
 
 def write_fake_nvcc(directory: Path, version: str = VERSION, wrong_target: bool = False) -> Path:
@@ -50,7 +56,7 @@ output.write_text(".version 9.3\\n.target " + target + "\\n.address_size 64\\n\\
     return path
 
 
-class RegenerateM12CorpusTests(unittest.TestCase):
+class RegenerateNvccTests(unittest.TestCase):
     def make_root(self) -> tuple[tempfile.TemporaryDirectory[str], Path]:
         temporary = tempfile.TemporaryDirectory()
         root = Path(temporary.name)
@@ -75,11 +81,11 @@ class RegenerateM12CorpusTests(unittest.TestCase):
                     json.loads((root / "corpus/provenance.json").read_text())
                 ),
             )
-            before = {relative: (root / relative).read_bytes() for relative in M12_OUTPUTS}
+            before = {relative: (root / relative).read_bytes() for relative in NVCC_OUTPUTS}
             self.assertEqual(main(["--check", "--nvcc", str(nvcc)], root), 0)
             self.assertEqual(
                 before,
-                {relative: (root / relative).read_bytes() for relative in M12_OUTPUTS},
+                {relative: (root / relative).read_bytes() for relative in NVCC_OUTPUTS},
             )
 
     def test_check_reports_tampering_without_replacing_it(self) -> None:
@@ -144,6 +150,25 @@ class RegenerateM12CorpusTests(unittest.TestCase):
                 ),
                 2,
             )
+
+    def test_direct_tool_bootstraps_the_checkout_from_any_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(TOOL),
+                    "--check",
+                    "--nvcc",
+                    str(write_fake_nvcc(temporary)),
+                ],
+                cwd=temporary,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("corpus/m12/natural_manifest.json", result.stdout)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ptx_frontend.code_gen.context import GenerationContext
+
 from pathlib import Path
 
 from ptx_frontend.base.utils import (
@@ -10,7 +12,7 @@ from ptx_frontend.base.utils import (
     to_file_stem,
 )
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
-from ptx_frontend.spec.database import CodegenDatabase
+from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.ir.syntax_ast import (
     ModifierPresence,
     OperandLayoutKind,
@@ -26,17 +28,18 @@ from ptx_frontend.ir.syntax_ast import (
 
 
 def generate_syntax_descriptor_source(
-    database: CodegenDatabase,
+    context: GenerationContext,
     *,
     output_path: Path,
 ) -> None:
     """Generate one private C++ source for syntax descriptor storage."""
 
+
     storage_definitions: list[str] = []
     getter_definitions: list[str] = []
     generated_types: set[str] = set()
 
-    for instruction in database.instructions:
+    for instruction in context.database.instructions:
         descriptor = from_InstructionSpec(instruction)
         cpp_instruction_name = file_stem_to_pascal_case(descriptor.opcode)
         if cpp_instruction_name in generated_types:
@@ -46,7 +49,7 @@ def generate_syntax_descriptor_source(
             )
 
         generated_types.add(cpp_instruction_name)
-        storage_definitions.append(_emit_instruction_descriptor_storage(descriptor))
+        storage_definitions.append(_emit_instruction_descriptor_storage(descriptor, context.backend))
         getter_definitions.append(_emit_instruction_descriptor_getter(descriptor))
 
     content = f"""\
@@ -75,6 +78,7 @@ namespace {{
 
 def emit_check_end_instruction_descriptor_implementation(
     descriptor: SyntaxInstructionDescriptor,
+    backend: CodegenUnit,
 ) -> str:
     """Emit one ``<Opcode>::get_syntax_descriptor`` C++ implementation.
 
@@ -85,23 +89,23 @@ def emit_check_end_instruction_descriptor_implementation(
     """
 
     return (
-        f"{_emit_instruction_descriptor_storage(descriptor)}\n\n"
+        f"{_emit_instruction_descriptor_storage(descriptor, backend)}\n\n"
         f"{_emit_instruction_descriptor_getter(descriptor)}"
     )
 
 
 def _emit_instruction_descriptor_storage(
-    descriptor: SyntaxInstructionDescriptor,
+    descriptor: SyntaxInstructionDescriptor, backend: CodegenUnit
 ) -> str:
     """Emit the anonymous-namespace storage for one instruction descriptor."""
 
     cpp_instruction_name = file_stem_to_pascal_case(descriptor.opcode)
     storage_name = f"{cpp_instruction_name}DescriptorStorage"
     variant_storage = "\n\n".join(
-        _emit_variant_storage(variant) for variant in descriptor.variants
+        _emit_variant_storage(variant, backend) for variant in descriptor.variants
     )
     variants = ",\n".join(
-        _emit_variant_descriptor(variant, descriptor.opcode)
+        _emit_variant_descriptor(variant, descriptor.opcode, backend)
         for variant in descriptor.variants
     )
 
@@ -138,7 +142,7 @@ const check_end::SyntaxInstructionDescriptor&
 
 
 def _emit_variant_storage(
-    variant: SyntaxVariantDescriptor,
+    variant: SyntaxVariantDescriptor, backend: CodegenUnit
 ) -> str:
     name = to_file_stem(variant.variant_id)
     allowed_value_arrays = "\n\n".join(
@@ -147,17 +151,15 @@ def _emit_variant_storage(
         if modifier.allowed_spellings
     )
     modifiers = _emit_modifier_array(
-        f"{name}_modifiers",
-        name,
-        variant.modifiers,
-        tuple(range(len(variant.modifiers))),
+        f"{name}_modifiers", name, variant.modifiers,
+        tuple(range(len(variant.modifiers))), backend,
     )
-    modifier_order_aliases = _emit_modifier_order_alias_arrays(name, variant)
+    modifier_order_aliases = _emit_modifier_order_alias_arrays(name, variant, backend)
     slot_arrays = "\n\n".join(
-        _emit_operand_slot_array(name, index, layout)
+        _emit_operand_slot_array(name, index, layout, backend)
         for index, layout in enumerate(variant.operand_layouts)
     )
-    layouts = _emit_operand_layout_array(name, variant.operand_layouts)
+    layouts = _emit_operand_layout_array(name, variant.operand_layouts, backend)
 
     parts = [
         part
@@ -191,9 +193,10 @@ def _emit_modifier_array(
     canonical_variant_name: str,
     modifiers: tuple[SyntaxModifierDescriptor, ...],
     canonical_indexes: tuple[int, ...],
+    backend: CodegenUnit,
 ) -> str:
     entries = ",\n".join(
-        _emit_modifier_entry(canonical_variant_name, index, modifier)
+        _emit_modifier_entry(canonical_variant_name, index, modifier, backend)
         for index, modifier in zip(canonical_indexes, modifiers, strict=True)
     )
     return f"""\
@@ -204,7 +207,7 @@ def _emit_modifier_array(
 
 
 def _emit_modifier_order_alias_arrays(
-    variant_name: str, variant: SyntaxVariantDescriptor
+    variant_name: str, variant: SyntaxVariantDescriptor, backend: CodegenUnit
 ) -> str:
     """Emit complete historical modifier orders using canonical value storage."""
 
@@ -219,7 +222,7 @@ def _emit_modifier_order_alias_arrays(
             f"{variant_name}_modifier_order_alias_{alias_index}",
             variant_name,
             alias,
-            tuple(canonical_indexes[modifier.kind_id] for modifier in alias),
+            tuple(canonical_indexes[modifier.kind_id] for modifier in alias), backend,
         )
         for alias_index, alias in enumerate(variant.modifier_order_aliases)
     )
@@ -241,7 +244,7 @@ def _emit_modifier_order_alias_arrays(
 def _emit_modifier_entry(
     variant_name: str,
     modifier_index: int,
-    modifier: SyntaxModifierDescriptor,
+    modifier: SyntaxModifierDescriptor, backend: CodegenUnit
 ) -> str:
     allowed_values = (
         f"{variant_name}_modifier_{modifier_index}_allowed_values"
@@ -251,7 +254,7 @@ def _emit_modifier_entry(
     return f"""\
           check_end::SyntaxModifierDescriptor{{
               .allowed_values = {allowed_values},
-              .presence = {cpp_value(CppDomain.SYNTAX_MODIFIER_PRESENCE, modifier.presence.value)},
+              .presence = {cpp_value(CppDomain.SYNTAX_MODIFIER_PRESENCE, modifier.presence.value, backend=backend)},
               .kind_id = {_cpp_string(modifier.kind_id)},
           }}"""
 
@@ -259,9 +262,9 @@ def _emit_modifier_entry(
 def _emit_operand_slot_array(
     variant_name: str,
     layout_index: int,
-    layout: SyntaxOperandLayoutDescriptor,
+    layout: SyntaxOperandLayoutDescriptor, backend: CodegenUnit
 ) -> str:
-    slots = ",\n".join(_emit_operand_slot(slot) for slot in layout.slots)
+    slots = ",\n".join(_emit_operand_slot(slot, backend) for slot in layout.slots)
     return f"""\
   inline static constexpr std::array<check_end::SyntaxOperandSlotDescriptor, {len(layout.slots)}>
       {variant_name}_layout_{layout_index}_slots = {{
@@ -271,12 +274,12 @@ def _emit_operand_slot_array(
 
 def _emit_operand_layout_array(
     variant_name: str,
-    layouts: tuple[SyntaxOperandLayoutDescriptor, ...],
+    layouts: tuple[SyntaxOperandLayoutDescriptor, ...], backend: CodegenUnit
 ) -> str:
     entries = ",\n".join(f"""\
           check_end::SyntaxOperandLayoutDescriptor{{
               .layout_id = {_cpp_string(layout.layout_id)},
-              .kind = {cpp_value(CppDomain.SYNTAX_OPERAND_LAYOUT_KINDS, layout.kind.value)},
+              .kind = {cpp_value(CppDomain.SYNTAX_OPERAND_LAYOUT_KINDS, layout.kind.value, backend=backend)},
               .slots = {variant_name}_layout_{index}_slots,
           }}""" for index, layout in enumerate(layouts))
     return f"""\
@@ -287,9 +290,9 @@ def _emit_operand_layout_array(
 
 
 def _emit_operand_slot(
-    slot: SyntaxOperandSlotDescriptor,
+    slot: SyntaxOperandSlotDescriptor, backend: CodegenUnit
 ) -> str:
-    allowed_shapes = _cpp_operand_syntax_shape(slot.allowed_syntax_shapes)
+    allowed_shapes = _cpp_operand_syntax_shape(slot.allowed_syntax_shapes, backend)
     type_tag = (
         f"\n              .type_tag = {_cpp_string(slot.type_tag)},"
         if slot.type_tag is not None
@@ -303,21 +306,21 @@ def _emit_operand_slot(
     )
     element_shapes = (
         f"\n              .allowed_element_shapes = "
-        f"{_cpp_operand_syntax_shape(slot.allowed_element_shapes)},"
+        f"{_cpp_operand_syntax_shape(slot.allowed_element_shapes, backend)},"
         if slot.allowed_element_shapes
         else ""
     )
     return f"""\
           check_end::SyntaxOperandSlotDescriptor{{
               .allowed_shapes = {allowed_shapes},
-              .presence = {cpp_value(CppDomain.SYNTAX_OPERAND_PRESENCE, slot.presence.value)},
+              .presence = {cpp_value(CppDomain.SYNTAX_OPERAND_PRESENCE, slot.presence.value, backend=backend)},
 {type_tag}{cardinality}{element_shapes}
           }}"""
 
 
 def _emit_variant_descriptor(
     variant: SyntaxVariantDescriptor,
-    opcode: str,
+    opcode: str, backend: CodegenUnit
 ) -> str:
     name = to_file_stem(variant.variant_id)
     modifier_order_aliases = (
@@ -332,9 +335,9 @@ def _emit_variant_descriptor(
           }}"""
 
 
-def _cpp_operand_syntax_shape(shape: OperandSyntaxShape) -> str:
+def _cpp_operand_syntax_shape(shape: OperandSyntaxShape, backend: CodegenUnit) -> str:
     values = [
-        cpp_value(CppDomain.SYNTAX_OPERAND_SHAPES, flag.name)
+        cpp_value(CppDomain.SYNTAX_OPERAND_SHAPES, flag.name, backend=backend)
         for flag in OperandSyntaxShape
         if shape & flag and (flag.name != None)
     ]

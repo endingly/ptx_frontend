@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+from .availability import emit_availability
+from .resolved_validation import validate_unique_cpp_names
+
+from ptx_frontend.code_gen.context import GenerationContext
+
 from pathlib import Path
-from collections.abc import Mapping
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
-from ptx_frontend.spec.database import CodegenDatabase
-from ptx_frontend.spec.normalize import (
-    parse_availability_target,
-    validate_availability_family,
-    validate_availability_sm_version,
-)
+from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierValueDomain,
@@ -21,28 +20,24 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandTypeCompatibility,
     ResolvedVariant,
     ResolvedValueKind,
-    from_instruction_spec,
 )
-from ptx_frontend.code_gen.resolved_field_names import with_cpp_backend_field_names
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_value_descriptor_members,
 )
 
 
 def generate_resolved_checker_descriptor_source(
-    database: CodegenDatabase,
+    context: GenerationContext,
     *,
     output_path: Path,
 ) -> None:
     """Generate private checker descriptor storage and instruction getters."""
 
-    instructions = tuple(
-        with_cpp_backend_field_names(from_instruction_spec(instruction))
-        for instruction in database.instructions
-    )
-    _validate_unique_cpp_names(instructions)
+
+    instructions = context.instructions
+    validate_unique_cpp_names(instructions)
     storage_definitions = "\n\n".join(
-        _emit_instruction_descriptor_storage(instruction)
+        _emit_instruction_descriptor_storage(instruction, context.backend)
         for instruction in instructions
     )
     getter_definitions = "\n\n".join(
@@ -71,21 +66,21 @@ namespace generated_detail {{
     output_path.write_text(content, encoding="utf-8")
 
 
-def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> str:
+def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
     storage_name = f"{instruction.cpp_name}CheckerDescriptorStorage"
     modifier_value_definitions = "\n\n".join(
-        _emit_variant_modifier_value_descriptors(variant)
+        _emit_variant_modifier_value_descriptors(variant, backend)
         for variant in instruction.variants
     )
     modifier_domain_definitions = "\n\n".join(
-        _emit_variant_modifier_value_domain_descriptors(variant)
+        _emit_variant_modifier_value_domain_descriptors(variant, backend)
         for variant in instruction.variants
     )
     layout_definitions = "\n\n".join(
-        _emit_variant_layout_descriptors(variant) for variant in instruction.variants
+        _emit_variant_layout_descriptors(variant, backend) for variant in instruction.variants
     )
     type_compatibility_definitions = "\n\n".join(
-        _emit_variant_type_compatibility_descriptors(variant)
+        _emit_variant_type_compatibility_descriptors(variant, backend)
         for variant in instruction.variants
     )
     immediate_value_definitions = "\n\n".join(
@@ -104,12 +99,12 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction) -> st
         if variant.address_alignments
     )
     mmio_semantic_definitions = "\n\n".join(
-        _emit_mmio_semantic_descriptors(variant)
+        _emit_mmio_semantic_descriptors(variant, backend)
         for variant in instruction.variants
         if variant.memory_consistency is not None
     )
     variants = ",\n".join(
-        _emit_variant_descriptor(variant) for variant in instruction.variants
+        _emit_variant_descriptor(variant, backend) for variant in instruction.variants
     )
     return f"""struct {storage_name} {{
 {modifier_value_definitions}
@@ -152,7 +147,7 @@ const checker::InstructionDescriptor&
 }}"""
 
 
-def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
+def _emit_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     rule_id = variant.rule or ""
     consistency = variant.memory_consistency
     memory_consistency = ""
@@ -177,7 +172,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
                   .vector_field_id = "{vector.vector_field_id}",
                   .address_field_id = "{vector.address_field_id}",
                   .state_space_field_id = "{vector.state_space_field_id or ""}",
-                  .availability = {_emit_availability(dict(vector.availability))},
+                  .availability = {emit_availability(dict(vector.availability))},
                   .require_modern = {str(vector.require_modern).lower()},
               }},"""
     immediate_value = ""
@@ -200,7 +195,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
               }},"""
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
-              .availability = {_emit_availability(dict(variant.availability))},
+              .availability = {emit_availability(dict(variant.availability))},
               .modifier_value_domains = {variant.cpp_name}_modifier_value_domains,
               .modifier_value_availabilities =
                   {variant.cpp_name}_modifier_value_availabilities,
@@ -219,15 +214,15 @@ def _emit_variant_descriptor(variant: ResolvedVariant) -> str:
           }}"""
 
 
-def _emit_mmio_semantic_descriptors(variant: ResolvedVariant) -> str:
+def _emit_mmio_semantic_descriptors(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     """Emit the target-qualified semantic alternatives permitted with MMIO."""
 
     consistency = variant.memory_consistency
     assert consistency is not None
     entries = ",\n".join(
         f"""          checker::VariantDescriptor::MmioSemanticDescriptor{{
-              .semantics = {cpp_value(CppDomain.MEMORY_CONSISTENCIES, value)},
-              .availability = {_emit_availability(dict(availability))},
+              .semantics = {cpp_value(CppDomain.MEMORY_CONSISTENCIES, value, backend=backend)},
+              .availability = {emit_availability(dict(availability))},
           }}""" for value, availability in consistency.mmio_semantics
     )
     return f"""  static constexpr std::array<checker::VariantDescriptor::MmioSemanticDescriptor, {len(consistency.mmio_semantics)}>
@@ -291,9 +286,9 @@ def _emit_variant_address_alignment_descriptors(variant: ResolvedVariant) -> str
       }}}};"""
 
 
-def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:
+def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     entries = ",\n".join(
-        _emit_modifier_value_descriptor(entry)
+        _emit_modifier_value_descriptor(entry, backend=backend)
         for entry in variant.modifier_value_availabilities
     )
     return f"""  static constexpr std::array<checker::ModifierValueAvailabilityDescriptor, {len(variant.modifier_value_availabilities)}>
@@ -303,12 +298,12 @@ def _emit_variant_modifier_value_descriptors(variant: ResolvedVariant) -> str:
 
 
 def _emit_variant_modifier_value_domain_descriptors(
-    variant: ResolvedVariant,
+    variant: ResolvedVariant, backend: CodegenUnit
 ) -> str:
     """Emit every typed semantic modifier value admitted by one variant."""
 
     entries = ",\n".join(
-        _emit_modifier_value_domain_descriptor(entry)
+        _emit_modifier_value_domain_descriptor(entry, backend=backend)
         for entry in variant.modifier_value_domains
     )
     return f"""  static constexpr std::array<checker::ModifierValueDomainDescriptor, {len(variant.modifier_value_domains)}>
@@ -322,12 +317,13 @@ def _emit_modifier_value_descriptor(
     *,
     descriptor_type: str = "checker::ModifierValueAvailabilityDescriptor",
     include_availability: bool = True,
+    backend: CodegenUnit,
 ) -> str:
     """Emit one typed modifier descriptor, with optional target metadata."""
 
     members = modifier_value_descriptor_members(
         entry.value_kind,
-        entry.value,
+        entry.value, backend=backend,
     )
 
     availability = ""
@@ -338,14 +334,14 @@ def _emit_modifier_value_descriptor(
         )
         availability = (
             f"              .availability = "
-            f"{_emit_availability(dict(entry.availability))},\n"
+            f"{emit_availability(dict(entry.availability))},\n"
         )
 
     return f"""          {descriptor_type}{{
               .kind_id = "{entry.source_kind_id}",
               .value_kind = {cpp_value(
                   CppDomain.CHECKER_MODIFIER_VALUE_KINDS,
-                  entry.value_kind.value,
+                  entry.value_kind.value, backend=backend,
               )},
               .bool_value = {members[ResolvedValueKind.BOOL]},
               .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},
@@ -368,18 +364,18 @@ def _emit_modifier_value_descriptor(
 
 
 def _emit_modifier_value_domain_descriptor(
-    entry: ResolvedModifierValueDomain,
+    entry: ResolvedModifierValueDomain, *, backend: CodegenUnit
 ) -> str:
     """Emit one target-independent typed semantic modifier value."""
 
     return _emit_modifier_value_descriptor(
         entry,
         descriptor_type="checker::ModifierValueDomainDescriptor",
-        include_availability=False,
+        include_availability=False, backend=backend,
     )
 
 
-def _emit_variant_layout_descriptors(variant: ResolvedVariant) -> str:
+def _emit_variant_layout_descriptors(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     """Emit checker availability metadata for every layout of one variant."""
 
     entries = ",\n".join(
@@ -394,15 +390,15 @@ def _emit_variant_layout_descriptors(variant: ResolvedVariant) -> str:
 def _emit_operand_layout_descriptor(layout: ResolvedOperandLayout) -> str:
     return f"""          checker::OperandLayoutDescriptor{{
               .layout_name = "{layout.layout_id}",
-              .availability = {_emit_availability(dict(layout.availability))},
+              .availability = {emit_availability(dict(layout.availability))},
           }}"""
 
 
 def _emit_variant_type_compatibility_descriptors(
-    variant: ResolvedVariant,
+    variant: ResolvedVariant, backend: CodegenUnit
 ) -> str:
     entries = ",\n".join(
-        _emit_operand_type_compatibility_descriptor(entry)
+        _emit_operand_type_compatibility_descriptor(entry, backend)
         for entry in variant.operand_type_compatibilities
     )
     return f"""  static constexpr std::array<checker::OperandTypeCompatibilityDescriptor, {len(variant.operand_type_compatibilities)}>
@@ -412,77 +408,12 @@ def _emit_variant_type_compatibility_descriptors(
 
 
 def _emit_operand_type_compatibility_descriptor(
-    entry: ResolvedOperandTypeCompatibility,
+    entry: ResolvedOperandTypeCompatibility, backend: CodegenUnit
 ) -> str:
     return f"""          checker::OperandTypeCompatibilityDescriptor{{
               .target_field_id = "{entry.target_field_id}",
-              .special_register_kind = {cpp_value(CppDomain.SPECIAL_REGISTER_KINDS, entry.special_register_kind)},
+              .special_register_kind = {cpp_value(CppDomain.SPECIAL_REGISTER_KINDS, entry.special_register_kind, backend=backend)},
               .instruction_width = {entry.instruction_width},
-              .effective_type = {cpp_value(CppDomain.SCALAR_TYPES, entry.effective_type)},
-              .availability = {_emit_availability(dict(entry.availability))},
+              .effective_type = {cpp_value(CppDomain.SCALAR_TYPES, entry.effective_type, backend=backend)},
+              .availability = {emit_availability(dict(entry.availability))},
           }}"""
-
-
-def _emit_availability(availability: Mapping[str, object]) -> str:
-    if "any_of" not in availability:
-        minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
-        return f"""{{
-                  .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                  .minimum_sm_version = {validate_availability_sm_version(availability.get("sm", 0))},
-                  .required_family = "{validate_availability_family(availability["family"]) if "family" in availability else ""}",
-              }}"""
-
-    clauses = availability["any_of"]
-    assert isinstance(clauses, list)
-    emitted = []
-    for clause in clauses:
-        assert isinstance(clause, dict)
-        minimum_ptx = _parse_ptx_version(clause.get("ptx", "0.0"))
-        target = clause.get("target")
-        number, flavor = (
-            parse_availability_target(target) if target is not None else (0, "Generic")
-        )
-        family = (
-            validate_availability_family(clause["family"]) if "family" in clause else ""
-        )
-        capabilities = clause.get("capabilities", [])
-        assert isinstance(capabilities, list)
-        capability_values = ", ".join(f'"{value}"' for value in capabilities)
-        emitted.append(f"""checker::AvailabilityClause{{
-                      .minimum_ptx_version = {{{minimum_ptx[0]}, {minimum_ptx[1]}}},
-                      .minimum_sm_version = {validate_availability_sm_version(clause.get("sm", 0))},
-                      .has_exact_target = {str(target is not None).lower()},
-                      .exact_target_architecture = {{{number}}},
-                      .exact_target_flavor = base::TargetFlavor::{flavor},
-                      .required_family = "{family}",
-                      .capabilities = {{{{{capability_values}}}}},
-                      .capability_count = {len(capabilities)},
-                  }}""")
-    return f'''{{
-                  .any_of = {{{{
-                      {",\n                      ".join(emitted)}
-                  }}}},
-                  .any_of_count = {len(clauses)},
-              }}'''
-
-
-def _parse_ptx_version(value: object) -> tuple[int, int]:
-    text = str(value)
-    pieces = text.split(".")
-    if len(pieces) != 2 or not all(piece.isdecimal() for piece in pieces):
-        raise ValueError(f"invalid PTX availability version {value!r}")
-    major, minor = (int(piece) for piece in pieces)
-    if not (0 <= major <= 0xFFFF and 0 <= minor <= 0xFFFF):
-        raise ValueError(f"PTX availability version is out of range: {value!r}")
-    return major, minor
-
-
-def _validate_unique_cpp_names(instructions: tuple[ResolvedInstruction, ...]) -> None:
-    seen: set[str] = set()
-    for instruction in instructions:
-        if instruction.cpp_name in seen:
-            raise ValueError(
-                f"multiple resolved instructions map to C++ type "
-                f"{instruction.cpp_name!r}"
-            )
-        seen.add(instruction.cpp_name)

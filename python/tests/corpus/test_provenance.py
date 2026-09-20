@@ -3,25 +3,29 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import sys
 import unittest
 
 from jsonschema import Draft202012Validator
 
-from ptx_frontend.code_gen._frontend.m12_natural_corpus import (
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.corpus.natural_emission import (
     canonical_bytes,
     fixture_targets,
     target_directive_architectures,
 )
 
 
-ROOT = Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "corpus"
 MANIFEST = CORPUS / "provenance.json"
 SCHEMA = CORPUS / "provenance.schema.json"
 VERSION = "ptx_frontend.corpus_provenance/v3"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PLACEHOLDERS = {"", "unknown", "todo", "tbd"}
-M12_SOURCES = {
+NVCC_SOURCES = {
     "corpus/m12/common_kernel.cu",
     "corpus/m12/natural_kernel.cu",
 }
@@ -122,11 +126,11 @@ class CorpusProvenanceTests(unittest.TestCase):
                 if record["generator"] == "project-authored":
                     self.assertEqual(record["license"], "MIT")
 
-    def test_m12_source_ledger_hashes_paths_and_fixture_references(self) -> None:
+    def test_nvcc_source_ledger_hashes_paths_and_fixture_references(self) -> None:
         sources = self.manifest["sources"]
         paths = [record["path"] for record in sources]
         self.assertEqual(len(paths), len(set(paths)), "duplicate source path")
-        self.assertEqual(set(paths), M12_SOURCES)
+        self.assertEqual(set(paths), NVCC_SOURCES)
         for record in sources:
             with self.subTest(path=record["path"]):
                 relative = PurePosixPath(record["path"])
@@ -158,7 +162,7 @@ class CorpusProvenanceTests(unittest.TestCase):
                     record["source_path"], expected_by_kind[record["kind"]]
                 )
 
-    def test_m12_evidence_kinds_distinguish_inline_and_natural_ptx(self) -> None:
+    def test_nvcc_evidence_kinds_distinguish_inline_and_natural_ptx(self) -> None:
         by_path = {record["path"]: record for record in self.manifest["fixtures"]}
         inline = {
             "corpus/m12/common_kernel_sm80.ptx",

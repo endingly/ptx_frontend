@@ -21,7 +21,7 @@ The package then defines:
 - `ptx_frontend_PTX_SPEC_DIR`, the installed directory containing the public PTX instruction YAML files;
 - `ptx_frontend_PTX_SPEC_SCHEMA`, the installed `ptx-instr-v1.schema.yaml` path.
 
-The canonical PTX specification lives in `python/code_gen/resources/ptx_spec` and is also packaged as Python package data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` remains only as a source-tree compatibility symlink.
+The canonical PTX specification lives in `python/src/ptx_frontend/spec/resources/ptx_spec` and is also packaged as Python package data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` is the repository input directory used by the source build.
 
 The repository-specific C++ backend policy remains at `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`; it is deliberately not part of the public `ptx_spec` component.
 
@@ -40,7 +40,7 @@ database = load_packaged_spec_database()
 
 `ptx_frontend.spec` is the downstream-facing Python API. It exposes the reusable instruction model, database loaders, normalization helpers, and resource accessors while preserving the same underlying model types used by the frontend itself. Consumers should treat the `ptx-instr/v1` schema as the stable data contract.
 
-`ptx_frontend.code_gen` remains an implementation/compatibility namespace for the frontend source build. New downstream code should not depend on it. Frontend-only generator modules (`cli.py`, `gen_*.py`, and repository corpus-generation helpers) live under the source-only `python/code_gen/_frontend` directory and are deliberately excluded from the wheel. The wheel also does not install a `ptx-frontend-codegen` console script.
+`ptx_frontend.code_gen` remains an implementation namespace for the frontend source build. Its packaged `cli`, `context`, `plan`, and `emit` modules form the deterministic in-tree generator: a frozen context projects backend aliases once, and one plan supplies listing, emission, and formatting order. New downstream code should not depend on those implementation APIs. Repository-only corpus tools live under `tools/corpus` and are excluded from the wheel. The wheel does not install a `ptx-frontend-codegen` console script.
 
 ## Test profiles
 

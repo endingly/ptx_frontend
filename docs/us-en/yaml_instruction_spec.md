@@ -2,7 +2,7 @@
 
 ## Purpose
 
-YAML files under `python/code_gen/resources/ptx_spec/` are the canonical
+YAML files under `python/src/ptx_frontend/spec/resources/ptx_spec/` are the canonical
 declarative source of PTX
 instruction facts. They describe legal source forms, variants, operand layouts,
 availability, and rule identifiers. The Python generator derives Syntax,
@@ -10,9 +10,9 @@ Resolved, and checker descriptors plus C++ instruction structures from them.
 They are neither C++ templates nor backend-layout configuration.
 
 Every file uses the packaged sibling schema
-`python/code_gen/resources/ptx-instr-v1.schema.yaml` (and its local comment
-references `../ptx-instr-v1.schema.yaml`). `instructions/ptx_spec/` remains a
-source-tree compatibility symlink:
+`python/src/ptx_frontend/spec/resources/ptx-instr-v1.schema.yaml` (and its local comment
+references `../ptx-instr-v1.schema.yaml`). `instructions/ptx_spec/` is the repository input directory used by the
+source build:
 
 ```yaml
 schema: ptx-instr/v1
@@ -258,8 +258,8 @@ variant. The schema retains `same_as(...)`, `one_of(...)`, and
 them as unsupported.
 
 Every generated operand payload also needs an explicit module-reference policy.
-`gen_resolved_ir.py` classifies its C++ payload type in either
-`_REFERENCE_FIELD_TYPES` or `_REFERENCE_FREE_FIELD_TYPES`; an unclassified type
+`emit.resolved_dispatch` classifies each semantic payload in
+`_REFERENCE_VALUE_KINDS` or `_REFERENCE_FREE_VALUE_KINDS`; an unclassified type
 fails generation. Reference-bearing payloads are the resolved primitives that
 can carry bound declaration/symbol identity (for example register, predicate,
 symbol, address, vector, call/control, and tensor-coordinate forms). The

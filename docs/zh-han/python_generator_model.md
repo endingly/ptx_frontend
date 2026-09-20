@@ -15,11 +15,10 @@ YAML files
 
 ## 输入数据库
 
-`ptx_frontend.code_gen.database` 递归发现 canonical 的
-`python/code_gen/resources/ptx_spec/**/*.yaml`（源码树可通过兼容 symlink
-`instructions/ptx_spec` 访问），按路径排序加载，并
+`ptx_frontend.spec.database` 递归发现 canonical 的
+`python/src/ptx_frontend/spec/resources/ptx_spec/**/*.yaml`，按路径排序加载，并
 保证所有文件使用相同 schema 版本；同 opcode 的定义随后合并。`InstructionSpec` 的最小稳定
-模型位于 `ptx_frontend.code_gen.model`：
+模型位于 `ptx_frontend.spec.model`：
 
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
@@ -41,7 +40,7 @@ database 在合并 opcode 后验证 selector 语言：只有 required/fixed slot
 
 ## Normalization
 
-`ptx_frontend.code_gen.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
+`ptx_frontend.spec.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
 
 - 统一展开 `type_sets` 与 `value_sets` 的 `$name` 引用，并拒绝两者同名；
 - 将 operand 的 `type: {expr: modifier(type)}` 解析为
@@ -125,13 +124,13 @@ dispatch、按 category 分片的实现以及 descriptor：
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | 全部 opcode structs，以及 `resolve<T>`、`check<T>` 的显式特化声明 |
-| `private/resolved_value_domains.gen.hpp` | `gen_resolved_value_domains.py` | resolver 使用的运行期 value-domain lookup table |
-| `private/resolved_ir_dispatch.gen.cpp` | `gen_resolved_ir.py` | opcode-independent resolve/check dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | 该 category 下两组显式特化的 out-of-line 定义 |
-| `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source syntax descriptors 与 getter |
-| `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors 与 getter |
-| `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors 与 getter |
+| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs；配套声明由 `emit.resolved_resolver` 与 `emit.resolved_checker` 提供 |
+| `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolve/check dispatch 与 reference helper |
+| `private/resolved_ir_<category>.gen.cpp` | `emit.resolved_resolver` + `emit.resolved_checker` | 一个 category 的 out-of-line 特化定义 |
+| `private/syntax_descriptor.gen.cpp` | `emit.syntax_descriptors` | source syntax descriptors 与 getter |
+| `private/resolved_descriptor.gen.cpp` | `emit.resolved_descriptors` | resolved field/binding descriptors 与 getter |
+| `private/resolved_ir_checker_descriptor.gen.cpp` | `emit.checker_descriptors` | availability/rule descriptors 与 getter |
 
 生成的公开头在 `submod/resolved_ir` 的构建树中仍平铺于 `generated/public` include
 root。`submod/resolved_ir` include 工程级的 `cmake/generate_ptx_frontend.cmake`；

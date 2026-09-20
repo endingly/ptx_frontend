@@ -1,15 +1,19 @@
 import json
 from pathlib import Path
 import re
+import sys
 import unittest
 
 from jsonschema import Draft202012Validator
 
-from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen._frontend.m12_natural_corpus import build_natural_manifest
-
-
 ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from ptx_frontend.code_gen.database import load_codegen_database
+from tools.corpus.natural_emission import build_natural_manifest
+
+
 MANIFEST = ROOT / "corpus/m12/natural_manifest.json"
 SCHEMA = ROOT / "corpus/m12/natural_manifest.schema.json"
 FIXTURES = {
@@ -59,7 +63,7 @@ def entry_body(ptx: str, entry: str) -> str | None:
     raise AssertionError(f"unterminated entry marker: {entry}")
 
 
-class M12NaturalManifestTests(unittest.TestCase):
+class NaturalEmissionManifestTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))

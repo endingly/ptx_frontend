@@ -14,6 +14,7 @@ from ptx_frontend.code_gen.cpp_backend import (
 )
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.ir.resolved_value_policy import resolved_modifier_value_policy
+from ptx_frontend.spec.model import CodegenUnit
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,8 @@ def resolved_modifier_value_traits(
 def modifier_value_cpp_expr(
     kind: ResolvedValueKind,
     value: str | bool | int,
+    *,
+    backend: CodegenUnit | None = None,
 ) -> str:
     """Convert one semantic modifier value to its configured C++ expression."""
 
@@ -127,7 +130,7 @@ def modifier_value_cpp_expr(
     if resolved_modifier_value_policy(kind).python_type is str:
         if not isinstance(value, str) or traits.cpp_domain is None:
             raise ValueError(f"unsupported modifier value {value!r} for {kind.value}")
-        return cpp_value(traits.cpp_domain, value)
+        return cpp_value(traits.cpp_domain, value, backend=backend)
 
     raise AssertionError(f"unsupported Python value type for {kind.value}")
 
@@ -135,6 +138,8 @@ def modifier_value_cpp_expr(
 def modifier_default_cpp_expr(
     kind: ResolvedValueKind,
     value: str | bool | int,
+    *,
+    backend: CodegenUnit | None = None,
 ) -> str:
     """Convert a supported optional-modifier default to C++."""
 
@@ -142,7 +147,7 @@ def modifier_default_cpp_expr(
         raise ValueError(f"unsupported modifier default {value!r} for {kind.value}")
 
     try:
-        return modifier_value_cpp_expr(kind, value)
+        return modifier_value_cpp_expr(kind, value, backend=backend)
     except ValueError as error:
         raise ValueError(
             f"unsupported modifier default {value!r} for {kind.value}"
@@ -151,6 +156,8 @@ def modifier_default_cpp_expr(
 
 def modifier_value_default_cpp_expr(
     kind: ResolvedValueKind,
+    *,
+    backend: CodegenUnit | None = None,
 ) -> str:
     """Return the neutral C++ descriptor value for one modifier kind."""
 
@@ -162,12 +169,13 @@ def modifier_value_default_cpp_expr(
     if traits.cpp_domain is None:
         raise AssertionError(f"{kind.value} has no configured C++ domain")
 
-    return cpp_default(traits.cpp_domain)
+    return cpp_default(traits.cpp_domain, backend=backend)
 
 
 def modifier_descriptor_default_members(
     *,
     unselected_value_expr: str | None = None,
+    backend: CodegenUnit | None = None,
 ) -> dict[ResolvedValueKind, str]:
     """Return C++ expressions for every unselected modifier descriptor member.
 
@@ -183,7 +191,7 @@ def modifier_descriptor_default_members(
         }
     return {
         kind: (
-            "false" if traits.cpp_domain is None else cpp_default(traits.cpp_domain)
+            "false" if traits.cpp_domain is None else cpp_default(traits.cpp_domain, backend=backend)
         )
         for kind, traits in _RESOLVED_MODIFIER_VALUE_TRAITS.items()
     }
@@ -194,6 +202,7 @@ def modifier_descriptor_members(
     value_expr: str,
     *,
     unselected_value_expr: str | None = None,
+    backend: CodegenUnit | None = None,
 ) -> dict[ResolvedValueKind, str]:
     """Return descriptor members with one semantic value selected.
 
@@ -203,7 +212,7 @@ def modifier_descriptor_members(
 
     resolved_modifier_value_traits(kind)
     members = modifier_descriptor_default_members(
-        unselected_value_expr=unselected_value_expr,
+        unselected_value_expr=unselected_value_expr, backend=backend,
     )
 
     if kind not in members:
@@ -218,10 +227,12 @@ def modifier_descriptor_members(
 def modifier_value_descriptor_members(
     kind: ResolvedValueKind,
     value: str | bool | int,
+    *,
+    backend: CodegenUnit | None = None,
 ) -> dict[ResolvedValueKind, str]:
     """Convert one semantic modifier value into descriptor member expressions."""
 
     return modifier_descriptor_members(
         kind,
-        modifier_value_cpp_expr(kind, value),
+        modifier_value_cpp_expr(kind, value, backend=backend), backend=backend,
     )

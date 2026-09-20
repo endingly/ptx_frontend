@@ -5,6 +5,7 @@ from ptx_frontend.code_gen.cpp_backend import (
     configure_cpp_backend,
     CppDomain,
     cpp_domain,
+    get_cpp_backend,
 )
 from ptx_frontend.code_gen.resolved_value_traits import (
     RESOLVED_MODIFIER_VALUE_KINDS,
@@ -257,7 +258,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             )
 
     def test_checker_value_kind_spelling_covers_every_modifier_policy(self) -> None:
-        from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
+        from ptx_frontend.code_gen.emit.checker_descriptors import (
             _emit_modifier_value_domain_descriptor,
         )
         for value_kind in POLICY_MODIFIER_VALUE_KINDS:
@@ -278,7 +279,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     source_kind_id="test",
                     value_kind=value_kind,
                     value=value,
-                )
+                ), backend=get_cpp_backend()
             )
             self.assertIn(
                 f".value_kind = checker::ModifierValueKind::{value_kind.value},",
@@ -286,8 +287,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             )
 
     def test_field_views_leave_unselected_members_disengaged(self) -> None:
-        from ptx_frontend.code_gen._frontend.gen_resolved_ir import (
-            _emit_check_modifier_view,
+        from ptx_frontend.code_gen.emit.operand_views import (
+            emit_check_modifier_view,
         )
 
         instruction = SimpleNamespace(cpp_name="Sample")
@@ -296,7 +297,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             ResolvedFieldStorage.STATIC_CONSTANT,
             ResolvedFieldStorage.INSTANCE,
         ):
-            emitted = _emit_check_modifier_view(
+            emitted = emit_check_modifier_view(
                 instruction,
                 variant,
                 ResolvedField(
@@ -311,6 +312,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                         else None
                     ),
                 ),
+                get_cpp_backend(),
             )
             self.assertIn(
                 ".scalar_type = "
@@ -325,7 +327,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             self.assertIn(".bool_value = std::nullopt", emitted)
 
     def test_inconsistent_default_rejects_before_backend_default_kind_lookup(self) -> None:
-        from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
+        from ptx_frontend.code_gen.emit.resolved_descriptors import (
             _emit_modifier_default_descriptor,
         )
 
@@ -338,7 +340,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                         value_kind=ResolvedValueKind.COMPARISON_OPERATOR,
                         value="eq",
                     ),
-                )
+                ),
+                get_cpp_backend(),
             )
 
     def test_modifier_descriptor_members_select_only_the_kind_member(self) -> None:

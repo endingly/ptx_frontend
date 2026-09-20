@@ -8,7 +8,7 @@ from jsonschema import Draft202012Validator
 
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.load_yaml import load_yaml
-from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import _emit_availability
+from ptx_frontend.code_gen.emit.availability import emit_availability
 from ptx_frontend.code_gen.normalize import normalize_availability, normalize_operand
 
 
@@ -621,7 +621,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertEqual(normalize_availability(availability), availability)
         self.assertIn(
             '.required_family = "sm_103f",',
-            _emit_availability(normalize_availability(availability)),
+            emit_availability(normalize_availability(availability)),
         )
 
     def test_schema_defines_family_as_source_feature_target(self) -> None:
@@ -663,7 +663,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
     def test_accepts_maximum_exact_target_during_normalization(self) -> None:
         availability = {"any_of": [{"target": "sm_4294967295"}]}
         self.assertEqual(normalize_availability(availability), availability)
-        source = _emit_availability(normalize_availability(availability))
+        source = emit_availability(normalize_availability(availability))
         self.assertIn(".exact_target_architecture = {4294967295}", source)
         self.assertIn("TargetFlavor::Generic", source)
 
@@ -707,7 +707,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             self.assertTrue(list(validator.iter_errors(availability)))
 
     def test_dnf_generator_keeps_or_clauses_and_and_terms(self) -> None:
-        source = _emit_availability({"any_of": [
+        source = emit_availability({"any_of": [
             {"ptx": "9.0", "sm": 100, "target": "sm_100a",
              "capabilities": ["tensor", "cluster"]},
             {"sm": 120, "family": "sm_120f"},
@@ -718,7 +718,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
 
     def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
-        source = _emit_availability(normalize_availability({"any_of": [
+        source = emit_availability(normalize_availability({"any_of": [
             {"target": "sm_80", "capabilities": ["tensor", "cluster"]},
             {"target": "sm_90a"},
             {"target": "sm_100f"},
@@ -736,9 +736,9 @@ class AvailabilityNormalizationTests(unittest.TestCase):
     def test_emitter_rejects_unvalidated_sm(self) -> None:
         for availability in ({"sm": 4294967296}, {"any_of": [{"sm": True}]}):
             with self.assertRaisesRegex(ValueError, "availability SM version"):
-                _emit_availability(availability)
+                emit_availability(availability)
         with self.assertRaisesRegex(ValueError, "availability target"):
-            _emit_availability({"any_of": [{"target": "sm_4294967296"}]})
+            emit_availability({"any_of": [{"target": "sm_4294967296"}]})
 
 
 if __name__ == "__main__":

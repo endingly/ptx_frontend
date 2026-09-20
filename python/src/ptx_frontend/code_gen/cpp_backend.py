@@ -158,21 +158,23 @@ def load_cpp_backend(path: Traversable) -> CodegenUnit:
     )
 
 
-def cpp_domain(name: CppDomain) -> DomainBackend:
+def cpp_domain(name: CppDomain, *, backend: CodegenUnit | None = None) -> DomainBackend:
     """Return a required backend domain with a contextual error."""
 
     if not isinstance(name, CppDomain):
         raise TypeError("C++ backend domain must be identified by a CppDomain member")
     try:
-        return get_cpp_backend().domains[name.value]
+        return (backend if backend is not None else get_cpp_backend()).domains[name.value]
     except KeyError as error:
         raise ValueError(f"C++ backend has no domain {name.value!r}") from error
 
 
-def cpp_value(domain_name: CppDomain, semantic_value: str) -> str:
+def cpp_value(
+    domain_name: CppDomain, semantic_value: str, *, backend: CodegenUnit | None = None
+) -> str:
     """Map one semantic value to its configured C++ spelling."""
 
-    domain = cpp_domain(domain_name)
+    domain = cpp_domain(domain_name, backend=backend)
     try:
         return domain.values[semantic_value]
     except KeyError as error:
@@ -182,16 +184,18 @@ def cpp_value(domain_name: CppDomain, semantic_value: str) -> str:
         ) from error
 
 
-def cpp_optional_value(domain_name: CppDomain, semantic_value: str) -> str | None:
+def cpp_optional_value(
+    domain_name: CppDomain, semantic_value: str, *, backend: CodegenUnit | None = None
+) -> str | None:
     """Return an optional mapping, used for identity-preserving rewrites."""
 
-    return cpp_domain(domain_name).values.get(semantic_value)
+    return cpp_domain(domain_name, backend=backend).values.get(semantic_value)
 
 
-def cpp_default(domain_name: CppDomain) -> str:
+def cpp_default(domain_name: CppDomain, *, backend: CodegenUnit | None = None) -> str:
     """Return the required default/invalid expression of one domain."""
 
-    domain = cpp_domain(domain_name)
+    domain = cpp_domain(domain_name, backend=backend)
     if domain.default is None:
         raise ValueError(f"C++ backend domain {domain_name.value!r} has no default")
     return domain.default

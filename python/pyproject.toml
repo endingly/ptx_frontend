@@ -20,6 +20,10 @@ test = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+exclude = [
+    "ptx_frontend.code_gen._frontend",
+    "ptx_frontend.code_gen._frontend.*",
+]
 
 [tool.setuptools.package-data]
 "ptx_frontend.spec.resources" = [

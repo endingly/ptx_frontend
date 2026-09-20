@@ -16,11 +16,10 @@ YAML files
 
 ## Input database
 
-`ptx_frontend.code_gen.database` recursively discovers the canonical
-`python/code_gen/resources/ptx_spec/**/*.yaml` (available in source trees via
-the compatibility symlink `instructions/ptx_spec`),
+`ptx_frontend.spec.database` recursively discovers the canonical
+`python/src/ptx_frontend/spec/resources/ptx_spec/**/*.yaml`,
 loads them in path order, enforces one schema version, and then merges
-definitions of the same opcode. The minimal stable model in `ptx_frontend.code_gen.model` is:
+definitions of the same opcode. The minimal stable model in `ptx_frontend.spec.model` is:
 
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
@@ -46,7 +45,7 @@ arbitrary source order.
 
 ## Normalization
 
-`ptx_frontend.code_gen.normalize` converts different legal YAML spellings into one model:
+`ptx_frontend.spec.normalize` converts different legal YAML spellings into one model:
 
 - expands `$name` references from both `type_sets` and `value_sets`, rejecting
   names defined in both namespaces;
@@ -140,13 +139,13 @@ descriptors required by the Resolved IR stage:
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | all opcode structs plus explicit-specialization declarations for `resolve<T>` and `check<T>` |
-| `private/resolved_value_domains.gen.hpp` | `gen_resolved_value_domains.py` | runtime value-domain lookup tables used by the resolver |
-| `private/resolved_ir_dispatch.gen.cpp` | `gen_resolved_ir.py` | opcode-independent resolve/check dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | out-of-line definitions of those two specialization sets for one category |
-| `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source-syntax descriptors and getters |
-| `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors and getters |
-| `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors and getters |
+| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs; `emit.resolved_resolver` and `emit.resolved_checker` provide the paired declarations |
+| `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolve/check dispatch and reference helpers |
+| `private/resolved_ir_<category>.gen.cpp` | `emit.resolved_resolver` + `emit.resolved_checker` | out-of-line specialization definitions for one category |
+| `private/syntax_descriptor.gen.cpp` | `emit.syntax_descriptors` | source-syntax descriptors and getters |
+| `private/resolved_descriptor.gen.cpp` | `emit.resolved_descriptors` | resolved field/binding descriptors and getters |
+| `private/resolved_ir_checker_descriptor.gen.cpp` | `emit.checker_descriptors` | availability/rule descriptors and getters |
 
 The generated public header remains flat under the `generated/public` include
 root in the `submod/resolved_ir` build tree. `submod/resolved_ir` includes the

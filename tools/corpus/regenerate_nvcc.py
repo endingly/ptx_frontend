@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Regenerate the frozen M12 nvcc PTX corpus."""
+"""Regenerate frozen nvcc PTX corpus evidence."""
 
 from __future__ import annotations
 
@@ -14,15 +14,17 @@ import subprocess
 import sys
 import tempfile
 
-PYTHON_ROOT = Path(__file__).resolve().parents[1]
-ROOT = PYTHON_ROOT.parent
+ROOT = Path(__file__).resolve().parents[2]
+PYTHON_ROOT = ROOT / "python" / "src"
 
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 from ptx_frontend.spec.database import load_codegen_database
-from ptx_frontend.code_gen._frontend.m12_natural_corpus import (
+from tools.corpus.natural_emission import (
     build_natural_manifest,
     canonical_bytes,
     fixture_targets,
@@ -230,7 +232,7 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     try:
         return regenerate(root, arguments.nvcc, arguments.check)
     except (OSError, RegenerationError, ValueError) as error:
-        print(f"regenerate_m12_corpus: {error}", file=sys.stderr)
+        print(f"regenerate_nvcc: {error}", file=sys.stderr)
         return 2
 
 

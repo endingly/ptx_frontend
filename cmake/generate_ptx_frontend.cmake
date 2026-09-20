@@ -22,6 +22,7 @@ file(GLOB_RECURSE PTX_RESOLVED_IR_CODEGEN_FILES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/base/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/ir/*.py"
+    "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/spec/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/scripts/*.py")
 
 # A spec or generator change can alter the declared source topology, so rerun

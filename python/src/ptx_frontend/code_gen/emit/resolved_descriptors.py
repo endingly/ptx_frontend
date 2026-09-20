@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from .resolved_validation import validate_unique_cpp_names
+
+from ptx_frontend.code_gen.context import GenerationContext
+
 from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment, to_file_stem
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
-from .gen_resolved_checker_descriptor import _emit_availability
-from ptx_frontend.spec.database import CodegenDatabase
-from ptx_frontend.spec.model import MbarrierStateTokenForm
+from .availability import emit_availability
+from ptx_frontend.spec.model import CodegenUnit, MbarrierStateTokenForm
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedInstruction,
@@ -21,11 +24,9 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandTypeExpressionKind,
     ResolvedVariant,
     ResolvedValueKind,
-    from_instruction_spec,
 )
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value,
-    with_cpp_backend_field_names,
 )
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
@@ -34,19 +35,17 @@ from ptx_frontend.code_gen.resolved_value_traits import (
 
 
 def generate_resolved_descriptor_source(
-    database: CodegenDatabase,
+    context: GenerationContext,
     *,
     output_path: Path,
 ) -> None:
     """Generate one private C++ source for resolved descriptor storage."""
 
-    instructions = tuple(
-        with_cpp_backend_field_names(from_instruction_spec(instruction))
-        for instruction in database.instructions
-    )
-    _validate_unique_cpp_names(instructions)
+
+    instructions = context.instructions
+    validate_unique_cpp_names(instructions)
     storage_definitions = "\n\n".join(
-        _emit_resolved_descriptor_storage(instruction) for instruction in instructions
+        _emit_resolved_descriptor_storage(instruction, context.backend) for instruction in instructions
     )
     getter_definitions = "\n\n".join(
         _emit_resolved_descriptor_getter(instruction) for instruction in instructions
@@ -84,14 +83,14 @@ def _emit_resolved_instruction_implementation(
 
 
 def _emit_resolved_descriptor_storage(
-    instruction: ResolvedInstruction,
+    instruction: ResolvedInstruction, backend: CodegenUnit
 ) -> str:
     storage_name = f"{instruction.cpp_name}ResolvedDescriptorStorage"
     variant_storage = "\n\n".join(
-        _emit_resolved_variant_storage(variant) for variant in instruction.variants
+        _emit_resolved_variant_storage(variant, backend) for variant in instruction.variants
     )
     variants = ",\n".join(
-        _emit_resolved_variant_descriptor(variant) for variant in instruction.variants
+        _emit_resolved_variant_descriptor(variant, backend) for variant in instruction.variants
     )
 
     return f"""struct {storage_name} {{
@@ -123,17 +122,17 @@ const check_end::ResolvedInstructionDescriptor&
 }}"""
 
 
-def _emit_resolved_variant_storage(variant: ResolvedVariant) -> str:
+def _emit_resolved_variant_storage(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     name = to_file_stem(variant.variant_id)
     fields = ",\n".join(
-        _emit_resolved_field_descriptor(field) for field in variant.modifier_fields
+        _emit_resolved_field_descriptor(field, backend) for field in variant.modifier_fields
     )
     modifier_bindings = ",\n".join(
-        _emit_modifier_binding_descriptor(binding)
+        _emit_modifier_binding_descriptor(binding, backend)
         for binding in variant.modifier_bindings
     )
     operand_layout_storage = "\n\n".join(
-        _emit_operand_layout_storage(name, index, layout)
+        _emit_operand_layout_storage(name, index, layout, backend)
         for index, layout in enumerate(variant.operand_layouts)
     )
     operand_layouts = ",\n".join(f"""check_end::ResolvedOperandLayoutDescriptor{{
@@ -160,23 +159,23 @@ def _emit_resolved_variant_storage(variant: ResolvedVariant) -> str:
       }};"""
 
 
-def _emit_resolved_field_descriptor(field: ResolvedField) -> str:
+def _emit_resolved_field_descriptor(field: ResolvedField, backend: CodegenUnit) -> str:
     return f"""          check_end::ResolvedFieldDescriptor{{
               .field_id = "{field.name}",
-              .value_kind = {cpp_value(CppDomain.RESOLVED_VALUE_KINDS, field.value_kind.value)},
+              .value_kind = {cpp_value(CppDomain.RESOLVED_VALUE_KINDS, field.value_kind.value, backend=backend)},
           }}"""
 
 
-def _emit_modifier_binding_descriptor(binding: ResolvedModifierBinding) -> str:
+def _emit_modifier_binding_descriptor(binding: ResolvedModifierBinding, backend: CodegenUnit) -> str:
     return f"""          check_end::ResolvedModifierBindingDescriptor{{
               .source_kind_id = "{binding.source_kind_id}",
               .target_field_id = "{binding.target_field_id}",
-              .default_value = {_emit_modifier_default_descriptor(binding)},
+              .default_value = {_emit_modifier_default_descriptor(binding, backend)},
           }}"""
 
 
 def _emit_modifier_default_descriptor(
-    binding: ResolvedModifierBinding,
+    binding: ResolvedModifierBinding, backend: CodegenUnit
 ) -> str:
     default = binding.default_value
     if default is None:
@@ -186,11 +185,11 @@ def _emit_modifier_default_descriptor(
 
     value = modifier_default_cpp_expr(
         default.value_kind,
-        default.value,
+        default.value, backend=backend,
     )
     kind = cpp_value(
         CppDomain.RESOLVED_MODIFIER_DEFAULT_KINDS,
-        default.value_kind.value,
+        default.value_kind.value, backend=backend,
     )
 
     return f"""check_end::ResolvedModifierDefaultDescriptor{{
@@ -202,10 +201,10 @@ def _emit_modifier_default_descriptor(
 def _emit_operand_layout_storage(
     variant_name: str,
     layout_index: int,
-    layout: ResolvedOperandLayout,
+    layout: ResolvedOperandLayout, backend: CodegenUnit
 ) -> str:
     fields = ",\n".join(
-        _emit_resolved_field_descriptor(field) for field in layout.fields
+        _emit_resolved_field_descriptor(field, backend) for field in layout.fields
     )
     vector_arities = "\n\n".join(
         f"""  static constexpr std::array<uint8_t, {len(binding.allowed_vector_arities)}>
@@ -218,7 +217,7 @@ def _emit_operand_layout_storage(
     address_state_spaces = "\n\n".join(
         f"""  static constexpr std::array<checker::AddressStateSpaceDescriptor, {len(binding.allowed_address_state_spaces)}>
       {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces = {{{{
-{_emit_address_state_spaces(binding.allowed_address_state_spaces)}
+{_emit_address_state_spaces(binding.allowed_address_state_spaces, backend)}
       }}}};"""
         for binding_index, binding in enumerate(layout.bindings)
         if binding.allowed_address_state_spaces
@@ -227,7 +226,7 @@ def _emit_operand_layout_storage(
         _emit_operand_binding_descriptor(
             binding,
             f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities",
-            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces",
+            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces", backend,
         )
         for binding_index, binding in enumerate(layout.bindings)
     )
@@ -250,21 +249,21 @@ def _emit_vector_arities(arities: tuple[int, ...]) -> str:
     return ",\n".join(f"          {arity}" for arity in arities)
 
 
-def _emit_address_state_spaces(entries) -> str:
+def _emit_address_state_spaces(entries, backend: CodegenUnit) -> str:
     result: list[str] = []
     for entry in entries:
         result.append(f"""          checker::AddressStateSpaceDescriptor{{
-              .state_space = {cpp_value(CppDomain.MEMORY_STATE_SPACES, entry.value)},
-              .availability = {_emit_availability(dict(entry.availability))},
+              .state_space = {cpp_value(CppDomain.MEMORY_STATE_SPACES, entry.value, backend=backend)},
+              .availability = {emit_availability(dict(entry.availability))},
           }}""")
     return ",\n".join(result)
 
 
 def _emit_operand_binding_descriptor(
-    binding, vector_arities_name: str, address_state_spaces_name: str
+    binding, vector_arities_name: str, address_state_spaces_name: str, backend: CodegenUnit
 ) -> str:
     allowed_shapes = " | ".join(
-        cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
+        cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value, backend=backend)
         for shape in binding.allowed_shapes
     )
     vector_arities = (
@@ -316,7 +315,7 @@ def _emit_operand_binding_descriptor(
     )
     sink_availability = (
         "\n              .sink_availability = "
-        f"{_emit_availability(dict(binding.sink_availability))},"
+        f"{emit_availability(dict(binding.sink_availability))},"
         if binding.sink_availability
         else ""
     )
@@ -339,7 +338,7 @@ def _emit_operand_binding_descriptor(
     element_shapes = (
         "\n              .allowed_element_shapes = "
         + " | ".join(
-            cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value)
+            cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value, backend=backend)
             for shape in binding.allowed_element_shapes
         )
         + ","
@@ -363,50 +362,50 @@ def _emit_operand_binding_descriptor(
         availability = dict(binding.parameter_constraint.function_availability)
         parameter_constraint = f"""
               .parameter_constraint = {{
-                  .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction)},
-                  .function_availability = {_emit_availability(availability)},
+                  .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction, backend=backend)},
+                  .function_availability = {emit_availability(availability)},
               }},"""
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,
-        binding.register_width_policy.value,
+        binding.register_width_policy.value, backend=backend,
     )
     immediate_conversion_policy = cpp_value(
         CppDomain.IMMEDIATE_CONVERSION_POLICIES,
-        binding.immediate_conversion_policy.value,
+        binding.immediate_conversion_policy.value, backend=backend,
     )
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
-              .type_expression = {_emit_type_expression_descriptor(binding.type_expression)},
+              .type_expression = {_emit_type_expression_descriptor(binding.type_expression, backend)},
               .register_width_policy = {register_width_policy},
-              .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value)},
-              .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value)},
+              .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
+              .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 
 
 def _emit_type_expression_descriptor(
-    expression: ResolvedOperandTypeExpression,
+    expression: ResolvedOperandTypeExpression, backend: CodegenUnit
 ) -> str:
     """Emit the constexpr C++ representation of one normalized type source."""
 
-    fixed_scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+    fixed_scalar_type = cpp_default(CppDomain.SCALAR_TYPES, backend=backend)
     modifier_field_id = '""'
     if expression.kind is ResolvedOperandTypeExpressionKind.FIXED_SCALAR:
         assert expression.scalar_type is not None
-        fixed_scalar_type = cpp_value(CppDomain.SCALAR_TYPES, expression.scalar_type)
+        fixed_scalar_type = cpp_value(CppDomain.SCALAR_TYPES, expression.scalar_type, backend=backend)
     elif expression.kind is ResolvedOperandTypeExpressionKind.MODIFIER_FIELD:
         assert expression.modifier_field_id is not None
         modifier_field_id = f'"{expression.modifier_field_id}"'
 
     return f"""check_end::TypeExpressionDescriptor{{
-                  .kind = {cpp_value(CppDomain.RESOLVED_OPERAND_TYPE_EXPRESSION_KINDS, expression.kind.value)},
+                  .kind = {cpp_value(CppDomain.RESOLVED_OPERAND_TYPE_EXPRESSION_KINDS, expression.kind.value, backend=backend)},
                   .fixed_scalar_type = {fixed_scalar_type},
                   .modifier_field_id = {modifier_field_id},
               }}"""
 
 
-def _emit_resolved_variant_descriptor(variant: ResolvedVariant) -> str:
+def _emit_resolved_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     name = to_file_stem(variant.variant_id)
     return f"""          check_end::ResolvedVariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
@@ -426,14 +425,3 @@ def _parse_ptx_version(value: object) -> tuple[int, int]:
     if not (0 <= major <= 0xFFFF and 0 <= minor <= 0xFFFF):
         raise ValueError(f"PTX availability version is out of range: {value!r}")
     return major, minor
-
-
-def _validate_unique_cpp_names(instructions: tuple[ResolvedInstruction, ...]) -> None:
-    seen: set[str] = set()
-    for instruction in instructions:
-        if instruction.cpp_name in seen:
-            raise ValueError(
-                f"multiple resolved instructions map to C++ type "
-                f"{instruction.cpp_name!r}"
-            )
-        seen.add(instruction.cpp_name)

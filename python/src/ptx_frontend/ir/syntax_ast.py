@@ -5,18 +5,19 @@ per-opcode syntax architecture from which C++ descriptor tables are generated.
 The model intentionally has no dependency on YAML loading or code generation.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from enum import Enum, IntFlag
-from ptx_frontend.code_gen.model import (
+from ptx_frontend.spec.model import (
     InstructionSpec,
     ModifierSpec,
+    ModifierPresence as ModelModifierPresence,
+    OperandKind,
     OperandLayoutKind as ModelOperandLayoutKind,
     OperandSpec,
     VariantSpec,
     modifier_spellings,
 )
+from ptx_frontend.spec.synatax_shapes import OperandSyntaxShape, OPERAND_SYNTAX_SHAPES
 
 
 class ModifierPresence(Enum):
@@ -32,24 +33,6 @@ class OperandPresence(Enum):
 
     REQUIRED = "Required"
     OPTIONAL = "Optional"
-
-
-class OperandSyntaxShape(IntFlag):
-    """Syntax alternatives of the C++ ``syntax_ast::AstOperand`` variant."""
-
-    IDENTIFIER_REF = 1 << 0
-    IMMEDIATE = 1 << 1
-    ADDRESS = 1 << 2
-    VECTOR_MEMBER = 1 << 3
-    VECTOR_PACK = 1 << 4
-    PREDICATE = 1 << 5
-    CALL_PARAMETER_LIST = 1 << 6
-    CALL_TARGET = 1 << 7
-    CALL_TARGET_SET = 1 << 8
-    BRANCH_TARGET = 1 << 9
-    BRANCH_TARGET_SET = 1 << 10
-    REGISTER_PREDICATE_PAIR = 1 << 11
-    NEGATED_IMMEDIATE = 1 << 12
 
 
 class OperandLayoutKind(Enum):
@@ -125,63 +108,12 @@ def from_InstructionSpec(spec: InstructionSpec) -> SyntaxInstructionDescriptor:
 
 
 _PRESENCE_MAP = {
-    "absent": ModifierPresence.ABSENT,
-    "optional": ModifierPresence.OPTIONAL,
-    "required": ModifierPresence.REQUIRED,
-    "fixed": ModifierPresence.REQUIRED,
+    ModelModifierPresence.ABSENT: ModifierPresence.ABSENT,
+    ModelModifierPresence.OPTIONAL: ModifierPresence.OPTIONAL,
+    ModelModifierPresence.REQUIRED: ModifierPresence.REQUIRED,
+    ModelModifierPresence.FIXED: ModifierPresence.REQUIRED,
 }
 
-OPERAND_SYNTAX_SHAPES = {
-    "reg": OperandSyntaxShape.IDENTIFIER_REF,
-    "imm": OperandSyntaxShape.IMMEDIATE,
-    "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
-    "reg_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
-    "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
-    "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
-    "pred_pair_or_sink": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
-    "mov_scalar_src": (
-        OperandSyntaxShape.IDENTIFIER_REF
-        | OperandSyntaxShape.IMMEDIATE
-        | OperandSyntaxShape.ADDRESS
-        | OperandSyntaxShape.VECTOR_MEMBER
-    ),
-    "cluster_address": (
-        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS
-    ),
-    "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
-    "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred_source": (
-        OperandSyntaxShape.IDENTIFIER_REF
-        | OperandSyntaxShape.IMMEDIATE
-        | OperandSyntaxShape.PREDICATE
-        | OperandSyntaxShape.NEGATED_IMMEDIATE
-    ),
-    "pred_or_sreg": (
-        OperandSyntaxShape.IDENTIFIER_REF
-        | OperandSyntaxShape.IMMEDIATE
-        | OperandSyntaxShape.PREDICATE
-        | OperandSyntaxShape.NEGATED_IMMEDIATE
-    ),
-    "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
-    "label": OperandSyntaxShape.BRANCH_TARGET,
-    "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
-    "symbol": OperandSyntaxShape.IDENTIFIER_REF,
-    "addr": OperandSyntaxShape.ADDRESS,
-    "reg_vector": OperandSyntaxShape.VECTOR_PACK,
-    "descriptor": OperandSyntaxShape.IDENTIFIER_REF,
-    "typed_token": OperandSyntaxShape.IDENTIFIER_REF,
-    "mbarrier_state_token": OperandSyntaxShape.IDENTIFIER_REF,
-    "tensor_coordinate": OperandSyntaxShape.VECTOR_PACK,
-    "matrix_fragment": OperandSyntaxShape.VECTOR_PACK,
-    "direct_call_target": OperandSyntaxShape.CALL_TARGET,
-    "indirect_call_target": OperandSyntaxShape.CALL_TARGET,
-    "indirect_call_metadata": OperandSyntaxShape.CALL_TARGET_SET,
-    "branch_target_set": OperandSyntaxShape.BRANCH_TARGET_SET,
-    "call_return_param": OperandSyntaxShape.CALL_PARAMETER_LIST,
-    "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
-}
 
 def _build_variant_descriptor_view(
     variant: VariantSpec,
@@ -189,9 +121,7 @@ def _build_variant_descriptor_view(
     modifiers = tuple(
         _build_modifier_descriptor_view(modifier) for modifier in variant.modifiers
     )
-    modifiers_by_name = {
-        modifier.kind_id: modifier for modifier in modifiers
-    }
+    modifiers_by_name = {modifier.kind_id: modifier for modifier in modifiers}
     return SyntaxVariantDescriptor(
         variant_id=variant.name,
         modifiers=modifiers,
@@ -201,9 +131,11 @@ def _build_variant_descriptor_view(
                 kind=OperandLayoutKind(
                     "Call"
                     if layout.kind is ModelOperandLayoutKind.CALL
-                    else "IndirectCall"
-                    if layout.kind is ModelOperandLayoutKind.INDIRECT_CALL
-                    else "Flat"
+                    else (
+                        "IndirectCall"
+                        if layout.kind is ModelOperandLayoutKind.INDIRECT_CALL
+                        else "Flat"
+                    )
                 ),
                 slots=tuple(
                     _build_operand_slot_descriptor_view(operand)
@@ -258,9 +190,11 @@ def _build_operand_slot_descriptor_view(
         maximum_elements=operand.maximum_elements,
         allowed_element_shapes=sum(
             (
-                OperandSyntaxShape.IDENTIFIER_REF
-                if kind == "reg"
-                else OperandSyntaxShape.IMMEDIATE
+                (
+                    OperandSyntaxShape.IDENTIFIER_REF
+                    if kind is OperandKind.REGISTER
+                    else OperandSyntaxShape.IMMEDIATE
+                )
                 for kind in operand.element_kinds
             ),
             OperandSyntaxShape(0),

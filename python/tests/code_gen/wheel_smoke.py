@@ -25,34 +25,42 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/base/utils.py",
         "ptx_frontend/spec/model.py",
         "ptx_frontend/spec/database.py",
-        "ptx_frontend/spec/resources.py",
-        "ptx_frontend/spec/normalize.py",
+        "ptx_frontend/spec/resources/__init__.py",
+        "ptx_frontend/spec/normalize/__init__.py",
         "ptx_frontend/spec/load_yaml.py",
         "ptx_frontend/code_gen/model.py",
         "ptx_frontend/code_gen/database.py",
         "ptx_frontend/code_gen/normalize.py",
         "ptx_frontend/code_gen/load_yaml.py",
         "ptx_frontend/code_gen/cpp_backend.py",
+        "ptx_frontend/code_gen/resolved_field_names.py",
+        "ptx_frontend/code_gen/reference_policy.py",
         "ptx_frontend/ir/resolved_ir.py",
         "ptx_frontend/ir/syntax_ast.py",
-        # Frontend generator implementation is intentionally packaged.
-        "ptx_frontend/code_gen/_frontend/__main__.py",
-        "ptx_frontend/code_gen/_frontend/cli.py",
-        "ptx_frontend/code_gen/_frontend/gen_resolved_checker_descriptor.py",
-        "ptx_frontend/code_gen/_frontend/gen_resolved_descriptor.py",
-        "ptx_frontend/code_gen/_frontend/gen_resolved_ir.py",
-        "ptx_frontend/code_gen/_frontend/gen_resolved_value_domains.py",
-        "ptx_frontend/code_gen/_frontend/gen_syntax_ast_arch.py",
-        "ptx_frontend/code_gen/_frontend/m12_natural_corpus.py",
+        # The generator is a direct code_gen concern with semantic emitters.
+        "ptx_frontend/code_gen/__main__.py",
+        "ptx_frontend/code_gen/cli.py",
+        "ptx_frontend/code_gen/context.py",
+        "ptx_frontend/code_gen/plan.py",
+        "ptx_frontend/code_gen/emit/__init__.py",
+        "ptx_frontend/code_gen/emit/resolved_model.py",
+        "ptx_frontend/code_gen/emit/resolved_resolver.py",
+        "ptx_frontend/code_gen/emit/resolved_checker.py",
+        "ptx_frontend/code_gen/emit/category_source.py",
+        "ptx_frontend/code_gen/emit/references.py",
+        "ptx_frontend/code_gen/emit/resolved_dispatch.py",
+        "ptx_frontend/code_gen/emit/resolved_descriptors.py",
+        "ptx_frontend/code_gen/emit/checker_descriptors.py",
+        "ptx_frontend/code_gen/emit/syntax_descriptors.py",
+        "ptx_frontend/code_gen/emit/value_domains.py",
         # Packaged helper scripts.
         "ptx_frontend/scripts/gen_all.py",
-        "ptx_frontend/scripts/regenerate_m12_corpus.py",
         "ptx_frontend/scripts/validate_yaml.py",
         # Packaged schemas and specification resources.
-        "ptx_frontend/code_gen/resources/ptx-instr-v1.schema.yaml",
-        "ptx_frontend/code_gen/resources/ptx-cpp-backend-v1.schema.yaml",
-        "ptx_frontend/code_gen/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
-        "ptx_frontend/code_gen/resources/ptx_spec/arithmetic.yaml",
+        "ptx_frontend/spec/resources/ptx-instr-v1.schema.yaml",
+        "ptx_frontend/spec/resources/ptx-cpp-backend-v2.schema.yaml",
+        "ptx_frontend/spec/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
+        "ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml",
         # Distribution metadata.
         f"ptx_frontend-{EXPECTED_VERSION}.dist-info/METADATA",
     )
@@ -61,27 +69,19 @@ def check_wheel_contents(wheel: Path) -> None:
         if name not in names:
             raise AssertionError(f"wheel is missing {name}")
 
-    # These generators were relocated under code_gen._frontend.  Their old
-    # flat module paths must not accidentally reappear.
-    legacy_generator_files = (
-        "ptx_frontend/code_gen/__main__.py",
-        "ptx_frontend/code_gen/cli.py",
-        "ptx_frontend/code_gen/gen_resolved_checker_descriptor.py",
-        "ptx_frontend/code_gen/gen_resolved_descriptor.py",
-        "ptx_frontend/code_gen/gen_resolved_ir.py",
-        "ptx_frontend/code_gen/gen_resolved_value_domains.py",
-        "ptx_frontend/code_gen/gen_syntax_ast_arch.py",
-        "ptx_frontend/code_gen/m12_natural_corpus.py",
-    )
-
-    for name in legacy_generator_files:
-        if name in names:
-            raise AssertionError(
-                f"wheel exports legacy flat frontend-generator module {name}"
-            )
+    for name in names:
+        package_name = name.lower()
+        if not package_name.startswith("ptx_frontend/"):
+            continue
+        if "/_frontend/" in package_name:
+            raise AssertionError(f"wheel exports retired frontend layer {name}")
+        if "m12" in package_name or "corpus" in package_name:
+            raise AssertionError(f"wheel exports corpus-only package content {name}")
+        if package_name.startswith("ptx_frontend/scripts/regenerate_"):
+            raise AssertionError(f"wheel exports corpus regeneration tooling {name}")
 
     # The wheel must expose only the fully-qualified ptx_frontend namespace.
-    if any(name.startswith(("base/", "code_gen/", "ir/", "spec/")) for name in names):
+    if any(name.startswith(("base/", "code_gen/", "ir/", "spec/", "tools/")) for name in names):
         raise AssertionError("wheel contains an unqualified top-level Python package")
 
 

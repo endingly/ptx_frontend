@@ -11,18 +11,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
-from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
+from ptx_frontend.code_gen.emit.resolved_descriptors import (
     generate_resolved_descriptor_source,
 )
-from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
+from ptx_frontend.code_gen.emit.checker_descriptors import (
     generate_resolved_checker_descriptor_source,
 )
-from ptx_frontend.code_gen._frontend.gen_resolved_ir import (
-    generate_resolved_ir_header,
-    generate_resolved_ir_source,
-)
-from ptx_frontend.code_gen._frontend.gen_syntax_ast_arch import (
+from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
+from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
+from ptx_frontend.code_gen.emit.syntax_descriptors import (
     generate_syntax_descriptor_source,
 )
 from ptx_frontend.code_gen.load_yaml import load_yaml
@@ -31,6 +29,7 @@ from ptx_frontend.code_gen.normalize import (
     normalize_operand,
 )
 from ptx_frontend.ir.resolved_ir import ResolvedOperandShape, from_instruction_spec
+from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.ir.syntax_ast import (
     OPERAND_SYNTAX_SHAPES,
     OperandSyntaxShape,
@@ -38,12 +37,9 @@ from ptx_frontend.ir.syntax_ast import (
 )
 
 
-def setUpModule() -> None:
-    configure_cpp_backend(
-        REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
-    )
-
-
+BACKEND = load_cpp_backend(
+    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
 def _operand(kind: str, name: str, **extra: object) -> dict[str, object]:
     return {"name": name, "kind": kind, "role": "src", "access": "read", **extra}
 
@@ -87,6 +83,14 @@ def _modern_instruction() -> dict[str, object]:
         ],
     }
 
+
+
+def build_test_generation_context(database):
+    """Make the explicit emitter input from this test's configured backend."""
+
+    from ptx_frontend.code_gen.context import build_generation_context
+
+    return build_generation_context(database, BACKEND)
 
 class ModernOperandPrimitiveTests(unittest.TestCase):
     @classmethod
@@ -186,10 +190,10 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             | OperandSyntaxShape.NEGATED_IMMEDIATE
         )
         self.assertEqual(
-            OPERAND_SYNTAX_SHAPES["pred_or_sreg"],
+            OPERAND_SYNTAX_SHAPES[OperandKind.PREDICATE_OR_SPECIAL_REGISTER],
             source_shapes,
         )
-        self.assertEqual(OPERAND_SYNTAX_SHAPES["pred_source"], source_shapes)
+        self.assertEqual(OPERAND_SYNTAX_SHAPES[OperandKind.PREDICATE_SOURCE], source_shapes)
 
     def test_normalizer_rejects_relational_and_element_kind_errors(self) -> None:
         for operand in (
@@ -307,7 +311,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             ["narrow", "wide"],
         )
         self.assertEqual(
-            OPERAND_SYNTAX_SHAPES["matrix_fragment"],
+            OPERAND_SYNTAX_SHAPES[OperandKind.MATRIX_FRAGMENT],
             OperandSyntaxShape.VECTOR_PACK,
         )
 
@@ -334,8 +338,8 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
                 [
                     ("tensor_descriptor", None, None, ()),
                     ("collector_token", None, None, ()),
-                    (None, 1, 5, ("reg", "imm")),
-                    (None, 1, 64, ("reg",)),
+                    (None, 1, 5, (OperandKind.REGISTER, OperandKind.IMMEDIATE)),
+                    (None, 1, 64, (OperandKind.REGISTER,)),
                 ],
             )
 
@@ -373,12 +377,11 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             descriptor_path = directory_path / "resolved_descriptor.gen.cpp"
             source_path = directory_path / "resolved_ir_test.gen.cpp"
             syntax_path = directory_path / "syntax_descriptor.gen.cpp"
-            generate_resolved_ir_header(database, output_path=header_path)
-            generate_resolved_descriptor_source(database, output_path=descriptor_path)
-            generate_resolved_ir_source(
-                database, category="test", output_path=source_path
+            generate_resolved_ir_header(build_test_generation_context(database), output_path=header_path)
+            generate_resolved_descriptor_source(build_test_generation_context(database), output_path=descriptor_path)
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="test", output_path=source_path
             )
-            generate_syntax_descriptor_source(database, output_path=syntax_path)
+            generate_syntax_descriptor_source(build_test_generation_context(database), output_path=syntax_path)
             header = header_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
             source = source_path.read_text(encoding="utf-8")

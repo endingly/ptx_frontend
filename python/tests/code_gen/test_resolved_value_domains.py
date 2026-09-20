@@ -5,9 +5,11 @@ import unittest
 import yaml
 
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
-from ptx_frontend.code_gen._frontend.gen_resolved_value_domains import (
+from ptx_frontend.code_gen.context import build_generation_context
+from ptx_frontend.code_gen.emit.value_domains import (
     generate_resolved_value_domain_header,
 )
+from ptx_frontend.spec.database import load_codegen_database
 
 
 REPOSITORY_CPP_BACKEND_SPEC = (
@@ -32,7 +34,13 @@ class ResolvedValueDomainGenerationTests(unittest.TestCase):
             )
 
             generate_resolved_value_domain_header(
-                load_cpp_backend(backend_path),
+                build_generation_context(
+                    load_codegen_database(
+                        spec_dir=Path(__file__).resolve().parents[3]
+                        / "instructions/ptx_spec"
+                    ),
+                    load_cpp_backend(backend_path),
+                ),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")

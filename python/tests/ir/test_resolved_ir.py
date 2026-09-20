@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from typing import cast
+
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -16,22 +21,28 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.database import CodegenDatabase
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
-from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
+from ptx_frontend.code_gen.emit.resolved_descriptors import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
     generate_resolved_descriptor_source,
+    _emit_modifier_default_descriptor
 )
-from ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor import (
+from ptx_frontend.code_gen.emit.checker_descriptors import (
     generate_resolved_checker_descriptor_source,
 )
-from ptx_frontend.code_gen._frontend.gen_resolved_ir import (
-    _validate_reference_field_types,
+from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
-    generate_resolved_ir_header,
-    generate_resolved_ir_source,
 )
+from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
+from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
+from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
+from ptx_frontend.code_gen.resolved_field_names import (
+    field_cpp_constant_expr as _field_cpp_constant_expr,
+    field_cpp_type as _field_cpp_type,
+    field_value_cpp_type as _field_value_cpp_type,
+)
 from ptx_frontend.ir.resolved_ir import (
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
@@ -45,6 +56,8 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     ResolvedVectorTypePolicy,
     from_instruction_spec,
+    ResolvedModifierBinding,
+    ResolvedModifierDefault,
 )
 from ptx_frontend.code_gen.model import (
     ImmediateMultipleOfConstraint,
@@ -61,11 +74,47 @@ from ptx_frontend.code_gen.model import (
     OperandTypeExpressionKind,
     VariantSpec,
 )
+from ptx_frontend.spec.model import (
+    ModifierKind,
+    ModifierPresence,
+    OperandAccess,
+    OperandKind,
+    OperandRole,
+)
+from ptx_frontend.ir.resolved_ir import (
+    _build_modifier_value_availability,
+)
 
 
-def setUpModule() -> None:
-    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
+BACKEND = load_cpp_backend(
+    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
 
+
+def field_cpp_constant_expr(field):
+    """Use this module's explicit repository backend for C++ field spelling."""
+
+    return _field_cpp_constant_expr(field, backend=BACKEND)
+
+
+def field_cpp_type(field):
+    """Use this module's explicit repository backend for C++ field spelling."""
+
+    return _field_cpp_type(field, backend=BACKEND)
+
+
+def field_value_cpp_type(field):
+    """Use this module's explicit repository backend for C++ field spelling."""
+
+    return _field_value_cpp_type(field, backend=BACKEND)
+
+
+def build_test_generation_context(database):
+    """Make the explicit emitter input from this test's configured backend."""
+
+    from ptx_frontend.code_gen.context import build_generation_context
+
+    return build_generation_context(database, BACKEND)
 
 class ResolvedIrBuildTest(unittest.TestCase):
     @classmethod
@@ -185,6 +234,61 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         cls.call_instruction = from_instruction_spec(call)
 
+    def test_modifier_default_descriptor_uses_only_selected_value_member(self) -> None:
+        binding = ResolvedModifierBinding(
+            source_kind_id="type",
+            target_field_id="type",
+            default_value=ResolvedModifierDefault(
+                value_kind=ResolvedValueKind.SCALAR_TYPE,
+                value="f32",
+            ),
+        )
+
+        emitted = _emit_modifier_default_descriptor(binding, BACKEND)
+
+        self.assertIn(
+            ".kind = check_end::ResolvedModifierDefaultKind::ScalarType",
+            emitted,
+        )
+        self.assertIn(
+            ".scalar_type = ScalarType::F32",
+            emitted,
+        )
+
+        unexpected_members = (
+            "bool_value",
+            "rounding_mode",
+            "cache_operator",
+            "eviction_priority",
+            "prefetch_size",
+            "memory_state_space",
+            "memory_consistency",
+            "memory_scope",
+            "mbarrier_phase_type",
+            "mbarrier_layout",
+            "async_proxy_kind",
+            "proxy_kind_pair",
+        )
+
+        for member in unexpected_members:
+            with self.subTest(member=member):
+                self.assertNotIn(
+                    f".{member} =",
+                    emitted,
+                )
+
+    def test_modifier_binding_without_default_uses_empty_descriptor(self) -> None:
+        binding = ResolvedModifierBinding(
+            source_kind_id="type",
+            target_field_id="type",
+            default_value=None,
+        )
+    
+        self.assertEqual(
+            _emit_modifier_default_descriptor(binding, BACKEND),
+            "check_end::ResolvedModifierDefaultDescriptor{}",
+        )
+
     def test_call_has_layout_local_group_payloads(self) -> None:
         self.assertEqual(self.call_instruction.cpp_name, "Call")
         variant = self.call_instruction.variants[0]
@@ -202,7 +306,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                [field.value_cpp_type for field in layout.fields]
+                [field_value_cpp_type(field) for field in layout.fields]
                 for layout in variant.operand_layouts
             ],
             [
@@ -344,7 +448,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         optional_sat = variants["OptionalSat"]
         self.assertEqual(
             [field.name for field in optional_sat.fields],
-            ["saturate", "type", "dst", "src1", "src2"],
+            ["sat", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
             optional_sat.modifier_bindings[0].default_value.value, # pyright: ignore[reportOptionalMemberAccess]
@@ -378,20 +482,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
         f32 = variants["FloatF32"]
         self.assertEqual(
             [
-                (field.name, field.cpp_type, field.storage)
+                (field.name, field_cpp_type(field), field.storage)
                 for field in f32.modifier_fields
             ],
             [
                 ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
                 ("ftz", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
-                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+                ("sat", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
                 ("type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
             ],
         )
         rounding_default = f32.modifier_bindings[0].default_value
         self.assertIsNotNone(rounding_default)
         assert rounding_default is not None
-        self.assertEqual(rounding_default.value_cpp_type, "RoundingMode")
+        self.assertEqual(rounding_default.value_kind.value, "RoundingMode")
         self.assertEqual(rounding_default.value, "rn")
         self.assertEqual(
             [
@@ -403,18 +507,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("rp", {"ptx": "1.0", "sm": 20}),
             ],
         )
-        self.assertEqual(variants["FloatF32"].modifier_fields[3].cpp_constant_expr,
+        self.assertEqual(field_cpp_constant_expr(variants["FloatF32"].modifier_fields[3]),
                          "ScalarType::F32")
 
         mixed = variants["MixedF32"]
         self.assertEqual(
             [
-                (field.name, field.cpp_type, field.storage)
+                (field.name, field_cpp_type(field), field.storage)
                 for field in mixed.modifier_fields
             ],
             [
                 ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
-                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+                ("sat", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
                 ("result_type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
                 ("input_type", "WithLocs<ScalarType>", ResolvedFieldStorage.INSTANCE),
             ],
@@ -437,7 +541,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [field.name for field in variants["RnF32"].fields],
-            ["rounding", "ftz", "saturate", "type", "dst", "src1", "src2"],
+            ["rounding", "ftz", "sat", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
             [
@@ -497,7 +601,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [field.name for field in self.fma_instruction.variants[0].fields],
-            ["rounding", "ftz", "saturate", "type", "dst", "src1", "src2", "src3"],
+            ["rounding", "ftz", "sat", "type", "dst", "src1", "src2", "src3"],
         )
         variants = {
             variant.variant_id: variant for variant in self.fma_instruction.variants
@@ -760,14 +864,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertEqual(variant.immediate_ranges, ())
             self.assertEqual(
                 [binding.kind for binding in variant.operand_layouts[0].operands],
-                ["reg", "reg_or_imm", "reg_or_imm"],
+            [
+                OperandKind.REGISTER,
+                OperandKind.REGISTER_OR_IMMEDIATE,
+                OperandKind.REGISTER_OR_IMMEDIATE,
+            ],
             )
         for opcode in ("dp4a", "dp2a"):
             for variant in by_opcode[opcode].variants:
                 bindings = variant.operand_layouts[0].operands
                 self.assertEqual(
                     [binding.kind for binding in bindings[1:]],
-                    ["reg_or_imm"] * 3,
+                    [OperandKind.REGISTER_OR_IMMEDIATE] * 3,
                 )
 
     def test_extended_precision_multiply_add_variants(self) -> None:
@@ -808,7 +916,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                (field.name, field.cpp_type, field.origin)
+                (field.name, field_cpp_type(field), field.origin)
                 for field in variants["IntegerNoSat"].fields
             ],
             [
@@ -821,7 +929,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(
             [field.name for field in variants["Sat"].fields],
-            ["saturate", "type", "dst", "src1", "src2"],
+            ["sat", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
             [field.storage for field in variants["Sat"].fields[:2]],
@@ -831,7 +939,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            variants["Sat"].fields[0].cpp_constant_expr,
+            field_cpp_constant_expr(variants["Sat"].fields[0]),
             "true",
         )
         self.assertEqual(
@@ -839,23 +947,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 (binding.source_kind_id, binding.target_field_id)
                 for binding in variants["Sat"].modifier_bindings
             ],
-            [("sat", "saturate"), ("type", "type")],
+            [("sat", "sat"), ("type", "type")],
         )
         optional_sat_binding = variants["PackedOptionalSat"].modifier_bindings[0]
         self.assertIsNotNone(optional_sat_binding.default_value)
         assert optional_sat_binding.default_value is not None
-        self.assertEqual(optional_sat_binding.default_value.value_cpp_type, "bool")
+        self.assertEqual(optional_sat_binding.default_value.value_kind.value, "Bool")
         self.assertIs(optional_sat_binding.default_value.value, False)
         self.assertIsNone(
             variants["PackedOptionalSat"].modifier_bindings[1].default_value
         )
         self.assertEqual(
             [
-                (field.name, field.cpp_type, field.origin)
+                (field.name, field_cpp_type(field), field.origin)
                 for field in variants["PackedOptionalSat"].fields
             ],
             [
-                ("saturate", "WithLocs<bool>", ResolvedFieldOrigin.MODIFIER),
+                ("sat", "WithLocs<bool>", ResolvedFieldOrigin.MODIFIER),
                 ("type", "WithLocs<ScalarType>", ResolvedFieldOrigin.MODIFIER),
                 ("dst", "WithLocs<ResolvedRegisterRef>", ResolvedFieldOrigin.OPERAND),
                 ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
@@ -876,8 +984,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 (binding.source_kind_id, binding.target_field_id)
                 for binding in variants["PackedOptionalSat"].modifier_bindings
             ],
-            [("sat", "saturate"), ("type", "type")],
+            [("sat", "sat"), ("type", "type")],
         )
+
         self.assertEqual(
             [
                 (
@@ -958,6 +1067,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
                 ),
             ],
+        )
+
+    def test_cpp_generation_projects_modifier_member_aliases(self) -> None:
+        """Backend-only aliases do not replace semantic resolved field IDs."""
+
+        from ptx_frontend.code_gen.resolved_field_names import (
+            with_cpp_backend_field_names,
+        )
+
+        projected = with_cpp_backend_field_names(self.instruction, BACKEND)
+        variant = next(
+            variant for variant in projected.variants if variant.variant_id == "add_sat"
+        )
+
+        self.assertEqual(variant.modifier_fields[0].name, "saturate")
+        self.assertEqual(
+            variant.modifier_bindings[0].target_field_id,
+            "saturate",
         )
 
     def test_bar_sync_uses_distinct_modifier_variants_and_operand_layouts(
@@ -1054,11 +1181,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["without_thread_count", "with_thread_count"],
         )
         self.assertEqual(
-            variants["RedPopcU32"].operand_layouts[0].fields[2].value_cpp_type,
+            field_value_cpp_type(variants["RedPopcU32"].operand_layouts[0].fields[2]),
             "ResolvedPredicate",
         )
         self.assertEqual(
-            variants["RedAndPred"].operand_layouts[1].fields[0].value_cpp_type,
+            field_value_cpp_type(variants["RedAndPred"].operand_layouts[1].fields[0]),
             "ResolvedPredicate",
         )
         self.assertEqual(
@@ -1066,7 +1193,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["warp", "sync"],
         )
         self.assertEqual(
-            [(field.name, field.value_cpp_type)
+            [(field.name, field_value_cpp_type(field))
              for field in variants["WarpSync"].operand_layouts[0].fields],
             [("membermask", "RegOrImm")],
         )
@@ -1128,8 +1255,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                         modifiers=(
                             ModifierSpec(
                                 name="type",
-                                kind="type",
-                                presence="required",
+                                kind=ModifierKind.TYPE,
+                                presence=ModifierPresence.REQUIRED,
                                 domain="scalar_types",
                                 values=(ModifierValueSpec(value="u32"),),
                             ),
@@ -1140,9 +1267,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                 operands=(
                                     OperandSpec(
                                         name="fixed_data",
-                                        kind="imm",
-                                        role="src",
-                                        access="read",
+                                        kind=OperandKind.IMMEDIATE,
+                                        role=OperandRole.SOURCE,
+                                        access=OperandAccess.READ,
                                         type_expression=OperandTypeExpression(
                                             OperandTypeExpressionKind.FIXED_SCALAR,
                                             scalar_type="b32",
@@ -1150,9 +1277,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                     ),
                                     OperandSpec(
                                         name="strict_dynamic",
-                                        kind="reg_or_imm",
-                                        role="src",
-                                        access="read",
+                                        kind=OperandKind.REGISTER_OR_IMMEDIATE,
+                                        role=OperandRole.SOURCE,
+                                        access=OperandAccess.READ,
                                         type_expression=OperandTypeExpression(
                                             OperandTypeExpressionKind.MODIFIER,
                                             modifier_name="type",
@@ -1208,7 +1335,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant = variants[name]
             self.assertEqual(dict(variant.availability), expected_availability)
             self.assertEqual(
-                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
                 [
                     ("scope", "MemoryScope"),
                     ("arrive" if name == "ClusterArrive" else "wait", "bool"),
@@ -1245,7 +1372,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         for variant in variants.values():
             self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
             self.assertEqual(
-                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
                 [
                     ("any" if variant.cpp_name == "AnySync" else "all", "bool"),
                     ("sync", "bool"),
@@ -1263,7 +1390,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         plain = variants["AllSync"].operand_layouts[0].bindings
         paired = variants["AllSync"].operand_layouts[1].bindings
         self.assertEqual(
-            variants["AllSync"].operand_layouts[0].fields[0].cpp_type,
+            field_cpp_type(variants["AllSync"].operand_layouts[0].fields[0]),
             "WithLocs<ResolvedRegisterOrSink>",
         )
         self.assertEqual(
@@ -1284,14 +1411,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertFalse(variants["AnySync"].operand_layouts[0].bindings[0].allow_predicate_sink)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
-            generate_resolved_descriptor_source(database, output_path=output_path)
+            generate_resolved_descriptor_source(build_test_generation_context(database), output_path=output_path)
             source = output_path.read_text(encoding="utf-8")
         self.assertIn('.allow_predicate_sink = true,', source)
         self.assertIn("ResolvedValueKind::RegisterOrSink", source)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_parallel.gen.cpp"
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="parallel_synchronization_and_communication",
                 output_path=output_path,
             )
@@ -1322,14 +1448,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant = variants[name]
             self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
             self.assertEqual(
-                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
                 [("sync", "bool"), (name.removeprefix("Sync").lower(), "bool"),
                  ("type", "WithLocs<ScalarType>")],
             )
         boolean = variants["SyncBoolean"]
         self.assertEqual(dict(boolean.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in boolean.modifier_fields],
+            [(field.name, field_cpp_type(field)) for field in boolean.modifier_fields],
             [("sync", "bool"), ("operation", "WithLocs<BooleanOperator>"),
              ("type", "ScalarType")],
         )
@@ -1341,7 +1467,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant = variants[name]
             self.assertEqual(dict(variant.availability), availability)
             self.assertEqual(
-                [(field.name, field.cpp_type) for field in variant.modifier_fields],
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
                 [("sync", "bool"), (operation, "bool"), ("abs", "WithLocs<bool>"),
                  ("nan", "WithLocs<bool>"), ("type", "ScalarType")],
             )
@@ -1369,7 +1495,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant = variants[name]
             self.assertEqual(dict(variant.availability), {"ptx": "7.8", "sm": 90})
             self.assertEqual(
-                [(field.name, field.cpp_type) for field in variant.fields],
+                [(field.name, field_cpp_type(field)) for field in variant.fields],
                 [(action, "bool")],
             )
             self.assertEqual(
@@ -1391,7 +1517,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "8.0", "sm": 90})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("sync", "bool"),
                 ("result", "WithLocs<ResolvedShflSyncDestination>"),
@@ -1408,7 +1534,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertFalse(membermask.allow_predicate_sink)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
-            generate_resolved_descriptor_source(database, output_path=output_path)
+            generate_resolved_descriptor_source(build_test_generation_context(database), output_path=output_path)
             source = output_path.read_text(encoding="utf-8")
         self.assertIn('.allow_destination_sink = true,', source)
 
@@ -1426,7 +1552,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = instruction.variants[0]
         self.assertEqual(variant.cpp_name, "Direct")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("uni", "WithLocs<bool>"),
                 ("target", "WithLocs<ResolvedBranchTarget>"),
@@ -1458,7 +1584,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = instruction.variants[0]
         self.assertEqual(variant.cpp_name, "Idx")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("idx", "bool"),
                 ("uni", "WithLocs<bool>"),
@@ -1655,7 +1781,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["scalar", "pack", "unpack"],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
@@ -1716,7 +1842,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         pack_unpack = instruction.variants[1]
         self.assertEqual(pack_unpack.cpp_name, "B128PackUnpack")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in pack_unpack.fields],
+            [(field.name, field_cpp_type(field)) for field in pack_unpack.fields],
             [
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
@@ -1729,7 +1855,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [layout.layout_id for layout in pack_unpack.operand_layouts],
             ["pack", "unpack"],
         )
-        self.assertEqual(mov.variants[1].modifiers[0].presence, "fixed")
+        self.assertIs(
+            mov.variants[1].modifiers[0].presence,
+            ModifierPresence.FIXED,
+        )
         self.assertEqual(mov.variants[1].modifiers[0].value, "b128")
         self.assertEqual(
             pack_unpack.operand_layouts[0].bindings[1].allowed_vector_arities,
@@ -1739,7 +1868,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         vector = instruction.variants[2]
         self.assertEqual(vector.cpp_name, "V4U32")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in vector.fields],
+            [(field.name, field_cpp_type(field)) for field in vector.fields],
             [
                 ("vector", "WithLocs<VectorArity>"),
                 ("type", "WithLocs<ScalarType>"),
@@ -1754,7 +1883,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         predicate = instruction.variants[3]
         self.assertEqual(predicate.cpp_name, "Pred")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in predicate.fields],
+            [(field.name, field_cpp_type(field)) for field in predicate.fields],
             [
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedPredicate>"),
@@ -1802,7 +1931,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in shared.fields],
+            [(field.name, field_cpp_type(field)) for field in shared.fields],
             [
                 ("shared_cluster", "bool"),
                 ("type", "WithLocs<ScalarType>"),
@@ -1859,7 +1988,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             {"any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}]},
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in shared.fields],
+            [(field.name, field_cpp_type(field)) for field in shared.fields],
             [
                 ("shared_cluster", "bool"),
                 ("type", "WithLocs<ScalarType>"),
@@ -2078,14 +2207,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [{"ptx": "7.8", "sm": 90}] * 4,
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in test_wait_token.fields],
+            [(field.name, field_cpp_type(field)) for field in test_wait_token.fields],
             [("test_wait", "bool"), ("state_space", "WithLocs<MemoryStateSpace>"),
              ("type", "ScalarType"), ("wait_complete", "WithLocs<ResolvedPredicate>"),
              ("address", "WithLocs<ResolvedAddress>"),
              ("state", "WithLocs<ResolvedMbarrierStateToken>")],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in test_wait_parity.fields],
+            [(field.name, field_cpp_type(field)) for field in test_wait_parity.fields],
             [("test_wait", "bool"), ("parity", "bool"),
              ("state_space", "WithLocs<MemoryStateSpace>"), ("type", "ScalarType"),
              ("wait_complete", "WithLocs<ResolvedPredicate>"),
@@ -2102,7 +2231,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [{"ptx": "9.3", "sm": 90}] * 4,
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in check_layout_generic_v0.fields],
+            [(field.name, field_cpp_type(field)) for field in check_layout_generic_v0.fields],
             [("check_layout", "bool"), ("layout", "MbarrierLayout"),
              ("type", "ScalarType"), ("result", "WithLocs<ResolvedPredicate>"),
              ("address", "WithLocs<ResolvedAddress>")],
@@ -2124,20 +2253,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["no_hint", "with_hint"],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type)
+            [(field.name, field_cpp_type(field))
              for field in try_wait_token.operand_layouts[0].fields],
             [("wait_complete", "WithLocs<ResolvedPredicate>"),
              ("address", "WithLocs<ResolvedAddress>"),
              ("state", "WithLocs<ResolvedMbarrierStateToken>")],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type)
+            [(field.name, field_cpp_type(field))
              for field in try_wait_token.operand_layouts[1].fields[-2:]],
             [("state", "WithLocs<ResolvedMbarrierStateToken>"),
              ("time_hint", "WithLocs<RegOrImm>")],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type)
+            [(field.name, field_cpp_type(field))
              for field in try_wait_parity.operand_layouts[1].fields[-2:]],
             [("phase_parity", "WithLocs<RegOrImm>"),
              ("time_hint", "WithLocs<RegOrImm>")],
@@ -2164,7 +2293,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(dict(pending_count.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in pending_count.fields],
+            [(field.name, field_cpp_type(field)) for field in pending_count.fields],
             [("pending_count", "bool"), ("layout", "WithLocs<MbarrierLayout>"),
              ("type", "ScalarType"), ("count", "WithLocs<ResolvedRegisterRef>"),
              ("state", "WithLocs<ResolvedMbarrierStateToken>")],
@@ -2206,7 +2335,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in generic_v0.fields],
+            [(field.name, field_cpp_type(field)) for field in generic_v0.fields],
             [
                 ("init", "bool"),
                 ("layout", "WithLocs<MbarrierLayout>"),
@@ -2242,7 +2371,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(count.type_expression.scalar_type, "u32")
         self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in inval_generic.fields],
+            [(field.name, field_cpp_type(field)) for field in inval_generic.fields],
             [
                 ("inval", "bool"),
                 ("type", "ScalarType"),
@@ -2256,7 +2385,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["shared"],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in expect_tx_generic.fields],
+            [(field.name, field_cpp_type(field)) for field in expect_tx_generic.fields],
             [
                 ("expect_tx", "bool"),
                 ("state_space", "WithLocs<MemoryStateSpace>"),
@@ -2267,14 +2396,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(expect_tx_generic.modifier_bindings[1].default_value.value, "generic") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in expect_tx_relaxed_cta.fields[:3]],
+            [(field.name, field_cpp_type(field)) for field in expect_tx_relaxed_cta.fields[:3]],
             [("expect_tx", "bool"), ("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         expect_tx_address, tx_count = expect_tx_generic.operand_layouts[0].bindings
         self.assertEqual(expect_tx_address.allowed_shapes, (ResolvedOperandShape.ADDRESS,))
         self.assertEqual(tx_count.type_expression.scalar_type, "u32")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in complete_tx_generic.fields],
+            [(field.name, field_cpp_type(field)) for field in complete_tx_generic.fields],
             [
                 ("complete_tx", "bool"),
                 ("state_space", "WithLocs<MemoryStateSpace>"),
@@ -2284,7 +2413,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in complete_tx_relaxed_cta.fields[:3]],
+            [(field.name, field_cpp_type(field)) for field in complete_tx_relaxed_cta.fields[:3]],
             [("complete_tx", "bool"), ("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         complete_tx_address, complete_tx_count = complete_tx_generic.operand_layouts[0].bindings
@@ -2314,7 +2443,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         ):
             matching = [field for field in fields if field.name == name]
             self.assertTrue(matching, name)
-            self.assertEqual({field.value_cpp_type for field in matching}, {cpp_type})
+            self.assertEqual({field_value_cpp_type(field) for field in matching}, {cpp_type})
 
         inputs = [
             binding
@@ -2373,7 +2502,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for modifier in ld.variants[1].modifiers
             if modifier.name == "state_space"
         )
-        self.assertEqual(explicit_state_space.presence, "required")
+        self.assertIs(explicit_state_space.presence, ModifierPresence.REQUIRED)
         self.assertEqual(
             [value.value for value in explicit_state_space.values],
             [
@@ -2394,7 +2523,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         explicit_vector_variant = variants["ExplicitVector"]
         self.assertEqual(variant.cpp_name, "GenericScalar")
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in l1_evict_variant.fields],
+            [(field.name, field_cpp_type(field)) for field in l1_evict_variant.fields],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("semantics", "WithLocs<MemoryConsistency>"),
@@ -2407,7 +2536,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in cache_hint_variant.fields],
+            [(field.name, field_cpp_type(field)) for field in cache_hint_variant.fields],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("semantics", "WithLocs<MemoryConsistency>"),
@@ -2456,7 +2585,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 expected_types,
             )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("mmio", "WithLocs<bool>"),
                 ("semantics", "WithLocs<MemoryConsistency>"),
@@ -2469,7 +2598,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             next(binding for binding in variant.modifier_bindings
-                 if binding.source_kind_id == "cache").default_value.value_cpp_type, # pyright: ignore[reportOptionalMemberAccess]
+                 if binding.source_kind_id == "cache").default_value.value_kind.value, # pyright: ignore[reportOptionalMemberAccess]
             "CacheOperator",
         )
         self.assertEqual(
@@ -2495,7 +2624,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                (entry.source_kind_id, entry.value_kind.value, entry.value)
                 for entry in variant.modifier_value_availabilities
                 if entry.source_kind_id == "cache"
             ],
@@ -2509,7 +2638,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (entry.source_kind_id, entry.value_cpp_type, entry.value)
+                (entry.source_kind_id, entry.value_kind.value, entry.value)
                 for entry in variant.modifier_value_availabilities
                 if entry.source_kind_id == "semantics"
             ],
@@ -2521,8 +2650,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertIn(
-            ("mmio", "bool", True),
-            [(entry.source_kind_id, entry.value_cpp_type, entry.value)
+            ("mmio", "Bool", True),
+            [(entry.source_kind_id, entry.value_kind.value, entry.value)
              for entry in variant.modifier_value_availabilities],
         )
         self.assertEqual(variant.memory_consistency.semantics_field_id, "semantics") # pyright: ignore[reportOptionalMemberAccess]
@@ -2580,7 +2709,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             (
                 explicit_state_space_field.name,
-                explicit_state_space_field.cpp_type,
+                field_cpp_type(explicit_state_space_field),
                 explicit_state_space_field.storage,
             ),
             (
@@ -2602,7 +2731,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             (
                 explicit_cache_field.name,
-                explicit_cache_field.cpp_type,
+                field_cpp_type(explicit_cache_field),
                 explicit_cache_binding.default_value.value, # pyright: ignore[reportOptionalMemberAccess]
             ),
             ("cache", "WithLocs<CacheOperator>", "unspecified"),
@@ -2879,7 +3008,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 0})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("type", "ScalarType"),
@@ -2912,7 +3041,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("l1", "bool"),
@@ -2938,7 +3067,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("l1", "bool"), ("address", "WithLocs<ResolvedAddress>")],
         )
         self.assertEqual(
@@ -2964,7 +3093,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("fractional", "bool"),
                 ("eviction_priority", "EvictionPriority"),
@@ -2996,7 +3125,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("eviction_priority", "EvictionPriority"),
@@ -3023,7 +3152,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("l2", "bool"),
@@ -3058,7 +3187,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ]},
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("inc", "bool"),
                 ("sync", "bool"),
@@ -3078,11 +3207,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_ir_source(
-                database, category="control_flow", output_path=output_path
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="control_flow", output_path=output_path
             )
-            generate_resolved_checker_descriptor_source(
-                database, output_path=descriptor_path
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), output_path=descriptor_path
             )
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
@@ -3115,7 +3242,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("async", "bool"),
                 ("ca", "bool"),
@@ -3157,13 +3284,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
              {"ptx": "7.0", "sm": 80}, {"ptx": "7.8", "sm": 80}],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variants[0].fields],
+            [(field.name, field_cpp_type(field)) for field in variants[0].fields],
             [("async", "bool"), ("mbarrier", "bool"), ("arrive", "bool"),
              ("state_space", "WithLocs<MemoryStateSpace>"),
              ("type", "ScalarType"), ("address", "WithLocs<ResolvedAddress>")],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variants[2].fields[:4]],
+            [(field.name, field_cpp_type(field)) for field in variants[2].fields[:4]],
             [("async", "bool"), ("mbarrier", "bool"), ("arrive", "bool"),
              ("noinc", "bool")],
         )
@@ -3213,7 +3340,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ]},
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variants[0].fields],
+            [(field.name, field_cpp_type(field)) for field in variants[0].fields],
             [
                 ("try_cancel", "bool"),
                 ("async", "bool"),
@@ -3224,7 +3351,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variants[1].fields[:3]],
+            [(field.name, field_cpp_type(field)) for field in variants[1].fields[:3]],
             [
                 ("try_cancel", "bool"),
                 ("async_shared_cta", "bool"),
@@ -3241,7 +3368,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertFalse(hasattr(variants[0], "address_alignment"))
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variants[4].fields],
+            [(field.name, field_cpp_type(field)) for field in variants[4].fields],
             [
                 ("query_cancel", "bool"),
                 ("is_canceled", "bool"),
@@ -3271,7 +3398,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "AsyncCommitGroup")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("async", "bool"), ("commit_group", "bool")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
@@ -3284,7 +3411,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "AsyncWaitGroup")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("async", "bool"),
                 ("wait_group", "bool"),
@@ -3306,7 +3433,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "AsyncWaitAll")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("async", "bool"), ("wait_all", "bool")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
@@ -3321,7 +3448,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "SyncAlignedM8n8X2SharedB16")
         self.assertEqual(dict(variant.availability), {"ptx": "6.5", "sm": 75})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("sync", "bool"),
                 ("aligned", "bool"),
@@ -3362,7 +3489,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "SyncAlignedM16n8k8RowColF32F16F16F32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.5", "sm": 75})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("sync", "bool"),
                 ("aligned", "bool"),
@@ -3405,8 +3532,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_matrix.gen.cpp"
-            generate_resolved_ir_source(
-                database, category="matrix", output_path=output_path
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="matrix", output_path=output_path
             )
             source = output_path.read_text(encoding="utf-8")
         self.assertIn("SyncAlignedM16n8k8RowColF32F16F16F32", source)
@@ -3417,11 +3543,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_ir_source(
-                database, category="data_movement", output_path=output_path
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="data_movement", output_path=output_path
             )
-            generate_resolved_checker_descriptor_source(
-                database, output_path=descriptor_path
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), output_path=descriptor_path
             )
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
@@ -3474,7 +3598,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "1.4", "sm": 0})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("scope", "MemoryScope")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
@@ -3506,12 +3630,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant, async_proxy, async_cluster, release, _, acquire, _, acquire_sync, release_sync = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in async_proxy.fields],
+            [(field.name, field_cpp_type(field)) for field in async_proxy.fields],
             [("proxy", "bool"), ("proxy_kind", "WithLocs<AsyncProxyKind>")],
         )
         self.assertEqual(
@@ -3519,7 +3643,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             {"any_of": [{"ptx": "8.0", "sm": 90, "capabilities": ["cluster"]}]},
         )
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in release.fields],
+            [(field.name, field_cpp_type(field)) for field in release.fields],
             [
                 ("proxy", "bool"),
                 ("proxy_pair", "WithLocs<ProxyKindPair>"),
@@ -3529,7 +3653,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(len(acquire.operand_layouts[0].bindings), 2)
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in acquire_sync.fields],
+            [(field.name, field_cpp_type(field)) for field in acquire_sync.fields],
             [
                 ("proxy", "bool"),
                 ("proxy_pair", "WithLocs<ProxyKindPair>"),
@@ -3557,7 +3681,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("semantics", "MemoryConsistency"),
                 ("scope", "MemoryScope"),
@@ -3596,7 +3720,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("semantics", "MemoryConsistency"),
                 ("scope", "MemoryScope"),
@@ -3630,7 +3754,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.2", "sm": 30})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("type", "ScalarType"), ("dst", "WithLocs<ResolvedRegisterRef>")],
         )
         self.assertEqual(
@@ -3654,7 +3778,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("sync", "bool"),
                 ("ballot", "bool"),
@@ -3683,7 +3807,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(variant.cpp_name, "SyncIdxB32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
         self.assertEqual(
-            [(field.name, field.cpp_type) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
                 ("sync", "bool"),
                 ("idx", "bool"),
@@ -3708,8 +3832,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="data_movement",
                 output_path=output_path,
             )
@@ -3725,8 +3848,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="arithmetic",
                 output_path=output_path,
             )
@@ -3763,7 +3885,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertIsNotNone(cache_binding.default_value)
                 assert cache_binding.default_value is not None
                 self.assertEqual(
-                    cache_binding.default_value.value_cpp_type,
+                    cache_binding.default_value.value_kind.value,
                     "CacheOperator",
                 )
                 self.assertEqual(cache_binding.default_value.value, "unspecified")
@@ -3773,7 +3895,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir.gen.hpp"
-            generate_resolved_ir_header(database, output_path=output_path)
+            generate_resolved_ir_header(build_test_generation_context(database), output_path=output_path)
             source = output_path.read_text(encoding="utf-8")
 
         self.assertTrue(
@@ -3917,31 +4039,45 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
     def test_rejects_unclassified_reference_payload_type(self) -> None:
         """Future operand payloads must declare their reference policy."""
-
+    
         variant = self.instruction.variants[0]
         layout = variant.operand_layouts[0]
+    
         unknown_field = replace(
-            layout.fields[0], value_cpp_type="FutureReferencePayload"
+            layout.fields[0],
+            value_kind=cast(ResolvedValueKind, object()),
         )
         unknown_layout = replace(
-            layout, fields=(unknown_field, *layout.fields[1:])
+            layout,
+            fields=(unknown_field, *layout.fields[1:]),
         )
         unknown_variant = replace(
-            variant, operand_layouts=(unknown_layout, *variant.operand_layouts[1:])
+            variant,
+            operand_layouts=(
+                unknown_layout,
+                *variant.operand_layouts[1:],
+            ),
         )
         unknown_instruction = replace(
-            self.instruction, variants=(unknown_variant, *self.instruction.variants[1:])
+            self.instruction,
+            variants=(
+                unknown_variant,
+                *self.instruction.variants[1:],
+            ),
         )
-        with self.assertRaisesRegex(ValueError, "explicit module-reference policy"):
-            _validate_reference_field_types((unknown_instruction,))
+    
+        with self.assertRaisesRegex(
+            ValueError,
+            "explicit module-reference policy",
+        ):
+            validate_reference_field_types((unknown_instruction,))
 
     def test_generate_resolved_instruction_dispatch_source(self) -> None:
         database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_dispatch.gen.cpp"
-            generate_resolved_dispatch_source(
-                database,
+            generate_resolved_dispatch_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4027,8 +4163,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="control_flow",
                 output_path=output_path,
             )
@@ -4056,8 +4191,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="data_movement",
                 output_path=output_path,
             )
@@ -4145,8 +4279,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="arithmetic",
                 output_path=output_path,
             )
@@ -4203,11 +4336,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             root = Path(directory)
             arithmetic = root / "arithmetic.gen.cpp"
             descriptor = root / "resolved_descriptor.gen.cpp"
-            generate_resolved_ir_source(
-                self.database, category="arithmetic", output_path=arithmetic
+            generate_resolved_ir_category_source(build_test_generation_context(self.database), category="arithmetic", output_path=arithmetic
             )
-            generate_resolved_descriptor_source(
-                self.database, output_path=descriptor
+            generate_resolved_descriptor_source(build_test_generation_context(self.database), output_path=descriptor
             )
             checker_source = arithmetic.read_text(encoding="utf-8")
             descriptor_source = descriptor.read_text(encoding="utf-8")
@@ -4231,8 +4362,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
-            generate_resolved_descriptor_source(
-                database,
+            generate_resolved_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4343,7 +4473,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         state_space = replace(
             static_binding.allowed_address_state_spaces[0], availability=dnf
         )
-        state_source = _emit_address_state_spaces((state_space,))
+        state_source = _emit_address_state_spaces((state_space,), BACKEND)
         self.assertIn(".any_of_count = 1", state_source)
         self.assertIn("TargetFlavor::ArchitectureSpecific", state_source)
 
@@ -4362,7 +4492,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ),
         )
         parameter_source = _emit_operand_binding_descriptor(
-            parameter_binding, "vector_arities", "address_state_spaces"
+            parameter_binding,
+            "vector_arities",
+            "address_state_spaces",
+            BACKEND,
         )
         self.assertIn(".function_availability = {", parameter_source)
         self.assertIn(".any_of_count = 1", parameter_source)
@@ -4373,8 +4506,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(
-                database,
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4463,8 +4595,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(
-                database,
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4569,12 +4700,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
             checker_path = Path(directory) / "resolved_ir_test.gen.cpp"
-            generate_resolved_checker_descriptor_source(
-                database,
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="test",
                 output_path=checker_path,
             )
@@ -4640,17 +4769,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         resolved = from_instruction_spec(specs[0])
         field = resolved.variants[0].modifier_fields[0]
         self.assertEqual(field.value_kind, ResolvedValueKind.COMPARISON_OPERATOR)
-        self.assertEqual(field.cpp_type, "WithLocs<ComparisonOperator>")
+        self.assertEqual(field_cpp_type(field), "WithLocs<ComparisonOperator>")
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "ComparisonOperator",
         )
 
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(
-                database,
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4697,15 +4825,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         specs = normalize_instruction_spec(spec)
         resolved = from_instruction_spec(specs[0])
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "EvictionPriority",
         )
 
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(
-                database,
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4723,10 +4850,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
         value = spec["instructions"][0]["variants"][0]["modifiers"][0][
             "values"
         ][0]
-        for invalid in (0, "not_a_priority"):
-            value["value"] = invalid
-            with self.assertRaisesRegex(ValueError, "eviction priority"):
-                from_instruction_spec(normalize_instruction_spec(spec)[0])
+        value["value"] = 0
+        with self.assertRaisesRegex(ValueError, "eviction_priority"):
+            from_instruction_spec(normalize_instruction_spec(spec)[0])
+
+        # Unknown values fail at the frontend semantic boundary, before C++
+        # generation can inspect a backend mapping.
+        value["value"] = "not_a_priority"
+        with self.assertRaisesRegex(ValueError, "eviction_priority"):
+            normalize_instruction_spec(spec)
 
     def test_boolean_modifier_domain_emits_typed_availability(self) -> None:
         specs = normalize_instruction_spec(
@@ -4763,17 +4895,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         resolved = from_instruction_spec(specs[0])
         field = resolved.variants[0].modifier_fields[0]
         self.assertEqual(field.value_kind, ResolvedValueKind.BOOLEAN_OPERATOR)
-        self.assertEqual(field.cpp_type, "WithLocs<BooleanOperator>")
+        self.assertEqual(field_cpp_type(field), "WithLocs<BooleanOperator>")
         self.assertEqual(
-            resolved.variants[0].modifier_value_availabilities[0].value_cpp_type,
+            resolved.variants[0].modifier_value_availabilities[0].value_kind.value,
             "BooleanOperator",
         )
 
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(
-                database,
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4789,8 +4920,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "resolved_ir_test.gen.cpp"
-            generate_resolved_ir_source(
-                self.database,
+            generate_resolved_ir_category_source(build_test_generation_context(self.database),
                 category="arithmetic",
                 output_path=source_path,
             )
@@ -4844,8 +4974,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     modifiers=(
                         ModifierSpec(
                             name="type",
-                            kind="type",
-                            presence="required",
+                            kind=ModifierKind.TYPE,
+                            presence=ModifierPresence.REQUIRED,
                             values=(ModifierValueSpec(value="u32"),),
                         ),
                     ),
@@ -4855,9 +4985,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                             operands=(
                                 OperandSpec(
                                     name="dst",
-                                    kind="reg",
-                                    role="dst",
-                                    access="write",
+                                    kind=OperandKind.REGISTER,
+                                    role=OperandRole.DESTINATION,
+                                    access=OperandAccess.WRITE,
                                     type_expression=OperandTypeExpression(
                                         kind=OperandTypeExpressionKind.MODIFIER,
                                         modifier_name="type",
@@ -4865,9 +4995,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                 ),
                                 OperandSpec(
                                     name="src",
-                                    kind="reg_or_imm",
-                                    role="src",
-                                    access="read",
+                                    kind=OperandKind.REGISTER_OR_IMMEDIATE,
+                                    role=OperandRole.SOURCE,
+                                    access=OperandAccess.READ,
                                     type_expression=OperandTypeExpression(
                                         kind=OperandTypeExpressionKind.MODIFIER,
                                         modifier_name="type",
@@ -4880,9 +5010,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                             operands=(
                                 OperandSpec(
                                     name="dst",
-                                    kind="reg",
-                                    role="dst",
-                                    access="write",
+                                    kind=OperandKind.REGISTER,
+                                    role=OperandRole.DESTINATION,
+                                    access=OperandAccess.WRITE,
                                     type_expression=OperandTypeExpression(
                                         kind=OperandTypeExpressionKind.MODIFIER,
                                         modifier_name="type",
@@ -4890,9 +5020,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                 ),
                                 OperandSpec(
                                     name="src",
-                                    kind="reg_or_imm",
-                                    role="src1",
-                                    access="read",
+                                    kind=OperandKind.REGISTER_OR_IMMEDIATE,
+                                    role=OperandRole.SOURCE_1,
+                                    access=OperandAccess.READ,
                                     type_expression=OperandTypeExpression(
                                         kind=OperandTypeExpressionKind.MODIFIER,
                                         modifier_name="type",
@@ -4900,9 +5030,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                 ),
                                 OperandSpec(
                                     name="src2",
-                                    kind="reg_or_imm",
-                                    role="src2",
-                                    access="read",
+                                    kind=OperandKind.REGISTER_OR_IMMEDIATE,
+                                    role=OperandRole.SOURCE_2,
+                                    access=OperandAccess.READ,
                                     type_expression=OperandTypeExpression(
                                         kind=OperandTypeExpressionKind.MODIFIER,
                                         modifier_name="type",
@@ -4923,9 +5053,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             header_path = Path(directory) / "resolved_ir.gen.hpp"
             source_path = Path(directory) / "resolved_ir_uncategorized.gen.cpp"
-            generate_resolved_ir_header(database, output_path=header_path)
-            generate_resolved_ir_source(
-                database,
+            generate_resolved_ir_header(build_test_generation_context(database), output_path=header_path)
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="uncategorized",
                 output_path=source_path,
             )
@@ -4956,6 +5085,213 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 sorted(payload_check.index(call) for call in calls),
             )
 
+    def test_modifier_value_descriptor_uses_traits_mapping(self) -> None:
+        from ptx_frontend.ir.resolved_ir import ResolvedModifierValueDomain
+        from ptx_frontend.code_gen.emit.checker_descriptors import _emit_modifier_value_domain_descriptor
+        entry = ResolvedModifierValueDomain(
+            source_kind_id="type",
+            value_kind=ResolvedValueKind.SCALAR_TYPE,
+            value="f32",
+        )
+
+        emitted = _emit_modifier_value_domain_descriptor(entry, backend=BACKEND)
+
+        self.assertIn(
+            ".value_kind = checker::ModifierValueKind::ScalarType",
+            emitted,
+        )
+        self.assertIn(
+            ".scalar_type = ScalarType::F32",
+            emitted,
+        )
+        self.assertIn(
+            ".bool_value = false",
+            emitted,
+        )
+        self.assertIn(
+            ".rounding_mode = RoundingMode::Invalid",
+            emitted,
+        )
+
+    def test_rounding_modifier_value_rejects_unknown_semantic_value(self) -> None:
+        modifier = ModifierSpec(
+            name="rounding",
+            kind=ModifierKind.ROUNDING,
+            presence=ModifierPresence.REQUIRED,
+        )
+
+        value = ModifierValueSpec(
+            value="not_a_rounding_mode",
+        )
+
+        with self.assertRaisesRegex(ValueError, "unsupported semantic rounding_mode"):
+            _build_modifier_value_availability(modifier, value)
+
+    def test_resolved_ir_builds_without_a_cpp_backend(self) -> None:
+        """Semantic normalization does not require C++ domain mappings."""
+
+        resolved = from_instruction_spec(self.database.instructions[0])
+
+        self.assertEqual(resolved.opcode, self.database.instructions[0].opcode)
+
+    def test_operand_view_dispatch_ignores_backend_value_cpp_type_spelling(self) -> None:
+        """Checker-view selection follows the semantic value kind and origin."""
+
+        from ptx_frontend.code_gen.emit.operand_views import (
+            emit_check_operand_view,
+        )
+        from ptx_frontend.ir.resolved_ir import ResolvedField
+
+        raw = yaml.safe_load(
+            (REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        raw["domains"]["resolved_value_cpp_types"]["values"]["RegisterVector"] = (
+            "BackendRenamedVector"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            backend = load_cpp_backend(backend_path)
+            emitted = emit_check_operand_view(
+                ResolvedField(
+                    name="vector",
+                    value_kind=ResolvedValueKind.REGISTER_VECTOR,
+                    origin=ResolvedFieldOrigin.OPERAND,
+                    source_name="vector",
+                ),
+                "instruction",
+                backend,
+            )
+
+        self.assertIn(".vector_arity = instruction.vector.value.elements.size()", emitted)
+
+    def test_rounding_modifier_value_accepts_known_backend_value(self) -> None:
+        modifier = ModifierSpec(
+            name="rounding",
+            kind=ModifierKind.ROUNDING,
+            presence=ModifierPresence.REQUIRED,
+        )
+
+        value = ModifierValueSpec(
+            value="rn",
+        )
+
+        resolved = _build_modifier_value_availability(
+            modifier,
+            value,
+        )
+
+        self.assertIs(
+            resolved.value_kind,
+            ResolvedValueKind.ROUNDING_MODE,
+        )
+        self.assertEqual(
+            resolved.value,
+            "rn",
+        )
+
+    def test_direct_ir_construction_checks_frontend_scalar_and_state_domains(self) -> None:
+        """Direct typed-model callers cannot bypass frontend domain legality."""
+
+        from ptx_frontend.ir.resolved_ir import (
+            _resolve_operand_state_spaces,
+            _resolve_operand_type_expression,
+        )
+        from ptx_frontend.spec.model import OperandStateSpaceValue
+
+        with self.assertRaisesRegex(ValueError, "operand scalar type"):
+            _resolve_operand_type_expression(
+                OperandTypeExpression(
+                    kind=OperandTypeExpressionKind.FIXED_SCALAR,
+                    scalar_type="not_a_ptx_type",
+                ),
+                {},
+            )
+        with self.assertRaisesRegex(ValueError, "operand state space"):
+            _resolve_operand_state_spaces(
+                (OperandStateSpaceValue(value="not_a_state_space"),)
+            )
+        invalid_fixed = InstructionSpec(
+            opcode="invalid_fixed",
+            variants=(
+                VariantSpec(
+                    name="invalid_fixed_default",
+                    availability={"ptx": "1.0"},
+                    modifiers=(
+                        ModifierSpec(
+                            name="type",
+                            kind=ModifierKind.TYPE,
+                            presence=ModifierPresence.FIXED,
+                            values=(ModifierValueSpec(value="u32"),),
+                            value="not_a_ptx_type",
+                        ),
+                    ),
+                    operand_layouts=(OperandLayoutSpec(name="default", operands=()),),
+                ),
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "scalar_type"):
+            from_instruction_spec(invalid_fixed)
+        with self.assertRaisesRegex(ValueError, "outside its allowed values"):
+            from ptx_frontend.ir.resolved_ir import _build_modifier_default
+
+            _build_modifier_default(
+                ModifierSpec(
+                    name="rounding",
+                    kind=ModifierKind.ROUNDING,
+                    presence=ModifierPresence.OPTIONAL,
+                    values=(ModifierValueSpec(value="rn"),),
+                    default="rz",
+                )
+            )
+
+    def test_ir_import_and_construction_do_not_load_codegen(self) -> None:
+        """A clean process can normalize and lower IR while codegen is blocked."""
+
+        source = '''
+import importlib.abc
+import sys
+
+class BlockCodegen(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "ptx_frontend.code_gen" or fullname.startswith("ptx_frontend.code_gen."):
+            raise ImportError("code generation is blocked")
+        return None
+
+sys.meta_path.insert(0, BlockCodegen())
+from ptx_frontend.spec.normalize import normalize_instruction_spec
+from ptx_frontend.ir.resolved_ir import from_instruction_spec
+
+instruction = normalize_instruction_spec({
+    "category": "test", "codegen_category": "test",
+    "instructions": [{"opcode": "sample", "variants": [{
+        "name": "sample_default", "availability": {"ptx": "1.0"},
+        "modifiers": [{"name": "type", "kind": "type", "presence": "fixed", "value": "u32"}],
+        "operands": [],
+    }]}],
+})[0]
+assert from_instruction_spec(instruction).opcode == "sample"
+'''
+        environment = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "python" / "src")}
+        result = subprocess.run(
+            [sys.executable, "-c", source],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_resolved_field_keeps_no_cpp_representation_properties(self) -> None:
+        """C++ storage spelling is a code-generation projection, never IR state."""
+
+        from ptx_frontend.ir.resolved_ir import ResolvedField
+
+        for name in ("value_cpp_type", "cpp_type", "cpp_constant_expr"):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(ResolvedField, name))
 
 if __name__ == "__main__":
     unittest.main()

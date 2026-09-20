@@ -485,6 +485,14 @@ category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边�
 三者不互相复制职责。Syntax descriptor 不应保存 resolved C++ 类型；Resolved descriptor
 不负责 modifier 拼写识别；Checker descriptor 不重新描述 resolve binding。
 
+normalized specification model 会在加载边界把 YAML 的 modifier kind/presence 以及
+operand kind/role/access spelling 转成语义 enum。Resolved IR validation 只使用这些 enum
+和 PTX constraint，不加载 C++ domain mapping。C++ type name、enum expression 与 member
+alias 只在 code generation 时应用。例如语义 IR 中的 `.sat` field 保持 `sat`，backend
+仍可输出历史 C++ member spelling `saturate`。Checker 的 operand view 也按
+`ResolvedValueKind` 与 field origin dispatch，因此 backend type-name 的改变不能选择不同
+的语义 branch。
+
 ## Checker 契约
 
 `checker::check<T>` 是每个 opcode 的生成 wrapper，公共 checker 至少检查：

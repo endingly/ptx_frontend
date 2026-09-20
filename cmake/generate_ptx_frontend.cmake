@@ -17,11 +17,12 @@ set(PTX_RESOLVED_IR_INSTRUCTION_SCHEMA
 set(PTX_RESOLVED_IR_BACKEND_SPEC
     "${PROJECT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
 set(PTX_RESOLVED_IR_BACKEND_SCHEMA
-    "${PROJECT_SOURCE_DIR}/instructions/ptx-cpp-backend-v1.schema.yaml")
+    "${PROJECT_SOURCE_DIR}/instructions/ptx-cpp-backend-v2.schema.yaml")
 file(GLOB_RECURSE PTX_RESOLVED_IR_CODEGEN_FILES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/base/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/ir/*.py"
+    "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/spec/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/scripts/*.py")
 
 # A spec or generator change can alter the declared source topology, so rerun

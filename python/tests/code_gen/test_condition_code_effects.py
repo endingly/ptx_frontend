@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
 from ptx_frontend.code_gen.model import ConditionCodeEffect
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
 
@@ -15,8 +14,6 @@ class ConditionCodeEffectsTest(unittest.TestCase):
     def test_effects_are_typed_and_variant_local(self):
         """Cover each modeled CC access and default no-effect ordinary variants."""
 
-        configure_cpp_backend(Path(__file__).resolve().parents[3] /
-                              "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
         database = load_codegen_database(
             spec_dir=Path(__file__).resolve().parents[3] / "instructions/ptx_spec"
         )

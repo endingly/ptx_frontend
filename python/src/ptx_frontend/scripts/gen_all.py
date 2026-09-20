@@ -4,7 +4,7 @@
 from pathlib import Path
 import sys
 
-from ptx_frontend.code_gen._frontend.cli import main
+from ptx_frontend.code_gen.cli import main
 
 if __name__ == "__main__":
     main()

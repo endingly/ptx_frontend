@@ -9,7 +9,13 @@ from ptx_frontend.code_gen.model import (
 )
 from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
-from ptx_frontend.spec.resources import packaged_spec_schema
+from ptx_frontend.spec.model import OperandKind
+from ptx_frontend.spec.resources import (
+    packaged_backend_spec,
+    packaged_backend_spec_schema,
+    packaged_spec_dir,
+    packaged_spec_schema,
+)
 
 EXPECTED_VERSION = os.environ["PTX_FRONTEND_EXPECTED_VERSION"]
 
@@ -29,45 +35,42 @@ def check_packaged_resources() -> None:
     """Verify schemas and PTX resources are available after installation."""
 
     assert packaged_spec_schema().is_file()
-
-    resource_root = files("ptx_frontend.code_gen.resources")
-
-    assert resource_root.joinpath("ptx-instr-v1.schema.yaml").is_file()
-
-    assert resource_root.joinpath("ptx-cpp-backend-v1.schema.yaml").is_file()
-
-    assert resource_root.joinpath("ptx_cpp_backend_spec/ptx_frontend.yaml").is_file()
-
-    assert resource_root.joinpath("ptx_spec/arithmetic.yaml").is_file()
+    assert packaged_backend_spec_schema().is_file()
+    assert packaged_backend_spec().is_file()
+    assert packaged_spec_dir().joinpath("arithmetic.yaml").is_file()
 
 
 def check_module_layout() -> None:
-    """Verify old generator paths are absent and relocated modules work."""
+    """Verify the flattened generator imports and absent corpus-tool surface."""
 
-    legacy_modules = (
-        "ptx_frontend.code_gen.__main__",
-        "ptx_frontend.code_gen.cli",
-        "ptx_frontend.code_gen.gen_resolved_checker_descriptor",
-        "ptx_frontend.code_gen.gen_resolved_descriptor",
-        "ptx_frontend.code_gen.gen_resolved_ir",
-        "ptx_frontend.code_gen.gen_resolved_value_domains",
-        "ptx_frontend.code_gen.gen_syntax_ast_arch",
+    absent_modules = (
+        "ptx_frontend.code_gen._frontend",
         "ptx_frontend.code_gen.m12_natural_corpus",
+        "ptx_frontend.scripts.regenerate_m12_corpus",
+        "ptx_frontend.scripts.regenerate_nvcc",
+        "ptx_frontend.code_gen.emit.natural_emission",
     )
 
-    for module in legacy_modules:
+    for module in absent_modules:
         assert find_spec(module) is None, module
 
     packaged_modules = (
-        "ptx_frontend.code_gen._frontend.cli",
-        "ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor",
-        "ptx_frontend.code_gen._frontend.gen_resolved_descriptor",
-        "ptx_frontend.code_gen._frontend.gen_resolved_ir",
-        "ptx_frontend.code_gen._frontend.gen_resolved_value_domains",
-        "ptx_frontend.code_gen._frontend.gen_syntax_ast_arch",
-        "ptx_frontend.code_gen._frontend.m12_natural_corpus",
+        "ptx_frontend.code_gen.resolved_field_names",
+        "ptx_frontend.spec.semantic_domains",
+        "ptx_frontend.code_gen.cli",
+        "ptx_frontend.code_gen.context",
+        "ptx_frontend.code_gen.plan",
+        "ptx_frontend.code_gen.emit.resolved_model",
+        "ptx_frontend.code_gen.emit.resolved_resolver",
+        "ptx_frontend.code_gen.emit.resolved_checker",
+        "ptx_frontend.code_gen.emit.category_source",
+        "ptx_frontend.code_gen.emit.references",
+        "ptx_frontend.code_gen.emit.resolved_dispatch",
+        "ptx_frontend.code_gen.emit.resolved_descriptors",
+        "ptx_frontend.code_gen.emit.checker_descriptors",
+        "ptx_frontend.code_gen.emit.syntax_descriptors",
+        "ptx_frontend.code_gen.emit.value_domains",
         "ptx_frontend.scripts.gen_all",
-        "ptx_frontend.scripts.regenerate_m12_corpus",
         "ptx_frontend.scripts.validate_yaml",
     )
 
@@ -114,11 +117,13 @@ def check_packaged_spec_model() -> None:
         variant.name: variant.operand_layouts[0].operands for variant in fma.variants
     }
 
-    assert [operand.kind for operand in layouts["fma_rn_f32"][1:]] == ["reg_or_imm"] * 3
+    assert [operand.kind for operand in layouts["fma_rn_f32"][1:]] == [
+        OperandKind.REGISTER_OR_IMMEDIATE
+    ] * 3
 
-    assert [operand.kind for operand in layouts["fma_f32x2"]] == ["reg"] * 4
+    assert [operand.kind for operand in layouts["fma_f32x2"]] == [OperandKind.REGISTER] * 4
 
-    assert [operand.kind for operand in layouts["fma_bf16x2"]] == ["reg"] * 4
+    assert [operand.kind for operand in layouts["fma_bf16x2"]] == [OperandKind.REGISTER] * 4
 
     for name in (
         "fma_mixed_f32_f16",
@@ -127,18 +132,38 @@ def check_packaged_spec_model() -> None:
         operands = layouts[name]
 
         assert [operand.kind for operand in operands] == [
-            "reg",
-            "reg",
-            "reg",
-            "reg_or_imm",
+            OperandKind.REGISTER,
+            OperandKind.REGISTER,
+            OperandKind.REGISTER,
+            OperandKind.REGISTER_OR_IMMEDIATE,
         ]
 
-        assert operands[0].type_expression.modifier_name == "result_type" # pyright: ignore[reportOptionalMemberAccess]
-        assert operands[3].type_expression.modifier_name == "result_type" # pyright: ignore[reportOptionalMemberAccess]
+        assert (
+            operands[
+                0
+            ].type_expression.modifier_name  # pyright: ignore[reportOptionalMemberAccess]
+            == "result_type"
+        )
+        assert (
+            operands[
+                3
+            ].type_expression.modifier_name  # pyright: ignore[reportOptionalMemberAccess]
+            == "result_type"
+        )
 
-    assert layouts["fma_mixed_f32_f16"][1].type_expression.modifier_name == "input_type" # pyright: ignore[reportOptionalMemberAccess]
+    assert (
+        layouts["fma_mixed_f32_f16"][
+            1
+        ].type_expression.modifier_name  # pyright: ignore[reportOptionalMemberAccess]
+        == "input_type"
+    )
 
-    assert layouts["fma_mixed_f32_bf16"][1].type_expression.scalar_type == "b16" # pyright: ignore[reportOptionalMemberAccess]
+    assert (
+        layouts["fma_mixed_f32_bf16"][
+            1
+        ].type_expression.scalar_type  # pyright: ignore[reportOptionalMemberAccess]
+        == "b16"
+    )
 
 
 def main() -> None:

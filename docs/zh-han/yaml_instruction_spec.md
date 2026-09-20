@@ -2,14 +2,14 @@
 
 ## 目的
 
-`python/code_gen/resources/ptx_spec/` 中的 YAML 是 PTX 指令事实的 canonical
-声明来源（`instructions/ptx_spec/` 仅为源码树兼容 symlink）。它描述合法的源码
+`python/src/ptx_frontend/spec/resources/ptx_spec/` 中的 YAML 是 PTX 指令事实的 canonical
+声明来源（`instructions/ptx_spec/` 是源码构建使用的仓库输入目录）。它描述合法的源码
 形式、variant、operand layout、availability 和规则标识；Python generator 从中同时
 生成 Syntax descriptor、Resolved descriptor、checker descriptor 和 C++ instruction
 结构。它不是 C++ 代码模板，也不是 backend layout 配置。
 
 每个文件使用同级 package schema
-`python/code_gen/resources/ptx-instr-v1.schema.yaml`（YAML comment 通过
+`python/src/ptx_frontend/spec/resources/ptx-instr-v1.schema.yaml`（YAML comment 通过
 `../ptx-instr-v1.schema.yaml` 引用）：
 
 ```yaml
@@ -224,8 +224,9 @@ schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为�
 normalizer 会明确报错表示尚未支持。
 
 每个 generated operand payload 还必须有明确的 module-reference policy。
-`gen_resolved_ir.py` 会将其 C++ payload type 分类到 `_REFERENCE_FIELD_TYPES` 或
-`_REFERENCE_FREE_FIELD_TYPES`；未分类 type 会使 generation 失败。reference-bearing payload
+`code_gen.reference_policy` 会将 semantic payload 分类到公开的
+`REFERENCE_VALUE_KINDS` 或 `REFERENCE_FREE_VALUE_KINDS`；未分类 type 会在 context
+构造时、generation 开始前失败。reference-bearing payload
 是能够携带 bound declaration/symbol identity 的 resolved primitive（例如 register、predicate、
 symbol、address、vector、call/control 与 tensor-coordinate form）。生成的
 `visit_instruction_references` visitor 将它们交给 module 和 AST-free revalidation。reference-free

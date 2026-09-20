@@ -17,7 +17,7 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 - `ptx_frontend_PTX_SPEC_DIR`：已安装的公共 PTX instruction YAML 目录；
 - `ptx_frontend_PTX_SPEC_SCHEMA`：已安装的 `ptx-instr-v1.schema.yaml` 路径。
 
-PTX specification 的 canonical source 位于 `python/code_gen/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 仅保留为源码树兼容 symlink。
+PTX specification 的 canonical source 位于 `python/src/ptx_frontend/spec/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 是源码构建使用的仓库输入目录。
 
 仓库自身的 C++ backend policy 仍位于 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`；它不属于公共 `ptx_spec` component，也不会被导出。
 
@@ -36,7 +36,7 @@ database = load_packaged_spec_database()
 
 `ptx_frontend.spec` 是面向下游的 Python API，提供可复用的 instruction model、database loader、normalization helper 和 resource accessor，同时与 frontend 自身使用完全相同的底层 model 类型。consumer 应将 `ptx-instr/v1` schema 视为稳定的数据契约。
 
-`ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现/兼容 namespace，新下游代码不应依赖它。frontend 专用的 generator modules（`cli.py`、`gen_*.py` 以及仓库 corpus generation helper）统一放在源码专用的 `python/code_gen/_frontend` 目录中，并明确不打入 wheel；wheel 也不再安装 `ptx-frontend-codegen` console script。
+`ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现 namespace。其会随 wheel 打包的 `cli`、`context`、`plan` 与 `emit` modules 构成确定性的 in-tree generator：冻结 context 只投影一次 backend alias，同一 plan 决定 listing、emission 与 formatting 的顺序。新的下游代码不应依赖这些实现 API。仓库专用的 corpus tools 位于 `tools/corpus`，不打入 wheel；wheel 也不安装 `ptx-frontend-codegen` console script。
 
 ## 测试 profile
 

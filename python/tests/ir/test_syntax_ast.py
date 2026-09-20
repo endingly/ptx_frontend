@@ -15,9 +15,9 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from ptx_frontend.base.utils import generated_at_comment
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen._frontend.gen_syntax_ast_arch import (
+from ptx_frontend.code_gen.emit.syntax_descriptors import (
     emit_check_end_instruction_descriptor_implementation,
     generate_syntax_descriptor_source,
 )
@@ -27,6 +27,7 @@ from ptx_frontend.code_gen.model import (
     OperandRegisterWidthPolicy,
     OperandVectorTypePolicy,
 )
+from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.ir.syntax_ast import (
@@ -37,9 +38,16 @@ from ptx_frontend.ir.syntax_ast import (
 )
 
 
-def setUpModule() -> None:
-    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
+BACKEND = load_cpp_backend(
+    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
 
+def build_test_generation_context(database):
+    """Make the explicit emitter input from this test's configured backend."""
+
+    from ptx_frontend.code_gen.context import build_generation_context
+
+    return build_generation_context(database, BACKEND)
 
 class SyntaxAstDescriptorBuildTest(unittest.TestCase):
     @classmethod
@@ -61,6 +69,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             if instruction.opcode == "sub"
         )
         cls.descriptor = from_InstructionSpec(add)
+        cls.add_entry = next(
+            entry
+            for entry in build_test_generation_context(database).entries
+            if entry.specification.opcode == "add"
+        )
         cls.sub_descriptor = from_InstructionSpec(sub)
         call = next(
             instruction
@@ -1640,7 +1653,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_operand("reg", allow_predicate_sink=False)
         with self.assertRaisesRegex(TypeError, "allow_predicate_sink"):
             normalize_operand("shfl_dest", allow_predicate_sink=1)
-        self.assertEqual(normalize_operand("reg_or_sink").kind, "reg_or_sink")
+        self.assertIs(
+            normalize_operand("reg_or_sink").kind,
+            OperandKind.REGISTER_OR_SINK,
+        )
         with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
             normalize_operand("reg_or_sink", role="src")
         with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
@@ -1775,7 +1791,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 }
             )
         with self.assertRaisesRegex(
-            ValueError, "cache sentinel 'unspecified' is not a syntax value"
+        ValueError, "unsupported semantic cache_operator value 'unspecified'"
         ):
             normalize_modifier_entry(
                 {
@@ -1789,7 +1805,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             )
 
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
-        source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
+        source = emit_check_end_instruction_descriptor_implementation(
+            self.descriptor, BACKEND, cpp_name=self.add_entry.cpp_name
+        )
 
         self.assertTrue(source.startswith("struct AddDescriptorStorage {"))
         self.assertIn(
@@ -1840,8 +1858,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             output_path = Path(directory) / "syntax_descriptor.gen.cpp"
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("SOURCE_DATE_EPOCH", None)
-                generate_syntax_descriptor_source(
-                    database,
+                generate_syntax_descriptor_source(build_test_generation_context(database),
                     output_path=output_path,
                 )
             source = output_path.read_text(encoding="utf-8")

@@ -195,7 +195,7 @@ _CASES = (
         "register width kind before missing type",
         _raw("imm", register_width="equal_or_wider"),
         ValueError,
-        "operand 'x': equal_or_wider register_width is only valid for kind 'reg' or 'reg_vector'",
+        "operand 'x': equal_or_wider register_width is only valid for kind 'reg', 'reg_or_imm', or 'reg_vector'",
         {"kind": "reg"},
         ValueError,
         "operand 'x': equal_or_wider register_width requires a type expression",

@@ -600,9 +600,11 @@ Common checker logic interprets minimum PTX, SM, and `family` requirements.
 `family` is the minimum family-specific source-feature target: the checker
 looks only in the source target profile's `enabled_family_features`. The
 explicit catalog is: `sm_100` → none; `sm_100f`/`sm_100a` → `sm_100f`;
-`sm_103` → none; `sm_103f`/`sm_103a` → `sm_100f`, `sm_103f`; `sm_120f` →
-`sm_120f` only. Do not infer this set from the SM number or target suffix. It
-is distinct from PTX-to-physical-GPU translation compatibility, which is not
+`sm_103` → none; `sm_103f`/`sm_103a` → `sm_100f`, `sm_103f`; `sm_120` →
+none; `sm_120f`/`sm_120a` → `sm_120f`; `sm_121` → none; and
+`sm_121f`/`sm_121a` → `sm_120f`, `sm_121f`. Do not infer this set from the
+SM number or target suffix. It is distinct from PTX-to-physical-GPU translation
+compatibility, which is not
 modelled. An `a` target is an exact identity, not a family spelling: use
 `any_of: [{target: sm_100a}]` when that exact target is required. Capability
 clauses, exact target, and `family` are independent constraints. `rule` is a

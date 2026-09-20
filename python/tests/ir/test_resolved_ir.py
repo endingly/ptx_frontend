@@ -2044,7 +2044,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [binding.register_width_policy
              for binding in rn_f32_s32.operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH,
+            [ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
              ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER],
         )
         rn_f16x2_f32 = next(
@@ -2058,7 +2058,67 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(
             [binding.register_width_policy
              for binding in rn_f16x2_f32.operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
+            [ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER] * 3,
+        )
+
+        expected_pack_variants = {
+            "PackSatU8S32B32": (
+                ["pack", "sat", "dst_type", "src_type", "carry_type"],
+                ["u32", "s32", "s32", "b32"],
+            ),
+            "PackSat16S32": (
+                ["pack", "sat", "dst_type", "src_type"],
+                ["u32", "s32", "s32"],
+            ),
+            "PackSatSmallS32B32": (
+                ["pack", "sat", "dst_type", "src_type", "carry_type"],
+                ["u32", "s32", "s32", "b32"],
+            ),
+        }
+        pack_variants = [
+            variant for variant in cvt.variants
+            if variant.cpp_name in expected_pack_variants
+        ]
+        self.assertEqual(
+            [variant.cpp_name for variant in pack_variants],
+            list(expected_pack_variants),
+        )
+        for variant in pack_variants:
+            modifier_names, operand_types = expected_pack_variants[
+                variant.cpp_name
+            ]
+            self.assertEqual(
+                [field.name for field in variant.modifier_fields], modifier_names
+            )
+            self.assertEqual(
+                [binding.type_expression.scalar_type
+                 for binding in variant.operand_layouts[0].bindings],
+                operand_types,
+            )
+            self.assertEqual(
+                [binding.register_width_policy
+                 for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * len(operand_types),
+            )
+        self.assertIsNone(pack_variants[1].modifier_fields[2].constant_value)
+        self.assertIsNone(pack_variants[2].modifier_fields[2].constant_value)
+        self.assertEqual(
+            pack_variants[0].operand_layouts[0].bindings[-1].allowed_shapes,
+            (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+        )
+        self.assertEqual(
+            pack_variants[2].operand_layouts[0].bindings[-1].allowed_shapes,
+            (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+        )
+        self.assertEqual(
+            [(entry.value, dict(entry.availability))
+             for entry in pack_variants[2].modifier_value_availabilities],
+            [
+                ("u4", {"ptx": "6.5", "sm": 75}),
+                ("s4", {"ptx": "6.5", "sm": 75}),
+                ("u2", {"ptx": "6.5", "sm": 75}),
+                ("s2", {"ptx": "6.5", "sm": 75}),
+            ],
         )
 
         isspacep = from_instruction_spec(next(
@@ -2066,14 +2126,69 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in self.database.instructions
             if instruction.opcode == "isspacep"
         ))
-        global_u64 = next(
-            variant for variant in isspacep.variants if variant.cpp_name == "GlobalU64"
-        )
+        expected_isspacep = {
+            "GlobalU64": (["state_space"], {"ptx": "2.0", "sm": 20}),
+            "Const": (["state_space"], {"ptx": "3.1", "sm": 20}),
+            "Local": (["state_space"], {"ptx": "2.0", "sm": 20}),
+            "Shared": (["state_space"], {"ptx": "2.0", "sm": 20}),
+            "SharedCta": (["shared_cta"], {"ptx": "7.8", "sm": 30}),
+            "SharedCluster": (
+                ["shared_cluster"], {"ptx": "7.8", "sm": 90}
+            ),
+            "Param": (["state_space"], {"ptx": "7.7", "sm": 70}),
+            "ParamEntry": (["state_space"], {"ptx": "8.3", "sm": 70}),
+        }
         self.assertEqual(
-            [binding.register_width_policy
-             for binding in global_u64.operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
+            [variant.cpp_name for variant in isspacep.variants],
+            list(expected_isspacep),
         )
+        for variant in isspacep.variants:
+            modifier_names, availability = expected_isspacep[variant.cpp_name]
+            self.assertEqual(
+                [field.name for field in variant.modifier_fields], modifier_names
+            )
+            self.assertTrue(variant.modifier_fields[0].constant_value)
+            self.assertEqual(dict(variant.availability), availability)
+            bindings = variant.operand_layouts[0].bindings
+            self.assertEqual(
+                [binding.type_expression.scalar_type for binding in bindings],
+                ["pred", "u32"],
+            )
+            self.assertEqual(
+                [binding.register_width_policy for binding in bindings],
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH,
+                 ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER],
+            )
+
+    def test_prmt_generic_and_specialized_selector_variants(self) -> None:
+        prmt = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "prmt"
+        ))
+        expected_names = [
+            "GenericB32", "F4eB32", "B4eB32", "Rc8B32", "EclB32",
+            "EcrB32", "Rc16B32",
+        ]
+        self.assertEqual([variant.cpp_name for variant in prmt.variants],
+                         expected_names)
+        for variant in prmt.variants:
+            self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
+            self.assertEqual(
+                [field.name for field in variant.modifier_fields],
+                ["type"] if variant.cpp_name == "GenericB32"
+                else ["type", variant.cpp_name.removesuffix("B32").lower()],
+            )
+            self.assertEqual(
+                [binding.type_expression.scalar_type
+                 for binding in variant.operand_layouts[0].bindings],
+                ["b32"] * 4,
+            )
+            self.assertEqual(
+                [binding.register_width_policy
+                 for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+            )
 
     def test_cvta_unqualified_state_space_variants(self) -> None:
         cvta = from_instruction_spec(next(
@@ -4331,6 +4446,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("check_address_alignment(", source)
         self.assertIn(".address_alignment = address_alignment", source)
         self.assertIn("check_memory_vector(", source)
+        self.assertIn("check_cvt_rule( modifier_values, operands, context)", " ".join(source.split()))
 
     def test_generate_category_resolved_ir_source(self) -> None:
         database = self.database

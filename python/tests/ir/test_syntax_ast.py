@@ -1053,8 +1053,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_width(register_width="same_width").register_width_policy,
             OperandRegisterWidthPolicy.SAME_WIDTH,
         )
+        self.assertEqual(
+            normalize_width(kind="reg_or_imm").register_width_policy,
+            OperandRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
         with self.assertRaisesRegex(ValueError, "only valid for kind 'reg'"):
-            normalize_width(kind="reg_or_imm")
+            normalize_width(kind="imm")
         with self.assertRaisesRegex(ValueError, "requires a type expression"):
             normalize_width(operand_type=None)
         with self.assertRaisesRegex(ValueError, "unsupported register_width"):

@@ -52,6 +52,85 @@ const OperandView* find_operand(std::span<const OperandView> operands,
   return it == operands.end() ? nullptr : &*it;
 }
 
+/** Find the generated modifier view identified by its stable semantic name. */
+const ModifierValueView* find_modifier(
+    std::span<const ModifierValueView> modifiers,
+    std::string_view kind_id) noexcept {
+  const auto it = std::ranges::find_if(
+      modifiers, [kind_id](const ModifierValueView& modifier) {
+        return modifier.kind_id == kind_id;
+      });
+  return it == modifiers.end() ? nullptr : &*it;
+}
+
+/** Return whether a scalar is an integer or bit-size conversion type. */
+bool is_integer_type(ScalarType type) noexcept {
+  return base::scalar_kind(type) == base::ScalarKind::Unsigned ||
+         base::scalar_kind(type) == base::ScalarKind::Signed ||
+         base::scalar_kind(type) == base::ScalarKind::Bit;
+}
+
+/** Return whether a scalar belongs to PTX's floating conversion category. */
+bool is_float_type(ScalarType type) noexcept {
+  return base::scalar_kind(type) == base::ScalarKind::Float;
+}
+
+/** Return whether a rounding value produces an integer-valued result. */
+bool is_integer_rounding(RoundingMode rounding) noexcept {
+  return rounding == RoundingMode::Rni || rounding == RoundingMode::Rzi ||
+         rounding == RoundingMode::Rmi || rounding == RoundingMode::Rpi;
+}
+
+/** Return whether a rounding value selects a floating conversion direction. */
+bool is_float_rounding(RoundingMode rounding) noexcept {
+  return rounding == RoundingMode::Rn || rounding == RoundingMode::Rz ||
+         rounding == RoundingMode::Rm || rounding == RoundingMode::Rp;
+}
+
+/** Return the ordered precision rank used by ordinary scalar float conversion. */
+int float_precision_rank(ScalarType type) noexcept {
+  switch (type) {
+    case ScalarType::F16:
+    case ScalarType::BF16:
+      return 1;
+    case ScalarType::F32:
+      return 2;
+    case ScalarType::F64:
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+/** Return whether every source integer value is representable by destination. */
+bool integer_range_contains(ScalarType destination,
+                            ScalarType source) noexcept {
+  if (!is_integer_type(destination) || !is_integer_type(source))
+    return false;
+  const uint8_t destination_bits = base::scalar_size_of(destination) * 8;
+  const uint8_t source_bits = base::scalar_size_of(source) * 8;
+  const bool destination_signed =
+      base::scalar_kind(destination) == base::ScalarKind::Signed;
+  const bool source_signed =
+      base::scalar_kind(source) == base::ScalarKind::Signed;
+  if (!destination_signed && source_signed)
+    return false;
+  if (destination_signed && !source_signed)
+    return destination_bits > source_bits;
+  return destination_bits >= source_bits;
+}
+
+/** Construct a conversion diagnostic at the selected instruction range. */
+CheckResult cvt_rule_violation(
+    const Context& context, std::string_view message,
+    CheckDiagnosticKind kind = CheckDiagnosticKind::RuleViolation) {
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = kind,
+      .range = context.instruction_range,
+      .message = std::string{message},
+  }});
+}
+
 /**
  * Return the evaluated integer value used by fixed immediate constraints.
  *
@@ -1216,6 +1295,163 @@ CheckResult check_modifier_value_domain(
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
+                           std::span<const OperandView> operands,
+                           const Context& context) {
+  const ModifierValueView* destination = find_modifier(modifiers, "dst_type");
+  const ModifierValueView* source = find_modifier(modifiers, "src_type");
+  if (destination == nullptr || source == nullptr ||
+      destination->value_kind != ModifierValueKind::ScalarType ||
+      source->value_kind != ModifierValueKind::ScalarType) {
+    return cvt_rule_violation(
+        context, "cvt requires typed destination and source modifiers.");
+  }
+
+  const ScalarType destination_type = destination->scalar_type;
+  const ScalarType source_type = source->scalar_type;
+  const ModifierValueView* rounding = find_modifier(modifiers, "rounding");
+  const RoundingMode rounding_mode =
+      rounding == nullptr || !rounding->is_present ? RoundingMode::Invalid
+                                                   : rounding->rounding_mode;
+  const ModifierValueView* ftz = find_modifier(modifiers, "ftz");
+  const bool has_ftz = ftz != nullptr && ftz->is_present && ftz->bool_value;
+  const ModifierValueView* saturate = find_modifier(modifiers, "sat");
+  const bool has_saturate =
+      saturate != nullptr && saturate->is_present && saturate->bool_value;
+  const ModifierValueView* scaled = find_modifier(modifiers, "scaled");
+  const bool has_scaled =
+      scaled != nullptr && scaled->is_present && scaled->bool_value;
+  const bool has_scale_factor =
+      std::ranges::any_of(operands, [](const OperandView& operand) {
+        return operand.field_id == "scale_factor";
+      });
+
+  const bool destination_integer = is_integer_type(destination_type);
+  const bool source_integer = is_integer_type(source_type);
+  const bool destination_float = is_float_type(destination_type);
+  const bool source_float = is_float_type(source_type);
+  if ((!destination_integer && !destination_float) ||
+      (!source_integer && !source_float)) {
+    return cvt_rule_violation(context,
+                              "cvt requires scalar integer or floating source "
+                              "and destination types.");
+  }
+
+  const auto has_exact_width = [](const OperandView* operand, ScalarType type) {
+    return operand == nullptr || !operand->register_type.has_value() ||
+           base::scalar_size_of(*operand->register_type) ==
+               base::scalar_size_of(type);
+  };
+  const bool exact_destination = destination_type == ScalarType::BF16 ||
+                                 destination_type == ScalarType::BF16x2 ||
+                                 destination_type == ScalarType::TF32;
+  const bool exact_source =
+      source_type == ScalarType::BF16 || source_type == ScalarType::BF16x2;
+  if ((exact_destination &&
+       !has_exact_width(find_operand(operands, "dst"), destination_type)) ||
+      (exact_source &&
+       !has_exact_width(find_operand(operands, "src"), source_type))) {
+    return cvt_rule_violation(
+        context,
+        "bfloat and tf32 cvt operands require an exact-width register.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  if ((destination_type == ScalarType::F64 || source_type == ScalarType::F64) &&
+      context.target.sm_version < 13) {
+    return cvt_rule_violation(
+        context, "cvt conversions to or from f64 require SM13 or newer.",
+        CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+
+  if (has_scaled != has_scale_factor) {
+    return cvt_rule_violation(
+        context,
+        "cvt scaled::n2::ue8m0 requires exactly one scale-factor operand.");
+  }
+
+  if (has_ftz && destination_type != ScalarType::F32 &&
+      source_type != ScalarType::F32) {
+    return cvt_rule_violation(
+        context, "cvt.ftz requires an f32 source or destination type.");
+  }
+
+  if (destination_float && has_saturate &&
+      destination_type != ScalarType::F16 &&
+      destination_type != ScalarType::F32 &&
+      destination_type != ScalarType::F64) {
+    return cvt_rule_violation(
+        context,
+        "cvt.sat floating destinations are limited to f16, f32, and f64.");
+  }
+  if (destination_integer && source_integer && has_saturate &&
+      integer_range_contains(destination_type, source_type)) {
+    return cvt_rule_violation(context,
+                              "cvt.sat is not permitted when the integer "
+                              "destination range contains the source range.");
+  }
+
+  if (destination_integer && source_integer) {
+    if (rounding_mode != RoundingMode::Invalid)
+      return cvt_rule_violation(
+          context, "integer-to-integer cvt does not admit rounding.");
+    return {};
+  }
+  if (destination_integer && source_float) {
+    if (!is_integer_rounding(rounding_mode))
+      return cvt_rule_violation(
+          context, "floating-to-integer cvt requires integer rounding.");
+    return {};
+  }
+  if (destination_float && source_integer) {
+    if (!is_float_rounding(rounding_mode))
+      return cvt_rule_violation(
+          context, "integer-to-floating cvt requires floating rounding.");
+    return {};
+  }
+
+  const int destination_rank = float_precision_rank(destination_type);
+  const int source_rank = float_precision_rank(source_type);
+  const bool f16_bf16_pair =
+      (destination_type == ScalarType::F16 &&
+       source_type == ScalarType::BF16) ||
+      (destination_type == ScalarType::BF16 && source_type == ScalarType::F16);
+  if (f16_bf16_pair) {
+    if (rounding_mode == RoundingMode::Invalid ||
+        is_float_rounding(rounding_mode)) {
+      return {};
+    }
+    return cvt_rule_violation(
+        context, "bfloat conversion pairs only admit floating rounding.");
+  }
+  if (destination_type == ScalarType::BF16 && source_type == ScalarType::F32) {
+    if (is_float_rounding(rounding_mode))
+      return {};
+    return cvt_rule_violation(
+        context, "f32 to bf16 conversion requires floating rounding.");
+  }
+  if (destination_type == ScalarType::F32 && source_type == ScalarType::BF16) {
+    if (rounding_mode == RoundingMode::Invalid)
+      return {};
+    return cvt_rule_violation(
+        context, "bf16 to f32 conversion does not admit rounding.");
+  }
+  if (destination_type == source_type && is_integer_rounding(rounding_mode)) {
+    return {};
+  }
+  if (destination_rank == 0 || source_rank == 0)
+    return {};
+  if (destination_rank < source_rank) {
+    if (!is_float_rounding(rounding_mode))
+      return cvt_rule_violation(
+          context, "precision-losing floating cvt requires floating rounding.");
+  } else if (rounding_mode != RoundingMode::Invalid) {
+    return cvt_rule_violation(
+        context, "non-lossy floating cvt does not admit rounding.");
+  }
+  return {};
 }
 
 CheckResult check_memory_consistency(

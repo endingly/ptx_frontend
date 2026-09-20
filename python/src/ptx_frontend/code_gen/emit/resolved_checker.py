@@ -351,6 +351,14 @@ def _emit_cross_rule_checks(
                                  immediate_multiple_of_check.error().end());
             }}
 """
+    if variant.rule == "data_movement.cvt":
+        checks += """            const auto cvt_rule_check = check_cvt_rule(
+                modifier_values, operands, context);
+            if (!cvt_rule_check) {
+              diagnostics.insert(diagnostics.end(), cvt_rule_check.error().begin(),
+                                 cvt_rule_check.error().end());
+            }
+"""
     return checks
 
 

@@ -209,6 +209,7 @@ $defs:
       - b128
 
       # Unsigned integer types
+      - u2
       - u4
       - u8
       - u16
@@ -216,6 +217,7 @@ $defs:
       - u64
 
       # Signed integer types
+      - s2
       - s4
       - s8
       - s16
@@ -260,6 +262,10 @@ $defs:
       - e2m1
       - e2m1x2
       - e2m1x4
+
+      # Conversion-only packed floating and fixed-point formats
+      - ue8m0x2
+      - s2f6x2
 
       # Other packed/sub-byte spellings that may appear in tensor-era PTX
       - b4x16_p64

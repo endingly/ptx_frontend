@@ -475,7 +475,8 @@ TEST(RegisterTypePolicy, GeneratedDescriptorsExposeTheWidthPolicy) {
   expectBindingPolicy(Min::get_resolved_descriptor(), "NanF32", same_width);
   expectBindingPolicy(Max::get_resolved_descriptor(), "NanF32", same_width);
   expectBindingPolicy(Neg::get_resolved_descriptor(), "F16x2", same_width);
-  expectBindingPolicy(Cvt::get_resolved_descriptor(), "RnF16x2F32", same_width);
+  expectBindingPolicy(Cvt::get_resolved_descriptor(), "RnF16x2F32",
+                      base::ScalarTypeSizePolicy::EqualOrWider);
   expectBindingPolicy(Fma::get_resolved_descriptor(), "Bf16",
                       base::ScalarTypeSizePolicy::Exact);
 }

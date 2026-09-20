@@ -15,6 +15,9 @@ constexpr std::array<std::string_view, 2> kSm103fEnabledFamilyFeatures{
     "sm_100f", "sm_103f"};
 constexpr std::array<std::string_view, 1> kSm120fEnabledFamilyFeatures{
     "sm_120f"};
+/** Source family feature levels enabled by supported sm_121 f/a targets. */
+constexpr std::array<std::string_view, 2> kSm121fEnabledFamilyFeatures{
+    "sm_120f", "sm_121f"};
 constexpr std::array<std::string_view, 1> kSm110fEnabledFamilyFeatures{
     "sm_110f"};
 constexpr std::array<std::string_view, 2> kSm80Capabilities{
@@ -40,7 +43,11 @@ constexpr CatalogEntry kTargetProfiles[]{
     {"sm_13", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_20", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_30", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_70", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_72", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_75", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_80", kNoEnabledFamilyFeatures, kSm80Capabilities},
+    {"sm_89", kNoEnabledFamilyFeatures, kSm80Capabilities},
     {"sm_90", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_90a", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_100", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
@@ -55,6 +62,9 @@ constexpr CatalogEntry kTargetProfiles[]{
     {"sm_120", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_120a", kSm120fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
     {"sm_120f", kSm120fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_121", kNoEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_121a", kSm121fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
+    {"sm_121f", kSm121fEnabledFamilyFeatures, kSm90AndLaterCapabilities},
 };
 
 }  // namespace

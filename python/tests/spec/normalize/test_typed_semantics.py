@@ -185,6 +185,16 @@ class TypedSemanticNormalizationTests(unittest.TestCase):
         schema_domains = load_yaml(packaged_spec_schema())["$defs"]
         self.assertEqual(scalar_types, frozenset(schema_domains["ptx_type_name"]["enum"]))
         self.assertEqual(state_spaces, frozenset(schema_domains["state_space"]["enum"]))
+        self.assertTrue(
+            {
+                "u2", "s2", "u4", "s4", "e2m1x2", "e2m3x2", "e3m2x2",
+                "e4m3x4", "e5m2x4", "e2m1x4", "e2m3x4", "e3m2x4",
+                "ue8m0x2", "s2f6x2",
+            }.issubset(scalar_types)
+        )
+        self.assertTrue({"rni", "rmi", "rpi", "rna", "rs"}.issubset(
+            SEMANTIC_DOMAIN_VALUES[SemanticDomain.ROUNDING_MODE]
+        ))
         self.assertIn("sc", semantics)
         for table in (OPERAND_SYNTAX_SHAPES, _OPERAND_ALLOWED_SHAPES):
             self.assertTrue(all(type(kind) is OperandKind for kind in table))

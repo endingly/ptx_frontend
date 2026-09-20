@@ -57,14 +57,17 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     # PTX scalar types are intentionally broader than the current C++ map.
     SemanticDomain.SCALAR_TYPE: frozenset({
         "pred", "b1", "b2", "b4", "b6", "b8", "b16", "b32", "b64", "b128",
-        "u4", "u8", "u8x4", "u16", "u16x2", "u32", "u64", "s4", "s8", "s8x4",
+        "u2", "u4", "u8", "u8x4", "u16", "u16x2", "u32", "u64", "s2", "s4", "s8",
+        "s8x4",
         "s16", "s16x2", "s32", "s64",
         "f16", "f16x2", "f32", "f32x2", "f64", "bf16", "bf16x2", "tf32",
         "e4m3", "e4m3x2", "e4m3x4", "e5m2", "e5m2x2", "e5m2x4", "e3m2",
         "e3m2x2", "e3m2x4", "e2m3", "e2m3x2", "e2m3x4", "e2m1", "e2m1x2",
-        "e2m1x4", "b4x16_p64", "b6x16_p32", "b6p2x16",
+        "e2m1x4", "ue8m0x2", "s2f6x2", "b4x16_p64", "b6x16_p32", "b6p2x16",
     }),
-    SemanticDomain.ROUNDING_MODE: frozenset({"rn", "rz", "rm", "rp", "rzi"}),
+    SemanticDomain.ROUNDING_MODE: frozenset({
+        "rn", "rz", "rm", "rp", "rzi", "rni", "rmi", "rpi", "rna", "rs",
+    }),
     SemanticDomain.COMPARISON_OPERATOR: frozenset({
         "eq", "ne", "lt", "le", "gt", "ge", "lo", "ls", "hi", "hs", "equ",
         "neu", "ltu", "leu", "gtu", "geu", "num", "nan",

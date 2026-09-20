@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from .resolved_validation import validate_unique_cpp_names
 
 from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedVariant
+from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
 from ptx_frontend.spec.model import CodegenUnit
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 
@@ -19,7 +18,6 @@ def generate_resolved_ir_checker_declarations_header(
 
 
     instructions = context.instructions
-    validate_unique_cpp_names(instructions)
     declarations = "\n\n".join(
         emit_check_specialization_declaration(instruction)
         for instruction in instructions

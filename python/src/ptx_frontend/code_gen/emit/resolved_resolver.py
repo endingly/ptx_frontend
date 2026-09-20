@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .resolved_validation import validate_unique_cpp_names
 
 from pathlib import Path
 
@@ -22,7 +21,6 @@ def generate_resolved_ir_resolution_declarations_header(
 
 
     instructions = context.instructions
-    validate_unique_cpp_names(instructions)
     declarations = "\n\n".join(
         _emit_resolve_specialization_declaration(instruction)
         for instruction in instructions

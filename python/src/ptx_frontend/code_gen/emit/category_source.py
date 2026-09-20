@@ -9,7 +9,6 @@ from ptx_frontend.code_gen.context import GenerationContext
 
 from .resolved_checker import emit_check_specialization
 from .resolved_resolver import emit_resolve_specialization
-from .resolved_validation import validate_unique_cpp_names
 
 
 def generate_resolved_ir_category_source(
@@ -27,7 +26,6 @@ def generate_resolved_ir_category_source(
     )
     if not instructions:
         raise ValueError(f"instruction category {category!r} is empty")
-    validate_unique_cpp_names(instructions)
 
     resolve_definitions = "\n\n".join(
         emit_resolve_specialization(instruction, context.backend)

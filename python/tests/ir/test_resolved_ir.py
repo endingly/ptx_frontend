@@ -21,8 +21,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.database import CodegenDatabase
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
-from ptx_frontend.code_gen import cpp_backend
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_descriptors import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
@@ -35,14 +34,14 @@ from ptx_frontend.code_gen.emit.checker_descriptors import (
 from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
 )
-from ptx_frontend.code_gen.emit.references import validate_reference_field_types
+from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
 from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.code_gen.resolved_field_names import (
-    field_cpp_constant_expr,
-    field_cpp_type,
-    field_value_cpp_type,
+    field_cpp_constant_expr as _field_cpp_constant_expr,
+    field_cpp_type as _field_cpp_type,
+    field_value_cpp_type as _field_value_cpp_type,
 )
 from ptx_frontend.ir.resolved_ir import (
     ResolvedFieldOrigin,
@@ -87,9 +86,27 @@ from ptx_frontend.ir.resolved_ir import (
 )
 
 
-def setUpModule() -> None:
-    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
+BACKEND = load_cpp_backend(
+    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
 
+
+def field_cpp_constant_expr(field):
+    """Use this module's explicit repository backend for C++ field spelling."""
+
+    return _field_cpp_constant_expr(field, backend=BACKEND)
+
+
+def field_cpp_type(field):
+    """Use this module's explicit repository backend for C++ field spelling."""
+
+    return _field_cpp_type(field, backend=BACKEND)
+
+
+def field_value_cpp_type(field):
+    """Use this module's explicit repository backend for C++ field spelling."""
+
+    return _field_value_cpp_type(field, backend=BACKEND)
 
 
 def build_test_generation_context(database):
@@ -97,7 +114,7 @@ def build_test_generation_context(database):
 
     from ptx_frontend.code_gen.context import build_generation_context
 
-    return build_generation_context(database, get_cpp_backend())
+    return build_generation_context(database, BACKEND)
 
 class ResolvedIrBuildTest(unittest.TestCase):
     @classmethod
@@ -227,7 +244,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ),
         )
 
-        emitted = _emit_modifier_default_descriptor(binding, cpp_backend.get_cpp_backend())
+        emitted = _emit_modifier_default_descriptor(binding, BACKEND)
 
         self.assertIn(
             ".kind = check_end::ResolvedModifierDefaultKind::ScalarType",
@@ -268,7 +285,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
     
         self.assertEqual(
-            _emit_modifier_default_descriptor(binding, cpp_backend.get_cpp_backend()),
+            _emit_modifier_default_descriptor(binding, BACKEND),
             "check_end::ResolvedModifierDefaultDescriptor{}",
         )
 
@@ -1059,7 +1076,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             with_cpp_backend_field_names,
         )
 
-        projected = with_cpp_backend_field_names(self.instruction)
+        projected = with_cpp_backend_field_names(self.instruction, BACKEND)
         variant = next(
             variant for variant in projected.variants if variant.variant_id == "add_sat"
         )
@@ -4456,7 +4473,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         state_space = replace(
             static_binding.allowed_address_state_spaces[0], availability=dnf
         )
-        state_source = _emit_address_state_spaces((state_space,), cpp_backend.get_cpp_backend())
+        state_source = _emit_address_state_spaces((state_space,), BACKEND)
         self.assertIn(".any_of_count = 1", state_source)
         self.assertIn("TargetFlavor::ArchitectureSpecific", state_source)
 
@@ -4478,7 +4495,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             parameter_binding,
             "vector_arities",
             "address_state_spaces",
-            cpp_backend.get_cpp_backend(),
+            BACKEND,
         )
         self.assertIn(".function_availability = {", parameter_source)
         self.assertIn(".any_of_count = 1", parameter_source)
@@ -5077,7 +5094,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             value="f32",
         )
 
-        emitted = _emit_modifier_value_domain_descriptor(entry, backend=cpp_backend.get_cpp_backend())
+        emitted = _emit_modifier_value_domain_descriptor(entry, backend=BACKEND)
 
         self.assertIn(
             ".value_kind = checker::ModifierValueKind::ScalarType",
@@ -5110,17 +5127,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported semantic rounding_mode"):
             _build_modifier_value_availability(modifier, value)
 
-    def test_resolved_ir_builds_without_a_configured_cpp_backend(self) -> None:
-        """Semantic normalization does not load C++ domain mappings."""
+    def test_resolved_ir_builds_without_a_cpp_backend(self) -> None:
+        """Semantic normalization does not require C++ domain mappings."""
 
-        cpp_backend.get_cpp_backend.cache_clear()
-        previous = cpp_backend._active_backend_spec
-        try:
-            cpp_backend._active_backend_spec = None
-            resolved = from_instruction_spec(self.database.instructions[0])
-        finally:
-            cpp_backend._active_backend_spec = previous
-            cpp_backend.get_cpp_backend.cache_clear()
+        resolved = from_instruction_spec(self.database.instructions[0])
 
         self.assertEqual(resolved.opcode, self.database.instructions[0].opcode)
 
@@ -5143,11 +5153,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             backend_path = Path(directory) / "backend.yaml"
             backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
-            self.addCleanup(
-                configure_cpp_backend,
-                REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml",
-            )
-            configure_cpp_backend(backend_path)
+            backend = load_cpp_backend(backend_path)
             emitted = emit_check_operand_view(
                 ResolvedField(
                     name="vector",
@@ -5156,7 +5162,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     source_name="vector",
                 ),
                 "instruction",
-                cpp_backend.get_cpp_backend(),
+                backend,
             )
 
         self.assertIn(".vector_arity = instruction.vector.value.elements.size()", emitted)

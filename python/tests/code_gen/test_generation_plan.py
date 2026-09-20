@@ -11,6 +11,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from typing import cast
 
 from ptx_frontend.code_gen.context import (
     GenerationContext,
@@ -23,6 +24,7 @@ from ptx_frontend.code_gen.emit.category_source import (
 from ptx_frontend.code_gen.emit.syntax_descriptors import generate_syntax_descriptor_source
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import build_generation_plan
+from ptx_frontend.ir.resolved_ir import ResolvedValueKind
 from ptx_frontend.spec.database import load_codegen_database
 
 
@@ -124,7 +126,7 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertIn("resolved_resolver", category_imports)
         self.assertIn("resolved_checker", category_imports)
 
-    def test_plan_is_the_only_artifact_inventory_and_needs_no_global_backend(self) -> None:
+    def test_plan_is_the_only_artifact_inventory(self) -> None:
         context = build_generation_context(self.database, self.backend)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "generated"
@@ -134,12 +136,8 @@ class GenerationPlanTests(unittest.TestCase):
                 plan.paths,
                 build_generation_plan(context, output).paths,
             )
-            with patch(
-                "ptx_frontend.code_gen.cpp_backend.get_cpp_backend",
-                side_effect=AssertionError("active emission consulted global backend"),
-            ):
-                for artifact in plan.artifacts:
-                    artifact.emit(context, output_path=artifact.path)
+            for artifact in plan.artifacts:
+                artifact.emit(context, output_path=artifact.path)
             self.assertEqual(
                 {path.relative_to(output) for path in plan.paths},
                 {path.relative_to(output) for path in output.rglob("*") if path.is_file()},
@@ -205,6 +203,130 @@ class GenerationPlanTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate artifact paths"):
                 build_generation_plan(context, output)
             self.assertFalse(output.exists())
+
+    def test_context_rejects_source_cpp_name_collision_before_emission(self) -> None:
+        first, second = self.entries_with_colliding_source_projection()
+
+        with self.assertRaisesRegex(ValueError, "multiple syntax instructions"):
+            GenerationContext(backend=self.backend, entries=(first, second))
+
+    def test_context_rejects_resolved_cpp_name_collision_via_replace(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+        first, second = context.entries[:2]
+        colliding_second = GenerationInstruction(
+            specification=second.specification,
+            resolved=replace(second.resolved, cpp_name=first.resolved.cpp_name),
+        )
+
+        with self.assertRaisesRegex(ValueError, "multiple resolved instructions"):
+            replace(context, entries=(first, colliding_second, *context.entries[2:]))
+
+    def test_context_rejects_unclassified_reference_payload_before_emission(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+        entry = context.entries[0]
+        variant = entry.resolved.variants[0]
+        layout = variant.operand_layouts[0]
+        unknown_field = replace(
+            layout.fields[0], value_kind=cast(ResolvedValueKind, object())
+        )
+        unknown_instruction = replace(
+            entry.resolved,
+            variants=(
+                replace(
+                    variant,
+                    operand_layouts=(
+                        replace(layout, fields=(unknown_field, *layout.fields[1:])),
+                        *variant.operand_layouts[1:],
+                    ),
+                ),
+                *entry.resolved.variants[1:],
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "explicit module-reference policy"):
+            GenerationContext(
+                backend=self.backend,
+                entries=(
+                    GenerationInstruction(
+                        specification=entry.specification,
+                        resolved=unknown_instruction,
+                    ),
+                    *context.entries[1:],
+                ),
+            )
+
+    def test_invalid_context_cli_has_no_filesystem_side_effects(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        first, second = self.instructions_with_colliding_source_projection()
+        invalid_database = replace(
+            self.database, instructions=(first, second, *self.database.instructions[2:])
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated"
+            legacy = output / "private/resolved_ir_legacy.gen.cpp"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("retain", encoding="utf-8")
+            previous = sys.argv
+            try:
+                sys.argv = [
+                    "codegen", "--spec-dir", str(SPEC_DIR), "--backend-spec",
+                    str(BACKEND_SPEC), "--output", str(output),
+                ]
+                with (
+                    patch("ptx_frontend.code_gen.cli.load_codegen_database", return_value=invalid_database),
+                    patch("ptx_frontend.code_gen.cli.format_file_inplace") as format_file,
+                    self.assertRaisesRegex(ValueError, "multiple syntax instructions"),
+                ):
+                    cli.main()
+            finally:
+                sys.argv = previous
+            self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
+            self.assertEqual(list(output.rglob("*.gen.*")), [legacy])
+            format_file.assert_not_called()
+
+    def entries_with_colliding_source_projection(
+        self,
+    ) -> tuple[GenerationInstruction, GenerationInstruction]:
+        """Return valid bindings whose source C++ projections collide."""
+
+        context = build_generation_context(self.database, self.backend)
+        first, second = context.entries[:2]
+        return (
+            GenerationInstruction(
+                specification=replace(first.specification, opcode="collision.name"),
+                resolved=replace(first.resolved, opcode="collision.name", cpp_name="First"),
+            ),
+            GenerationInstruction(
+                specification=replace(second.specification, opcode="collision_name"),
+                resolved=replace(second.resolved, opcode="collision_name", cpp_name="Second"),
+            ),
+        )
+
+    def instructions_with_colliding_source_projection(self):
+        """Return source instructions that lower and collide as C++ syntax types."""
+
+        first, second = self.database.instructions[:2]
+
+        def rename_opcode(instruction, opcode: str):
+            return replace(
+                instruction,
+                opcode=opcode,
+                variants=tuple(
+                    replace(
+                        variant,
+                        name=variant.name.replace(
+                            f"{instruction.opcode}_", f"{opcode}_", 1
+                        ),
+                    )
+                    for variant in instruction.variants
+                ),
+            )
+
+        return (
+            rename_opcode(first, "collision.name"),
+            rename_opcode(second, "collision_name"),
+        )
 
     def test_contexts_do_not_share_backend_alias_projection(self) -> None:
         aliases = dict(self.backend.domains["modifier_field_names"].values)

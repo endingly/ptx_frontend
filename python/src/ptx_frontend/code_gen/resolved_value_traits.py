@@ -116,7 +116,7 @@ def modifier_value_cpp_expr(
     kind: ResolvedValueKind,
     value: str | bool | int,
     *,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> str:
     """Convert one semantic modifier value to its configured C++ expression."""
 
@@ -139,7 +139,7 @@ def modifier_default_cpp_expr(
     kind: ResolvedValueKind,
     value: str | bool | int,
     *,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> str:
     """Convert a supported optional-modifier default to C++."""
 
@@ -157,7 +157,7 @@ def modifier_default_cpp_expr(
 def modifier_value_default_cpp_expr(
     kind: ResolvedValueKind,
     *,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> str:
     """Return the neutral C++ descriptor value for one modifier kind."""
 
@@ -175,7 +175,7 @@ def modifier_value_default_cpp_expr(
 def modifier_descriptor_default_members(
     *,
     unselected_value_expr: str | None = None,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> dict[ResolvedValueKind, str]:
     """Return C++ expressions for every unselected modifier descriptor member.
 
@@ -202,7 +202,7 @@ def modifier_descriptor_members(
     value_expr: str,
     *,
     unselected_value_expr: str | None = None,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> dict[ResolvedValueKind, str]:
     """Return descriptor members with one semantic value selected.
 
@@ -228,7 +228,7 @@ def modifier_value_descriptor_members(
     kind: ResolvedValueKind,
     value: str | bool | int,
     *,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> dict[ResolvedValueKind, str]:
     """Convert one semantic modifier value into descriptor member expressions."""
 

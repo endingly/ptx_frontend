@@ -37,19 +37,10 @@ def generate_syntax_descriptor_source(
 
     storage_definitions: list[str] = []
     getter_definitions: list[str] = []
-    generated_types: set[str] = set()
-
     for entry in context.entries:
         instruction = entry.specification
         descriptor = from_InstructionSpec(instruction)
         cpp_instruction_name = file_stem_to_pascal_case(descriptor.opcode)
-        if cpp_instruction_name in generated_types:
-            raise ValueError(
-                "cannot generate multiple syntax descriptors for C++ "
-                f"instruction type {cpp_instruction_name!r}"
-            )
-
-        generated_types.add(cpp_instruction_name)
         storage_definitions.append(_emit_instruction_descriptor_storage(descriptor, context.backend))
         getter_definitions.append(_emit_instruction_descriptor_getter(descriptor))
 

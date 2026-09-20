@@ -2,10 +2,9 @@ import unittest
 from types import SimpleNamespace
 
 from ptx_frontend.code_gen.cpp_backend import (
-    configure_cpp_backend,
     CppDomain,
     cpp_domain,
-    get_cpp_backend,
+    load_cpp_backend,
 )
 from ptx_frontend.code_gen.resolved_value_traits import (
     RESOLVED_MODIFIER_VALUE_KINDS,
@@ -43,7 +42,7 @@ from ptx_frontend.spec.resources import packaged_backend_spec
 class ResolvedValueTraitsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        configure_cpp_backend(packaged_backend_spec())
+        cls.backend = load_cpp_backend(packaged_backend_spec())
 
     def test_modifier_value_traits_cover_all_modifier_semantic_kinds(self) -> None:
         self.assertEqual(
@@ -98,6 +97,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             modifier_value_cpp_expr(
                 ResolvedValueKind.BOOL,
                 True,
+                backend=self.backend,
             ),
             "true",
         )
@@ -107,6 +107,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             modifier_value_cpp_expr(
                 ResolvedValueKind.SCALAR_TYPE,
                 "f32",
+                backend=self.backend,
             ),
             "ScalarType::F32",
         )
@@ -119,6 +120,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             modifier_default_cpp_expr(
                 ResolvedValueKind.COMPARISON_OPERATOR,
                 "eq",
+                backend=self.backend,
             )
 
         with self.assertRaisesRegex(
@@ -128,6 +130,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             modifier_default_cpp_expr(
                 ResolvedValueKind.VECTOR_ARITY,
                 "v4",
+                backend=self.backend,
             )
 
         combined_type_diagnostics = {
@@ -194,7 +197,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 else next(
                     value
                     for value in cpp_domain(
-                        resolved_modifier_value_traits(value_kind).cpp_domain
+                        resolved_modifier_value_traits(value_kind).cpp_domain,
+                        backend=self.backend,
                     ).values
                     if is_semantic_value(
                         semantic_domain_for_modifier(ModifierKind(source_kind)),
@@ -269,7 +273,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 else next(
                     iter(
                         cpp_domain(
-                            resolved_modifier_value_traits(value_kind).cpp_domain
+                            resolved_modifier_value_traits(value_kind).cpp_domain,
+                            backend=self.backend,
                         ).values
                     )
                 )
@@ -279,7 +284,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     source_kind_id="test",
                     value_kind=value_kind,
                     value=value,
-                ), backend=get_cpp_backend()
+                ), backend=self.backend
             )
             self.assertIn(
                 f".value_kind = checker::ModifierValueKind::{value_kind.value},",
@@ -312,7 +317,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                         else None
                     ),
                 ),
-                get_cpp_backend(),
+                self.backend,
             )
             self.assertIn(
                 ".scalar_type = "
@@ -341,7 +346,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                         value="eq",
                     ),
                 ),
-                get_cpp_backend(),
+                self.backend,
             )
 
     def test_modifier_descriptor_members_select_only_the_kind_member(self) -> None:
@@ -352,6 +357,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
         members = modifier_value_descriptor_members(
             ResolvedValueKind.SCALAR_TYPE,
             "f32",
+            backend=self.backend,
         )
 
         self.assertEqual(
@@ -384,6 +390,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
         members = modifier_value_descriptor_members(
             ResolvedValueKind.BOOL,
             True,
+            backend=self.backend,
         )
 
         self.assertEqual(

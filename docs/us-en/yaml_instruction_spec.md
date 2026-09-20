@@ -258,9 +258,9 @@ variant. The schema retains `same_as(...)`, `one_of(...)`, and
 them as unsupported.
 
 Every generated operand payload also needs an explicit module-reference policy.
-`emit.references` classifies each semantic payload in
-`_REFERENCE_VALUE_KINDS` or `_REFERENCE_FREE_VALUE_KINDS`; an unclassified type
-fails generation. Reference-bearing payloads are the resolved primitives that
+`code_gen.reference_policy` classifies each semantic payload in the public
+`REFERENCE_VALUE_KINDS` or `REFERENCE_FREE_VALUE_KINDS`; an unclassified type
+fails context construction before generation begins. Reference-bearing payloads are the resolved primitives that
 can carry bound declaration/symbol identity (for example register, predicate,
 symbol, address, vector, call/control, and tensor-coordinate forms). The
 generated `visit_instruction_references` visitor exposes them to module and

@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend, get_cpp_backend
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_descriptors import (
     generate_resolved_descriptor_source,
 )
@@ -37,12 +37,9 @@ from ptx_frontend.ir.syntax_ast import (
 )
 
 
-def setUpModule() -> None:
-    configure_cpp_backend(
-        REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
-    )
-
-
+BACKEND = load_cpp_backend(
+    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
 def _operand(kind: str, name: str, **extra: object) -> dict[str, object]:
     return {"name": name, "kind": kind, "role": "src", "access": "read", **extra}
 
@@ -93,7 +90,7 @@ def build_test_generation_context(database):
 
     from ptx_frontend.code_gen.context import build_generation_context
 
-    return build_generation_context(database, get_cpp_backend())
+    return build_generation_context(database, BACKEND)
 
 class ModernOperandPrimitiveTests(unittest.TestCase):
     @classmethod

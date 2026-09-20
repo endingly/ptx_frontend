@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .resolved_validation import validate_unique_cpp_names
 
 from pathlib import Path
 
@@ -20,7 +19,6 @@ def generate_resolved_dispatch_source(
 
 
     instructions = context.instructions
-    validate_unique_cpp_names(instructions)
     branches = "\n\n".join(
         emit_resolved_dispatch_branch(instruction) for instruction in instructions
     )

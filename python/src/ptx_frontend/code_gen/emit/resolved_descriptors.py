@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .resolved_validation import validate_unique_cpp_names
 
 from ptx_frontend.code_gen.context import GenerationContext
 
@@ -43,7 +42,6 @@ def generate_resolved_descriptor_source(
 
 
     instructions = context.instructions
-    validate_unique_cpp_names(instructions)
     storage_definitions = "\n\n".join(
         _emit_resolved_descriptor_storage(instruction, context.backend) for instruction in instructions
     )

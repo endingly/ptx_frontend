@@ -34,6 +34,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/code_gen/load_yaml.py",
         "ptx_frontend/code_gen/cpp_backend.py",
         "ptx_frontend/code_gen/resolved_field_names.py",
+        "ptx_frontend/code_gen/reference_policy.py",
         "ptx_frontend/ir/resolved_ir.py",
         "ptx_frontend/ir/syntax_ast.py",
         # The generator is a direct code_gen concern with semantic emitters.

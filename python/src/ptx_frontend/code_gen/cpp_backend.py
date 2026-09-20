@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from functools import cache
 from importlib.resources.abc import Traversable
 from typing import Any
 
@@ -99,34 +98,8 @@ class CppDomain(str, Enum):
 
 _REQUIRED_DOMAINS = frozenset(domain.value for domain in CppDomain)
 
-_active_backend_spec: Traversable | None = None
-
-
-def configure_cpp_backend(path: Traversable) -> None:
-    """Select the backend specification used by subsequent model/emitter calls."""
-
-    global _active_backend_spec
-    _active_backend_spec = path
-    get_cpp_backend.cache_clear()
-
-
-@cache
-def get_cpp_backend() -> CodegenUnit:
-    """Cache the active backend until configuration is explicitly replaced."""
-
-    if _active_backend_spec is None:
-        raise RuntimeError(
-            "C++ backend is not configured; " "call configure_cpp_backend(path) first"
-        )
-    return load_cpp_backend(_active_backend_spec)
-
-
 def load_cpp_backend(path: Traversable) -> CodegenUnit:
-    """Read and normalize a resource without requiring a hashable identity.
-
-    Direct loads always read the resource; configured backend access is cached
-    by :func:`get_cpp_backend` and invalidated by :func:`configure_cpp_backend`.
-    """
+    """Read and normalize one backend resource without requiring hashability."""
 
     raw = load_yaml(path)
     _validate_schema(path, raw)
@@ -158,19 +131,19 @@ def load_cpp_backend(path: Traversable) -> CodegenUnit:
     )
 
 
-def cpp_domain(name: CppDomain, *, backend: CodegenUnit | None = None) -> DomainBackend:
+def cpp_domain(name: CppDomain, *, backend: CodegenUnit) -> DomainBackend:
     """Return a required backend domain with a contextual error."""
 
     if not isinstance(name, CppDomain):
         raise TypeError("C++ backend domain must be identified by a CppDomain member")
     try:
-        return (backend if backend is not None else get_cpp_backend()).domains[name.value]
+        return backend.domains[name.value]
     except KeyError as error:
         raise ValueError(f"C++ backend has no domain {name.value!r}") from error
 
 
 def cpp_value(
-    domain_name: CppDomain, semantic_value: str, *, backend: CodegenUnit | None = None
+    domain_name: CppDomain, semantic_value: str, *, backend: CodegenUnit
 ) -> str:
     """Map one semantic value to its configured C++ spelling."""
 
@@ -185,14 +158,14 @@ def cpp_value(
 
 
 def cpp_optional_value(
-    domain_name: CppDomain, semantic_value: str, *, backend: CodegenUnit | None = None
+    domain_name: CppDomain, semantic_value: str, *, backend: CodegenUnit
 ) -> str | None:
     """Return an optional mapping, used for identity-preserving rewrites."""
 
     return cpp_domain(domain_name, backend=backend).values.get(semantic_value)
 
 
-def cpp_default(domain_name: CppDomain, *, backend: CodegenUnit | None = None) -> str:
+def cpp_default(domain_name: CppDomain, *, backend: CodegenUnit) -> str:
     """Return the required default/invalid expression of one domain."""
 
     domain = cpp_domain(domain_name, backend=backend)

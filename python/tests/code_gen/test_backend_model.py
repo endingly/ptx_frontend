@@ -3,11 +3,9 @@ from pathlib import Path
 from importlib.resources.abc import Traversable
 import tempfile
 import unittest
-from unittest.mock import patch
 
 import yaml
 
-from ptx_frontend.code_gen import cpp_backend
 from ptx_frontend.code_gen.resolved_field_names import (
     field_cpp_constant_expr,
     field_cpp_type,
@@ -15,7 +13,6 @@ from ptx_frontend.code_gen.resolved_field_names import (
 )
 from ptx_frontend.code_gen.cpp_backend import (
     CppDomain,
-    configure_cpp_backend,
     cpp_value,
     load_cpp_backend,
 )
@@ -81,7 +78,7 @@ class UnhashableResource(Traversable):
 
 class BackendModelTests(unittest.TestCase):
     def setUp(self) -> None:
-        configure_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC)
+        self.backend = load_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC)
 
     def test_loads_unhashable_resource_without_caching_direct_reads(self) -> None:
         """Direct loading accepts Traversable resources and rereads their data."""
@@ -92,34 +89,19 @@ class BackendModelTests(unittest.TestCase):
         self.assertIsNot(first, second)
         self.assertEqual(resource.reads, 2)
 
-    def test_configured_resource_cache_is_invalidated_on_configuration(self) -> None:
-        """Repeated access caches a resource until even the same one is reset."""
-        resource = UnhashableResource(REPOSITORY_CPP_BACKEND_SPEC)
-        self.addCleanup(configure_cpp_backend, REPOSITORY_CPP_BACKEND_SPEC)
-        configure_cpp_backend(resource)
-        first = cpp_backend.get_cpp_backend()
-        self.assertIs(cpp_backend.get_cpp_backend(), first)
-        self.assertEqual(resource.reads, 1)
-        configure_cpp_backend(resource)
-        self.assertIsNot(cpp_backend.get_cpp_backend(), first)
-        self.assertEqual(resource.reads, 2)
-
-    def test_reconfiguration_reloads_changed_resource_contents(self) -> None:
-        """Configuration fixes a snapshot while direct reads see file changes."""
-        self.addCleanup(configure_cpp_backend, REPOSITORY_CPP_BACKEND_SPEC)
+    def test_direct_load_rereads_changed_resource_contents(self) -> None:
+        """Each explicit load captures the resource contents at that call."""
         raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "backend.yaml"
             path.write_text(yaml.safe_dump(raw), encoding="utf-8")
             resource = UnhashableResource(path)
-            configure_cpp_backend(resource)
-            original = cpp_backend.get_cpp_backend()
+            original = load_cpp_backend(resource)
             raw["namespace"] = "custom::updated"
             path.write_text(yaml.safe_dump(raw), encoding="utf-8")
-            self.assertEqual(load_cpp_backend(resource).namespace, "custom::updated")
-            self.assertIs(cpp_backend.get_cpp_backend(), original)
-            configure_cpp_backend(resource)
-            self.assertEqual(cpp_backend.get_cpp_backend().namespace, "custom::updated")
+            updated = load_cpp_backend(resource)
+            self.assertNotEqual(original.namespace, "custom::updated")
+            self.assertEqual(updated.namespace, "custom::updated")
 
     def test_constructs_detached_cpp_backend_model(self) -> None:
         scalar_types = DomainBackend(
@@ -332,7 +314,7 @@ class BackendModelTests(unittest.TestCase):
             backend_path.write_text(
                 yaml.safe_dump(raw, sort_keys=False), encoding="utf-8"
             )
-            configure_cpp_backend(backend_path)
+            backend = load_cpp_backend(backend_path)
 
             field = ResolvedField(
                 name="type",
@@ -342,7 +324,9 @@ class BackendModelTests(unittest.TestCase):
                 storage=ResolvedFieldStorage.STATIC_CONSTANT,
                 constant_value="f32",
             )
-            self.assertEqual(field_cpp_constant_expr(field), "CustomType::F32")
+            self.assertEqual(
+                field_cpp_constant_expr(field, backend=backend), "CustomType::F32"
+            )
 
     def test_resolved_value_kind_is_independent_of_cpp_type_spelling(self) -> None:
         raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
@@ -356,7 +340,7 @@ class BackendModelTests(unittest.TestCase):
                 yaml.safe_dump(raw, sort_keys=False),
                 encoding="utf-8",
             )
-            configure_cpp_backend(backend_path)
+            backend = load_cpp_backend(backend_path)
 
             field = ResolvedField(
                 name="type",
@@ -370,17 +354,17 @@ class BackendModelTests(unittest.TestCase):
                 ResolvedValueKind.SCALAR_TYPE,
             )
             self.assertEqual(
-                field_value_cpp_type(field),
+                field_value_cpp_type(field, backend=backend),
                 "CustomScalarType",
             )
             self.assertEqual(
-                field_cpp_type(field),
+                field_cpp_type(field, backend=backend),
                 "WithLocs<CustomScalarType>",
             )
 
     def test_reports_missing_cpp_domain_value(self) -> None:
         with self.assertRaisesRegex(ValueError, "has no value 'missing'"):
-            cpp_value(CppDomain.SCALAR_TYPES, "missing")
+            cpp_value(CppDomain.SCALAR_TYPES, "missing", backend=self.backend)
 
     def test_valid_frontend_value_can_fail_only_at_codegen_capability(self) -> None:
         """PTX legality is broader than the configured C++ value map."""
@@ -414,18 +398,11 @@ class BackendModelTests(unittest.TestCase):
         field = from_instruction_spec(instruction).variants[0].modifier_fields[0]
 
         with self.assertRaisesRegex(ValueError, "has no value 'u4'"):
-            field_cpp_constant_expr(field)
-
-    def test_requires_explicit_cpp_backend_configuration(self) -> None:
-        with patch.object(cpp_backend, "_active_backend_spec", None):
-            with self.assertRaisesRegex(
-                RuntimeError, "C\\+\\+ backend is not configured"
-            ):
-                cpp_backend.get_cpp_backend()
+            field_cpp_constant_expr(field, backend=self.backend)
 
     def test_cpp_lookup_rejects_string_domain_identifiers(self) -> None:
         with self.assertRaisesRegex(TypeError, "CppDomain member"):
-            cpp_value("scalar_types", "f32")  # type: ignore[arg-type]
+            cpp_value("scalar_types", "f32", backend=self.backend)  # type: ignore[arg-type]
 
     def test_rejects_missing_required_cpp_domain(self) -> None:
         raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))

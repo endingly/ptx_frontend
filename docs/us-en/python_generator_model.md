@@ -145,6 +145,13 @@ checker emission read the resolved side. The resolved tuple exposed for
 compatibility is derived from the bindings, so source and resolved order cannot
 drift independently.
 
+Context construction performs a finite structural preflight before an emitter
+can create a directory or write a file: source opcode projections and resolved
+C++ names must each be unique, and every resolved operand payload kind must
+have a module-reference policy. This validates the frozen snapshot, not every
+possible rendering or filesystem failure. The checks also run for direct
+`GenerationContext` construction and `dataclasses.replace`.
+
 | Output | Emitter | Contents |
 | --- | --- | --- |
 | `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs, their alternative union, and module-reference visitors; paired declarations come from `emit.resolved_resolver` and `emit.resolved_checker` |
@@ -188,6 +195,11 @@ embed wall-clock time by default. If the build environment provides the
 standard `SOURCE_DATE_EPOCH`, the warning uses that deterministic UTC time;
 otherwise it explicitly marks the time as omitted. Identical specs and
 backend specs and generator inputs therefore produce byte-identical content.
+
+Backend lookup helpers require an explicit `CodegenUnit`, supplied by the
+context or the emitting call. The generator has no process-global active
+backend, configuration step, or backend cache, so independent generation
+snapshots cannot select each other's C++ spelling.
 
 ### Backend configuration boundary
 

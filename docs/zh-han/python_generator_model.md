@@ -128,6 +128,11 @@ normalized `InstructionSpec` 都与其一次 lowered、backend-projected 的
 source 一侧；model、descriptor、resolver 与 checker emission 读取 resolved 一侧。
 为兼容性保留的 resolved tuple 由 binding 派生，因此 source 与 resolved 的顺序不能独立漂移。
 
+context 构造会在任何 emitter 创建目录或写文件之前执行有限的结构 preflight：source opcode
+投影和 resolved C++ 名称必须各自唯一，且每个 resolved operand payload kind 都必须有
+module-reference policy。它只验证冻结 snapshot，而不声称能预测所有 rendering 或 filesystem
+失败。direct `GenerationContext` 构造与 `dataclasses.replace` 也会执行这些检查。
+
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
 | `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs、alternative union 与 module-reference visitor；配套声明由 `emit.resolved_resolver` 与 `emit.resolved_checker` 提供 |
@@ -162,6 +167,10 @@ specialization 声明位于公共头的单一 `checker` namespace，每个 categ
 生成文件不会默认嵌入 wall-clock 时间；若构建环境提供
 标准 `SOURCE_DATE_EPOCH`，生成警告会使用该确定性 UTC 时间，否则明确标记时间已省略。
 因此相同 ISA spec、backend spec 和生成器输入会产生 byte-identical 内容。
+
+backend lookup helper 必须接收由 context 或 emitting call 显式传入的 `CodegenUnit`。
+生成器没有 process-global active backend、配置步骤或 backend cache，因此独立的 generation
+snapshot 不会选择彼此的 C++ spelling。
 
 ### Backend 配置边界
 

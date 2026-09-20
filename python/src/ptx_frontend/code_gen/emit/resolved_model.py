@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .resolved_validation import validate_unique_cpp_names
 
 from pathlib import Path
 
@@ -16,7 +15,7 @@ from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
 )
-from .references import emit_reference_visitor, validate_reference_field_types
+from .references import emit_reference_visitor
 
 def generate_resolved_ir_header(
     context: GenerationContext,
@@ -33,8 +32,6 @@ def generate_resolved_ir_header(
 
 
     instructions = context.instructions
-    validate_unique_cpp_names(instructions)
-    validate_reference_field_types(instructions)
 
     definitions = "\n\n".join(
         emit_resolved_instruction_definition(instruction, context.backend)

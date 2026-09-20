@@ -15,20 +15,20 @@ from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import ConditionCodeEffect
 
 
-def field_value_cpp_type(field: ResolvedField, *, backend: CodegenUnit | None = None) -> str:
+def field_value_cpp_type(field: ResolvedField, *, backend: CodegenUnit) -> str:
     """Return the backend C++ payload type for one semantic resolved field."""
 
     return cpp_value(CppDomain.RESOLVED_VALUE_CPP_TYPES, field.value_kind.value, backend=backend)
 
 
-def field_cpp_type(field: ResolvedField, *, backend: CodegenUnit | None = None) -> str:
+def field_cpp_type(field: ResolvedField, *, backend: CodegenUnit) -> str:
     """Return the emitted member type, including location storage when needed."""
 
     value_type = field_value_cpp_type(field, backend=backend)
     return value_type if field.storage is ResolvedFieldStorage.STATIC_CONSTANT else f"WithLocs<{value_type}>"
 
 
-def field_cpp_constant_expr(field: ResolvedField, *, backend: CodegenUnit | None = None) -> str:
+def field_cpp_constant_expr(field: ResolvedField, *, backend: CodegenUnit) -> str:
     """Return the C++ expression for a fixed semantic modifier field."""
 
     if field.storage is not ResolvedFieldStorage.STATIC_CONSTANT or field.constant_value is None:
@@ -44,7 +44,7 @@ def condition_code_cpp_value(effect: ConditionCodeEffect) -> str:
 
 def with_cpp_backend_field_names(
     instruction: ResolvedInstruction,
-    backend: CodegenUnit | None = None,
+    backend: CodegenUnit,
 ) -> ResolvedInstruction:
     """Apply backend member aliases after semantic resolved-IR construction.
 
@@ -64,7 +64,7 @@ def with_cpp_backend_field_names(
 
 def _with_cpp_backend_variant_field_names(
     variant: ResolvedVariant,
-    backend: CodegenUnit | None,
+    backend: CodegenUnit,
 ) -> ResolvedVariant:
     """Project one variant's modifier field identities into backend aliases."""
 

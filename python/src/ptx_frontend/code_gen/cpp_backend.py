@@ -12,11 +12,6 @@ from .load_yaml import load_yaml
 from .model import (
     CodegenUnit,
     DomainBackend,
-    EmitAlternativeBackend,
-    EmitBackend,
-    InstructionBackend,
-    ModifierBackend,
-    OperandBackend,
     RuntimeLookupKind,
 )
 from ptx_frontend.spec.resources import packaged_backend_spec_schema
@@ -49,12 +44,6 @@ class CppDomain(str, Enum):
     PARAMETER_DIRECTIONS = "parameter_directions"
     REGISTER_WIDTH_POLICIES = "register_width_policies"
     IMMEDIATE_CONVERSION_POLICIES = "immediate_conversion_policies"
-    MODIFIER_VALUE_CPP_TYPES = (  # YAML: domains.modifier_value_cpp_types
-        "modifier_value_cpp_types"
-    )
-    OPERAND_VALUE_CPP_TYPES = (  # YAML: domains.operand_value_cpp_types
-        "operand_value_cpp_types"
-    )
     RESOLVED_VALUE_CPP_TYPES = (  # YAML: domains.resolved_value_cpp_types
         "resolved_value_cpp_types"
     )
@@ -102,10 +91,15 @@ def load_cpp_backend(path: Traversable) -> CodegenUnit:
     """Read and normalize one backend resource without requiring hashability."""
 
     raw = load_yaml(path)
-    _validate_schema(path, raw)
     schema = str(raw.get("schema", ""))
-    if schema != "ptx-cpp-backend/v1":
+    if schema == "ptx-cpp-backend/v1":
+        raise ValueError(
+            f"{path}: backend schema {schema!r} is retired; migrate to "
+            "'ptx-cpp-backend/v2'"
+        )
+    if schema != "ptx-cpp-backend/v2":
         raise ValueError(f"{path}: unsupported backend schema {schema!r}")
+    _validate_schema(path, raw)
     if raw.get("backend") != "cpp":
         raise ValueError(f"{path}: backend must be 'cpp'")
 
@@ -116,17 +110,9 @@ def load_cpp_backend(path: Traversable) -> CodegenUnit:
             f"{path}: C++ backend is missing required domains "
             f"{sorted(missing_domains)}"
         )
-    instructions = _normalize_instruction_backends(path, raw.get("instructions", {}))
-    includes = _normalize_includes(path, raw.get("includes"))
-
     return CodegenUnit(
         spec_schema=str(raw.get("spec_schema", "ptx-instr/v1")),
         backend_schema=schema,
-        category=str(raw.get("category", "all")),
-        namespace=str(raw.get("namespace", "ptx_frontend::resolved_ir")),
-        includes=includes,
-        instructions=(),
-        backends=instructions,
         domains=domains,
     )
 
@@ -182,6 +168,11 @@ def _normalize_domains(
 
     domains: dict[str, DomainBackend] = {}
     for name, raw_domain_object in raw_domains.items():
+        if name not in _REQUIRED_DOMAINS:
+            raise ValueError(
+                f"{path}: C++ backend has unsupported domain {name!r}; "
+                "the current backend domain contract is closed"
+            )
         if not isinstance(raw_domain_object, dict):
             raise TypeError(f"{path}: domain {name!r} must be a mapping")
         raw_values = raw_domain_object.get("values")
@@ -227,105 +218,6 @@ def _normalize_domains(
             runtime_lookup=runtime_lookup,
         )
     return domains
-
-
-def _normalize_instruction_backends(
-    path: Traversable, raw_instructions: object
-) -> dict[str, InstructionBackend]:
-    """Retain the restored instruction-backend model for future consumers."""
-
-    if raw_instructions is None:
-        return {}
-    if not isinstance(raw_instructions, dict):
-        raise TypeError(f"{path}: backend instructions must be a mapping")
-
-    result: dict[str, InstructionBackend] = {}
-    for opcode, raw_instruction_object in raw_instructions.items():
-        if not isinstance(raw_instruction_object, dict):
-            raise TypeError(f"{path}: backend instruction {opcode!r} is invalid")
-        raw_emit = raw_instruction_object.get("emit", {"kind": "direct"})
-        if not isinstance(raw_emit, dict):
-            raise TypeError(f"{path}: instruction {opcode!r} emit is invalid")
-        alternatives = tuple(
-            EmitAlternativeBackend(
-                name=str(raw_alternative["name"]),
-                variants=tuple(
-                    str(value) for value in raw_alternative.get("variants", ())
-                ),
-            )
-            for raw_alternative in raw_emit.get("alternatives", ())
-            if isinstance(raw_alternative, dict)
-        )
-        emit = EmitBackend(
-            kind=str(raw_emit.get("kind", "direct")),
-            instance=_optional_string(raw_emit.get("instance")),
-            type=_optional_string(raw_emit.get("type")),
-            alternatives=alternatives,
-        )
-        modifiers = {
-            str(name): ModifierBackend(
-                field=str(raw_modifier.get("field", name)),
-                cpp_type=_optional_string(raw_modifier.get("cpp_type")),
-                domain=_optional_string(raw_modifier.get("domain")),
-                default=_optional_string(raw_modifier.get("default")),
-            )
-            for name, raw_modifier in raw_instruction_object.get(
-                "modifiers", {}
-            ).items()
-            if isinstance(raw_modifier, dict)
-        }
-        operands = {
-            str(name): OperandBackend(
-                field=str(raw_operand.get("field", name)),
-                cpp_type=str(raw_operand.get("cpp_type", "Operand")),
-            )
-            for name, raw_operand in raw_instruction_object.get("operands", {}).items()
-            if isinstance(raw_operand, dict)
-        }
-        printer = raw_instruction_object.get("printer", {})
-        type_checker = raw_instruction_object.get("type_checker", {})
-        visitor = raw_instruction_object.get("visitor", {})
-        result[str(opcode)] = InstructionBackend(
-            opcode=str(opcode),
-            cpp=str(raw_instruction_object.get("cpp", opcode)),
-            emit=emit,
-            modifiers=modifiers,
-            operands=operands,
-            type_checker_rule=_mapping_optional_string(type_checker, "rule"),
-            visitor_name=_mapping_optional_string(visitor, "visit_name"),
-            modifier_order=_mapping_string_tuple(printer, "modifier_order"),
-            operand_order=_mapping_string_tuple(printer, "operand_order"),
-        )
-    return result
-
-
-def _normalize_includes(
-    path: Traversable, raw_includes: object
-) -> tuple[str, ...] | None:
-    if raw_includes is None:
-        return None
-    if not isinstance(raw_includes, list):
-        raise TypeError(f"{path}: backend includes must be a list")
-    return tuple(str(include) for include in raw_includes)
-
-
-def _optional_string(value: Any) -> str | None:
-    return None if value is None else str(value)
-
-
-def _mapping_optional_string(mapping: object, key: str) -> str | None:
-    if not isinstance(mapping, dict):
-        return None
-    return _optional_string(mapping.get(key))
-
-
-def _mapping_string_tuple(mapping: object, key: str) -> tuple[str, ...]:
-    if not isinstance(mapping, dict):
-        return ()
-    values = mapping.get(key, ())
-    if not isinstance(values, (list, tuple)):
-        return ()
-    return tuple(str(value) for value in values)
 
 
 def _validate_schema(path: Traversable, raw: dict[str, Any]) -> None:

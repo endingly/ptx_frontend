@@ -207,8 +207,8 @@ snapshots cannot select each other's C++ spelling.
 ### Backend configuration boundary
 
 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and
-`instructions/schemas/ptx-cpp-backend-v1.schema.yaml` are retained as a
-separate C++ backend configuration layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
+`instructions/ptx-cpp-backend-v2.schema.yaml` form a separate C++ backend
+mapping layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
 `domains` into `DomainBackend`; Syntax, Resolved, and checker emitters use only
 typed lookups for C++ spellings. Lookup APIs require a `CppDomain` enum member,
 such as `CppDomain.SCALAR_TYPES`, rather than a bare string. Current domains
@@ -217,22 +217,35 @@ presence, operand roles/access/shapes, type-expression kinds, and checker
 modifier kinds.
 
 A backend spec must not duplicate PTX ISA semantics from `ptx_spec` or alter
-the normalized `InstructionSpec`. `DomainBackend` and `CodegenUnit` now serve
-the active generation path. `InstructionBackend` and `EmitBackend` remain
-reserved for future per-instruction overrides; the current `instructions`
-mapping is empty and cannot alter Resolved IR variant/layout structure.
-Emitters never read raw YAML dictionaries, and a missing domain/value is a
-generation-time `ValueError`. The loader performs JSON Schema validation before
-checking that every domain required by the active generation path exists.
-CMake tracks both the backend YAML and its schema as generation dependencies,
-so changing a C++ mapping regenerates all affected artifacts.
+the normalized `InstructionSpec`. Its only generated inputs are the ISA schema
+version, backend schema version, and closed set of C++ mapping domains;
+per-instruction layout, emit, namespace, include, and category policy are not
+accepted. `CodegenUnit` contains only those inputs. Emitters never read raw YAML
+dictionaries, and a missing, unknown, or unmapped domain value is a
+generation-time `ValueError`. The loader rejects retired
+`ptx-cpp-backend/v1` files with a migration diagnostic before v2 schema
+validation; consumers must migrate imports and construction to the narrowed
+`CodegenUnit(spec_schema, backend_schema, domains)` contract. CMake tracks both
+the backend YAML and its schema as generation dependencies, so changing a C++
+mapping regenerates all affected artifacts.
+
+To migrate a backend file, change its schema tag and YAML-language-server header
+from v1 to v2, then remove `target`, `category`, `namespace`, `includes`,
+`common`, `emit_kinds`, and `instructions`. Remove the retired
+`modifier_value_cpp_types` and `operand_value_cpp_types` domains and any value
+`token` or `aliases` entries. `Emit*`, `InstructionBackend`, `ModifierBackend`,
+and `OperandBackend` are no longer importable; use `DomainBackend` and the
+narrowed `CodegenUnit` instead. PTX ISA files remain `ptx-instr/v1`.
 
 Domains that must parse PTX source suffixes at runtime declare
 `runtime_lookup: ptx_suffix`. The generator emits their mappings as private
 `inline constexpr std::array` tables in `resolved_value_domains.gen.hpp`.
 The handwritten resolver owns one generic suffix-search algorithm and does not
-repeat scalar-type or rounding-mode mapping data. Domains without this marker
-remain generation-only mappings and do not produce runtime tables.
+repeat scalar-type or rounding-mode mapping data. A marked domain's `cpp_type`
+sets the generated table value type. Without `runtime_lookup`, `cpp_type` is
+type annotation only; it does not choose an instruction field type, which comes
+from the `resolved_value_cpp_types` mapping. Domains without this marker remain
+generation-only mappings and do not produce runtime tables.
 
 ## Generation rules
 

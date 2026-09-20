@@ -58,7 +58,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/scripts/validate_yaml.py",
         # Packaged schemas and specification resources.
         "ptx_frontend/spec/resources/ptx-instr-v1.schema.yaml",
-        "ptx_frontend/spec/resources/ptx-cpp-backend-v1.schema.yaml",
+        "ptx_frontend/spec/resources/ptx-cpp-backend-v2.schema.yaml",
         "ptx_frontend/spec/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
         "ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml",
         # Distribution metadata.

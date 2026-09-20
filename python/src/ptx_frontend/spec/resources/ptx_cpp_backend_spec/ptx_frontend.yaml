@@ -1,14 +1,12 @@
-# yaml-language-server: $schema=../ptx-cpp-backend-v1.schema.yaml
+# yaml-language-server: $schema=../ptx-cpp-backend-v2.schema.yaml
 
-schema: ptx-cpp-backend/v1
+schema: ptx-cpp-backend/v2
 backend: cpp
-target: all
 spec_schema: ptx-instr/v1
-category: common
-namespace: ptx_frontend::resolved_ir
 
-# This file owns C++ spellings and explicitly declared runtime lookup tables.
-# PTX legality, variants, layouts, and availability remain in the packaged PTX spec.
+# This file maps normalized semantic values to C++ expressions and declares
+# runtime lookup tables. PTX legality, variants, layouts, and availability stay
+# in the packaged PTX ISA specification.
 domains:
   scalar_types:
     cpp_type: ScalarType
@@ -237,62 +235,6 @@ domains:
       Narrow: check_end::ImmediateConversionPolicy::Narrow
       RequireTargetRange: check_end::ImmediateConversionPolicy::RequireTargetRange
 
-  modifier_value_cpp_types:
-    cpp_type: CppType
-    values:
-      flag: bool
-      type: ScalarType
-      rounding: RoundingMode
-      comparison: ComparisonOperator
-      boolean_op: BooleanOperator
-      cache: CacheOperator
-      eviction_priority: EvictionPriority
-      prefetch_size: PrefetchSize
-      semantics: MemoryConsistency
-      scope: MemoryScope
-      vector: VectorArity
-      state_space: MemoryStateSpace
-      phase_type: MbarrierPhaseType
-      mbarrier_layout: MbarrierLayout
-      proxy: AsyncProxyKind
-      proxy_pair: ProxyKindPair
-
-  operand_value_cpp_types:
-    cpp_type: CppType
-    values:
-      reg: ResolvedRegisterRef
-      imm: ResolvedImmediate
-      reg_or_imm: RegOrImm
-      reg_or_sink: ResolvedRegisterOrSink
-      shfl_dest: ResolvedShflSyncDestination
-      pred_pair: ResolvedPredicatePair
-      pred_pair_or_sink: ResolvedPredicatePairOrSink
-      mov_scalar_src: ResolvedMovSource
-      cluster_address: ResolvedMovSource
-      vector_reg: ResolvedVectorRegisterRef
-      vector_sreg: ResolvedVectorSpecialRegisterRef
-      pred: ResolvedPredicate
-      pred_or_sink: ResolvedPredicateOrSink
-      pred_source: ResolvedPredicateSource
-      pred_or_sreg: ResolvedPredicateSource
-      pred_or_not: ResolvedPredicate
-      label: ResolvedBranchTarget
-      sreg: ResolvedSpecialRegisterRef
-      symbol: ResolvedSymbolRef
-      addr: ResolvedAddress
-      reg_vector: ResolvedRegisterVector
-      descriptor: ResolvedRegisterRef
-      typed_token: ResolvedRegisterRef
-      mbarrier_state_token: ResolvedMbarrierStateToken
-      tensor_coordinate: ResolvedTensorCoordinate
-      matrix_fragment: ResolvedRegisterVector
-      direct_call_target: ResolvedFunctionRef
-      indirect_call_target: ResolvedIndirectCallee
-      indirect_call_metadata: ResolvedIndirectCallee
-      branch_target_set: ResolvedBranchTargetSet
-      call_return_param: ResolvedCallParameterRef
-      call_arguments: ResolvedCallArguments
-
   resolved_value_cpp_types:
     cpp_type: CppType
     values:
@@ -506,7 +448,3 @@ domains:
       MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
       AsyncProxyKind: checker::ModifierValueKind::AsyncProxyKind
       ProxyKindPair: checker::ModifierValueKind::ProxyKindPair
-
-# Per-instruction C++ overrides remain available in the model/schema, but the
-# current resolved-IR generator derives instruction structure from ISA YAML.
-instructions: {}

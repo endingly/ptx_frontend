@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_value
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from ptx_frontend.code_gen.resolved_value_traits import modifier_default_cpp_expr, modifier_descriptor_members
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage, ResolvedInstruction,
@@ -15,6 +15,12 @@ def _cpp(backend: CodegenUnit, domain: CppDomain, value: str) -> str:
     """Map an emitted semantic operand value through this run's backend."""
 
     return cpp_value(domain, value, backend=backend)
+
+
+def _cpp_default(backend: CodegenUnit, domain: CppDomain) -> str:
+    """Return an emitted C++ default from this run's semantic domain."""
+
+    return cpp_default(domain, backend=backend)
 
 def emit_check_modifier_view(
     instruction: ResolvedInstruction,
@@ -191,7 +197,7 @@ def emit_check_operand_view(
                     view.vector_element_shapes[index] =
                         {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
                     view.vector_element_types[index] =
-                        element->declared_type.value_or(ScalarType::Invalid);
+                        element->declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)});
                   }} else {{
                     ++view.vector_sink_count;
                   }}
@@ -218,7 +224,7 @@ def emit_check_operand_view(
                     view.vector_element_shapes[index] =
                         {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
                     view.vector_element_types[index] =
-                        register_ref->declared_type.value_or(ScalarType::Invalid);
+                        register_ref->declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)});
                   }} else {{
                     const auto& immediate = std::get<ResolvedImmediate>(element);
                     view.vector_element_shapes[index] =
@@ -244,7 +250,7 @@ def emit_check_operand_view(
                      index < view.vector_arity &&
                      index < view.vector_element_types.size(); ++index)
                   view.vector_element_types[index] =
-                      register_ref.declared_type.value_or(ScalarType::Invalid);
+                      register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)});
                 return view;
               }}()"""
     if field.value_kind is ResolvedValueKind.VECTOR_SPECIAL_REGISTER:
@@ -318,7 +324,7 @@ def emit_check_operand_view(
                   .field_id = "{field.name}",
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
                   .immediate_type = std::nullopt,
-                  .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or(ScalarType::Invalid), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or(ScalarType::Invalid)}},
+                  .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)}), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)})}},
                   .destination_predicate_negated = {object_name}.{field.name}.value.first.negated || {object_name}.{field.name}.value.second.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -328,7 +334,7 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
                   .immediate_type = std::nullopt,
                   .predicate_pair_has_destination = static_cast<bool>({object_name}.{field.name}.value.first) || static_cast<bool>({object_name}.{field.name}.value.second),
-                  .predicate_pair_types = {{{object_name}.{field.name}.value.first ? {object_name}.{field.name}.value.first->register_ref.declared_type.value_or(ScalarType::Invalid) : ScalarType::Invalid, {object_name}.{field.name}.value.second ? {object_name}.{field.name}.value.second->register_ref.declared_type.value_or(ScalarType::Invalid) : ScalarType::Invalid}},
+                  .predicate_pair_types = {{{object_name}.{field.name}.value.first ? {object_name}.{field.name}.value.first->register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)}) : {_cpp_default(backend, CppDomain.SCALAR_TYPES)}, {object_name}.{field.name}.value.second ? {object_name}.{field.name}.value.second->register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)}) : {_cpp_default(backend, CppDomain.SCALAR_TYPES)}}},
                   .destination_predicate_negated = ({object_name}.{field.name}.value.first && {object_name}.{field.name}.value.first->negated) || ({object_name}.{field.name}.value.second && {object_name}.{field.name}.value.second->negated),
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -382,7 +388,7 @@ def emit_check_operand_view(
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
-                      .immediate_type = ScalarType::Pred,
+                      .immediate_type = {_cpp(backend, CppDomain.SCALAR_TYPES, "pred")},
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
@@ -442,26 +448,26 @@ def emit_check_operand_view(
                 const auto* symbol = std::get_if<ResolvedSymbolRef>(
                     &{object_name}.{field.name}.value.base);
                 std::optional<MemoryStateSpace> effective_state_space;
-                ParameterDirection parameter_direction = ParameterDirection::None;
+                ParameterDirection parameter_direction = {_cpp_default(backend, CppDomain.PARAMETER_DIRECTIONS)};
                 if (symbol != nullptr && symbol->address_state_space) {{
                   // Preserve the declaration-derived effective space. In
                   // particular, device parameters may produce local rather
                   // than declaration-space addresses in other instructions.
                   switch (*symbol->address_state_space) {{
                     case syntax_ast::AstStateSpace::Global:
-                      effective_state_space = MemoryStateSpace::Global;
+                      effective_state_space = {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "global")};
                       break;
                     case syntax_ast::AstStateSpace::Shared:
-                      effective_state_space = MemoryStateSpace::Shared;
+                      effective_state_space = {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "shared")};
                       break;
                     case syntax_ast::AstStateSpace::Local:
-                      effective_state_space = MemoryStateSpace::Local;
+                      effective_state_space = {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "local")};
                       break;
                     case syntax_ast::AstStateSpace::Parameter:
-                      effective_state_space = MemoryStateSpace::Parameter;
+                      effective_state_space = {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "param")};
                       break;
                     case syntax_ast::AstStateSpace::Constant:
-                      effective_state_space = MemoryStateSpace::Constant;
+                      effective_state_space = {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "const")};
                       break;
                     case syntax_ast::AstStateSpace::Register:
                       break;
@@ -470,10 +476,10 @@ def emit_check_operand_view(
                 if (symbol != nullptr && symbol->declaration_kind) {{
                   if (*symbol->declaration_kind ==
                       binding::SymbolKind::InputParameter) {{
-                    parameter_direction = ParameterDirection::Input;
+                    parameter_direction = {_cpp(backend, CppDomain.PARAMETER_DIRECTIONS, "input")};
                   }} else if (*symbol->declaration_kind ==
                              binding::SymbolKind::ReturnParameter) {{
-                    parameter_direction = ParameterDirection::Return;
+                    parameter_direction = {_cpp(backend, CppDomain.PARAMETER_DIRECTIONS, "return")};
                   }} else if (*symbol->declaration_kind ==
                              binding::SymbolKind::CallParameter) {{
                     parameter_direction = ParameterDirection::CallArgument;
@@ -552,15 +558,15 @@ def emit_check_operand_view(
                     return std::nullopt;
                   switch (*symbol->address_state_space) {{
                     case syntax_ast::AstStateSpace::Global:
-                      return MemoryStateSpace::Global;
+                      return {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "global")};
                     case syntax_ast::AstStateSpace::Shared:
-                      return MemoryStateSpace::Shared;
+                      return {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "shared")};
                     case syntax_ast::AstStateSpace::Local:
-                      return MemoryStateSpace::Local;
+                      return {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "local")};
                     case syntax_ast::AstStateSpace::Parameter:
-                      return MemoryStateSpace::Parameter;
+                      return {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "param")};
                     case syntax_ast::AstStateSpace::Constant:
-                      return MemoryStateSpace::Constant;
+                      return {_cpp(backend, CppDomain.MEMORY_STATE_SPACES, "const")};
                     case syntax_ast::AstStateSpace::Register:
                       return std::nullopt;
                   }}

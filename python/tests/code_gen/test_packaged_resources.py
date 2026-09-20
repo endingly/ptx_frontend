@@ -21,7 +21,7 @@ class PackagedResourceTests(unittest.TestCase):
             )
 
     def test_packaged_schemas_match_compatibility_paths(self) -> None:
-        for name in ("ptx-instr-v1.schema.yaml", "ptx-cpp-backend-v1.schema.yaml"):
+        for name in ("ptx-instr-v1.schema.yaml", "ptx-cpp-backend-v2.schema.yaml"):
             self.assertEqual(
                 (RESOURCES / name).read_bytes(),
                 (ROOT / "instructions" / name).read_bytes(),

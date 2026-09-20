@@ -447,10 +447,10 @@ class InstructionSpec:
 # C++ backend model
 # -----------------------------------------------------------------------------
 #
-# ``DomainBackend`` is consumed by the current generation path for all
-# semantic-value-to-C++ spelling/type mappings.  Per-instruction emit policy
-# remains modeled for future consumers, but does not control the current
-# resolved-IR structure.
+# ``DomainBackend`` is consumed by the current generation path for semantic
+# value-to-C++ spelling mappings. Its ``cpp_type`` determines a generated
+# runtime lookup table's value type when ``runtime_lookup`` is set; otherwise
+# it is type metadata and never controls an instruction field layout.
 
 
 @dataclass(frozen=True)
@@ -464,71 +464,9 @@ class DomainBackend:
 
 
 @dataclass(frozen=True)
-class ModifierBackend:
-    """C++ field and value-domain mapping for one instruction modifier."""
-
-    field: str
-    cpp_type: str | None = None
-    domain: str | None = None
-    default: str | None = None
-
-
-@dataclass(frozen=True)
-class OperandBackend:
-    """C++ field and type mapping for one instruction operand."""
-
-    field: str
-    cpp_type: str
-
-
-@dataclass(frozen=True)
-class EmitAlternativeBackend:
-    """One nested C++ representation and the PTX variants assigned to it."""
-
-    name: str
-    variants: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class EmitBackend:
-    """C++ storage-shape policy for one generated instruction."""
-
-    kind: str
-    instance: str | None = None
-    type: str | None = None
-    alternatives: tuple[EmitAlternativeBackend, ...] = ()
-
-
-@dataclass(frozen=True)
-class InstructionBackend:
-    """Complete C++ backend mapping for one PTX opcode."""
-
-    opcode: str
-    cpp: str
-    emit: EmitBackend
-    modifiers: dict[str, ModifierBackend]
-    operands: dict[str, OperandBackend]
-    type_checker_rule: str | None = None
-    visitor_name: str | None = None
-    modifier_order: tuple[str, ...] = ()
-    operand_order: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class CodegenUnit:
-    """Aggregate normalized PTX semantics and C++ backend data.
-
-    The backend loader currently returns a backend-only unit with an empty
-    ``instructions`` tuple; the ISA database continues to own merged
-    instructions. This keeps C++ mappings typed without coupling PTX database
-    discovery to one backend.
-    """
+    """Normalized C++ mappings bound to one PTX ISA schema version."""
 
     spec_schema: str
     backend_schema: str
-    category: str
-    namespace: str
-    includes: tuple[str, ...] | None
-    instructions: tuple[InstructionSpec, ...]
-    backends: dict[str, InstructionBackend]
     domains: dict[str, DomainBackend]

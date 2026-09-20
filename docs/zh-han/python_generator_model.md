@@ -178,8 +178,8 @@ snapshot 不会选择彼此的 C++ spelling。
 ### Backend 配置边界
 
 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 及其
-`instructions/schemas/ptx-cpp-backend-v1.schema.yaml` 作为独立的 C++ backend
-配置层。`ptx_frontend.code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
+`instructions/ptx-cpp-backend-v2.schema.yaml` 构成独立的 C++ backend 映射层。
+`ptx_frontend.code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
 checker emitter 只通过 typed lookup 读取 C++ 拼写。查询接口的 domain 参数必须使用
 `CppDomain` 枚举成员，例如 `CppDomain.SCALAR_TYPES`，不接受裸字符串。当前 domain
 覆盖 scalar type、
@@ -187,18 +187,29 @@ rounding mode、resolved value type/kind、modifier presence、operand role/acce
 type-expression kind 与 checker modifier kind。
 
 backend spec 不应重复表达 `ptx_spec` 中的 PTX ISA 语义，也不应影响
-`InstructionSpec` 的规范化结果。`DomainBackend` 与 `CodegenUnit` 已进入当前生成路径；
-`InstructionBackend` 与 `EmitBackend` 仍为未来的 per-instruction override 保留，当前
-`instructions` mapping 为空，也不能改变 resolved IR 的 variant/layout 结构。emitter
-不得直接读取原始 YAML 字典。loader 会先执行 JSON Schema 校验，再检查当前生成路径所需
-domain 是否齐全；缺失 domain/value 必须在生成期报告 `ValueError`。CMake 将 backend
-YAML 与 schema 都列为生成依赖，修改任何 C++ 映射都会触发重新生成。
+`InstructionSpec` 的规范化结果。其唯一的生成输入是 ISA schema version、backend schema
+version 和封闭的 C++ mapping domain 集合；不接受 per-instruction layout、emit、namespace、
+include 或 category policy。`CodegenUnit` 只保存这些输入。emitter 不得直接读取原始 YAML
+字典。loader 会在 v2 schema 校验之前，以迁移诊断拒绝已退休的
+`ptx-cpp-backend/v1`；consumer 必须将 import 和 construction 迁移到收窄后的
+`CodegenUnit(spec_schema, backend_schema, domains)` contract。缺失、未知或无 mapping 的
+domain/value 必须在生成期报告 `ValueError`。CMake 将 backend YAML 与 schema 都列为生成
+依赖，修改任何 C++ 映射都会触发重新生成。
+
+迁移 backend 文件时，将 schema tag 和 YAML-language-server header 从 v1 改为 v2，随后删除
+`target`、`category`、`namespace`、`includes`、`common`、`emit_kinds` 与 `instructions`。
+删除已退休的 `modifier_value_cpp_types`、`operand_value_cpp_types` domain，以及 value 内的
+`token` 或 `aliases`。`Emit*`、`InstructionBackend`、`ModifierBackend`、`OperandBackend`
+不再可 import；改用 `DomainBackend` 和收窄后的 `CodegenUnit`。PTX ISA 文件继续使用
+`ptx-instr/v1`。
 
 需要在运行期从 PTX 源码 suffix 解析值的 domain 声明
 `runtime_lookup: ptx_suffix`。生成器会把对应映射生成到 private 的
 `resolved_value_domains.gen.hpp`，并以 `inline constexpr std::array` 保存。
 手写 resolver 只保留一份通用 suffix 查找算法，不再重复 scalar type 或 rounding mode
-的映射数据；未标记的 domain 仍仅用于生成期，不会产生运行期查找表。
+的映射数据；标记 domain 的 `cpp_type` 决定生成表的 value type。未标记
+`runtime_lookup` 时，`cpp_type` 仅为 type annotation，不决定 instruction field type；后者由
+`resolved_value_cpp_types` mapping 决定。未标记的 domain 仍仅用于生成期，不会产生运行期查找表。
 
 ## 生成规则
 

@@ -20,8 +20,8 @@ def packaged_spec_schema() -> Traversable:
 
 
 def packaged_backend_spec_schema() -> Traversable:
-    """Return the packaged ``ptx-cpp-backend-v1`` schema."""
-    return files(__name__).joinpath("ptx-cpp-backend-v1.schema.yaml")
+    """Return the packaged ``ptx-cpp-backend-v2`` schema."""
+    return files(__name__).joinpath("ptx-cpp-backend-v2.schema.yaml")
 
 
 __all__ = [

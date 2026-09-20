@@ -11,6 +11,7 @@ from ptx_frontend.code_gen.resolved_field_names import (
     field_cpp_type,
     field_value_cpp_type,
 )
+from ptx_frontend.code_gen.emit.operand_views import emit_check_operand_view
 from ptx_frontend.code_gen.cpp_backend import (
     CppDomain,
     cpp_value,
@@ -19,11 +20,6 @@ from ptx_frontend.code_gen.cpp_backend import (
 from ptx_frontend.spec.model import (
     CodegenUnit,
     DomainBackend,
-    EmitAlternativeBackend,
-    EmitBackend,
-    InstructionBackend,
-    ModifierBackend,
-    OperandBackend,
     RuntimeLookupKind,
 )
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -97,75 +93,47 @@ class BackendModelTests(unittest.TestCase):
             path.write_text(yaml.safe_dump(raw), encoding="utf-8")
             resource = UnhashableResource(path)
             original = load_cpp_backend(resource)
-            raw["namespace"] = "custom::updated"
+            raw["domains"][CppDomain.SCALAR_TYPES.value]["values"]["f32"] = (
+                "UpdatedScalarType::F32"
+            )
             path.write_text(yaml.safe_dump(raw), encoding="utf-8")
             updated = load_cpp_backend(resource)
-            self.assertNotEqual(original.namespace, "custom::updated")
-            self.assertEqual(updated.namespace, "custom::updated")
+            self.assertNotEqual(
+                original.domains[CppDomain.SCALAR_TYPES.value].values["f32"],
+                "UpdatedScalarType::F32",
+            )
+            self.assertEqual(
+                updated.domains[CppDomain.SCALAR_TYPES.value].values["f32"],
+                "UpdatedScalarType::F32",
+            )
 
     def test_constructs_detached_cpp_backend_model(self) -> None:
         scalar_types = DomainBackend(
             cpp_type="ScalarType",
             values={"u32": "ScalarType::U32"},
         )
-        emit = EmitBackend(
-            kind="sub_variant",
-            instance="data",
-            type="Data",
-            alternatives=(
-                EmitAlternativeBackend(
-                    name="IntegerData",
-                    variants=("add_integer",),
-                ),
-            ),
-        )
-        add = InstructionBackend(
-            opcode="add",
-            cpp="Add",
-            emit=emit,
-            modifiers={
-                "type": ModifierBackend(
-                    field="type_",
-                    cpp_type="ScalarType",
-                    domain=CppDomain.SCALAR_TYPES.value,
-                )
-            },
-            operands={"dst": OperandBackend(field="dst", cpp_type="Operand")},
-            type_checker_rule="integer_arith::check_add",
-            visitor_name="visitAdd",
-            modifier_order=("type",),
-            operand_order=("dst",),
-        )
-
         unit = CodegenUnit(
             spec_schema="ptx-instr/v1",
-            backend_schema="ptx-cpp-backend/v1",
-            category="integer_arithmetic",
-            namespace="ptx_frontend::generated",
-            includes=("<variant>",),
-            instructions=(),
-            backends={"add": add},
+            backend_schema="ptx-cpp-backend/v2",
             domains={CppDomain.SCALAR_TYPES.value: scalar_types},
         )
 
-        self.assertEqual(unit.backends["add"].emit.alternatives[0].name, "IntegerData")
         self.assertEqual(
             unit.domains[CppDomain.SCALAR_TYPES.value].values["u32"],
             "ScalarType::U32",
         )
 
     def test_backend_model_is_frozen(self) -> None:
-        emit = EmitBackend(kind="direct")
+        domain = DomainBackend(cpp_type="ScalarType", values={"u32": "ScalarType::U32"})
 
         with self.assertRaises(FrozenInstanceError):
-            emit.kind = "sub_struct"  # type: ignore[misc]
+            domain.cpp_type = "OtherScalarType"  # type: ignore[misc]
 
     def test_loads_repository_cpp_emit_domains(self) -> None:
         unit = load_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC)
 
-        self.assertEqual(unit.backend_schema, "ptx-cpp-backend/v1")
+        self.assertEqual(unit.backend_schema, "ptx-cpp-backend/v2")
         self.assertEqual(unit.spec_schema, "ptx-instr/v1")
-        self.assertEqual(unit.backends, {})
         self.assertEqual(
             unit.domains[CppDomain.SCALAR_TYPES.value].values["f32"],
             "ScalarType::F32",
@@ -230,19 +198,6 @@ class BackendModelTests(unittest.TestCase):
         self.assertEqual(
             unit.domains[CppDomain.BOOLEAN_OPERATORS.value].values["xor"],
             "BooleanOperator::Xor",
-        )
-        modifier_types = unit.domains[CppDomain.MODIFIER_VALUE_CPP_TYPES.value].values
-        self.assertEqual(
-            {
-                kind: modifier_types[kind]
-                for kind in ("type", "rounding", "comparison", "boolean_op")
-            },
-            {
-                "type": "ScalarType",
-                "rounding": "RoundingMode",
-                "comparison": "ComparisonOperator",
-                "boolean_op": "BooleanOperator",
-            },
         )
         self.assertEqual(
             unit.domains[CppDomain.MEMORY_CONSISTENCIES.value].values["weak"],
@@ -362,6 +317,92 @@ class BackendModelTests(unittest.TestCase):
                 "WithLocs<CustomScalarType>",
             )
 
+    def test_operand_views_use_semantic_domain_mappings(self) -> None:
+        """Semantic value and default mappings control all emitted equivalents."""
+
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw["domains"][CppDomain.SCALAR_TYPES.value]["default"] = "TestScalar::Invalid"
+        raw["domains"][CppDomain.SCALAR_TYPES.value]["values"]["pred"] = "TestScalar::Pred"
+        raw["domains"][CppDomain.PARAMETER_DIRECTIONS.value]["default"] = "TestDirection::None"
+        raw["domains"][CppDomain.PARAMETER_DIRECTIONS.value]["values"].update(
+            {"input": "TestDirection::Input", "return": "TestDirection::Return"}
+        )
+        raw["domains"][CppDomain.MEMORY_STATE_SPACES.value]["values"].update(
+            {
+                "global": "TestSpace::Global",
+                "shared": "TestSpace::Shared",
+                "local": "TestSpace::Local",
+                "param": "TestSpace::Parameter",
+                "const": "TestSpace::Constant",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            backend = load_cpp_backend(backend_path)
+            emitted = "\n".join(
+                (
+                    emit_check_operand_view(
+                        ResolvedField(
+                            name="predicate_pair",
+                            value_kind=ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
+                            origin=ResolvedFieldOrigin.OPERAND,
+                            source_name="predicate_pair",
+                        ),
+                        "instruction",
+                        backend,
+                    ),
+                    emit_check_operand_view(
+                        ResolvedField(
+                            name="predicate_source",
+                            value_kind=ResolvedValueKind.PREDICATE_SOURCE,
+                            origin=ResolvedFieldOrigin.OPERAND,
+                            source_name="predicate_source",
+                        ),
+                        "instruction",
+                        backend,
+                    ),
+                    emit_check_operand_view(
+                        ResolvedField(
+                            name="address",
+                            value_kind=ResolvedValueKind.ADDRESS,
+                            origin=ResolvedFieldOrigin.OPERAND,
+                            source_name="address",
+                        ),
+                        "instruction",
+                        backend,
+                    ),
+                )
+            )
+
+        for spelling in (
+            "TestScalar::Invalid",
+            "TestScalar::Pred",
+            "TestDirection::None",
+            "TestDirection::Input",
+            "TestDirection::Return",
+            "TestSpace::Global",
+            "TestSpace::Shared",
+            "TestSpace::Local",
+            "TestSpace::Parameter",
+            "TestSpace::Constant",
+        ):
+            self.assertIn(spelling, emitted)
+        for retired_spelling in (
+            "ScalarType::Invalid",
+            "ScalarType::Pred",
+            "ParameterDirection::None",
+            "ParameterDirection::Input",
+            "ParameterDirection::Return",
+            "MemoryStateSpace::Global",
+            "MemoryStateSpace::Shared",
+            "MemoryStateSpace::Local",
+            "MemoryStateSpace::Parameter",
+            "MemoryStateSpace::Constant",
+        ):
+            self.assertNotIn(retired_spelling, emitted)
+
     def test_reports_missing_cpp_domain_value(self) -> None:
         with self.assertRaisesRegex(ValueError, "has no value 'missing'"):
             cpp_value(CppDomain.SCALAR_TYPES, "missing", backend=self.backend)
@@ -414,6 +455,60 @@ class BackendModelTests(unittest.TestCase):
                 yaml.safe_dump(raw, sort_keys=False), encoding="utf-8"
             )
             with self.assertRaisesRegex(ValueError, "missing required domains"):
+                load_cpp_backend(backend_path)
+
+    def test_rejects_unknown_cpp_domain(self) -> None:
+        """The v2 domain contract rejects mappings the generator would ignore."""
+
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw["domains"]["unused_domain"] = {
+            "cpp_type": "Unused",
+            "values": {"value": "Unused::Value"},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unsupported domain 'unused_domain'"):
+                load_cpp_backend(backend_path)
+
+    def test_rejects_removed_backend_configuration_fields(self) -> None:
+        """V2 declines retired layout controls and unused value annotations."""
+
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw["target"] = "all"
+
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Additional properties are not allowed"):
+                load_cpp_backend(backend_path)
+
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw["domains"][CppDomain.SCALAR_TYPES.value]["values"]["f32"] = {
+            "cpp": "ScalarType::F32",
+            "token": ".f32",
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "is not valid under any of the given schemas"):
+                load_cpp_backend(backend_path)
+
+    def test_rejects_retired_v1_before_v2_schema_validation(self) -> None:
+        """A v1 file receives a migration diagnostic instead of a v2 const error."""
+
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        raw["schema"] = "ptx-cpp-backend/v1"
+
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "retired; migrate to 'ptx-cpp-backend/v2'",
+            ):
                 load_cpp_backend(backend_path)
 
 

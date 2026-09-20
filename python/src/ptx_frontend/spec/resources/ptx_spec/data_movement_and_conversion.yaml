@@ -233,6 +233,18 @@ operand_patterns:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: equal_or_wider}
 
+  cvt_b8_packed:
+    - {name: dst, kind: reg, role: dst, access: write, type: b8, register_width: equal_or_wider}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: equal_or_wider}
+
+  cvt_b8_packed_bf16x2:
+    - {name: dst, kind: reg, role: dst, access: write, type: b8, register_width: equal_or_wider}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
+  cvt_b16_packed_bf16x2:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+
   cvt_b32_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - {name: src, kind: reg, role: src, access: read, type: b16, register_width: equal_or_wider}
@@ -1246,17 +1258,19 @@ instructions:
 
   - opcode: cvt
     section: "9.7.9.22"
-    doc: "Convert frozen register-only integer and floating-point forms, including one packed f16x2 result."
+    doc: "Convert integer, floating-point, and packed conversion forms."
     syntax: "cvt.s32.u32 dst, src | cvt.rn.f32.f64 dst, src | cvt.rn.f32.u32 dst, src | cvt.rn.f32.s32 dst, src | cvt.rzi.u32.f32 dst, src | cvt.rn.f16x2.f32 dst, src1, src2"
     operands: $cvt_scalar
     variants:
       - name: cvt_s32_u32
-        description: "Register-only unsigned 32-bit to signed 32-bit conversion."
+        description: "Unsigned 32-bit to signed 32-bit conversion."
         rule: data_movement.cvt
         availability:
           ptx: "1.0"
           sm: 0
         modifiers:
+          - {name: ftz, kind: flag, presence: absent, token: ".ftz"}
+          - {name: sat, kind: flag, presence: optional, default: false, token: ".sat"}
           - name: dst_type
             kind: type
             domain: scalar_types
@@ -1271,7 +1285,7 @@ instructions:
           - ptx: "cvt.s32.u32 %s0, %r0;"
             valid: true
       - name: cvt_rn_f32_f64
-        description: "Register-only round-to-nearest f64 to f32 conversion."
+        description: "Round-to-nearest f64 to f32 conversion."
         rule: data_movement.cvt
         availability:
           ptx: "1.0"
@@ -1282,6 +1296,8 @@ instructions:
             domain: rounding_modes
             presence: fixed
             value: rn
+          - {name: ftz, kind: flag, presence: optional, default: false, token: ".ftz"}
+          - {name: sat, kind: flag, presence: optional, default: false, token: ".sat"}
           - name: dst_type
             kind: type
             domain: scalar_types
@@ -1296,7 +1312,7 @@ instructions:
           - ptx: "cvt.rn.f32.f64 %f0, %fd0;"
             valid: true
       - name: cvt_rn_f32_u32
-        description: "Register-only round-to-nearest u32 to f32 conversion."
+        description: "Round-to-nearest u32 to f32 conversion."
         rule: data_movement.cvt
         availability:
           ptx: "1.0"
@@ -1307,6 +1323,8 @@ instructions:
             domain: rounding_modes
             presence: fixed
             value: rn
+          - {name: ftz, kind: flag, presence: optional, default: false, token: ".ftz"}
+          - {name: sat, kind: flag, presence: optional, default: false, token: ".sat"}
           - name: dst_type
             kind: type
             domain: scalar_types
@@ -1321,18 +1339,20 @@ instructions:
           - ptx: "cvt.rn.f32.u32 %f0, %r0;"
             valid: true
       - name: cvt_rn_f32_s32
-        description: "Register-only round-to-nearest signed 32-bit to f32 conversion."
+        description: "Round-to-nearest signed 32-bit to f32 conversion."
         operands: $cvt_rn_f32_s32
         rule: data_movement.cvt
         availability: {ptx: "1.0", sm: 0}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: ".ftz"}
+          - {name: sat, kind: flag, presence: optional, default: false, token: ".sat"}
           - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
           - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         examples:
           - {ptx: "cvt.rn.f32.s32 %f0, %r0;", valid: true}
       - name: cvt_rzi_u32_f32
-        description: "Register-only round-toward-zero f32 to u32 conversion."
+        description: "Round-toward-zero f32 to u32 conversion."
         rule: data_movement.cvt
         availability:
           ptx: "1.0"
@@ -1343,6 +1363,8 @@ instructions:
             domain: rounding_modes
             presence: fixed
             value: rzi
+          - {name: ftz, kind: flag, presence: optional, default: false, token: ".ftz"}
+          - {name: sat, kind: flag, presence: optional, default: false, token: ".sat"}
           - name: dst_type
             kind: type
             domain: scalar_types
@@ -1792,7 +1814,24 @@ instructions:
 
       - name: cvt_rn_satfinite_f8x2_packed
         operands: $cvt_b16_packed
-        description: "Finite-saturating FP8 x2 conversion from packed f16x2 or bf16x2 input."
+        description: "Finite-saturating FP8 x2 conversion from a packed f16x2 input."
+        availability:
+          any_of:
+            - {ptx: "7.8", sm: 90}
+            - {ptx: "8.1", sm: 89}
+        rule: data_movement.cvt
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: satfinite, kind: flag, presence: fixed, value: true, token: ".satfinite"}
+          - {name: relu, kind: flag, presence: optional, default: false, token: ".relu"}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: required, values: [e4m3x2, e5m2x2]}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "cvt.rn.satfinite.e4m3x2.f16x2 %b0, %r0;", valid: true}
+
+      - name: cvt_rn_satfinite_f8x2_bf16x2
+        operands: $cvt_b16_packed
+        description: "Finite-saturating FP8 x2 conversion from a packed bf16x2 input."
         availability:
           any_of: [{ptx: "9.1", sm: 100, family: sm_100f}, {ptx: "9.1", sm: 110, family: sm_110f}, {ptx: "9.1", sm: 120, family: sm_120f}]
         rule: data_movement.cvt
@@ -1801,7 +1840,7 @@ instructions:
           - {name: satfinite, kind: flag, presence: fixed, value: true, token: ".satfinite"}
           - {name: relu, kind: flag, presence: optional, default: false, token: ".relu"}
           - {name: dst_type, kind: type, domain: scalar_types, presence: required, values: [e4m3x2, e5m2x2]}
-          - {name: src_type, kind: type, domain: scalar_types, presence: required, values: [f16x2, bf16x2]}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
         examples:
           - {ptx: "cvt.rn.satfinite.e4m3x2.bf16x2 %b0, %r0;", valid: true}
 
@@ -1880,8 +1919,8 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m3x2.f32 %b0, %f0, %f1;", valid: true}
 
       - name: cvt_rn_satfinite_lowbit_packed
-        operands: $cvt_b16_packed
-        description: "Finite-saturating low-bit x2 conversion from packed f16x2 or bf16x2 input."
+        operands: $cvt_b8_packed
+        description: "Finite-saturating FP4 x2 conversion from a packed f16x2 input."
         availability:
           any_of: [{ptx: "9.1", sm: 100, family: sm_100f}, {ptx: "9.1", sm: 110, family: sm_110f}, {ptx: "9.1", sm: 120, family: sm_120f}]
         rule: data_movement.cvt
@@ -1889,10 +1928,55 @@ instructions:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
           - {name: satfinite, kind: flag, presence: fixed, value: true, token: ".satfinite"}
           - {name: relu, kind: flag, presence: optional, default: false, token: ".relu"}
-          - {name: dst_type, kind: type, domain: scalar_types, presence: required, values: [e2m1x2, e2m3x2, e3m2x2]}
-          - {name: src_type, kind: type, domain: scalar_types, presence: required, values: [f16x2, bf16x2]}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: e2m1x2}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "cvt.rn.satfinite.e2m1x2.f16x2 %b0, %r0;", valid: true}
+
+      - name: cvt_rn_satfinite_f4x2_bf16x2
+        operands: $cvt_b8_packed_bf16x2
+        description: "Finite-saturating FP4 x2 conversion from a packed bf16x2 input."
+        availability:
+          any_of: [{ptx: "9.1", sm: 100, family: sm_100f}, {ptx: "9.1", sm: 110, family: sm_110f}, {ptx: "9.1", sm: 120, family: sm_120f}]
+        rule: data_movement.cvt
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: satfinite, kind: flag, presence: fixed, value: true, token: ".satfinite"}
+          - {name: relu, kind: flag, presence: optional, default: false, token: ".relu"}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: fixed, value: e2m1x2}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "cvt.rn.satfinite.e2m1x2.bf16x2 %b0, %r0;", valid: true}
+
+      - name: cvt_rn_satfinite_f6x2_packed
+        operands: $cvt_b16_packed
+        description: "Finite-saturating FP6 x2 conversion from a packed f16x2 input."
+        availability:
+          any_of: [{ptx: "9.1", sm: 100, family: sm_100f}, {ptx: "9.1", sm: 110, family: sm_110f}, {ptx: "9.1", sm: 120, family: sm_120f}]
+        rule: data_movement.cvt
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: satfinite, kind: flag, presence: fixed, value: true, token: ".satfinite"}
+          - {name: relu, kind: flag, presence: optional, default: false, token: ".relu"}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: required, values: [e2m3x2, e3m2x2]}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
         examples:
           - {ptx: "cvt.rn.satfinite.e2m3x2.f16x2 %b0, %r0;", valid: true}
+
+      - name: cvt_rn_satfinite_f6x2_bf16x2
+        operands: $cvt_b16_packed_bf16x2
+        description: "Finite-saturating FP6 x2 conversion from a packed bf16x2 input."
+        availability:
+          any_of: [{ptx: "9.1", sm: 100, family: sm_100f}, {ptx: "9.1", sm: 110, family: sm_110f}, {ptx: "9.1", sm: 120, family: sm_120f}]
+        rule: data_movement.cvt
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: satfinite, kind: flag, presence: fixed, value: true, token: ".satfinite"}
+          - {name: relu, kind: flag, presence: optional, default: false, token: ".relu"}
+          - {name: dst_type, kind: type, domain: scalar_types, presence: required, values: [e2m3x2, e3m2x2]}
+          - {name: src_type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "cvt.rn.satfinite.e2m3x2.bf16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_f16x2_lowbit
         operands: $cvt_b32_packed

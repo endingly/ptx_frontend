@@ -100,15 +100,18 @@ instruction-only type spellings as declaration types:
 - FP8 x2 forms use `e4m3x2`/`e5m2x2`, a `.b16` destination or source container
   as directed by the syntax, mandatory `.rn.satfinite` on FP8 destinations,
   and optional `.relu` where PTX specifies it. The f32 and packed `f16x2`
-  source forms use the original PTX 7.8 / SM 90 or PTX 8.1 / SM 89 paths.
-  The packed `bf16x2` source extension is PTX 9.1 on the family-specific
+  source forms retain the original PTX 7.8 / SM 90 or PTX 8.1 / SM 89 paths
+  independently of the packed `bf16x2` source extension, which is PTX 9.1 on
+  the family-specific
   `sm_100f`, `sm_110f`, or `sm_120f` lines; BF16 x2 destinations from FP8 are
   PTX 9.2 on those same family lines.
 - FP4 (`e2m1x2`) and FP6 (`e2m3x2`/`e3m2x2`) x2 forms use their `.b8` or `.b16`
   physical containers. Their mandatory `.rn.satfinite` destination forms and
   the reverse `f16x2` forms use the documented A/F target alternatives,
   beginning with PTX 8.6 `sm_100a` or the family-specific PTX 8.8 `sm_100f`
-  path. The packed-source and BF16-destination extensions retain their PTX
+  path. Packed-source FP4 accepts its `.b8` destination under the normal
+  equal-or-wider register policy, while FP6 retains its `.b16` minimum. The
+  packed-source and BF16-destination extensions retain their PTX
   9.1/9.2 gates on the `sm_100f`, `sm_110f`, and `sm_120f` families.
 - The x4 FP8, FP4, and FP6 forms are `.rs` conversions from a four-element
   `.f32` register vector. They require a separate `.b32` `rbits` register,

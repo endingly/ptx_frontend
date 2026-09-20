@@ -1,5 +1,10 @@
 from typing import Any
-from ptx_frontend.spec.model import ConditionCodeEffect, InstructionSpec, VariantSpec
+from ptx_frontend.spec.model import (
+    ConditionCodeEffect,
+    InstructionSpec,
+    SemanticRule,
+    VariantSpec,
+)
 from .constraints import (
     _normalize_operand_type_compatibilities,
     _normalize_memory_consistency_constraint,
@@ -71,7 +76,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
                     modifier_order_aliases=modifier_order_aliases,
-                    rule=raw_variant.get("rule"),
+                    rule=_normalize_semantic_rule(raw_variant.get("rule")),
                     operand_type_compatibilities=(
                         _normalize_operand_type_compatibilities(
                             raw_variant, operand_layouts
@@ -117,3 +122,16 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
         )
 
     return tuple(instructions)
+
+
+def _normalize_semantic_rule(raw_rule: object) -> SemanticRule | None:
+    """Convert an optional external rule spelling into its closed identity."""
+
+    if raw_rule is None:
+        return None
+    if not isinstance(raw_rule, str):
+        raise ValueError("semantic rule must be a string")
+    try:
+        return SemanticRule(raw_rule)
+    except ValueError as error:
+        raise ValueError(f"unknown semantic rule {raw_rule!r}") from error

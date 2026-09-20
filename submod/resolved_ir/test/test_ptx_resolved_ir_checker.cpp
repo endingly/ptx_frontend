@@ -1469,10 +1469,8 @@ TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailability) {
   for (const auto source :
        {"prmt.b32 %r0, 0x10000, -1, 0x12345410;",
         "prmt.b32.f4e %r0, 1, %r2, 0x10000;",
-        "prmt.b32.b4e %r0, %r1, 2, 0xffff;",
-        "prmt.b32.rc8 %r0, %r1, %r2, %r3;",
-        "prmt.b32.ecl %r0, 1, 2, 4;",
-        "prmt.b32.ecr %r0, %r1, %r2, 0xffff;",
+        "prmt.b32.b4e %r0, %r1, 2, 0xffff;", "prmt.b32.rc8 %r0, %r1, %r2, %r3;",
+        "prmt.b32.ecl %r0, 1, 2, 4;", "prmt.b32.ecr %r0, %r1, %r2, 0xffff;",
         "prmt.b32.rc16 %r0, 1, %r2, 4;"}) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
@@ -1873,22 +1871,18 @@ struct IsspacepAvailabilityCase {
 /** Generated `isspacep` variants enforce every documented PTX and SM boundary. */
 TEST(ResolvedIrChecker, ChecksGeneratedIsspacepAvailabilityBoundaries) {
   constexpr std::array cases{
-      IsspacepAvailabilityCase{"isspacep.global %p0, %r0;", {2, 0}, {1, 9},
-                                20},
-      IsspacepAvailabilityCase{"isspacep.const %p0, %rd0;", {3, 1}, {3, 0},
-                                20},
-      IsspacepAvailabilityCase{"isspacep.local %p0, %rd0;", {2, 0}, {1, 9},
-                                20},
-      IsspacepAvailabilityCase{"isspacep.shared %p0, %rd0;", {2, 0}, {1, 9},
-                                20},
-      IsspacepAvailabilityCase{"isspacep.shared::cta %p0, %rd0;", {7, 8},
-                                {7, 7}, 30},
-      IsspacepAvailabilityCase{"isspacep.shared::cluster %p0, %rd0;", {7, 8},
-                                {7, 7}, 90},
-      IsspacepAvailabilityCase{"isspacep.param %p0, %rd0;", {7, 7}, {7, 6},
-                                70},
-      IsspacepAvailabilityCase{"isspacep.param::entry %p0, %rd0;", {8, 3},
-                                {8, 2}, 70},
+      IsspacepAvailabilityCase{"isspacep.global %p0, %r0;", {2, 0}, {1, 9}, 20},
+      IsspacepAvailabilityCase{"isspacep.const %p0, %rd0;", {3, 1}, {3, 0}, 20},
+      IsspacepAvailabilityCase{"isspacep.local %p0, %rd0;", {2, 0}, {1, 9}, 20},
+      IsspacepAvailabilityCase{
+          "isspacep.shared %p0, %rd0;", {2, 0}, {1, 9}, 20},
+      IsspacepAvailabilityCase{
+          "isspacep.shared::cta %p0, %rd0;", {7, 8}, {7, 7}, 30},
+      IsspacepAvailabilityCase{
+          "isspacep.shared::cluster %p0, %rd0;", {7, 8}, {7, 7}, 90},
+      IsspacepAvailabilityCase{"isspacep.param %p0, %rd0;", {7, 7}, {7, 6}, 70},
+      IsspacepAvailabilityCase{
+          "isspacep.param::entry %p0, %rd0;", {8, 3}, {8, 2}, 70},
   };
   for (const IsspacepAvailabilityCase& test : cases) {
     SCOPED_TRACE(test.source);
@@ -1897,23 +1891,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedIsspacepAvailabilityBoundaries) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto isspacep = resolve<Isspacep>(*ast);
     ASSERT_TRUE(isspacep.has_value()) << isspacep.error().message;
-    EXPECT_FALSE(check(*isspacep,
-                       Context{.target = {.ptx_version = test.rejected_ptx,
-                                           .sm_version = test.minimum_sm},
-                               .instruction_range = ast->range})
-                     .has_value());
-    EXPECT_FALSE(check(*isspacep,
-                       Context{.target = {.ptx_version = test.minimum_ptx,
-                                           .sm_version =
-                                               static_cast<uint16_t>(
-                                                   test.minimum_sm - 1)},
-                               .instruction_range = ast->range})
-                     .has_value());
-    EXPECT_TRUE(check(*isspacep,
-                      Context{.target = {.ptx_version = test.minimum_ptx,
-                                          .sm_version = test.minimum_sm},
-                              .instruction_range = ast->range})
-                    .has_value());
+    EXPECT_FALSE(
+        check(*isspacep, Context{.target = {.ptx_version = test.rejected_ptx,
+                                            .sm_version = test.minimum_sm},
+                                 .instruction_range = ast->range})
+            .has_value());
+    EXPECT_FALSE(
+        check(*isspacep, Context{.target = {.ptx_version = test.minimum_ptx,
+                                            .sm_version = static_cast<uint16_t>(
+                                                test.minimum_sm - 1)},
+                                 .instruction_range = ast->range})
+            .has_value());
+    EXPECT_TRUE(
+        check(*isspacep, Context{.target = {.ptx_version = test.minimum_ptx,
+                                            .sm_version = test.minimum_sm},
+                                 .instruction_range = ast->range})
+            .has_value());
   }
 }
 

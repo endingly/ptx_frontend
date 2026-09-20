@@ -162,6 +162,25 @@ TEST(ConversionCompleteness, ResolvesOrdinaryTypesRoundingAndSaturation) {
 )ptx");
 }
 
+/** Retained scalar variants keep their legal FTZ and saturation modifiers. */
+TEST(ConversionCompleteness, ResolvesRetainedScalarVariantModifiers) {
+  expectModuleAccepted(R"ptx(
+.version 9.3
+.target sm_90
+.entry kernel() {
+  .reg .u32 %r0;
+  .reg .s32 %s0;
+  .reg .f32 %f0;
+  .reg .f64 %fd0;
+  cvt.sat.s32.u32 %s0, %r0;
+  cvt.rn.ftz.sat.f32.f64 %f0, %fd0;
+  cvt.rn.ftz.sat.f32.u32 %f0, %r0;
+  cvt.rn.ftz.sat.f32.s32 %f0, %s0;
+  cvt.rzi.ftz.sat.u32.f32 %r0, %f0;
+}
+)ptx");
+}
+
 /** Distinguish signed and unsigned integer ranges when `.sat` is selected. */
 TEST(ConversionCompleteness, ChecksIntegerSaturationRangeContainment) {
   expectModuleAccepted(R"ptx(
@@ -397,6 +416,56 @@ TEST(ConversionCompleteness, EnforcesFp8VersionAndTargetBoundaries) {
   }
 }
 
+/** Keep packed FP8 f16x2 and bf16x2 source availability independent. */
+TEST(ConversionCompleteness, EnforcesPackedFp8SourceAvailability) {
+  for (const std::string_view header : {
+           ".version 7.8 .target sm_90",
+           ".version 8.1 .target sm_89",
+       }) {
+    const std::string body = std::string(header) + R"ptx( .entry kernel() {
+  .reg .b16 %dst0, %dst1;
+  .reg .b32 %src;
+  cvt.rn.satfinite.e4m3x2.f16x2 %dst0, %src;
+  cvt.rn.satfinite.e5m2x2.f16x2 %dst1, %src;
+})ptx";
+    expectModuleAccepted(body);
+  }
+  for (const std::string_view header : {
+           ".version 7.7 .target sm_90",
+           ".version 8.0 .target sm_89",
+       }) {
+    const std::string body = std::string(header) + R"ptx( .entry kernel() {
+  .reg .b16 %dst;
+  .reg .b32 %src;
+  cvt.rn.satfinite.e4m3x2.f16x2 %dst, %src;
+})ptx";
+    expectModuleValidationRejected(body);
+  }
+  expectModuleAccepted(R"ptx(
+.version 9.1
+.target sm_100f
+.entry kernel() {
+  .reg .b16 %dst0, %dst1;
+  .reg .b32 %src;
+  cvt.rn.satfinite.e4m3x2.bf16x2 %dst0, %src;
+  cvt.rn.satfinite.e5m2x2.bf16x2 %dst1, %src;
+}
+)ptx");
+  for (const std::string_view header : {
+           ".version 9.0 .target sm_100f",
+           ".version 9.1 .target sm_100",
+           ".version 9.1 .target sm_90",
+       }) {
+    const std::string body = std::string(header) + R"ptx( .entry kernel() {
+  .reg .b16 %dst0, %dst1;
+  .reg .b32 %src;
+  cvt.rn.satfinite.e4m3x2.bf16x2 %dst0, %src;
+  cvt.rn.satfinite.e5m2x2.bf16x2 %dst1, %src;
+})ptx";
+    expectModuleValidationRejected(body);
+  }
+}
+
 /** Preserve family and exact-target availability distinctions for new formats. */
 TEST(ConversionCompleteness, EnforcesFamilyAndExactTargetBoundaries) {
   expectModuleAccepted(R"ptx(
@@ -493,6 +562,43 @@ TEST(ConversionCompleteness, DistinguishesFp4AndFp6SourceContainers) {
     .reg .b8 %small; .reg .b32 %r;
     cvt.rn.f16x2.e2m3x2 %r, %small;
   })ptx");
+}
+
+/** Use FP4's b8 destination without weakening FP6's b16 contract. */
+TEST(ConversionCompleteness, EnforcesPackedFp4AndFp6DestinationWidths) {
+  expectModuleAccepted(R"ptx(
+.version 9.1
+.target sm_100f
+.entry kernel() {
+  .reg .b8 %fp4_f16, %fp4_bf16;
+  .reg .b16 %fp4_wide, %fp6_f16, %fp6_bf16;
+  .reg .b32 %f16_src, %bf16_src;
+  .reg .b64 %wide_f16_src;
+  cvt.rn.satfinite.e2m1x2.f16x2 %fp4_f16, %wide_f16_src;
+  cvt.rn.satfinite.e2m1x2.bf16x2 %fp4_bf16, %bf16_src;
+  cvt.rn.satfinite.e2m1x2.bf16x2 %fp4_wide, %bf16_src;
+  cvt.rn.satfinite.e2m3x2.f16x2 %fp6_f16, %f16_src;
+  cvt.rn.satfinite.e3m2x2.bf16x2 %fp6_bf16, %bf16_src;
+}
+)ptx");
+  expectModuleValidationRejected(R"ptx(
+.version 9.1
+.target sm_100f
+.entry kernel() {
+  .reg .b8 %fp6;
+  .reg .b32 %src;
+  cvt.rn.satfinite.e2m3x2.f16x2 %fp6, %src;
+}
+)ptx");
+  expectModuleValidationRejected(R"ptx(
+.version 9.1
+.target sm_100f
+.entry kernel() {
+  .reg .b8 %fp4;
+  .reg .b64 %wide_bf16_src;
+  cvt.rn.satfinite.e2m1x2.bf16x2 %fp4, %wide_bf16_src;
+}
+)ptx");
 }
 
 /** Distinguish exact architecture introductions from later family spellings. */

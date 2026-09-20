@@ -80,6 +80,7 @@ from ptx_frontend.spec.model import (
     OperandAccess,
     OperandKind,
     OperandRole,
+    SemanticRule,
 )
 from ptx_frontend.ir.resolved_ir import (
     _build_modifier_value_availability,
@@ -1569,7 +1570,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             binding.type_expression.kind,
             ResolvedOperandTypeExpressionKind.NONE,
         )
-        self.assertEqual(variant.rule, "control_flow.bra")
+        self.assertIs(variant.rule, SemanticRule.CONTROL_FLOW_BRA)
 
     def test_brx_uses_a_u32_register_and_branch_target_set(self) -> None:
         database = self.database
@@ -1603,7 +1604,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant.operand_layouts[0].bindings[1].allowed_shapes,
             (ResolvedOperandShape.BRANCH_TARGET_SET,),
         )
-        self.assertEqual(variant.rule, "control_flow.brx_idx")
+        self.assertIs(variant.rule, SemanticRule.CONTROL_FLOW_BRX_IDX)
 
     def test_ret_uses_a_bare_zero_operand_variant(self) -> None:
         database = self.database
@@ -5218,7 +5219,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     immediate_value=ImmediateValueConstraint("src", (4,)),
                     immediate_ranges=(ImmediateRangeConstraint("src", 1, 8),),
                     immediate_multiple_of=ImmediateMultipleOfConstraint("src", 2),
-                    rule="sample.typed",
+                    rule=SemanticRule.CONTROL_FLOW_BRA,
                 ),
             ),
         )
@@ -5420,6 +5421,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     default="rz",
                 )
             )
+
+    def test_direct_ir_construction_rejects_untyped_semantic_rules(self) -> None:
+        """Prevent manually constructed specs from bypassing rule normalization."""
+
+        cvt = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "cvt"
+        )
+        malformed = replace(
+            cvt,
+            variants=(
+                replace(cvt.variants[0], rule="data_movement.cvt"),
+                *cvt.variants[1:],
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "non-normalized semantic rule"):
+            from_instruction_spec(malformed)
 
     def test_ir_import_and_construction_do_not_load_codegen(self) -> None:
         """A clean process can normalize and lower IR while codegen is blocked."""

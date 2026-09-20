@@ -40,6 +40,7 @@ from ptx_frontend.spec.model import (
     OperandTypeExpressionKind,
     OperandVectorArityExpression,
     OperandVectorTypePolicy,
+    SemanticRule,
     VariantSpec,
 )
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
@@ -300,7 +301,7 @@ class ResolvedVariant:
     immediate_ranges: tuple[ResolvedImmediateRangeConstraint, ...]
     immediate_multiple_of: ResolvedImmediateMultipleOfConstraint | None
     availability: tuple[tuple[str, Any], ...]
-    rule: str | None
+    rule: SemanticRule | None
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
 
@@ -500,6 +501,12 @@ _OPERAND_ACCESS = {
 
 def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
     """Build the resolved instruction model from one normalized PTX spec."""
+
+    for variant in spec.variants:
+        if variant.rule is not None and not isinstance(variant.rule, SemanticRule):
+            raise ValueError(
+                f"variant {variant.name!r} has a non-normalized semantic rule"
+            )
 
     return ResolvedInstruction(
         opcode=spec.opcode,

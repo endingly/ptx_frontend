@@ -608,7 +608,10 @@ compatibility, which is not
 modelled. An `a` target is an exact identity, not a family spelling: use
 `any_of: [{target: sm_100a}]` when that exact target is required. Capability
 clauses, exact target, and `family` are independent constraints. `rule` is a
-stable rule ID for instruction-specific checking. `examples`, `doc`, and
+closed semantic-rule ID for instruction-specific checking. Normalization rejects
+unknown or non-string rule spellings before IR construction; emitters dispatch
+on the typed identity, while checker descriptors retain the spelling only as
+inert metadata. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
 
 An `any_of` clause may also contain `family`; it is an AND-term within that

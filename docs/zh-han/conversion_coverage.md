@@ -81,15 +81,16 @@ half/bfloat/tf32 cohort 保留各自独立的 syntax 与 availability：
 modern form 保留 physical packing，不把 instruction-only type spelling 当作 declaration type：
 
 - FP8 x2 form 使用 `e4m3x2`/`e5m2x2`，并按 syntax direction 使用 `.b16` destination 或
-  source container；FP8 destination 强制 `.rn.satfinite`，在 PTX 指定处允许 `.relu`。来自
-  f32 和 packed `f16x2` 的 source form 使用原始 PTX 7.8 / SM 90 或 PTX 8.1 / SM 89 path。
-  packed `bf16x2` source extension 为 PTX 9.1 的 family-specific `sm_100f`、`sm_110f` 或
+  source container；FP8 destination 强制 `.rn.satfinite`，在 PTX 指定处允许 `.relu`。f32 和
+  packed `f16x2` source form 独立保留原始 PTX 7.8 / SM 90 或 PTX 8.1 / SM 89 path；packed
+  `bf16x2` source extension 才是 PTX 9.1 的 family-specific `sm_100f`、`sm_110f` 或
   `sm_120f` line；来自 FP8 的 BF16 x2 destination 为这些 family line 上的 PTX 9.2。
 - FP4（`e2m1x2`）与 FP6（`e2m3x2`/`e3m2x2`）x2 form 使用对应 `.b8` 或 `.b16` physical
   container。它们强制 `.rn.satfinite` 的 destination form 及反向 `f16x2` form 使用文档的
   A/F target alternative，起点为 PTX 8.6 `sm_100a` 或 family-specific PTX 8.8 `sm_100f`
-  path。packed-source 和 BF16-destination extension 保留 `sm_100f`、`sm_110f`、`sm_120f`
-  family 上的 PTX 9.1/9.2 gate。
+  path。packed-source FP4 按正常 equal-or-wider register policy 接受 `.b8` destination，
+  而 FP6 保留 `.b16` minimum。packed-source 和 BF16-destination extension 保留 `sm_100f`、
+  `sm_110f`、`sm_120f` family 上的 PTX 9.1/9.2 gate。
 - x4 FP8、FP4、FP6 form 是来自四元素 `.f32` register vector 的 `.rs` conversion。它们要求
   独立 `.b32` `rbits` register、强制 `.satfinite`，并只允许 PTX 8.7 exact `sm_100a` 或
   `sm_103a` target。

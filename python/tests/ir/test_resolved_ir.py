@@ -2075,6 +2075,64 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
         )
 
+    def test_cvta_unqualified_state_space_variants(self) -> None:
+        cvta = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "cvta"
+        ))
+        expected_names = [
+            "GlobalU64", "ToGlobalU64", "GlobalU32", "ToGlobalU32",
+            "LocalU32", "ToLocalU32", "LocalU64", "ToLocalU64",
+            "SharedU32", "ToSharedU32", "SharedU64", "ToSharedU64",
+            "ConstU32", "ToConstU32", "ConstU64", "ToConstU64",
+            "ParamU32", "ToParamU32", "ParamU64", "ToParamU64",
+        ]
+        self.assertEqual([variant.cpp_name for variant in cvta.variants],
+                         expected_names)
+        expected_availability = {
+            "Global": {"ptx": "2.0", "sm": 20},
+            "Local": {"ptx": "2.0", "sm": 20},
+            "Shared": {"ptx": "2.0", "sm": 20},
+            "Const": {"ptx": "3.1", "sm": 20},
+            "Param": {"ptx": "7.7", "sm": 70},
+        }
+        for variant in cvta.variants:
+            has_to = variant.cpp_name.startswith("To")
+            self.assertEqual(
+                [field.name for field in variant.modifier_fields],
+                ["to", "state_space", "type"]
+                if has_to else ["state_space", "type"],
+            )
+            if has_to:
+                self.assertTrue(variant.modifier_fields[0].constant_value)
+            state_space = next(
+                field.constant_value
+                for field in variant.modifier_fields
+                if field.name == "state_space"
+            )
+            type_name = next(
+                field.constant_value
+                for field in variant.modifier_fields
+                if field.name == "type"
+            )
+            self.assertEqual(type_name,
+                             "u32" if variant.cpp_name.endswith("U32") else "u64")
+            expected_key = {
+                "global": "Global",
+                "local": "Local",
+                "shared": "Shared",
+                "const": "Const",
+                "param": "Param",
+            }[state_space]
+            self.assertEqual(dict(variant.availability),
+                             expected_availability[expected_key])
+            self.assertEqual(
+                [binding.register_width_policy
+                 for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
+            )
+
     def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
         mbarrier = next(
             instruction

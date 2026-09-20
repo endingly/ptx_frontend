@@ -1980,30 +1980,105 @@ TEST(ResolveSlct, RejectsUnfrozenModifierForms) {
   }
 }
 
-TEST(ResolveCvta, SelectsFrozenGlobalU64Variants) {
-  const auto to_generic =
-      resolve<Cvta>(parse_instruction("cvta.global.u64 %rd0, %rd1;"));
-  ASSERT_TRUE(to_generic.has_value()) << to_generic.error().message;
-  const auto* global = std::get_if<Cvta::GlobalU64>(&to_generic->variant);
-  ASSERT_NE(global, nullptr);
-  EXPECT_EQ(Cvta::GlobalU64::state_space, MemoryStateSpace::Global);
-  EXPECT_EQ(Cvta::GlobalU64::type, ScalarType::U64);
+TEST(ResolveCvta, SelectsUnqualifiedStateSpaceRegisterVariants) {
+  /** One accepted spelling and its generated semantic variant contract. */
+  struct Case {
+    std::string_view source;
+    Cvta::VariantType variant;
+    MemoryStateSpace state_space;
+    ScalarType type;
+  };
+  constexpr std::array cases{
+      Case{"cvta.global.u64 %rd0, %rd1;", Cvta::VariantType::GlobalU64,
+           MemoryStateSpace::Global, ScalarType::U64},
+      Case{"cvta.to.global.u64 %rd0, %rd1;", Cvta::VariantType::ToGlobalU64,
+           MemoryStateSpace::Global, ScalarType::U64},
+      Case{"cvta.global.u32 %r0, %r1;", Cvta::VariantType::GlobalU32,
+           MemoryStateSpace::Global, ScalarType::U32},
+      Case{"cvta.to.global.u32 %r0, %r1;", Cvta::VariantType::ToGlobalU32,
+           MemoryStateSpace::Global, ScalarType::U32},
+      Case{"cvta.local.u32 %r0, %r1;", Cvta::VariantType::LocalU32,
+           MemoryStateSpace::Local, ScalarType::U32},
+      Case{"cvta.to.local.u32 %r0, %r1;", Cvta::VariantType::ToLocalU32,
+           MemoryStateSpace::Local, ScalarType::U32},
+      Case{"cvta.local.u64 %rd0, %rd1;", Cvta::VariantType::LocalU64,
+           MemoryStateSpace::Local, ScalarType::U64},
+      Case{"cvta.to.local.u64 %rd0, %rd1;", Cvta::VariantType::ToLocalU64,
+           MemoryStateSpace::Local, ScalarType::U64},
+      Case{"cvta.shared.u32 %r0, %r1;", Cvta::VariantType::SharedU32,
+           MemoryStateSpace::Shared, ScalarType::U32},
+      Case{"cvta.to.shared.u32 %r0, %r1;", Cvta::VariantType::ToSharedU32,
+           MemoryStateSpace::Shared, ScalarType::U32},
+      Case{"cvta.shared.u64 %rd0, %rd1;", Cvta::VariantType::SharedU64,
+           MemoryStateSpace::Shared, ScalarType::U64},
+      Case{"cvta.to.shared.u64 %rd0, %rd1;", Cvta::VariantType::ToSharedU64,
+           MemoryStateSpace::Shared, ScalarType::U64},
+      Case{"cvta.const.u32 %r0, %r1;", Cvta::VariantType::ConstU32,
+           MemoryStateSpace::Constant, ScalarType::U32},
+      Case{"cvta.to.const.u32 %r0, %r1;", Cvta::VariantType::ToConstU32,
+           MemoryStateSpace::Constant, ScalarType::U32},
+      Case{"cvta.const.u64 %rd0, %rd1;", Cvta::VariantType::ConstU64,
+           MemoryStateSpace::Constant, ScalarType::U64},
+      Case{"cvta.to.const.u64 %rd0, %rd1;", Cvta::VariantType::ToConstU64,
+           MemoryStateSpace::Constant, ScalarType::U64},
+      Case{"cvta.param.u32 %r0, %r1;", Cvta::VariantType::ParamU32,
+           MemoryStateSpace::Parameter, ScalarType::U32},
+      Case{"cvta.to.param.u32 %r0, %r1;", Cvta::VariantType::ToParamU32,
+           MemoryStateSpace::Parameter, ScalarType::U32},
+      Case{"cvta.param.u64 %rd0, %rd1;", Cvta::VariantType::ParamU64,
+           MemoryStateSpace::Parameter, ScalarType::U64},
+      Case{"cvta.to.param.u64 %rd0, %rd1;", Cvta::VariantType::ToParamU64,
+           MemoryStateSpace::Parameter, ScalarType::U64},
+  };
 
-  const auto to_global =
-      resolve<Cvta>(parse_instruction("cvta.to.global.u64 %rd0, %rd1;"));
-  ASSERT_TRUE(to_global.has_value()) << to_global.error().message;
-  const auto* to = std::get_if<Cvta::ToGlobalU64>(&to_global->variant);
-  ASSERT_NE(to, nullptr);
-  EXPECT_TRUE(Cvta::ToGlobalU64::to);
+  for (const auto& test : cases) {
+    SCOPED_TRACE(test.source);
+    const auto selected = selectVariant<Cvta>(parse_instruction(test.source));
+    ASSERT_TRUE(selected.has_value());
+    EXPECT_EQ(*selected, test.variant);
+
+    const auto resolved = resolve<Cvta>(parse_instruction(test.source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    std::visit(
+        [&](const auto& variant) {
+          using Variant = std::remove_cvref_t<decltype(variant)>;
+          EXPECT_EQ(Variant::state_space, test.state_space);
+          EXPECT_EQ(Variant::type, test.type);
+        },
+        resolved->variant);
+  }
 }
 
-TEST(ResolveCvta, RejectsWrongModifierOrderOrU32) {
+TEST(ResolveCvta, RejectsExplicitSubQualifiersAndUnsupportedOperands) {
   for (const auto source :
        {"cvta.global.to.u64 %rd0, %rd1;", "cvta.u64.global %rd0, %rd1;",
-        "cvta.global.u32 %r0, %r1;", "cvta.to.global.u32 %r0, %r1;"}) {
+        "cvta.shared::cta.u32 %r0, %r1;", "cvta.shared::cluster.u32 %r0, %r1;",
+        "cvta.param::entry.u32 %r0, %r1;", "cvta.generic.u32 %r0, %r1;"}) {
     const auto selected = selectVariant<Cvta>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
+  }
+
+  for (const auto source : {R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .u32 value;
+.entry kernel() { .reg .u64 %rd; cvta.global.u64 %rd, value; }
+)ptx",
+                            R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .u32 value;
+.entry kernel() { .reg .u64 %rd; cvta.global.u64 %rd, value+4; }
+)ptx"}) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto resolved = resolveModule(*ast);
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(resolved.has_value());
   }
 }
 

@@ -874,10 +874,12 @@ instructions:
 
   - opcode: cvta
     section: "9.7.9.21"
-    doc: "Convert register-only global and generic u64 addresses."
-    syntax: "cvta.global.u64 dst, src | cvta.to.global.u64 dst, src"
+    doc: "Convert register-only generic and unqualified state-space addresses."
+    syntax: "cvta{.to}.{global|local|shared|const|param}.{u32|u64} dst, src"
     operands: $cvta_register
     variants:
+      # Preserve these existing public variant names while adding the remaining
+      # PTX 9.3 unqualified state-space conversion forms below.
       - name: cvta_global_u64
         description: "Register-only global-to-generic u64 address conversion."
         availability:
@@ -925,6 +927,168 @@ instructions:
         examples:
           - ptx: "cvta.to.global.u64 %rd0, %rd1;"
             valid: true
+      - name: cvta_global_u32
+        description: "Register-only global-to-generic u32 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: global}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.global.u32 %r0, %r1;", valid: true}
+      - name: cvta_to_global_u32
+        description: "Register-only generic-to-global u32 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: global}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.to.global.u32 %r0, %r1;", valid: true}
+      - name: cvta_local_u32
+        description: "Register-only local-to-generic u32 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: local}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.local.u32 %r0, %r1;", valid: true}
+      - name: cvta_to_local_u32
+        description: "Register-only generic-to-local u32 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: local}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.to.local.u32 %r0, %r1;", valid: true}
+      - name: cvta_local_u64
+        description: "Register-only local-to-generic u64 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: local}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.local.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_to_local_u64
+        description: "Register-only generic-to-local u64 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: local}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.to.local.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_shared_u32
+        description: "Register-only shared-to-generic u32 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.shared.u32 %r0, %r1;", valid: true}
+      - name: cvta_to_shared_u32
+        description: "Register-only generic-to-shared u32 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.to.shared.u32 %r0, %r1;", valid: true}
+      - name: cvta_shared_u64
+        description: "Register-only shared-to-generic u64 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.shared.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_to_shared_u64
+        description: "Register-only generic-to-shared u64 address conversion."
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: shared}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.to.shared.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_const_u32
+        description: "Register-only constant-to-generic u32 address conversion."
+        availability: {ptx: "3.1", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: const}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.const.u32 %r0, %r1;", valid: true}
+      - name: cvta_to_const_u32
+        description: "Register-only generic-to-constant u32 address conversion."
+        availability: {ptx: "3.1", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: const}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.to.const.u32 %r0, %r1;", valid: true}
+      - name: cvta_const_u64
+        description: "Register-only constant-to-generic u64 address conversion."
+        availability: {ptx: "3.1", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: const}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.const.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_to_const_u64
+        description: "Register-only generic-to-constant u64 address conversion."
+        availability: {ptx: "3.1", sm: 20}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: const}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.to.const.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_param_u32
+        description: "Register-only parameter-to-generic u32 address conversion."
+        availability: {ptx: "7.7", sm: 70}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: param}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.param.u32 %r0, %r1;", valid: true}
+      - name: cvta_to_param_u32
+        description: "Register-only generic-to-parameter u32 address conversion."
+        availability: {ptx: "7.7", sm: 70}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: param}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        examples:
+          - {ptx: "cvta.to.param.u32 %r0, %r1;", valid: true}
+      - name: cvta_param_u64
+        description: "Register-only parameter-to-generic u64 address conversion."
+        availability: {ptx: "7.7", sm: 70}
+        modifiers:
+          - {name: to, kind: flag, presence: absent, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: param}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.param.u64 %rd0, %rd1;", valid: true}
+      - name: cvta_to_param_u64
+        description: "Register-only generic-to-parameter u64 address conversion."
+        availability: {ptx: "7.7", sm: 70}
+        modifiers:
+          - {name: to, kind: flag, presence: fixed, value: true, token: ".to"}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: fixed, value: param}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
+        examples:
+          - {ptx: "cvta.to.param.u64 %rd0, %rd1;", valid: true}
 
   - opcode: cvt
     section: "9.7.9.22"

@@ -752,36 +752,83 @@ TEST(ResolvedModule, ChecksM12CvtPackOperandTypes) {
   }
 }
 
-TEST(ResolvedModule, ChecksCvtaU64OperandWidths) {
+TEST(ResolvedModule, ChecksCvtaNonSubspaceRegisterFormsAndWidths) {
   const auto parsed_module_1 = parseModule(R"ptx(
-.entry kernel() { .reg .u64 %dst, %src; cvta.global.u64 %dst, %src; cvta.to.global.u64 %dst, %src; }
+.entry kernel() {
+  .reg .u32 %r<2>;
+  .reg .u64 %rd<2>;
+  cvta.global.u64 %rd0, %rd1;
+  cvta.to.global.u64 %rd0, %rd1;
+  cvta.global.u32 %r0, %r1;
+  cvta.to.global.u32 %r0, %r1;
+  cvta.local.u32 %r0, %r1;
+  cvta.to.local.u32 %r0, %r1;
+  cvta.local.u64 %rd0, %rd1;
+  cvta.to.local.u64 %rd0, %rd1;
+  cvta.shared.u32 %r0, %r1;
+  cvta.to.shared.u32 %r0, %r1;
+  cvta.shared.u64 %rd0, %rd1;
+  cvta.to.shared.u64 %rd0, %rd1;
+  cvta.const.u32 %r0, %r1;
+  cvta.to.const.u32 %r0, %r1;
+  cvta.const.u64 %rd0, %rd1;
+  cvta.to.const.u64 %rd0, %rd1;
+  cvta.param.u32 %r0, %r1;
+  cvta.to.param.u32 %r0, %r1;
+  cvta.param.u64 %rd0, %rd1;
+  cvta.to.param.u64 %rd0, %rd1;
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const checker::Context context{
-      .target = {.ptx_version = {2, 0}, .sm_version = 20}};
-  EXPECT_TRUE(
-      checker::check(std::get<Cvta>(valid->functions.front().body[0]), context)
-          .has_value());
-  EXPECT_TRUE(
-      checker::check(std::get<Cvta>(valid->functions.front().body[1]), context)
-          .has_value());
+      .target = {.ptx_version = {7, 7}, .sm_version = 70}};
+  ASSERT_EQ(valid->functions.front().body.size(), 20u);
+  for (const ResolvedInstruction& instruction : valid->functions.front().body) {
+    EXPECT_TRUE(
+        checker::check(std::get<Cvta>(instruction), context).has_value());
+  }
 
-  const auto parsed_module_2 = parseModule(R"ptx(
-.entry kernel() { .reg .u32 %dst, %src; cvta.global.u64 %dst, %src; }
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto invalid = resolveModule(*parsed_module_2);
-  ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
-  const auto& instruction =
-      std::get<Cvta>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Cvta::GlobalU64>(instruction.variant);
-  const auto checked = checker::check(instruction, context);
-  ASSERT_FALSE(checked.has_value());
-  EXPECT_EQ(checked.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
-  EXPECT_EQ(checked.error().front().range, variant.dst.locs.front());
+  /** One invalid spelling and the operand expected to receive its diagnostic. */
+  struct InvalidCase {
+    std::string_view source;
+    bool destination_mismatch;
+  };
+  constexpr std::array invalid_cases{
+      InvalidCase{".entry kernel() { .reg .u32 %r; .reg .u64 %rd; "
+                  "cvta.global.u32 %rd, %r; }",
+                  true},
+      InvalidCase{".entry kernel() { .reg .u32 %r; .reg .u64 %rd; "
+                  "cvta.global.u32 %r, %rd; }",
+                  false},
+      InvalidCase{".entry kernel() { .reg .u32 %r; .reg .u64 %rd; "
+                  "cvta.global.u64 %r, %rd; }",
+                  true},
+      InvalidCase{".entry kernel() { .reg .u32 %r; .reg .u64 %rd; "
+                  "cvta.global.u64 %rd, %r; }",
+                  false},
+  };
+  for (const InvalidCase& test : invalid_cases) {
+    SCOPED_TRACE(test.source);
+    const auto parsed_module_2 = parseModule(test.source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
+    const auto invalid = resolveModule(*parsed_module_2);
+    ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
+    const Cvta& instruction =
+        std::get<Cvta>(invalid->functions.front().body.front());
+    const auto checked = checker::check(instruction, context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+    std::visit(
+        [&](const auto& variant) {
+          EXPECT_EQ(checked.error().front().range,
+                    test.destination_mismatch ? variant.dst.locs.front()
+                                              : variant.src.locs.front());
+        },
+        instruction.variant);
+  }
 }
 
 TEST(ResolvedModule, ChecksIsspacepGlobalU64OperandTypes) {

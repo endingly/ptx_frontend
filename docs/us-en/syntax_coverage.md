@@ -39,7 +39,7 @@ execution evidence for eleven commonly used operation names.
 | PTX 9.3 integer bit operations | Supported | `popc`, `clz`, `brev`, `bfind`, `bfe`, and `bfi` cover their documented PTX 2.0 / `sm_20` width, sign, `.shiftamt`, and control-operand forms. See [bit-operation coverage](bit_operations_coverage.md). |
 | PTX 9.3 integer arithmetic | Supported | All documented §9.7.1 syntax forms are modelled through parsing, resolution, operand/type checks, and target availability. See [integer arithmetic coverage](integer_arithmetic_coverage.md). |
 | Frozen mixed `cvt` | Supported | Register-only `cvt.rn.f32.u32` and `cvt.rzi.u32.f32` (equal-or-wider declarations at both endpoints; PTX 1.0 / SM 0) |
-| Frozen `cvta` | Supported | Register-only `cvta.global.u64` and `cvta.to.global.u64` (PTX 2.0 / SM 20); no variable-address or provenance inference |
+| `cvta` unqualified state-space register forms | Supported subset | Register-only `cvta`/`cvta.to` for `.global`, `.local`, `.shared`, `.const`, and `.param` in `.u32`/`.u64`. `.shared` retains its default CTA meaning and `.param` its default entry meaning; explicit sub-qualifier spellings are outside this slice. Global/local/shared require PTX 2.0 / SM 20; constant requires PTX 3.1 / SM 20; parameter requires PTX 7.7 / SM 70. Variable addresses, offsets, and provenance inference remain unsupported. This slice does not expand `isspacep`, `cvt`, `cvt.pack`, `prmt`, `mapa`, or `getctarank`. See NVIDIA's [PTX 9.3 `cvta` specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cvta). |
 | Modelled `mul` | Supported | The complete PTX 9.3 integer, floating, half, and bfloat MUL forms, their modifier/operand contracts, and availability are listed in the [MUL coverage matrix](mul_coverage.md); simulator execution remains unsupported |
 | Modelled `setp` | Supported | Ordinary and half/bfloat comparisons, Boolean predicate sources, destination shapes, and target boundaries are documented in [SETP coverage](setp_coverage.md); this does not execute comparisons |
 | Modelled `ld`/`st` | Supported | Scalar/vector, shared sub-spaces, cache-control combinations, ordered semantics, NC loads, and unified-address validation are described in [LD coverage](ld_coverage.md) and [ST coverage](st_coverage.md); memory execution and allocation remain outside the frontend |
@@ -47,6 +47,15 @@ execution evidence for eleven commonly used operation names.
 | Frozen integer `mad` | Supported | `mad.lo.u32` with register-or-immediate sources (PTX 1.0 / SM 0) |
 | Modelled `fma` | Supported | The 16 PTX 9.3 FMA variants, their modifier/operand contracts, and availability are listed in the [FMA coverage matrix](fma_coverage.md); simulator execution remains unsupported |
 | Frozen integer `div` | Supported | `div.u32` with register-or-immediate sources (PTX 1.0 / SM 0); a zero divisor remains accepted with PTX-specified unspecified behavior |
+
+The conversion-family inventory remains intentionally partial. This change grows
+`cvta` from its prior two global/u64 directions to 20 fixed variants by adding
+18 unqualified state-space forms. `isspacep` remains the existing
+`isspacep.global`/u64 slice, while `cvt`, `cvt.pack`, `prmt`, `mapa`, and
+`getctarank` retain their existing YAML-defined subsets. No statement here
+claims a complete `cvt` matrix or conversion-family closure; the remaining
+`cvta` work includes explicit sub-qualifier spellings and non-register address
+forms.
 
 The lexer may tokenize source outside this matrix, and Syntax AST may retain an
 unknown opcode as text. Neither behavior means that the construct can be

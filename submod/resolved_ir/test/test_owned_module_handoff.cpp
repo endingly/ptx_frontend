@@ -76,6 +76,17 @@ constexpr std::string_view k_member_identity_module_fixture = R"ptx(
 }
 )ptx";
 
+/** Complete-context fixture for a generated public `cvta` variant. */
+constexpr std::string_view k_cvta_member_identity_module_fixture = R"ptx(
+.version 7.7
+.target sm_80
+.entry kernel() {
+  .reg .u32 %r<2>;
+  cvta.to.param.u32 %r0, %r1;
+  ret;
+}
+)ptx";
+
 /** Header-only target fixtures isolate strict source-profile diagnostics. */
 constexpr std::string_view k_unknown_target_module_fixture = R"ptx(
 .version 9.3
@@ -459,6 +470,51 @@ TEST(OwnedModuleHandoff, RejectsMutatedGeneratedOperandMemberIdentities) {
   expect_owned_model_mismatch(module,
                               ModuleValidationPolicy::RequireCompleteContext);
   source.symbol_id = original_symbol_id;
+}
+
+/** Generated `cvta` operands remain valid after AST destruction and reject edits. */
+TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtaOperandsWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_cvta_member_identity_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Source fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ASSERT_EQ(module.functions.size(), 1u);
+  ResolvedFunction& kernel = module.functions.front();
+  ASSERT_EQ(kernel.body.size(), 2u);
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Cvta& cvta = std::get<Cvta>(kernel.body.front());
+  Cvta::ToParamU32& to_param = std::get<Cvta::ToParamU32>(cvta.variant);
+  const uint16_t original_layout = to_param.operand_layout.value;
+  ++to_param.operand_layout.value;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+  to_param.operand_layout.value = original_layout;
+
+  ResolvedRegisterRef& source = to_param.src.value;
+  ASSERT_TRUE(source.declared_type.has_value());
+  const ScalarType original_type = *source.declared_type;
+  source.declared_type = ScalarType::U64;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::OperandTypeMismatch);
+  source.declared_type = original_type;
+
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
 }
 
 /** Strict validation reports only modeled target and version context omissions. */

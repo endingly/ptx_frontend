@@ -1092,6 +1092,71 @@ TEST(ResolvedIrChecker, ChecksGeneratedMinAvailability) {
                   .has_value());
 }
 
+/** Validate generated `cvta` target minima across the new state spaces. */
+TEST(ResolvedIrChecker, ChecksGeneratedCvtaAvailabilityBoundaries) {
+  const auto expect_availability =
+      [](std::string_view source, Context rejected_by_ptx,
+         Context rejected_by_sm, Context supported) {
+        PtxSyntaxParser parser(source);
+        const auto ast = parser.parseInstruction();
+        ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+        const auto cvta = resolve<Cvta>(*ast);
+        ASSERT_TRUE(cvta.has_value()) << cvta.error().message;
+        EXPECT_FALSE(check(*cvta, rejected_by_ptx).has_value());
+        EXPECT_FALSE(check(*cvta, rejected_by_sm).has_value());
+        EXPECT_TRUE(check(*cvta, supported).has_value());
+      };
+
+  expect_availability(
+      "cvta.local.u32 %r0, %r1;",
+      Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+              .instruction_range = kInstructionRange});
+  expect_availability(
+      "cvta.to.shared.u64 %rd0, %rd1;",
+      Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+              .instruction_range = kInstructionRange});
+  expect_availability(
+      "cvta.const.u32 %r0, %r1;",
+      Context{.target = {.ptx_version = {3, 0}, .sm_version = 20},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {3, 1}, .sm_version = 19},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {3, 1}, .sm_version = 20},
+              .instruction_range = kInstructionRange});
+  expect_availability(
+      "cvta.to.const.u64 %rd0, %rd1;",
+      Context{.target = {.ptx_version = {3, 0}, .sm_version = 20},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {3, 1}, .sm_version = 19},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {3, 1}, .sm_version = 20},
+              .instruction_range = kInstructionRange});
+  expect_availability(
+      "cvta.param.u32 %r0, %r1;",
+      Context{.target = {.ptx_version = {7, 6}, .sm_version = 70},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {7, 7}, .sm_version = 69},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {7, 7}, .sm_version = 70},
+              .instruction_range = kInstructionRange});
+  expect_availability(
+      "cvta.to.param.u64 %rd0, %rd1;",
+      Context{.target = {.ptx_version = {7, 6}, .sm_version = 70},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {7, 7}, .sm_version = 69},
+              .instruction_range = kInstructionRange},
+      Context{.target = {.ptx_version = {7, 7}, .sm_version = 70},
+              .instruction_range = kInstructionRange});
+}
+
 TEST(ResolvedIrChecker, ChecksGeneratedMaxAvailability) {
   PtxSyntaxParser integer_parser("max.s32 %r0, %r1, %r2;");
   const auto integer_ast = integer_parser.parseInstruction();

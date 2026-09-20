@@ -1,5 +1,6 @@
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from importlib.resources.abc import Traversable
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -34,9 +35,84 @@ from ptx_frontend.spec.resources import packaged_backend_spec
 REPOSITORY_CPP_BACKEND_SPEC = packaged_backend_spec()
 
 
+class UnhashableResource(Traversable):
+    """Readable resource with no hash identity and observable resource reads."""
+
+    __hash__ = None
+
+    def __init__(self, path: Path) -> None:
+        """Wrap a file whose contents can change between explicit loads."""
+        self.path = path
+        self.reads = 0
+
+    @property
+    def name(self) -> str:
+        """Return the resource basename."""
+        return self.path.name
+
+    def iterdir(self):
+        """Iterate wrapped children when this resource is a directory."""
+        return (UnhashableResource(path) for path in self.path.iterdir())
+
+    def is_dir(self) -> bool:
+        """Report whether the resource is a directory."""
+        return self.path.is_dir()
+
+    def is_file(self) -> bool:
+        """Report whether the resource is a file."""
+        return self.path.is_file()
+
+    def joinpath(self, *descendants: str):
+        """Return a wrapped descendant resource."""
+        return UnhashableResource(self.path.joinpath(*descendants))
+
+    def open(self, mode="r", *args, **kwargs):
+        """Open the resource and count reads requested by the loader."""
+        self.reads += 1
+        return self.path.open(mode, *args, **kwargs)
+
+
 class BackendModelTests(unittest.TestCase):
     def setUp(self) -> None:
         configure_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC)
+
+    def test_loads_unhashable_resource_without_caching_direct_reads(self) -> None:
+        """Direct loading accepts Traversable resources and rereads their data."""
+        resource = UnhashableResource(REPOSITORY_CPP_BACKEND_SPEC)
+        first = load_cpp_backend(resource)
+        second = load_cpp_backend(resource)
+        self.assertEqual(first, second)
+        self.assertIsNot(first, second)
+        self.assertEqual(resource.reads, 2)
+
+    def test_configured_resource_cache_is_invalidated_on_configuration(self) -> None:
+        """Repeated access caches a resource until even the same one is reset."""
+        resource = UnhashableResource(REPOSITORY_CPP_BACKEND_SPEC)
+        self.addCleanup(configure_cpp_backend, REPOSITORY_CPP_BACKEND_SPEC)
+        configure_cpp_backend(resource)
+        first = cpp_backend.get_cpp_backend()
+        self.assertIs(cpp_backend.get_cpp_backend(), first)
+        self.assertEqual(resource.reads, 1)
+        configure_cpp_backend(resource)
+        self.assertIsNot(cpp_backend.get_cpp_backend(), first)
+        self.assertEqual(resource.reads, 2)
+
+    def test_reconfiguration_reloads_changed_resource_contents(self) -> None:
+        """Configuration fixes a snapshot while direct reads see file changes."""
+        self.addCleanup(configure_cpp_backend, REPOSITORY_CPP_BACKEND_SPEC)
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backend.yaml"
+            path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+            resource = UnhashableResource(path)
+            configure_cpp_backend(resource)
+            original = cpp_backend.get_cpp_backend()
+            raw["namespace"] = "custom::updated"
+            path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+            self.assertEqual(load_cpp_backend(resource).namespace, "custom::updated")
+            self.assertIs(cpp_backend.get_cpp_backend(), original)
+            configure_cpp_backend(resource)
+            self.assertEqual(cpp_backend.get_cpp_backend().namespace, "custom::updated")
 
     def test_constructs_detached_cpp_backend_model(self) -> None:
         scalar_types = DomainBackend(

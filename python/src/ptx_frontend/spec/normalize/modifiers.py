@@ -1,6 +1,11 @@
 from ptx_frontend.spec.load_yaml import expand_value_refs
 from typing import Any
-from ptx_frontend.spec.model import ModifierSpec, ModifierValueSpec
+from ptx_frontend.spec.model import (
+    ModifierKind,
+    ModifierPresence,
+    ModifierSpec,
+    ModifierValueSpec,
+)
 from .availability import normalize_availability
 
 
@@ -9,12 +14,17 @@ def normalize_modifier(
 ) -> ModifierSpec:
     """Normalize one modifier and expand its reusable value-set references."""
 
+    kind = _parse_modifier_kind(raw)
+    presence = _parse_modifier_presence(raw)
+    raw = {**raw, "kind": kind, "presence": presence}
     raw_values: object = raw.get("values", [])
     if not isinstance(raw_values, list):
         raise TypeError("modifier values must be a list")
 
     values = _normalize_modifier_values(raw_values, reusable_value_sets)
-    if raw["kind"] == "cache" and any(value.value == "unspecified" for value in values):
+    if kind is ModifierKind.CACHE and any(
+        value.value == "unspecified" for value in values
+    ):
         raise ValueError(
             f"modifier {raw['name']!r}: cache sentinel 'unspecified' is not a "
             "syntax value"
@@ -23,8 +33,8 @@ def normalize_modifier(
 
     return ModifierSpec(
         name=raw["name"],
-        kind=raw["kind"],
-        presence=raw["presence"],
+        kind=kind,
+        presence=presence,
         domain=raw.get("domain"),
         values=values,
         value=raw.get("value"),
@@ -40,7 +50,7 @@ def _validate_modifier_default(
 
     presence = raw["presence"]
     has_default = "default" in raw
-    if presence != "optional":
+    if presence is not ModifierPresence.OPTIONAL:
         if has_default:
             raise ValueError(
                 f"modifier {raw['name']!r}: default is only valid for optional "
@@ -52,13 +62,13 @@ def _validate_modifier_default(
 
     default = raw["default"]
     kind = raw["kind"]
-    if kind == "flag":
+    if kind is ModifierKind.FLAG:
         if type(default) is not bool:
             raise ValueError(
                 f"optional flag modifier {raw['name']!r} must have a boolean " "default"
             )
         return
-    if kind == "type":
+    if kind is ModifierKind.TYPE:
         if not isinstance(default, str):
             raise ValueError(
                 f"optional type modifier {raw['name']!r} must have a string " "default"
@@ -70,7 +80,7 @@ def _validate_modifier_default(
                 f"{default!r} outside its allowed values"
             )
         return
-    if kind == "rounding":
+    if kind is ModifierKind.ROUNDING:
         if not isinstance(default, str):
             raise ValueError(
                 f"optional rounding modifier {raw['name']!r} must have a "
@@ -83,14 +93,14 @@ def _validate_modifier_default(
                 f"{default!r} outside its allowed values"
             )
         return
-    if kind == "cache":
+    if kind is ModifierKind.CACHE:
         if default != "unspecified":
             raise ValueError(
                 f"optional cache modifier {raw['name']!r} must use semantic "
                 "default 'unspecified'"
             )
         return
-    if kind in {"semantics", "scope"}:
+    if kind in {ModifierKind.SEMANTICS, ModifierKind.SCOPE}:
         if not isinstance(default, str):
             raise ValueError(
                 f"optional {kind} modifier {raw['name']!r} must have a string "
@@ -98,7 +108,7 @@ def _validate_modifier_default(
             )
         allowed_values = {value.value for value in values}
         # Omission sentinels intentionally are not spellable modifier values.
-        sentinel = "omitted" if kind == "semantics" else "none"
+        sentinel = "omitted" if kind is ModifierKind.SEMANTICS else "none"
         if default != sentinel and default not in allowed_values:
             raise ValueError(
                 f"optional {kind} modifier {raw['name']!r} has default "
@@ -147,6 +157,30 @@ def _normalize_modifier_values(
                 )
             )
     return tuple(values)
+
+
+def _parse_modifier_kind(raw: dict[str, Any]) -> ModifierKind:
+    """Convert the YAML modifier-kind spelling at the normalization boundary."""
+
+    try:
+        return ModifierKind(raw["kind"])
+    except ValueError as error:
+        raise ValueError(
+            f"modifier {raw.get('name')!r}: unsupported modifier kind "
+            f"{raw.get('kind')!r}"
+        ) from error
+
+
+def _parse_modifier_presence(raw: dict[str, Any]) -> ModifierPresence:
+    """Convert the YAML modifier-presence spelling at the normalization boundary."""
+
+    try:
+        return ModifierPresence(raw["presence"])
+    except ValueError as error:
+        raise ValueError(
+            f"modifier {raw.get('name')!r}: unsupported modifier presence "
+            f"{raw.get('presence')!r}"
+        ) from error
 
 
 def normalize_modifier_order_aliases(

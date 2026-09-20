@@ -7,7 +7,13 @@ from typing import Any, TypeVar
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from .load_yaml import load_yaml
-from .model import InstructionSpec, ModifierSpec, VariantSpec, modifier_spellings
+from .model import (
+    InstructionSpec,
+    ModifierPresence,
+    ModifierSpec,
+    VariantSpec,
+    modifier_spellings,
+)
 from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
 from importlib.resources.abc import Traversable
@@ -197,25 +203,28 @@ def _variant_modifier_language(
         slot_names.add(modifier.name)
 
         spellings = set(modifier_spellings(modifier))
-        if modifier.presence == "optional":
+        if modifier.presence is ModifierPresence.OPTIONAL:
             if not spellings:
                 raise ValueError(
                     f"opcode {opcode!r} variant {variant.name!r} optional "
                     f"modifier {modifier.name!r} has no source spelling"
                 )
-        elif modifier.presence != "absent":
+        elif modifier.presence is not ModifierPresence.ABSENT:
             if not spellings:
                 raise ValueError(
                     f"opcode {opcode!r} variant {variant.name!r} active "
                     f"modifier {modifier.name!r} has no source spelling"
                 )
 
-        if modifier.presence != "absent":
+        if modifier.presence is not ModifierPresence.ABSENT:
             for spelling in spellings:
                 owners = owners_by_spelling.setdefault(spelling, [])
                 if owners and (
-                    modifier.presence == "optional"
-                    or any(presence == "optional" for _, presence in owners)
+                    modifier.presence is ModifierPresence.OPTIONAL
+                    or any(
+                        presence is ModifierPresence.OPTIONAL
+                        for _, presence in owners
+                    )
                 ):
                     raise ValueError(
                         f"opcode {opcode!r} variant {variant.name!r} maps "
@@ -252,9 +261,9 @@ def _modifier_order_language(
     language: dict[tuple[str, ...], tuple[str, ...]] = {(): ()}
     for modifier in modifiers:
         spellings = set(modifier_spellings(modifier))
-        if modifier.presence == "absent":
+        if modifier.presence is ModifierPresence.ABSENT:
             choices: set[str | None] = {None}
-        elif modifier.presence == "optional":
+        elif modifier.presence is ModifierPresence.OPTIONAL:
             choices = {None, *spellings}
         else:
             choices = set(spellings)

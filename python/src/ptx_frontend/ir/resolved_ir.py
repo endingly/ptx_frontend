@@ -13,8 +13,6 @@ from typing import overload
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.code_gen.cpp_backend import (
     CppDomain,
-    cpp_domain,
-    cpp_optional_value,
     cpp_value,
 )
 from ptx_frontend.spec.model import (
@@ -27,14 +25,20 @@ from ptx_frontend.spec.model import (
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
     MbarrierStateTokenForm,
+    ModifierKind,
+    ModifierPresence,
     ModifierSpec,
     ModifierValueSpec,
     OperandParameterConstraint,
+    OperandAccess,
+    OperandKind,
     OperandImmediateConversionPolicy,
     OperandRegisterWidthPolicy,
+    OperandRole,
     OperandSpec,
     OperandStateSpaceExpression,
     OperandStateSpaceValue,
+    OperandTypeCompatibilityValueKind,
     OperandTypeCompatibilitySpec,
     OperandTypeExpression,
     OperandTypeExpressionKind,
@@ -45,13 +49,10 @@ from ptx_frontend.spec.model import (
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.ir.resolved_value_policy import (
     modifier_value_kind,
-    resolved_modifier_value_policy,
-    unsupported_resolved_modifier_value_error,
     validate_resolved_modifier_value_type,
 )
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_value_cpp_expr,
-    resolved_modifier_value_traits,
 )
 
 
@@ -62,39 +63,39 @@ class ResolvedFieldOrigin(Enum):
     OPERAND = "operand"
 
 
-_OPERAND_VALUE_KINDS: dict[str, ResolvedValueKind] = {
-    "reg": ResolvedValueKind.REGISTER,
-    "imm": ResolvedValueKind.IMMEDIATE,
-    "reg_or_imm": ResolvedValueKind.REG_OR_IMM,
-    "reg_or_sink": ResolvedValueKind.REGISTER_OR_SINK,
-    "shfl_dest": ResolvedValueKind.SHFL_DESTINATION,
-    "pred_pair": ResolvedValueKind.PREDICATE_PAIR,
-    "pred_pair_or_sink": ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
-    "mov_scalar_src": ResolvedValueKind.MOV_SOURCE,
-    "cluster_address": ResolvedValueKind.MOV_SOURCE,
-    "vector_reg": ResolvedValueKind.VECTOR_REGISTER,
-    "vector_sreg": ResolvedValueKind.VECTOR_SPECIAL_REGISTER,
-    "pred": ResolvedValueKind.PREDICATE,
-    "pred_or_sink": ResolvedValueKind.PREDICATE_OR_SINK,
-    "pred_source": ResolvedValueKind.PREDICATE_SOURCE,
-    "pred_or_sreg": ResolvedValueKind.PREDICATE_SOURCE,
-    "pred_or_not": ResolvedValueKind.PREDICATE,
-    "label": ResolvedValueKind.BRANCH_TARGET,
-    "sreg": ResolvedValueKind.SPECIAL_REGISTER,
-    "symbol": ResolvedValueKind.SYMBOL,
-    "addr": ResolvedValueKind.ADDRESS,
-    "reg_vector": ResolvedValueKind.REGISTER_VECTOR,
-    "descriptor": ResolvedValueKind.REGISTER,
-    "typed_token": ResolvedValueKind.REGISTER,
-    "mbarrier_state_token": ResolvedValueKind.MBARRIER_STATE_TOKEN,
-    "tensor_coordinate": ResolvedValueKind.TENSOR_COORDINATE,
-    "matrix_fragment": ResolvedValueKind.REGISTER_VECTOR,
-    "direct_call_target": ResolvedValueKind.DIRECT_CALL_TARGET,
-    "indirect_call_target": ResolvedValueKind.INDIRECT_CALLEE,
-    "indirect_call_metadata": ResolvedValueKind.INDIRECT_CALLEE,
-    "branch_target_set": ResolvedValueKind.BRANCH_TARGET_SET,
-    "call_return_param": ResolvedValueKind.CALL_RETURN_PARAMETER,
-    "call_arguments": ResolvedValueKind.CALL_ARGUMENTS,
+_OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
+    OperandKind.REGISTER: ResolvedValueKind.REGISTER,
+    OperandKind.IMMEDIATE: ResolvedValueKind.IMMEDIATE,
+    OperandKind.REGISTER_OR_IMMEDIATE: ResolvedValueKind.REG_OR_IMM,
+    OperandKind.REGISTER_OR_SINK: ResolvedValueKind.REGISTER_OR_SINK,
+    OperandKind.SHFL_DESTINATION: ResolvedValueKind.SHFL_DESTINATION,
+    OperandKind.PREDICATE_PAIR: ResolvedValueKind.PREDICATE_PAIR,
+    OperandKind.PREDICATE_PAIR_OR_SINK: ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
+    OperandKind.MOV_SCALAR_SOURCE: ResolvedValueKind.MOV_SOURCE,
+    OperandKind.CLUSTER_ADDRESS: ResolvedValueKind.MOV_SOURCE,
+    OperandKind.VECTOR_REGISTER: ResolvedValueKind.VECTOR_REGISTER,
+    OperandKind.VECTOR_SPECIAL_REGISTER: ResolvedValueKind.VECTOR_SPECIAL_REGISTER,
+    OperandKind.PREDICATE: ResolvedValueKind.PREDICATE,
+    OperandKind.PREDICATE_OR_SINK: ResolvedValueKind.PREDICATE_OR_SINK,
+    OperandKind.PREDICATE_SOURCE: ResolvedValueKind.PREDICATE_SOURCE,
+    OperandKind.PREDICATE_OR_SPECIAL_REGISTER: ResolvedValueKind.PREDICATE_SOURCE,
+    OperandKind.PREDICATE_OR_NOT: ResolvedValueKind.PREDICATE,
+    OperandKind.LABEL: ResolvedValueKind.BRANCH_TARGET,
+    OperandKind.SPECIAL_REGISTER: ResolvedValueKind.SPECIAL_REGISTER,
+    OperandKind.SYMBOL: ResolvedValueKind.SYMBOL,
+    OperandKind.ADDRESS: ResolvedValueKind.ADDRESS,
+    OperandKind.REGISTER_VECTOR: ResolvedValueKind.REGISTER_VECTOR,
+    OperandKind.DESCRIPTOR: ResolvedValueKind.REGISTER,
+    OperandKind.TYPED_TOKEN: ResolvedValueKind.REGISTER,
+    OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
+    OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
+    OperandKind.MATRIX_FRAGMENT: ResolvedValueKind.REGISTER_VECTOR,
+    OperandKind.DIRECT_CALL_TARGET: ResolvedValueKind.DIRECT_CALL_TARGET,
+    OperandKind.INDIRECT_CALL_TARGET: ResolvedValueKind.INDIRECT_CALLEE,
+    OperandKind.INDIRECT_CALL_METADATA: ResolvedValueKind.INDIRECT_CALLEE,
+    OperandKind.BRANCH_TARGET_SET: ResolvedValueKind.BRANCH_TARGET_SET,
+    OperandKind.CALL_RETURN_PARAMETER: ResolvedValueKind.CALL_RETURN_PARAMETER,
+    OperandKind.CALL_ARGUMENTS: ResolvedValueKind.CALL_ARGUMENTS,
 }
 
 
@@ -521,25 +522,23 @@ _OPERAND_ALLOWED_SHAPES = {
 }
 
 _OPERAND_ROLES = {
-    "dst": ResolvedOperandRole.DESTINATION,
-    "src": ResolvedOperandRole.SOURCE,
-    "src1": ResolvedOperandRole.SOURCE,
-    "src2": ResolvedOperandRole.SOURCE,
-    "src3": ResolvedOperandRole.SOURCE,
-    "addr": ResolvedOperandRole.ADDRESS,
-    "address": ResolvedOperandRole.ADDRESS,
-    "predicate": ResolvedOperandRole.PREDICATE,
-    "branch_target": ResolvedOperandRole.BRANCH_TARGET,
-    "label": ResolvedOperandRole.BRANCH_TARGET,
-    "barrier": ResolvedOperandRole.BARRIER,
-    "thread_count": ResolvedOperandRole.THREAD_COUNT,
+    OperandRole.DESTINATION: ResolvedOperandRole.DESTINATION,
+    OperandRole.SOURCE: ResolvedOperandRole.SOURCE,
+    OperandRole.SOURCE_1: ResolvedOperandRole.SOURCE,
+    OperandRole.SOURCE_2: ResolvedOperandRole.SOURCE,
+    OperandRole.SOURCE_3: ResolvedOperandRole.SOURCE,
+    OperandRole.ADDRESS: ResolvedOperandRole.ADDRESS,
+    OperandRole.PREDICATE: ResolvedOperandRole.PREDICATE,
+    OperandRole.LABEL: ResolvedOperandRole.BRANCH_TARGET,
+    OperandRole.BARRIER: ResolvedOperandRole.BARRIER,
+    OperandRole.THREAD_COUNT: ResolvedOperandRole.THREAD_COUNT,
 }
 
 _OPERAND_ACCESS = {
-    "read": ResolvedOperandAccess.READ,
-    "write": ResolvedOperandAccess.WRITE,
-    "readwrite": ResolvedOperandAccess.READ_WRITE,
-    "control": ResolvedOperandAccess.CONTROL,
+    OperandAccess.READ: ResolvedOperandAccess.READ,
+    OperandAccess.WRITE: ResolvedOperandAccess.WRITE,
+    OperandAccess.READ_WRITE: ResolvedOperandAccess.READ_WRITE,
+    OperandAccess.CONTROL: ResolvedOperandAccess.CONTROL,
 }
 
 
@@ -557,7 +556,9 @@ def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
 
 def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
     active_modifiers = tuple(
-        modifier for modifier in variant.modifiers if modifier.presence != "absent"
+        modifier
+        for modifier in variant.modifiers
+        if modifier.presence != ModifierPresence.ABSENT
     )
     modifier_fields = tuple(
         _build_modifier_field(modifier) for modifier in active_modifiers
@@ -765,7 +766,7 @@ def _validate_resolved_modifier_value(
     *,
     default: bool,
 ) -> None:
-    """Validate one modifier semantic value against its resolved backend domain."""
+    """Validate one modifier semantic value without consulting C++ mappings."""
 
     validate_resolved_modifier_value_type(
         value_kind,
@@ -774,28 +775,12 @@ def _validate_resolved_modifier_value(
         default=default,
     )
 
-    policy = resolved_modifier_value_policy(value_kind)
-    if policy.python_type is bool:
-        return
-
-    traits = resolved_modifier_value_traits(value_kind)
-
-    if traits.cpp_domain is None:
-        raise AssertionError(f"{value_kind.value} has no configured C++ domain")
-
-    if value not in cpp_domain(traits.cpp_domain).values:
-        raise unsupported_resolved_modifier_value_error(
-            value_kind,
-            value,
-            modifier_name=modifier.name,
-            default=default,
-        )
 
 
 def _build_modifier_default(
     modifier: ModifierSpec,
 ) -> ResolvedModifierDefault | None:
-    if modifier.presence != "optional":
+    if modifier.presence != ModifierPresence.OPTIONAL:
         return None
 
     if modifier.default is None:
@@ -863,9 +848,9 @@ def _modifier_domain_values(
     if not values:
         if modifier.value is not None:
             values.append(ModifierValueSpec(value=modifier.value))
-        elif modifier.kind == "flag":
+        elif modifier.kind == ModifierKind.FLAG:
             values.append(ModifierValueSpec(value=True))
-    if modifier.presence == "optional":
+    if modifier.presence == ModifierPresence.OPTIONAL:
         if modifier.default is None:
             raise ValueError(
                 f"optional modifier {modifier.name!r} has no normalized default"
@@ -893,17 +878,18 @@ def _build_operand_type_compatibility(
 ) -> ResolvedOperandTypeCompatibility:
     """Validate and lower one expanded contextual operand type rule."""
 
-    if compatibility.value_kind != "special_register":
+    if (
+        compatibility.value_kind
+        is not OperandTypeCompatibilityValueKind.SPECIAL_REGISTER
+    ):
         raise ValueError(
             f"unsupported operand compatibility value kind "
             f"{compatibility.value_kind!r}"
         )
-    if value not in cpp_domain(CppDomain.SPECIAL_REGISTER_KINDS).values:
-        raise ValueError(f"unsupported special-register compatibility value {value!r}")
-    if compatibility.effective_type not in cpp_domain(CppDomain.SCALAR_TYPES).values:
-        raise ValueError(
-            f"unsupported effective scalar type {compatibility.effective_type!r}"
-        )
+    if not isinstance(value, str):
+        raise ValueError("special-register compatibility value must be a string")
+    if not isinstance(compatibility.effective_type, str):
+        raise ValueError("effective scalar type must be a string")
     return ResolvedOperandTypeCompatibility(
         target_field_id=compatibility.operand,
         special_register_kind=value,
@@ -971,14 +957,14 @@ def _build_operand_layout(
                 allow_predicate_sink=operand.allow_predicate_sink,
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,
                 sink_availability=tuple(operand.sink_availability.items()),
-                allow_function_symbol=operand.kind == "mov_scalar_src",
+                allow_function_symbol=operand.kind == OperandKind.MOV_SCALAR_SOURCE,
                 type_tag=operand.type_tag,
                 minimum_elements=operand.minimum_elements,
                 maximum_elements=operand.maximum_elements,
                 allowed_element_shapes=tuple(
                     (
                         ResolvedOperandShape.REGISTER
-                        if kind == "reg"
+                        if kind is OperandKind.REGISTER
                         else ResolvedOperandShape.IMMEDIATE
                     )
                     for kind in operand.element_kinds
@@ -1000,20 +986,20 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
         ) from error
 
     return ResolvedField(
-        name=cpp_optional_value(
-            CppDomain.MODIFIER_FIELD_NAMES,
-            modifier.name,
-        )
-        or modifier.name,
+        name=modifier.name,
         value_kind=value_kind,
         origin=ResolvedFieldOrigin.MODIFIER,
         source_name=modifier.name,
         storage=(
             ResolvedFieldStorage.STATIC_CONSTANT
-            if modifier.presence == "fixed"
+            if modifier.presence == ModifierPresence.FIXED
             else ResolvedFieldStorage.INSTANCE
         ),
-        constant_value=(modifier.value if modifier.presence == "fixed" else None),
+        constant_value=(
+            modifier.value
+            if modifier.presence == ModifierPresence.FIXED
+            else None
+        ),
     )
 
 
@@ -1027,7 +1013,7 @@ def _build_operand_field(operand: OperandSpec) -> ResolvedField:
         ) from error
 
     try:
-        role = _OPERAND_ROLES[operand.role or ""]
+        role = _OPERAND_ROLES[operand.role]
     except KeyError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported resolved operand role "
@@ -1035,7 +1021,7 @@ def _build_operand_field(operand: OperandSpec) -> ResolvedField:
         ) from error
 
     try:
-        access = _OPERAND_ACCESS[operand.access or ""]
+        access = _OPERAND_ACCESS[operand.access]
     except KeyError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported resolved operand access "
@@ -1065,10 +1051,6 @@ def _resolve_operand_type_expression(
         )
     if expression.kind is OperandTypeExpressionKind.FIXED_SCALAR:
         assert expression.scalar_type is not None
-        if expression.scalar_type not in cpp_domain(CppDomain.SCALAR_TYPES).values:
-            raise ValueError(
-                f"unsupported fixed operand scalar type {expression.scalar_type!r}"
-            )
         return ResolvedOperandTypeExpression(
             kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
             scalar_type=expression.scalar_type,
@@ -1126,15 +1108,10 @@ def _resolve_operand_vector_arity_expression(
 def _resolve_operand_state_spaces(
     values: tuple[OperandStateSpaceValue, ...],
 ) -> tuple[ResolvedAddressStateSpace, ...]:
-    """Validate static state spaces against the semantic C++ value domain."""
+    """Lower static PTX state-space values normalized at the input boundary."""
 
-    supported = cpp_domain(CppDomain.MEMORY_STATE_SPACES).values
     result: list[ResolvedAddressStateSpace] = []
     for value in values:
-        if value.value not in supported:
-            raise ValueError(
-                f"unsupported resolved operand state space {value.value!r}"
-            )
         result.append(
             ResolvedAddressStateSpace(
                 value=value.value,
@@ -1149,10 +1126,6 @@ def _resolve_parameter_address_constraint(
 ) -> ResolvedParameterAddressConstraint | None:
     if constraint is None:
         return None
-    if constraint.direction not in cpp_domain(CppDomain.PARAMETER_DIRECTIONS).values:
-        raise ValueError(
-            f"unsupported resolved parameter direction {constraint.direction!r}"
-        )
     return ResolvedParameterAddressConstraint(
         direction=constraint.direction,
         function_availability=tuple(constraint.function_availability.items()),

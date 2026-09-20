@@ -23,6 +23,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     from_instruction_spec,
 )
+from ptx_frontend.code_gen.resolved_field_names import with_cpp_backend_field_names
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_value_descriptor_members,
 )
@@ -36,7 +37,8 @@ def generate_resolved_checker_descriptor_source(
     """Generate private checker descriptor storage and instruction getters."""
 
     instructions = tuple(
-        from_instruction_spec(instruction) for instruction in database.instructions
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
+        for instruction in database.instructions
     )
     _validate_unique_cpp_names(instructions)
     storage_definitions = "\n\n".join(

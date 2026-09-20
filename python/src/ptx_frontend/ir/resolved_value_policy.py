@@ -9,6 +9,7 @@ descriptor-member spellings deliberately remain in
 from dataclasses import dataclass
 
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
+from ptx_frontend.spec.model import ModifierKind
 
 
 @dataclass(frozen=True)
@@ -31,23 +32,23 @@ class ResolvedModifierValuePolicy:
     availability_requires_explicit_type_message: bool = True
 
 
-_MODIFIER_VALUE_KINDS: dict[str, ResolvedValueKind] = {
-    "flag": ResolvedValueKind.BOOL,
-    "type": ResolvedValueKind.SCALAR_TYPE,
-    "rounding": ResolvedValueKind.ROUNDING_MODE,
-    "comparison": ResolvedValueKind.COMPARISON_OPERATOR,
-    "boolean_op": ResolvedValueKind.BOOLEAN_OPERATOR,
-    "cache": ResolvedValueKind.CACHE_OPERATOR,
-    "eviction_priority": ResolvedValueKind.EVICTION_PRIORITY,
-    "prefetch_size": ResolvedValueKind.PREFETCH_SIZE,
-    "semantics": ResolvedValueKind.MEMORY_CONSISTENCY,
-    "scope": ResolvedValueKind.MEMORY_SCOPE,
-    "vector": ResolvedValueKind.VECTOR_ARITY,
-    "state_space": ResolvedValueKind.MEMORY_STATE_SPACE,
-    "phase_type": ResolvedValueKind.MBARRIER_PHASE_TYPE,
-    "mbarrier_layout": ResolvedValueKind.MBARRIER_LAYOUT,
-    "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
-    "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
+_MODIFIER_VALUE_KINDS: dict[ModifierKind, ResolvedValueKind] = {
+    ModifierKind.FLAG: ResolvedValueKind.BOOL,
+    ModifierKind.TYPE: ResolvedValueKind.SCALAR_TYPE,
+    ModifierKind.ROUNDING: ResolvedValueKind.ROUNDING_MODE,
+    ModifierKind.COMPARISON: ResolvedValueKind.COMPARISON_OPERATOR,
+    ModifierKind.BOOLEAN_OP: ResolvedValueKind.BOOLEAN_OPERATOR,
+    ModifierKind.CACHE: ResolvedValueKind.CACHE_OPERATOR,
+    ModifierKind.EVICTION_PRIORITY: ResolvedValueKind.EVICTION_PRIORITY,
+    ModifierKind.PREFETCH_SIZE: ResolvedValueKind.PREFETCH_SIZE,
+    ModifierKind.SEMANTICS: ResolvedValueKind.MEMORY_CONSISTENCY,
+    ModifierKind.SCOPE: ResolvedValueKind.MEMORY_SCOPE,
+    ModifierKind.VECTOR: ResolvedValueKind.VECTOR_ARITY,
+    ModifierKind.STATE_SPACE: ResolvedValueKind.MEMORY_STATE_SPACE,
+    ModifierKind.PHASE_TYPE: ResolvedValueKind.MBARRIER_PHASE_TYPE,
+    ModifierKind.MBARRIER_LAYOUT: ResolvedValueKind.MBARRIER_LAYOUT,
+    ModifierKind.PROXY: ResolvedValueKind.ASYNC_PROXY_KIND,
+    ModifierKind.PROXY_PAIR: ResolvedValueKind.PROXY_KIND_PAIR,
 }
 
 
@@ -118,7 +119,7 @@ _RESOLVED_MODIFIER_VALUE_POLICIES: dict[
 RESOLVED_MODIFIER_VALUE_KINDS = frozenset(_RESOLVED_MODIFIER_VALUE_POLICIES)
 
 
-def modifier_value_kind(modifier_kind: str) -> ResolvedValueKind:
+def modifier_value_kind(modifier_kind: ModifierKind) -> ResolvedValueKind:
     """Return the resolved semantic kind for one normalized modifier kind."""
 
     try:

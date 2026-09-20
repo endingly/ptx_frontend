@@ -57,6 +57,7 @@ def check_module_layout() -> None:
         assert find_spec(module) is None, module
 
     packaged_modules = (
+        "ptx_frontend.code_gen.resolved_field_names",
         "ptx_frontend.code_gen._frontend.cli",
         "ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor",
         "ptx_frontend.code_gen._frontend.gen_resolved_descriptor",

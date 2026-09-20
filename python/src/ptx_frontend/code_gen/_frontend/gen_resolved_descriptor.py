@@ -8,6 +8,7 @@ from ptx_frontend.base.utils import generated_at_comment, to_file_stem
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from .gen_resolved_checker_descriptor import _emit_availability
 from ptx_frontend.spec.database import CodegenDatabase
+from ptx_frontend.spec.model import MbarrierStateTokenForm
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedInstruction,
@@ -22,6 +23,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     from_instruction_spec,
 )
+from ptx_frontend.code_gen.resolved_field_names import with_cpp_backend_field_names
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
     resolved_modifier_value_traits,
@@ -36,7 +38,8 @@ def generate_resolved_descriptor_source(
     """Generate one private C++ source for resolved descriptor storage."""
 
     instructions = tuple(
-        from_instruction_spec(instruction) for instruction in database.instructions
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
+        for instruction in database.instructions
     )
     _validate_unique_cpp_names(instructions)
     storage_definitions = "\n\n".join(
@@ -305,7 +308,7 @@ def _emit_operand_binding_descriptor(
     mbarrier_state_token_form = (
         "\n              .mbarrier_state_token_form = "
         f"checker::MbarrierStateTokenForm::{''.join(part.capitalize() for part in binding.mbarrier_state_token_form.value.split('_'))},"
-        if binding.mbarrier_state_token_form.value != "register"
+        if binding.mbarrier_state_token_form is not MbarrierStateTokenForm.REGISTER
         else ""
     )
     sink_availability = (

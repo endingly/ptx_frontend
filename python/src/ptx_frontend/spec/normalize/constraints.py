@@ -1,6 +1,9 @@
 from typing import Mapping
 from typing import Any
 from ptx_frontend.spec.model import (
+    ModifierKind,
+    OperandKind,
+    OperandTypeCompatibilityValueKind,
     OperandLayoutSpec,
     OperandTypeCompatibilitySpec,
     ModifierSpec,
@@ -23,8 +26,15 @@ def _normalize_operand_type_compatibilities(
 
     operand_names = {operand.name for layout in layouts for operand in layout.operands}
     result: list[OperandTypeCompatibilitySpec] = []
-    seen: set[tuple[str, str, str, int]] = set()
+    seen: set[tuple[str, OperandTypeCompatibilityValueKind, str, int]] = set()
     for raw in raw_variant.get("operand_type_compatibilities", ()):
+        try:
+            value_kind = OperandTypeCompatibilityValueKind(raw["value_kind"])
+        except ValueError as error:
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: unsupported operand type "
+                f"compatibility value kind {raw.get('value_kind')!r}"
+            ) from error
         operand = raw["operand"]
         if operand not in operand_names:
             raise ValueError(
@@ -32,7 +42,7 @@ def _normalize_operand_type_compatibilities(
                 f"references unknown operand {operand!r}"
             )
         for value in raw["values"]:
-            key = (operand, raw["value_kind"], value, raw["instruction_width"])
+            key = (operand, value_kind, value, raw["instruction_width"])
             if key in seen:
                 raise ValueError(
                     f"variant {raw_variant['name']!r}: duplicate operand type "
@@ -42,7 +52,7 @@ def _normalize_operand_type_compatibilities(
         result.append(
             OperandTypeCompatibilitySpec(
                 operand=operand,
-                value_kind=raw["value_kind"],
+                value_kind=value_kind,
                 values=tuple(raw["values"]),
                 instruction_width=raw["instruction_width"],
                 effective_type=raw["effective_type"],
@@ -110,7 +120,8 @@ def _normalize_memory_consistency_constraint(
             f"references unknown operand {raw['address_operand']!r}"
         )
     if any(
-        operand.name == raw["address_operand"] and operand.kind != "addr"
+        operand.name == raw["address_operand"]
+        and operand.kind is not OperandKind.ADDRESS
         for layout in layouts
         for operand in layout.operands
     ):
@@ -119,20 +130,20 @@ def _normalize_memory_consistency_constraint(
             "operand must have kind 'addr'"
         )
     expected_kinds = {
-        "semantics_modifier": "semantics",
-        "scope_modifier": "scope",
-        "type_modifier": "type",
+        "semantics_modifier": ModifierKind.SEMANTICS,
+        "scope_modifier": ModifierKind.SCOPE,
+        "type_modifier": ModifierKind.TYPE,
     }
     for key, expected_kind in expected_kinds.items():
-        if modifiers_by_name[raw[key]].kind != expected_kind:
+        if modifiers_by_name[raw[key]].kind is not expected_kind:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_consistency {key} "
-                f"must name a {expected_kind!r} modifier"
+                f"must name a {expected_kind.value!r} modifier"
             )
     cache_modifier = raw.get("cache_modifier")
     if cache_modifier is not None:
         if cache_modifier not in modifier_names or (
-            modifiers_by_name[cache_modifier].kind != "cache"
+            modifiers_by_name[cache_modifier].kind is not ModifierKind.CACHE
         ):
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_consistency "
@@ -145,7 +156,7 @@ def _normalize_memory_consistency_constraint(
                 f"variant {raw_variant['name']!r}: memory_consistency "
                 f"mmio_modifier references inactive modifier {mmio_modifier!r}"
             )
-        if modifiers_by_name[mmio_modifier].kind != "flag":
+        if modifiers_by_name[mmio_modifier].kind is not ModifierKind.FLAG:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_consistency "
                 "mmio_modifier must name a 'flag' modifier"
@@ -158,7 +169,8 @@ def _normalize_memory_consistency_constraint(
                 f"references inactive modifier {value!r}"
             )
     if raw.get("state_space_modifier") is not None and (
-        modifiers_by_name[raw["state_space_modifier"]].kind != "state_space"
+        modifiers_by_name[raw["state_space_modifier"]].kind
+        is not ModifierKind.STATE_SPACE
     ):
         raise ValueError(
             f"variant {raw_variant['name']!r}: memory_consistency "
@@ -243,8 +255,8 @@ def _normalize_address_alignment_constraints(
             )
         modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
         for key, expected_kind in (
-            ("type_modifier", "type"),
-            ("vector_modifier", "vector"),
+            ("type_modifier", ModifierKind.TYPE),
+            ("vector_modifier", ModifierKind.VECTOR),
         ):
             value = raw.get(key)
             if value is None:
@@ -254,10 +266,10 @@ def _normalize_address_alignment_constraints(
                     f"variant {raw_variant['name']!r}: address_alignment {key} "
                     f"references inactive modifier {value!r}"
                 )
-            if modifiers_by_name[value].kind != expected_kind:
+            if modifiers_by_name[value].kind is not expected_kind:
                 raise ValueError(
                     f"variant {raw_variant['name']!r}: address_alignment {key} "
-                    f"must name a {expected_kind!r} modifier"
+                    f"must name a {expected_kind.value!r} modifier"
                 )
         matching_operands = [
             [operand for operand in layout.operands if operand.name in address_operands]
@@ -266,7 +278,7 @@ def _normalize_address_alignment_constraints(
         if any(
             len(operands) != len(address_operands)
             or {operand.name for operand in operands} != set(address_operands)
-            or any(operand.kind != "addr" for operand in operands)
+            or any(operand.kind is not OperandKind.ADDRESS for operand in operands)
             for operands in matching_operands
         ):
             raise ValueError(
@@ -282,7 +294,8 @@ def _normalize_address_alignment_constraints(
                 if operand.name == immediate_operand
             ]
             if not matching_immediates or any(
-                operand.kind != "imm" for operand in matching_immediates
+                operand.kind is not OperandKind.IMMEDIATE
+                for operand in matching_immediates
             ):
                 raise ValueError(
                     f"variant {raw_variant['name']!r}: address_alignment "
@@ -343,24 +356,24 @@ def _normalize_memory_vector_constraint(
             f"is missing {sorted(missing)}"
         )
     modifiers_by_name = {modifier.name: modifier for modifier in modifiers}
-    for key, expected_kind in (("type_modifier", "type"),):
+    for key, expected_kind in (("type_modifier", ModifierKind.TYPE),):
         value = raw[key]
         if value not in modifiers_by_name:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_vector {key} "
                 f"references inactive modifier {value!r}"
             )
-        if modifiers_by_name[value].kind != expected_kind:
+        if modifiers_by_name[value].kind is not expected_kind:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_vector {key} "
-                f"must name a {expected_kind!r} modifier"
+                f"must name a {expected_kind.value!r} modifier"
             )
     operand_by_name = {
         operand.name: operand for layout in layouts for operand in layout.operands
     }
     for key, expected_kind in (
-        ("vector_operand", "reg_vector"),
-        ("address_operand", "addr"),
+        ("vector_operand", OperandKind.REGISTER_VECTOR),
+        ("address_operand", OperandKind.ADDRESS),
     ):
         value = raw[key]
         operand = operand_by_name.get(value)
@@ -369,10 +382,10 @@ def _normalize_memory_vector_constraint(
                 f"variant {raw_variant['name']!r}: memory_vector {key} "
                 f"references unknown operand {value!r}"
             )
-        if operand.kind != expected_kind:
+        if operand.kind is not expected_kind:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_vector {key} "
-                f"must name a {expected_kind!r} operand"
+                f"must name a {expected_kind.value!r} operand"
             )
     state_space_modifier = raw.get("state_space_modifier")
     if state_space_modifier is not None:
@@ -382,7 +395,7 @@ def _normalize_memory_vector_constraint(
                 f"variant {raw_variant['name']!r}: memory_vector state_space_modifier "
                 f"references inactive modifier {state_space_modifier!r}"
             )
-        if modifier.kind != "state_space":
+        if modifier.kind is not ModifierKind.STATE_SPACE:
             raise ValueError(
                 f"variant {raw_variant['name']!r}: memory_vector state_space_modifier "
                 "must name a 'state_space' modifier"
@@ -482,7 +495,7 @@ def _normalize_immediate_range_constraints(
             layouts,
             operand_name,
             "immediate_range",
-            allowed_kinds=("imm", "reg_or_imm"),
+            allowed_kinds=(OperandKind.IMMEDIATE, OperandKind.REGISTER_OR_IMMEDIATE),
         )
         _validate_uint64(raw_variant, "immediate_range", "minimum", minimum)
         if maximum is not None:
@@ -529,7 +542,7 @@ def _normalize_immediate_multiple_of_constraint(
         layouts,
         operand_name,
         "immediate_multiple_of",
-        allowed_kinds=("imm", "reg_or_imm"),
+        allowed_kinds=(OperandKind.IMMEDIATE, OperandKind.REGISTER_OR_IMMEDIATE),
     )
     _validate_uint64(raw_variant, "immediate_multiple_of", "divisor", divisor)
     if divisor <= 0:
@@ -546,7 +559,7 @@ def _validate_immediate_constraint_operand(
     operand_name: str,
     constraint_kind: str,
     *,
-    allowed_kinds: tuple[str, ...] = ("imm",),
+    allowed_kinds: tuple[OperandKind, ...] = (OperandKind.IMMEDIATE,),
 ) -> None:
     """Require one occurrence and validate every layout where it is present."""
 
@@ -565,14 +578,14 @@ def _validate_immediate_constraint_operand(
             raise ValueError(
                 f"variant {raw_variant['name']!r}: {constraint_kind} operand "
                 f"{operand_name!r} in operand layout {layout.name!r} must have "
-                f"kind {' or '.join(repr(kind) for kind in allowed_kinds)}, not "
-                f"{disallowed.kind!r}"
+                f"kind {' or '.join(repr(kind.value) for kind in allowed_kinds)}, not "
+                f"{disallowed.kind.value!r}"
             )
     if not found:
         raise ValueError(
             f"variant {raw_variant['name']!r}: {constraint_kind} operand "
             f"{operand_name!r} must exist in at least one operand layout as kind "
-            f"{' or '.join(repr(kind) for kind in allowed_kinds)}"
+            f"{' or '.join(repr(kind.value) for kind in allowed_kinds)}"
         )
 
 

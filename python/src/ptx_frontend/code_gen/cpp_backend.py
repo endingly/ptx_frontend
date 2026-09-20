@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import cache
-from pathlib import Path
 from importlib.resources.abc import Traversable
 from typing import Any
 
@@ -108,10 +107,12 @@ def configure_cpp_backend(path: Traversable) -> None:
 
     global _active_backend_spec
     _active_backend_spec = path
+    get_cpp_backend.cache_clear()
 
 
+@cache
 def get_cpp_backend() -> CodegenUnit:
-    """Return the configured, immutable backend model."""
+    """Cache the active backend until configuration is explicitly replaced."""
 
     if _active_backend_spec is None:
         raise RuntimeError(
@@ -120,9 +121,12 @@ def get_cpp_backend() -> CodegenUnit:
     return load_cpp_backend(_active_backend_spec)
 
 
-@cache
 def load_cpp_backend(path: Traversable) -> CodegenUnit:
-    """Normalize one backend YAML file into the existing backend model API."""
+    """Read and normalize a resource without requiring a hashable identity.
+
+    Direct loads always read the resource; configured backend access is cached
+    by :func:`get_cpp_backend` and invalidated by :func:`configure_cpp_backend`.
+    """
 
     raw = load_yaml(path)
     _validate_schema(path, raw)

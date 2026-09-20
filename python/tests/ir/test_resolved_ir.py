@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from typing import cast
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_ROOT = REPO_ROOT / "python"
@@ -18,6 +20,7 @@ if str(PYTHON_ROOT) not in sys.path:
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.database import CodegenDatabase
 from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen import cpp_backend
 from ptx_frontend.code_gen._frontend.gen_resolved_descriptor import (
     _emit_address_state_spaces,
     _emit_operand_binding_descriptor,
@@ -406,7 +409,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         optional_sat = variants["OptionalSat"]
         self.assertEqual(
             [field.name for field in optional_sat.fields],
-            ["saturate", "type", "dst", "src1", "src2"],
+            ["sat", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
             optional_sat.modifier_bindings[0].default_value.value, # pyright: ignore[reportOptionalMemberAccess]
@@ -446,7 +449,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
                 ("ftz", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
-                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+                ("sat", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
                 ("type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
             ],
         )
@@ -476,7 +479,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
             [
                 ("rounding", "WithLocs<RoundingMode>", ResolvedFieldStorage.INSTANCE),
-                ("saturate", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
+                ("sat", "WithLocs<bool>", ResolvedFieldStorage.INSTANCE),
                 ("result_type", "ScalarType", ResolvedFieldStorage.STATIC_CONSTANT),
                 ("input_type", "WithLocs<ScalarType>", ResolvedFieldStorage.INSTANCE),
             ],
@@ -499,7 +502,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [field.name for field in variants["RnF32"].fields],
-            ["rounding", "ftz", "saturate", "type", "dst", "src1", "src2"],
+            ["rounding", "ftz", "sat", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
             [
@@ -559,7 +562,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [field.name for field in self.fma_instruction.variants[0].fields],
-            ["rounding", "ftz", "saturate", "type", "dst", "src1", "src2", "src3"],
+            ["rounding", "ftz", "sat", "type", "dst", "src1", "src2", "src3"],
         )
         variants = {
             variant.variant_id: variant for variant in self.fma_instruction.variants
@@ -883,7 +886,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(
             [field.name for field in variants["Sat"].fields],
-            ["saturate", "type", "dst", "src1", "src2"],
+            ["sat", "type", "dst", "src1", "src2"],
         )
         self.assertEqual(
             [field.storage for field in variants["Sat"].fields[:2]],
@@ -901,7 +904,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 (binding.source_kind_id, binding.target_field_id)
                 for binding in variants["Sat"].modifier_bindings
             ],
-            [("sat", "saturate"), ("type", "type")],
+            [("sat", "sat"), ("type", "type")],
         )
         optional_sat_binding = variants["PackedOptionalSat"].modifier_bindings[0]
         self.assertIsNotNone(optional_sat_binding.default_value)
@@ -917,7 +920,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for field in variants["PackedOptionalSat"].fields
             ],
             [
-                ("saturate", "WithLocs<bool>", ResolvedFieldOrigin.MODIFIER),
+                ("sat", "WithLocs<bool>", ResolvedFieldOrigin.MODIFIER),
                 ("type", "WithLocs<ScalarType>", ResolvedFieldOrigin.MODIFIER),
                 ("dst", "WithLocs<ResolvedRegisterRef>", ResolvedFieldOrigin.OPERAND),
                 ("src1", "WithLocs<RegOrImm>", ResolvedFieldOrigin.OPERAND),
@@ -938,8 +941,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 (binding.source_kind_id, binding.target_field_id)
                 for binding in variants["PackedOptionalSat"].modifier_bindings
             ],
-            [("sat", "saturate"), ("type", "type")],
+            [("sat", "sat"), ("type", "type")],
         )
+
         self.assertEqual(
             [
                 (
@@ -1020,6 +1024,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     {"ptx": "9.2", "sm": 120, "family": "sm_120f"},
                 ),
             ],
+        )
+
+    def test_cpp_generation_projects_modifier_member_aliases(self) -> None:
+        """Backend-only aliases do not replace semantic resolved field IDs."""
+
+        from ptx_frontend.code_gen.resolved_field_names import (
+            with_cpp_backend_field_names,
+        )
+
+        projected = with_cpp_backend_field_names(self.instruction)
+        variant = next(
+            variant for variant in projected.variants if variant.variant_id == "add_sat"
+        )
+
+        self.assertEqual(variant.modifier_fields[0].name, "saturate")
+        self.assertEqual(
+            variant.modifier_bindings[0].target_field_id,
+            "saturate",
         )
 
     def test_bar_sync_uses_distinct_modifier_variants_and_operand_layouts(
@@ -4800,10 +4822,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
         value = spec["instructions"][0]["variants"][0]["modifiers"][0][
             "values"
         ][0]
-        for invalid in (0, "not_a_priority"):
-            value["value"] = invalid
-            with self.assertRaisesRegex(ValueError, "eviction priority"):
-                from_instruction_spec(normalize_instruction_spec(spec)[0])
+        value["value"] = 0
+        with self.assertRaisesRegex(ValueError, "eviction priority"):
+            from_instruction_spec(normalize_instruction_spec(spec)[0])
+
+        # A semantic domain is selected by the YAML variant. A C++ mapping is
+        # required only when the descriptor generator emits that value.
+        value["value"] = "not_a_priority"
+        semantic_database = CodegenDatabase(
+            spec_schema="ptx-instr/v1",
+            instructions=normalize_instruction_spec(spec),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "eviction_priorities"):
+                generate_resolved_checker_descriptor_source(
+                    semantic_database,
+                    output_path=Path(directory) / "descriptor.cpp",
+                )
 
     def test_boolean_modifier_domain_emits_typed_availability(self) -> None:
         specs = normalize_instruction_spec(
@@ -5061,7 +5096,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             emitted,
         )
 
-    def test_rounding_modifier_value_rejects_unknown_backend_value(self) -> None:
+    def test_rounding_modifier_value_defers_unknown_backend_value_to_codegen(self) -> None:
         modifier = ModifierSpec(
             name="rounding",
             kind="rounding",
@@ -5072,14 +5107,58 @@ class ResolvedIrBuildTest(unittest.TestCase):
             value="not_a_rounding_mode",
         )
 
-        with self.assertRaisesRegex(
-            ValueError,
-            "unsupported RoundingMode value",
-        ):
-            _build_modifier_value_availability(
-                modifier,
-                value,
+        resolved = _build_modifier_value_availability(modifier, value)
+        self.assertEqual(resolved.value, "not_a_rounding_mode")
+
+    def test_resolved_ir_builds_without_a_configured_cpp_backend(self) -> None:
+        """Semantic normalization does not load C++ domain mappings."""
+
+        cpp_backend.get_cpp_backend.cache_clear()
+        previous = cpp_backend._active_backend_spec
+        try:
+            cpp_backend._active_backend_spec = None
+            resolved = from_instruction_spec(self.database.instructions[0])
+        finally:
+            cpp_backend._active_backend_spec = previous
+            cpp_backend.get_cpp_backend.cache_clear()
+
+        self.assertEqual(resolved.opcode, self.database.instructions[0].opcode)
+
+    def test_operand_view_dispatch_ignores_backend_value_cpp_type_spelling(self) -> None:
+        """Checker-view selection follows the semantic value kind and origin."""
+
+        from ptx_frontend.code_gen._frontend.gen_resolved_ir import (
+            _emit_check_operand_view,
+        )
+        from ptx_frontend.ir.resolved_ir import ResolvedField
+
+        raw = yaml.safe_load(
+            (REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml").read_text(
+                encoding="utf-8"
             )
+        )
+        raw["domains"]["resolved_value_cpp_types"]["values"]["RegisterVector"] = (
+            "BackendRenamedVector"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            self.addCleanup(
+                configure_cpp_backend,
+                REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml",
+            )
+            configure_cpp_backend(backend_path)
+            emitted = _emit_check_operand_view(
+                ResolvedField(
+                    name="vector",
+                    value_kind=ResolvedValueKind.REGISTER_VECTOR,
+                    origin=ResolvedFieldOrigin.OPERAND,
+                    source_name="vector",
+                ),
+                "instruction",
+            )
+
+        self.assertIn(".vector_arity = instruction.vector.value.elements.size()", emitted)
 
     def test_rounding_modifier_value_accepts_known_backend_value(self) -> None:
         modifier = ModifierSpec(

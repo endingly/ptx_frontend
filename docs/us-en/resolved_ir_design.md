@@ -618,6 +618,16 @@ They must not duplicate each other: syntax descriptors do not store resolved C++
 types, resolved descriptors do not recognize modifier spellings, and checker
 descriptors do not redo resolve bindings.
 
+The normalized specification model converts modifier kind and presence, and
+operand kind, role, and access, from YAML spellings into semantic enums at the
+loading boundary. Resolved-IR validation uses those enums and PTX constraints;
+it does not load C++ domain mappings. C++ type names, enum expressions, and
+member aliases are applied only by code generation. For example, the semantic
+`.sat` field remains `sat` in the IR while the backend may emit the historical
+`saturate` C++ member spelling. Checker operand views likewise dispatch by
+`ResolvedValueKind` and field origin, so a backend type-name change cannot
+select a different semantic branch.
+
 ## Checker contract
 
 Each generated `checker::check<T>` wrapper uses common checking for:

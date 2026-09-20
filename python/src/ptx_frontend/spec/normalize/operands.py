@@ -6,9 +6,12 @@ from typing import Any
 
 from ptx_frontend.spec.model import (
     MbarrierStateTokenForm,
+    OperandAccess,
     OperandImmediateConversionPolicy,
+    OperandKind,
     OperandParameterConstraint,
     OperandRegisterWidthPolicy,
+    OperandRole,
     OperandSpec,
     OperandStateSpaceExpression,
     OperandStateSpaceValue,
@@ -48,7 +51,7 @@ class _BracePackOptions:
 
     minimum_elements: int | None
     maximum_elements: int | None
-    element_kinds: tuple[str, ...]
+    element_kinds: tuple[OperandKind, ...]
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,11 @@ class _AddressOptions:
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     """Normalize one operand specification in the established validation order."""
 
+    kind = _parse_operand_kind(raw)
+    role = _parse_operand_role(raw)
+    access = _parse_operand_access(raw)
+    raw = {**raw, "kind": kind, "role": role, "access": access}
+
     # Preserve this order: inputs with multiple errors must retain their
     # original first diagnostic.
     shfl_sink = _normalize_shfl_sink_options(raw)
@@ -94,9 +102,9 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
 
     return OperandSpec(
         name=raw["name"],
-        kind=raw["kind"],
-        role=raw.get("role"),
-        access=raw.get("access"),
+        kind=kind,
+        role=role,
+        access=access,
         type_expression=type_expression,
         register_width_policy=register_width,
         immediate_conversion_policy=immediate_conversion,
@@ -125,12 +133,12 @@ def _normalize_shfl_sink_options(raw: dict[str, Any]) -> _ShflSinkOptions:
     allow_destination_sink = raw.get("allow_destination_sink", False)
     if not isinstance(allow_destination_sink, bool):
         raise TypeError("allow_destination_sink must be a boolean when supplied.")
-    if "allow_destination_sink" in raw and raw["kind"] != "shfl_dest":
+    if "allow_destination_sink" in raw and raw["kind"] is not OperandKind.SHFL_DESTINATION:
         raise ValueError("allow_destination_sink is only valid for kind 'shfl_dest'")
     allow_predicate_sink = raw.get("allow_predicate_sink", False)
     if not isinstance(allow_predicate_sink, bool):
         raise TypeError("allow_predicate_sink must be a boolean when supplied.")
-    if "allow_predicate_sink" in raw and raw["kind"] != "shfl_dest":
+    if "allow_predicate_sink" in raw and raw["kind"] is not OperandKind.SHFL_DESTINATION:
         raise ValueError("allow_predicate_sink is only valid for kind 'shfl_dest'")
 
     return _ShflSinkOptions(
@@ -151,7 +159,7 @@ def _normalize_mbarrier_options(raw: dict[str, Any]) -> _MbarrierOptions:
             "mbarrier_state_token_form must be register, " "register_or_sink, or sink"
         ) from error
     sink_availability = normalize_availability(raw.get("sink_availability", {}))
-    if raw["kind"] != "mbarrier_state_token":
+    if raw["kind"] is not OperandKind.MBARRIER_STATE_TOKEN:
         if "mbarrier_state_token_form" in raw or "sink_availability" in raw:
             raise ValueError(
                 "mbarrier state-token sink settings are only valid for "
@@ -163,7 +171,7 @@ def _normalize_mbarrier_options(raw: dict[str, Any]) -> _MbarrierOptions:
                 "register-only mbarrier state token cannot have " "sink_availability"
             )
     else:
-        if raw.get("role") != "dst" or raw.get("access") != "write":
+        if raw.get("role") is not OperandRole.DESTINATION or raw.get("access") is not OperandAccess.WRITE:
             raise ValueError(
                 "sink-capable mbarrier state token must be a write destination"
             )
@@ -181,16 +189,16 @@ def _normalize_mbarrier_options(raw: dict[str, Any]) -> _MbarrierOptions:
 def _validate_sink_destination(raw: dict[str, Any]) -> None:
     """Require scalar sink-capable operand kinds to be write destinations."""
 
-    if raw["kind"] == "reg_or_sink" and (
-        raw.get("role") != "dst" or raw.get("access") != "write"
+    if raw["kind"] is OperandKind.REGISTER_OR_SINK and (
+        raw.get("role") is not OperandRole.DESTINATION or raw.get("access") is not OperandAccess.WRITE
     ):
         raise ValueError("reg_or_sink must be a write destination")
-    if raw["kind"] == "pred_or_sink" and (
-        raw.get("role") != "dst" or raw.get("access") != "write"
+    if raw["kind"] is OperandKind.PREDICATE_OR_SINK and (
+        raw.get("role") is not OperandRole.DESTINATION or raw.get("access") is not OperandAccess.WRITE
     ):
         raise ValueError("pred_or_sink must be a write destination")
-    if raw["kind"] == "pred_pair_or_sink" and (
-        raw.get("role") != "dst" or raw.get("access") != "write"
+    if raw["kind"] is OperandKind.PREDICATE_PAIR_OR_SINK and (
+        raw.get("role") is not OperandRole.DESTINATION or raw.get("access") is not OperandAccess.WRITE
     ):
         raise ValueError("pred_pair_or_sink must be a write destination")
 
@@ -199,7 +207,7 @@ def _normalize_type_tag(raw: dict[str, Any]) -> str | None:
     """Normalize the type tag for descriptor and typed-token operands."""
 
     type_tag = raw.get("type_tag")
-    if raw["kind"] in {"descriptor", "typed_token"}:
+    if raw["kind"] in {OperandKind.DESCRIPTOR, OperandKind.TYPED_TOKEN}:
         if (
             not isinstance(type_tag, str)
             or re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", type_tag) is None
@@ -218,14 +226,14 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
 
     minimum_elements: int | None = None
     maximum_elements: int | None = None
-    element_kinds: tuple[str, ...] = ()
-    if raw["kind"] in {"tensor_coordinate", "matrix_fragment"}:
+    element_kinds: tuple[OperandKind, ...] = ()
+    if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.MATRIX_FRAGMENT}:
         cardinality = raw.get("cardinality")
         if not isinstance(cardinality, dict):
             raise ValueError(f"{raw['kind']} operand requires cardinality")
         minimum_elements = cardinality.get("min")
         maximum_elements = cardinality.get("max")
-        ceiling = 5 if raw["kind"] == "tensor_coordinate" else 64
+        ceiling = 5 if raw["kind"] is OperandKind.TENSOR_COORDINATE else 64
         if (
             type(minimum_elements) is not int
             or type(maximum_elements) is not int
@@ -239,15 +247,21 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
         raw_element_kinds = raw.get("element_kinds")
         if not isinstance(raw_element_kinds, list):
             raise ValueError(f"{raw['kind']} operand requires element_kinds")
-        element_kinds = tuple(raw_element_kinds)
+        try:
+            element_kinds = tuple(OperandKind(value) for value in raw_element_kinds)
+        except ValueError as error:
+            raise ValueError(f"{raw['kind']} element_kinds contain an unsupported kind") from error
         expected_element_kinds = (
-            ("reg", "imm") if raw["kind"] == "tensor_coordinate" else ("reg",)
+            (OperandKind.REGISTER, OperandKind.IMMEDIATE)
+            if raw["kind"] is OperandKind.TENSOR_COORDINATE
+            else (OperandKind.REGISTER,)
         )
         if set(element_kinds) != set(expected_element_kinds) or len(
             element_kinds
         ) != len(expected_element_kinds):
             raise ValueError(
-                f"{raw['kind']} element_kinds must be {expected_element_kinds!r}"
+                f"{raw['kind']} element_kinds must be "
+                f"{tuple(kind.value for kind in expected_element_kinds)!r}"
             )
     elif raw.get("cardinality") is not None or raw.get("element_kinds") is not None:
         raise ValueError(
@@ -269,7 +283,11 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
     vector_sink_payload_bits = 0
-    if raw["kind"] in {"reg_vector", "vector_reg", "vector_sreg"}:
+    if raw["kind"] in {
+        OperandKind.REGISTER_VECTOR,
+        OperandKind.VECTOR_REGISTER,
+        OperandKind.VECTOR_SPECIAL_REGISTER,
+    }:
         vector = raw.get("vector")
         if not isinstance(vector, dict) or "arity" not in vector:
             raise ValueError(f"{raw['kind']} operand must declare vector.arity")
@@ -343,7 +361,7 @@ def _normalize_register_width(
             f"{raw.get('register_width')!r}"
         ) from error
     if register_width_policy is OperandRegisterWidthPolicy.EQUAL_OR_WIDER:
-        if raw["kind"] not in {"reg", "reg_vector"}:
+        if raw["kind"] not in {OperandKind.REGISTER, OperandKind.REGISTER_VECTOR}:
             raise ValueError(
                 f"operand {raw['name']!r}: equal_or_wider register_width is "
                 "only valid for kind 'reg' or 'reg_vector'"
@@ -374,7 +392,11 @@ def _normalize_immediate_conversion(
     if (
         immediate_conversion_policy
         is OperandImmediateConversionPolicy.REQUIRE_TARGET_RANGE
-        and raw["kind"] not in {"imm", "reg_or_imm", "tensor_coordinate"}
+        and raw["kind"] not in {
+            OperandKind.IMMEDIATE,
+            OperandKind.REGISTER_OR_IMMEDIATE,
+            OperandKind.TENSOR_COORDINATE,
+        }
     ):
         raise ValueError(
             f"operand {raw['name']!r}: require_target_range immediate_conversion "
@@ -396,7 +418,10 @@ def _normalize_address_options(raw: dict[str, Any]) -> _AddressOptions:
         or state_space_expression is not None
         or parameter_constraint is not None
     )
-    if has_address_constraint and raw["kind"] not in {"addr", "cluster_address"}:
+    if has_address_constraint and raw["kind"] not in {
+        OperandKind.ADDRESS,
+        OperandKind.CLUSTER_ADDRESS,
+    }:
         raise ValueError(
             f"operand {raw['name']!r}: address constraints are only valid for "
             "kind 'addr' or 'cluster_address'"
@@ -412,3 +437,43 @@ def _normalize_address_options(raw: dict[str, Any]) -> _AddressOptions:
         state_space_expression=state_space_expression,
         parameter_constraint=parameter_constraint,
     )
+
+
+def _parse_operand_kind(raw: dict[str, Any]) -> OperandKind:
+    """Convert the YAML operand-kind spelling at the normalization boundary."""
+
+    try:
+        return OperandKind(raw["kind"])
+    except ValueError as error:
+        raise ValueError(
+            f"operand {raw.get('name')!r}: unsupported operand kind "
+            f"{raw.get('kind')!r}"
+        ) from error
+
+
+def _parse_operand_role(raw: dict[str, Any]) -> OperandRole | None:
+    """Convert an optional YAML operand-role spelling at the boundary."""
+
+    value = raw.get("role")
+    if value is None:
+        return None
+    try:
+        return OperandRole(value)
+    except ValueError as error:
+        raise ValueError(
+            f"operand {raw.get('name')!r}: unsupported operand role {value!r}"
+        ) from error
+
+
+def _parse_operand_access(raw: dict[str, Any]) -> OperandAccess | None:
+    """Convert an optional YAML operand-access spelling at the boundary."""
+
+    value = raw.get("access")
+    if value is None:
+        return None
+    try:
+        return OperandAccess(value)
+    except ValueError as error:
+        raise ValueError(
+            f"operand {raw.get('name')!r}: unsupported operand access {value!r}"
+        ) from error

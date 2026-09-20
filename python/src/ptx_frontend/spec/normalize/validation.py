@@ -1,4 +1,6 @@
 from ptx_frontend.spec.model import (
+    ModifierKind,
+    ModifierPresence,
     ModifierSpec,
     OperandLayoutSpec,
     OperandTypeExpressionKind,
@@ -27,7 +29,10 @@ def _validate_modifier_type_expressions(
                     f"operand {operand.name!r}: type expression references unknown "
                     f"modifier {modifier_name!r}"
                 )
-            if modifier.kind != "type" or modifier.presence == "absent":
+            if (
+                modifier.kind is not ModifierKind.TYPE
+                or modifier.presence is ModifierPresence.ABSENT
+            ):
                 raise ValueError(
                     f"operand {operand.name!r}: modifier {modifier_name!r} must be "
                     "an active type modifier"
@@ -57,7 +62,10 @@ def _validate_modifier_state_space_expressions(
                     f"operand {operand.name!r}: state-space expression references "
                     f"unknown modifier {expression.modifier_name!r}"
                 )
-            if modifier.kind != "state_space" or modifier.presence == "absent":
+            if (
+                modifier.kind is not ModifierKind.STATE_SPACE
+                or modifier.presence is ModifierPresence.ABSENT
+            ):
                 raise ValueError(
                     f"operand {operand.name!r}: modifier "
                     f"{expression.modifier_name!r} must be an active "

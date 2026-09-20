@@ -10,6 +10,8 @@ from enum import Enum, IntFlag
 from ptx_frontend.spec.model import (
     InstructionSpec,
     ModifierSpec,
+    ModifierPresence as ModelModifierPresence,
+    OperandKind,
     OperandLayoutKind as ModelOperandLayoutKind,
     OperandSpec,
     VariantSpec,
@@ -106,10 +108,10 @@ def from_InstructionSpec(spec: InstructionSpec) -> SyntaxInstructionDescriptor:
 
 
 _PRESENCE_MAP = {
-    "absent": ModifierPresence.ABSENT,
-    "optional": ModifierPresence.OPTIONAL,
-    "required": ModifierPresence.REQUIRED,
-    "fixed": ModifierPresence.REQUIRED,
+    ModelModifierPresence.ABSENT: ModifierPresence.ABSENT,
+    ModelModifierPresence.OPTIONAL: ModifierPresence.OPTIONAL,
+    ModelModifierPresence.REQUIRED: ModifierPresence.REQUIRED,
+    ModelModifierPresence.FIXED: ModifierPresence.REQUIRED,
 }
 
 
@@ -190,7 +192,7 @@ def _build_operand_slot_descriptor_view(
             (
                 (
                     OperandSyntaxShape.IDENTIFIER_REF
-                    if kind == "reg"
+                    if kind is OperandKind.REGISTER
                     else OperandSyntaxShape.IMMEDIATE
                 )
                 for kind in operand.element_kinds

@@ -17,6 +17,147 @@ class ConditionCodeEffect(str, Enum):
     BORROW_IN_OUT = "borrow_in_out"
 
 
+class _SemanticToken(str, Enum):
+    """String-valued semantic enum with stable YAML-facing formatting."""
+
+    def __str__(self) -> str:
+        """Return the spelling retained in diagnostics and generated identifiers."""
+
+        return self.value
+
+
+class ModifierKind(_SemanticToken):
+    """PTX semantic category selected by a modifier declaration."""
+
+    FLAG = "flag"
+    TYPE = "type"
+    ENUM = "enum"
+    STATE_SPACE = "state_space"
+    SCOPE = "scope"
+    SEMANTICS = "semantics"
+    CACHE = "cache"
+    VECTOR = "vector"
+    EVICTION_PRIORITY = "eviction_priority"
+    PREFETCH_SIZE = "prefetch_size"
+    ROUNDING = "rounding"
+    PREDICATE = "predicate"
+    COMPARISON = "comparison"
+    BOOLEAN_OP = "boolean_op"
+    SHAPE = "shape"
+    LAYOUT = "layout"
+    PHASE_TYPE = "phase_type"
+    MBARRIER_LAYOUT = "mbarrier_layout"
+    MEMORY_ORDER = "memory_order"
+    PROXY = "proxy"
+    PROXY_PAIR = "proxy_pair"
+    TENSOR_MAP = "tensor_map"
+    MATRIX = "matrix"
+    CUSTOM = "custom"
+
+
+class ModifierPresence(_SemanticToken):
+    """Source presence contract for one modifier slot."""
+
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    FIXED = "fixed"
+    ABSENT = "absent"
+
+
+class OperandKind(_SemanticToken):
+    """PTX semantic category selected by an operand declaration."""
+
+    REGISTER = "reg"
+    PREDICATE = "pred"
+    PREDICATE_OR_SINK = "pred_or_sink"
+    PREDICATE_SOURCE = "pred_source"
+    PREDICATE_OR_SPECIAL_REGISTER = "pred_or_sreg"
+    PREDICATE_OR_NOT = "pred_or_not"
+    SPECIAL_REGISTER = "sreg"
+    ADDRESS = "addr"
+    IMMEDIATE = "imm"
+    CONSTANT_EXPRESSION = "const_expr"
+    LABEL = "label"
+    LABEL_OR_REGISTER = "label_or_reg"
+    SYMBOL = "symbol"
+    FUNCTION = "func"
+    REGISTER_OR_IMMEDIATE = "reg_or_imm"
+    REGISTER_OR_SINK = "reg_or_sink"
+    SHFL_DESTINATION = "shfl_dest"
+    PREDICATE_PAIR = "pred_pair"
+    PREDICATE_PAIR_OR_SINK = "pred_pair_or_sink"
+    MOV_SCALAR_SOURCE = "mov_scalar_src"
+    CLUSTER_ADDRESS = "cluster_address"
+    VECTOR_REGISTER = "vector_reg"
+    VECTOR_SPECIAL_REGISTER = "vector_sreg"
+    REGISTER_VECTOR = "reg_vector"
+    DIRECT_CALL_TARGET = "direct_call_target"
+    INDIRECT_CALL_TARGET = "indirect_call_target"
+    INDIRECT_CALL_METADATA = "indirect_call_metadata"
+    BRANCH_TARGET_SET = "branch_target_set"
+    CALL_RETURN_PARAMETER = "call_return_param"
+    CALL_ARGUMENTS = "call_arguments"
+    ADDRESS_OR_SYMBOL = "addr_or_symbol"
+    REGISTER_LIST = "reg_list"
+    PREDICATE_LIST = "pred_list"
+    OPERAND_LIST = "operand_list"
+    VECTOR = "vector"
+    TUPLE = "tuple"
+    TENSOR_COORDINATE = "tensor_coordinate"
+    MATRIX_FRAGMENT = "matrix_fragment"
+    DESCRIPTOR = "descriptor"
+    TYPED_TOKEN = "typed_token"
+    MBARRIER_STATE_TOKEN = "mbarrier_state_token"
+    OPTIONAL_REGISTER = "optional_reg"
+    OPTIONAL_PREDICATE = "optional_pred"
+    OPTIONAL_IMMEDIATE = "optional_imm"
+    OPTIONAL_REGISTER_OR_IMMEDIATE = "optional_reg_or_imm"
+    OPTIONAL_REGISTER_LIST = "optional_reg_list"
+    OPTIONAL_PREDICATE_LIST = "optional_pred_list"
+    OPTIONAL_OPERAND_LIST = "optional_operand_list"
+
+
+class OperandRole(_SemanticToken):
+    """Semantic role declared for one PTX operand position."""
+
+    DESTINATION = "dst"
+    SOURCE = "src"
+    SOURCE_1 = "src1"
+    SOURCE_2 = "src2"
+    SOURCE_3 = "src3"
+    SOURCE_4 = "src4"
+    ADDRESS = "addr"
+    PREDICATE = "predicate"
+    GUARD = "guard"
+    LABEL = "label"
+    MASK = "mask"
+    METADATA = "metadata"
+    DESCRIPTOR = "descriptor"
+    BARRIER = "barrier"
+    THREAD_COUNT = "thread_count"
+    IMMEDIATE = "immediate"
+    SHAPE = "shape"
+    LAYOUT = "layout"
+    OTHER = "other"
+
+
+class OperandAccess(_SemanticToken):
+    """Access intent declared for one PTX operand position."""
+
+    READ = "read"
+    WRITE = "write"
+    READ_WRITE = "read_write"
+    ADDRESS = "address"
+    CONTROL = "control"
+    METADATA = "metadata"
+
+
+class OperandTypeCompatibilityValueKind(_SemanticToken):
+    """Semantic value category used by a contextual operand type rule."""
+
+    SPECIAL_REGISTER = "special_register"
+
+
 class OperandTypeExpressionKind(Enum):
     """The supported source-level ways to determine an operand scalar type."""
 
@@ -183,8 +324,8 @@ class ModifierSpec:
     """One normalized PTX modifier in an instruction variant."""
 
     name: str
-    kind: str
-    presence: str
+    kind: ModifierKind
+    presence: ModifierPresence
     domain: str | None = None
     values: tuple[ModifierValueSpec, ...] = ()
     value: str | bool | int | None = None
@@ -214,9 +355,9 @@ class OperandSpec:
     """One normalized source-level PTX operand."""
 
     name: str
-    kind: str
-    role: str | None = None
-    access: str | None = None
+    kind: OperandKind
+    role: OperandRole | None = None
+    access: OperandAccess | None = None
     type_expression: OperandTypeExpression | None = None
     register_width_policy: OperandRegisterWidthPolicy = (
         OperandRegisterWidthPolicy.SAME_WIDTH
@@ -239,7 +380,7 @@ class OperandSpec:
     type_tag: str | None = None
     minimum_elements: int | None = None
     maximum_elements: int | None = None
-    element_kinds: tuple[str, ...] = ()
+    element_kinds: tuple[OperandKind, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -259,7 +400,7 @@ class OperandTypeCompatibilitySpec:
     """Contextual operand type accepted by one instruction variant."""
 
     operand: str
-    value_kind: str
+    value_kind: OperandTypeCompatibilityValueKind
     values: tuple[str, ...]
     instruction_width: int
     effective_type: str

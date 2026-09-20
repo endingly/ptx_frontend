@@ -33,6 +33,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/code_gen/normalize.py",
         "ptx_frontend/code_gen/load_yaml.py",
         "ptx_frontend/code_gen/cpp_backend.py",
+        "ptx_frontend/code_gen/resolved_field_names.py",
         "ptx_frontend/ir/resolved_ir.py",
         "ptx_frontend/ir/syntax_ast.py",
         # Frontend generator implementation is intentionally packaged.

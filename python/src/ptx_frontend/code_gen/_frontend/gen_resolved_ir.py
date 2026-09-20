@@ -9,6 +9,7 @@ from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from ptx_frontend.spec.database import CodegenDatabase
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
+    ResolvedFieldOrigin,
     ResolvedFieldStorage,
     ResolvedInstruction,
     ResolvedModifierDefault,
@@ -17,6 +18,7 @@ from ptx_frontend.ir.resolved_ir import (
     from_instruction_spec,
     ResolvedValueKind,
 )
+from ptx_frontend.code_gen.resolved_field_names import with_cpp_backend_field_names
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
     modifier_descriptor_members,
@@ -91,7 +93,8 @@ def generate_resolved_ir_header(
     """
 
     instructions = tuple(
-        from_instruction_spec(instruction) for instruction in database.instructions
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
+        for instruction in database.instructions
     )
     _validate_unique_cpp_names(instructions)
     _validate_reference_field_types(instructions)
@@ -145,7 +148,8 @@ def generate_resolved_ir_resolution_declarations_header(
     """Generate public resolver specialization declarations after model types."""
 
     instructions = tuple(
-        from_instruction_spec(instruction) for instruction in database.instructions
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
+        for instruction in database.instructions
     )
     _validate_unique_cpp_names(instructions)
     declarations = "\n\n".join(
@@ -175,7 +179,8 @@ def generate_resolved_ir_checker_declarations_header(
     """Generate public checker specialization declarations after model types."""
 
     instructions = tuple(
-        from_instruction_spec(instruction) for instruction in database.instructions
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
+        for instruction in database.instructions
     )
     _validate_unique_cpp_names(instructions)
     declarations = "\n\n".join(
@@ -207,7 +212,8 @@ def generate_resolved_dispatch_source(
     """Generate opcode-independent instruction resolution dispatch."""
 
     instructions = tuple(
-        from_instruction_spec(instruction) for instruction in database.instructions
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
+        for instruction in database.instructions
     )
     _validate_unique_cpp_names(instructions)
     branches = "\n\n".join(
@@ -376,7 +382,7 @@ def generate_resolved_ir_source(
     """Generate out-of-line specializations for one instruction category."""
 
     instructions = tuple(
-        from_instruction_spec(instruction)
+        with_cpp_backend_field_names(from_instruction_spec(instruction))
         for instruction in database.instructions
         if instruction.codegen_category == category
     )
@@ -598,7 +604,9 @@ def _emit_check_variant_lambda(
     variant: ResolvedVariant,
 ) -> str:
     modifier_fields = [
-        field for field in variant.modifier_fields if field.origin.value == "modifier"
+        field
+        for field in variant.modifier_fields
+        if field.origin is ResolvedFieldOrigin.MODIFIER
     ]
     modifier_views = ",\n".join(
         _emit_check_modifier_view(instruction, variant, field)
@@ -993,32 +1001,37 @@ def _emit_check_modifier_value_view(
 
 
 def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
-    if field.value_cpp_type == "ResolvedFunctionRef":
+    """Emit the checker view selected by the field's semantic operand kind."""
+
+    if field.origin is not ResolvedFieldOrigin.OPERAND:
+        raise ValueError(f"field {field.name!r} is not an operand field")
+
+    if field.value_kind is ResolvedValueKind.DIRECT_CALL_TARGET:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "DirectCallTarget")},
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedIndirectCallee":
+    if field.value_kind is ResolvedValueKind.INDIRECT_CALLEE:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "IndirectCallee")},
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedCallParameterRef":
+    if field.value_kind is ResolvedValueKind.CALL_RETURN_PARAMETER:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "CallReturnParameter")},
                   .register_type = {object_name}.{field.name}.value.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedCallArguments":
+    if field.value_kind is ResolvedValueKind.CALL_ARGUMENTS:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "CallArguments")},
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedRegisterVector":
+    if field.value_kind is ResolvedValueKind.REGISTER_VECTOR:
         return f"""              [&]() -> OperandView {{
                 OperandView view{{
                     .field_id = "{field.name}",
@@ -1044,7 +1057,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 }}
                 return view;
               }}()"""
-    if field.value_cpp_type == "ResolvedTensorCoordinate":
+    if field.value_kind is ResolvedValueKind.TENSOR_COORDINATE:
         return f"""              [&]() -> OperandView {{
                 OperandView view{{
                   .field_id = "{field.name}",
@@ -1074,7 +1087,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 }}
                 return view;
               }}()"""
-    if field.value_cpp_type == "ResolvedVectorRegisterRef":
+    if field.value_kind is ResolvedValueKind.VECTOR_REGISTER:
         return f"""              [&]() -> OperandView {{
                 const auto& register_ref =
                     {object_name}.{field.name}.value.register_ref;
@@ -1092,7 +1105,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                       register_ref.declared_type.value_or(ScalarType::Invalid);
                 return view;
               }}()"""
-    if field.value_cpp_type == "ResolvedVectorSpecialRegisterRef":
+    if field.value_kind is ResolvedValueKind.VECTOR_SPECIAL_REGISTER:
         return f"""              [&]() -> OperandView {{
                 const auto& special_register = {object_name}.{field.name}.value;
                 const auto info = base::metadata(special_register.id);
@@ -1112,7 +1125,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   view.vector_element_types[index] = info.element_type;
                 return view;
               }}()"""
-    if field.value_cpp_type == "ResolvedRegisterRef":
+    if field.value_kind is ResolvedValueKind.REGISTER:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
@@ -1120,7 +1133,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = {object_name}.{field.name}.value.declared_type,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedMbarrierStateToken":
+    if field.value_kind is ResolvedValueKind.MBARRIER_STATE_TOKEN:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
@@ -1131,7 +1144,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .is_sink = !{object_name}.{field.name}.value.register_ref,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedRegisterOrSink":
+    if field.value_kind is ResolvedValueKind.REGISTER_OR_SINK:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
@@ -1142,7 +1155,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .is_sink = !{object_name}.{field.name}.value.register_ref,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedShflSyncDestination":
+    if field.value_kind is ResolvedValueKind.SHFL_DESTINATION:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "ShflDestination")},
@@ -1158,7 +1171,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .destination_predicate_negated = {object_name}.{field.name}.value.predicate && {object_name}.{field.name}.value.predicate->value.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedPredicatePair":
+    if field.value_kind is ResolvedValueKind.PREDICATE_PAIR:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
@@ -1167,7 +1180,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .destination_predicate_negated = {object_name}.{field.name}.value.first.negated || {object_name}.{field.name}.value.second.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedPredicatePairOrSink":
+    if field.value_kind is ResolvedValueKind.PREDICATE_PAIR_OR_SINK:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
@@ -1177,7 +1190,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .destination_predicate_negated = ({object_name}.{field.name}.value.first && {object_name}.{field.name}.value.first->negated) || ({object_name}.{field.name}.value.second && {object_name}.{field.name}.value.second->negated),
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedImmediate":
+    if field.value_kind is ResolvedValueKind.IMMEDIATE:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
@@ -1188,7 +1201,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .locations = {object_name}.{field.name}.locs,
                   .integer_source_bits = {object_name}.{field.name}.value.integer_source_bits,
               }}"""
-    if field.value_cpp_type == "ResolvedPredicate":
+    if field.value_kind is ResolvedValueKind.PREDICATE:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
@@ -1197,7 +1210,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .destination_predicate_negated = {object_name}.{field.name}.value.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedPredicateOrSink":
+    if field.value_kind is ResolvedValueKind.PREDICATE_OR_SINK:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
@@ -1207,7 +1220,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .destination_predicate_negated = {object_name}.{field.name}.value.predicate && {object_name}.{field.name}.value.predicate->negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedPredicateSource":
+    if field.value_kind is ResolvedValueKind.PREDICATE_SOURCE:
         return f"""              [&]() -> OperandView {{
                 const auto& source = {object_name}.{field.name}.value;
                 if (const auto* special =
@@ -1240,7 +1253,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
-    if field.value_cpp_type == "ResolvedBranchTarget":
+    if field.value_kind is ResolvedValueKind.BRANCH_TARGET:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "BranchTarget")},
@@ -1248,7 +1261,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedBranchTargetSet":
+    if field.value_kind is ResolvedValueKind.BRANCH_TARGET_SET:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "BranchTargetSet")},
@@ -1256,7 +1269,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .register_type = std::nullopt,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedSpecialRegisterRef":
+    if field.value_kind is ResolvedValueKind.SPECIAL_REGISTER:
         return f"""              [&]() -> OperandView {{
                 const auto info = base::metadata(
                     {object_name}.{field.name}.value.id);
@@ -1272,7 +1285,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
-    if field.value_cpp_type == "ResolvedSymbolRef":
+    if field.value_kind is ResolvedValueKind.SYMBOL:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
@@ -1282,7 +1295,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .value_name = {object_name}.{field.name}.value.spelling,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_cpp_type == "ResolvedAddress":
+    if field.value_kind is ResolvedValueKind.ADDRESS:
         return f"""              [&]() -> OperandView {{
                 const auto* symbol = std::get_if<ResolvedSymbolRef>(
                     &{object_name}.{field.name}.value.base);
@@ -1363,7 +1376,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                   .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
-    if field.value_cpp_type == "RegOrImm":
+    if field.value_kind is ResolvedValueKind.REG_OR_IMM:
         return f"""              [&]() -> OperandView {{
                 if (const auto* immediate =
                         std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
@@ -1388,7 +1401,7 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
-    if field.value_cpp_type == "ResolvedMovSource":
+    if field.value_kind is ResolvedValueKind.MOV_SOURCE:
         return f"""              [&]() -> OperandView {{
                 const auto state_space_from_symbol =
                     [](const ResolvedSymbolRef* symbol)
@@ -1499,14 +1512,16 @@ def _emit_check_operand_view(field: ResolvedField, object_name: str) -> str:
                 }};
               }}()"""
     raise ValueError(
-        f"operand field {field.name!r}: unsupported checker view type "
-        f"{field.value_cpp_type!r}"
+        f"operand field {field.name!r}: unsupported checker view value kind "
+        f"{field.value_kind.value!r}"
     )
 
 
 def _emit_resolve_field_initializer(field: ResolvedField) -> str:
     accessor = (
-        "resolved_modifier" if field.origin.value == "modifier" else "resolved_operand"
+        "resolved_modifier"
+        if field.origin is ResolvedFieldOrigin.MODIFIER
+        else "resolved_operand"
     )
     return (
         f".{field.name} = {accessor}<{field.value_cpp_type}>(*fields, "

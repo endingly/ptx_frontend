@@ -1,5 +1,10 @@
 from typing import Any
-from ptx_frontend.spec.model import OperandLayoutSpec, OperandLayoutKind, OperandSpec
+from ptx_frontend.spec.model import (
+    OperandKind,
+    OperandLayoutSpec,
+    OperandLayoutKind,
+    OperandSpec,
+)
 from .availability import normalize_availability
 from ptx_frontend.ir.syntax_ast import OPERAND_SYNTAX_SHAPES
 from .operands import normalize_operand
@@ -44,11 +49,11 @@ def normalize_operand_layouts(
             ) from error
         operands = _resolve_operands(raw_layout["operands"], operand_patterns)
         call_operand_kinds = {
-            "direct_call_target",
-            "indirect_call_target",
-            "indirect_call_metadata",
-            "call_return_param",
-            "call_arguments",
+            OperandKind.DIRECT_CALL_TARGET,
+            OperandKind.INDIRECT_CALL_TARGET,
+            OperandKind.INDIRECT_CALL_METADATA,
+            OperandKind.CALL_RETURN_PARAMETER,
+            OperandKind.CALL_ARGUMENTS,
         }
         if kind not in {
             OperandLayoutKind.CALL,
@@ -60,9 +65,13 @@ def normalize_operand_layouts(
             )
         if kind is OperandLayoutKind.CALL:
             call_shapes = {
-                ("direct_call_target",),
-                ("direct_call_target", "call_arguments"),
-                ("call_return_param", "direct_call_target", "call_arguments"),
+                (OperandKind.DIRECT_CALL_TARGET,),
+                (OperandKind.DIRECT_CALL_TARGET, OperandKind.CALL_ARGUMENTS),
+                (
+                    OperandKind.CALL_RETURN_PARAMETER,
+                    OperandKind.DIRECT_CALL_TARGET,
+                    OperandKind.CALL_ARGUMENTS,
+                ),
             }
             if tuple(operand.kind for operand in operands) not in call_shapes:
                 raise ValueError(
@@ -72,17 +81,17 @@ def normalize_operand_layouts(
                 )
         if kind is OperandLayoutKind.INDIRECT_CALL:
             call_shapes = {
-                ("indirect_call_target", "indirect_call_metadata"),
+                (OperandKind.INDIRECT_CALL_TARGET, OperandKind.INDIRECT_CALL_METADATA),
                 (
-                    "indirect_call_target",
-                    "call_arguments",
-                    "indirect_call_metadata",
+                    OperandKind.INDIRECT_CALL_TARGET,
+                    OperandKind.CALL_ARGUMENTS,
+                    OperandKind.INDIRECT_CALL_METADATA,
                 ),
                 (
-                    "call_return_param",
-                    "indirect_call_target",
-                    "call_arguments",
-                    "indirect_call_metadata",
+                    OperandKind.CALL_RETURN_PARAMETER,
+                    OperandKind.INDIRECT_CALL_TARGET,
+                    OperandKind.CALL_ARGUMENTS,
+                    OperandKind.INDIRECT_CALL_METADATA,
                 ),
             }
             if tuple(operand.kind for operand in operands) not in call_shapes:

@@ -69,6 +69,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             if instruction.opcode == "sub"
         )
         cls.descriptor = from_InstructionSpec(add)
+        cls.add_entry = next(
+            entry
+            for entry in build_test_generation_context(database).entries
+            if entry.specification.opcode == "add"
+        )
         cls.sub_descriptor = from_InstructionSpec(sub)
         call = next(
             instruction
@@ -1801,7 +1806,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
 
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
         source = emit_check_end_instruction_descriptor_implementation(
-            self.descriptor, BACKEND
+            self.descriptor, BACKEND, cpp_name=self.add_entry.cpp_name
         )
 
         self.assertTrue(source.startswith("struct AddDescriptorStorage {"))

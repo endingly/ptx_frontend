@@ -102,6 +102,22 @@ class GenerationPlanTests(unittest.TestCase):
                 resolved=second.resolved,
             )
 
+    def test_entry_rejects_same_opcode_with_different_cpp_type_identity(self) -> None:
+        entry = build_generation_context(self.database, self.backend).entries[0]
+        mismatched_resolved = replace(entry.resolved, cpp_name="Mismatched")
+
+        with self.assertRaisesRegex(ValueError, "mismatched C\\+\\+ type identities"):
+            GenerationInstruction(
+                specification=entry.specification,
+                resolved=mismatched_resolved,
+            )
+
+    def test_entry_replace_rejects_same_opcode_with_different_cpp_type_identity(self) -> None:
+        entry = build_generation_context(self.database, self.backend).entries[0]
+
+        with self.assertRaisesRegex(ValueError, "mismatched C\\+\\+ type identities"):
+            replace(entry, resolved=replace(entry.resolved, cpp_name="Mismatched"))
+
     def test_emitter_dependencies_follow_the_model_category_dispatch_boundary(self) -> None:
         emitter_dir = ROOT / "python/src/ptx_frontend/code_gen/emit"
 
@@ -204,22 +220,11 @@ class GenerationPlanTests(unittest.TestCase):
                 build_generation_plan(context, output)
             self.assertFalse(output.exists())
 
-    def test_context_rejects_source_cpp_name_collision_before_emission(self) -> None:
+    def test_context_rejects_binding_cpp_name_collision_before_emission(self) -> None:
         first, second = self.entries_with_colliding_source_projection()
 
-        with self.assertRaisesRegex(ValueError, "multiple syntax instructions"):
+        with self.assertRaisesRegex(ValueError, "multiple generation instruction bindings"):
             GenerationContext(backend=self.backend, entries=(first, second))
-
-    def test_context_rejects_resolved_cpp_name_collision_via_replace(self) -> None:
-        context = build_generation_context(self.database, self.backend)
-        first, second = context.entries[:2]
-        colliding_second = GenerationInstruction(
-            specification=second.specification,
-            resolved=replace(second.resolved, cpp_name=first.resolved.cpp_name),
-        )
-
-        with self.assertRaisesRegex(ValueError, "multiple resolved instructions"):
-            replace(context, entries=(first, colliding_second, *context.entries[2:]))
 
     def test_context_rejects_unclassified_reference_payload_before_emission(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -276,7 +281,9 @@ class GenerationPlanTests(unittest.TestCase):
                 with (
                     patch("ptx_frontend.code_gen.cli.load_codegen_database", return_value=invalid_database),
                     patch("ptx_frontend.code_gen.cli.format_file_inplace") as format_file,
-                    self.assertRaisesRegex(ValueError, "multiple syntax instructions"),
+                    self.assertRaisesRegex(
+                        ValueError, "multiple generation instruction bindings"
+                    ),
                 ):
                     cli.main()
             finally:
@@ -295,11 +302,15 @@ class GenerationPlanTests(unittest.TestCase):
         return (
             GenerationInstruction(
                 specification=replace(first.specification, opcode="collision.name"),
-                resolved=replace(first.resolved, opcode="collision.name", cpp_name="First"),
+                resolved=replace(
+                    first.resolved, opcode="collision.name", cpp_name="CollisionName"
+                ),
             ),
             GenerationInstruction(
                 specification=replace(second.specification, opcode="collision_name"),
-                resolved=replace(second.resolved, opcode="collision_name", cpp_name="Second"),
+                resolved=replace(
+                    second.resolved, opcode="collision_name", cpp_name="CollisionName"
+                ),
             ),
         )
 

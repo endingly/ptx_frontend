@@ -124,14 +124,17 @@ dispatch、按 category 分片的实现以及 descriptor：
 
 一次 generation run 中，`GenerationContext` 保存唯一的有序 binding 序列：每个
 normalized `InstructionSpec` 都与其一次 lowered、backend-projected 的
-`ResolvedInstruction` 配对。Syntax emission 与 category selection 读取 binding 的
-source 一侧；model、descriptor、resolver 与 checker emission 读取 resolved 一侧。
-为兼容性保留的 resolved tuple 由 binding 派生，因此 source 与 resolved 的顺序不能独立漂移。
+`ResolvedInstruction` 配对。每个 binding 从 source opcode 派生一个 canonical C++
+instruction type name，并要求 resolved model 精确携带该名称。Syntax emission 与
+category selection 读取 binding 的 source 一侧和 type identity；model、descriptor、resolver
+与 checker emission 读取 resolved 一侧。为兼容性保留的 resolved tuple 由 binding 派生，
+因此 source 与 resolved 的顺序或 C++ type identity 不能独立漂移。
 
-context 构造会在任何 emitter 创建目录或写文件之前执行有限的结构 preflight：source opcode
-投影和 resolved C++ 名称必须各自唯一，且每个 resolved operand payload kind 都必须有
-module-reference policy。它只验证冻结 snapshot，而不声称能预测所有 rendering 或 filesystem
-失败。direct `GenerationContext` 构造与 `dataclasses.replace` 也会执行这些检查。
+context 构造会在任何 emitter 创建目录或写文件之前执行有限的结构 preflight：canonical
+binding C++ type name 必须唯一，且每个 resolved operand payload kind 都必须有 module-reference
+policy。binding 构造自身会拒绝 resolved C++ name 与 source-derived type name 不同的情况，
+包括 direct 构造和 `dataclasses.replace`。它只验证冻结 snapshot，而不声称能预测所有
+rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |

@@ -139,18 +139,21 @@ descriptors required by the Resolved IR stage:
 
 For one run, `GenerationContext` owns a single ordered sequence of bindings:
 each normalized `InstructionSpec` is paired with its once-lowered,
-backend-projected `ResolvedInstruction`. Syntax emission and category selection
-read the source side of those bindings, while model, descriptor, resolver, and
-checker emission read the resolved side. The resolved tuple exposed for
-compatibility is derived from the bindings, so source and resolved order cannot
-drift independently.
+backend-projected `ResolvedInstruction`. Each binding derives one canonical C++
+instruction type name from its source opcode and requires the resolved model to
+carry exactly that name. Syntax emission and category selection read the source
+side and binding type identity, while model, descriptor, resolver, and checker
+emission read the resolved side. The resolved tuple exposed for compatibility is
+derived from the bindings, so source and resolved order or C++ type identity
+cannot drift independently.
 
 Context construction performs a finite structural preflight before an emitter
-can create a directory or write a file: source opcode projections and resolved
-C++ names must each be unique, and every resolved operand payload kind must
-have a module-reference policy. This validates the frozen snapshot, not every
-possible rendering or filesystem failure. The checks also run for direct
-`GenerationContext` construction and `dataclasses.replace`.
+can create a directory or write a file: canonical binding C++ type names must
+be unique, and every resolved operand payload kind must have a module-reference
+policy. Binding construction itself rejects a resolved C++ name that differs
+from its source-derived type name, including direct construction and
+`dataclasses.replace`. This validates the frozen snapshot, not every possible
+rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |

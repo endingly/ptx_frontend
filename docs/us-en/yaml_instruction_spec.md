@@ -258,7 +258,7 @@ variant. The schema retains `same_as(...)`, `one_of(...)`, and
 them as unsupported.
 
 Every generated operand payload also needs an explicit module-reference policy.
-`emit.resolved_dispatch` classifies each semantic payload in
+`emit.references` classifies each semantic payload in
 `_REFERENCE_VALUE_KINDS` or `_REFERENCE_FREE_VALUE_KINDS`; an unclassified type
 fails generation. Reference-bearing payloads are the resolved primitives that
 can carry bound declaration/symbol identity (for example register, predicate,

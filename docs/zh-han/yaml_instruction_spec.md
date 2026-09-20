@@ -224,7 +224,7 @@ schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为�
 normalizer 会明确报错表示尚未支持。
 
 每个 generated operand payload 还必须有明确的 module-reference policy。
-`emit.resolved_dispatch` 会将 semantic payload 分类到 `_REFERENCE_VALUE_KINDS` 或
+`emit.references` 会将 semantic payload 分类到 `_REFERENCE_VALUE_KINDS` 或
 `_REFERENCE_FREE_VALUE_KINDS`；未分类 type 会使 generation 失败。reference-bearing payload
 是能够携带 bound declaration/symbol identity 的 resolved primitive（例如 register、predicate、
 symbol、address、vector、call/control 与 tensor-coordinate form）。生成的

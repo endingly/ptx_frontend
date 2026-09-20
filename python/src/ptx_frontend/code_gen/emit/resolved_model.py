@@ -16,10 +16,7 @@ from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
 )
-from .resolved_dispatch import (
-    emit_reference_visitor, emit_resolved_instruction_union,
-    validate_reference_field_types,
-)
+from .references import emit_reference_visitor, validate_reference_field_types
 
 def generate_resolved_ir_header(
     context: GenerationContext,
@@ -43,7 +40,7 @@ def generate_resolved_ir_header(
         emit_resolved_instruction_definition(instruction, context.backend)
         for instruction in instructions
     )
-    instruction_union = emit_resolved_instruction_union(instructions)
+    instruction_union = _emit_resolved_instruction_union(instructions)
     reference_visitors = "\n\n".join(
         emit_reference_visitor(instruction, context.backend) for instruction in instructions
     )
@@ -80,6 +77,17 @@ namespace detail {{
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
+
+
+def _emit_resolved_instruction_union(
+    instructions: tuple[ResolvedInstruction, ...],
+) -> str:
+    """Emit the model-owned resolved instruction alternative union."""
+
+    alternatives = ", ".join(instruction.cpp_name for instruction in instructions)
+    return f"""\
+using ResolvedInstruction = std::variant<{alternatives}>;
+"""
 
 
 def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:

@@ -34,10 +34,10 @@ from ptx_frontend.code_gen.emit.checker_descriptors import (
 )
 from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
-    validate_reference_field_types,
 )
+from ptx_frontend.code_gen.emit.references import validate_reference_field_types
 from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
-from ptx_frontend.code_gen.emit.resolved_resolver import generate_resolved_ir_source
+from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.code_gen.resolved_field_names import (
     field_cpp_constant_expr,
@@ -1400,7 +1400,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("ResolvedValueKind::RegisterOrSink", source)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_parallel.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="parallel_synchronization_and_communication",
                 output_path=output_path,
             )
@@ -3190,7 +3190,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database), category="control_flow", output_path=output_path
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="control_flow", output_path=output_path
             )
             generate_resolved_checker_descriptor_source(build_test_generation_context(database), output_path=descriptor_path
             )
@@ -3515,7 +3515,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_matrix.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database), category="matrix", output_path=output_path
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="matrix", output_path=output_path
             )
             source = output_path.read_text(encoding="utf-8")
         self.assertIn("SyncAlignedM16n8k8RowColF32F16F16F32", source)
@@ -3526,7 +3526,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database), category="data_movement", output_path=output_path
+            generate_resolved_ir_category_source(build_test_generation_context(database), category="data_movement", output_path=output_path
             )
             generate_resolved_checker_descriptor_source(build_test_generation_context(database), output_path=descriptor_path
             )
@@ -3815,7 +3815,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="data_movement",
                 output_path=output_path,
             )
@@ -3831,7 +3831,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="arithmetic",
                 output_path=output_path,
             )
@@ -4146,7 +4146,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="control_flow",
                 output_path=output_path,
             )
@@ -4174,7 +4174,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="data_movement",
                 output_path=output_path,
             )
@@ -4262,7 +4262,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="arithmetic",
                 output_path=output_path,
             )
@@ -4319,7 +4319,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             root = Path(directory)
             arithmetic = root / "arithmetic.gen.cpp"
             descriptor = root / "resolved_descriptor.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(self.database), category="arithmetic", output_path=arithmetic
+            generate_resolved_ir_category_source(build_test_generation_context(self.database), category="arithmetic", output_path=arithmetic
             )
             generate_resolved_descriptor_source(build_test_generation_context(self.database), output_path=descriptor
             )
@@ -4686,7 +4686,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             generate_resolved_checker_descriptor_source(build_test_generation_context(database),
                 output_path=output_path,
             )
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="test",
                 output_path=checker_path,
             )
@@ -4903,7 +4903,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "resolved_ir_test.gen.cpp"
-            generate_resolved_ir_source(build_test_generation_context(self.database),
+            generate_resolved_ir_category_source(build_test_generation_context(self.database),
                 category="arithmetic",
                 output_path=source_path,
             )
@@ -5037,7 +5037,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             header_path = Path(directory) / "resolved_ir.gen.hpp"
             source_path = Path(directory) / "resolved_ir_uncategorized.gen.cpp"
             generate_resolved_ir_header(build_test_generation_context(database), output_path=header_path)
-            generate_resolved_ir_source(build_test_generation_context(database),
+            generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="uncategorized",
                 output_path=source_path,
             )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import ast
 from contextlib import redirect_stdout
 from io import StringIO
 import sys
@@ -11,7 +12,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ptx_frontend.code_gen.context import build_generation_context
+from ptx_frontend.code_gen.context import (
+    GenerationContext,
+    GenerationInstruction,
+    build_generation_context,
+)
+from ptx_frontend.code_gen.emit.category_source import (
+    generate_resolved_ir_category_source,
+)
+from ptx_frontend.code_gen.emit.syntax_descriptors import generate_syntax_descriptor_source
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import build_generation_plan
 from ptx_frontend.spec.database import load_codegen_database
@@ -46,6 +55,74 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertEqual(len(context.instructions), len(self.database.instructions))
         self.assertEqual(lower.call_count, len(self.database.instructions))
         self.assertEqual(project.call_count, len(self.database.instructions))
+
+    def test_entries_bind_source_category_and_resolved_model(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+        arithmetic = next(
+            entry for entry in context.entries
+            if entry.specification.codegen_category == "arithmetic"
+        )
+        control_flow = next(
+            entry for entry in context.entries
+            if entry.specification.codegen_category == "control_flow"
+        )
+        reordered = GenerationContext(
+            backend=self.backend,
+            entries=(control_flow, arithmetic),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            syntax_path = output / "syntax.cpp"
+            category_path = output / "arithmetic.cpp"
+            generate_syntax_descriptor_source(reordered, output_path=syntax_path)
+            generate_resolved_ir_category_source(
+                reordered, category="arithmetic", output_path=category_path
+            )
+
+            syntax = syntax_path.read_text(encoding="utf-8")
+            category = category_path.read_text(encoding="utf-8")
+            self.assertIn(f'Opcode_name = "{arithmetic.specification.opcode}"', syntax)
+            self.assertIn(f'Opcode_name = "{control_flow.specification.opcode}"', syntax)
+            self.assertIn(
+                f"resolve<{arithmetic.resolved.cpp_name}>", category
+            )
+            self.assertNotIn(
+                f"resolve<{control_flow.resolved.cpp_name}>", category
+            )
+
+    def test_entry_rejects_resolved_model_from_another_opcode(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+        first, second = context.entries[:2]
+        with self.assertRaisesRegex(ValueError, "mismatched opcodes"):
+            GenerationInstruction(
+                specification=first.specification,
+                resolved=second.resolved,
+            )
+
+    def test_emitter_dependencies_follow_the_model_category_dispatch_boundary(self) -> None:
+        emitter_dir = ROOT / "python/src/ptx_frontend/code_gen/emit"
+
+        def imported_modules(name: str) -> set[str]:
+            module = ast.parse((emitter_dir / name).read_text(encoding="utf-8"))
+            return {
+                node.module or ""
+                for node in ast.walk(module)
+                if isinstance(node, ast.ImportFrom)
+            }
+
+        self.assertNotIn(
+            "resolved_checker", imported_modules("resolved_resolver.py")
+        )
+        self.assertNotIn(
+            "resolved_dispatch", imported_modules("resolved_model.py")
+        )
+        self.assertNotIn(
+            "references", imported_modules("resolved_dispatch.py")
+        )
+        category_imports = imported_modules("category_source.py")
+        self.assertIn("resolved_resolver", category_imports)
+        self.assertIn("resolved_checker", category_imports)
 
     def test_plan_is_the_only_artifact_inventory_and_needs_no_global_backend(self) -> None:
         context = build_generation_context(self.database, self.backend)

@@ -39,7 +39,8 @@ def generate_syntax_descriptor_source(
     getter_definitions: list[str] = []
     generated_types: set[str] = set()
 
-    for instruction in context.database.instructions:
+    for entry in context.entries:
+        instruction = entry.specification
         descriptor = from_InstructionSpec(instruction)
         cpp_instruction_name = file_stem_to_pascal_case(descriptor.opcode)
         if cpp_instruction_name in generated_types:

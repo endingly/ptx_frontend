@@ -73,15 +73,6 @@ namespace generated_detail {{
     output_path.write_text(content, encoding="utf-8")
 
 
-def _emit_resolved_instruction_implementation(
-    instruction: ResolvedInstruction,
-) -> str:
-    return (
-        f"{_emit_resolved_descriptor_storage(instruction)}\n\n"
-        f"{_emit_resolved_descriptor_getter(instruction)}"
-    )
-
-
 def _emit_resolved_descriptor_storage(
     instruction: ResolvedInstruction, backend: CodegenUnit
 ) -> str:

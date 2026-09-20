@@ -122,12 +122,18 @@ helper 在输出时投影这些表示。
 `python/scripts/gen_all.py` 原子生成 Resolved IR 阶段所需的公共声明、运行期映射、
 dispatch、按 category 分片的实现以及 descriptor：
 
+一次 generation run 中，`GenerationContext` 保存唯一的有序 binding 序列：每个
+normalized `InstructionSpec` 都与其一次 lowered、backend-projected 的
+`ResolvedInstruction` 配对。Syntax emission 与 category selection 读取 binding 的
+source 一侧；model、descriptor、resolver 与 checker emission 读取 resolved 一侧。
+为兼容性保留的 resolved tuple 由 binding 派生，因此 source 与 resolved 的顺序不能独立漂移。
+
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs；配套声明由 `emit.resolved_resolver` 与 `emit.resolved_checker` 提供 |
+| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs、alternative union 与 module-reference visitor；配套声明由 `emit.resolved_resolver` 与 `emit.resolved_checker` 提供 |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
-| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolve/check dispatch 与 reference helper |
-| `private/resolved_ir_<category>.gen.cpp` | `emit.resolved_resolver` + `emit.resolved_checker` | 一个 category 的 out-of-line 特化定义 |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
+| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | 一个 category 的 out-of-line resolver 与 checker 特化定义 |
 | `private/syntax_descriptor.gen.cpp` | `emit.syntax_descriptors` | source syntax descriptors 与 getter |
 | `private/resolved_descriptor.gen.cpp` | `emit.resolved_descriptors` | resolved field/binding descriptors 与 getter |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `emit.checker_descriptors` | availability/rule descriptors 与 getter |

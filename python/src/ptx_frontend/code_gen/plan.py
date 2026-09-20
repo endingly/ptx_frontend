@@ -10,6 +10,9 @@ from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.code_gen.emit.checker_descriptors import (
     generate_resolved_checker_descriptor_source,
 )
+from ptx_frontend.code_gen.emit.category_source import (
+    generate_resolved_ir_category_source,
+)
 from ptx_frontend.code_gen.emit.resolved_checker import (
     generate_resolved_ir_checker_declarations_header,
 )
@@ -18,7 +21,6 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import generate_resolved_dispa
 from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
 from ptx_frontend.code_gen.emit.resolved_resolver import (
     generate_resolved_ir_resolution_declarations_header,
-    generate_resolved_ir_source,
 )
 from ptx_frontend.code_gen.emit.syntax_descriptors import generate_syntax_descriptor_source
 from ptx_frontend.code_gen.emit.value_domains import generate_resolved_value_domain_header
@@ -56,7 +58,7 @@ class GenerationPlan:
 def instruction_categories(context: GenerationContext) -> tuple[str, ...]:
     """Return the stable C++ source categories for this snapshot."""
 
-    return tuple(sorted({item.codegen_category for item in context.database.instructions}))
+    return tuple(sorted({entry.specification.codegen_category for entry in context.entries}))
 
 
 def build_generation_plan(context: GenerationContext, output_dir: Path) -> GenerationPlan:
@@ -72,7 +74,7 @@ def build_generation_plan(context: GenerationContext, output_dir: Path) -> Gener
     artifacts.extend(
         GeneratedArtifact(
             output_dir / f"private/resolved_ir_{category}.gen.cpp",
-            lambda active_context, *, output_path, category=category: generate_resolved_ir_source(
+            lambda active_context, *, output_path, category=category: generate_resolved_ir_category_source(
                 active_context, category=category, output_path=output_path
             ),
         )

@@ -137,12 +137,20 @@ representations only while emitting output.
 runtime mappings, dispatch, category-partitioned implementations, and
 descriptors required by the Resolved IR stage:
 
+For one run, `GenerationContext` owns a single ordered sequence of bindings:
+each normalized `InstructionSpec` is paired with its once-lowered,
+backend-projected `ResolvedInstruction`. Syntax emission and category selection
+read the source side of those bindings, while model, descriptor, resolver, and
+checker emission read the resolved side. The resolved tuple exposed for
+compatibility is derived from the bindings, so source and resolved order cannot
+drift independently.
+
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs; `emit.resolved_resolver` and `emit.resolved_checker` provide the paired declarations |
+| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs, their alternative union, and module-reference visitors; paired declarations come from `emit.resolved_resolver` and `emit.resolved_checker` |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
-| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolve/check dispatch and reference helpers |
-| `private/resolved_ir_<category>.gen.cpp` | `emit.resolved_resolver` + `emit.resolved_checker` | out-of-line specialization definitions for one category |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
+| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | out-of-line resolver and checker specialization definitions for one category |
 | `private/syntax_descriptor.gen.cpp` | `emit.syntax_descriptors` | source-syntax descriptors and getters |
 | `private/resolved_descriptor.gen.cpp` | `emit.resolved_descriptors` | resolved field/binding descriptors and getters |
 | `private/resolved_ir_checker_descriptor.gen.cpp` | `emit.checker_descriptors` | availability/rule descriptors and getters |

@@ -1,9 +1,6 @@
-import ctypes
+from .limits import UINT32_MAX, UINT64_MAX
 import re
 from typing import Any
-
-UINT64_MAX = ctypes.c_uint64(-1).value
-UINT32_MAX = ctypes.c_uint32(-1).value
 
 _AVAILABILITY_TARGET = re.compile(r"sm_([1-9][0-9]*)([af]?)$")
 _AVAILABILITY_FAMILY = re.compile(r"sm_[1-9][0-9]*f$")

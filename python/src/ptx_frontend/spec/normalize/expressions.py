@@ -7,7 +7,8 @@ from ptx_frontend.spec.model import (
     OperandParameterConstraint,
 )
 import re
-from .availability import *
+from .availability import normalize_availability
+from typing import Any
 
 _MODIFIER_TYPE_EXPR = re.compile(r"modifier\(([A-Za-z_][A-Za-z0-9_]*)\)")
 _UNSUPPORTED_TYPE_EXPR_FUNCTIONS = ("same_as", "one_of", "same_size_as")

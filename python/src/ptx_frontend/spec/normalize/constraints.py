@@ -11,7 +11,8 @@ from ptx_frontend.spec.model import (
     ImmediateRangeConstraint,
     ImmediateMultipleOfConstraint
 )
-from .availability import normalize_availability, UINT64_MAX
+from .availability import normalize_availability
+from .limits import UINT64_MAX
 from .modifiers import _normalize_modifier_values
 
 

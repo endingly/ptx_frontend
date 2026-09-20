@@ -23,7 +23,10 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedValueKind,
     from_instruction_spec,
 )
-from ptx_frontend.code_gen.resolved_field_names import with_cpp_backend_field_names
+from ptx_frontend.code_gen.resolved_field_names import (
+    condition_code_cpp_value,
+    with_cpp_backend_field_names,
+)
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
     resolved_modifier_value_traits,
@@ -407,7 +410,7 @@ def _emit_resolved_variant_descriptor(variant: ResolvedVariant) -> str:
     name = to_file_stem(variant.variant_id)
     return f"""          check_end::ResolvedVariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
-              .condition_code_effect = {variant.condition_code_cpp_value},
+              .condition_code_effect = {condition_code_cpp_value(variant.condition_code_effect)},
               .fields = {name}_fields,
               .modifier_bindings = {name}_modifier_bindings,
               .operand_layouts = {name}_operand_layouts,

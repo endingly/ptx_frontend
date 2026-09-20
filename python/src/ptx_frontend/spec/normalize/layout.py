@@ -6,7 +6,7 @@ from ptx_frontend.spec.model import (
     OperandSpec,
 )
 from .availability import normalize_availability
-from ptx_frontend.ir.syntax_ast import OPERAND_SYNTAX_SHAPES
+from ptx_frontend.spec.synatax_shapes import OPERAND_SYNTAX_SHAPES
 from .operands import normalize_operand
 
 

@@ -8,6 +8,11 @@ from unittest.mock import patch
 import yaml
 
 from ptx_frontend.code_gen import cpp_backend
+from ptx_frontend.code_gen.resolved_field_names import (
+    field_cpp_constant_expr,
+    field_cpp_type,
+    field_value_cpp_type,
+)
 from ptx_frontend.code_gen.cpp_backend import (
     CppDomain,
     configure_cpp_backend,
@@ -24,11 +29,13 @@ from ptx_frontend.spec.model import (
     OperandBackend,
     RuntimeLookupKind,
 )
+from ptx_frontend.spec.normalize import normalize_instruction_spec
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedFieldOrigin,
     ResolvedFieldStorage,
     ResolvedValueKind,
+    from_instruction_spec,
 )
 from ptx_frontend.spec.resources import packaged_backend_spec
 
@@ -335,7 +342,7 @@ class BackendModelTests(unittest.TestCase):
                 storage=ResolvedFieldStorage.STATIC_CONSTANT,
                 constant_value="f32",
             )
-            self.assertEqual(field.cpp_constant_expr, "CustomType::F32")
+            self.assertEqual(field_cpp_constant_expr(field), "CustomType::F32")
 
     def test_resolved_value_kind_is_independent_of_cpp_type_spelling(self) -> None:
         raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
@@ -363,17 +370,51 @@ class BackendModelTests(unittest.TestCase):
                 ResolvedValueKind.SCALAR_TYPE,
             )
             self.assertEqual(
-                field.value_cpp_type,
+                field_value_cpp_type(field),
                 "CustomScalarType",
             )
             self.assertEqual(
-                field.cpp_type,
+                field_cpp_type(field),
                 "WithLocs<CustomScalarType>",
             )
 
     def test_reports_missing_cpp_domain_value(self) -> None:
         with self.assertRaisesRegex(ValueError, "has no value 'missing'"):
             cpp_value(CppDomain.SCALAR_TYPES, "missing")
+
+    def test_valid_frontend_value_can_fail_only_at_codegen_capability(self) -> None:
+        """PTX legality is broader than the configured C++ value map."""
+
+        instruction = normalize_instruction_spec(
+            {
+                "category": "test",
+                "codegen_category": "test",
+                "instructions": [
+                    {
+                        "opcode": "sample",
+                        "variants": [
+                            {
+                                "name": "sample_default",
+                                "availability": {"ptx": "1.0"},
+                                "modifiers": [
+                                    {
+                                        "name": "type",
+                                        "kind": "type",
+                                        "presence": "fixed",
+                                        "value": "u4",
+                                    }
+                                ],
+                                "operands": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )[0]
+        field = from_instruction_spec(instruction).variants[0].modifier_fields[0]
+
+        with self.assertRaisesRegex(ValueError, "has no value 'u4'"):
+            field_cpp_constant_expr(field)
 
     def test_requires_explicit_cpp_backend_configuration(self) -> None:
         with patch.object(cpp_backend, "_active_backend_spec", None):

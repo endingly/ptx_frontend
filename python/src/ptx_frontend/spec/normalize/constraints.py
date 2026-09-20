@@ -17,6 +17,7 @@ from ptx_frontend.spec.model import (
 from .availability import normalize_availability
 from .limits import UINT64_MAX
 from .modifiers import _normalize_modifier_values
+from ptx_frontend.spec.semantic_domains import SemanticDomain, is_semantic_value
 
 
 def _normalize_operand_type_compatibilities(
@@ -42,6 +43,17 @@ def _normalize_operand_type_compatibilities(
                 f"references unknown operand {operand!r}"
             )
         for value in raw["values"]:
+            if (
+                value_kind is OperandTypeCompatibilityValueKind.SPECIAL_REGISTER
+                and (
+                    not isinstance(value, str)
+                    or not is_semantic_value(SemanticDomain.SPECIAL_REGISTER, value)
+                )
+            ):
+                raise ValueError(
+                    f"variant {raw_variant['name']!r}: unsupported semantic "
+                    f"special-register value {value!r}"
+                )
             key = (operand, value_kind, value, raw["instruction_width"])
             if key in seen:
                 raise ValueError(
@@ -49,13 +61,21 @@ def _normalize_operand_type_compatibilities(
                     f"compatibility {key!r}"
                 )
             seen.add(key)
+        effective_type = raw["effective_type"]
+        if not isinstance(effective_type, str) or not is_semantic_value(
+            SemanticDomain.SCALAR_TYPE, effective_type
+        ):
+            raise ValueError(
+                f"variant {raw_variant['name']!r}: unsupported semantic scalar "
+                f"type {effective_type!r}"
+            )
         result.append(
             OperandTypeCompatibilitySpec(
                 operand=operand,
                 value_kind=value_kind,
                 values=tuple(raw["values"]),
                 instruction_width=raw["instruction_width"],
-                effective_type=raw["effective_type"],
+                effective_type=effective_type,
                 availability=normalize_availability(raw["availability"]),
             )
         )
@@ -187,7 +207,9 @@ def _normalize_memory_consistency_constraint(
             f"variant {raw_variant['name']!r}: memory_consistency "
             "mmio_semantics must be a list"
         )
-    mmio_semantics = _normalize_modifier_values(list(raw_mmio_semantics), {})
+    mmio_semantics = _normalize_modifier_values(
+        ModifierKind.SEMANTICS, list(raw_mmio_semantics), {}
+    )
     semantic_values = {
         value.value for value in modifiers_by_name[raw["semantics_modifier"]].values
     }

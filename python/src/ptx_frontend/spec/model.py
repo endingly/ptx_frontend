@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 
 
-class ConditionCodeEffect(str, Enum):
+class ConditionCodeEffect(Enum):
     """Implicit CC.CF interpretation and access when an instruction executes."""
 
     NONE = "none"
@@ -17,8 +17,8 @@ class ConditionCodeEffect(str, Enum):
     BORROW_IN_OUT = "borrow_in_out"
 
 
-class _SemanticToken(str, Enum):
-    """String-valued semantic enum with stable YAML-facing formatting."""
+class _SemanticToken(Enum):
+    """Strict semantic enum with stable YAML-facing formatting."""
 
     def __str__(self) -> str:
         """Return the spelling retained in diagnostics and generated identifiers."""
@@ -165,7 +165,7 @@ class OperandTypeExpressionKind(Enum):
     MODIFIER = "modifier"
 
 
-class OperandRegisterWidthPolicy(str, Enum):
+class OperandRegisterWidthPolicy(_SemanticToken):
     """Register-width relation accepted by an operand type constraint."""
 
     EXACT = "exact"
@@ -173,21 +173,21 @@ class OperandRegisterWidthPolicy(str, Enum):
     EQUAL_OR_WIDER = "equal_or_wider"
 
 
-class OperandImmediateConversionPolicy(str, Enum):
+class OperandImmediateConversionPolicy(_SemanticToken):
     """How a decoded integer immediate is converted at one operand use."""
 
     NARROW = "narrow"
     REQUIRE_TARGET_RANGE = "require_target_range"
 
 
-class OperandVectorTypePolicy(str, Enum):
+class OperandVectorTypePolicy(_SemanticToken):
     """How an instruction type maps onto a register-vector operand."""
 
     AGGREGATE = "aggregate"
     ELEMENT = "element"
 
 
-class MbarrierStateTokenForm(str, Enum):
+class MbarrierStateTokenForm(_SemanticToken):
     """Whether an mbarrier state-token operand permits the ``_`` sink."""
 
     REGISTER = "register"
@@ -195,7 +195,7 @@ class MbarrierStateTokenForm(str, Enum):
     SINK = "sink"
 
 
-class OperandLayoutKind(str, Enum):
+class OperandLayoutKind(_SemanticToken):
     """Matching algorithm selected by one operand layout."""
 
     FLAT = "flat"

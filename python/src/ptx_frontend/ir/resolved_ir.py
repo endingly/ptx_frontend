@@ -11,10 +11,6 @@ from typing import Any
 from typing import overload
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
-from ptx_frontend.code_gen.cpp_backend import (
-    CppDomain,
-    cpp_value,
-)
 from ptx_frontend.spec.model import (
     ConditionCodeEffect,
     AddressAlignmentConstraint,
@@ -51,8 +47,11 @@ from ptx_frontend.ir.resolved_value_policy import (
     modifier_value_kind,
     validate_resolved_modifier_value_type,
 )
-from ptx_frontend.code_gen.resolved_value_traits import (
-    modifier_value_cpp_expr,
+from ptx_frontend.spec.semantic_domains import (
+    SemanticDomain,
+    is_default_semantic_value,
+    is_semantic_value,
+    semantic_domain_for_modifier,
 )
 
 
@@ -278,41 +277,6 @@ class ResolvedField:
     storage: ResolvedFieldStorage = ResolvedFieldStorage.INSTANCE
     constant_value: str | bool | int | None = None
 
-    @property
-    def value_cpp_type(self) -> str:
-        """Return the backend-selected C++ type for this semantic value kind."""
-
-        return cpp_value(
-            CppDomain.RESOLVED_VALUE_CPP_TYPES,
-            self.value_kind.value,
-        )
-
-    @property
-    def cpp_type(self) -> str:
-        """The C++ member type used by generated resolved instruction structs."""
-
-        if self.storage is ResolvedFieldStorage.STATIC_CONSTANT:
-            return self.value_cpp_type
-        return f"WithLocs<{self.value_cpp_type}>"
-
-    @property
-    def cpp_constant_expr(self) -> str:
-        """Return the generated C++ expression for a fixed modifier value."""
-
-        if self.storage is not ResolvedFieldStorage.STATIC_CONSTANT:
-            raise ValueError("only static resolved fields have constant expressions")
-        if self.constant_value is None:
-            raise ValueError(f"field {self.name!r}: fixed field has no constant value")
-        try:
-            return modifier_value_cpp_expr(
-                self.value_kind,
-                self.constant_value,
-            )
-        except ValueError as error:
-            raise ValueError(
-                f"field {self.name!r}: unsupported fixed value "
-                f"{self.constant_value!r} for {self.value_kind.value}"
-            ) from error
 
 
 @dataclass(frozen=True)
@@ -339,14 +303,6 @@ class ResolvedVariant:
     rule: str | None
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
-
-    @property
-    def condition_code_cpp_value(self) -> str:
-        """Qualified C++ enumerator for this variant's canonical CC effect."""
-
-        return "ConditionCodeEffect::" + file_stem_to_pascal_case(
-            self.condition_code_effect.value
-        )
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -466,59 +422,59 @@ class ResolvedInstruction:
     variants: tuple[ResolvedVariant, ...]
 
 
-_OPERAND_ALLOWED_SHAPES = {
-    "reg": (ResolvedOperandShape.REGISTER,),
-    "imm": (ResolvedOperandShape.IMMEDIATE,),
-    "reg_or_imm": (
+_OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
+    OperandKind.REGISTER: (ResolvedOperandShape.REGISTER,),
+    OperandKind.IMMEDIATE: (ResolvedOperandShape.IMMEDIATE,),
+    OperandKind.REGISTER_OR_IMMEDIATE: (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
     ),
-    "reg_or_sink": (ResolvedOperandShape.REGISTER,),
-    "shfl_dest": (ResolvedOperandShape.SHFL_DESTINATION,),
-    "pred_pair": (ResolvedOperandShape.PREDICATE_PAIR,),
-    "pred_pair_or_sink": (ResolvedOperandShape.PREDICATE_PAIR,),
-    "mov_scalar_src": (
+    OperandKind.REGISTER_OR_SINK: (ResolvedOperandShape.REGISTER,),
+    OperandKind.SHFL_DESTINATION: (ResolvedOperandShape.SHFL_DESTINATION,),
+    OperandKind.PREDICATE_PAIR: (ResolvedOperandShape.PREDICATE_PAIR,),
+    OperandKind.PREDICATE_PAIR_OR_SINK: (ResolvedOperandShape.PREDICATE_PAIR,),
+    OperandKind.MOV_SCALAR_SOURCE: (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
         ResolvedOperandShape.SPECIAL_REGISTER,
         ResolvedOperandShape.SYMBOL,
         ResolvedOperandShape.ADDRESS,
     ),
-    "cluster_address": (
+    OperandKind.CLUSTER_ADDRESS: (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.SYMBOL,
         ResolvedOperandShape.ADDRESS,
     ),
-    "vector_reg": (ResolvedOperandShape.VECTOR,),
-    "vector_sreg": (ResolvedOperandShape.VECTOR,),
-    "pred": (ResolvedOperandShape.PREDICATE,),
-    "pred_or_sink": (ResolvedOperandShape.PREDICATE,),
-    "pred_source": (
+    OperandKind.VECTOR_REGISTER: (ResolvedOperandShape.VECTOR,),
+    OperandKind.VECTOR_SPECIAL_REGISTER: (ResolvedOperandShape.VECTOR,),
+    OperandKind.PREDICATE: (ResolvedOperandShape.PREDICATE,),
+    OperandKind.PREDICATE_OR_SINK: (ResolvedOperandShape.PREDICATE,),
+    OperandKind.PREDICATE_SOURCE: (
         ResolvedOperandShape.PREDICATE,
         ResolvedOperandShape.IMMEDIATE,
     ),
-    "pred_or_sreg": (
+    OperandKind.PREDICATE_OR_SPECIAL_REGISTER: (
         ResolvedOperandShape.PREDICATE,
         ResolvedOperandShape.IMMEDIATE,
         ResolvedOperandShape.SPECIAL_REGISTER,
     ),
-    "pred_or_not": (ResolvedOperandShape.PREDICATE,),
-    "label": (ResolvedOperandShape.BRANCH_TARGET,),
-    "sreg": (ResolvedOperandShape.SPECIAL_REGISTER,),
-    "symbol": (ResolvedOperandShape.SYMBOL,),
-    "addr": (ResolvedOperandShape.ADDRESS,),
-    "reg_vector": (ResolvedOperandShape.VECTOR,),
-    "descriptor": (ResolvedOperandShape.REGISTER,),
-    "typed_token": (ResolvedOperandShape.REGISTER,),
-    "mbarrier_state_token": (ResolvedOperandShape.REGISTER,),
-    "tensor_coordinate": (ResolvedOperandShape.VECTOR,),
-    "matrix_fragment": (ResolvedOperandShape.VECTOR,),
-    "direct_call_target": (ResolvedOperandShape.DIRECT_CALL_TARGET,),
-    "indirect_call_target": (ResolvedOperandShape.INDIRECT_CALLEE,),
-    "indirect_call_metadata": (ResolvedOperandShape.INDIRECT_CALLEE,),
-    "branch_target_set": (ResolvedOperandShape.BRANCH_TARGET_SET,),
-    "call_return_param": (ResolvedOperandShape.CALL_RETURN_PARAMETER,),
-    "call_arguments": (ResolvedOperandShape.CALL_ARGUMENTS,),
+    OperandKind.PREDICATE_OR_NOT: (ResolvedOperandShape.PREDICATE,),
+    OperandKind.LABEL: (ResolvedOperandShape.BRANCH_TARGET,),
+    OperandKind.SPECIAL_REGISTER: (ResolvedOperandShape.SPECIAL_REGISTER,),
+    OperandKind.SYMBOL: (ResolvedOperandShape.SYMBOL,),
+    OperandKind.ADDRESS: (ResolvedOperandShape.ADDRESS,),
+    OperandKind.REGISTER_VECTOR: (ResolvedOperandShape.VECTOR,),
+    OperandKind.DESCRIPTOR: (ResolvedOperandShape.REGISTER,),
+    OperandKind.TYPED_TOKEN: (ResolvedOperandShape.REGISTER,),
+    OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
+    OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
+    OperandKind.MATRIX_FRAGMENT: (ResolvedOperandShape.VECTOR,),
+    OperandKind.DIRECT_CALL_TARGET: (ResolvedOperandShape.DIRECT_CALL_TARGET,),
+    OperandKind.INDIRECT_CALL_TARGET: (ResolvedOperandShape.INDIRECT_CALLEE,),
+    OperandKind.INDIRECT_CALL_METADATA: (ResolvedOperandShape.INDIRECT_CALLEE,),
+    OperandKind.BRANCH_TARGET_SET: (ResolvedOperandShape.BRANCH_TARGET_SET,),
+    OperandKind.CALL_RETURN_PARAMETER: (ResolvedOperandShape.CALL_RETURN_PARAMETER,),
+    OperandKind.CALL_ARGUMENTS: (ResolvedOperandShape.CALL_ARGUMENTS,),
 }
 
 _OPERAND_ROLES = {
@@ -640,6 +596,11 @@ def _build_memory_consistency_constraint(
 ) -> ResolvedMemoryConsistencyConstraint | None:
     if constraint is None:
         return None
+    for value in constraint.mmio_semantics:
+        if not is_semantic_value(SemanticDomain.MEMORY_CONSISTENCY, value.value):
+            raise ValueError(
+                f"unsupported semantic memory consistency value {value.value!r}"
+            )
     return ResolvedMemoryConsistencyConstraint(
         semantics_field_id=modifier_field_ids[constraint.semantics_modifier],
         scope_field_id=modifier_field_ids[constraint.scope_modifier],
@@ -661,7 +622,7 @@ def _build_memory_consistency_constraint(
             else None
         ),
         mmio_semantics=tuple(
-            (str(value.value), tuple(value.availability.items()))
+            (value.value, tuple(value.availability.items()))
             for value in constraint.mmio_semantics
         ),
     )
@@ -774,6 +735,15 @@ def _validate_resolved_modifier_value(
         modifier_name=modifier.name,
         default=default,
     )
+    domain = semantic_domain_for_modifier(modifier.kind)
+    if domain is not None and not (
+        is_semantic_value(domain, value)
+        or (default and is_default_semantic_value(domain, value))
+    ):
+        raise ValueError(
+            f"modifier {modifier.name!r}: unsupported semantic "
+            f"{domain.value} value {value!r}"
+        )
 
 
 
@@ -786,6 +756,17 @@ def _build_modifier_default(
     if modifier.default is None:
         raise ValueError(
             f"optional modifier {modifier.name!r} has no normalized default"
+        )
+
+    domain = semantic_domain_for_modifier(modifier.kind)
+    if modifier.values and modifier.default not in {
+        value.value for value in modifier.values
+    } and not (
+        domain is not None and is_default_semantic_value(domain, modifier.default)
+    ):
+        raise ValueError(
+            f"optional {modifier.kind.value} modifier {modifier.name!r} has default "
+            f"{modifier.default!r} outside its allowed values"
         )
 
     try:
@@ -823,7 +804,11 @@ def _build_modifier_value_availability(
         modifier,
         value_kind,
         value.value,
-        default=False,
+        default=(
+            modifier.presence is ModifierPresence.OPTIONAL
+            and value.value == modifier.default
+            and all(candidate.value != value.value for candidate in modifier.values)
+        ),
     )
 
     return ResolvedModifierValueAvailability(
@@ -888,8 +873,12 @@ def _build_operand_type_compatibility(
         )
     if not isinstance(value, str):
         raise ValueError("special-register compatibility value must be a string")
-    if not isinstance(compatibility.effective_type, str):
-        raise ValueError("effective scalar type must be a string")
+    if not is_semantic_value(SemanticDomain.SPECIAL_REGISTER, value):
+        raise ValueError(f"unsupported semantic special-register value {value!r}")
+    if not is_semantic_value(SemanticDomain.SCALAR_TYPE, compatibility.effective_type):
+        raise ValueError(
+            f"unsupported semantic scalar type {compatibility.effective_type!r}"
+        )
     return ResolvedOperandTypeCompatibility(
         target_field_id=compatibility.operand,
         special_register_kind=value,
@@ -984,6 +973,15 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
             f"modifier {modifier.name!r}: unsupported resolved modifier kind "
             f"{modifier.kind!r}"
         ) from error
+    if modifier.presence is ModifierPresence.FIXED:
+        if modifier.value is None:
+            raise ValueError(f"fixed modifier {modifier.name!r} has no value")
+        _validate_resolved_modifier_value(
+            modifier,
+            value_kind,
+            modifier.value,
+            default=False,
+        )
 
     return ResolvedField(
         name=modifier.name,
@@ -1051,6 +1049,10 @@ def _resolve_operand_type_expression(
         )
     if expression.kind is OperandTypeExpressionKind.FIXED_SCALAR:
         assert expression.scalar_type is not None
+        if not is_semantic_value(SemanticDomain.SCALAR_TYPE, expression.scalar_type):
+            raise ValueError(
+                f"unsupported semantic operand scalar type {expression.scalar_type!r}"
+            )
         return ResolvedOperandTypeExpression(
             kind=ResolvedOperandTypeExpressionKind.FIXED_SCALAR,
             scalar_type=expression.scalar_type,
@@ -1112,6 +1114,8 @@ def _resolve_operand_state_spaces(
 
     result: list[ResolvedAddressStateSpace] = []
     for value in values:
+        if not is_semantic_value(SemanticDomain.MEMORY_STATE_SPACE, value.value):
+            raise ValueError(f"unknown operand state space {value.value!r}")
         result.append(
             ResolvedAddressStateSpace(
                 value=value.value,

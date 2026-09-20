@@ -31,6 +31,7 @@ from ptx_frontend.code_gen.normalize import (
     normalize_operand,
 )
 from ptx_frontend.ir.resolved_ir import ResolvedOperandShape, from_instruction_spec
+from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.ir.syntax_ast import (
     OPERAND_SYNTAX_SHAPES,
     OperandSyntaxShape,
@@ -186,10 +187,10 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             | OperandSyntaxShape.NEGATED_IMMEDIATE
         )
         self.assertEqual(
-            OPERAND_SYNTAX_SHAPES["pred_or_sreg"],
+            OPERAND_SYNTAX_SHAPES[OperandKind.PREDICATE_OR_SPECIAL_REGISTER],
             source_shapes,
         )
-        self.assertEqual(OPERAND_SYNTAX_SHAPES["pred_source"], source_shapes)
+        self.assertEqual(OPERAND_SYNTAX_SHAPES[OperandKind.PREDICATE_SOURCE], source_shapes)
 
     def test_normalizer_rejects_relational_and_element_kind_errors(self) -> None:
         for operand in (
@@ -307,7 +308,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             ["narrow", "wide"],
         )
         self.assertEqual(
-            OPERAND_SYNTAX_SHAPES["matrix_fragment"],
+            OPERAND_SYNTAX_SHAPES[OperandKind.MATRIX_FRAGMENT],
             OperandSyntaxShape.VECTOR_PACK,
         )
 
@@ -334,8 +335,8 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
                 [
                     ("tensor_descriptor", None, None, ()),
                     ("collector_token", None, None, ()),
-                    (None, 1, 5, ("reg", "imm")),
-                    (None, 1, 64, ("reg",)),
+                    (None, 1, 5, (OperandKind.REGISTER, OperandKind.IMMEDIATE)),
+                    (None, 1, 64, (OperandKind.REGISTER,)),
                 ],
             )
 

@@ -1,5 +1,7 @@
 from enum import IntFlag
 
+from ptx_frontend.spec.model import OperandKind
+
 
 class OperandSyntaxShape(IntFlag):
     """Syntax alternatives of the C++ ``syntax_ast::AstOperand`` variant."""
@@ -20,51 +22,51 @@ class OperandSyntaxShape(IntFlag):
 
 
 OPERAND_SYNTAX_SHAPES = {
-    "reg": OperandSyntaxShape.IDENTIFIER_REF,
-    "imm": OperandSyntaxShape.IMMEDIATE,
-    "reg_or_imm": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
-    "reg_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
-    "shfl_dest": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
-    "pred_pair": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
-    "pred_pair_or_sink": OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
-    "mov_scalar_src": (
+    OperandKind.REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.IMMEDIATE: OperandSyntaxShape.IMMEDIATE,
+    OperandKind.REGISTER_OR_IMMEDIATE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+    OperandKind.REGISTER_OR_SINK: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.SHFL_DESTINATION: OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+    OperandKind.PREDICATE_PAIR: OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+    OperandKind.PREDICATE_PAIR_OR_SINK: OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+    OperandKind.MOV_SCALAR_SOURCE: (
         OperandSyntaxShape.IDENTIFIER_REF
         | OperandSyntaxShape.IMMEDIATE
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
     ),
-    "cluster_address": (OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS),
-    "vector_reg": OperandSyntaxShape.IDENTIFIER_REF,
-    "vector_sreg": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred_or_sink": OperandSyntaxShape.IDENTIFIER_REF,
-    "pred_source": (
+    OperandKind.CLUSTER_ADDRESS: (OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS),
+    OperandKind.VECTOR_REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.VECTOR_SPECIAL_REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.PREDICATE: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.PREDICATE_OR_SINK: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.PREDICATE_SOURCE: (
         OperandSyntaxShape.IDENTIFIER_REF
         | OperandSyntaxShape.IMMEDIATE
         | OperandSyntaxShape.PREDICATE
         | OperandSyntaxShape.NEGATED_IMMEDIATE
     ),
-    "pred_or_sreg": (
+    OperandKind.PREDICATE_OR_SPECIAL_REGISTER: (
         OperandSyntaxShape.IDENTIFIER_REF
         | OperandSyntaxShape.IMMEDIATE
         | OperandSyntaxShape.PREDICATE
         | OperandSyntaxShape.NEGATED_IMMEDIATE
     ),
-    "pred_or_not": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
-    "label": OperandSyntaxShape.BRANCH_TARGET,
-    "sreg": OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
-    "symbol": OperandSyntaxShape.IDENTIFIER_REF,
-    "addr": OperandSyntaxShape.ADDRESS,
-    "reg_vector": OperandSyntaxShape.VECTOR_PACK,
-    "descriptor": OperandSyntaxShape.IDENTIFIER_REF,
-    "typed_token": OperandSyntaxShape.IDENTIFIER_REF,
-    "mbarrier_state_token": OperandSyntaxShape.IDENTIFIER_REF,
-    "tensor_coordinate": OperandSyntaxShape.VECTOR_PACK,
-    "matrix_fragment": OperandSyntaxShape.VECTOR_PACK,
-    "direct_call_target": OperandSyntaxShape.CALL_TARGET,
-    "indirect_call_target": OperandSyntaxShape.CALL_TARGET,
-    "indirect_call_metadata": OperandSyntaxShape.CALL_TARGET_SET,
-    "branch_target_set": OperandSyntaxShape.BRANCH_TARGET_SET,
-    "call_return_param": OperandSyntaxShape.CALL_PARAMETER_LIST,
-    "call_arguments": OperandSyntaxShape.CALL_PARAMETER_LIST,
+    OperandKind.PREDICATE_OR_NOT: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.PREDICATE,
+    OperandKind.LABEL: OperandSyntaxShape.BRANCH_TARGET,
+    OperandKind.SPECIAL_REGISTER: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
+    OperandKind.SYMBOL: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.ADDRESS: OperandSyntaxShape.ADDRESS,
+    OperandKind.REGISTER_VECTOR: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.DESCRIPTOR: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.TYPED_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.MBARRIER_STATE_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.TENSOR_COORDINATE: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.MATRIX_FRAGMENT: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.DIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,
+    OperandKind.INDIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,
+    OperandKind.INDIRECT_CALL_METADATA: OperandSyntaxShape.CALL_TARGET_SET,
+    OperandKind.BRANCH_TARGET_SET: OperandSyntaxShape.BRANCH_TARGET_SET,
+    OperandKind.CALL_RETURN_PARAMETER: OperandSyntaxShape.CALL_PARAMETER_LIST,
+    OperandKind.CALL_ARGUMENTS: OperandSyntaxShape.CALL_PARAMETER_LIST,
 }

@@ -14,6 +14,8 @@ import unittest
 from ptx_frontend.spec.model import (
     MbarrierStateTokenForm,
     OperandImmediateConversionPolicy,
+    OperandAccess,
+    OperandKind,
     OperandParameterConstraint,
     OperandRegisterWidthPolicy,
     OperandSpec,
@@ -23,6 +25,7 @@ from ptx_frontend.spec.model import (
     OperandTypeExpressionKind,
     OperandVectorArityExpression,
     OperandVectorTypePolicy,
+    OperandRole,
 )
 from ptx_frontend.spec.normalize.operands import normalize_operand
 
@@ -64,7 +67,7 @@ class OperandNormalizationTests(unittest.TestCase):
             asdict(operand),
             {
                 "name": "x",
-                "kind": "reg",
+                "kind": OperandKind.REGISTER,
                 "role": None,
                 "access": None,
                 "type_expression": None,
@@ -113,9 +116,9 @@ class OperandNormalizationTests(unittest.TestCase):
             operand,
             OperandSpec(
                 name="dst",
-                kind="reg",
-                role="dst",
-                access="write",
+                kind=OperandKind.REGISTER,
+                role=OperandRole.DESTINATION,
+                access=OperandAccess.WRITE,
                 type_expression=OperandTypeExpression(
                     OperandTypeExpressionKind.FIXED_SCALAR, scalar_type="b32"
                 ),
@@ -255,7 +258,12 @@ class OperandNormalizationTests(unittest.TestCase):
         for kind in ("reg_or_sink", "pred_or_sink", "pred_pair_or_sink"):
             self.assertEqual(
                 normalize_operand(_operand(kind, role="dst", access="write")),
-                OperandSpec(name="x", kind=kind, role="dst", access="write"),
+                OperandSpec(
+                    name="x",
+                    kind=OperandKind(kind),
+                    role=OperandRole.DESTINATION,
+                    access=OperandAccess.WRITE,
+                ),
             )
             for role, access in ((None, None), ("src", "write"), ("dst", "read")):
                 with self.subTest(kind=kind, role=role, access=access):
@@ -301,7 +309,10 @@ class OperandNormalizationTests(unittest.TestCase):
                 operand = normalize_operand(_pack(kind, element_kinds=kinds))
                 self.assertEqual(operand.minimum_elements, 1)
                 self.assertEqual(operand.maximum_elements, maximum)
-                self.assertEqual(operand.element_kinds, tuple(kinds))
+                self.assertEqual(
+                    operand.element_kinds,
+                    tuple(OperandKind(value) for value in kinds),
+                )
                 exact = normalize_operand(
                     _pack(kind, cardinality={"min": maximum, "max": maximum})
                 )

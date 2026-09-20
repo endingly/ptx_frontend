@@ -18,7 +18,13 @@ from ptx_frontend.ir.resolved_ir import (
     from_instruction_spec,
     ResolvedValueKind,
 )
-from ptx_frontend.code_gen.resolved_field_names import with_cpp_backend_field_names
+from ptx_frontend.code_gen.resolved_field_names import (
+    condition_code_cpp_value,
+    field_cpp_constant_expr,
+    field_cpp_type,
+    field_value_cpp_type,
+    with_cpp_backend_field_names,
+)
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
     modifier_descriptor_members,
@@ -315,9 +321,9 @@ def _reference_payload_types(
             for field in layout.fields:
                 if (
                     field.value_kind in _REFERENCE_VALUE_KINDS
-                    and field.value_cpp_type not in payloads
+                    and field_value_cpp_type(field) not in payloads
                 ):
-                    payloads.append(field.value_cpp_type)
+                    payloads.append(field_value_cpp_type(field))
 
     return tuple(payloads)
 
@@ -1524,7 +1530,7 @@ def _emit_resolve_field_initializer(field: ResolvedField) -> str:
         else "resolved_operand"
     )
     return (
-        f".{field.name} = {accessor}<{field.value_cpp_type}>(*fields, "
+        f".{field.name} = {accessor}<{field_value_cpp_type(field)}>(*fields, "
         f'"{field.name}"),'
     )
 
@@ -1558,7 +1564,7 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant) -> str:
   struct {variant.cpp_name} {{
     /** Implicit CC.CF effect, gated by the enclosing execution predicate. */
     inline static constexpr ConditionCodeEffect condition_code_effect =
-        {variant.condition_code_cpp_value};
+        {condition_code_cpp_value(variant.condition_code_effect)};
     ResolvedOperandLayoutTag operand_layout;
 {body}
   }};"""
@@ -1575,10 +1581,10 @@ def _emit_operand_layout_definition(layout: ResolvedOperandLayout) -> str:
 def _emit_resolved_field(field: ResolvedField) -> str:
     if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
         return (
-            f"    inline static constexpr {field.cpp_type} {field.name} = "
-            f"{field.cpp_constant_expr};"
+            f"    inline static constexpr {field_cpp_type(field)} {field.name} = "
+            f"{field_cpp_constant_expr(field)};"
         )
-    return f"    {field.cpp_type} {field.name};"
+    return f"    {field_cpp_type(field)} {field.name};"
 
 
 def _validate_unique_cpp_names(instructions: tuple[ResolvedInstruction, ...]) -> None:

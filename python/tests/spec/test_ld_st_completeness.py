@@ -5,6 +5,7 @@ import unittest
 
 from ptx_frontend.spec.database import load_codegen_database
 from ptx_frontend.spec.resources import packaged_spec_dir
+from ptx_frontend.spec.model import ModifierKind, ModifierPresence
 
 SPEC_DIR = packaged_spec_dir()
 
@@ -91,7 +92,7 @@ class LdStCompletenessTest(unittest.TestCase):
                 for modifier in variant.modifiers
                 if modifier.name == "prefetch_size"
             )
-            self.assertEqual(prefetch.kind, "prefetch_size")
+            self.assertIs(prefetch.kind, ModifierKind.PREFETCH_SIZE)
             self.assertEqual(
                 [value.value for value in prefetch.values],
                 ["L2::64B", "L2::128B", "L2::256B"],
@@ -227,7 +228,7 @@ class LdStCompletenessTest(unittest.TestCase):
                 for modifier in variants[name].modifiers
                 if modifier.name == "l1_eviction_priority"
             )
-            self.assertEqual(l1.presence, "optional")
+            self.assertIs(l1.presence, ModifierPresence.OPTIONAL)
             self.assertEqual(l1.default, "invalid")
         for name in (
             "ld_global_l2_evict_vector",
@@ -241,7 +242,7 @@ class LdStCompletenessTest(unittest.TestCase):
                 for modifier in variants[name].modifiers
                 if modifier.name == "prefetch_size"
             )
-            self.assertEqual(prefetch.presence, "optional")
+            self.assertIs(prefetch.presence, ModifierPresence.OPTIONAL)
             self.assertEqual(prefetch.default, "none")
         self.assertFalse(
             any(

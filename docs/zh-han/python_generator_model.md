@@ -80,7 +80,7 @@ ResolvedInstruction(opcode, cpp_name, variants)
 ResolvedVariant(variant_id, modifier_fields, modifier_bindings,
                 operand_layouts, availability, rule)
 ResolvedOperandLayout(layout_id, cpp_name, fields, bindings)
-ResolvedField(name, value_cpp_type, origin, storage, ...)
+ResolvedField(name, value_kind, origin, storage, ...)
 ResolvedModifierBinding(source_kind_id, target_field_id, default_value)
 ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 ```
@@ -108,6 +108,15 @@ Modifier value 采用表驱动处理。`ir.resolved_value_kind` 定义语义身�
 `ResolvedValueKind`。
 Descriptor 表达式映射使用 `ResolvedValueKind` 枚举作为查询键；C++ 成员名字符串
 仅用于输出拼写。
+
+归一化后的 discriminator enum 是严格的 `Enum` 成员：YAML spelling 只在归一化边界
+转换一次，后续不能与 raw string 混用。`spec.semantic_domains` 保存不可变的已建模 PTX
+词表，并区分可拼写值与 optional 的 default-only sentinel。它会在构建 Resolved IR 前
+校验展开 value set、fixed value、default、scalar expression、state space 与
+special-register compatibility。该词表刻意包含当前 C++ backend 尚未映射的合法 PTX
+形式；这类 IR 仍合法，缺失 C++ mapping 会在生成期作为明确的 capability error 报告。
+因此 `ResolvedField` 不再提供 C++ type 或 expression property，只有 code generation
+helper 在输出时投影这些表示。
 
 ## C++ emitter 与产物
 

@@ -5,7 +5,11 @@ import unittest
 
 from ptx_frontend.spec.database import load_codegen_database
 from ptx_frontend.spec.load_yaml import load_yaml
-from ptx_frontend.spec.model import OperandRegisterWidthPolicy
+from ptx_frontend.spec.model import (
+    ModifierPresence,
+    OperandKind,
+    OperandRegisterWidthPolicy,
+)
 from ptx_frontend.spec.resources import packaged_spec_dir
 
 SPEC_DIR = packaged_spec_dir()
@@ -105,11 +109,18 @@ class SetpCompletenessTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     modifiers["boolean"].presence,
-                    "required" if name.endswith("_boolean") else "absent",
+                    (
+                        ModifierPresence.REQUIRED
+                        if name.endswith("_boolean")
+                        else ModifierPresence.ABSENT
+                    ),
                 )
                 if name.endswith("_boolean"):
                     for layout in self.variants[name].operand_layouts:
-                        self.assertEqual(layout.operands[-1].kind, "pred_source")
+                        self.assertIs(
+                            layout.operands[-1].kind,
+                            OperandKind.PREDICATE_SOURCE,
+                        )
 
         for name in ("setp_float_f64", "setp_float_f64_boolean"):
             modifiers = {
@@ -121,11 +132,18 @@ class SetpCompletenessTests(unittest.TestCase):
             )
             self.assertEqual(
                 modifiers["boolean"].presence,
-                "required" if name.endswith("_boolean") else "absent",
+                    (
+                        ModifierPresence.REQUIRED
+                        if name.endswith("_boolean")
+                        else ModifierPresence.ABSENT
+                    ),
             )
             if name.endswith("_boolean"):
                 for layout in self.variants[name].operand_layouts:
-                    self.assertEqual(layout.operands[-1].kind, "pred_source")
+                    self.assertIs(
+                        layout.operands[-1].kind,
+                        OperandKind.PREDICATE_SOURCE,
+                    )
 
         half_comparisons = expected_comparisons["setp_float"]
         for family in ("setp_f16", "setp_f16x2", "setp_bf16", "setp_bf16x2"):
@@ -156,7 +174,10 @@ class SetpCompletenessTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     tuple(layout.operands[0].kind for layout in layouts),
-                    ("pred_or_sink", "pred_pair_or_sink"),
+                    (
+                        OperandKind.PREDICATE_OR_SINK,
+                        OperandKind.PREDICATE_PAIR_OR_SINK,
+                    ),
                 )
 
         for family, type_name, destination, source_container in (
@@ -168,9 +189,10 @@ class SetpCompletenessTests(unittest.TestCase):
             for name in (family, f"{family}_boolean"):
                 variant = self.variants[name]
                 operands = variant.operand_layouts[0].operands
-                self.assertEqual(operands[0].kind, destination)
+                self.assertIs(operands[0].kind, OperandKind(destination))
                 self.assertEqual(
-                    tuple(operand.kind for operand in operands[1:3]), ("reg", "reg")
+                    tuple(operand.kind for operand in operands[1:3]),
+                    (OperandKind.REGISTER, OperandKind.REGISTER),
                 )
                 self.assertEqual(
                     tuple(
@@ -189,7 +211,7 @@ class SetpCompletenessTests(unittest.TestCase):
                 modifiers = {modifier.name: modifier for modifier in variant.modifiers}
                 self.assertEqual(modifiers["type"].value, type_name)
                 if name.endswith("_boolean"):
-                    self.assertEqual(operands[-1].kind, "pred_source")
+                    self.assertIs(operands[-1].kind, OperandKind.PREDICATE_SOURCE)
 
     def test_models_ftz_and_target_availability_without_overextending_them(
         self,
@@ -200,7 +222,7 @@ class SetpCompletenessTests(unittest.TestCase):
             modifiers = {
                 modifier.name: modifier for modifier in self.variants[name].modifiers
             }
-            self.assertEqual(modifiers["ftz"].presence, "optional")
+            self.assertIs(modifiers["ftz"].presence, ModifierPresence.OPTIONAL)
             self.assertEqual(modifiers["type"].value, "f32")
         for name in ("setp_float_f64", "setp_float_f64_boolean"):
             modifiers = {
@@ -209,20 +231,20 @@ class SetpCompletenessTests(unittest.TestCase):
             self.assertEqual(
                 dict(self.variants[name].availability), {"ptx": "1.0", "sm": 13}
             )
-            self.assertEqual(modifiers["ftz"].presence, "absent")
+            self.assertIs(modifiers["ftz"].presence, ModifierPresence.ABSENT)
             self.assertEqual(modifiers["type"].value, "f64")
 
         for family, availability, ftz_presence in (
-            ("setp_f16", {"ptx": "4.2", "sm": 53}, "optional"),
-            ("setp_f16x2", {"ptx": "4.2", "sm": 53}, "optional"),
-            ("setp_bf16", {"ptx": "7.8", "sm": 90}, "absent"),
-            ("setp_bf16x2", {"ptx": "7.8", "sm": 90}, "absent"),
+            ("setp_f16", {"ptx": "4.2", "sm": 53}, ModifierPresence.OPTIONAL),
+            ("setp_f16x2", {"ptx": "4.2", "sm": 53}, ModifierPresence.OPTIONAL),
+            ("setp_bf16", {"ptx": "7.8", "sm": 90}, ModifierPresence.ABSENT),
+            ("setp_bf16x2", {"ptx": "7.8", "sm": 90}, ModifierPresence.ABSENT),
         ):
             for name in (family, f"{family}_boolean"):
                 variant = self.variants[name]
                 modifiers = {modifier.name: modifier for modifier in variant.modifiers}
                 self.assertEqual(dict(variant.availability), availability)
-                self.assertEqual(modifiers["ftz"].presence, ftz_presence)
+                self.assertIs(modifiers["ftz"].presence, ftz_presence)
 
 
 if __name__ == "__main__":

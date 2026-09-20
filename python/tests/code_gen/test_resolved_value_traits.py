@@ -31,6 +31,11 @@ from ptx_frontend.ir.resolved_value_policy import (
     resolved_modifier_value_policy,
 )
 from ptx_frontend.code_gen.model import ModifierSpec, ModifierValueSpec
+from ptx_frontend.spec.model import ModifierKind, ModifierPresence
+from ptx_frontend.spec.semantic_domains import (
+    is_semantic_value,
+    semantic_domain_for_modifier,
+)
 from ptx_frontend.spec.resources import packaged_backend_spec
 
 
@@ -140,8 +145,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 _build_modifier_value_availability(
                     ModifierSpec(
                         name=source_kind,
-                        kind=source_kind,
-                        presence="required",
+                        kind=ModifierKind(source_kind),
+                        presence=ModifierPresence.REQUIRED,
                     ),
                     ModifierValueSpec(value=1),
                 )
@@ -171,14 +176,14 @@ class ResolvedValueTraitsTests(unittest.TestCase):
         )
 
         for source_kind, value_kind in modifier_kinds.items():
-            self.assertIs(modifier_value_kind(source_kind), value_kind)
+            self.assertIs(modifier_value_kind(ModifierKind(source_kind)), value_kind)
             policy = resolved_modifier_value_policy(value_kind)
             with self.assertRaises(ValueError):
                 _build_modifier_value_availability(
                     ModifierSpec(
                         name=source_kind,
-                        kind=source_kind,
-                        presence="required",
+                        kind=ModifierKind(source_kind),
+                        presence=ModifierPresence.REQUIRED,
                     ),
                     ModifierValueSpec(value=1),
                 )
@@ -186,17 +191,20 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 True
                 if policy.python_type is bool
                 else next(
-                    iter(
-                        cpp_domain(
-                            resolved_modifier_value_traits(value_kind).cpp_domain
-                        ).values
+                    value
+                    for value in cpp_domain(
+                        resolved_modifier_value_traits(value_kind).cpp_domain
+                    ).values
+                    if is_semantic_value(
+                        semantic_domain_for_modifier(ModifierKind(source_kind)),
+                        value,
                     )
                 )
             )
             modifier = ModifierSpec(
                 name=source_kind,
-                kind=source_kind,
-                presence="required",
+                kind=ModifierKind(source_kind),
+                presence=ModifierPresence.REQUIRED,
             )
             resolved = _build_modifier_value_availability(
                 modifier,
@@ -208,8 +216,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 default = _build_modifier_default(
                     ModifierSpec(
                         name=source_kind,
-                        kind=source_kind,
-                        presence="optional",
+                        kind=ModifierKind(source_kind),
+                        presence=ModifierPresence.OPTIONAL,
                         default=value,
                     )
                 )
@@ -220,15 +228,19 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     _build_modifier_default(
                         ModifierSpec(
                             name=source_kind,
-                            kind=source_kind,
-                            presence="optional",
+                            kind=ModifierKind(source_kind),
+                            presence=ModifierPresence.OPTIONAL,
                             default=value,
                         )
                     )
 
         with self.assertRaisesRegex(ValueError, "flag value must be boolean"):
             _build_modifier_value_availability(
-                ModifierSpec(name="flag", kind="flag", presence="required"),
+                ModifierSpec(
+                    name="flag",
+                    kind=ModifierKind.FLAG,
+                    presence=ModifierPresence.REQUIRED,
+                ),
                 ModifierValueSpec(value=1),
             )
         with self.assertRaisesRegex(
@@ -238,8 +250,8 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             _build_modifier_default(
                 ModifierSpec(
                     name="state_space",
-                    kind="state_space",
-                    presence="optional",
+                    kind=ModifierKind.STATE_SPACE,
+                    presence=ModifierPresence.OPTIONAL,
                     default=1,
                 )
             )

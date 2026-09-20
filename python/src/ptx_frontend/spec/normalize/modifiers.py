@@ -6,6 +6,11 @@ from ptx_frontend.spec.model import (
     ModifierSpec,
     ModifierValueSpec,
 )
+from ptx_frontend.spec.semantic_domains import (
+    is_default_semantic_value,
+    is_semantic_value,
+    semantic_domain_for_modifier,
+)
 from .availability import normalize_availability
 
 
@@ -21,14 +26,9 @@ def normalize_modifier(
     if not isinstance(raw_values, list):
         raise TypeError("modifier values must be a list")
 
-    values = _normalize_modifier_values(raw_values, reusable_value_sets)
-    if kind is ModifierKind.CACHE and any(
-        value.value == "unspecified" for value in values
-    ):
-        raise ValueError(
-            f"modifier {raw['name']!r}: cache sentinel 'unspecified' is not a "
-            "syntax value"
-        )
+    values = _normalize_modifier_values(kind, raw_values, reusable_value_sets)
+    if "value" in raw:
+        _validate_modifier_semantic_value(kind, raw["name"], raw["value"], "fixed")
     _validate_modifier_default(raw, values)
 
     return ModifierSpec(
@@ -62,63 +62,27 @@ def _validate_modifier_default(
 
     default = raw["default"]
     kind = raw["kind"]
-    if kind is ModifierKind.FLAG:
-        if type(default) is not bool:
-            raise ValueError(
-                f"optional flag modifier {raw['name']!r} must have a boolean " "default"
-            )
-        return
-    if kind is ModifierKind.TYPE:
-        if not isinstance(default, str):
-            raise ValueError(
-                f"optional type modifier {raw['name']!r} must have a string " "default"
-            )
-        allowed_values = {value.value for value in values}
-        if default not in allowed_values:
-            raise ValueError(
-                f"optional type modifier {raw['name']!r} has default "
-                f"{default!r} outside its allowed values"
-            )
-        return
-    if kind is ModifierKind.ROUNDING:
-        if not isinstance(default, str):
-            raise ValueError(
-                f"optional rounding modifier {raw['name']!r} must have a "
-                "string default"
-            )
-        allowed_values = {value.value for value in values}
-        if default not in allowed_values:
-            raise ValueError(
-                f"optional rounding modifier {raw['name']!r} has default "
-                f"{default!r} outside its allowed values"
-            )
-        return
-    if kind is ModifierKind.CACHE:
-        if default != "unspecified":
-            raise ValueError(
-                f"optional cache modifier {raw['name']!r} must use semantic "
-                "default 'unspecified'"
-            )
-        return
-    if kind in {ModifierKind.SEMANTICS, ModifierKind.SCOPE}:
-        if not isinstance(default, str):
-            raise ValueError(
-                f"optional {kind} modifier {raw['name']!r} must have a string "
-                "default"
-            )
-        allowed_values = {value.value for value in values}
-        # Omission sentinels intentionally are not spellable modifier values.
-        sentinel = "omitted" if kind is ModifierKind.SEMANTICS else "none"
-        if default != sentinel and default not in allowed_values:
-            raise ValueError(
-                f"optional {kind} modifier {raw['name']!r} has default "
-                f"{default!r} outside its allowed values"
-            )
-        return
+    if kind is ModifierKind.CACHE and default != "unspecified":
+        raise ValueError(
+            f"optional cache modifier {raw['name']!r} must use semantic "
+            "default 'unspecified'"
+        )
+    _validate_modifier_semantic_value(
+        kind, raw["name"], default, "default", allow_default_only=True
+    )
+    allowed_values = {value.value for value in values}
+    domain = semantic_domain_for_modifier(kind)
+    if default not in allowed_values and not (
+        domain is not None and is_default_semantic_value(domain, default)
+    ):
+        raise ValueError(
+            f"optional {kind.value} modifier {raw['name']!r} has default "
+            f"{default!r} outside its allowed values"
+        )
 
 
 def _normalize_modifier_values(
-    raw_values: list[Any], reusable_value_sets: dict[str, list[str]]
+    kind: ModifierKind, raw_values: list[Any], reusable_value_sets: dict[str, list[str]]
 ) -> tuple[ModifierValueSpec, ...]:
     """Expand value-set references while preserving per-value availability."""
 
@@ -148,6 +112,7 @@ def _normalize_modifier_values(
         for value in expanded_values:
             if value in seen:
                 raise ValueError(f"duplicate modifier value {value!r}")
+            _validate_modifier_semantic_value(kind, "<value>", value, "value")
             seen.add(value)
             values.append(
                 ModifierValueSpec(
@@ -157,6 +122,27 @@ def _normalize_modifier_values(
                 )
             )
     return tuple(values)
+
+
+def _validate_modifier_semantic_value(
+    kind: ModifierKind,
+    name: str,
+    value: str | bool | int,
+    source: str,
+    *,
+    allow_default_only: bool = False,
+) -> None:
+    """Reject a value outside the frontend-owned PTX domain for ``kind``."""
+
+    domain = semantic_domain_for_modifier(kind)
+    if domain is not None and not (
+        is_semantic_value(domain, value)
+        or (allow_default_only and is_default_semantic_value(domain, value))
+    ):
+        raise ValueError(
+            f"modifier {name!r}: unsupported semantic {domain.value} {source} "
+            f"{value!r}"
+        )
 
 
 def _parse_modifier_kind(raw: dict[str, Any]) -> ModifierKind:

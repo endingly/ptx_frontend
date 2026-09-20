@@ -8,24 +8,16 @@ from ptx_frontend.spec.model import (
 )
 import re
 from .availability import normalize_availability
+from ptx_frontend.spec.semantic_domains import (
+    SEMANTIC_DOMAIN_VALUES,
+    SemanticDomain,
+    is_semantic_value,
+)
 from typing import Any
 
 _MODIFIER_TYPE_EXPR = re.compile(r"modifier\(([A-Za-z_][A-Za-z0-9_]*)\)")
 _UNSUPPORTED_TYPE_EXPR_FUNCTIONS = ("same_as", "one_of", "same_size_as")
-_STATE_SPACES = frozenset(
-    {
-        "reg",
-        "sreg",
-        "const",
-        "global",
-        "local",
-        "param",
-        "shared",
-        "tex",
-        "surf",
-        "generic",
-    }
-)
+_STATE_SPACES = SEMANTIC_DOMAIN_VALUES[SemanticDomain.MEMORY_STATE_SPACE]
 
 
 def _normalize_operand_type_expression(
@@ -36,6 +28,8 @@ def _normalize_operand_type_expression(
     if raw_type is None:
         return None
     if isinstance(raw_type, str):
+        if not is_semantic_value(SemanticDomain.SCALAR_TYPE, raw_type):
+            raise ValueError(f"unknown operand scalar type {raw_type!r}")
         return OperandTypeExpression(
             kind=OperandTypeExpressionKind.FIXED_SCALAR,
             scalar_type=raw_type,

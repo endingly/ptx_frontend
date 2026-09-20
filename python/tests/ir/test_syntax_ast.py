@@ -27,6 +27,7 @@ from ptx_frontend.code_gen.model import (
     OperandRegisterWidthPolicy,
     OperandVectorTypePolicy,
 )
+from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.ir.syntax_ast import (
@@ -1640,7 +1641,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_operand("reg", allow_predicate_sink=False)
         with self.assertRaisesRegex(TypeError, "allow_predicate_sink"):
             normalize_operand("shfl_dest", allow_predicate_sink=1)
-        self.assertEqual(normalize_operand("reg_or_sink").kind, "reg_or_sink")
+        self.assertIs(
+            normalize_operand("reg_or_sink").kind,
+            OperandKind.REGISTER_OR_SINK,
+        )
         with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
             normalize_operand("reg_or_sink", role="src")
         with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
@@ -1775,7 +1779,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 }
             )
         with self.assertRaisesRegex(
-            ValueError, "cache sentinel 'unspecified' is not a syntax value"
+        ValueError, "unsupported semantic cache_operator value 'unspecified'"
         ):
             normalize_modifier_entry(
                 {

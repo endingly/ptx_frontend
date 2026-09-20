@@ -88,7 +88,7 @@ ResolvedInstruction(opcode, cpp_name, variants)
 ResolvedVariant(variant_id, modifier_fields, modifier_bindings,
                 operand_layouts, availability, rule)
 ResolvedOperandLayout(layout_id, cpp_name, fields, bindings)
-ResolvedField(name, value_cpp_type, origin, storage, ...)
+ResolvedField(name, value_kind, origin, storage, ...)
 ResolvedModifierBinding(source_kind_id, target_field_id, default_value)
 ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 ```
@@ -119,6 +119,18 @@ dispatching on C++ type-name strings. Descriptor expression maps use
 `ResolvedValueKind` enum keys; C++ member-name strings are output spellings only.
 `ResolvedValueKind` remains importable from
 `ir.resolved_ir` for existing callers.
+
+Normalized discriminator enums are strict `Enum` members: YAML spelling is
+converted once at the normalization boundary and is not interchangeable with a
+raw string downstream. `spec.semantic_domains` owns immutable modeled-PTX vocabularies
+and the policy for spellable values versus optional default-only sentinels.
+It validates expanded value sets, fixed values, defaults, scalar expressions,
+state spaces, and special-register compatibility before Resolved IR is built.
+The vocabulary intentionally includes legal PTX forms that the configured C++
+backend does not yet map. Such IR is valid; a missing C++ mapping remains a
+clear code-generation capability error. `ResolvedField` therefore has no C++
+type or expression properties, and code-generation helpers apply those
+representations only while emitting output.
 
 ## C++ emitters and artifacts
 

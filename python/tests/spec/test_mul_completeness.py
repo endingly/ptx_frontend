@@ -5,7 +5,11 @@ import unittest
 
 from ptx_frontend.spec.database import load_codegen_database
 from ptx_frontend.spec.load_yaml import load_yaml
-from ptx_frontend.spec.model import OperandRegisterWidthPolicy
+from ptx_frontend.spec.model import (
+    ModifierPresence,
+    OperandKind,
+    OperandRegisterWidthPolicy,
+)
 from ptx_frontend.spec.resources import packaged_spec_dir
 
 SPEC_DIR = packaged_spec_dir()
@@ -78,7 +82,11 @@ class MulCompletenessTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     tuple(operand.kind for operand in operands),
-                    ("reg", "reg_or_imm", "reg_or_imm"),
+                    (
+                        OperandKind.REGISTER,
+                        OperandKind.REGISTER_OR_IMMEDIATE,
+                        OperandKind.REGISTER_OR_IMMEDIATE,
+                    ),
                 )
         self.assertNotIn("mul_wide_u64", self.variants)
         self.assertNotIn("mul_wide_s64", self.variants)
@@ -90,7 +98,7 @@ class MulCompletenessTests(unittest.TestCase):
             modifier.name: modifier
             for modifier in self.variants["mul_rn_f32"].modifiers
         }
-        self.assertEqual(f32["rounding"].presence, "optional")
+        self.assertIs(f32["rounding"].presence, ModifierPresence.OPTIONAL)
         self.assertEqual(f32["rounding"].default, "rn")
         f32_rounding = {
             value.value: value.availability for value in f32["rounding"].values
@@ -99,21 +107,25 @@ class MulCompletenessTests(unittest.TestCase):
         self.assertEqual(f32_rounding["rz"], {})
         self.assertEqual(f32_rounding["rm"], {"ptx": "1.0", "sm": 20})
         self.assertEqual(f32_rounding["rp"], {"ptx": "1.0", "sm": 20})
-        self.assertEqual(f32["ftz"].presence, "optional")
-        self.assertEqual(f32["sat"].presence, "optional")
+        self.assertIs(f32["ftz"].presence, ModifierPresence.OPTIONAL)
+        self.assertIs(f32["sat"].presence, ModifierPresence.OPTIONAL)
         self.assertEqual(
             tuple(
                 operand.kind
                 for operand in self.variants["mul_rn_f32"].operand_layouts[0].operands
             ),
-            ("reg", "reg_or_imm", "reg_or_imm"),
+            (
+                OperandKind.REGISTER,
+                OperandKind.REGISTER_OR_IMMEDIATE,
+                OperandKind.REGISTER_OR_IMMEDIATE,
+            ),
         )
 
         for name in ("mul_f32x2", "mul_f64"):
             modifiers = {
                 modifier.name: modifier for modifier in self.variants[name].modifiers
             }
-            self.assertEqual(modifiers["rounding"].presence, "optional")
+            self.assertIs(modifiers["rounding"].presence, ModifierPresence.OPTIONAL)
             self.assertEqual(modifiers["rounding"].default, "rn")
             self.assertEqual(
                 tuple(value.value for value in modifiers["rounding"].values),
@@ -121,7 +133,7 @@ class MulCompletenessTests(unittest.TestCase):
             )
         f32x2_operands = self.variants["mul_f32x2"].operand_layouts[0].operands
         self.assertEqual(
-            tuple(operand.kind for operand in f32x2_operands), ("reg",) * 3
+            tuple(operand.kind for operand in f32x2_operands), (OperandKind.REGISTER,) * 3
         )
         self.assertEqual(
             tuple(
@@ -169,14 +181,14 @@ class MulCompletenessTests(unittest.TestCase):
             modifiers = {
                 modifier.name: modifier for modifier in self.variants[name].modifiers
             }
-            self.assertEqual(modifiers["ftz"].presence, "optional")
-            self.assertEqual(modifiers["sat"].presence, "optional")
+            self.assertIs(modifiers["ftz"].presence, ModifierPresence.OPTIONAL)
+            self.assertIs(modifiers["sat"].presence, ModifierPresence.OPTIONAL)
         for name in ("mul_bfloat", "mul_bfloat_x2"):
             modifiers = {
                 modifier.name: modifier for modifier in self.variants[name].modifiers
             }
-            self.assertEqual(modifiers["ftz"].presence, "absent")
-            self.assertEqual(modifiers["sat"].presence, "absent")
+            self.assertIs(modifiers["ftz"].presence, ModifierPresence.ABSENT)
+            self.assertIs(modifiers["sat"].presence, ModifierPresence.ABSENT)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from ptx_frontend.code_gen.model import (
 )
 from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
+from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.spec.resources import (
     packaged_backend_spec,
     packaged_backend_spec_schema,
@@ -58,6 +59,7 @@ def check_module_layout() -> None:
 
     packaged_modules = (
         "ptx_frontend.code_gen.resolved_field_names",
+        "ptx_frontend.spec.semantic_domains",
         "ptx_frontend.code_gen._frontend.cli",
         "ptx_frontend.code_gen._frontend.gen_resolved_checker_descriptor",
         "ptx_frontend.code_gen._frontend.gen_resolved_descriptor",
@@ -113,11 +115,13 @@ def check_packaged_spec_model() -> None:
         variant.name: variant.operand_layouts[0].operands for variant in fma.variants
     }
 
-    assert [operand.kind for operand in layouts["fma_rn_f32"][1:]] == ["reg_or_imm"] * 3
+    assert [operand.kind for operand in layouts["fma_rn_f32"][1:]] == [
+        OperandKind.REGISTER_OR_IMMEDIATE
+    ] * 3
 
-    assert [operand.kind for operand in layouts["fma_f32x2"]] == ["reg"] * 4
+    assert [operand.kind for operand in layouts["fma_f32x2"]] == [OperandKind.REGISTER] * 4
 
-    assert [operand.kind for operand in layouts["fma_bf16x2"]] == ["reg"] * 4
+    assert [operand.kind for operand in layouts["fma_bf16x2"]] == [OperandKind.REGISTER] * 4
 
     for name in (
         "fma_mixed_f32_f16",
@@ -126,10 +130,10 @@ def check_packaged_spec_model() -> None:
         operands = layouts[name]
 
         assert [operand.kind for operand in operands] == [
-            "reg",
-            "reg",
-            "reg",
-            "reg_or_imm",
+            OperandKind.REGISTER,
+            OperandKind.REGISTER,
+            OperandKind.REGISTER,
+            OperandKind.REGISTER_OR_IMMEDIATE,
         ]
 
         assert (

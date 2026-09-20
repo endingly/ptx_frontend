@@ -2,11 +2,43 @@
 
 from dataclasses import replace
 
-from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_optional_value
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_optional_value, cpp_value
 from ptx_frontend.ir.resolved_ir import (
+    ResolvedField,
+    ResolvedFieldStorage,
     ResolvedInstruction,
     ResolvedVariant,
 )
+from ptx_frontend.code_gen.resolved_value_traits import modifier_value_cpp_expr
+from ptx_frontend.base.utils import file_stem_to_pascal_case
+from ptx_frontend.spec.model import ConditionCodeEffect
+
+
+def field_value_cpp_type(field: ResolvedField) -> str:
+    """Return the backend C++ payload type for one semantic resolved field."""
+
+    return cpp_value(CppDomain.RESOLVED_VALUE_CPP_TYPES, field.value_kind.value)
+
+
+def field_cpp_type(field: ResolvedField) -> str:
+    """Return the emitted member type, including location storage when needed."""
+
+    value_type = field_value_cpp_type(field)
+    return value_type if field.storage is ResolvedFieldStorage.STATIC_CONSTANT else f"WithLocs<{value_type}>"
+
+
+def field_cpp_constant_expr(field: ResolvedField) -> str:
+    """Return the C++ expression for a fixed semantic modifier field."""
+
+    if field.storage is not ResolvedFieldStorage.STATIC_CONSTANT or field.constant_value is None:
+        raise ValueError(f"field {field.name!r} has no fixed C++ constant")
+    return modifier_value_cpp_expr(field.value_kind, field.constant_value)
+
+
+def condition_code_cpp_value(effect: ConditionCodeEffect) -> str:
+    """Return the backend C++ spelling for one semantic CC effect."""
+
+    return "ConditionCodeEffect::" + file_stem_to_pascal_case(effect.value)
 
 
 def with_cpp_backend_field_names(

@@ -16,16 +16,19 @@ constexpr std::string_view kFixture = R"ptx(
 .version 9.3
 .target sm_121a
 .address_size 64
+.shared .align 8 .u64 cvta_shared_value;
 .visible .entry conversion_consumer() {
   .reg .pred %p<2>;
   .reg .u32 %r<2>;
   .reg .u32 %u0;
+  .reg .u64 %rd0;
   .reg .s32 %s<3>;
   .reg .b32 %b<5>;
   .reg .f32 %f<4>;
   .reg .b16 %h<2>;
 
   isspacep.shared::cluster %p0, %r0;
+  cvta.shared::cluster.u64 %rd0, cvta_shared_value+8;
   prmt.b32.rc16 %b0, %b1, %b2, %b3;
   prmt.b32.rc16 %b4, %b1, %b2, 0x1;
   cvt.pack.sat.u2.s32.b32 %u0, %s0, %s1, 0x12345678;

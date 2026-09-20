@@ -215,6 +215,8 @@ struct OperandDescriptor {
       MbarrierStateTokenForm::Register;
   AvailabilityDescriptor sink_availability;
   bool allow_function_symbol = false;
+  /** Preserve a formal parameter's declared state space while resolving an address. */
+  bool preserve_parameter_address_space = false;
   std::string_view type_tag{};
   uint8_t minimum_elements = 0;
   uint8_t maximum_elements = 0;
@@ -635,6 +637,12 @@ struct ResolvedSymbolRef {
   std::optional<checker::AvailabilityDescriptor> address_availability;
   /** Declaration metadata needed for AST-free `.unified` validation. */
   std::optional<bool> declaration_is_unified;
+  /** Owning function context retained for direct parameter-address validation. */
+  EnclosingFunctionKind enclosing_function_kind =
+      EnclosingFunctionKind::Unknown;
+  /** Parameter-space qualifier selected by an instruction for this direct address. */
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
   bool operator==(const ResolvedSymbolRef&) const = default;
 };
 enum class ResolvedAddressOffsetOperator : uint8_t { Add, Subtract };

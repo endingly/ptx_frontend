@@ -1077,6 +1077,9 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
   resolved.declaration_is_unified =
       std::ranges::find(context->unified_storage_symbols, lookup->symbol) !=
       context->unified_storage_symbols.end();
+  resolved.enclosing_function_kind = context->function_is_entry
+                                         ? EnclosingFunctionKind::Entry
+                                         : EnclosingFunctionKind::Device;
   if (symbol.kind == binding::SymbolKind::InputParameter ||
       symbol.kind == binding::SymbolKind::ReturnParameter) {
     // A direct formal-parameter memory address stays in .param.  Only mov
@@ -1496,7 +1499,9 @@ resolve_tensor_coordinate(
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
-                   bool allow_function_symbol, const ResolveContext* context) {
+                   bool allow_function_symbol,
+                   bool preserve_parameter_address_space,
+                   const ResolveContext* context) {
   if (type == ScalarType::B128) {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
@@ -1537,6 +1542,14 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                          "or bit-size mov type.",
     };
   };
+  const FormalParameterAddressPolicy parameter_policy =
+      preserve_parameter_address_space
+          ? FormalParameterAddressPolicy::PreserveParameterSpace
+          : FormalParameterAddressPolicy::MaterializeDeviceParameter;
+  const EnclosingFunctionKind enclosing_function_kind =
+      context == nullptr           ? EnclosingFunctionKind::Unknown
+      : context->function_is_entry ? EnclosingFunctionKind::Entry
+                                   : EnclosingFunctionKind::Device;
 
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
     if (auto rejected = reject_shape(checker::OperandShape::Immediate,
@@ -1585,9 +1598,7 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
           .message = "A mov address expression must use a data-symbol base.",
       });
     }
-    auto symbol = resolve_data_symbol(
-        *identifier, context,
-        FormalParameterAddressPolicy::MaterializeDeviceParameter);
+    auto symbol = resolve_data_symbol(*identifier, context, parameter_policy);
     if (!symbol)
       return std::unexpected(symbol.error());
     auto offset = resolve_address_offset(*address);
@@ -1596,6 +1607,7 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
     ResolvedAddress value{
         .base = std::move(*symbol),
         .offset = std::move(*offset),
+        .enclosing_function_kind = enclosing_function_kind,
     };
     return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(value)},
                                        address->range};
@@ -1685,9 +1697,7 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
   }
   if (auto rejected = reject_address_type(identifier->syntax.range))
     return std::unexpected(std::move(*rejected));
-  auto value = resolve_data_symbol(
-      *identifier, context,
-      FormalParameterAddressPolicy::MaterializeDeviceParameter);
+  auto value = resolve_data_symbol(*identifier, context, parameter_policy);
   if (!value)
     return std::unexpected(value.error());
   return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(*value)},
@@ -1888,8 +1898,9 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      auto value = resolve_mov_source(operand, *type, binding.allowed_shapes,
-                                      binding.allow_function_symbol, context);
+      auto value = resolve_mov_source(
+          operand, *type, binding.allowed_shapes, binding.allow_function_symbol,
+          binding.preserve_parameter_address_space, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

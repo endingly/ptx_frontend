@@ -198,6 +198,8 @@ domains:
       param::entry: MemoryStateSpace::Parameter
       param::func: MemoryStateSpace::Parameter
       shared: MemoryStateSpace::Shared
+      shared::cta: MemoryStateSpace::Shared
+      shared::cluster: MemoryStateSpace::Shared
 
   mbarrier_phase_types:
     cpp_type: MbarrierPhaseType

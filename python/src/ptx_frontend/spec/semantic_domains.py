@@ -87,7 +87,7 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     # represent, including register and texture spaces.
     SemanticDomain.MEMORY_STATE_SPACE: frozenset({
         "reg", "sreg", "const", "global", "local", "param", "param::entry",
-        "param::func", "shared", "tex", "surf", "generic",
+        "param::func", "shared", "shared::cta", "shared::cluster", "tex", "surf", "generic",
     }),
     SemanticDomain.MBARRIER_PHASE_TYPE: frozenset({
         "phase_type::primary", "phase_type::conditional",

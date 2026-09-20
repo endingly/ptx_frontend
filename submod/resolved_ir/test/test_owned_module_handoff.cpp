@@ -87,6 +87,29 @@ constexpr std::string_view k_cvta_member_identity_module_fixture = R"ptx(
 }
 )ptx";
 
+/** Complete-context fixture for a CVTA symbol-plus-offset source. */
+constexpr std::string_view k_cvta_symbol_address_module_fixture = R"ptx(
+.version 7.8
+.target sm_90
+.shared .align 8 .u64 shared_value;
+.entry kernel() {
+  .reg .u64 %rd0;
+  cvta.shared::cta.u64 %rd0, shared_value+8;
+  ret;
+}
+)ptx";
+
+/** Complete-context fixture for direct kernel-parameter CVTA provenance. */
+constexpr std::string_view k_cvta_parameter_symbol_module_fixture = R"ptx(
+.version 8.3
+.target sm_70
+.entry kernel(.param .u64 parameter) {
+  .reg .u64 %rd0;
+  cvta.param::entry.u64 %rd0, parameter;
+  ret;
+}
+)ptx";
+
 /** Complete-context fixture for a generated explicit `isspacep` subspace form. */
 constexpr std::string_view k_isspacep_member_identity_module_fixture = R"ptx(
 .version 9.3
@@ -561,6 +584,73 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtaOperandsWithoutAst) {
       checker::CheckDiagnosticKind::OperandTypeMismatch);
   source.declared_type = original_type;
 
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** CVTA symbol-address metadata remains checked after its source AST is released. */
+TEST(OwnedModuleHandoff, RevalidatesCvtaSymbolAddressMetadataWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_cvta_symbol_address_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ResolvedFunction& kernel = module.functions.front();
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Cvta& cvta = std::get<Cvta>(kernel.body.front());
+  Cvta::SharedCtaU64& shared_cta = std::get<Cvta::SharedCtaU64>(cvta.variant);
+  ResolvedAddress& address = std::get<ResolvedAddress>(shared_cta.src.value);
+  ResolvedSymbolRef& symbol = std::get<ResolvedSymbolRef>(address.base);
+  ASSERT_EQ(symbol.address_state_space, syntax_ast::AstStateSpace::Shared);
+  const auto original_state_space = symbol.address_state_space;
+  symbol.address_state_space = syntax_ast::AstStateSpace::Global;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  symbol.address_state_space = original_state_space;
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** Direct CVTA parameter provenance remains checked after its source AST is released. */
+TEST(OwnedModuleHandoff, RevalidatesCvtaParameterSymbolMetadataWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_cvta_parameter_symbol_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ResolvedFunction& kernel = module.functions.front();
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Cvta& cvta = std::get<Cvta>(kernel.body.front());
+  Cvta::ParamEntryU64& param_entry =
+      std::get<Cvta::ParamEntryU64>(cvta.variant);
+  ResolvedSymbolRef& symbol =
+      std::get<ResolvedSymbolRef>(param_entry.src.value);
+  ASSERT_EQ(symbol.enclosing_function_kind, EnclosingFunctionKind::Entry);
+  const auto original_function_kind = symbol.enclosing_function_kind;
+  symbol.enclosing_function_kind = EnclosingFunctionKind::Device;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::ParameterQualifierMismatch);
+  symbol.enclosing_function_kind = original_function_kind;
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 }

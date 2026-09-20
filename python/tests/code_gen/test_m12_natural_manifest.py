@@ -6,7 +6,7 @@ import unittest
 from jsonschema import Draft202012Validator
 
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.m12_natural_corpus import build_natural_manifest
+from ptx_frontend.code_gen._frontend.m12_natural_corpus import build_natural_manifest
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -132,7 +132,7 @@ class M12NaturalManifestTests(unittest.TestCase):
                     body = entry_body(ptx, entry)
                     self.assertIsNotNone(body)
                     self.assertTrue(
-                        set(expected[entry]) <= set(inline_ptx_spellings(body)),
+                        set(expected[entry]) <= set(inline_ptx_spellings(body)), # pyright: ignore[reportArgumentType]
                         entry,
                     )
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment
-from .cpp_backend import CppDomain, cpp_default, cpp_value
-from .database import CodegenDatabase
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
+from ptx_frontend.code_gen.database import CodegenDatabase
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedFieldStorage,
@@ -1018,6 +1018,23 @@ def _emit_check_modifier_value_view(
     variant: ResolvedVariant,
     field: ResolvedField,
 ) -> str:
+    bool_value = "false"
+    scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+    rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+    comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
+    boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
+    cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+    eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
+    prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
+    vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
+    memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
+    mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
+    mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
+    async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
+    proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
+    
     if field.value_cpp_type == "ScalarType":
         value_kind = cpp_value(
             CppDomain.CHECKER_MODIFIER_VALUE_KINDS, "ScalarType"
@@ -1301,6 +1318,7 @@ def _emit_check_modifier_value_view(
         async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
     if field.value_cpp_type != "ProxyKindPair":
         proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
+
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
                   .value_kind = {value_kind},

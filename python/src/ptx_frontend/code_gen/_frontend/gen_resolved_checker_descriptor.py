@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Mapping
 
 from ptx_frontend.base.utils import generated_at_comment
-from .cpp_backend import CppDomain, cpp_default, cpp_value
-from .database import CodegenDatabase
-from .normalize import (
+from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
+from ptx_frontend.code_gen.database import CodegenDatabase
+from ptx_frontend.code_gen.normalize import (
     parse_availability_target,
     validate_availability_family,
     validate_availability_sm_version,
@@ -322,6 +323,22 @@ def _emit_modifier_value_descriptor(
     include_availability: bool = True,
 ) -> str:
     """Emit one typed modifier descriptor, with optional target metadata."""
+    bool_value = "false"
+    scalar_type = cpp_default(CppDomain.SCALAR_TYPES)
+    rounding_mode = cpp_default(CppDomain.ROUNDING_MODES)
+    comparison_operator = cpp_default(CppDomain.COMPARISON_OPERATORS)
+    boolean_operator = cpp_default(CppDomain.BOOLEAN_OPERATORS)
+    cache_operator = cpp_default(CppDomain.CACHE_OPERATORS)
+    eviction_priority = cpp_default(CppDomain.EVICTION_PRIORITIES)
+    prefetch_size = cpp_default(CppDomain.PREFETCH_SIZES)
+    vector_arity = cpp_default(CppDomain.VECTOR_ARITIES)
+    memory_state_space = cpp_default(CppDomain.MEMORY_STATE_SPACES)
+    memory_consistency = cpp_default(CppDomain.MEMORY_CONSISTENCIES)
+    memory_scope = cpp_default(CppDomain.MEMORY_SCOPES)
+    mbarrier_phase_type = cpp_default(CppDomain.MBARRIER_PHASE_TYPES)
+    mbarrier_layout = cpp_default(CppDomain.MBARRIER_LAYOUTS)
+    async_proxy_kind = cpp_default(CppDomain.ASYNC_PROXY_KINDS)
+    proxy_kind_pair = cpp_default(CppDomain.PROXY_KIND_PAIRS)
 
     if entry.value_cpp_type == "bool":
         bool_value = "true" if entry.value else "false"
@@ -446,11 +463,14 @@ def _emit_modifier_value_descriptor(
         raise ValueError(
             f"unsupported modifier availability value type {entry.value_cpp_type!r}"
         )
-    availability = (
-        f"              .availability = {_emit_availability(dict(entry.availability))},\n"
-        if include_availability
-        else ""
-    )
+    availability = ""
+    if include_availability:
+        assert isinstance(entry, ResolvedModifierValueAvailability)
+        availability = (
+            f"              .availability = "
+            f"{_emit_availability(dict(entry.availability))},\n"
+        )
+
     return f"""          {descriptor_type}{{
               .kind_id = "{entry.source_kind_id}",
               .value_kind = {cpp_value(CppDomain.CHECKER_MODIFIER_VALUE_KINDS, entry.value_cpp_type)},
@@ -531,7 +551,7 @@ def _emit_operand_type_compatibility_descriptor(
           }}"""
 
 
-def _emit_availability(availability: dict[str, object]) -> str:
+def _emit_availability(availability: Mapping[str, object]) -> str:
     if "any_of" not in availability:
         minimum_ptx = _parse_ptx_version(availability.get("ptx", "0.0"))
         return f'''{{

@@ -14,7 +14,6 @@ import subprocess
 import sys
 import tempfile
 
-
 PYTHON_ROOT = Path(__file__).resolve().parents[1]
 ROOT = PYTHON_ROOT.parent
 
@@ -23,14 +22,13 @@ if str(PYTHON_ROOT) not in sys.path:
 
 
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.m12_natural_corpus import (
+from ptx_frontend.code_gen._frontend.m12_natural_corpus import (
     build_natural_manifest,
     canonical_bytes,
     fixture_targets,
     normalize_nvcc_ptx,
     target_directives,
 )
-
 
 TARGETS = ("sm_80", "sm_90a", "sm_100")
 VERSION = "Cuda compilation tools, release 13.3, V13.3.33"
@@ -55,8 +53,12 @@ class RegenerationError(ValueError):
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="report stale outputs without writing")
-    parser.add_argument("--nvcc", default="nvcc", help="nvcc executable (default: %(default)s)")
+    parser.add_argument(
+        "--check", action="store_true", help="report stale outputs without writing"
+    )
+    parser.add_argument(
+        "--nvcc", default="nvcc", help="nvcc executable (default: %(default)s)"
+    )
     return parser.parse_args(argv)
 
 
@@ -67,7 +69,10 @@ def verify_nvcc(nvcc: str) -> None:
         )
     except OSError as error:
         raise RegenerationError(f"cannot execute nvcc {nvcc!r}: {error}") from error
-    if result.returncode or VERSION not in (result.stdout + "\n" + result.stderr).splitlines():
+    if (
+        result.returncode
+        or VERSION not in (result.stdout + "\n" + result.stderr).splitlines()
+    ):
         raise RegenerationError(f"nvcc must report exactly {VERSION}")
 
 
@@ -104,7 +109,10 @@ def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
         for lane, kind, source in LANES
         for target in TARGETS
         for relative, data in [
-            (f"corpus/m12/{lane}_{target.replace('_', '')}.ptx", generated[f"corpus/m12/{lane}_{target.replace('_', '')}.ptx"])
+            (
+                f"corpus/m12/{lane}_{target.replace('_', '')}.ptx",
+                generated[f"corpus/m12/{lane}_{target.replace('_', '')}.ptx"],
+            )
         ]
     }
     seen = set()
@@ -123,7 +131,9 @@ def desired_provenance(root: Path, generated: dict[str, bytes]) -> bytes:
     return json_bytes(desired)
 
 
-def compile_outputs(root: Path, nvcc: str) -> tuple[dict[str, bytes], dict[str, object]]:
+def compile_outputs(
+    root: Path, nvcc: str
+) -> tuple[dict[str, bytes], dict[str, object]]:
     generated: dict[str, bytes] = {}
     with tempfile.TemporaryDirectory(prefix="ptx-m12-") as directory:
         temporary = Path(directory)
@@ -146,12 +156,16 @@ def compile_outputs(root: Path, nvcc: str) -> tuple[dict[str, bytes], dict[str, 
                 try:
                     data = normalize_nvcc_ptx(output.read_bytes(), relative)
                 except OSError as error:
-                    raise RegenerationError(f"{relative}: nvcc did not create output") from error
+                    raise RegenerationError(
+                        f"{relative}: nvcc did not create output"
+                    ) from error
                 output.write_bytes(data)
                 if fixture_targets(output) != [target] or target_directives(
                     output.read_text(encoding="utf-8")
                 ) != [(target, ())]:
-                    raise RegenerationError(f"{relative}: expected exactly .target {target}")
+                    raise RegenerationError(
+                        f"{relative}: expected exactly .target {target}"
+                    )
                 generated[relative] = data
 
         database = load_codegen_database(spec_dir=root / "instructions/ptx_spec")
@@ -182,7 +196,9 @@ def print_diff(path: Path, current: bytes, desired: bytes) -> None:
     current_text = current.decode("utf-8", errors="replace").splitlines(keepends=True)
     desired_text = desired.decode("utf-8", errors="replace").splitlines(keepends=True)
     sys.stdout.writelines(
-        difflib.unified_diff(current_text, desired_text, fromfile=str(path), tofile=str(path))
+        difflib.unified_diff(
+            current_text, desired_text, fromfile=str(path), tofile=str(path)
+        )
     )
 
 

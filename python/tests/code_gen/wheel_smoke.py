@@ -1,28 +1,28 @@
 import argparse
-from configparser import ConfigParser
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
 import venv
 import zipfile
 
-
 ROOT = Path(__file__).resolve().parents[3]
-CONFIG = ConfigParser()
-CONFIG.read(ROOT / "python/setup.cfg")
-EXPECTED_VERSION = CONFIG["metadata"]["version"]
+INSTALLED_SMOKE = Path(__file__).with_name("wheel_installed_smoke.py")
+
+with (ROOT / "python/pyproject.toml").open("rb") as file:
+    EXPECTED_VERSION = tomllib.load(file)["project"]["version"]
 
 
-def main(wheel: Path) -> None:
-    wheel = wheel.resolve()
-    if not wheel.is_file():
-        raise FileNotFoundError(wheel)
+def check_wheel_contents(wheel: Path) -> None:
+    """Verify the wheel contains the intended src-layout package surface."""
+
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
-    for name in (
+
+    required_files = (
+        # Shared/public Python implementation.
         "ptx_frontend/base/utils.py",
-        "ptx_frontend/spec/__init__.py",
         "ptx_frontend/spec/model.py",
         "ptx_frontend/spec/database.py",
         "ptx_frontend/spec/resources.py",
@@ -31,15 +31,39 @@ def main(wheel: Path) -> None:
         "ptx_frontend/code_gen/model.py",
         "ptx_frontend/code_gen/database.py",
         "ptx_frontend/code_gen/normalize.py",
+        "ptx_frontend/code_gen/load_yaml.py",
         "ptx_frontend/code_gen/cpp_backend.py",
-        "ptx_frontend/code_gen/resources/ptx_cpp_backend_spec/ptx_frontend.yaml",
-        "ptx_frontend/code_gen/resources/ptx_spec/arithmetic.yaml",
         "ptx_frontend/ir/resolved_ir.py",
+        "ptx_frontend/ir/syntax_ast.py",
+        # Frontend generator implementation is intentionally packaged.
+        "ptx_frontend/code_gen/_frontend/__main__.py",
+        "ptx_frontend/code_gen/_frontend/cli.py",
+        "ptx_frontend/code_gen/_frontend/gen_resolved_checker_descriptor.py",
+        "ptx_frontend/code_gen/_frontend/gen_resolved_descriptor.py",
+        "ptx_frontend/code_gen/_frontend/gen_resolved_ir.py",
+        "ptx_frontend/code_gen/_frontend/gen_resolved_value_domains.py",
+        "ptx_frontend/code_gen/_frontend/gen_syntax_ast_arch.py",
+        "ptx_frontend/code_gen/_frontend/m12_natural_corpus.py",
+        # Packaged helper scripts.
+        "ptx_frontend/scripts/gen_all.py",
+        "ptx_frontend/scripts/regenerate_m12_corpus.py",
+        "ptx_frontend/scripts/validate_yaml.py",
+        # Packaged schemas and specification resources.
+        "ptx_frontend/code_gen/resources/ptx-instr-v1.schema.yaml",
+        "ptx_frontend/code_gen/resources/ptx-cpp-backend-v1.schema.yaml",
+        "ptx_frontend/code_gen/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
+        "ptx_frontend/code_gen/resources/ptx_spec/arithmetic.yaml",
+        # Distribution metadata.
         f"ptx_frontend-{EXPECTED_VERSION}.dist-info/METADATA",
-    ):
+    )
+
+    for name in required_files:
         if name not in names:
             raise AssertionError(f"wheel is missing {name}")
-    private_names = (
+
+    # These generators were relocated under code_gen._frontend.  Their old
+    # flat module paths must not accidentally reappear.
+    legacy_generator_files = (
         "ptx_frontend/code_gen/__main__.py",
         "ptx_frontend/code_gen/cli.py",
         "ptx_frontend/code_gen/gen_resolved_checker_descriptor.py",
@@ -49,81 +73,70 @@ def main(wheel: Path) -> None:
         "ptx_frontend/code_gen/gen_syntax_ast_arch.py",
         "ptx_frontend/code_gen/m12_natural_corpus.py",
     )
-    for name in private_names:
+
+    for name in legacy_generator_files:
         if name in names:
-            raise AssertionError(f"wheel exports frontend-private module {name}")
-    if any("/code_gen/_frontend/" in name for name in names):
-        raise AssertionError("wheel contains the source-only frontend generator directory")
+            raise AssertionError(
+                f"wheel exports legacy flat frontend-generator module {name}"
+            )
+
+    # The wheel must expose only the fully-qualified ptx_frontend namespace.
     if any(name.startswith(("base/", "code_gen/", "ir/", "spec/")) for name in names):
-        raise AssertionError("wheel contains an unqualified top-level package")
+        raise AssertionError("wheel contains an unqualified top-level Python package")
+
+
+def run_installed_smoke(wheel: Path) -> None:
+    """Install the wheel into a fresh venv and validate it in isolation."""
 
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         environment = root / "venv"
+
         venv.create(environment, with_pip=True)
+
         bin_dir = environment / ("Scripts" if os.name == "nt" else "bin")
         executable = bin_dir / ("python.exe" if os.name == "nt" else "python")
+
         wheel_environment = os.environ.copy()
         wheel_environment.pop("PYTHONPATH", None)
+        wheel_environment["PTX_FRONTEND_EXPECTED_VERSION"] = EXPECTED_VERSION
+
         subprocess.run(
-            [executable, "-m", "pip", "install", "--force-reinstall", wheel],
+            [
+                executable,
+                "-m",
+                "pip",
+                "install",
+                "--force-reinstall",
+                str(wheel),
+            ],
             check=True,
             cwd=root,
             env=wheel_environment,
         )
-        smoke = f"""
-from importlib.metadata import distribution, version
-from importlib.util import find_spec
 
-from ptx_frontend.spec import load_packaged_spec_database
-from ptx_frontend.spec.model import InstructionSpec
-from ptx_frontend.spec.resources import packaged_spec_schema
-from ptx_frontend.code_gen.model import InstructionSpec as CompatibilityInstructionSpec
-from ptx_frontend.code_gen.resources import packaged_cpp_backend
-
-assert version('ptx_frontend') == {EXPECTED_VERSION!r}
-assert InstructionSpec is CompatibilityInstructionSpec
-assert packaged_spec_schema().is_file()
-assert packaged_cpp_backend().is_file()
-assert not any(ep.name == 'ptx-frontend-codegen' for ep in distribution('ptx_frontend').entry_points)
-for module in (
-    'ptx_frontend.code_gen.__main__',
-    'ptx_frontend.code_gen.cli',
-    'ptx_frontend.code_gen.gen_resolved_ir',
-    'ptx_frontend.code_gen.m12_natural_corpus',
-):
-    assert find_spec(module) is None, module
-
-database = load_packaged_spec_database()
-assert database.instructions
-assert all(isinstance(item, InstructionSpec) for item in database.instructions)
-assert any(item.opcode == 'add' for item in database.instructions)
-fma = next(item for item in database.instructions if item.opcode == 'fma')
-assert tuple(variant.name for variant in fma.variants) == (
-    'fma_rn_f32', 'fma_directed_f32', 'fma_rn_f64', 'fma_directed_f64',
-    'fma_f32x2', 'fma_rn_f16', 'fma_rn_f16x2', 'fma_half_relu',
-    'fma_half_oob', 'fma_half_oob_relu', 'fma_bf16', 'fma_bf16x2',
-    'fma_bf16_oob', 'fma_bf16x2_oob', 'fma_mixed_f32_f16',
-    'fma_mixed_f32_bf16',
-)
-layouts = {{variant.name: variant.operand_layouts[0].operands for variant in fma.variants}}
-assert [operand.kind for operand in layouts['fma_rn_f32'][1:]] == ['reg_or_imm'] * 3
-assert [operand.kind for operand in layouts['fma_f32x2']] == ['reg'] * 4
-assert [operand.kind for operand in layouts['fma_bf16x2']] == ['reg'] * 4
-for name in ('fma_mixed_f32_f16', 'fma_mixed_f32_bf16'):
-    operands = layouts[name]
-    assert [operand.kind for operand in operands] == ['reg', 'reg', 'reg', 'reg_or_imm']
-    assert operands[0].type_expression.modifier_name == 'result_type'
-    assert operands[3].type_expression.modifier_name == 'result_type'
-assert layouts['fma_mixed_f32_f16'][1].type_expression.modifier_name == 'input_type'
-assert layouts['fma_mixed_f32_bf16'][1].type_expression.scalar_type == 'b16'
-"""
         subprocess.run(
-            [executable, "-c", smoke],
+            [
+                executable,
+                str(INSTALLED_SMOKE),
+            ],
             check=True,
             cwd=root,
             env=wheel_environment,
         )
+
+
+def main(wheel: Path) -> None:
+    wheel = wheel.resolve()
+
+    if not wheel.is_file():
+        raise FileNotFoundError(wheel)
+
+    if not INSTALLED_SMOKE.is_file():
+        raise FileNotFoundError(INSTALLED_SMOKE)
+
+    check_wheel_contents(wheel)
+    run_installed_smoke(wheel)
 
 
 if __name__ == "__main__":

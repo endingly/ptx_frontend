@@ -69,14 +69,6 @@ jobs:
           restore-keys: |
             ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
 
-      # All consumers restore this compatibility prefix. Only trusted main
-      # pushes below create immutable Debug and Release seeds for their SHA.
-      - name: Reset unit-test compiler-cache statistics
-        if: success()
-        shell: bash
-        run: |
-          ccache --zero-stats
-
       # Each matrix child exports only its own full lineage prefix. Matrix job
       # outputs retain the last successful nonempty value for each configuration.
       - name: Export compiler-cache lineage metadata
@@ -84,11 +76,15 @@ jobs:
         shell: bash
         run: |
           prefix="ccache-v8-${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-"
-          if [ "${{ matrix.preset }}" = ci-linux-gcc-debug ]; then
+          if [ "${{ matrix.preset }}" = "ci-linux-gcc-debug" ]; then
             echo "debug-prefix=$prefix" >> "$GITHUB_OUTPUT"
           else
             echo "release-prefix=$prefix" >> "$GITHUB_OUTPUT"
           fi
+
+      # -----------------------------------------------------------------------
+      # Production phase
+      # -----------------------------------------------------------------------
 
       - name: Configure and reset production compiler-cache statistics
         shell: bash
@@ -111,14 +107,46 @@ jobs:
           echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
           exit "$build_exit_code"
 
+      - name: Record production compiler-cache statistics
+        if: always()
+        shell: bash
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase production-build \
+            --started-at-file "$CCACHE_METRICS_DIR/production.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-started-at-file "$CCACHE_METRICS_DIR/production.build-started-at" \
+            --build-finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-exit-code-file "$CCACHE_METRICS_DIR/production.build-exit-code" \
+            --status "${{ steps.production-build.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/production-build.json" || true
+
+          ccache --show-stats || true
+
+      # -----------------------------------------------------------------------
+      # Test phase
+      #
+      # Production and test compilation deliberately share the same persistent
+      # compiler cache. Reset only counters so test hit/miss measurements are
+      # independent without discarding useful compiler-cache entries.
+      # -----------------------------------------------------------------------
+
+      - name: Reset test compiler-cache statistics
+        if: success()
+        shell: bash
+        run: |
+          ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
+
       - name: Build normal resolved-IR tests
         id: test-support
         if: success()
+        shell: bash
         run: |
           cmake --build \
             --preset "${{ matrix.preset }}" \
             --target test_resolved_ir
-      
+
       - name: Run normal resolved-IR tests
         id: test
         if: success()
@@ -126,50 +154,56 @@ jobs:
         run: |
           set +e
           ctest \
-            --test-dir "$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/submod/resolved_ir" \
+            --test-dir \
+            "$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/submod/resolved_ir" \
             --output-on-failure \
             --no-tests=error
           test_exit_code=$?
           date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
           exit "$test_exit_code"
 
+      - name: Record test compiler-cache statistics
+        if: always()
+        shell: bash
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase tests \
+            --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
+            --status "${{ steps.test-support.outcome }}" \
+            --status "${{ steps.test.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/tests.json" || true
+
+          ccache --show-stats || true
+
+      # -----------------------------------------------------------------------
+      # Shared dependency caches
+      # -----------------------------------------------------------------------
+
       - name: Save vcpkg source-download cache
-        if: success() && matrix.writes_shared_caches && steps.setup.outputs.downloads-cache-hit != 'true'
+        if: >
+          success() &&
+          matrix.writes_shared_caches &&
+          steps.setup.outputs.downloads-cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/vcpkg/downloads
           key: ${{ steps.setup.outputs.downloads-cache-key }}
 
-      # Installed toolchains can differ within the matrix, producing distinct binary keys.
+      # Installed toolchains can differ within the matrix, producing distinct
+      # binary keys.
       - name: Save vcpkg binary archive cache
-        if: success() && steps.setup.outputs.binary-cache-hit != 'true'
+        if: >
+          success() &&
+          steps.setup.outputs.binary-cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/vcpkg/archives
           key: ${{ steps.setup.outputs.binary-cache-key }}
 
-      - name: Record production compiler-cache statistics
-        if: always()
-        shell: bash
-        run: |
-          python3 .github/scripts/capture_ccache_metrics.py \
-            --phase production-build --started-at-file "$CCACHE_METRICS_DIR/production.started-at" \
-            --finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
-            --build-started-at-file "$CCACHE_METRICS_DIR/production.build-started-at" \
-            --build-finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
-            --build-exit-code-file "$CCACHE_METRICS_DIR/production.build-exit-code" \
-            --status "${{ steps.production-build.outcome }}" \
-            --output "$CCACHE_METRICS_DIR/production-build.json" || true
-          ccache --show-stats || true
-
-      - name: Run normal resolved-IR tests in disposable compiler cache
-        if: success()
-        run: |
-          ctest --test-dir "$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/submod/resolved_ir" \
-            --output-on-failure --no-tests=error
-
-      # The artifact contains local ccache counters. Cache-action transfer
-      # bytes/times are intentionally recorded only in the Actions action logs.
+      # JSON records local compiler-cache size, cleanup count, hit/miss rate,
+      # and phase wall-clock time. Cache-action transfer bytes/times remain
+      # available in the GitHub Actions logs.
       - name: Upload compiler-cache measurements
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -180,10 +214,15 @@ jobs:
           retention-days: 14
 
       # Exact hits are immutable and require no upload. A prefix hit creates
-      # this main commit's seed only after its production build/tests succeed.
+      # this main commit's seed only after its production build and tests
+      # succeed.
       - name: Save persistent compiler cache seed
         id: ccache-save
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
+        if: >
+          success() &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          steps.ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
@@ -192,12 +231,19 @@ jobs:
   cleanup:
     name: Retain trusted compiler-cache seeds
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.result == 'success' && needs.test.outputs.debug-prefix != '' && needs.test.outputs.release-prefix != ''
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.test.result == 'success' &&
+      needs.test.outputs.debug-prefix != '' &&
+      needs.test.outputs.release-prefix != ''
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+
     permissions:
       contents: read
       actions: write
+
     steps:
       # This is a trusted main revision, not an artifact supplied by a PR.
       - name: Check out trusted cleanup helper
@@ -205,8 +251,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # The helper verifies the current key/ref/version before deleting. Any
-      # list, pagination, or verification anomaly fails before a delete call.
+      # The helper verifies the current key/ref/version before deleting.
+      # Any list, pagination, or verification anomaly fails before a delete.
       - name: Retain current and previous seeds for both configurations
         env:
           GH_TOKEN: ${{ github.token }}
@@ -216,6 +262,9 @@ jobs:
         run: |
           for prefix in "$DEBUG_PREFIX" "$RELEASE_PREFIX"; do
             python3 .github/scripts/cleanup_ccache_seeds.py \
-              --repository "$GITHUB_REPOSITORY" --ref refs/heads/main \
-              --prefix "$prefix" --current-key "${prefix}${GITHUB_SHA}" --execute
+              --repository "$GITHUB_REPOSITORY" \
+              --ref refs/heads/main \
+              --prefix "$prefix" \
+              --current-key "${prefix}${GITHUB_SHA}" \
+              --execute
           done

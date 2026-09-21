@@ -2206,7 +2206,7 @@ TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
 }
 
-TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
+TEST(ResolveMad, SelectsIntegerAndExplicitFloatingVariants) {
   const auto lo =
       resolve<Mad>(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(lo.has_value()) << lo.error().message;
@@ -2227,12 +2227,28 @@ TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
   ASSERT_NE(std::get_if<Mad::RnF32>(&rn->variant), nullptr);
   EXPECT_EQ(Mad::RnF32::rounding, RoundingMode::Rn);
   EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
+
+  const auto directed =
+      resolve<Mad>(parse_instruction("mad.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(directed.has_value()) << directed.error().message;
+  const auto* directed_variant =
+      std::get_if<Mad::DirectedF32>(&directed->variant);
+  ASSERT_NE(directed_variant, nullptr);
+  EXPECT_EQ(directed_variant->rounding.value, RoundingMode::Rz);
+
+  const auto f64 =
+      resolve<Mad>(parse_instruction("mad.rp.f64 %d0, %d1, %d2, %d3;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  const auto* f64_variant = std::get_if<Mad::DirectedF64>(&f64->variant);
+  ASSERT_NE(f64_variant, nullptr);
+  EXPECT_EQ(f64_variant->rounding.value, RoundingMode::Rp);
 }
 
 TEST(ResolveMad, RejectsIllegalModifiers) {
   for (const auto source :
        {"mad.u32 %r0, %r1, %r2, %r3;", "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
-        "mad.rz.f32 %f0, %f1, %f2, %f3;",
+        "mad.f32 %f0, %f1, %f2, %f3;", "mad.rn.ftz.f64 %d0, %d1, %d2, %d3;",
+        "mad.rn.sat.f64 %d0, %d1, %d2, %d3;",
         "mad.lo.cc.s16 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);

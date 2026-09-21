@@ -567,23 +567,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_mad_merges_complete_integer_and_floating_ternary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.mad_instruction.variants],
-            ["RnF32", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
+            ["RnF32", "DirectedF32", "RnF64", "DirectedF64", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
              "LoS16", "LoS64", "HiU16", "HiU32", "HiU64", "HiS16",
              "HiS32", "HiS64", "WideU16", "WideS16", "WideS32", "HiSatS32",
              "HiCc32", "LoCc32", "HiCc64", "LoCc64"],
         )
         self.assertEqual(
-            [field.name for field in self.mad_instruction.variants[1].fields],
+            [field.name for field in self.mad_instruction.variants[4].fields],
             ["lo", "type", "dst", "src1", "src2", "src3"],
         )
         self.assertEqual(
-            self.mad_instruction.variants[1].operand_layouts[0].bindings[3].role,
+            self.mad_instruction.variants[4].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
         )
         self.assertEqual(
             [
                 binding.register_width_policy
-                for binding in self.mad_instruction.variants[3].operand_layouts[0].bindings
+                for binding in self.mad_instruction.variants[6].operand_layouts[0].bindings
             ],
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
         )
@@ -593,6 +593,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for binding in self.mad_instruction.variants[0].operand_layouts[0].bindings
             ],
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+        )
+        self.assertEqual(
+            [field.name for field in self.mad_instruction.variants[0].fields],
+            ["rounding", "ftz", "sat", "type", "dst", "src1", "src2", "src3"],
         )
 
     def test_fma_models_all_ptx_93_ternary_layouts(self) -> None:

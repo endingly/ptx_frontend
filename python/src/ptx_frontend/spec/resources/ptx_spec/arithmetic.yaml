@@ -1232,17 +1232,46 @@ instructions:
 
   - opcode: mad
     section: "9.7.3.7"
-    doc: "Frozen round-to-nearest single-precision multiply-add."
-    syntax: "mad.rn.f32 dst, src1, src2, src3"
-    operands: $ternary_float_register
+    doc: "Explicit-rounding single- and double-precision multiply-add."
+    syntax: "mad.rnd{.ftz}{.sat}.f32 | mad.rnd.f64 dst, src1, src2, src3"
+    operands: $ternary_arith
     variants:
       - name: mad_rn_f32
         availability: {ptx: "2.0", sm: 20}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "mad.rn.f32 %f0, %f1, %f2, %f3;", valid: true}
+          - {ptx: "mad.rn.ftz.sat.f32 %f0, %f1, 1.0, %f3;", valid: true}
+
+      - name: mad_directed_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "mad.rz.ftz.sat.f32 %f0, %f1, %f2, 1.0;", valid: true}
+
+      - name: mad_rn_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "mad.rn.f64 %d0, %d1, %d2, %d3;", valid: true}
+
+      - name: mad_directed_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "mad.rp.f64 %d0, %d1, %d2, 1.0;", valid: true}
 
   - opcode: div
     section: "9.7.3.8"

@@ -29,7 +29,7 @@ predicate destinations. That assembler cannot target `sm_20`, so the PTX 2.0 /
 `sm_20` boundary is enforced by frontend checker tests rather than assembler
 target evidence.
 
-Later Issue 142 slices audit the existing ADD/SUB and mixed-family contracts,
-then cover MAD/DIV, reciprocal and square-root families, transcendentals, and
-MIN/MAX; they are intentionally not part of this document's implementation
-scope.
+[Explicit floating MAD](mad_coverage.md) is modelled separately. Later Issue 142
+work covers DIV, reciprocal and square-root families, transcendentals, MIN/MAX,
+and an audit of the existing ADD/SUB and mixed-family contracts; they are
+intentionally not part of this document's implementation scope.

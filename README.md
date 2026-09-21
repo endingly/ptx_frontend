@@ -23,6 +23,9 @@ supported surface and its exclusions.
 - [Floating `abs` and `neg` coverage](docs/us-en/abs_neg_coverage.md) and its
   [简体中文版本](docs/zh-han/abs_neg_coverage.md) define their scalar, half, and
   bfloat source, storage, modifier, and target contracts.
+- [Floating `mad` coverage](docs/us-en/mad_coverage.md) and its
+  [简体中文版本](docs/zh-han/mad_coverage.md) define the explicit-rounding FP32
+  and FP64 forms and their excluded legacy profiles.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

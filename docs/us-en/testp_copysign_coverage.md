@@ -30,6 +30,6 @@ predicate destinations. That assembler cannot target `sm_20`, so the PTX 2.0 /
 target evidence.
 
 Later Issue 142 slices audit the existing ADD/SUB and mixed-family contracts,
-then add floating `abs`/`neg`, MAD/DIV, reciprocal and square-root families,
-transcendentals, and MIN/MAX; they are intentionally not part of this
-document's implementation scope.
+then cover MAD/DIV, reciprocal and square-root families, transcendentals, and
+MIN/MAX; they are intentionally not part of this document's implementation
+scope.

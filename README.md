@@ -20,6 +20,9 @@ supported surface and its exclusions.
 - [`testp` and `copysign` coverage](docs/us-en/testp_copysign_coverage.md) and
   its [简体中文版本](docs/zh-han/testp_copysign_coverage.md) define the currently
   modelled floating classification and sign-copy forms.
+- [Floating `abs` and `neg` coverage](docs/us-en/abs_neg_coverage.md) and its
+  [简体中文版本](docs/zh-han/abs_neg_coverage.md) define their scalar, half, and
+  bfloat source, storage, modifier, and target contracts.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

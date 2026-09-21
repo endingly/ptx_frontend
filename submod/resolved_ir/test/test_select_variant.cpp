@@ -2627,8 +2627,8 @@ TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
   EXPECT_EQ(Abs::F32::type, ScalarType::F32);
 }
 
-TEST(ResolveAbs, RejectsUnfrozenAndInvalidForms) {
-  for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f32 %f0, %f1;"}) {
+TEST(ResolveAbs, RejectsInvalidForms) {
+  for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f64 %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Abs>(parse_instruction(source)).has_value());
   }
@@ -2654,8 +2654,8 @@ TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
   EXPECT_EQ(Neg::F16x2::type, ScalarType::F16x2);
 }
 
-TEST(ResolveNeg, RejectsUnfrozenForms) {
-  for (const auto source : {"neg.ftz.f32 %f0, %f1;", "neg.bf16x2 %r0, %r1;",
+TEST(ResolveNeg, RejectsInvalidForms) {
+  for (const auto source : {"neg.ftz.f64 %f0, %f1;", "neg.ftz.bf16x2 %r0, %r1;",
                             "neg.sat.s32 %r0, %r1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Neg>(parse_instruction(source)).has_value());

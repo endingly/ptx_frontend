@@ -22,6 +22,5 @@ PTXAS 证据使用 CUDA 13.3.73、`sm_90` 收集，命令为
 literal/width 以及 predicate destination。该 assembler 不能以 `sm_20` 为目标，因此
 PTX 2.0 / `sm_20` 边界由 frontend checker test 强制，而非 assembler target 证据。
 
-Issue 142 后续切片先审计现有 ADD/SUB 与 mixed-family contract，再处理浮点 `abs`/`neg`、
-MAD/DIV、reciprocal/square-root、transcendental 与 MIN/MAX；这些内容刻意不属于本文档的
-实现范围。
+Issue 142 后续切片先审计现有 ADD/SUB 与 mixed-family contract，再处理 MAD/DIV、
+reciprocal/square-root、transcendental 与 MIN/MAX；这些内容刻意不属于本文档的实现范围。

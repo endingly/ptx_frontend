@@ -723,37 +723,60 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_abs_has_complete_signed_and_float_unary_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.abs_instruction.variants],
-            ["S32", "F32", "S16", "S64"],
+            ["S32", "F32", "F64", "F16", "F16x2", "Bf16", "Bf16x2", "S16", "S64"],
         )
-        for variant, scalar_type in zip(
-            self.abs_instruction.variants, ("s32", "f32", "s16", "s64"), strict=True
+        for variant, scalar_type, fields in zip(
+            self.abs_instruction.variants,
+            ("s32", "f32", "f64", "f16", "f16x2", "bf16", "bf16x2", "s16", "s64"),
+            (
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+            ),
+            strict=True,
         ):
-            self.assertEqual(
-                [field.name for field in variant.fields], ["type", "dst", "src"]
-            )
-            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+            self.assertEqual([field.name for field in variant.fields], list(fields))
+            self.assertEqual(variant.fields[-3].constant_value, scalar_type)
 
     def test_neg_has_complete_scalar_and_packed_unary_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.neg_instruction.variants],
-            ["S32", "F32", "F16x2", "S16", "S64", "S8x4"],
+            ["S32", "F32", "F64", "F16", "F16x2", "Bf16", "Bf16x2", "S16", "S64", "S8x4"],
         )
-        for variant, scalar_type in zip(
-            self.neg_instruction.variants, ("s32", "f32", "f16x2", "s16", "s64", "s8x4"), strict=True
+        for variant, scalar_type, fields in zip(
+            self.neg_instruction.variants,
+            ("s32", "f32", "f64", "f16", "f16x2", "bf16", "bf16x2", "s16", "s64", "s8x4"),
+            (
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+            ),
+            strict=True,
         ):
-            self.assertEqual(
-                [field.name for field in variant.fields], ["type", "dst", "src"]
-            )
-            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+            self.assertEqual([field.name for field in variant.fields], list(fields))
+            self.assertEqual(variant.fields[-3].constant_value, scalar_type)
         self.assertEqual(
             [binding.register_width_policy
-             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
+             for binding in self.neg_instruction.variants[4].operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 2,
         )
         self.assertEqual(
             [binding.type_expression.scalar_type
-             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
-            ["f16x2"] * 2,
+             for binding in self.neg_instruction.variants[4].operand_layouts[0].bindings],
+            ["b32"] * 2,
         )
 
     def test_lop3_has_base_and_boolop_layouts_with_u8_lut_range(self) -> None:

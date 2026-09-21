@@ -50,7 +50,8 @@ decisions are:
 | Consumers | Policy decision |
 | --- | --- |
 | `mul/mad.wide.u32`, `popc/clz`, `bfind/bfe`, ordinary `mad/div/min/max` float forms | Same-width fundamental compatibility; keep each operand's original width |
-| `neg.f16x2`, packed `cvt` destination | Require expected `f16x2` with `same_width`, accepting `.f16x2`/`.b32`, not arbitrary 32-bit storage |
+| `neg.f16x2` | Require exact `.b32` storage for both operands; native `.f16x2` registers are not admitted |
+| packed `cvt` destination | Require expected `f16x2` with `same_width`, accepting `.f16x2`/`.b32`, not arbitrary 32-bit storage |
 | `cvt` ordinary f32 operands, `mapa/getctarank`, `isspacep` | Same-width compatibility; address shape/state-space checks remain independent |
 | `vote/match/redux/elect/activemask`, mbarrier counts/parity/hints, decoded cluster CTA IDs | Same-width compatibility; masks, ranges, and target checks remain independent |
 | Alternate-format FMA (`bf16`, `bf16x2`, `f32x2`, mixed bf16 sources) | Retain exact bit-container requirements |

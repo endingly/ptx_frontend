@@ -36,9 +36,9 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
 
-  unary_scalar_register:
-    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
-    - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
+  unary_float_register_or_immediate:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
 
   unary_integer_arith:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
@@ -47,6 +47,18 @@ operand_patterns:
   unary_f16x2_register:
     - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
+
+  unary_f16_register:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+
+  unary_b16_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
+
+  unary_b32_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
 
   popc_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
@@ -1744,16 +1756,71 @@ instructions:
 
   - opcode: abs
     section: "9.7.3.9"
-    doc: "Frozen single-precision floating-point absolute value."
-    syntax: "abs.f32 dst, src"
-    operands: $unary_scalar_register
+    doc: "Single- and double-precision floating-point absolute value."
+    syntax: "abs{.ftz}.f32 | abs.f64 dst, src"
+    operands: $unary_float_register_or_immediate
     variants:
       - name: abs_f32
         availability: {ptx: "1.0", sm: 0}
         modifiers:
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+            values:
+              - value: true
+                availability: {ptx: "1.4"}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "abs.f32 %f0, %f1;", valid: true}
+          - {ptx: "abs.ftz.f32 %f0, %f1;", valid: true}
+      - name: abs_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "abs.f64 %fd0, %fd1;", valid: true}
+
+  - opcode: abs
+    section: "9.7.4.6"
+    doc: "Half- and bfloat-precision floating-point absolute value."
+    variants:
+      - name: abs_f16
+        operands: $unary_f16_register
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "abs.f16 %h0, %h1;", valid: true}
+          - {ptx: "abs.ftz.f16 %h0, %h1;", valid: true}
+      - name: abs_f16x2
+        operands: $unary_f16x2_register
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "abs.f16x2 %r0, %r1;", valid: true}
+          - {ptx: "abs.ftz.f16x2 %r0, %r1;", valid: true}
+      - name: abs_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "abs.bf16 %b0, %b1;", valid: true}
+      - name: abs_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "abs.bf16x2 %r0, %r1;", valid: true}
 
   - opcode: neg
     section: "9.7.1.12"
@@ -1770,29 +1837,77 @@ instructions:
 
   - opcode: neg
     section: "9.7.3.10"
-    doc: "Frozen single-precision floating-point negation."
-    syntax: "neg.f32 dst, src"
-    operands: $unary_scalar_register
+    doc: "Single- and double-precision floating-point negation."
+    syntax: "neg{.ftz}.f32 | neg.f64 dst, src"
+    operands: $unary_float_register_or_immediate
     variants:
       - name: neg_f32
         availability: {ptx: "1.0", sm: 0}
         modifiers:
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+            values:
+              - value: true
+                availability: {ptx: "1.4"}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "neg.f32 %f0, %f1;", valid: true}
+          - {ptx: "neg.ftz.f32 %f0, %f1;", valid: true}
+      - name: neg_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "neg.f64 %fd0, %fd1;", valid: true}
 
   - opcode: neg
     section: "9.7.4.5"
-    doc: "Frozen packed half-precision negation using b32 register containers."
-    syntax: "neg.f16x2 dst, src"
-    operands: $unary_f16x2_register
+    doc: "Half-precision floating-point negation with a packed b32 form."
+    syntax: "neg{.ftz}.{f16|f16x2} dst, src"
     variants:
-      - name: neg_f16x2
+      - name: neg_f16
+        operands: $unary_f16_register
         availability: {ptx: "6.0", sm: 53}
         modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "neg.f16 %h0, %h1;", valid: true}
+          - {ptx: "neg.ftz.f16 %h0, %h1;", valid: true}
+      - name: neg_f16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "6.0", sm: 53}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
         examples:
           - {ptx: "neg.f16x2 %r0, %r1;", valid: true}
+          - {ptx: "neg.ftz.f16x2 %r0, %r1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.4.5"
+    doc: "Bfloat-precision floating-point negation."
+    variants:
+      - name: neg_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "neg.bf16 %b0, %b1;", valid: true}
+      - name: neg_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "neg.bf16x2 %r0, %r1;", valid: true}
 
   - opcode: popc
     section: "9.7.1.15"

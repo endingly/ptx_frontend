@@ -7,6 +7,7 @@ import argparse
 import ast
 from contextlib import redirect_stdout
 from io import StringIO
+import json
 import sys
 from pathlib import Path
 import tempfile
@@ -23,7 +24,9 @@ from ptx_frontend.code_gen.context import (
 from ptx_frontend.code_gen.emit.category_source import (
     generate_resolved_ir_category_source,
 )
-from ptx_frontend.code_gen.emit.syntax_descriptors import generate_syntax_descriptor_source
+from ptx_frontend.code_gen.emit.syntax_descriptors import (
+    generate_syntax_descriptor_source,
+)
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import (
     GeneratedArtifact,
@@ -31,8 +34,11 @@ from ptx_frontend.code_gen.plan import (
     build_generation_plan,
 )
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind
-from ptx_frontend.spec.database import load_codegen_database
-
+from ptx_frontend.spec.database import (
+    discover_codegen_category_inputs,
+    load_codegen_database,
+    load_codegen_database_from_files,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_DIR = ROOT / "instructions/ptx_spec"
@@ -49,16 +55,23 @@ class GenerationPlanTests(unittest.TestCase):
         with (
             patch(
                 "ptx_frontend.code_gen.context.from_instruction_spec",
-                wraps=__import__("ptx_frontend.ir.resolved_ir", fromlist=["from_instruction_spec"]).from_instruction_spec,
+                wraps=__import__(
+                    "ptx_frontend.ir.resolved_ir", fromlist=["from_instruction_spec"]
+                ).from_instruction_spec,
             ) as lower,
             patch(
                 "ptx_frontend.code_gen.context.with_cpp_backend_field_names",
-                wraps=__import__("ptx_frontend.code_gen.resolved_field_names", fromlist=["with_cpp_backend_field_names"]).with_cpp_backend_field_names,
+                wraps=__import__(
+                    "ptx_frontend.code_gen.resolved_field_names",
+                    fromlist=["with_cpp_backend_field_names"],
+                ).with_cpp_backend_field_names,
             ) as project,
         ):
             context = build_generation_context(self.database, self.backend)
             with tempfile.TemporaryDirectory() as directory:
-                for artifact in build_generation_plan(context, Path(directory)).artifacts:
+                for artifact in build_generation_plan(
+                    context, Path(directory)
+                ).artifacts:
                     artifact.emit(context, output_path=artifact.path)
         self.assertEqual(len(context.instructions), len(self.database.instructions))
         self.assertEqual(lower.call_count, len(self.database.instructions))
@@ -67,11 +80,13 @@ class GenerationPlanTests(unittest.TestCase):
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
         context = build_generation_context(self.database, self.backend)
         arithmetic = next(
-            entry for entry in context.entries
+            entry
+            for entry in context.entries
             if entry.specification.codegen_category == "arithmetic"
         )
         control_flow = next(
-            entry for entry in context.entries
+            entry
+            for entry in context.entries
             if entry.specification.codegen_category == "control_flow"
         )
         reordered = GenerationContext(
@@ -96,12 +111,8 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertNotIn(
                 f'Opcode_name = "{control_flow.specification.opcode}"', syntax
             )
-            self.assertIn(
-                f"resolve<{arithmetic.resolved.cpp_name}>", category
-            )
-            self.assertNotIn(
-                f"resolve<{control_flow.resolved.cpp_name}>", category
-            )
+            self.assertIn(f"resolve<{arithmetic.resolved.cpp_name}>", category)
+            self.assertNotIn(f"resolve<{control_flow.resolved.cpp_name}>", category)
 
     def test_entry_rejects_resolved_model_from_another_opcode(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -122,13 +133,17 @@ class GenerationPlanTests(unittest.TestCase):
                 resolved=mismatched_resolved,
             )
 
-    def test_entry_replace_rejects_same_opcode_with_different_cpp_type_identity(self) -> None:
+    def test_entry_replace_rejects_same_opcode_with_different_cpp_type_identity(
+        self,
+    ) -> None:
         entry = build_generation_context(self.database, self.backend).entries[0]
 
         with self.assertRaisesRegex(ValueError, "mismatched C\\+\\+ type identities"):
             replace(entry, resolved=replace(entry.resolved, cpp_name="Mismatched"))
 
-    def test_emitter_dependencies_follow_the_model_category_dispatch_boundary(self) -> None:
+    def test_emitter_dependencies_follow_the_model_category_dispatch_boundary(
+        self,
+    ) -> None:
         emitter_dir = ROOT / "python/src/ptx_frontend/code_gen/emit"
 
         def imported_modules(name: str) -> set[str]:
@@ -139,15 +154,9 @@ class GenerationPlanTests(unittest.TestCase):
                 if isinstance(node, ast.ImportFrom)
             }
 
-        self.assertNotIn(
-            "resolved_checker", imported_modules("resolved_resolver.py")
-        )
-        self.assertNotIn(
-            "resolved_dispatch", imported_modules("resolved_model.py")
-        )
-        self.assertNotIn(
-            "references", imported_modules("resolved_dispatch.py")
-        )
+        self.assertNotIn("resolved_checker", imported_modules("resolved_resolver.py"))
+        self.assertNotIn("resolved_dispatch", imported_modules("resolved_model.py"))
+        self.assertNotIn("references", imported_modules("resolved_dispatch.py"))
         category_imports = imported_modules("category_source.py")
         self.assertIn("resolved_resolver", category_imports)
         self.assertIn("resolved_checker", category_imports)
@@ -166,7 +175,11 @@ class GenerationPlanTests(unittest.TestCase):
                 artifact.emit(context, output_path=artifact.path)
             self.assertEqual(
                 {path.relative_to(output) for path in plan.paths},
-                {path.relative_to(output) for path in output.rglob("*") if path.is_file()},
+                {
+                    path.relative_to(output)
+                    for path in output.rglob("*")
+                    if path.is_file()
+                },
             )
 
     def test_list_outputs_is_read_only_and_uses_the_plan(self) -> None:
@@ -177,8 +190,14 @@ class GenerationPlanTests(unittest.TestCase):
             previous = sys.argv
             try:
                 sys.argv = [
-                    "codegen", "--spec-dir", str(SPEC_DIR), "--backend-spec",
-                    str(BACKEND_SPEC), "--output", str(output), "--list-outputs",
+                    "codegen",
+                    "--spec-dir",
+                    str(SPEC_DIR),
+                    "--backend-spec",
+                    str(BACKEND_SPEC),
+                    "--output",
+                    str(output),
+                    "--list-outputs",
                 ]
                 listed = StringIO()
                 with redirect_stdout(listed):
@@ -189,7 +208,10 @@ class GenerationPlanTests(unittest.TestCase):
             context = build_generation_context(self.database, self.backend)
             self.assertEqual(
                 listed.getvalue().splitlines(),
-                [str(path.resolve()) for path in build_generation_plan(context, output.resolve()).paths],
+                [
+                    str(path.resolve())
+                    for path in build_generation_plan(context, output.resolve()).paths
+                ],
             )
 
     def test_list_outputs_preserves_legacy_files_and_skips_formatting(self) -> None:
@@ -203,10 +225,18 @@ class GenerationPlanTests(unittest.TestCase):
             previous = sys.argv
             try:
                 sys.argv = [
-                    "codegen", "--spec-dir", str(SPEC_DIR), "--backend-spec",
-                    str(BACKEND_SPEC), "--output", str(output), "--list-outputs",
+                    "codegen",
+                    "--spec-dir",
+                    str(SPEC_DIR),
+                    "--backend-spec",
+                    str(BACKEND_SPEC),
+                    "--output",
+                    str(output),
+                    "--list-outputs",
                 ]
-                with patch("ptx_frontend.code_gen.cli.format_file_inplace") as format_file:
+                with patch(
+                    "ptx_frontend.code_gen.cli.format_file_inplace"
+                ) as format_file:
                     with redirect_stdout(StringIO()):
                         cli.main()
             finally:
@@ -214,7 +244,9 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
             format_file.assert_not_called()
 
-    def test_formatted_artifact_preserves_mtime_after_formatting_equal_content(self) -> None:
+    def test_formatted_artifact_preserves_mtime_after_formatting_equal_content(
+        self,
+    ) -> None:
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
@@ -255,7 +287,9 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(output.read_text(encoding="utf-8"), "new raw content\n")
             self.assertEqual(output.stat().st_mode & 0o777, 0o640)
 
-    def test_obsolete_cleanup_preserves_active_outputs_and_manifest_cleanup_is_scoped(self) -> None:
+    def test_obsolete_cleanup_preserves_active_outputs_and_manifest_cleanup_is_scoped(
+        self,
+    ) -> None:
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
@@ -283,7 +317,9 @@ class GenerationPlanTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "outside its output root"):
                 cli.read_output_manifest(output)
 
-    def test_main_repairs_missing_active_output_without_touching_manifest_on_noop(self) -> None:
+    def test_main_repairs_missing_active_output_without_touching_manifest_on_noop(
+        self,
+    ) -> None:
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
@@ -298,19 +334,36 @@ class GenerationPlanTests(unittest.TestCase):
             def emit(_context, *, output_path: Path) -> None:
                 output_path.write_text("model\n", encoding="utf-8")
 
-            plan = GenerationPlan((GeneratedArtifact(active, emit),))
+            plan = GenerationPlan(
+                (
+                    GeneratedArtifact(
+                        active, emit  # pyright: ignore[reportArgumentType]
+                    ),
+                )
+            )
             arguments = argparse.Namespace(
                 spec_dir=spec_dir,
                 output=output,
                 backend_spec=backend_spec,
+                spec_file=[],
+                category=None,
+                global_artifacts=False,
                 list_outputs=False,
+                describe_build=False,
             )
             with (
-                patch("ptx_frontend.code_gen.cli.parse_arguments", return_value=arguments),
+                patch(
+                    "ptx_frontend.code_gen.cli.parse_arguments", return_value=arguments
+                ),
                 patch("ptx_frontend.code_gen.cli.load_codegen_database"),
                 patch("ptx_frontend.code_gen.cli.load_cpp_backend"),
-                patch("ptx_frontend.code_gen.cli.build_generation_context", return_value=object()),
-                patch("ptx_frontend.code_gen.cli.build_generation_plan", return_value=plan),
+                patch(
+                    "ptx_frontend.code_gen.cli.build_generation_context",
+                    return_value=object(),
+                ),
+                patch(
+                    "ptx_frontend.code_gen.cli.build_generation_plan", return_value=plan
+                ),
                 patch("ptx_frontend.code_gen.cli.format_file_inplace"),
             ):
                 cli.main()
@@ -328,9 +381,10 @@ class GenerationPlanTests(unittest.TestCase):
             self.database.instructions[0], codegen_category="dispatch"
         )
         context = build_generation_context(
-            replace(self.database, instructions=(
-                conflicting_instruction, *self.database.instructions[1:]
-            )),
+            replace(
+                self.database,
+                instructions=(conflicting_instruction, *self.database.instructions[1:]),
+            ),
             self.backend,
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -342,10 +396,14 @@ class GenerationPlanTests(unittest.TestCase):
     def test_context_rejects_binding_cpp_name_collision_before_emission(self) -> None:
         first, second = self.entries_with_colliding_source_projection()
 
-        with self.assertRaisesRegex(ValueError, "multiple generation instruction bindings"):
+        with self.assertRaisesRegex(
+            ValueError, "multiple generation instruction bindings"
+        ):
             GenerationContext(backend=self.backend, entries=(first, second))
 
-    def test_context_rejects_unclassified_reference_payload_before_emission(self) -> None:
+    def test_context_rejects_unclassified_reference_payload_before_emission(
+        self,
+    ) -> None:
         context = build_generation_context(self.database, self.backend)
         entry = context.entries[0]
         variant = entry.resolved.variants[0]
@@ -394,12 +452,22 @@ class GenerationPlanTests(unittest.TestCase):
             previous = sys.argv
             try:
                 sys.argv = [
-                    "codegen", "--spec-dir", str(SPEC_DIR), "--backend-spec",
-                    str(BACKEND_SPEC), "--output", str(output),
+                    "codegen",
+                    "--spec-dir",
+                    str(SPEC_DIR),
+                    "--backend-spec",
+                    str(BACKEND_SPEC),
+                    "--output",
+                    str(output),
                 ]
                 with (
-                    patch("ptx_frontend.code_gen.cli.load_codegen_database", return_value=invalid_database),
-                    patch("ptx_frontend.code_gen.cli.format_file_inplace") as format_file,
+                    patch(
+                        "ptx_frontend.code_gen.cli.load_codegen_database",
+                        return_value=invalid_database,
+                    ),
+                    patch(
+                        "ptx_frontend.code_gen.cli.format_file_inplace"
+                    ) as format_file,
                     self.assertRaisesRegex(
                         ValueError, "multiple generation instruction bindings"
                     ),
@@ -488,6 +556,143 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertNotIn("AlternateBackendBool", first_path.read_text())
             self.assertIn("AlternateBackendBool", second_path.read_text())
             self.assertEqual(first_path.read_bytes(), third_path.read_bytes())
+
+    def test_generation_plan_partitions_global_and_category_artifacts(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+
+        with tempfile.TemporaryDirectory() as directory:
+            plan = build_generation_plan(context, Path(directory))
+
+            grouped_paths = {artifact.path for artifact in plan.global_artifacts}
+
+            categories = {
+                entry.specification.codegen_category for entry in context.entries
+            }
+
+            for category in categories:
+                category_artifacts = plan.artifacts_for_category(category)
+
+                self.assertTrue(category_artifacts)
+                self.assertTrue(
+                    all(
+                        artifact.category == category for artifact in category_artifacts
+                    )
+                )
+
+                grouped_paths.update(artifact.path for artifact in category_artifacts)
+
+            self.assertEqual(
+                grouped_paths,
+                set(plan.paths),
+            )
+
+    def test_category_only_context_emits_same_artifacts_as_full_context(self) -> None:
+        full_context = build_generation_context(
+            self.database,
+            self.backend,
+        )
+
+        category_inputs = {
+            group.category: group
+            for group in discover_codegen_category_inputs(spec_dir=SPEC_DIR)
+        }
+
+        group = category_inputs["arithmetic"]
+
+        category_database = load_codegen_database_from_files(
+            spec_files=group.spec_files,
+            category="arithmetic",
+        )
+
+        category_context = build_generation_context(
+            category_database,
+            self.backend,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            full_plan = build_generation_plan(
+                full_context,
+                root / "full",
+            )
+
+            category_plan = build_generation_plan(
+                category_context,
+                root / "category",
+            )
+
+            full_artifacts = full_plan.artifacts_for_category("arithmetic")
+
+            category_artifacts = category_plan.artifacts_for_category("arithmetic")
+
+            full_by_name = {
+                artifact.path.relative_to(root / "full"): artifact
+                for artifact in full_artifacts
+            }
+
+            category_by_name = {
+                artifact.path.relative_to(root / "category"): artifact
+                for artifact in category_artifacts
+            }
+
+            self.assertEqual(
+                full_by_name.keys(),
+                category_by_name.keys(),
+            )
+
+            for relative_path in full_by_name:
+                full_artifact = full_by_name[relative_path]
+                category_artifact = category_by_name[relative_path]
+
+                full_artifact.emit(
+                    full_context,
+                    output_path=full_artifact.path,
+                )
+
+                category_artifact.emit(
+                    category_context,
+                    output_path=category_artifact.path,
+                )
+
+                self.assertEqual(
+                    full_artifact.path.read_bytes(),
+                    category_artifact.path.read_bytes(),
+                )
+
+    def test_describe_build_is_read_only(self) -> None:
+
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "not-created"
+
+            previous = sys.argv
+            try:
+                sys.argv = [
+                    "codegen",
+                    "--spec-dir",
+                    str(SPEC_DIR),
+                    "--backend-spec",
+                    str(BACKEND_SPEC),
+                    "--output",
+                    str(output),
+                    "--describe-build",
+                ]
+
+                stdout = StringIO()
+
+                with redirect_stdout(stdout):
+                    cli.main()
+            finally:
+                sys.argv = previous
+
+            description = json.loads(stdout.getvalue())
+
+            self.assertFalse(output.exists())
+            self.assertTrue(description["categories"])
+            self.assertTrue(description["global_outputs"])
+            self.assertTrue(description["all_outputs"])
 
 
 if __name__ == "__main__":

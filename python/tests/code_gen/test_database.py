@@ -368,35 +368,40 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         self.assertEqual(len(database.instructions), 1)
         self.assertEqual(len(database.instructions[0].variants), 1)
 
-    def test_rejects_optional_slot_with_repeated_spelling(self) -> None:
-        spec = _spec(
-            category="floating_point",
-            codegen_category="arithmetic",
-            variant_name="add_mixed",
-            type_value="f16",
-        )
-        instructions = cast(list[dict[str, Any]], spec["instructions"])
-        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
-        variants[0]["modifiers"] = [
-            {
-                "name": "optional_type",
-                "kind": "type",
-                "presence": "optional",
-                "domain": "scalar_types",
-                "default": "f16",
-                "values": ["f16"],
-            },
-            {
-                "name": "required_type",
-                "kind": "type",
-                "presence": "fixed",
-                "domain": "scalar_types",
-                "value": "f16",
-            },
-        ]
+    def test_rejects_optional_slot_with_repeated_spelling_in_either_order(self) -> None:
+        optional_type = {
+            "name": "optional_type",
+            "kind": "type",
+            "presence": "optional",
+            "domain": "scalar_types",
+            "default": "f16",
+            "values": ["f16"],
+        }
+        required_type = {
+            "name": "required_type",
+            "kind": "type",
+            "presence": "fixed",
+            "domain": "scalar_types",
+            "value": "f16",
+        }
 
-        with self.assertRaisesRegex(ValueError, "optional slot"):
-            self._load(spec)
+        for modifiers in (
+            [optional_type, required_type],
+            [required_type, optional_type],
+        ):
+            with self.subTest(modifiers=modifiers):
+                spec = _spec(
+                    category="floating_point",
+                    codegen_category="arithmetic",
+                    variant_name="add_mixed",
+                    type_value="f16",
+                )
+                instructions = cast(list[dict[str, Any]], spec["instructions"])
+                variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+                variants[0]["modifiers"] = modifiers
+
+                with self.assertRaisesRegex(ValueError, "optional slot"):
+                    self._load(spec)
 
     def test_does_not_treat_different_modifier_orders_as_overlap(self) -> None:
         spec = _spec(

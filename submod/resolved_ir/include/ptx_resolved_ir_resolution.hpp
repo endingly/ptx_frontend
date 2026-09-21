@@ -25,11 +25,24 @@ std::expected<ResolvedInstruction, ResolveDiagnostic> resolveInstruction(
 std::expected<ResolvedInstruction, ResolveDiagnostic> resolveInstruction(
     const syntax_ast::AstInstruction& ast, const ResolveContext& context);
 
-/** Build the owned model and run declaration checks available from source. */
+/**
+ * Build the owned model and run declaration checks available from source.
+ *
+ * Binding, declaration semantics, operand resolution, and call ABI/staging run.
+ * The final instruction checker (including its target-independent constraints)
+ * and directive availability checks are deferred. Known source context still
+ * constrains declaration availability. Success is not full instruction validity.
+ */
 std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     const syntax_ast::AstModule& ast);
 
-/** Validate an already resolved module under the explicit source-context policy. */
+/**
+ * Validate an already resolved module under the explicit source-context policy.
+ *
+ * Source structure must match; a replacement version/target is allowed and its
+ * declaration rules are rechecked. Instruction diagnostics use owned IR ranges.
+ * Guarantees cover only the modeled instruction/declaration subset.
+ */
 checker::CheckResult validateModule(
     const syntax_ast::AstModule& ast, const ResolvedModule& module,
     ModuleValidationPolicy policy =

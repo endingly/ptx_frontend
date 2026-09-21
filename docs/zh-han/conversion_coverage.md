@@ -47,6 +47,9 @@ register alternative。variant 名称保持不变。`cvta.to` 仍只接受 regis
 resolution 中保留其 declared space；已知 space 错误的 symbol 会被拒绝，而
 `.param{::entry}` 的 symbol source 必须是 kernel input parameter。register source 仍被接受，
 frontend 不会推断 runtime pointer provenance。
+owned validation 还会将 direct 和 offset symbol identity 与缓存的 declaration space、
+parameter role 及 function context 交叉检查。generic MOV 取地址仍保留 device parameter
+materialize 为 local 的独立规则。
 
 `mapa{.shared::cluster}.{u32|u64}`、`getctarank{.shared::cluster}.{u32|u64}`，以及它们的
 generic shared spelling，保留既有 PTX 7.8 / SM 90 cluster-capability form。frontend 只验证
@@ -130,9 +133,11 @@ form 由 dynamic modifier value 选择。
 独立的 [installed consumer](../../examples/conversion_consumer/README.md)
 使用安装包的公开转换 API，并在源码和 syntax AST 销毁后验证 owned module。
 
-支持的 conversion scope 即上文列出的 form。此 `cvta` slice 不建模 PTX implementation note：
-含有 kernel `.ptr.const` parameter 的 program 不允许 generic constant pointer。frontend 不执行
-runtime conversion、address mapping 或 CTA-rank semantic。
+支持的 conversion scope 即上文列出的 form。任意 kernel input 有 `.ptr.const` attribute 时，
+owned module validation 会拒绝该 module 中每个 forward `cvta.const.{u32|u64}`，包括 register
+source；不会拒绝 `cvta.to.const`。这是 module-local declaration check，不推断 runtime pointer
+provenance，也不覆盖 external/link-time declaration。frontend 不执行 runtime conversion、
+address mapping 或 CTA-rank semantic。
 
 记录的探针使用 CUDA 13.1 `ptxas` V13.1.115，其最高接受 PTX version 为 9.1，且会拒绝
 PTX 9.3 profile。`sm_120` 的 64-bit forward-source probe 已通过，覆盖 supported space、

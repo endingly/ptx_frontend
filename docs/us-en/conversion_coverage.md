@@ -56,6 +56,10 @@ addresses retain their declared space
 through owned resolution; a known wrong symbol space is rejected, and
 `.param{::entry}` symbol sources must be kernel input parameters. Register
 sources remain accepted without attempting to infer runtime pointer provenance.
+Owned validation also cross-checks direct and offset symbol identity against its
+cached declaration space, parameter role, and function context. Generic MOV
+address-taking retains its distinct device-parameter-to-local materialization
+rule.
 
 `mapa{.shared::cluster}.{u32|u64}` and
 `getctarank{.shared::cluster}.{u32|u64}`, together with their generic shared
@@ -158,11 +162,13 @@ The standalone [installed consumer](../../examples/conversion_consumer/README.md
 exercises the public conversion API and validates an owned module after its
 source and syntax AST are destroyed.
 
-The supported conversion scope is the set of forms listed above. This `cvta`
-slice does not model PTX's implementation note that generic constant pointers
-are disallowed in programs with kernel `.ptr.const` parameters. Runtime
-conversion, address-mapping, and CTA-rank semantics are not executed by this
-frontend.
+The supported conversion scope is the set of forms listed above. When any
+kernel input has a `.ptr.const` attribute, owned module validation rejects every
+forward `cvta.const.{u32|u64}` in that module, including a register source; it
+does not reject `cvta.to.const`. This is a module-local declaration check. It
+does not infer runtime pointer provenance or external/link-time declarations.
+Runtime conversion, address-mapping, and CTA-rank semantics are not executed
+by this frontend.
 
 The recorded probes use CUDA 13.1 `ptxas` V13.1.115, whose highest accepted PTX
 version is 9.1; it rejects a PTX 9.3 profile. A 64-bit forward-source probe at

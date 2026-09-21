@@ -177,6 +177,21 @@ TEST(ConversionCompleteness, ResolvesCvtaExplicitSpacesAndSymbolAddresses) {
 )ptx");
 }
 
+/** Register-space input and return formals remain ordinary CVTA sources. */
+TEST(ConversionCompleteness, ResolvesCvtaRegisterParameterSources) {
+  expectModuleAccepted(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.func (.reg .u64 %result) convert_address(.reg .u64 %input) {
+  .reg .u64 %rd;
+  cvta.global.u64 %rd, %input;
+  cvta.global.u64 %rd, %result;
+  ret;
+}
+)ptx");
+}
+
 /** Reject CVTA symbol sources whose declared state space disagrees with the modifier. */
 TEST(ConversionCompleteness, RejectsCvtaWrongSymbolStateSpace) {
   expectModuleValidationDiagnostic(
@@ -266,6 +281,50 @@ TEST(ConversionCompleteness, EnforcesCvtaExplicitSpaceAvailability) {
     SCOPED_TRACE(source);
     expectModuleAccepted(source);
   }
+}
+
+/** `.ptr.const` kernel parameters prohibit only forward generic constant addresses. */
+TEST(ConversionCompleteness, EnforcesCvtaConstantPointerRestriction) {
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.func helper() {
+  .reg .u64 %rd<2>;
+  cvta.const.u64 %rd0, %rd1;
+  ret;
+}
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd<2>;
+  cvta.const.u64 %rd0, constant_value;
+  cvta.const.u64 %rd1, constant_value+8;
+  cvta.to.const.u64 %rd0, %rd1;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleAccepted(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.entry kernel(.param .u64 .ptr .global .align 8 global_pointer,
+              .param .u64 scalar) {
+  .reg .u64 %rd<2>;
+  cvta.const.u64 %rd0, %rd1;
+  ret;
+}
+)ptx");
+  expectModuleAccepted(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd<2>;
+  cvta.to.const.u64 %rd0, %rd1;
+  ret;
+}
+)ptx");
 }
 
 /** Exercise ordinary integer and floating conversion families in one module. */

@@ -6,21 +6,42 @@ from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
 from ptx_frontend.code_gen.reference_policy import (
     REFERENCE_VALUE_KINDS,
 )
-from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedInstruction
+from ptx_frontend.ir.resolved_ir import (
+    ResolvedField,
+    ResolvedInstruction,
+    ResolvedOperandLayout,
+    ResolvedValueKind,
+)
 from ptx_frontend.spec.model import CodegenUnit
 
 
 
 
-def _emit_reference_fields(
-    fields: tuple[ResolvedField, ...], object_name: str
+def _address_symbol_resolution_policy(
+    field: ResolvedField, layout: ResolvedOperandLayout
 ) -> str:
+    """Return the immutable binding policy for one reference payload."""
+
+    if field.value_kind is not ResolvedValueKind.MOV_SOURCE:
+        return "checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace"
+    binding = next(
+        (binding for binding in layout.bindings
+         if binding.target_field_id == field.name),
+        None,
+    )
+    if binding is None or binding.preserve_parameter_address_space:
+        return "checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace"
+    return "checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter"
+
+
+def _emit_reference_fields(layout: ResolvedOperandLayout, object_name: str) -> str:
     """Emit callbacks for only explicitly reference-bearing operand payloads."""
 
     return "\n".join(
         f"      visitor({object_name}.{field.name}.value, "
-        f"{object_name}.{field.name}.locs);"
-        for field in fields
+        f"{object_name}.{field.name}.locs, "
+        f"{_address_symbol_resolution_policy(field, layout)});"
+        for field in layout.fields
         if field.value_kind in REFERENCE_VALUE_KINDS
     )
 
@@ -46,11 +67,11 @@ def emit_reference_visitor(instruction: ResolvedInstruction, backend: CodegenUni
     variant_cases: list[str] = []
     for variant in instruction.variants:
         if len(variant.operand_layouts) == 1:
-            body = _emit_reference_fields(variant.operand_layouts[0].fields, "selected")
+            body = _emit_reference_fields(variant.operand_layouts[0], "selected")
         else:
             layouts = "\n".join(
                 f"        if constexpr (std::same_as<Payload, {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands>) {{\n"
-                f"{_emit_reference_fields(layout.fields, 'payload')}\n        }}"
+                f"{_emit_reference_fields(layout, 'payload')}\n        }}"
                 for layout in variant.operand_layouts
             )
             body = f"""      std::visit([&]<typename Payload>(const Payload& payload) {{
@@ -60,21 +81,24 @@ def emit_reference_visitor(instruction: ResolvedInstruction, backend: CodegenUni
             f"    if constexpr (std::same_as<Variant, {instruction.cpp_name}::{variant.cpp_name}>) {{\n{body}\n    }}"
         )
     visitor_requirements = " &&\n         ".join(
-        "std::invocable<Visitor&, const " f"{payload}&, std::span<const SourceRange>>"
+        "std::invocable<Visitor&, const "
+        f"{payload}&, std::span<const SourceRange>, checker::AddressSymbolResolutionPolicy>"
         for payload in _reference_payload_types(instruction, backend)
     )
     return f"""/**
  * Visit every binding-bearing operand selected by this resolved instruction.
  *
  * ``Visitor`` accepts every generated payload listed in the corresponding
- * operand layouts as ``(const Payload&, std::span<const SourceRange>)``.
+ * operand layouts as ``(const Payload&, std::span<const SourceRange>,
+ * checker::AddressSymbolResolutionPolicy)``.
  */
 template <typename Visitor>
   requires ({visitor_requirements})
 void visit_instruction_references(const {instruction.cpp_name}& instruction,
                                   Visitor&& visitor) {{
   if (instruction.execution_predicate)
-    visitor(instruction.execution_predicate->value, instruction.execution_predicate->locs);
+    visitor(instruction.execution_predicate->value, instruction.execution_predicate->locs,
+            checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);
   std::visit([&]<typename Variant>(const Variant& selected) {{
 {" else ".join(variant_cases)}
   }}, instruction.variant);

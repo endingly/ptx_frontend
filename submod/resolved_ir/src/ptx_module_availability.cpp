@@ -364,6 +364,13 @@ struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
   std::optional<binding::SymbolKind> expected_kind;
+  /** Borrowed symbol payload; valid while this validation call owns the module. */
+  const ResolvedSymbolRef* address_symbol{};
+  /** Present for an offset address that contributes function-context metadata. */
+  const ResolvedAddress* enclosing_address{};
+  /** Immutable generated policy for parameter-address materialization. */
+  checker::AddressSymbolResolutionPolicy address_resolution_policy{
+      checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace};
   /** True when the binding must carry the .reg declaration state space. */
   bool requires_register_state{};
   /** True when the binding must name a scalar .reg .pred declaration. */
@@ -389,18 +396,24 @@ SourceRange reference_range(std::span<const SourceRange> locations,
 }
 
 /** Append one declaration-bearing operand reference. */
-void append_reference(std::vector<ModuleReferenceUse>& uses,
-                      std::optional<binding::SymbolId> symbol_id,
-                      std::optional<uint32_t> parameterized_index,
-                      std::optional<binding::SymbolKind> expected_kind,
-                      bool function_local,
-                      std::span<const SourceRange> locations,
-                      SourceRange fallback,
-                      bool requires_register_state = false,
-                      bool requires_predicate_register = false) {
+void append_reference(
+    std::vector<ModuleReferenceUse>& uses,
+    std::optional<binding::SymbolId> symbol_id,
+    std::optional<uint32_t> parameterized_index,
+    std::optional<binding::SymbolKind> expected_kind, bool function_local,
+    std::span<const SourceRange> locations, SourceRange fallback,
+    bool requires_register_state = false,
+    bool requires_predicate_register = false,
+    const ResolvedSymbolRef* address_symbol = nullptr,
+    const ResolvedAddress* enclosing_address = nullptr,
+    checker::AddressSymbolResolutionPolicy address_resolution_policy =
+        checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace) {
   uses.push_back({.symbol_id = symbol_id,
                   .parameterized_index = parameterized_index,
                   .expected_kind = expected_kind,
+                  .address_symbol = address_symbol,
+                  .enclosing_address = enclosing_address,
+                  .address_resolution_policy = address_resolution_policy,
                   .requires_register_state = requires_register_state,
                   .requires_predicate_register = requires_predicate_register,
                   .function_local = function_local,
@@ -442,10 +455,11 @@ concept ReferenceBearingOperandPayload =
 
 /** Collect all nested binding identities from one generator-selected operand. */
 template <ReferenceBearingOperandPayload Value>
-void collect_operand_references(const Value& value,
-                                std::span<const SourceRange> locations,
-                                SourceRange fallback,
-                                std::vector<ModuleReferenceUse>& uses) {
+void collect_operand_references(
+    const Value& value, std::span<const SourceRange> locations,
+    SourceRange fallback, std::vector<ModuleReferenceUse>& uses,
+    checker::AddressSymbolResolutionPolicy address_resolution_policy,
+    const ResolvedAddress* enclosing_address = nullptr) {
   const auto collect_register = [&](const ResolvedRegisterRef& register_ref,
                                     bool requires_predicate_register = false) {
     append_reference(uses, register_ref.symbol_id,
@@ -472,7 +486,9 @@ void collect_operand_references(const Value& value,
                      std::nullopt, true, locations, fallback);
   } else if constexpr (std::same_as<Value, ResolvedSymbolRef>) {
     append_reference(uses, value.symbol_id, value.parameterized_index,
-                     value.declaration_kind, false, locations, fallback);
+                     value.declaration_kind, false, locations, fallback, false,
+                     false, &value, enclosing_address,
+                     address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedVectorRegisterRef>) {
     collect_register(value.register_ref);
   } else if constexpr (std::same_as<Value, ResolvedMbarrierStateToken>) {
@@ -517,7 +533,8 @@ void collect_operand_references(const Value& value,
             std::get_if<ResolvedRegisterRef>(&value.base))
       collect_register(*register_ref);
     else if (const auto* symbol = std::get_if<ResolvedSymbolRef>(&value.base))
-      collect_operand_references(*symbol, locations, fallback, uses);
+      collect_operand_references(*symbol, locations, fallback, uses,
+                                 address_resolution_policy, &value);
   } else if constexpr (std::same_as<Value, ResolvedMovSource>) {
     std::visit(
         [&](const auto& source) {
@@ -526,7 +543,8 @@ void collect_operand_references(const Value& value,
                         std::same_as<Source, ResolvedFunctionRef> ||
                         std::same_as<Source, ResolvedSymbolRef> ||
                         std::same_as<Source, ResolvedAddress>)
-            collect_operand_references(source, locations, fallback, uses);
+            collect_operand_references(source, locations, fallback, uses,
+                                       address_resolution_policy);
         },
         value);
   } else if constexpr (std::same_as<Value, ResolvedShflSyncDestination>) {
@@ -538,7 +556,8 @@ void collect_operand_references(const Value& value,
     for (const auto& argument : value.values) {
       if (const auto* parameter =
               std::get_if<ResolvedCallParameterRef>(&argument.value))
-        collect_operand_references(*parameter, argument.locs, fallback, uses);
+        collect_operand_references(*parameter, argument.locs, fallback, uses,
+                                   address_resolution_policy);
     }
   } else {
     static_assert(
@@ -577,6 +596,71 @@ bool is_operand_scope(const ResolvedModule& module, binding::ScopeId candidate,
          is_function_owned_scope(module, candidate, function_scope);
 }
 
+/** Return the owned role required for a bound formal parameter symbol. */
+std::optional<ParameterDeclarationRole> expected_parameter_role(
+    const binding::Symbol& symbol, const ResolvedFunction& function) {
+  if (symbol.kind == binding::SymbolKind::InputParameter) {
+    return function.is_entry ? ParameterDeclarationRole::EntryInput
+                             : ParameterDeclarationRole::DeviceInput;
+  }
+  if (symbol.kind == binding::SymbolKind::ReturnParameter &&
+      !function.is_entry) {
+    return ParameterDeclarationRole::DeviceReturn;
+  }
+  return std::nullopt;
+}
+
+/** Cross-check cached address metadata against its immutable symbol binding. */
+void check_address_symbol_binding(const binding::Symbol& bound_symbol,
+                                  const ModuleReferenceUse& use,
+                                  const ResolvedFunction& function,
+                                  checker::CheckDiagnostics& diagnostics) {
+  if (use.address_symbol == nullptr)
+    return;
+
+  const ResolvedSymbolRef& cached = *use.address_symbol;
+  const EnclosingFunctionKind expected_function_kind =
+      function.is_entry ? EnclosingFunctionKind::Entry
+                        : EnclosingFunctionKind::Device;
+  const bool materialized_device_parameter =
+      use.address_resolution_policy ==
+          checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter &&
+      !function.is_entry &&
+      (bound_symbol.kind == binding::SymbolKind::InputParameter ||
+       bound_symbol.kind == binding::SymbolKind::ReturnParameter) &&
+      bound_symbol.state_space == syntax_ast::AstStateSpace::Parameter;
+  const auto expected_address_space = materialized_device_parameter
+                                          ? syntax_ast::AstStateSpace::Local
+                                          : bound_symbol.state_space;
+  const bool matching_declaration =
+      cached.declaration_kind == bound_symbol.kind &&
+      cached.declaration_state_space == bound_symbol.state_space &&
+      cached.address_state_space == expected_address_space &&
+      cached.enclosing_function_kind == expected_function_kind;
+  const bool matching_address_context =
+      use.enclosing_address == nullptr ||
+      use.enclosing_address->enclosing_function_kind == expected_function_kind;
+  if (!matching_declaration || !matching_address_context) {
+    append_model_mismatch(diagnostics, use.range,
+                          "Resolved address operand metadata disagrees with "
+                          "its bound declaration.");
+  }
+
+  const auto role = expected_parameter_role(bound_symbol, function);
+  if (!role)
+    return;
+  const auto declaration = std::ranges::find_if(
+      function.parameter_declarations, [&](const auto& candidate) {
+        return candidate.symbol_id == bound_symbol.id;
+      });
+  if (declaration == function.parameter_declarations.end() ||
+      declaration->role != *role) {
+    append_model_mismatch(diagnostics, use.range,
+                          "Resolved address operand has an incompatible "
+                          "parameter declaration role.");
+  }
+}
+
 /** Revalidate identities embedded in generated instruction operand payloads. */
 void check_module_references(const ResolvedModule& module,
                              const ResolvedFunction& function,
@@ -587,9 +671,12 @@ void check_module_references(const ResolvedModule& module,
         [&](const auto& instruction) {
           detail::visit_instruction_references(
               instruction,
-              [&](const auto& value, std::span<const SourceRange> locations) {
-                collect_operand_references(
-                    value, locations, function.instruction_ranges[index], uses);
+              [&](const auto& value, std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy
+                      address_resolution_policy) {
+                collect_operand_references(value, locations,
+                                           function.instruction_ranges[index],
+                                           uses, address_resolution_policy);
               });
         },
         function.body[index]);
@@ -630,6 +717,50 @@ void check_module_references(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, use.range,
           "Resolved module operand has an invalid parameterized member index.");
+    }
+    check_address_symbol_binding(*symbol, use, function, diagnostics);
+  }
+}
+
+/** Return whether an entry input declares a pointer to constant storage. */
+bool has_kernel_constant_pointer_parameter(const ResolvedModule& module) {
+  for (const auto& function : module.functions) {
+    if (!function.is_entry)
+      continue;
+    for (const auto& parameter : function.parameter_declarations) {
+      if (parameter.role != ParameterDeclarationRole::EntryInput ||
+          !parameter.pointer ||
+          parameter.pointer->pointed_state_space !=
+              call_argument_compatibility::PointedStateSpace::Constant) {
+        continue;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Reject generic constant-address creation with a kernel constant pointer. */
+void check_cvta_constant_pointer_restriction(
+    const ResolvedModule& module, checker::CheckDiagnostics& diagnostics) {
+  if (!has_kernel_constant_pointer_parameter(module))
+    return;
+  for (const auto& function : module.functions) {
+    for (size_t index = 0; index < function.body.size(); ++index) {
+      const auto* cvta = std::get_if<Cvta>(&function.body[index]);
+      if (cvta == nullptr ||
+          (!std::holds_alternative<Cvta::ConstU32>(cvta->variant) &&
+           !std::holds_alternative<Cvta::ConstU64>(cvta->variant))) {
+        continue;
+      }
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = index < function.instruction_ranges.size()
+                       ? function.instruction_ranges[index]
+                       : function.range,
+          .message = "cvta.const cannot create a generic constant pointer in a "
+                     "module with a kernel .ptr.const parameter.",
+      });
     }
   }
 }
@@ -1382,6 +1513,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
+  check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
     const auto* symbol = owned_symbol(module, alias.symbol_id);
     if (symbol == nullptr || symbol->kind != binding::SymbolKind::Function ||

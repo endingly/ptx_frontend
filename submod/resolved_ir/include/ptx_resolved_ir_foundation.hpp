@@ -183,6 +183,13 @@ struct ParameterAddressConstraint {
   ParameterDirection direction = ParameterDirection::None;
   AvailabilityDescriptor function_availability;
 };
+/** Address-space policy selected by an immutable generated operand binding. */
+enum class AddressSymbolResolutionPolicy : uint8_t {
+  /** Keep parameter address space equal to its declaration state space. */
+  PreserveDeclarationSpace,
+  /** Model `mov` taking a device formal parameter address as a local address. */
+  MaterializeDeviceParameter,
+};
 /** Fields needed to derive one generated natural-address-alignment rule. */
 struct AddressAlignmentConstraint {
   std::span<const std::string_view> address_field_ids;

@@ -2269,6 +2269,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     ResolvedOperandShape.ADDRESS,
                 ),
             )
+            self.assertEqual(source.preserve_parameter_address_space, not has_to)
 
     def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
         mbarrier = next(

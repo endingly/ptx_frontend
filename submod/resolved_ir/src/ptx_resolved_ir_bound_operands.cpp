@@ -95,6 +95,14 @@ std::optional<uint32_t> numbered_register_index(std::string_view spelling) {
   return index;
 }
 
+/** Return whether a declaration supplies a scalar `.reg` operand value. */
+bool is_register_valued_symbol(const binding::Symbol& symbol) {
+  return (symbol.kind == binding::SymbolKind::Variable ||
+          symbol.kind == binding::SymbolKind::InputParameter ||
+          symbol.kind == binding::SymbolKind::ReturnParameter) &&
+         symbol.state_space == syntax_ast::AstStateSpace::Register;
+}
+
 std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
     const syntax_ast::AstIdentifierRef& identifier,
     ResolvedRegisterClass register_class, const ResolveContext& context,
@@ -119,12 +127,7 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
   }
 
   const binding::Symbol& symbol = context.symbols.symbol(lookup->symbol);
-  const bool register_valued_role =
-      symbol.kind == binding::SymbolKind::Variable ||
-      symbol.kind == binding::SymbolKind::InputParameter ||
-      symbol.kind == binding::SymbolKind::ReturnParameter;
-  if (!register_valued_role ||
-      symbol.state_space != syntax_ast::AstStateSpace::Register) {
+  if (!is_register_valued_symbol(symbol)) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = fmt::format("Symbol '{}' is not a .reg variable.",
@@ -1672,8 +1675,7 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
         return WithLocs<ResolvedMovSource>{
             ResolvedMovSource{std::move(function)}, identifier->syntax.range};
       }
-      is_register = symbol.kind == binding::SymbolKind::Variable &&
-                    symbol.state_space == syntax_ast::AstStateSpace::Register;
+      is_register = is_register_valued_symbol(symbol);
     }
   }
 
